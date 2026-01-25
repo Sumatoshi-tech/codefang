@@ -1,0 +1,87 @@
+suite: fish
+name: fish-basic
+
+parse_cases:
+  - name: simple command
+    input: |
+      echo "Hello"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: 'echo "Hello"'
+          roles: [Call]
+          props:
+            name: echo
+          children:
+            - type: Identifier
+              token: echo
+              roles: [Name]
+            - type: Literal
+              token: '"Hello"'
+              roles: [Literal]
+
+  - name: function definition
+    input: |
+      function greet
+          echo "Hello"
+      end
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Function
+          roles: [Function, Declaration]
+          props:
+            name: greet
+          children:
+            - type: Identifier
+              token: greet
+              roles: [Name]
+            - type: Call
+              token: 'echo "Hello"'
+              roles: [Call]
+              props:
+                name: echo
+              children:
+                - type: Identifier
+                  token: echo
+                  roles: [Name]
+                - type: Literal
+                  token: '"Hello"'
+                  roles: [Literal]
+
+  - name: variable expansion
+    input: |
+      echo $name
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: echo $name
+          roles: [Call]
+          props:
+            name: echo
+          children:
+            - type: Identifier
+              token: echo
+              roles: [Name]
+            - type: Identifier
+              roles: [Reference]
+              children:
+                - type: Identifier
+                  token: name
+                  roles: [Name]
+
+  - name: comment
+    input: |
+      # A comment
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Comment
+          token: "# A comment"
+          roles: [Comment]

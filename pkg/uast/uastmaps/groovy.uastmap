@@ -1,0 +1,284 @@
+[language "groovy", extensions: ".groovy", ".gradle"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+groovy_package <- (groovy_package) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+groovy_import <- (groovy_import) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+class_definition <- (class_definition) => uast(
+    type: "Class",
+    roles: "Declaration"
+)
+
+interface_definition <- (interface_definition) => uast(
+    type: "Interface",
+    roles: "Declaration"
+)
+
+trait_definition <- (trait_definition) => uast(
+    type: "Interface",
+    roles: "Declaration"
+)
+
+enum_definition <- (enum_definition) => uast(
+    type: "Enum",
+    roles: "Declaration"
+)
+
+function_definition <- (function_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+dotted_identifier <- (dotted_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+qualified_name <- (qualified_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+number_literal <- (number_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_content <- (string_content) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean_literal <- (boolean_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null_literal <- (null_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+declaration <- (declaration) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+parameter_list <- (parameter_list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+parameter <- (parameter) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+argument_list <- (argument_list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+function_call <- (function_call) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+juxt_function_call <- (juxt_function_call) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+if_statement <- (if_statement) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+for_in_loop <- (for_in_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_loop <- (for_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+while_loop <- (while_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+do_while_loop <- (do_while_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+switch_statement <- (switch_statement) => uast(
+    type: "Switch",
+    roles: "Switch"
+)
+
+case_statement <- (case_statement) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+try_statement <- (try_statement) => uast(
+    type: "Try",
+    roles: "Try"
+)
+
+catch_clause <- (catch_clause) => uast(
+    type: "Catch",
+    roles: "Catch"
+)
+
+finally_clause <- (finally_clause) => uast(
+    type: "Finally",
+    roles: "Finally"
+)
+
+throw_statement <- (throw_statement) => uast(
+    type: "Throw",
+    roles: "Throw"
+)
+
+return_statement <- (return_statement) => uast(
+    type: "Return",
+    roles: "Return"
+)
+
+break_statement <- (break_statement) => uast(
+    type: "Break",
+    roles: "Break"
+)
+
+continue_statement <- (continue_statement) => uast(
+    type: "Continue",
+    roles: "Continue"
+)
+
+closure <- (closure) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+list <- (list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+map <- (map) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+map_item <- (map_item) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+binary_op <- (binary_op) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_op <- (unary_op) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+access_op <- (access_op) => uast(
+    type: "Field",
+    roles: "Member"
+)
+
+index_op <- (index_op) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+assignment <- (assignment) => uast(
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+annotation <- (annotation) => uast(
+    type: "Annotation",
+    roles: "Annotation"
+)
+
+modifier <- (modifier) => uast(
+    type: "Synthetic"
+)
+
+builtintype <- (builtintype) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+array_type <- (array_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+generic_type <- (generic_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+parenthesized_expression <- (parenthesized_expression) => uast(
+    type: "Synthetic"
+)
+
+interpolation <- (interpolation) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block_comment <- (block_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+shebang <- (shebang) => uast(
+    type: "Comment",
+    roles: "Comment"
+)

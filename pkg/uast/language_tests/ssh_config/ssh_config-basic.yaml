@@ -1,0 +1,65 @@
+suite: ssh_config
+name: ssh_config-basic
+
+parse_cases:
+  - name: host declaration with parameters
+    input: |-
+      Host myserver
+          HostName example.com
+          User admin
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Block
+          token: |-
+            Host myserver
+                HostName example.com
+                User admin
+          roles: [Body]
+          children:
+            - type: Literal
+              token: myserver
+              roles: [Literal]
+            - type: KeyValue
+              roles: [Key, Value]
+              children:
+                - type: Literal
+                  token: example.com
+                  roles: [Literal]
+            - type: KeyValue
+              roles: [Key, Value]
+              children:
+                - type: Literal
+                  token: admin
+                  roles: [Literal]
+
+  - name: comment
+    input: "# SSH config comment"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Comment
+          token: "# SSH config comment"
+          roles: [Comment]
+
+  - name: wildcard host
+    input: |-
+      Host *
+          Compression yes
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Block
+          token: |-
+            Host *
+                Compression yes
+          roles: [Body]
+          children:
+            - type: Literal
+              token: "*"
+              roles: [Literal]
+            - type: KeyValue
+              roles: [Key, Value]

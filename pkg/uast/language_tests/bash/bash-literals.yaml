@@ -1,0 +1,37 @@
+language: bash
+tests:
+  - name: "Number literal"
+    code: |
+      x=42
+    query: rfilter(.type == "Literal") |> rfilter(.token == "42") |> map(.token)
+    expected:
+      - "42"
+
+  - name: "String literal with double quotes"
+    code: |
+      x="hello world"
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+      - "Literal"
+
+  - name: "String content"
+    code: |
+      msg="test"
+    query: rfilter(.type == "Literal") |> rfilter(.token == "test") |> map(.token)
+    expected:
+      - "test"
+
+  - name: "Array literal is List"
+    code: |
+      arr=(1 2 3)
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"
+
+  - name: "Array elements are literals"
+    code: |
+      nums=(10 20 30)
+    query: rfilter(.type == "List") |> rfilter(.roles) |> map(.roles)
+    expected:
+      - ["Literal"]

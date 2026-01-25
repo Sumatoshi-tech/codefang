@@ -1,0 +1,34 @@
+suite: lambdas
+name: php-lambdas
+
+query_cases:
+  - name: find_anonymous_functions
+    input: |
+      <?php
+      $fn = function($x) {
+          return $x * 2;
+      };
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_arrow_functions
+    input: |
+      <?php
+      $fn = fn($x) => $x * 2;
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_all_lambdas
+    input: |
+      <?php
+      $a = function() {};
+      $b = fn() => 1;
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"

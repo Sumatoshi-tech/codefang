@@ -1,0 +1,52 @@
+suite: expressions
+name: csharp-expressions
+
+query_cases:
+  - name: find_binary_ops
+    input: |
+      class Test {
+          void Method() {
+              int a = 1 + 2;
+              int b = 3 * 4;
+              bool c = a > b;
+          }
+      }
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_calls
+    input: |
+      class Test {
+          void Method() {
+              Console.WriteLine("test");
+              var x = Add(1, 2);
+          }
+          int Add(int a, int b) => a + b;
+      }
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_literals
+    input: |
+      class Test {
+          void Method() {
+              bool a = true;
+              bool b = false;
+              int c = 42;
+              string d = "hello";
+          }
+      }
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"

@@ -1,0 +1,58 @@
+language: nim
+tests:
+  - name: "simple import"
+    input: |
+      import std/strutils
+    output:
+      type: "File"
+      children:
+        - type: "Import"
+          roles: ["Import"]
+
+  - name: "from import"
+    input: |
+      from std/strutils import split, strip
+    output:
+      type: "File"
+      children:
+        - type: "Import"
+          roles: ["Import"]
+
+  - name: "include statement"
+    input: |
+      include utils
+    output:
+      type: "File"
+      children:
+        - type: "Import"
+          roles: ["Import"]
+
+  - name: "multiple imports"
+    input: |
+      import std/os
+      import std/strutils
+      import std/sequtils
+    output:
+      type: "File"
+      children:
+        - type: "Import"
+          roles: ["Import"]
+        - type: "Import"
+          roles: ["Import"]
+        - type: "Import"
+          roles: ["Import"]
+
+queries:
+  - name: "find all imports"
+    input: |
+      import std/os
+      import std/strutils
+      from std/sequtils import map
+    query: "//Import"
+    output:
+      - type: "Import"
+        roles: ["Import"]
+      - type: "Import"
+        roles: ["Import"]
+      - type: "Import"
+        roles: ["Import"]

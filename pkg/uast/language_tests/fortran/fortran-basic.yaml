@@ -1,0 +1,41 @@
+language: fortran
+tests:
+  - name: "use statement (import)"
+    input: |
+      program test
+          use iso_fortran_env
+      end program test
+    output:
+      type: "File"
+      children:
+        - type: "Module"
+          roles: ["Module"]
+        - type: "Import"
+          roles: ["Import"]
+
+  - name: "variable declaration"
+    input: |
+      program test
+          integer :: x = 42
+      end program test
+    output:
+      type: "File"
+      children:
+        - type: "Module"
+          roles: ["Module"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+
+queries:
+  - name: "find imports"
+    input: |
+      program test
+          use module1
+          use module2
+      end program test
+    query: "//Import"
+    output:
+      - type: "Import"
+        roles: ["Import"]
+      - type: "Import"
+        roles: ["Import"]

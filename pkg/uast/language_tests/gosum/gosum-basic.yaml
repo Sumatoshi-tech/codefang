@@ -1,0 +1,39 @@
+language: gosum
+tests:
+  - name: "Root is File"
+    code: |
+      github.com/example/module v1.0.0 h1:abc123=
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Module path is Import"
+    code: |
+      github.com/example/module v1.0.0 h1:abc123=
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      github.com/another/pkg v2.1.0 h1:def456=
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]
+
+  - name: "Module path token captured"
+    code: |
+      golang.org/x/tools v0.5.0 h1:xyz789=
+    query: rfilter(.type == "Import") |> map(.token)
+    expected:
+      - "golang.org/x/tools"
+
+  - name: "Version is Literal"
+    code: |
+      github.com/test/pkg v1.2.3 h1:hash=
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+      - "Literal"
+      - "Literal"
+      - "Literal"

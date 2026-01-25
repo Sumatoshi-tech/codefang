@@ -1,0 +1,49 @@
+suite: imports
+name: php-imports
+
+query_cases:
+  - name: find_use_imports
+    input: |
+      <?php
+      use App\Models\User;
+      use App\Services\Auth;
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: find_require_imports
+    input: |
+      <?php
+      require_once "config.php";
+      include "helpers.php";
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+
+  - name: find_namespace
+    input: |
+      <?php
+      namespace App\Controllers;
+    query: 'rfilter(.type == "Namespace") |> map(.type)'
+    output:
+      results:
+        - "Namespace"
+
+  - name: find_identifiers
+    input: |
+      <?php
+      use App\Models\User;
+    query: 'rfilter(.type == "Identifier") |> map(.type)'
+    output:
+      results:
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"

@@ -1,0 +1,67 @@
+suite: advanced-features
+name: rust-advanced-features
+
+query_cases:
+  - name: find_struct_names
+    input: |
+      struct User {
+          name: String,
+      }
+      struct Admin {
+          permissions: Vec<String>,
+      }
+    query: 'rfilter(.type == "Struct") |> map(.props.name)'
+    output:
+      results:
+        - "User"
+        - "Admin"
+
+  - name: find_trait_names
+    input: |
+      trait Printable {
+          fn print(&self);
+      }
+      trait Debuggable {
+          fn debug(&self);
+      }
+    query: 'rfilter(.type == "Interface") |> map(.props.name)'
+    output:
+      results:
+        - "Printable"
+        - "Debuggable"
+
+  - name: find_enum_names
+    input: |
+      enum Color {
+          Red,
+          Green,
+          Blue,
+      }
+    query: 'rfilter(.type == "Enum") |> map(.props.name)'
+    output:
+      results:
+        - "Color"
+
+  - name: find_module_names
+    input: |
+      mod math {
+          pub fn add(a: i32, b: i32) -> i32 {
+              a + b
+          }
+      }
+    query: 'rfilter(.type == "Module") |> map(.props.name)'
+    output:
+      results:
+        - "math"
+
+  - name: find_enum_member_names
+    input: |
+      enum Status {
+          Active,
+          Inactive,
+      }
+    query: 'rfilter(.type == "EnumMember") |> map(.props.name)'
+    output:
+      results:
+        - "Active"
+        - "Inactive"

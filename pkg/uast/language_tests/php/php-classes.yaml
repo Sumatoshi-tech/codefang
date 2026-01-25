@@ -1,0 +1,78 @@
+suite: classes
+name: php-classes
+
+query_cases:
+  - name: find_classes
+    input: |
+      <?php
+      class User {}
+      class Post {}
+    query: 'rfilter(.type == "Class") |> map(.props.name)'
+    output:
+      results:
+        - "User"
+        - "Post"
+
+  - name: find_methods
+    input: |
+      <?php
+      class User {
+          public function getName() {}
+          public function setName($name) {}
+      }
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "getName"
+        - "setName"
+
+  - name: find_interfaces
+    input: |
+      <?php
+      interface UserInterface {}
+      interface PostInterface {}
+    query: 'rfilter(.type == "Interface") |> map(.props.name)'
+    output:
+      results:
+        - "UserInterface"
+        - "PostInterface"
+
+  - name: find_enums
+    input: |
+      <?php
+      enum Status {
+          case Active;
+          case Inactive;
+      }
+    query: 'rfilter(.type == "Enum") |> map(.props.name)'
+    output:
+      results:
+        - "Status"
+
+  - name: find_enum_members
+    input: |
+      <?php
+      enum Status {
+          case Active;
+          case Inactive;
+      }
+    query: 'rfilter(.type == "EnumMember") |> map(.type)'
+    output:
+      results:
+        - "EnumMember"
+        - "EnumMember"
+
+  - name: find_fields
+    input: |
+      <?php
+      class User {
+          private $name;
+          public $email;
+      }
+    query: 'rfilter(.type == "Field") |> map(.type)'
+    output:
+      results:
+        - "Field"
+        - "Field"
+        - "Field"
+        - "Field"

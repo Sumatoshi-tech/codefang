@@ -1,0 +1,39 @@
+language: nim
+tests:
+  - name: "import statement"
+    input: |
+      import std/strutils
+    output:
+      type: "File"
+      children:
+        - type: "Import"
+          roles: ["Import"]
+
+  - name: "variable declaration"
+    input: |
+      let x = 42
+    output:
+      type: "File"
+      children:
+        - type: "Block"
+          roles: ["Declaration"]
+          children:
+            - type: "Variable"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "x"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "42"
+                  roles: ["Literal"]
+
+  - name: "proc declaration"
+    input: |
+      proc greet(name: string): string =
+        result = "Hello, " & name
+    output:
+      type: "File"
+      children:
+        - type: "Function"
+          roles: ["Function", "Declaration"]

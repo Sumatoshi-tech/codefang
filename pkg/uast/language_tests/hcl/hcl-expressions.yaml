@@ -1,0 +1,26 @@
+language: hcl
+description: "Test HCL expressions"
+
+tests:
+  - name: "Function call"
+    code: |
+      output "result" {
+        value = upper("hello")
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+
+  - name: "Variable reference"
+    code: |
+      resource "null_resource" "example" {
+        triggers = {
+          value = var.my_var
+        }
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            roles: [Body]

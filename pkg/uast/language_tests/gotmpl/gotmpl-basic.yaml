@@ -1,0 +1,57 @@
+suite: gotmpl
+name: gotmpl-basic
+
+parse_cases:
+  - name: template action
+    input: '{{ template "header" . }}'
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          roles: [Call]
+          props:
+            name: '"header"'
+          children:
+            - type: Literal
+              token: '"header"'
+              roles: [Literal]
+            - type: Identifier
+              token: "."
+              roles: [Reference]
+
+  - name: field access
+    input: "{{ .Title }}"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Identifier
+          roles: [Name, Member]
+          props:
+            name: Title
+          children:
+            - type: Identifier
+              token: Title
+              roles: [Name]
+
+  - name: if action
+    input: "{{ if .Show }}yes{{ end }}"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: If
+          roles: [Condition]
+          children:
+            - type: Identifier
+              roles: [Name, Member]
+              props:
+                name: Show
+              children:
+                - type: Identifier
+                  token: Show
+                  roles: [Name]
+            - type: Literal
+              token: yes
+              roles: [Literal]

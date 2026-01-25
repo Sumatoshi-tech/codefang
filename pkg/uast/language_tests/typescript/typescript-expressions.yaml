@@ -1,0 +1,44 @@
+suite: expressions
+name: typescript-expressions
+
+query_cases:
+  - name: find_binary_ops
+    input: |
+      const sum = 1 + 2;
+      const diff = 5 - 3;
+      const cmp = x > y;
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_unary_ops
+    input: |
+      const neg = -5;
+      const not = !true;
+      let i = 0;
+      i++;
+    query: 'rfilter(.type == "UnaryOp") |> map(.type)'
+    output:
+      results:
+        - "UnaryOp"
+        - "UnaryOp"
+        - "UnaryOp"
+
+  - name: find_literals
+    input: |
+      const a = true;
+      const b = false;
+      const c = null;
+      const d = 42;
+      const e = "hello";
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"

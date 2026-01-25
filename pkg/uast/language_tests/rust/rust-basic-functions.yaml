@@ -1,0 +1,37 @@
+suite: basic-functions
+name: rust-basic-functions
+
+query_cases:
+  - name: find_function_names
+    input: |
+      fn main() {
+          println!("Hello");
+      }
+      fn helper() -> String {
+          "helper".to_string()
+      }
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "main"
+        - "helper"
+
+  - name: find_function_types
+    input: |
+      fn main() {
+          println!("Hello");
+      }
+    query: 'rfilter(.type == "Function") |> map(.type)'
+    output:
+      results:
+        - "Function"
+
+  - name: find_call_types
+    input: |
+      fn main() {
+          println!("Hello");
+      }
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"

@@ -1,0 +1,302 @@
+[language "cmake", extensions: ".cmake", files: "CMakeLists.txt"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+line_comment <- (line_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+bracket_comment <- (bracket_comment) => uast(
+    type: "Comment",
+    roles: "Comment"
+)
+
+bracket_comment_content <- (bracket_comment_content) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+bracket_comment_open <- (bracket_comment_open) => uast(
+    type: "Synthetic"
+)
+
+bracket_comment_close <- (bracket_comment_close) => uast(
+    type: "Synthetic"
+)
+
+normal_command <- (normal_command) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+argument_list <- (argument_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+argument <- (argument) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+unquoted_argument <- (unquoted_argument) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_argument <- (quoted_argument) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_element <- (quoted_element) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bracket_argument <- (bracket_argument) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bracket_argument_content <- (bracket_argument_content) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bracket_argument_open <- (bracket_argument_open) => uast(
+    type: "Synthetic"
+)
+
+bracket_argument_close <- (bracket_argument_close) => uast(
+    type: "Synthetic"
+)
+
+variable_ref <- (variable_ref) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+variable <- (variable) => uast(
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+normal_var <- (normal_var) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+env_var <- (env_var) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+cache_var <- (cache_var) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+if_command <- (if_command) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+elseif_command <- (elseif_command) => uast(
+    type: "If",
+    roles: "Condition", "Else"
+)
+
+else_command <- (else_command) => uast(
+    type: "Block",
+    roles: "Else"
+)
+
+endif_command <- (endif_command) => uast(
+    type: "Synthetic"
+)
+
+if_condition <- (if_condition) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+foreach_loop <- (foreach_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+foreach_command <- (foreach_command) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+endforeach_command <- (endforeach_command) => uast(
+    type: "Synthetic"
+)
+
+while_loop <- (while_loop) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+while_command <- (while_command) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+endwhile_command <- (endwhile_command) => uast(
+    type: "Synthetic"
+)
+
+function_def <- (function_def) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+function_command <- (function_command) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+endfunction_command <- (endfunction_command) => uast(
+    type: "Synthetic"
+)
+
+macro_def <- (macro_def) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+macro_command <- (macro_command) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+endmacro_command <- (endmacro_command) => uast(
+    type: "Synthetic"
+)
+
+block_def <- (block_def) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+block_command <- (block_command) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+endblock_command <- (endblock_command) => uast(
+    type: "Synthetic"
+)
+
+body <- (body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+if <- (if) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+elseif <- (elseif) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endif <- (endif) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+foreach <- (foreach) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endforeach <- (endforeach) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+while <- (while) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endwhile <- (endwhile) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+function <- (function) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endfunction <- (endfunction) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+macro <- (macro) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endmacro <- (endmacro) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+block <- (block) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endblock <- (endblock) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ENV <- (ENV) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+CACHE <- (CACHE) => uast(
+    token: "self",
+    type: "Synthetic"
+)

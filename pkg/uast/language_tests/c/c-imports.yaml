@@ -1,0 +1,16 @@
+suite: imports
+name: c-imports
+
+query_cases:
+  - name: import_structure
+    input: |
+      #include <stdio.h>
+    query: "rfilter(.type == \"Import\")"
+    output:
+      results:
+        - type: Import
+          roles: [Import]
+          children:
+            - type: Identifier
+              roles: [Name]
+              token: <stdio.h>

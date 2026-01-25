@@ -1,0 +1,42 @@
+suite: exceptions
+name: php-exceptions
+
+query_cases:
+  - name: find_try_blocks
+    input: |
+      <?php
+      try {} catch (Exception $e) {}
+      try {} finally {}
+    query: 'rfilter(.type == "Try") |> map(.type)'
+    output:
+      results:
+        - "Try"
+        - "Try"
+
+  - name: find_catch_blocks
+    input: |
+      <?php
+      try {} catch (Exception $e) {} catch (Error $e) {}
+    query: 'rfilter(.type == "Catch") |> map(.type)'
+    output:
+      results:
+        - "Catch"
+        - "Catch"
+
+  - name: find_finally_blocks
+    input: |
+      <?php
+      try {} catch (Exception $e) {} finally {}
+    query: 'rfilter(.type == "Finally") |> map(.type)'
+    output:
+      results:
+        - "Finally"
+
+  - name: find_throw_expressions
+    input: |
+      <?php
+      throw new Exception("Error");
+    query: 'rfilter(.type == "Throw") |> map(.type)'
+    output:
+      results:
+        - "Throw"

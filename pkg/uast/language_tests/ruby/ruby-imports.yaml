@@ -1,0 +1,49 @@
+suite: imports
+name: ruby-imports
+
+query_cases:
+  - name: find_require_calls
+    input: |
+      require "json"
+      require "yaml"
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_require_identifiers
+    input: |
+      require "json"
+      require_relative "helper"
+      load "config.rb"
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+        - "Call"
+
+  - name: find_import_paths
+    input: |
+      require "json"
+    query: 'rfilter(.type == "Literal") |> map(.token)'
+    output:
+      results:
+        - '"json"'
+
+  - name: find_require_relative
+    input: |
+      require_relative "lib/helper"
+    query: 'rfilter(.type == "Identifier") |> rfilter(.token == "require_relative") |> map(.token)'
+    output:
+      results:
+        - "require_relative"
+
+  - name: find_load_calls
+    input: |
+      load "setup.rb"
+    query: 'rfilter(.type == "Identifier") |> rfilter(.token == "load") |> map(.token)'
+    output:
+      results:
+        - "load"

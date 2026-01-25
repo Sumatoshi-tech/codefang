@@ -1,0 +1,23 @@
+suite: latex
+name: latex-structure
+
+parse_cases:
+  - name: section
+    input: |
+      \section{Introduction}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Block
+          roles: [Body]
+          children:
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                    - type: Literal
+                      token: Introduction
+                      roles: [Literal]

@@ -1,0 +1,76 @@
+suite: latex
+name: latex-imports
+
+parse_cases:
+  - name: documentclass import
+    input: |
+      \documentclass{article}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: "\\documentclass{article}"
+          roles: [Import]
+          children:
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Identifier
+                  token: article
+                  roles: [Name]
+
+  - name: usepackage import
+    input: |
+      \usepackage{amsmath}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: "\\usepackage{amsmath}"
+          roles: [Import]
+          children:
+            - type: List
+              token: "{amsmath}"
+              roles: [Literal]
+              children:
+                - type: Identifier
+                  token: amsmath
+                  roles: [Name]
+
+  - name: input include
+    input: |
+      \input{header}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: "\\input{header}"
+          roles: [Import]
+          children:
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Identifier
+                  token: header
+                  roles: [Name]
+
+  - name: include include
+    input: |
+      \include{chapter1}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: "\\include{chapter1}"
+          roles: [Import]
+          children:
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Identifier
+                  token: chapter1
+                  roles: [Name]

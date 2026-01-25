@@ -1,0 +1,24 @@
+language: dockerfile
+tests:
+  - name: "Multiple FROM are Imports"
+    code: |
+      FROM golang AS builder
+      FROM alpine
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+      - "Import"
+
+  - name: "Image alias is Identifier"
+    code: |
+      FROM golang:1.21 AS builder
+    query: rfilter(.type == "Identifier" and .token == "builder") |> map(.token)
+    expected:
+      - "builder"
+
+  - name: "COPY from stage"
+    code: |
+      COPY --from=builder /app .
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"

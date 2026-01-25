@@ -1,0 +1,47 @@
+suite: fish
+name: fish-control-flow
+
+parse_cases:
+  - name: if statement
+    input: |
+      if test -f file
+          echo "exists"
+      end
+    output:
+      type: File
+      roles: []
+      children:
+        - type: If
+          token: |-
+            if test -f file
+                echo "exists"
+            end
+          roles: [Condition]
+          children:
+            - type: Call
+              token: test -f file
+              roles: [Call]
+              props:
+                name: test
+              children:
+                - type: Identifier
+                  token: test
+                  roles: [Name]
+                - type: Identifier
+                  token: "-f"
+                  roles: [Name]
+                - type: Identifier
+                  token: file
+                  roles: [Name]
+            - type: Call
+              token: 'echo "exists"'
+              roles: [Call]
+              props:
+                name: echo
+              children:
+                - type: Identifier
+                  token: echo
+                  roles: [Name]
+                - type: Literal
+                  token: '"exists"'
+                  roles: [Literal]

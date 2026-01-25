@@ -1,0 +1,116 @@
+[language "html", extensions: ".html", ".htm"]
+
+document <- (document) => uast(
+    type: "File",
+    children: "doctype", "element", "comment", "text"
+)
+
+element <- (element) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call",
+    children: "start_tag", "end_tag", "self_closing_tag", "element", "text", "comment", "script_element", "style_element"
+)
+
+start_tag <- (start_tag) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name",
+    children: "tag_name", "attribute"
+)
+
+end_tag <- (end_tag) => uast(
+    type: "Synthetic",
+    children: "tag_name"
+)
+
+self_closing_tag <- (self_closing_tag) => uast(
+    type: "Identifier",
+    roles: "Name",
+    children: "tag_name", "attribute"
+)
+
+tag_name <- (tag_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+attribute <- (attribute) => uast(
+    type: "Property",
+    roles: "Member",
+    children: "attribute_name", "quoted_attribute_value", "attribute_value"
+)
+
+attribute_name <- (attribute_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+attribute_value <- (attribute_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_attribute_value <- (quoted_attribute_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal",
+    children: "attribute_value"
+)
+
+text <- (text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+doctype <- (doctype) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+script_element <- (script_element) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call",
+    children: "start_tag", "end_tag", "raw_text"
+)
+
+style_element <- (style_element) => uast(
+    type: "Call",
+    roles: "Call",
+    children: "start_tag", "end_tag", "raw_text"
+)
+
+raw_text <- (raw_text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+entity <- (entity) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+erroneous_end_tag <- (erroneous_end_tag) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "erroneous_end_tag_name"
+)
+
+erroneous_end_tag_name <- (erroneous_end_tag_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)

@@ -1,0 +1,219 @@
+suite: literals-types
+name: javascript-literals-types
+
+parse_cases:
+  - name: string_literal
+    input: |
+      const str = "hello";
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "str"
+              props:
+                name: "str"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "str"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: '"hello"'
+                  roles: ["Literal"]
+                  children:
+                    - type: "Synthetic"
+                      token: "hello"
+                      roles: []
+
+  - name: number_literal
+    input: |
+      const num = 42;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "num"
+              props:
+                name: "num"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "num"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "42"
+                  roles: ["Literal"]
+
+  - name: boolean_literals
+    input: |
+      const t = true;
+      const f = false;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "t"
+              props:
+                name: "t"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "t"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "true"
+                  roles: ["Literal"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "f"
+              props:
+                name: "f"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "f"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "false"
+                  roles: ["Literal"]
+
+  - name: null_literal
+    input: |
+      const n = null;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "n"
+              props:
+                name: "n"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "n"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "null"
+                  roles: ["Literal"]
+
+  - name: array_literal
+    input: |
+      const arr = [1, 2, 3];
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "arr"
+              props:
+                name: "arr"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "arr"
+                  roles: ["Name"]
+                - type: "List"
+                  roles: ["Literal"]
+                  children:
+                    - type: "Literal"
+                      token: "1"
+                      roles: ["Literal"]
+                    - type: "Literal"
+                      token: "2"
+                      roles: ["Literal"]
+                    - type: "Literal"
+                      token: "3"
+                      roles: ["Literal"]
+
+  - name: object_literal
+    input: |
+      const obj = { a: 1, b: 2 };
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "obj"
+              props:
+                name: "obj"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "obj"
+                  roles: ["Name"]
+                - type: "Dict"
+                  roles: ["Literal"]
+                  children:
+                    - type: "KeyValue"
+                      token: "a: 1"
+                      roles: ["Key", "Value"]
+                      children:
+                        - type: "Identifier"
+                          token: "a"
+                          roles: ["Name"]
+                        - type: "Literal"
+                          token: "1"
+                          roles: ["Literal"]
+                    - type: "KeyValue"
+                      token: "b: 2"
+                      roles: ["Key", "Value"]
+                      children:
+                        - type: "Identifier"
+                          token: "b"
+                          roles: ["Name"]
+                        - type: "Literal"
+                          token: "2"
+                          roles: ["Literal"]
+
+query_cases:
+  - name: find_all_literals
+    input: |
+      const a = 1;
+      const b = "text";
+      const c = true;
+    query: 'rfilter(.type == "Literal")'
+    output:
+      results:
+        - "1"
+        - '"text"'
+        - "true"
+
+  - name: find_identifiers
+    input: |
+      const x = y + z;
+    query: 'rfilter(.type == "Identifier")'
+    output:
+      results:
+        - type: "Identifier"
+          token: "x"
+          roles: ["Name"]
+        - type: "Identifier"
+          token: "y"
+          roles: ["Name"]
+        - type: "Identifier"
+          token: "z"
+          roles: ["Name"]

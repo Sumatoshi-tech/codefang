@@ -1,0 +1,65 @@
+language: ini
+description: "Test INI comments"
+
+tests:
+  - name: "Semicolon comment"
+    code: |
+      ; This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Hash comment"
+    code: |
+      # This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Comment before section"
+    code: |
+      ; Configuration section
+      [config]
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Dict
+            roles: [Literal]
+
+  - name: "Multiple comments"
+    code: |
+      ; First comment
+      # Second comment
+      ; Third comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Comment
+            roles: [Comment]
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Comment between sections"
+    code: |
+      [section1]
+      key = value
+
+      ; Separator comment
+
+      [section2]
+      another = value
+    expected:
+      - type: File
+        children:
+          - type: Dict
+          - type: Comment
+            roles: [Comment]
+          - type: Dict

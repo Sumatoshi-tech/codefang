@@ -1,0 +1,919 @@
+[language "ssh_config", extensions: ".ssh_config", files: "ssh_config"]
+
+config <- (config) => uast(
+    type: "File"
+)
+
+host_declaration <- (host_declaration) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+match_declaration <- (match_declaration) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+parameter <- (parameter) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+condition <- (condition) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pattern <- (pattern) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+number <- (number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bytes <- (bytes) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+time <- (time) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+variable <- (variable) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+yes <- (yes) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+no <- (no) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+Host <- (Host) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Match <- (Match) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Hostname <- (Hostname) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+User <- (User) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Port <- (Port) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+IdentityFile <- (IdentityFile) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ForwardAgent <- (ForwardAgent) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Compression <- (Compression) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Include <- (Include) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+AddKeysToAgent <- (AddKeysToAgent) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+AddressFamily <- (AddressFamily) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+BatchMode <- (BatchMode) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+BindAddress <- (BindAddress) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+BindInterface <- (BindInterface) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CASignatureAlgorithms <- (CASignatureAlgorithms) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CanonicalDomains <- (CanonicalDomains) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CanonicalizeFallbackLocal <- (CanonicalizeFallbackLocal) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CanonicalizeHostname <- (CanonicalizeHostname) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CanonicalizeMaxDots <- (CanonicalizeMaxDots) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CanonicalizePermittedCNAMEs <- (CanonicalizePermittedCNAMEs) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CertificateFile <- (CertificateFile) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ChallengeResponseAuthentication <- (ChallengeResponseAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+CheckHostIP <- (CheckHostIP) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Ciphers <- (Ciphers) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ClearAllForwardings <- (ClearAllForwardings) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ConnectTimeout <- (ConnectTimeout) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ConnectionAttempts <- (ConnectionAttempts) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ControlMaster <- (ControlMaster) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ControlPath <- (ControlPath) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ControlPersist <- (ControlPersist) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+DynamicForward <- (DynamicForward) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+EnableEscapeCommandline <- (EnableEscapeCommandline) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+EnableSSHKeysign <- (EnableSSHKeysign) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+EscapeChar <- (EscapeChar) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ExitOnForwardFailure <- (ExitOnForwardFailure) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+FingerprintHash <- (FingerprintHash) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ForkAfterAuthentication <- (ForkAfterAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ForwardX11 <- (ForwardX11) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ForwardX11Timeout <- (ForwardX11Timeout) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ForwardX11Trusted <- (ForwardX11Trusted) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+GSSAPIAuthentication <- (GSSAPIAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+GSSAPIDelegateCredentials <- (GSSAPIDelegateCredentials) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+GlobalKnownHostsFile <- (GlobalKnownHostsFile) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HashKnownHosts <- (HashKnownHosts) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HostKeyAlgorithms <- (HostKeyAlgorithms) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HostKeyAlias <- (HostKeyAlias) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HostbasedAcceptedAlgorithms <- (HostbasedAcceptedAlgorithms) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HostbasedAuthentication <- (HostbasedAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+HostbasedKeyTypes <- (HostbasedKeyTypes) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+IPQoS <- (IPQoS) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+IdentitiesOnly <- (IdentitiesOnly) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+IdentityAgent <- (IdentityAgent) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+IgnoreUnknown <- (IgnoreUnknown) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+KbdInteractiveAuthentication <- (KbdInteractiveAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+KexAlgorithms <- (KexAlgorithms) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+KnownHostsCommand <- (KnownHostsCommand) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+LocalCommand <- (LocalCommand) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+LocalForward <- (LocalForward) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+LogLevel <- (LogLevel) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+LogVerbose <- (LogVerbose) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+MACs <- (MACs) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+NoHostAuthenticationForLocalhost <- (NoHostAuthenticationForLocalhost) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+NumberOfPasswordPrompts <- (NumberOfPasswordPrompts) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PKCS11Provider <- (PKCS11Provider) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PasswordAuthentication <- (PasswordAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PermitLocalCommand <- (PermitLocalCommand) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PermitRemoteOpen <- (PermitRemoteOpen) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PreferredAuthentications <- (PreferredAuthentications) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ProxyCommand <- (ProxyCommand) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ProxyJump <- (ProxyJump) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ProxyUseFdpass <- (ProxyUseFdpass) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PubkeyAcceptedAlgorithms <- (PubkeyAcceptedAlgorithms) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PubkeyAcceptedKeyTypes <- (PubkeyAcceptedKeyTypes) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+PubkeyAuthentication <- (PubkeyAuthentication) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RekeyLimit <- (RekeyLimit) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RemoteCommand <- (RemoteCommand) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RemoteForward <- (RemoteForward) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RequestTTY <- (RequestTTY) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RequiredRSASize <- (RequiredRSASize) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+RevokedHostKeys <- (RevokedHostKeys) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SSH_AUTH_SOCK <- (SSH_AUTH_SOCK) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SecurityKeyProvider <- (SecurityKeyProvider) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SendEnv <- (SendEnv) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ServerAliveCountMax <- (ServerAliveCountMax) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ServerAliveInterval <- (ServerAliveInterval) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SessionType <- (SessionType) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SetEnv <- (SetEnv) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+StdinNull <- (StdinNull) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+StreamLocalBindMask <- (StreamLocalBindMask) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+StreamLocalBindUnlink <- (StreamLocalBindUnlink) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+StrictHostKeyChecking <- (StrictHostKeyChecking) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+SyslogFacility <- (SyslogFacility) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+TCPKeepAlive <- (TCPKeepAlive) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Tag <- (Tag) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+Tunnel <- (Tunnel) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+TunnelDevice <- (TunnelDevice) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+UpdateHostKeys <- (UpdateHostKeys) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+UseKeychain <- (UseKeychain) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+UserKnownHostsFile <- (UserKnownHostsFile) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+VerifyHostKeyDNS <- (VerifyHostKeyDNS) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+VisualHostKey <- (VisualHostKey) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+XAuthLocation <- (XAuthLocation) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+all <- (all) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+always <- (always) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+any <- (any) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+ask <- (ask) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+auto <- (auto) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+autoask <- (autoask) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+none <- (none) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+off <- (off) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+force <- (force) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+confirm <- (confirm) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+default <- (default) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+authentication <- (authentication) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+canonical <- (canonical) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+exec <- (exec) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+final <- (final) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+host <- (host) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+localnetwork <- (localnetwork) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+localuser <- (localuser) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+originalhost <- (originalhost) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+tagged <- (tagged) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+user <- (user) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+inet <- (inet) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+inet6 <- (inet6) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+ethernet <- (ethernet) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+cipher <- (cipher) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+kex <- (kex) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+key_sig <- (key_sig) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+mac <- (mac) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+sig <- (sig) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+md5 <- (md5) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+sha256 <- (sha256) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+ipqos <- (ipqos) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+facility <- (facility) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+verbosity <- (verbosity) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+subsystem <- (subsystem) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+token <- (token) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+unbound <- (unbound) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+uri <- (uri) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

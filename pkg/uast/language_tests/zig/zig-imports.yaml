@@ -1,0 +1,15 @@
+language: zig
+tests:
+  - name: "Import builtin function is Import"
+    code: |
+      const std = @import("std");
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      const mem = @import("std").mem;
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]

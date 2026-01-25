@@ -1,0 +1,43 @@
+language: ini
+description: "Test basic INI file structure"
+
+tests:
+  - name: "Empty file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single section"
+    code: |
+      [section]
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            roles: [Literal]
+
+  - name: "Section with name"
+    code: |
+      [database]
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+                roles: [Name]
+
+  - name: "Multiple sections"
+    code: |
+      [section1]
+      [section2]
+      [section3]
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            roles: [Literal]
+          - type: Dict
+            roles: [Literal]
+          - type: Dict
+            roles: [Literal]

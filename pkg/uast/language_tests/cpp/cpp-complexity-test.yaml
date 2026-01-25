@@ -1,0 +1,41 @@
+suite: complexity-test
+name: cpp-complexity-test
+
+query_cases:
+  - name: find_if_statement
+    input: |
+      int test(int x) {
+          if (x > 0) {
+              return x;
+          }
+          return 0;
+      }
+    query: 'rfilter(.type == "If")'
+    output:
+      results:
+        - type: If
+          roles: [Condition]
+          children:
+            - type: Synthetic
+              roles: []
+              token: "(x > 0)"
+              children:
+                - type: BinaryOp
+                  roles: [Operator]
+                  children:
+                    - type: Identifier
+                      roles: [Name]
+                      token: x
+                    - type: Literal
+                      roles: [Literal]
+                      token: "0"
+            - type: Block
+              roles: [Body]
+              children:
+                - type: Return
+                  roles: [Return]
+                  token: "return x;"
+                  children:
+                    - type: Identifier
+                      roles: [Name]
+                      token: x

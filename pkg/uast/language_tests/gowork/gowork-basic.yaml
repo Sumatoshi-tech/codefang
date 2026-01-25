@@ -1,0 +1,49 @@
+language: gowork
+tests:
+  - name: "Root is File"
+    code: |
+      go 1.21
+      use ./mymodule
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "File path is Import"
+    code: |
+      go 1.21
+      use ./mymodule
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      go 1.21
+      use ./another/module
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]
+
+  - name: "File path token captured"
+    code: |
+      go 1.21
+      use ./path/to/module
+    query: rfilter(.type == "Import") |> map(.token)
+    expected:
+      - "./path/to/module"
+
+  - name: "Use directive is Block"
+    code: |
+      go 1.21
+      use ./mymodule
+    query: rfilter(.type == "Block") |> map(.type)
+    expected:
+      - "Block"
+
+  - name: "Comment is properly typed"
+    code: |
+      // This is a comment
+      go 1.21
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"

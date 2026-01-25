@@ -1,0 +1,23 @@
+suite: basic-functions
+name: clojure-basic-functions
+
+query_cases:
+  - name: find_defn_names
+    input: |
+      (defn add [a b] (+ a b))
+      (defn sub [a b] (- a b))
+    query: 'rfilter(.type == "Identifier" && .props.name == "defn") |> map(.props.name)'
+    output:
+      results:
+        - "defn"
+        - "defn"
+
+  - name: count_calls
+    input: |
+      (defn func1 [])
+      (defn func2 [])
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"

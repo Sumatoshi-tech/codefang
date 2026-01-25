@@ -1,0 +1,34 @@
+language: properties
+description: "Test complex Properties files"
+
+tests:
+  - name: "Properties with comments"
+    code: |
+      # Database settings
+      db.host=localhost
+      db.port=3306
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: KeyValue
+            roles: [Key, Value]
+          - type: KeyValue
+            roles: [Key, Value]
+
+  - name: "Mixed content"
+    code: |
+      # Server config
+      server.host=0.0.0.0
+      server.port=8080
+      # Logging
+      log.level=debug
+    expected:
+      - type: File
+        children:
+          - type: Comment
+          - type: KeyValue
+          - type: KeyValue
+          - type: Comment
+          - type: KeyValue

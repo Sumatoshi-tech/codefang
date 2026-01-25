@@ -1,0 +1,27 @@
+language: git_config
+description: "Test basic git config file structure"
+
+tests:
+  - name: "Empty file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single comment"
+    code: |
+      # This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Section with variable"
+    code: |
+      [core]
+      	editor = vim
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            roles: [Literal]

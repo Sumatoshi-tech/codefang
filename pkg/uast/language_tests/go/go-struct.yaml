@@ -1,0 +1,88 @@
+suite: struct
+name: go-struct
+
+parse_cases:
+  - name: struct_and_field
+    input: |
+      type Person struct {
+          Name string
+          Age  int
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "List"
+              token: |-
+                Person struct {
+                    Name string
+                    Age  int
+                }
+              props:
+                name: "Person"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "Person"
+                  roles: ["Name", "Type"]
+                - type: "Struct"
+                  token: |-
+                    struct {
+                        Name string
+                        Age  int
+                    }
+                  roles: ["Struct", "Declaration"]
+                  children:
+                    - type: "Synthetic"
+                      token: |-
+                        {
+                            Name string
+                            Age  int
+                        }
+                      roles: []
+                      children:
+                        - type: "Field"
+                          props:
+                            name: "Name"
+                          roles: ["Member"]
+                          children:
+                            - type: "Identifier"
+                              token: "Name"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "string"
+                              roles: ["Name", "Type"]
+                        - type: "Field"
+                          props:
+                            name: "Age"
+                          roles: ["Member"]
+                          children:
+                            - type: "Identifier"
+                              token: "Age"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "int"
+                              roles: ["Name", "Type"]
+
+query_cases:
+  - name: find_structs
+    input: |
+      type A struct {}
+      type B struct {}
+    query: 'rfilter(.type == "Struct") |> map(.type)'
+    output:
+      results:
+        - "Struct"
+        - "Struct"
+
+  - name: find_fields
+    input: |
+      type Person struct { Name string; Age int }
+    query: 'rfilter(.type == "Field") |> map(.type)'
+    output:
+      results:
+        - "Field"
+        - "Field"

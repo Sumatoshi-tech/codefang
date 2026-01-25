@@ -1,0 +1,37 @@
+suite: imports
+name: lua-imports
+
+query_cases:
+  - name: find_require_calls
+    input: |
+      local json = require("json")
+      local socket = require("socket")
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_require_identifier
+    input: |
+      local json = require("json")
+    query: 'rfilter(.type == "Identifier") |> rfilter(.token == "require") |> map(.token)'
+    output:
+      results:
+        - "require"
+
+  - name: find_module_path
+    input: |
+      local mod = require("mymodule")
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+
+  - name: find_variable_declarations
+    input: |
+      local json = require("json")
+    query: 'rfilter(.type == "Variable") |> map(.type)'
+    output:
+      results:
+        - "Variable"

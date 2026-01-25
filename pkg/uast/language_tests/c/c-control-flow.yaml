@@ -1,0 +1,17 @@
+suite: control-flow
+name: c-control-flow
+
+query_cases:
+  - name: find_break
+    input: |
+      void test() {
+          for (int i = 0; i < 10; i++) {
+              if (i == 5) break;
+          }
+      }
+    query: "rfilter(.type == \"Break\")"
+    output:
+      results:
+        - type: Break
+          roles: [Break]
+          token: "break;"

@@ -1,0 +1,43 @@
+suite: crystal-basic
+name: Basic Crystal constructs
+
+parse_cases:
+  - name: Parse require import
+    input: 'require "json"'
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: 'require "json"'
+          roles:
+            - Import
+          children:
+            - type: Literal
+              token: '"json"'
+              roles:
+                - Literal
+              children:
+                - type: Literal
+                  token: "json"
+                  roles:
+                    - Literal
+
+  - name: Parse simple assignment
+    input: "x = 1"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Assignment
+          roles:
+            - Assignment
+          children:
+            - type: Identifier
+              token: "x"
+              roles:
+                - Name
+            - type: Literal
+              token: "1"
+              roles:
+                - Literal

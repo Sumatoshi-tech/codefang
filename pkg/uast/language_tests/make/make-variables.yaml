@@ -1,0 +1,50 @@
+language: make
+description: "Test Makefile variable assignments"
+
+tests:
+  - name: "Simple variable assignment"
+    code: |
+      CC = gcc
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Variable with identifier child"
+    code: |
+      CC = gcc
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            children:
+              - type: Identifier
+                roles: [Name]
+                token: "CC"
+              - type: Literal
+                roles: [Literal]
+
+  - name: "Multiple variables"
+    code: |
+      CC = gcc
+      CFLAGS = -Wall
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            roles: [Variable, Declaration]
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Variable with multi-word value"
+    code: |
+      SRC = main.c utils.c
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            children:
+              - type: Identifier
+                token: "SRC"
+              - type: Literal

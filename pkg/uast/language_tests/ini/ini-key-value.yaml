@@ -1,0 +1,126 @@
+language: ini
+description: "Test INI key-value pairs"
+
+tests:
+  - name: "Simple key-value"
+    code: |
+      [config]
+      key = value
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: KeyValue
+                roles: [Key, Value]
+
+  - name: "Key-value with identifier"
+    code: |
+      [db]
+      host = localhost
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    roles: [Name]
+                    token: "host"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "Multiple key-values in section"
+    code: |
+      [server]
+      host = localhost
+      port = 8080
+      debug = true
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+
+  - name: "Numeric value"
+    code: |
+      [settings]
+      timeout = 30
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "timeout"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "Boolean values"
+    code: |
+      [flags]
+      enabled = true
+      disabled = false
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "enabled"
+                  - type: Literal
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "disabled"
+                  - type: Literal
+
+  - name: "Path value"
+    code: |
+      [paths]
+      data_dir = /var/lib/app
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "data_dir"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "URL value"
+    code: |
+      [api]
+      endpoint = https://api.example.com/v1
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "endpoint"
+                  - type: Literal

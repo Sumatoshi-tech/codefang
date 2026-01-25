@@ -1,0 +1,29 @@
+language: make
+description: "Test basic Makefile structure"
+
+tests:
+  - name: "Empty makefile"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single comment"
+    code: |
+      # This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Multiple comments"
+    code: |
+      # First comment
+      # Second comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Comment
+            roles: [Comment]

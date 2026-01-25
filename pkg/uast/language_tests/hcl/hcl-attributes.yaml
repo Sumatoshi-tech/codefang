@@ -1,0 +1,40 @@
+language: hcl
+description: "Test HCL attribute assignments"
+
+tests:
+  - name: "String attribute"
+    code: |
+      terraform {
+        required_version = "1.0"
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            children:
+              - type: Identifier
+              - type: Synthetic
+              - type: Block
+                children:
+                  - type: KeyValue
+                    roles: [Key, Value]
+
+  - name: "Number attribute"
+    code: |
+      variable "count" {
+        default = 5
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+
+  - name: "Boolean attribute"
+    code: |
+      variable "enabled" {
+        default = true
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block

@@ -1,0 +1,50 @@
+language: bash
+tests:
+  - name: "Binary expression in test"
+    code: |
+      if [ "$x" -gt 10 ]; then
+          echo "big"
+      fi
+    query: rfilter(.type == "BinaryOp") |> map(.type)
+    expected:
+      - "BinaryOp"
+
+  - name: "BinaryOp has Operator role"
+    code: |
+      if [ "$a" -eq "$b" ]; then
+          echo "equal"
+      fi
+    query: rfilter(.type == "BinaryOp") |> map(.roles)
+    expected:
+      - ["Operator"]
+
+  - name: "Arithmetic expansion"
+    code: |
+      result=$((count + 10))
+    query: rfilter(.type == "BinaryOp") |> map(.type)
+    expected:
+      - "BinaryOp"
+      - "BinaryOp"
+
+  - name: "Pipeline is BinaryOp"
+    code: |
+      ls | grep foo
+    query: rfilter(.type == "BinaryOp") |> map(.type)
+    expected:
+      - "BinaryOp"
+
+  - name: "String concatenation"
+    code: |
+      full="$first$last"
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Test operator is Identifier"
+    code: |
+      if [ "$x" -lt 5 ]; then
+          echo "small"
+      fi
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "-lt") |> map(.token)
+    expected:
+      - "-lt"

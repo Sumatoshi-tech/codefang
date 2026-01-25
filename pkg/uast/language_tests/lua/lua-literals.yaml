@@ -1,0 +1,59 @@
+suite: literals
+name: lua-literals
+
+query_cases:
+  - name: find_numbers
+    input: |
+      local x = 42
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "42") |> map(.token)'
+    output:
+      results:
+        - "42"
+
+  - name: find_floats
+    input: |
+      local pi = 3.14
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "3.14") |> map(.token)'
+    output:
+      results:
+        - "3.14"
+
+  - name: find_strings
+    input: |
+      local name = "hello"
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+
+  - name: find_booleans
+    input: |
+      local flag = true
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "true") |> map(.token)'
+    output:
+      results:
+        - "true"
+
+  - name: find_nil
+    input: |
+      local empty = nil
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "nil") |> map(.token)'
+    output:
+      results:
+        - "nil"
+
+  - name: find_tables
+    input: |
+      local arr = {1, 2, 3}
+    query: 'rfilter(.type == "Dict") |> map(.type)'
+    output:
+      results:
+        - "Dict"
+
+  - name: find_table_with_keys
+    input: |
+      local obj = {name = "John", age = 30}
+    query: 'rfilter(.type == "Dict") |> map(.type)'
+    output:
+      results:
+        - "Dict"

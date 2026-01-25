@@ -1,0 +1,50 @@
+language: yaml
+tests:
+  - name: "String literal"
+    code: |
+      name: hello
+    query: rfilter(.type == "Literal") |> rfilter(.token == "hello") |> map(.token)
+    expected:
+      - "hello"
+
+  - name: "Integer literal"
+    code: |
+      count: 42
+    query: rfilter(.type == "Literal") |> rfilter(.token == "42") |> map(.token)
+    expected:
+      - "42"
+
+  - name: "Float literal"
+    code: |
+      price: 19.99
+    query: rfilter(.type == "Literal") |> rfilter(.token == "19.99") |> map(.token)
+    expected:
+      - "19.99"
+
+  - name: "Boolean true literal"
+    code: |
+      active: true
+    query: rfilter(.type == "Literal") |> rfilter(.token == "true") |> map(.token)
+    expected:
+      - "true"
+
+  - name: "Boolean false literal"
+    code: |
+      enabled: false
+    query: rfilter(.type == "Literal") |> rfilter(.token == "false") |> map(.token)
+    expected:
+      - "false"
+
+  - name: "Null literal"
+    code: |
+      empty: null
+    query: rfilter(.type == "Literal") |> rfilter(.token == "null") |> map(.token)
+    expected:
+      - "null"
+
+  - name: "Literals have Literal role"
+    code: |
+      value: 123
+    query: rfilter(.type == "Literal") |> rfilter(.token == "123") |> map(.roles)
+    expected:
+      - ["Literal"]

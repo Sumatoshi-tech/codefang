@@ -1,0 +1,22 @@
+language: toml
+tests:
+  - name: "Local date is Literal"
+    code: |
+      birthday = 1979-05-27
+    query: rfilter(.type == "Literal" and .token == "1979-05-27") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Local time is Literal"
+    code: |
+      alarm = 07:32:00
+    query: rfilter(.type == "Literal" and .token == "07:32:00") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Local datetime is Literal"
+    code: |
+      event = 1979-05-27T07:32:00
+    query: rfilter(.type == "Literal" and .token == "1979-05-27T07:32:00") |> map(.type)
+    expected:
+      - "Literal"

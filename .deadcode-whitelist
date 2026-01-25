@@ -1,0 +1,16 @@
+# Deadcode Whitelist
+# Functions that appear as "dead" but are actually required for interface compliance
+# or other legitimate reasons that the deadcode analyzer doesn't recognize.
+#
+# Format: file_path:line:col: function_name
+# The filtering script matches on function names (the part after the last colon)
+
+# Add whitelisted functions below as needed:
+# Example:
+# internal/pkg/errors.go:35:22: CustomError.Error
+
+# Auto-generated PEG
+pkg/uast/pkg/mapping/mapping.peg.go:306:6: Pretty
+pkg/uast/pkg/mapping/mapping.peg.go:313:6: Size
+pkg/uast/pkg/node/dsl_parser.peg.go:292:6: Pretty
+pkg/uast/pkg/node/dsl_parser.peg.go:299:6: Size

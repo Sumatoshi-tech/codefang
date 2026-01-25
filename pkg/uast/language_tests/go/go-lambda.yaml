@@ -1,0 +1,127 @@
+suite: lambda
+name: go-lambda
+
+parse_cases:
+  - name: lambda
+    input: |
+      func f() {
+          fn := func(x int) int { return x * 2 }
+          result := fn(5)
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func f() {
+                fn := func(x int) int { return x * 2 }
+                result := fn(5)
+            }
+          props:
+            name: "f"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "f"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              token: |-
+                {
+                    fn := func(x int) int { return x * 2 }
+                    result := fn(5)
+                }
+              roles: ["Body"]
+              children:
+                - type: "Variable"
+                  token: "fn := func(x int) int { return x * 2 }"
+                  roles: ["Variable", "Declaration"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Identifier"
+                          token: "fn"
+                          roles: ["Name"]
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Lambda"
+                          roles: ["Lambda"]
+                          children:
+                            - type: "Parameter"
+                              token: "(x int)"
+                              roles: ["Parameter"]
+                              children:
+                                - type: "Parameter"
+                                  props:
+                                    name: "x"
+                                  roles: ["Parameter"]
+                                  children:
+                                    - type: "Identifier"
+                                      token: "x"
+                                      roles: ["Name"]
+                                    - type: "Identifier"
+                                      token: "int"
+                                      roles: ["Name", "Type"]
+                            - type: "Identifier"
+                              token: "int"
+                              roles: ["Name", "Type"]
+                            - type: "Block"
+                              token: "{ return x * 2 }"
+                              roles: ["Body"]
+                              children:
+                                - type: "Return"
+                                  token: "return x * 2"
+                                  roles: ["Return"]
+                                  children:
+                                    - type: "List"
+                                      roles: []
+                                      children:
+                                        - type: "BinaryOp"
+                                          roles: ["Operator"]
+                                          children:
+                                            - type: "Identifier"
+                                              token: "x"
+                                              roles: ["Name"]
+                                            - type: "Literal"
+                                              roles: ["Literal"]
+                - type: "Variable"
+                  token: "result := fn(5)"
+                  roles: ["Variable", "Declaration"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Identifier"
+                          token: "result"
+                          roles: ["Name"]
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Call"
+                          token: "fn(5)"
+                          roles: ["Call"]
+                          children:
+                            - type: "Identifier"
+                              token: "fn"
+                              roles: ["Name"]
+                            - type: "List"
+                              token: "(5)"
+                              roles: []
+                              children:
+                                - type: "Literal"
+                                  roles: ["Literal"]
+
+query_cases:
+  - name: find_lambdas
+    input: |
+      func f() { fn := func() {}; fn2 := func() {} }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"

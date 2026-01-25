@@ -1,0 +1,200 @@
+suite: async-generators
+name: javascript-async-generators
+
+parse_cases:
+  - name: async_function
+    input: |
+      async function fetchData() {
+          await fetch("url");
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          props:
+            name: "fetchData"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "fetchData"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Await"
+                      roles: ["Await"]
+                      children:
+                        - type: "Call"
+                          token: 'fetch("url")'
+                          roles: ["Call"]
+                          children:
+                            - type: "Identifier"
+                              token: "fetch"
+                              roles: ["Name"]
+                            - type: "Synthetic"
+                              token: '("url")'
+                              roles: []
+                              children:
+                                - type: "Literal"
+                                  token: '"url"'
+                                  roles: ["Literal"]
+                                  children:
+                                    - type: "Synthetic"
+                                      token: "url"
+                                      roles: []
+
+  - name: async_arrow_function
+    input: |
+      const getData = async () => {
+          return await fetchData();
+      };
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "getData"
+              props:
+                name: "getData"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "getData"
+                  roles: ["Name"]
+                - type: "Lambda"
+                  roles: ["Lambda"]
+                  children:
+                    - type: "Synthetic"
+                      token: "()"
+                      roles: ["Parameter"]
+                    - type: "Block"
+                      roles: ["Body"]
+                      children:
+                        - type: "Return"
+                          token: "return await fetchData();"
+                          roles: ["Return"]
+                          children:
+                            - type: "Await"
+                              roles: ["Await"]
+                              children:
+                                - type: "Call"
+                                  token: "fetchData()"
+                                  roles: ["Call"]
+                                  children:
+                                    - type: "Identifier"
+                                      token: "fetchData"
+                                      roles: ["Name"]
+                                    - type: "Synthetic"
+                                      token: "()"
+                                      roles: []
+
+  - name: generator_function
+    input: |
+      function* gen() {
+          yield 1;
+          yield 2;
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Generator"
+          token: |-
+            function* gen() {
+                yield 1;
+                yield 2;
+            }
+          props:
+            name: "gen"
+          roles: ["Function", "Declaration", "Generator"]
+          children:
+            - type: "Identifier"
+              token: "gen"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Yield"
+                      roles: ["Yield"]
+                      children:
+                        - type: "Literal"
+                          token: "1"
+                          roles: ["Literal"]
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Yield"
+                      roles: ["Yield"]
+                      children:
+                        - type: "Literal"
+                          token: "2"
+                          roles: ["Literal"]
+
+  - name: await_expression
+    input: |
+      const result = await promise;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "result"
+              props:
+                name: "result"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "result"
+                  roles: ["Name"]
+                - type: "Await"
+                  roles: ["Await"]
+                  children:
+                    - type: "Identifier"
+                      token: "promise"
+                      roles: ["Name"]
+
+query_cases:
+  - name: find_await_expressions
+    input: |
+      async function test() {
+          await a();
+          await b();
+      }
+    query: 'rfilter(.type == "Await") |> map(.type)'
+    output:
+      results:
+        - "Await"
+        - "Await"
+
+  - name: find_yield_expressions
+    input: |
+      function* gen() {
+          yield 1;
+          yield 2;
+          yield 3;
+      }
+    query: 'rfilter(.type == "Yield") |> map(.type)'
+    output:
+      results:
+        - "Yield"
+        - "Yield"
+        - "Yield"

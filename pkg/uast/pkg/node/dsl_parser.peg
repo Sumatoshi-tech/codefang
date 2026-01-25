@@ -1,0 +1,63 @@
+package node
+
+type QueryDSL Peg {
+    
+}
+
+Query <- Spacing Pipeline !.
+
+Pipeline <- Expr (Spacing '|' '>' Spacing Expr)*
+
+Expr <- RFilter / RMap / Filter / Map / Reduce / OrExpr
+
+Filter <- 'filter' ((Spacing '(' Spacing Predicate Spacing ')') / (Spacing Predicate))
+
+RFilter <- 'rfilter' ((Spacing '(' Spacing Predicate Spacing ')') / (Spacing Predicate))
+
+Map <- 'map' ((Spacing '(' Spacing OrExpr Spacing ')') / (Spacing OrExpr))
+
+RMap <- 'rmap' ((Spacing '(' Spacing OrExpr Spacing ')') / (Spacing OrExpr))
+
+Reduce <- 'reduce' ((Spacing '(' Spacing ReducerName Spacing ')') / (Spacing ReducerName))
+
+ReducerName <- [a-zA-Z_][a-zA-Z0-9_]*
+
+Predicate <- OrExpr
+
+OrExpr <- AndExpr (Spacing '|' '|' Spacing AndExpr)*
+
+AndExpr <- NotExpr (Spacing '&' '&' Spacing NotExpr)*
+
+NotExpr <- ('!' Spacing PrimaryExpr) / PrimaryExpr
+
+PrimaryExpr <- Membership / Comparison / ParenExpr / FieldAccess / Literal
+
+ParenExpr <- '(' Spacing OrExpr Spacing ')'
+
+Comparison <- Value Spacing CompOp Spacing Value
+
+CompOp <- ('!=') / ('=' '=') / ('>' '=') / ('<' '=') / '>' / '<'
+
+Membership <- FieldAccess Spacing 'has' Spacing Value
+
+FieldAccess <- '.' Identifier ('.' Identifier)*
+
+Value <- FieldAccess / Literal
+
+Literal <- String / Number / Boolean
+
+String <- ('"' (!'"' .)* '"') / ('\'' (!'\'' .)* '\'')
+
+Number <- [0-9]+ ('.' [0-9]+)?
+
+Boolean <- 'true' / 'false'
+
+Identifier <- [a-zA-Z_][a-zA-Z0-9_]*
+
+Spacing <- (Space / Comment)*
+
+Space <- ' ' / '\t' / '\n' / '\r'
+
+Comment <- ('#' (!EndOfLine .)* EndOfLine) / ('//' (!EndOfLine .)* EndOfLine)
+
+EndOfLine <- '\r\n' / '\n' / '\r'

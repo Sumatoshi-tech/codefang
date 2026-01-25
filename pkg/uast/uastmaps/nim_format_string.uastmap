@@ -1,0 +1,88 @@
+[language "nim_format_string", extensions: ".nim"]
+
+double_curlies <- (double_curlies) => uast(
+    type: "Synthetic"
+)
+
+escaped_curly <- (escaped_curly) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+format_specifiers <- (format_specifiers) => uast(
+    type: "If",
+    children: "colon", "fill_align", "hash", "min_width", "precision", "sign", "type", "zero"
+)
+
+matching_curlies <- (matching_curlies) => uast(
+    token: "self",
+    type: "Match",
+    roles: "Match",
+    children: "closing_curly", "equals", "format_specifiers", "nim_expression", "opening_curly"
+)
+
+nim_expression <- (nim_expression) => uast(
+    type: "Synthetic",
+    children: "escaped_curly"
+)
+
+source_file <- (source_file) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+string_literal <- (string_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+closing_curly <- (closing_curly) => uast(
+    token: "self",
+    roles: "Literal",
+    type: "Literal"
+)
+
+colon <- (colon) => uast(
+    type: "Synthetic"
+)
+
+equals <- (equals) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+fill_align <- (fill_align) => uast(
+    type: "Synthetic"
+)
+
+hash <- (hash) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+min_width <- (min_width) => uast(
+    type: "Synthetic"
+)
+
+opening_curly <- (opening_curly) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+precision <- (precision) => uast(
+    type: "Synthetic"
+)
+
+sign <- (sign) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+type <- (type) => uast(
+    type: "Synthetic"
+)
+
+zero <- (zero) => uast(
+    token: "self",
+    type: "Synthetic"
+)

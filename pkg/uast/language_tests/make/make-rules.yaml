@@ -1,0 +1,23 @@
+language: make
+description: "Test Makefile rules"
+
+tests:
+  - name: "Simple rule"
+    code: |
+      all: main.o
+      	gcc -o all main.o
+    expected:
+      - type: File
+        children:
+          - type: Function
+            roles: [Function, Declaration]
+
+  - name: "Rule with recipe"
+    code: |
+      clean:
+      	rm -f *.o
+    expected:
+      - type: File
+        children:
+          - type: Function
+            roles: [Function, Declaration]

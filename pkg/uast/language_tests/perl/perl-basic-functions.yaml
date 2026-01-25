@@ -1,0 +1,11 @@
+suite: perl
+name: basic-functions
+
+query_cases:
+  - name: find_imports
+    input: |
+      use strict;
+    query: rfilter(.type == "Import") |> map(.type)
+    output:
+      results:
+        - Import

@@ -1,0 +1,44 @@
+suite: basic-functions
+name: csharp-basic-functions
+
+query_cases:
+  - name: find_methods
+    input: |
+      public class Test
+      {
+          public void Method1() {}
+          public void Method2() {}
+      }
+    query: 'rfilter(.type == "Method") |> map(.type)'
+    output:
+      results:
+        - "Method"
+        - "Method"
+
+  - name: find_classes
+    input: |
+      public class Calculator
+      {
+          public int Add(int a, int b)
+          {
+              return a + b;
+          }
+      }
+    query: 'rfilter(.type == "Class") |> map(.type)'
+    output:
+      results:
+        - "Class"
+
+  - name: find_identifiers
+    input: |
+      class Test {
+          void Method() {
+              int x = 1;
+          }
+      }
+    query: 'rfilter(.type == "Identifier") |> map(.type)'
+    output:
+      results:
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"

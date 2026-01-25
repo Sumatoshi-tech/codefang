@@ -1,0 +1,352 @@
+[language "hcl", extensions: ".hcl", ".tf"]
+
+config_file <- (config_file) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+block_start <- (block_start) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+block_end <- (block_end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+body <- (body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+attribute <- (attribute) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+string_lit <- (string_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+numeric_lit <- (numeric_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bool_lit <- (bool_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null_lit <- (null_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+literal_value <- (literal_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+template_literal <- (template_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+object <- (object) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+object_elem <- (object_elem) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+object_start <- (object_start) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+object_end <- (object_end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+tuple <- (tuple) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+tuple_start <- (tuple_start) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+tuple_end <- (tuple_end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+collection_value <- (collection_value) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+function_call <- (function_call) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+function_arguments <- (function_arguments) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+variable_expr <- (variable_expr) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+get_attr <- (get_attr) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+index <- (index) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+new_index <- (new_index) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+legacy_index <- (legacy_index) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+binary_operation <- (binary_operation) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_operation <- (unary_operation) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+conditional <- (conditional) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+for_expr <- (for_expr) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_tuple_expr <- (for_tuple_expr) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_object_expr <- (for_object_expr) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_intro <- (for_intro) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_cond <- (for_cond) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+template_if <- (template_if) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+template_if_intro <- (template_if_intro) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+template_if_end <- (template_if_end) => uast(
+    type: "Synthetic"
+)
+
+template_else_intro <- (template_else_intro) => uast(
+    type: "Block",
+    roles: "Else"
+)
+
+template_for <- (template_for) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+template_for_start <- (template_for_start) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+template_for_end <- (template_for_end) => uast(
+    type: "Synthetic"
+)
+
+splat <- (splat) => uast(
+    type: "Synthetic"
+)
+
+attr_splat <- (attr_splat) => uast(
+    type: "Synthetic"
+)
+
+full_splat <- (full_splat) => uast(
+    type: "Synthetic"
+)
+
+expression <- (expression) => uast(
+    type: "Synthetic"
+)
+
+operation <- (operation) => uast(
+    type: "Synthetic"
+)
+
+template_expr <- (template_expr) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+template_interpolation <- (template_interpolation) => uast(
+    type: "Synthetic"
+)
+
+template_interpolation_start <- (template_interpolation_start) => uast(
+    type: "Synthetic"
+)
+
+template_interpolation_end <- (template_interpolation_end) => uast(
+    type: "Synthetic"
+)
+
+template_directive <- (template_directive) => uast(
+    type: "Synthetic"
+)
+
+template_directive_start <- (template_directive_start) => uast(
+    type: "Synthetic"
+)
+
+template_directive_end <- (template_directive_end) => uast(
+    type: "Synthetic"
+)
+
+quoted_template <- (quoted_template) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_template_start <- (quoted_template_start) => uast(
+    type: "Synthetic"
+)
+
+quoted_template_end <- (quoted_template_end) => uast(
+    type: "Synthetic"
+)
+
+heredoc_template <- (heredoc_template) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+heredoc_start <- (heredoc_start) => uast(
+    type: "Synthetic"
+)
+
+heredoc_identifier <- (heredoc_identifier) => uast(
+    type: "Synthetic"
+)
+
+strip_marker <- (strip_marker) => uast(
+    type: "Synthetic"
+)
+
+ellipsis <- (ellipsis) => uast(
+    type: "Synthetic"
+)
+
+if <- (if) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endif <- (endif) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+for <- (for) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+endfor <- (endfor) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+in <- (in) => uast(
+    token: "self",
+    type: "Synthetic"
+)

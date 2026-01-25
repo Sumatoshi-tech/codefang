@@ -1,0 +1,25 @@
+suite: basic-functions
+name: c-basic-functions
+
+query_cases:
+  - name: find_function_identifiers
+    input: |
+      int myFunction(int x) { return x; }
+    query: "rfilter(.type == \"Identifier\" && .token == \"myFunction\")"
+    output:
+      results:
+        - type: Identifier
+          roles: [Name]
+          token: myFunction
+
+  - name: find_literals_tokens
+    input: |
+      int test() {
+          int x = 42;
+          return 0;
+      }
+    query: "rfilter(.type == \"Literal\")"
+    output:
+      results:
+        - "42"
+        - "0"

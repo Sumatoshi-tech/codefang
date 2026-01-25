@@ -1,0 +1,79 @@
+suite: basic-functions
+name: ruby-basic-functions
+
+query_cases:
+  - name: find_methods
+    input: |
+      def func1
+      end
+      def func2
+      end
+    query: 'rfilter(.type == "Method") |> map(.type)'
+    output:
+      results:
+        - "Method"
+        - "Method"
+
+  - name: find_method_names
+    input: |
+      def my_method
+      end
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "my_method"
+
+  - name: find_method_with_params
+    input: |
+      def add(a, b)
+        a + b
+      end
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "add"
+
+  - name: find_param_identifiers
+    input: |
+      def add(a, b)
+        a + b
+      end
+    query: 'rfilter(.type == "Identifier") |> map(.token)'
+    output:
+      results:
+        - "add"
+        - "a"
+        - "b"
+        - "a"
+        - "b"
+
+  - name: find_return_statements
+    input: |
+      def calculate
+        return 42
+      end
+    query: 'rfilter(.type == "Return") |> map(.type)'
+    output:
+      results:
+        - "Return"
+
+  - name: find_binary_ops
+    input: |
+      def calc
+        1 + 2 * 3
+      end
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_body_blocks
+    input: |
+      def my_method
+        puts "hello"
+      end
+    query: 'rfilter(.type == "Block") |> map(.type)'
+    output:
+      results:
+        - "Block"

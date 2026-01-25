@@ -1,0 +1,45 @@
+language: proto
+description: "Test Protocol Buffers message definitions"
+
+tests:
+  - name: "Simple message"
+    code: |
+      syntax = "proto3";
+      message Person {
+        string name = 1;
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Struct
+            roles: [Struct, Declaration]
+
+  - name: "Message with identifier"
+    code: |
+      syntax = "proto3";
+      message User {
+        int32 id = 1;
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Struct
+            children:
+              - type: Identifier
+                roles: [Name]
+
+  - name: "Message with fields"
+    code: |
+      syntax = "proto3";
+      message Request {
+        string query = 1;
+        int32 page = 2;
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Struct
+            roles: [Struct, Declaration]

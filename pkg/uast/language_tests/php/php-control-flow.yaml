@@ -1,0 +1,119 @@
+suite: control-flow
+name: php-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      <?php
+      if ($a) {}
+      if ($b) {} else {}
+      if ($c) {} elseif ($d) {} else {}
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"
+        - "If"
+        - "If"
+
+  - name: find_for_loops
+    input: |
+      <?php
+      for ($i = 0; $i < 10; $i++) {}
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_foreach_loops
+    input: |
+      <?php
+      foreach ($items as $item) {}
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_while_loops
+    input: |
+      <?php
+      while ($x > 0) {}
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_do_while_loops
+    input: |
+      <?php
+      do {} while ($x > 0);
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_switch_statements
+    input: |
+      <?php
+      switch ($x) {
+          case 1:
+              break;
+          default:
+              break;
+      }
+    query: 'rfilter(.type == "Switch") |> map(.type)'
+    output:
+      results:
+        - "Switch"
+
+  - name: find_case_statements
+    input: |
+      <?php
+      switch ($x) {
+          case 1:
+              break;
+          case 2:
+              break;
+          default:
+              break;
+      }
+    query: 'rfilter(.type == "Case") |> map(.type)'
+    output:
+      results:
+        - "Case"
+        - "Case"
+        - "Case"
+
+  - name: find_match_expression
+    input: |
+      <?php
+      $result = match ($x) {
+          1 => "one",
+          default => "other",
+      };
+    query: 'rfilter(.type == "Match") |> map(.type)'
+    output:
+      results:
+        - "Match"
+
+  - name: find_break_statements
+    input: |
+      <?php
+      while (true) {
+          break;
+      }
+    query: 'rfilter(.type == "Break") |> map(.type)'
+    output:
+      results:
+        - "Break"
+
+  - name: find_continue_statements
+    input: |
+      <?php
+      while (true) {
+          continue;
+      }
+    query: 'rfilter(.type == "Continue") |> map(.type)'
+    output:
+      results:
+        - "Continue"

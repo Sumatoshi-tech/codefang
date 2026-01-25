@@ -1,0 +1,50 @@
+language: css
+tests:
+  - name: "Function call is Call"
+    code: |
+      .button { background: rgb(255, 0, 0); }
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "Call has Call role"
+    code: |
+      .button { background: rgb(255, 0, 0); }
+    query: rfilter(.type == "Call") |> map(.roles)
+    expected:
+      - ["Call"]
+
+  - name: "Function name is Identifier with Function role"
+    code: |
+      .button { background: rgb(255, 0, 0); }
+    query: rfilter(.type == "Identifier" and .roles contains "Function") |> map(.token)
+    expected:
+      - "rgb"
+
+  - name: "calc() function is Call"
+    code: |
+      .container { width: calc(100% - 20px); }
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "calc function name is Identifier"
+    code: |
+      .container { width: calc(100% - 20px); }
+    query: rfilter(.type == "Identifier" and .token == "calc") |> map(.token)
+    expected:
+      - "calc"
+
+  - name: "Binary expression in calc is BinaryOp"
+    code: |
+      .container { width: calc(100% - 20px); }
+    query: rfilter(.type == "BinaryOp") |> map(.type)
+    expected:
+      - "BinaryOp"
+
+  - name: "var() function"
+    code: |
+      .button { color: var(--primary-color); }
+    query: rfilter(.type == "Identifier" and .token == "var") |> map(.token)
+    expected:
+      - "var"

@@ -1,0 +1,11 @@
+suite: r
+name: basic-functions
+
+query_cases:
+  - name: find_calls
+    input: |
+      library(ggplot2)
+    query: rfilter(.type == "Call") |> map(.type)
+    output:
+      results:
+        - Call

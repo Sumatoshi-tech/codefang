@@ -1,0 +1,68 @@
+suite: control-flow
+name: lua-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      if x > 0 then
+        print("positive")
+      end
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+
+  - name: find_if_elseif_else
+    input: |
+      if x > 0 then
+        print("positive")
+      elseif x < 0 then
+        print("negative")
+      else
+        print("zero")
+      end
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"
+
+  - name: find_while_loops
+    input: |
+      while x > 0 do
+        x = x - 1
+      end
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_for_loops
+    input: |
+      for i = 1, 10 do
+        print(i)
+      end
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_repeat_loops
+    input: |
+      repeat
+        x = x - 1
+      until x == 0
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_break_statements
+    input: |
+      while true do
+        break
+      end
+    query: 'rfilter(.type == "Break") |> map(.type)'
+    output:
+      results:
+        - "Break"

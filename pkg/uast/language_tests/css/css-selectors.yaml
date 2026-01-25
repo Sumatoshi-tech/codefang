@@ -1,0 +1,38 @@
+language: css
+tests:
+  - name: "Tag name is Identifier"
+    code: |
+      div { color: red; }
+    query: rfilter(.type == "Identifier" and .token == "div") |> map(.token)
+    expected:
+      - "div"
+
+  - name: "ID name is Identifier"
+    code: |
+      #header { color: red; }
+    query: rfilter(.type == "Identifier" and .token == "header") |> map(.token)
+    expected:
+      - "header"
+
+  - name: "Multiple selectors parsed"
+    code: |
+      .btn, .button { color: red; }
+    query: rfilter(.type == "Identifier" and .roles contains "Class") |> map(.token)
+    expected:
+      - "btn"
+      - "button"
+
+  - name: "Pseudo-class selector"
+    code: |
+      a:hover { color: blue; }
+    query: rfilter(.type == "Identifier" and .token == "a") |> map(.token)
+    expected:
+      - "a"
+
+  - name: "Child selector with tag names"
+    code: |
+      div > p { margin: 0; }
+    query: rfilter(.type == "Identifier" and (.token == "div" or .token == "p")) |> map(.token)
+    expected:
+      - "div"
+      - "p"

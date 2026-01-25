@@ -1,0 +1,37 @@
+suite: imports
+name: csharp-imports
+
+query_cases:
+  - name: find_imports
+    input: |
+      using System;
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class Test {}
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: import_has_import_role
+    input: |
+      using System;
+      class Test {}
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+
+  - name: import_contains_identifier
+    input: |
+      using System.Text;
+      class Test {}
+    query: 'rfilter(.type == "Import") |> rfilter(.type == "Identifier") |> map(.type)'
+    output:
+      results:
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"

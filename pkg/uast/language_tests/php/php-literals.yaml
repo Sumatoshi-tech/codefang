@@ -1,0 +1,38 @@
+suite: literals
+name: php-literals
+
+query_cases:
+  - name: find_all_literals
+    input: |
+      <?php
+      $a = 42;
+      $b = "hello";
+      $c = true;
+      $d = null;
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"
+
+  - name: find_array_literals
+    input: |
+      <?php
+      $arr = [1, 2, 3];
+    query: 'rfilter(.type == "List") |> map(.type)'
+    output:
+      results:
+        - "List"
+
+  - name: find_assignments
+    input: |
+      <?php
+      $x = 1;
+      $y = 2;
+    query: 'rfilter(.type == "Assignment") |> map(.type)'
+    output:
+      results:
+        - "Assignment"
+        - "Assignment"

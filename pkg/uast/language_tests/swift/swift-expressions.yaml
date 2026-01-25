@@ -1,0 +1,51 @@
+suite: expressions
+name: swift-expressions
+
+query_cases:
+  - name: find_binary_ops
+    input: |
+      class Test {
+          func method() {
+              let a = 1 + 2
+              let b = 3 * 4
+              let c = a > b
+          }
+      }
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_calls
+    input: |
+      class Test {
+          func method() {
+              print("test")
+              doSomething()
+          }
+      }
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_literals
+    input: |
+      class Test {
+          func method() {
+              let a = true
+              let b = false
+              let c = 42
+              let d = "hello"
+          }
+      }
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"

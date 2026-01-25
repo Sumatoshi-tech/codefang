@@ -1,0 +1,126 @@
+suite: basic-functions
+name: javascript-basic-functions
+
+parse_cases:
+  - name: simple_function
+    input: |
+      function hello() {
+          return "Hello, World!";
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          props:
+            name: "hello"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "hello"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: 'return "Hello, World!";'
+                  roles: ["Return"]
+                  children:
+                    - type: "Literal"
+                      token: '"Hello, World!"'
+                      roles: ["Literal"]
+                      children:
+                        - type: "Synthetic"
+                          token: "Hello, World!"
+                          roles: []
+
+  - name: function_with_params
+    input: |
+      function add(a, b) {
+          return a + b;
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          props:
+            name: "add"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "add"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "(a, b)"
+              roles: ["Parameter"]
+              children:
+                - type: "Identifier"
+                  token: "a"
+                  roles: ["Name"]
+                - type: "Identifier"
+                  token: "b"
+                  roles: ["Name"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: "return a + b;"
+                  roles: ["Return"]
+                  children:
+                    - type: "BinaryOp"
+                      token: "a + b"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "a"
+                          roles: ["Name"]
+                        - type: "Identifier"
+                          token: "b"
+                          roles: ["Name"]
+
+query_cases:
+  - name: find_functions
+    input: |
+      function func1() {}
+      function func2() {}
+    query: 'filter(.type == "Function")'
+    output:
+      results:
+        - type: "Function"
+          props:
+            name: "func1"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "func1"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              roles: ["Body"]
+        - type: "Function"
+          props:
+            name: "func2"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "func2"
+              roles: ["Name"]
+            - type: "Synthetic"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              roles: ["Body"]
+
+  - name: find_function_names
+    input: |
+      function myFunction() {}
+    query: 'filter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "myFunction"

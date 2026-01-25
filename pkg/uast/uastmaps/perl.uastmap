@@ -1,0 +1,62 @@
+[language "perl", extensions: ".pl", ".pm", ".t"]
+
+source_file <- (source_file) => uast(type: "File")
+
+use_statement <- (use_statement) => uast(token: "self", type: "Import", roles: "Import")
+require_statement <- (require_statement) => uast(token: "self", type: "Import", roles: "Import")
+
+package_statement <- (package_statement) => uast(type: "Module", roles: "Declaration")
+package <- (package) => uast(type: "Identifier", roles: "Import", "Name")
+
+subroutine_declaration_statement <- (subroutine_declaration_statement) => uast(type: "Function", roles: "Function", "Declaration")
+function <- (function) => uast(type: "Identifier", roles: "Name")
+bareword <- (bareword) => uast(type: "Identifier", roles: "Name")
+
+block <- (block) => uast(type: "Block", roles: "Body")
+
+conditional_statement <- (conditional_statement) => uast(type: "If", roles: "Branch")
+else <- (else) => uast(type: "If", roles: "Branch")
+
+for_statement <- (for_statement) => uast(type: "Loop", roles: "Loop")
+foreach_statement <- (foreach_statement) => uast(type: "Loop", roles: "Loop")
+loop_statement <- (loop_statement) => uast(type: "Loop", roles: "Loop")
+while_statement <- (while_statement) => uast(type: "Loop", roles: "Loop")
+until_statement <- (until_statement) => uast(type: "Loop", roles: "Loop")
+
+loopex_expression <- (loopex_expression) => uast(type: "Break", roles: "Break")
+
+binary_expression <- (binary_expression) => uast(type: "BinaryOp", roles: "Operator")
+
+assignment_expression <- (assignment_expression) => uast(type: "Assignment", roles: "Assignment")
+
+variable_declaration <- (variable_declaration) => uast(type: "Variable", roles: "Variable", "Declaration")
+scalar <- (scalar) => uast(type: "Identifier", roles: "Variable")
+array <- (array) => uast(type: "Identifier", roles: "Variable")
+hash <- (hash) => uast(type: "Identifier", roles: "Variable")
+container_variable <- (container_variable) => uast(type: "Identifier", roles: "Variable")
+varname <- (varname) => uast(type: "Identifier", roles: "Name")
+
+array_element_expression <- (array_element_expression) => uast(type: "Index", roles: "Index")
+hash_element_expression <- (hash_element_expression) => uast(type: "Index", roles: "Index")
+
+list_expression <- (list_expression) => uast(type: "List", roles: "Literal")
+
+number <- (number) => uast(type: "Literal", roles: "Literal")
+string_literal <- (string_literal) => uast(type: "Literal", roles: "Literal")
+interpolated_string_literal <- (interpolated_string_literal) => uast(type: "Literal", roles: "Literal")
+string_content <- (string_content) => uast(type: "Literal", roles: "Literal")
+autoquoted_bareword <- (autoquoted_bareword) => uast(type: "Literal", roles: "Literal")
+
+ambiguous_function_call_expression <- (ambiguous_function_call_expression) => uast(type: "Call", roles: "Call")
+function_call_expression <- (function_call_expression) => uast(type: "Call", roles: "Call")
+method_call_expression <- (method_call_expression) => uast(type: "Call", roles: "Call")
+
+return_expression <- (return_expression) => uast(type: "Return", roles: "Return")
+
+refgen_expression <- (refgen_expression) => uast(type: "UnaryOp", roles: "Operator")
+
+expression_statement <- (expression_statement) => uast(type: "Block", roles: "Body")
+
+comment <- (comment) => uast(type: "Comment", roles: "Comment")
+
+escape_sequence <- (escape_sequence) => uast(type: "Literal", roles: "Literal")

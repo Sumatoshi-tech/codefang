@@ -1,0 +1,34 @@
+language: dotenv
+description: "Test complex dotenv files"
+
+tests:
+  - name: "Variables with comments"
+    code: |
+      # Database settings
+      DB_HOST=localhost
+      DB_PORT=3306
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Variable
+            roles: [Variable, Declaration]
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Mixed content"
+    code: |
+      # Server config
+      HOST=0.0.0.0
+      PORT=8080
+      # Logging
+      LOG_LEVEL=debug
+    expected:
+      - type: File
+        children:
+          - type: Comment
+          - type: Variable
+          - type: Variable
+          - type: Comment
+          - type: Variable

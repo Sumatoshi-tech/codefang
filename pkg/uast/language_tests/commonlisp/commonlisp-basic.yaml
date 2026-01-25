@@ -1,0 +1,34 @@
+language: commonlisp
+tests:
+  - name: "function call"
+    input: |
+      (print "Hello")
+    output:
+      type: "File"
+      children:
+        - type: "Call"
+          roles: ["Call"]
+
+  - name: "require (import)"
+    input: |
+      (require 'asdf)
+    output:
+      type: "File"
+      children:
+        - type: "Call"
+          roles: ["Call"]
+
+queries:
+  - name: "find all calls"
+    input: |
+      (defun greet (name)
+        (print name))
+      (greet "World")
+    query: "//Call"
+    output:
+      - type: "Call"
+        roles: ["Call"]
+      - type: "Call"
+        roles: ["Call"]
+      - type: "Call"
+        roles: ["Call"]

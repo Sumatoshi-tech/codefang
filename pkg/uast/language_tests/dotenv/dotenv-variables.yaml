@@ -1,0 +1,59 @@
+language: dotenv
+description: "Test dotenv variable definitions"
+
+tests:
+  - name: "Simple variable"
+    code: |
+      KEY=value
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Variable with identifier and literal"
+    code: |
+      DB_HOST=localhost
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: Literal
+                roles: [Literal]
+
+  - name: "Multiple variables"
+    code: |
+      KEY1=value1
+      KEY2=value2
+      KEY3=value3
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            roles: [Variable, Declaration]
+          - type: Variable
+            roles: [Variable, Declaration]
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Numeric value"
+    code: |
+      PORT=8080
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            children:
+              - type: Identifier
+              - type: Literal
+
+  - name: "Boolean value"
+    code: |
+      DEBUG=true
+    expected:
+      - type: File
+        children:
+          - type: Variable

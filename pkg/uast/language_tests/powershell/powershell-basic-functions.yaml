@@ -1,0 +1,13 @@
+suite: powershell
+name: basic-functions
+
+query_cases:
+  - name: find_functions
+    input: |
+      function Get-Data {
+        return "test"
+      }
+    query: rfilter(.type == "Function") |> map(.type)
+    output:
+      results:
+        - Function

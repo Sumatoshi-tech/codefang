@@ -1,0 +1,21 @@
+suite: exceptions
+name: swift-exceptions
+
+query_cases:
+  - name: find_try_catch
+    input: |
+      class Test {
+          func method() {
+              do {
+                  try something()
+              } catch {
+                  print("error")
+              }
+          }
+      }
+    query: 'rfilter(.type == "Try" || .type == "Catch") |> map(.type)'
+    output:
+      results:
+        - "Try"
+        - "Try"
+        - "Catch"

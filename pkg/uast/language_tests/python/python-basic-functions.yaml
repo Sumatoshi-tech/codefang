@@ -1,0 +1,107 @@
+suite: basic-functions
+name: python-basic-functions
+
+parse_cases:
+  - name: simple_function
+    input: |
+      def hello():
+          return "Hello, World!"
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          props:
+            name: "hello"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "hello"
+              roles: ["Name"]
+            - type: "Parameter"
+              roles: ["Parameter"]
+            - type: "Block"
+              token: 'return "Hello, World!"'
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: 'return "Hello, World!"'
+                  roles: ["Return"]
+                  children:
+                    - type: "Literal"
+                      token: '"Hello, World!"'
+                      roles: ["Literal"]
+                      children:
+                        - type: "Synthetic"
+                          roles: []
+                        - type: "Synthetic"
+                          roles: []
+                        - type: "Synthetic"
+                          token: '"'
+                          roles: []
+
+  - name: function_with_params
+    input: |
+      def add(a, b):
+          return a + b
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          props:
+            name: "add"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "add"
+              roles: ["Name"]
+            - type: "Parameter"
+              roles: ["Parameter"]
+              children:
+                - type: "Identifier"
+                  token: "a"
+                  roles: ["Name"]
+                - type: "Identifier"
+                  token: "b"
+                  roles: ["Name"]
+            - type: "Block"
+              token: "return a + b"
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: "return a + b"
+                  roles: ["Return"]
+                  children:
+                    - type: "BinaryOp"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "a"
+                          roles: ["Name"]
+                        - type: "Identifier"
+                          token: "b"
+                          roles: ["Name"]
+
+query_cases:
+  - name: find_functions
+    input: |
+      def func1():
+          pass
+
+      def func2():
+          pass
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "func1"
+        - "func2"
+
+  - name: find_function_names
+    input: |
+      def my_function():
+          pass
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "my_function"

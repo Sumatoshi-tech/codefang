@@ -1,0 +1,202 @@
+[language "clojure", extensions: ".clj", ".cljs", ".cljc", ".edn"]
+
+source <- (source) => uast(
+    type: "File"
+)
+
+sym_name <- (sym_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+sym_lit <- (sym_lit) => uast(
+    type: "Identifier",
+    roles: "Name",
+    children: "sym_name", "sym_ns"
+)
+
+sym_ns <- (sym_ns) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Module"
+)
+
+kwd_name <- (kwd_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+kwd_ns <- (kwd_ns) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Module"
+)
+
+kwd_lit <- (kwd_lit) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name",
+    children: "kwd_name", "kwd_ns"
+)
+
+str_lit <- (str_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+num_lit <- (num_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bool_lit <- (bool_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+nil_lit <- (nil_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+char_lit <- (char_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+regex_lit <- (regex_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+vec_lit <- (vec_lit) => uast(
+    token: "self",
+    type: "List",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+map_lit <- (map_lit) => uast(
+    token: "self",
+    type: "Dict",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+set_lit <- (set_lit) => uast(
+    type: "Set",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+ns_map_lit <- (ns_map_lit) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Module",
+    children: "anon_fn_lit", "auto_res_mark", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+list_lit <- (list_lit) => uast(
+    type: "Call",
+    roles: "Call",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+anon_fn_lit <- (anon_fn_lit) => uast(
+    type: "Lambda",
+    roles: "Lambda", "Function",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+auto_res_mark <- (auto_res_mark) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+derefing_lit <- (derefing_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+dis_expr <- (dis_expr) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "nil_lit", "ns_map_lit", "num_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+evaling_lit <- (evaling_lit) => uast(
+    type: "Synthetic",
+    children: "list_lit", "meta_lit", "old_meta_lit", "read_cond_lit", "sym_lit"
+)
+
+meta_lit <- (meta_lit) => uast(
+    type: "Attribute",
+    roles: "Attribute",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "nil_lit", "ns_map_lit", "num_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+old_meta_lit <- (old_meta_lit) => uast(
+    type: "Attribute",
+    roles: "Attribute",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "nil_lit", "ns_map_lit", "num_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+quoting_lit <- (quoting_lit) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+read_cond_lit <- (read_cond_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+splicing_read_cond_lit <- (splicing_read_cond_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+sym_val_lit <- (sym_val_lit) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "nil_lit", "ns_map_lit", "num_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+syn_quoting_lit <- (syn_quoting_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+tagged_or_ctor_lit <- (tagged_or_ctor_lit) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+unquote_splicing_lit <- (unquote_splicing_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+unquoting_lit <- (unquoting_lit) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)
+
+var_quoting_lit <- (var_quoting_lit) => uast(
+    type: "Synthetic",
+    children: "anon_fn_lit", "bool_lit", "char_lit", "derefing_lit", "evaling_lit", "kwd_lit", "list_lit", "map_lit", "meta_lit", "nil_lit", "ns_map_lit", "num_lit", "old_meta_lit", "quoting_lit", "read_cond_lit", "regex_lit", "set_lit", "splicing_read_cond_lit", "str_lit", "sym_lit", "sym_val_lit", "syn_quoting_lit", "tagged_or_ctor_lit", "unquote_splicing_lit", "unquoting_lit", "var_quoting_lit", "vec_lit"
+)

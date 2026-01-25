@@ -1,0 +1,227 @@
+[language "helm", extensions: ".yaml", ".yml"]
+
+argument_list <- (argument_list) => uast(
+    type: "List"
+)
+
+assignment <- (assignment) => uast(
+    token: "self",
+    type: "Assignment",
+    roles: "Assignment",
+    children: "assignment", "chained_pipeline", "dot", "false", "field", "float_literal", "function_call", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "raw_string_literal", "rune_literal", "selector_expression", "true", "variable", "variable_definition"
+)
+
+block_action <- (block_action) => uast(
+    type: "Block",
+    roles: "Body",
+    children: "assignment", "block_action", "chained_pipeline", "comment", "define_action", "dot", "false", "field", "float_literal", "function_call", "if_action", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "range_action", "raw_string_literal", "rune_literal", "selector_expression", "template_action", "text", "true", "variable", "variable_definition", "with_action", "yaml_no_injection_text"
+)
+
+chained_pipeline <- (chained_pipeline) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+define_action <- (define_action) => uast(
+    type: "Synthetic",
+    children: "assignment", "block_action", "chained_pipeline", "comment", "define_action", "dot", "false", "field", "float_literal", "function_call", "if_action", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "range_action", "raw_string_literal", "rune_literal", "selector_expression", "template_action", "text", "true", "variable", "variable_definition", "with_action", "yaml_no_injection_text"
+)
+
+dot <- (dot) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+field <- (field) => uast(
+    type: "Field",
+    roles: "Member",
+    children: "identifier"
+)
+
+function_call <- (function_call) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration",
+    children: "argument_list", "identifier"
+)
+
+if_action <- (if_action) => uast(
+    type: "If",
+    children: "assignment", "block_action", "chained_pipeline", "comment", "define_action", "dot", "false", "field", "float_literal", "function_call", "if_action", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "range_action", "raw_string_literal", "rune_literal", "selector_expression", "template_action", "text", "true", "variable", "variable_definition", "with_action", "yaml_no_injection_text"
+)
+
+interpreted_string_literal <- (interpreted_string_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+method_call <- (method_call) => uast(
+    type: "Method",
+    roles: "Function", "Declaration", "Member",
+    children: "argument_list", "field", "selector_expression"
+)
+
+parenthesized_pipeline <- (parenthesized_pipeline) => uast(
+    token: "self",
+    roles: "Call",
+    type: "Call"
+)
+
+range_action <- (range_action) => uast(
+    type: "Synthetic",
+    children: "assignment", "block_action", "chained_pipeline", "comment", "define_action", "dot", "false", "field", "float_literal", "function_call", "if_action", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "range_action", "raw_string_literal", "rune_literal", "selector_expression", "template_action", "text", "true", "variable", "variable_definition", "with_action", "yaml_no_injection_text"
+)
+
+range_variable_definition <- (range_variable_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration",
+    children: "assignment", "chained_pipeline", "dot", "false", "field", "float_literal", "function_call", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "raw_string_literal", "rune_literal", "selector_expression", "true", "variable", "variable_definition"
+)
+
+selector_expression <- (selector_expression) => uast(
+    type: "Synthetic",
+    children: "field", "field_identifier", "parenthesized_pipeline", "selector_expression", "variable"
+)
+
+template <- (template) => uast(
+    type: "File"
+)
+
+template_action <- (template_action) => uast(
+    type: "Synthetic",
+    children: "assignment", "chained_pipeline", "dot", "false", "field", "float_literal", "function_call", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "raw_string_literal", "rune_literal", "selector_expression", "true", "variable", "variable_definition"
+)
+
+text <- (text) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+variable <- (variable) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration",
+    children: "identifier"
+)
+
+variable_definition <- (variable_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration",
+    children: "assignment", "chained_pipeline", "dot", "false", "field", "float_literal", "function_call", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "raw_string_literal", "rune_literal", "selector_expression", "true", "variable", "variable_definition"
+)
+
+with_action <- (with_action) => uast(
+    type: "Synthetic",
+    children: "assignment", "block_action", "chained_pipeline", "comment", "define_action", "dot", "false", "field", "float_literal", "function_call", "if_action", "imaginary_literal", "int_literal", "interpreted_string_literal", "method_call", "nil", "parenthesized_pipeline", "range_action", "raw_string_literal", "rune_literal", "selector_expression", "template_action", "text", "true", "variable", "variable_definition", "with_action", "yaml_no_injection_text"
+)
+
+block <- (block) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+comment <- (comment) => uast(
+    type: "Comment",
+    roles: "Comment"
+)
+
+define <- (define) => uast(
+    token: "self",
+    roles: "Comment",
+    type: "Comment"
+)
+
+else <- (else) => uast(
+    type: "Synthetic"
+)
+
+end <- (end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+field_identifier <- (field_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+float_literal <- (float_literal) => uast(
+    token: "self",
+    roles: "Reference",
+    type: "Literal",
+    roles: "Literal"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+if <- (if) => uast(
+    token: "self",
+    roles: "Reference",
+    type: "Identifier"
+)
+
+imaginary_literal <- (imaginary_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+int_literal <- (int_literal) => uast(
+    token: "self",
+    roles: "Literal",
+    type: "Literal",
+    roles: "Literal"
+)
+
+nil <- (nil) => uast(
+    type: "Synthetic"
+)
+
+range <- (range) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+raw_string_literal <- (raw_string_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+rune_literal <- (rune_literal) => uast(
+    token: "self",
+    roles: "Literal",
+    type: "Literal",
+    roles: "Literal"
+)
+
+
+
+true <- (true) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+with <- (with) => uast(
+    type: "Synthetic"
+)
+
+yaml_no_injection_text <- (yaml_no_injection_text) => uast(
+    token: "self",
+    type: "Synthetic"
+)

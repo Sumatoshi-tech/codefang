@@ -1,0 +1,50 @@
+language: hcl
+description: "Test HCL block definitions"
+
+tests:
+  - name: "Simple block"
+    code: |
+      terraform {
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            roles: [Body]
+
+  - name: "Block with identifier"
+    code: |
+      provider "aws" {
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            children:
+              - type: Identifier
+                roles: [Name]
+
+  - name: "Resource block"
+    code: |
+      resource "aws_instance" "example" {
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            roles: [Body]
+
+  - name: "Nested blocks"
+    code: |
+      terraform {
+        required_providers {
+          aws = {
+            source = "hashicorp/aws"
+          }
+        }
+      }
+    expected:
+      - type: File
+        children:
+          - type: Block
+            roles: [Body]

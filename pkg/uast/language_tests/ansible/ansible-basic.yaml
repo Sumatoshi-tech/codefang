@@ -1,0 +1,38 @@
+language: ansible
+tests:
+  - name: "playbook structure"
+    input: |
+      ---
+      - name: Test playbook
+        hosts: all
+    output:
+      type: "File"
+      children:
+        - type: "Block"
+          roles: ["Body"]
+
+  - name: "task definition"
+    input: |
+      - name: Install package
+        apt:
+          name: nginx
+    output:
+      type: "File"
+      children:
+        - type: "Block"
+          roles: ["Body"]
+
+queries:
+  - name: "find all key-value pairs"
+    input: |
+      - name: Test
+        hosts: all
+        become: yes
+    query: "//KeyValue"
+    output:
+      - type: "KeyValue"
+        roles: ["Key", "Value"]
+      - type: "KeyValue"
+        roles: ["Key", "Value"]
+      - type: "KeyValue"
+        roles: ["Key", "Value"]

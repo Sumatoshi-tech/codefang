@@ -1,0 +1,51 @@
+[language "psv", extensions: ".psv"]
+
+document <- (document) => uast(
+    type: "File"
+)
+
+row <- (row) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+field <- (field) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+text <- (text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+number <- (number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean <- (boolean) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

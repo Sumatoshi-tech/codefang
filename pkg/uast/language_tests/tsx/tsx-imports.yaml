@@ -1,0 +1,37 @@
+suite: imports
+name: tsx-imports
+
+query_cases:
+  - name: find_imports
+    input: |
+      import React from 'react';
+      import { useState } from 'react';
+      import * as fs from 'fs';
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: import_has_module_name
+    input: |
+      import { readFile } from 'fs';
+    query: 'rfilter(.type == "Literal") |> map(.token)'
+    output:
+      results:
+        - "'fs'"
+
+  - name: named_import_identifiers
+    input: |
+      import { Component, useState } from 'react';
+    query: 'rfilter(.type == "Identifier") |> map(.token)'
+    output:
+      results:
+        - "Component"
+        - "useState"

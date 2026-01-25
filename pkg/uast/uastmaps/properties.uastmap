@@ -1,0 +1,49 @@
+[language "properties", extensions: ".properties"]
+
+file <- (file) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+property <- (property) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+key <- (key) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+value <- (value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+index <- (index) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+substitution <- (substitution) => uast(
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+escape <- (escape) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+secret <- (secret) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

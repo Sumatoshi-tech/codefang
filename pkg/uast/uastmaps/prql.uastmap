@@ -1,0 +1,199 @@
+[language "prql", extensions: ".prql"]
+program <- (program) => uast(
+    type: "File"
+)
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+literal <- (literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+literal_string <- (literal_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+decimal_number <- (decimal_number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+keyword_true <- (keyword_true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+keyword_false <- (keyword_false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+keyword_null <- (keyword_null) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+date <- (date) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+time <- (time) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+timestamp <- (timestamp) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+f_string <- (f_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+s_string <- (s_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+pipeline <- (pipeline) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+from <- (from) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+select <- (select) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+filter <- (filter) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+sorts <- (sorts) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+takes <- (takes) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+group <- (group) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+aggregate <- (aggregate) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+derives <- (derives) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+joins <- (joins) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+window <- (window) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+loop <- (loop) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+function_definition <- (function_definition) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+function_call <- (function_call) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+module_call <- (module_call) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+variable <- (variable) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+assignment <- (assignment) => uast(
+    token: "self",
+    type: "Assignment",
+    roles: "Assignment"
+)
+binary_expression <- (binary_expression) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+case <- (case) => uast(
+    token: "self",
+    type: "Switch",
+    roles: "Condition"
+)
+case_condition <- (case_condition) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch"
+)
+field <- (field) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+parameter <- (parameter) => uast(
+    token: "self",
+    type: "Parameter",
+    roles: "Parameter"
+)
+term <- (term) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+range <- (range) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+prql <- (prql) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)

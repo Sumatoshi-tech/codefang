@@ -1,0 +1,36 @@
+language: json
+tests:
+  - name: "Nested object"
+    code: |
+      {"person": {"name": "John"}}
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+      - "Dict"
+
+  - name: "Array of objects"
+    code: |
+      [{"a": 1}, {"b": 2}]
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+      - "Dict"
+
+  - name: "Multiple pairs"
+    code: |
+      {"a": 1, "b": 2, "c": 3}
+    query: rfilter(.type == "KeyValue") |> map(.type)
+    expected:
+      - "KeyValue"
+      - "KeyValue"
+      - "KeyValue"
+
+  - name: "Array with mixed types"
+    code: |
+      [1, "two", true, null]
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+      - "Literal"
+      - "Literal"
+      - "Literal"

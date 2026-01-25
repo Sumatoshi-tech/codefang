@@ -1,0 +1,83 @@
+[language "gowork", files: "go.work"]
+
+comment <- (comment) => uast(
+    type: "Comment",
+    roles: "Comment"
+)
+
+file_path <- (file_path) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+go_directive <- (go_directive) => uast(
+    type: "Synthetic"
+)
+
+go_version <- (go_version) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+interpreted_string_literal <- (interpreted_string_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+module_path <- (module_path) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+replace_directive <- (replace_directive) => uast(
+    type: "Synthetic"
+)
+
+replace_spec <- (replace_spec) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+use_directive <- (use_directive) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+use_spec <- (use_spec) => uast(
+    type: "Synthetic"
+)
+
+version <- (version) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+go <- (go) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+raw_string_literal <- (raw_string_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+replace <- (replace) => uast(
+    token: "self",
+    roles: "Literal",
+    type: "Literal"
+)
+
+use <- (use) => uast(
+    type: "Synthetic"
+)

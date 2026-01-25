@@ -1,0 +1,56 @@
+language: gitignore
+description: "Test basic gitignore file structure"
+
+tests:
+  - name: "Empty file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single comment"
+    code: |
+      # This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Single pattern"
+    code: |
+      *.o
+    expected:
+      - type: File
+        children:
+          - type: Literal
+            roles: [Literal]
+
+  - name: "Multiple patterns"
+    code: |
+      *.o
+      *.a
+      build/
+    expected:
+      - type: File
+        children:
+          - type: Literal
+            roles: [Literal]
+          - type: Literal
+            roles: [Literal]
+          - type: Literal
+            roles: [Literal]
+
+  - name: "Comments and patterns"
+    code: |
+      # Build artifacts
+      build/
+      dist/
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Literal
+            roles: [Literal]
+          - type: Literal
+            roles: [Literal]

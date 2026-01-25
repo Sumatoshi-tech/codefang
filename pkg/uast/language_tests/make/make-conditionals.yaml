@@ -1,0 +1,36 @@
+language: make
+description: "Test Makefile conditionals"
+
+tests:
+  - name: "ifdef directive"
+    code: |
+      ifdef DEBUG
+        CFLAGS += -g
+      endif
+    expected:
+      - type: File
+        children:
+          - type: If
+            roles: [Condition]
+
+  - name: "ifndef directive"
+    code: |
+      ifndef CC
+        CC = gcc
+      endif
+    expected:
+      - type: File
+        children:
+          - type: If
+            roles: [Condition]
+
+  - name: "ifeq directive"
+    code: |
+      ifeq ($(OS),Linux)
+        LIBS = -lpthread
+      endif
+    expected:
+      - type: File
+        children:
+          - type: If
+            roles: [Condition]

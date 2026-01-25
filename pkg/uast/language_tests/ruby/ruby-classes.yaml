@@ -1,0 +1,82 @@
+suite: classes
+name: ruby-classes
+
+query_cases:
+  - name: find_classes
+    input: |
+      class Person
+      end
+      class Animal
+      end
+    query: 'rfilter(.type == "Class") |> map(.type)'
+    output:
+      results:
+        - "Class"
+        - "Class"
+
+  - name: find_class_names
+    input: |
+      class MyClass
+      end
+    query: 'rfilter(.type == "Class") |> map(.type)'
+    output:
+      results:
+        - "Class"
+
+  - name: find_methods_in_class
+    input: |
+      class Calculator
+        def add(a, b)
+          a + b
+        end
+        def subtract(a, b)
+          a - b
+        end
+      end
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "add"
+        - "subtract"
+
+  - name: find_modules
+    input: |
+      module Utils
+      end
+      module Helpers
+      end
+    query: 'rfilter(.type == "Module") |> map(.type)'
+    output:
+      results:
+        - "Module"
+        - "Module"
+
+  - name: find_module_names
+    input: |
+      module MyModule
+      end
+    query: 'rfilter(.type == "Module") |> map(.type)'
+    output:
+      results:
+        - "Module"
+
+  - name: find_instance_variables
+    input: |
+      class Person
+        def initialize(name)
+          @name = name
+        end
+      end
+    query: 'rfilter(.type == "Identifier") |> rfilter(.token == "@name") |> map(.token)'
+    output:
+      results:
+        - "@name"
+
+  - name: find_class_with_inheritance
+    input: |
+      class Dog < Animal
+      end
+    query: 'rfilter(.type == "Class") |> map(.type)'
+    output:
+      results:
+        - "Class"

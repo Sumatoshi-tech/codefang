@@ -1,0 +1,136 @@
+suite: import-package
+name: go-import-package
+
+parse_cases:
+  - name: import_package
+    input: |
+      package main
+
+      import (
+          "fmt"
+          "os"
+      )
+
+      import "strings"
+
+      func main() {
+          fmt.Println("Hello")
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Package"
+          token: "package main"
+          roles: ["Module"]
+          children:
+            - type: "Identifier"
+              token: "main"
+              roles: ["Name"]
+        - type: "Import"
+          roles: ["Import"]
+          children:
+            - type: "Synthetic"
+              roles: []
+              children:
+                - type: "Import"
+                  token: '"fmt"'
+                  roles: ["Import"]
+                  children:
+                    - type: "Literal"
+                      roles: ["Literal"]
+                      children:
+                        - type: "Literal"
+                          roles: ["Literal"]
+                - type: "Import"
+                  token: '"os"'
+                  roles: ["Import"]
+                  children:
+                    - type: "Literal"
+                      roles: ["Literal"]
+                      children:
+                        - type: "Literal"
+                          roles: ["Literal"]
+        - type: "Import"
+          roles: ["Import"]
+          children:
+            - type: "Import"
+              token: '"strings"'
+              roles: ["Import"]
+              children:
+                - type: "Literal"
+                  roles: ["Literal"]
+                  children:
+                    - type: "Literal"
+                      roles: ["Literal"]
+        - type: "Function"
+          token: |-
+            func main() {
+                fmt.Println("Hello")
+            }
+          props:
+            name: "main"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "main"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              token: |-
+                {
+                    fmt.Println("Hello")
+                }
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  token: 'fmt.Println("Hello")'
+                  roles: []
+                  children:
+                    - type: "Call"
+                      token: 'fmt.Println("Hello")'
+                      roles: ["Call"]
+                      children:
+                        - type: "Synthetic"
+                          token: "fmt.Println"
+                          roles: []
+                          children:
+                            - type: "Identifier"
+                              token: "fmt"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "Println"
+                              roles: ["Name"]
+                        - type: "List"
+                          token: '("Hello")'
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              roles: ["Literal"]
+                              children:
+                                - type: "Literal"
+                                  roles: ["Literal"]
+
+query_cases:
+  - name: find_imports
+    input: |
+      package main
+      import "fmt"
+      import "os"
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: find_package
+    input: |
+      package mypackage
+    query: 'rfilter(.type == "Package") |> map(.type)'
+    output:
+      results:
+        - "Package"

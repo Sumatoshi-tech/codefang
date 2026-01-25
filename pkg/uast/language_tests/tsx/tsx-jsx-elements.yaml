@@ -1,0 +1,30 @@
+suite: jsx-elements
+name: tsx-jsx-elements
+
+query_cases:
+  - name: find_jsx_elements
+    input: |
+      const el = <div>Hello</div>;
+      const el2 = <span>World</span>;
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_jsx_text
+    input: |
+      const el = <div>Hello World</div>;
+    query: 'rfilter(.type == "Literal") |> map(.token)'
+    output:
+      results:
+        - "Hello World"
+
+  - name: find_jsx_attributes
+    input: |
+      const el = <div className="container" id="main">Content</div>;
+    query: 'rfilter(.type == "Property") |> map(.type)'
+    output:
+      results:
+        - "Property"
+        - "Property"

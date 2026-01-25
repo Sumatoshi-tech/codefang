@@ -1,0 +1,177 @@
+suite: comment-docstring
+name: go-comment-docstring
+
+parse_cases:
+  - name: comment_docstring
+    input: |
+      // Package example provides example functions
+      package example
+
+      // Add adds two integers and returns their sum
+      func Add(a, b int) int {
+          // This is a comment
+          return a + b // inline comment
+      }
+
+      /*
+       * Multi-line comment
+       * for documentation
+       */
+      func Sub(a, b int) int {
+          return a - b
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Comment"
+          token: "// Package example provides example functions"
+          roles: ["Comment"]
+        - type: "Package"
+          token: "package example"
+          roles: ["Module"]
+          children:
+            - type: "Identifier"
+              token: "example"
+              roles: ["Name"]
+        - type: "Comment"
+          token: "// Add adds two integers and returns their sum"
+          roles: ["Comment"]
+        - type: "Function"
+          token: |-
+            func Add(a, b int) int {
+                // This is a comment
+                return a + b // inline comment
+            }
+          props:
+            name: "Add"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "Add"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "(a, b int)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  props:
+                    name: "a"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+            - type: "Identifier"
+              token: "int"
+              roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    // This is a comment
+                    return a + b // inline comment
+                }
+              roles: ["Body"]
+              children:
+                - type: "Comment"
+                  token: "// This is a comment"
+                  roles: ["Comment"]
+                - type: "Return"
+                  token: "return a + b"
+                  roles: ["Return"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "BinaryOp"
+                          roles: ["Operator"]
+                          children:
+                            - type: "Identifier"
+                              token: "a"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "b"
+                              roles: ["Name"]
+                - type: "Comment"
+                  token: "// inline comment"
+                  roles: ["Comment"]
+        - type: "Comment"
+          token: |-
+            /*
+             * Multi-line comment
+             * for documentation
+             */
+          roles: ["Comment"]
+        - type: "Function"
+          token: |-
+            func Sub(a, b int) int {
+                return a - b
+            }
+          props:
+            name: "Sub"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "Sub"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "(a, b int)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  props:
+                    name: "a"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+            - type: "Identifier"
+              token: "int"
+              roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    return a - b
+                }
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: "return a - b"
+                  roles: ["Return"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "BinaryOp"
+                          roles: ["Operator"]
+                          children:
+                            - type: "Identifier"
+                              token: "a"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "b"
+                              roles: ["Name"]
+
+query_cases:
+  - name: find_comments
+    input: |
+      // comment 1
+      func f() {} // comment 2
+    query: 'rfilter(.type == "Comment") |> map(.type)'
+    output:
+      results:
+        - "Comment"
+        - "Comment"

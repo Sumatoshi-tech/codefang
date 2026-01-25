@@ -1,0 +1,30 @@
+language: xml
+tests:
+  - name: "Attribute is Property"
+    code: |
+      <item id="1"></item>
+    query: rfilter(.type == "Property") |> map(.type)
+    expected:
+      - "Property"
+
+  - name: "Property has Member role"
+    code: |
+      <element name="value"></element>
+    query: rfilter(.type == "Property") |> map(.roles)
+    expected:
+      - ["Member"]
+
+  - name: "Attribute name is Identifier"
+    code: |
+      <tag myattr="val"></tag>
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "myattr") |> map(.token)
+    expected:
+      - "myattr"
+
+  - name: "Multiple attributes"
+    code: |
+      <item a="1" b="2"></item>
+    query: rfilter(.type == "Property") |> map(.type)
+    expected:
+      - "Property"
+      - "Property"

@@ -1,0 +1,139 @@
+[language "ansible", extensions: ".yml", ".yaml"]
+stream <- (stream) => uast(
+    type: "File"
+)
+document <- (document) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+block_mapping <- (block_mapping) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal"
+)
+block_mapping_pair <- (block_mapping_pair) => uast(
+    token: "self",
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+flow_mapping <- (flow_mapping) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal"
+)
+flow_pair <- (flow_pair) => uast(
+    token: "self",
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+block_sequence <- (block_sequence) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+block_sequence_item <- (block_sequence_item) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+flow_sequence <- (flow_sequence) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+block_node <- (block_node) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+flow_node <- (flow_node) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+string_scalar <- (string_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+plain_scalar <- (plain_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+single_quote_scalar <- (single_quote_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+double_quote_scalar <- (double_quote_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+integer_scalar <- (integer_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+float_scalar <- (float_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+boolean_scalar <- (boolean_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+null_scalar <- (null_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+block_scalar <- (block_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+alias <- (alias) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+alias_name <- (alias_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+anchor <- (anchor) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+anchor_name <- (anchor_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+tag <- (tag) => uast(
+    token: "self",
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+yaml_directive <- (yaml_directive) => uast(
+    token: "self",
+    type: "Attribute",
+    roles: "Attribute"
+)
+tag_directive <- (tag_directive) => uast(
+    token: "self",
+    type: "Attribute",
+    roles: "Attribute"
+)

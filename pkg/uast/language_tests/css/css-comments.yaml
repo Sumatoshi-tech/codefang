@@ -1,0 +1,28 @@
+language: css
+tests:
+  - name: "Comment is Comment"
+    code: |
+      /* This is a comment */
+      .button { color: red; }
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+
+  - name: "Comment has Comment role"
+    code: |
+      /* This is a comment */
+      .button { color: red; }
+    query: rfilter(.type == "Comment") |> map(.roles)
+    expected:
+      - ["Comment"]
+
+  - name: "Multiple comments"
+    code: |
+      /* First comment */
+      .header { color: red; }
+      /* Second comment */
+      .footer { color: blue; }
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+      - "Comment"

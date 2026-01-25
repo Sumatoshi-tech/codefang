@@ -1,0 +1,39 @@
+language: proto
+description: "Test Protocol Buffers imports"
+
+tests:
+  - name: "Simple import"
+    code: |
+      syntax = "proto3";
+      import "other.proto";
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Import
+            roles: [Import]
+
+  - name: "Public import"
+    code: |
+      syntax = "proto3";
+      import public "other.proto";
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Import
+            roles: [Import]
+
+  - name: "Multiple imports"
+    code: |
+      syntax = "proto3";
+      import "google/protobuf/timestamp.proto";
+      import "google/protobuf/duration.proto";
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Import
+            roles: [Import]
+          - type: Import
+            roles: [Import]

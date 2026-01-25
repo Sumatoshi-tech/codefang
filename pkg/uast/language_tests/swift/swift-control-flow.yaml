@@ -1,0 +1,46 @@
+suite: control-flow
+name: swift-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      class Test {
+          func method() {
+              if true { }
+              if false { }
+          }
+      }
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"
+
+  - name: find_loops
+    input: |
+      class Test {
+          func method() {
+              for i in 0..<10 { }
+              while true { }
+          }
+      }
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"
+
+  - name: find_switch
+    input: |
+      class Test {
+          func method(x: Int) {
+              switch x {
+              case 1: break
+              default: break
+              }
+          }
+      }
+    query: 'rfilter(.type == "Switch") |> map(.type)'
+    output:
+      results:
+        - "Switch"
