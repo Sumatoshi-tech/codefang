@@ -1,0 +1,37 @@
+language: elm
+tests:
+  - name: "module declaration"
+    input: |
+      module Main exposing (main)
+    output:
+      type: "File"
+      children:
+        - type: "Module"
+          roles: ["Module"]
+
+  - name: "import statement"
+    input: |
+      module Main exposing (main)
+
+      import Html exposing (Html, div)
+    output:
+      type: "File"
+      children:
+        - type: "Module"
+          roles: ["Module"]
+        - type: "Import"
+          roles: ["Import"]
+
+queries:
+  - name: "find imports"
+    input: |
+      module Main exposing (main)
+
+      import Html exposing (Html)
+      import Browser
+    query: "//Import"
+    output:
+      - type: "Import"
+        roles: ["Import"]
+      - type: "Import"
+        roles: ["Import"]

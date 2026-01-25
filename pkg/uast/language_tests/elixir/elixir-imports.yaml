@@ -1,0 +1,99 @@
+suite: elixir-imports
+name: Elixir import statements
+
+parse_cases:
+  - name: Parse alias import
+    input: "alias MyApp.User"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: "alias MyApp.User"
+          roles:
+            - Call
+          children:
+            - type: Identifier
+              token: "alias"
+              roles:
+                - Name
+            - type: List
+              roles:
+                - Argument
+              children:
+                - type: Identifier
+                  token: "MyApp.User"
+                  roles:
+                    - Name
+
+  - name: Parse import statement
+    input: "import Enum"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: "import Enum"
+          roles:
+            - Call
+          children:
+            - type: Identifier
+              token: "import"
+              roles:
+                - Name
+            - type: List
+              roles:
+                - Argument
+              children:
+                - type: Identifier
+                  token: "Enum"
+                  roles:
+                    - Name
+
+  - name: Parse require statement
+    input: "require Logger"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: "require Logger"
+          roles:
+            - Call
+          children:
+            - type: Identifier
+              token: "require"
+              roles:
+                - Name
+            - type: List
+              roles:
+                - Argument
+              children:
+                - type: Identifier
+                  token: "Logger"
+                  roles:
+                    - Name
+
+  - name: Parse use statement
+    input: "use GenServer"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Call
+          token: "use GenServer"
+          roles:
+            - Call
+          children:
+            - type: Identifier
+              token: "use"
+              roles:
+                - Name
+            - type: List
+              roles:
+                - Argument
+              children:
+                - type: Identifier
+                  token: "GenServer"
+                  roles:
+                    - Name

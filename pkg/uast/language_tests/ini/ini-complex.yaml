@@ -1,0 +1,99 @@
+language: ini
+description: "Test complex INI structures"
+
+tests:
+  - name: "Full configuration file"
+    code: |
+      ; Application configuration
+      [database]
+      host = localhost
+      port = 5432
+      name = myapp
+
+      [server]
+      address = 0.0.0.0
+      port = 8080
+
+      [logging]
+      level = debug
+      file = /var/log/app.log
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+          - type: Dict
+            roles: [Literal]
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+          - type: Dict
+            roles: [Literal]
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+          - type: Dict
+            roles: [Literal]
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: KeyValue
+                roles: [Key, Value]
+              - type: KeyValue
+                roles: [Key, Value]
+
+  - name: "Section with underscore name"
+    code: |
+      [my_section_name]
+      key = value
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+                roles: [Name]
+              - type: KeyValue
+
+  - name: "Key with underscore"
+    code: |
+      [config]
+      my_key_name = value
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "my_key_name"
+                  - type: Literal
+
+  - name: "Empty section followed by populated section"
+    code: |
+      [empty]
+
+      [populated]
+      key = value
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            roles: [Literal]
+          - type: Dict
+            roles: [Literal]
+            children:
+              - type: Identifier
+              - type: KeyValue

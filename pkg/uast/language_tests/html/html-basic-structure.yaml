@@ -1,0 +1,37 @@
+language: html
+tests:
+  - name: "Root is File"
+    code: |
+      <html></html>
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Element is Call"
+    code: |
+      <div></div>
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "Call has Call role"
+    code: |
+      <p>text</p>
+    query: rfilter(.type == "Call") |> map(.roles)
+    expected:
+      - ["Call"]
+
+  - name: "Tag name is Identifier"
+    code: |
+      <span></span>
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "span") |> map(.token)
+    expected:
+      - "span"
+      - "span"
+
+  - name: "Comment is properly typed"
+    code: |
+      <!-- comment --><div></div>
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"

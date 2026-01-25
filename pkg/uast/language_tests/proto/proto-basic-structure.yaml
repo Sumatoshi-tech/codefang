@@ -1,0 +1,37 @@
+language: proto
+description: "Test basic Protocol Buffers file structure"
+
+tests:
+  - name: "Empty proto file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Syntax declaration"
+    code: |
+      syntax = "proto3";
+    expected:
+      - type: File
+        children:
+          - type: Variable
+            roles: [Variable, Declaration]
+
+  - name: "Package declaration"
+    code: |
+      syntax = "proto3";
+      package mypackage;
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Module
+            roles: [Module, Declaration]
+
+  - name: "Single comment"
+    code: |
+      // This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]

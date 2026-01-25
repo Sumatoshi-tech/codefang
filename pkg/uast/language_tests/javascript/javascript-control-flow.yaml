@@ -1,0 +1,322 @@
+suite: control-flow
+name: javascript-control-flow
+
+parse_cases:
+  - name: if_statement
+    input: |
+      if (x > 0) {
+          console.log("positive");
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "If"
+          roles: ["Condition"]
+          children:
+            - type: "Synthetic"
+              token: "(x > 0)"
+              roles: []
+              children:
+                - type: "BinaryOp"
+                  token: "x > 0"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "0"
+                      roles: ["Literal"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Call"
+                      token: 'console.log("positive")'
+                      roles: ["Call"]
+                      children:
+                        - type: "Synthetic"
+                          token: "console.log"
+                          roles: ["Member"]
+                          children:
+                            - type: "Identifier"
+                              token: "console"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "log"
+                              roles: ["Name"]
+                        - type: "Synthetic"
+                          token: '("positive")'
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              token: '"positive"'
+                              roles: ["Literal"]
+                              children:
+                                - type: "Synthetic"
+                                  token: "positive"
+                                  roles: []
+
+  - name: for_loop
+    input: |
+      for (let i = 0; i < 10; i++) {
+          console.log(i);
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Variable"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Variable"
+                  token: "i"
+                  props:
+                    name: "i"
+                  roles: ["Variable", "Declaration"]
+                  children:
+                    - type: "Identifier"
+                      token: "i"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "0"
+                      roles: ["Literal"]
+            - type: "BinaryOp"
+              token: "i < 10"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "i"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "10"
+                  roles: ["Literal"]
+            - type: "UnaryOp"
+              token: "i++"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "i"
+                  roles: ["Name"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Call"
+                      token: "console.log(i)"
+                      roles: ["Call"]
+                      children:
+                        - type: "Synthetic"
+                          token: "console.log"
+                          roles: ["Member"]
+                          children:
+                            - type: "Identifier"
+                              token: "console"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "log"
+                              roles: ["Name"]
+                        - type: "Synthetic"
+                          token: "(i)"
+                          roles: []
+                          children:
+                            - type: "Identifier"
+                              token: "i"
+                              roles: ["Name"]
+
+  - name: while_loop
+    input: |
+      while (x > 0) {
+          x--;
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Synthetic"
+              token: "(x > 0)"
+              roles: []
+              children:
+                - type: "BinaryOp"
+                  token: "x > 0"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "0"
+                      roles: ["Literal"]
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "UnaryOp"
+                      token: "x--"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "x"
+                          roles: ["Name"]
+
+  - name: do_while_loop
+    input: |
+      do {
+          x++;
+      } while (x < 10);
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "UnaryOp"
+                      token: "x++"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "x"
+                          roles: ["Name"]
+            - type: "Synthetic"
+              token: "(x < 10)"
+              roles: []
+              children:
+                - type: "BinaryOp"
+                  token: "x < 10"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "10"
+                      roles: ["Literal"]
+
+query_cases:
+  - name: find_loops
+    input: |
+      for (let i = 0; i < 10; i++) {}
+      while (true) {}
+      do {} while (false);
+    query: 'filter(.type == "Loop")'
+    output:
+      results:
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Variable"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Variable"
+                  token: "i"
+                  props:
+                    name: "i"
+                  roles: ["Variable", "Declaration"]
+                  children:
+                    - type: "Identifier"
+                      token: "i"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "0"
+                      roles: ["Literal"]
+            - type: "BinaryOp"
+              token: "i < 10"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "i"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "10"
+                  roles: ["Literal"]
+            - type: "UnaryOp"
+              token: "i++"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "i"
+                  roles: ["Name"]
+            - type: "Block"
+              roles: ["Body"]
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Synthetic"
+              token: "(true)"
+              roles: []
+              children:
+                - type: "Literal"
+                  token: "true"
+                  roles: ["Literal"]
+            - type: "Block"
+              roles: ["Body"]
+        - type: "Loop"
+          roles: ["Loop"]
+          children:
+            - type: "Block"
+              roles: ["Body"]
+            - type: "Synthetic"
+              token: "(false)"
+              roles: []
+              children:
+                - type: "Literal"
+                  token: "false"
+                  roles: ["Literal"]
+
+  - name: find_if_statements
+    input: |
+      if (a) {}
+      if (b) {} else {}
+    query: 'filter(.type == "If")'
+    output:
+      results:
+        - type: "If"
+          roles: ["Condition"]
+          children:
+            - type: "Synthetic"
+              token: "(a)"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "a"
+                  roles: ["Name"]
+            - type: "Block"
+              roles: ["Body"]
+        - type: "If"
+          roles: ["Condition"]
+          children:
+            - type: "Synthetic"
+              token: "(b)"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "b"
+                  roles: ["Name"]
+            - type: "Block"
+              roles: ["Body"]
+            - type: "Synthetic"
+              token: "else {}"
+              roles: ["Body"]
+              children:
+                - type: "Block"
+                  roles: ["Body"]

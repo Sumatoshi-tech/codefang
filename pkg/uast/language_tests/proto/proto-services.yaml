@@ -1,0 +1,39 @@
+language: proto
+description: "Test Protocol Buffers service definitions"
+
+tests:
+  - name: "Simple service"
+    code: |
+      syntax = "proto3";
+      message Request {}
+      message Response {}
+      service MyService {
+        rpc DoSomething(Request) returns (Response);
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Struct
+          - type: Struct
+          - type: Interface
+            roles: [Interface, Declaration]
+
+  - name: "Service with identifier"
+    code: |
+      syntax = "proto3";
+      message Req {}
+      message Res {}
+      service ApiService {
+        rpc Call(Req) returns (Res);
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Struct
+          - type: Struct
+          - type: Interface
+            children:
+              - type: Identifier
+                roles: [Name]

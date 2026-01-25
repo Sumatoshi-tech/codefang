@@ -1,0 +1,36 @@
+language: cmake
+description: "Test CMake control flow structures"
+
+tests:
+  - name: "If condition"
+    code: |
+      if(TRUE)
+        message("yes")
+      endif()
+    expected:
+      - type: File
+        children:
+          - type: If
+            roles: [Condition]
+
+  - name: "Foreach loop"
+    code: |
+      foreach(item IN ITEMS a b c)
+        message(${item})
+      endforeach()
+    expected:
+      - type: File
+        children:
+          - type: Loop
+            roles: [Loop]
+
+  - name: "While loop"
+    code: |
+      while(TRUE)
+        message("loop")
+      endwhile()
+    expected:
+      - type: File
+        children:
+          - type: Loop
+            roles: [Loop]

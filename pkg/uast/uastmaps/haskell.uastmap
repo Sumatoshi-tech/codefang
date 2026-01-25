@@ -1,0 +1,278 @@
+[language "haskell", extensions: ".hs", ".lhs"]
+
+haskell <- (haskell) => uast(
+    type: "File"
+)
+
+header <- (header) => uast(
+    type: "Synthetic"
+)
+
+module <- (module) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+module_id <- (module_id) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+imports <- (imports) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+import <- (import) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+declarations <- (declarations) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+data_type <- (data_type) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+data_constructors <- (data_constructors) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+data_constructor <- (data_constructor) => uast(
+    type: "EnumMember",
+    roles: "Declaration"
+)
+
+newtype <- (newtype) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+type_alias <- (type_alias) => uast(
+    type: "TypeAnnotation",
+    roles: "Type", "Declaration"
+)
+
+class <- (class) => uast(
+    type: "Interface",
+    roles: "Declaration"
+)
+
+instance <- (instance) => uast(
+    type: "Class",
+    roles: "Declaration"
+)
+
+instance_declarations <- (instance_declarations) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+function <- (function) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+signature <- (signature) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+bind <- (bind) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+match <- (match) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+patterns <- (patterns) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+variable <- (variable) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+name <- (name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+constructor <- (constructor) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+operator <- (operator) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Operator"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+char <- (char) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+literal <- (literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+apply <- (apply) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+infix <- (infix) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+prefix <- (prefix) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+conditional <- (conditional) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+case <- (case) => uast(
+    type: "Switch",
+    roles: "Switch"
+)
+
+lambda <- (lambda) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+do <- (do) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+let <- (let) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+local_binds <- (local_binds) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+where <- (where) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+list <- (list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+tuple <- (tuple) => uast(
+    type: "Tuple",
+    roles: "Literal"
+)
+
+record <- (record) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+fields <- (fields) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+field <- (field) => uast(
+    type: "Property",
+    roles: "Member", "Declaration"
+)
+
+field_name <- (field_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+exp <- (exp) => uast(
+    type: "Synthetic"
+)
+
+parens <- (parens) => uast(
+    type: "Synthetic"
+)
+
+unit <- (unit) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+right_section <- (right_section) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+left_section <- (left_section) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+deriving <- (deriving) => uast(
+    type: "Synthetic"
+)
+
+type_patterns <- (type_patterns) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+pragma <- (pragma) => uast(
+    type: "Annotation",
+    roles: "Annotation"
+)

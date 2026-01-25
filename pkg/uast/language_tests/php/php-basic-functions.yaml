@@ -1,0 +1,56 @@
+suite: basic-functions
+name: php-basic-functions
+
+query_cases:
+  - name: find_functions
+    input: |
+      <?php
+      function func1() {}
+      function func2() {}
+    query: 'rfilter(.type == "Function") |> map(.type)'
+    output:
+      results:
+        - "Function"
+        - "Function"
+
+  - name: find_function_names
+    input: |
+      <?php
+      function myFunction() {}
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "myFunction"
+
+  - name: find_parameters
+    input: |
+      <?php
+      function add($a, $b) {}
+    query: 'rfilter(.type == "Parameter") |> map(.type)'
+    output:
+      results:
+        - "Parameter"
+        - "Parameter"
+
+  - name: find_return_statements
+    input: |
+      <?php
+      function add($a, $b) {
+          return $a + $b;
+      }
+    query: 'rfilter(.type == "Return") |> map(.type)'
+    output:
+      results:
+        - "Return"
+
+  - name: find_binary_ops
+    input: |
+      <?php
+      function calc() {
+          return 1 + 2 * 3;
+      }
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"

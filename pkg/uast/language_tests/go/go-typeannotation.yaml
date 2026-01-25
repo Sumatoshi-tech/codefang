@@ -1,0 +1,138 @@
+suite: typeannotation
+name: go-typeannotation
+
+parse_cases:
+  - name: typeannotation
+    input: |
+      func j(x int, y string) (int, error) {
+          var z int = 42
+          return z, nil
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func j(x int, y string) (int, error) {
+                var z int = 42
+                return z, nil
+            }
+          props:
+            name: "j"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "j"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "(x int, y string)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  props:
+                    name: "x"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+                - type: "Parameter"
+                  props:
+                    name: "y"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "y"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "string"
+                      roles: ["Name", "Type"]
+            - type: "Parameter"
+              token: "(int, error)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+                - type: "Parameter"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "error"
+                      roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    var z int = 42
+                    return z, nil
+                }
+              roles: ["Body"]
+              children:
+                - type: "Variable"
+                  roles: ["Variable", "Declaration"]
+                  children:
+                    - type: "Variable"
+                      token: "z int = 42"
+                      props:
+                        name: "z"
+                      roles: ["Variable", "Declaration"]
+                      children:
+                        - type: "Identifier"
+                          token: "z"
+                          roles: ["Name"]
+                        - type: "Identifier"
+                          token: "int"
+                          roles: ["Name", "Type"]
+                        - type: "List"
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              roles: ["Literal"]
+                - type: "Return"
+                  token: "return z, nil"
+                  roles: ["Return"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Identifier"
+                          token: "z"
+                          roles: ["Name"]
+                        - type: "Literal"
+                          token: "nil"
+                          roles: ["Literal"]
+
+query_cases:
+  - name: find_all_parameters
+    input: |
+      func j(x int, y string) (int, error) {
+          var z int = 42
+          return z, nil
+      }
+    query: 'rfilter(.type == "Parameter") |> map(.token)'
+    output:
+      results:
+        - "(x int, y string)"
+        - ""
+        - ""
+        - "(int, error)"
+        - ""
+        - ""
+
+  - name: find_variable_declarations
+    input: |
+      func j(x int, y string) (int, error) {
+          var z int = 42
+          return z, nil
+      }
+    query: 'rfilter(.type == "Variable") |> map(.props.name)'
+    output:
+      results:
+        - "z"

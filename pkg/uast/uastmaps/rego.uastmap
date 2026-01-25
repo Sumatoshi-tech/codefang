@@ -1,0 +1,275 @@
+[language "rego", extensions: ".rego"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+module <- (module) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+package <- (package) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+policy <- (policy) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+import <- (import) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+var <- (var) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+ref <- (ref) => uast(
+    type: "MemberAccess",
+    roles: "Member"
+)
+
+ref_arg <- (ref_arg) => uast(
+    type: "Synthetic"
+)
+
+ref_arg_dot <- (ref_arg_dot) => uast(
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+ref_arg_brack <- (ref_arg_brack) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+rule <- (rule) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+rule_head <- (rule_head) => uast(
+    type: "Identifier",
+    roles: "Name", "Declaration"
+)
+
+rule_body <- (rule_body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+default <- (default) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+number <- (number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean <- (boolean) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null <- (null) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+scalar <- (scalar) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+literal <- (literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+object <- (object) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+object_item <- (object_item) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+set <- (set) => uast(
+    type: "Set",
+    roles: "Literal"
+)
+
+non_empty_set <- (non_empty_set) => uast(
+    type: "Set",
+    roles: "Literal"
+)
+
+array <- (array) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+array_compr <- (array_compr) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+set_compr <- (set_compr) => uast(
+    type: "Set",
+    roles: "Literal"
+)
+
+object_compr <- (object_compr) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+expr <- (expr) => uast(
+    type: "Synthetic"
+)
+
+term <- (term) => uast(
+    type: "Synthetic"
+)
+
+expr_infix <- (expr_infix) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+expr_call <- (expr_call) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+infix_operator <- (infix_operator) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+
+bool_operator <- (bool_operator) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+
+assignment_operator <- (assignment_operator) => uast(
+    type: "Synthetic"
+)
+
+assignment <- (assignment) => uast(
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+if <- (if) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+query <- (query) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+some_decl <- (some_decl) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+some <- (some) => uast(
+    type: "Synthetic"
+)
+
+membership <- (membership) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+in <- (in) => uast(
+    type: "Synthetic"
+)
+
+not <- (not) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+fn_name <- (fn_name) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+fn_args <- (fn_args) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+open_paren <- (open_paren) => uast(
+    type: "Synthetic"
+)
+
+close_paren <- (close_paren) => uast(
+    type: "Synthetic"
+)
+
+open_bracket <- (open_bracket) => uast(
+    type: "Synthetic"
+)
+
+close_bracket <- (close_bracket) => uast(
+    type: "Synthetic"
+)
+
+open_curly <- (open_curly) => uast(
+    type: "Synthetic"
+)
+
+close_curly <- (close_curly) => uast(
+    type: "Synthetic"
+)
+
+with <- (with) => uast(
+    type: "Synthetic"
+)
+
+every <- (every) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+contains <- (contains) => uast(
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    type: "Block",
+    roles: "Body"
+)

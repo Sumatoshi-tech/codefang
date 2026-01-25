@@ -1,0 +1,35 @@
+suite: expressions
+name: rust-expressions
+
+query_cases:
+  - name: find_binary_ops_types
+    input: |
+      fn main() {
+          let x = 1 + 2;
+      }
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+
+  - name: find_unary_ops_types
+    input: |
+      fn main() {
+          let neg = -5;
+      }
+    query: 'rfilter(.type == "UnaryOp") |> map(.type)'
+    output:
+      results:
+        - "UnaryOp"
+
+  - name: find_variables_types
+    input: |
+      fn main() {
+          let a = 42;
+          let b = true;
+      }
+    query: 'rfilter(.type == "Variable") |> map(.type)'
+    output:
+      results:
+        - "Variable"
+        - "Variable"

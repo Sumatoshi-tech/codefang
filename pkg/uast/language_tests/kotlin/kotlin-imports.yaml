@@ -1,0 +1,122 @@
+suite: imports
+name: kotlin-imports
+
+parse_cases:
+  - name: simple_import
+    input: |
+      import kotlin.collections.List
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Synthetic
+        roles: []
+        children:
+        - type: Import
+          roles:
+          - Import
+          children:
+          - type: Identifier
+            roles:
+            - Name
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: Identifier
+              roles:
+              - Name
+            - type: Identifier
+              roles:
+              - Name
+
+  - name: package_declaration
+    input: |
+      package com.example.app
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Package
+        roles:
+        - Module
+        children:
+        - type: Identifier
+          roles:
+          - Name
+          children:
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+
+query_cases:
+  - name: find_imports
+    input: |
+      import kotlin.io.File
+      import kotlin.collections.List
+    query: "rfilter(.type == 'Import')"
+    output:
+      results:
+      - type: Import
+        roles:
+        - Import
+        children:
+        - type: Identifier
+          roles:
+          - Name
+          children:
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+      - type: Import
+        roles:
+        - Import
+        children:
+        - type: Identifier
+          roles:
+          - Name
+          children:
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name
+
+  - name: find_packages
+    input: |
+      package com.example
+      
+      fun main() {}
+    query: "filter(.type == 'Package')"
+    output:
+      results:
+      - type: Package
+        roles:
+        - Module
+        children:
+        - type: Identifier
+          roles:
+          - Name
+          children:
+          - type: Identifier
+            roles:
+            - Name
+          - type: Identifier
+            roles:
+            - Name

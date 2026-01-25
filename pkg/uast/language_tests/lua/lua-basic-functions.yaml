@@ -1,0 +1,68 @@
+suite: basic-functions
+name: lua-basic-functions
+
+query_cases:
+  - name: find_functions
+    input: |
+      function add(a, b)
+        return a + b
+      end
+      function multiply(x, y)
+        return x * y
+      end
+    query: 'rfilter(.type == "Function") |> map(.type)'
+    output:
+      results:
+        - "Function"
+        - "Function"
+
+  - name: find_function_names
+    input: |
+      function myFunction()
+        return 42
+      end
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "myFunction"
+
+  - name: find_return_statements
+    input: |
+      function getValue()
+        return 100
+      end
+    query: 'rfilter(.type == "Return") |> map(.type)'
+    output:
+      results:
+        - "Return"
+
+  - name: find_binary_ops
+    input: |
+      function calc()
+        return 1 + 2 * 3
+      end
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_function_calls
+    input: |
+      print("hello")
+      doSomething()
+    query: 'rfilter(.type == "Call") |> map(.type)'
+    output:
+      results:
+        - "Call"
+        - "Call"
+
+  - name: find_body_blocks
+    input: |
+      function test()
+        print("test")
+      end
+    query: 'rfilter(.type == "Block") |> map(.type)'
+    output:
+      results:
+        - "Block"

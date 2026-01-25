@@ -1,0 +1,272 @@
+[language "graphql", extensions: ".graphql", ".gql"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+document <- (document) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+definition <- (definition) => uast(
+    type: "Synthetic"
+)
+
+type_system_definition <- (type_system_definition) => uast(
+    type: "Synthetic"
+)
+
+type_definition <- (type_definition) => uast(
+    type: "Synthetic"
+)
+
+object_type_definition <- (object_type_definition) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+input_object_type_definition <- (input_object_type_definition) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+interface_type_definition <- (interface_type_definition) => uast(
+    type: "Interface",
+    roles: "Declaration"
+)
+
+enum_type_definition <- (enum_type_definition) => uast(
+    type: "Enum",
+    roles: "Declaration"
+)
+
+union_type_definition <- (union_type_definition) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+scalar_type_definition <- (scalar_type_definition) => uast(
+    type: "TypeAnnotation",
+    roles: "Type", "Declaration"
+)
+
+schema_definition <- (schema_definition) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+directive_definition <- (directive_definition) => uast(
+    type: "Annotation",
+    roles: "Annotation", "Declaration"
+)
+
+executable_definition <- (executable_definition) => uast(
+    type: "Synthetic"
+)
+
+operation_definition <- (operation_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+operation_type <- (operation_type) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+fragment_definition <- (fragment_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+fragment_name <- (fragment_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+name <- (name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+fields_definition <- (fields_definition) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+field_definition <- (field_definition) => uast(
+    type: "Property",
+    roles: "Member", "Declaration"
+)
+
+input_fields_definition <- (input_fields_definition) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+input_value_definition <- (input_value_definition) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+arguments_definition <- (arguments_definition) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+field <- (field) => uast(
+    type: "Field",
+    roles: "Member"
+)
+
+arguments <- (arguments) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+argument <- (argument) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+selection_set <- (selection_set) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+selection <- (selection) => uast(
+    type: "Synthetic"
+)
+
+variable_definitions <- (variable_definitions) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+variable_definition <- (variable_definition) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+variable <- (variable) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+type <- (type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+named_type <- (named_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+list_type <- (list_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+non_null_type <- (non_null_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+type_condition <- (type_condition) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+value <- (value) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_value <- (string_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+int_value <- (int_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float_value <- (float_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean_value <- (boolean_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null_value <- (null_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+enum_value <- (enum_value) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+list_value <- (list_value) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+object_value <- (object_value) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+object_field <- (object_field) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+directive <- (directive) => uast(
+    type: "Annotation",
+    roles: "Annotation"
+)
+
+fragment_spread <- (fragment_spread) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+inline_fragment <- (inline_fragment) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+description <- (description) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+alias <- (alias) => uast(
+    type: "Identifier",
+    roles: "Name"
+)

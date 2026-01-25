@@ -1,0 +1,59 @@
+suite: lambdas
+name: ruby-lambdas
+
+query_cases:
+  - name: find_lambda_arrow
+    input: |
+      fn = -> (x) { x * 2 }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"
+
+  - name: find_do_blocks
+    input: |
+      [1, 2, 3].each do |n|
+        puts n
+      end
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_brace_blocks
+    input: |
+      [1, 2, 3].map { |n| n * 2 }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_proc_blocks
+    input: |
+      my_proc = proc { |x| x + 1 }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_yield_statements
+    input: |
+      def with_logging
+        puts "Starting"
+        yield
+        puts "Done"
+      end
+    query: 'rfilter(.type == "Yield") |> map(.type)'
+    output:
+      results:
+        - "Yield"
+
+  - name: find_multiple_blocks
+    input: |
+      arr.map { |x| x * 2 }.select { |x| x > 5 }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"

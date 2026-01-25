@@ -1,0 +1,28 @@
+language: dockerfile
+tests:
+  - name: "Comment is Comment"
+    code: |
+      # This is a comment
+      FROM alpine
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+
+  - name: "Comment has Comment role"
+    code: |
+      # Build stage
+      FROM golang
+    query: rfilter(.type == "Comment") |> map(.roles)
+    expected:
+      - ["Comment"]
+
+  - name: "Multiple comments"
+    code: |
+      # First stage
+      FROM alpine
+      # Second stage
+      FROM ubuntu
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+      - "Comment"

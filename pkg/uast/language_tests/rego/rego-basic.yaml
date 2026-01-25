@@ -1,0 +1,33 @@
+language: rego
+tests:
+  - name: "Root is File"
+    code: |
+      package authz
+      default allow := false
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Package is Module"
+    code: |
+      package authz
+    query: rfilter(.type == "Module") |> map(.type)
+    expected:
+      - "Module"
+
+  - name: "Var is Identifier"
+    code: |
+      package test
+      x := 42
+    query: rfilter(.type == "Identifier" and .roles contains "Name") |> map(.type)
+    expected:
+      - "Identifier"
+      - "Identifier"
+
+  - name: "Rule is Function"
+    code: |
+      package test
+      allow if { true }
+    query: rfilter(.type == "Function") |> map(.type)
+    expected:
+      - "Function"

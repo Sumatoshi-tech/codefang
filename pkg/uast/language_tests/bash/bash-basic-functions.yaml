@@ -1,0 +1,57 @@
+language: bash
+tests:
+  - name: "Simple function definition"
+    code: |
+      greet() {
+          echo "Hello"
+      }
+    query: rfilter(.type == "Function") |> map(.type)
+    expected:
+      - "Function"
+
+  - name: "Function with parameters usage"
+    code: |
+      greet() {
+          echo "Hello, $1!"
+      }
+    query: rfilter(.type == "Function") |> map(.roles)
+    expected:
+      - ["Function", "Declaration"]
+
+  - name: "Function with local variables"
+    code: |
+      compute() {
+          local result=0
+          echo $result
+      }
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+      - "Variable"
+
+  - name: "Multiple functions"
+    code: |
+      foo() {
+          echo "foo"
+      }
+      bar() {
+          echo "bar"
+      }
+    query: rfilter(.type == "Function") |> map(.type)
+    expected:
+      - "Function"
+      - "Function"
+
+  - name: "Command call"
+    code: |
+      echo "Hello World"
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "Command with arguments"
+    code: |
+      ls -la /tmp
+    query: rfilter(.type == "Call") |> map(.roles)
+    expected:
+      - ["Call"]

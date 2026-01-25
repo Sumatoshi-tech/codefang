@@ -1,0 +1,17 @@
+language: rego
+tests:
+  - name: "Import is Import type"
+    code: |
+      package test
+      import future.keywords.if
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      package test
+      import data.utils
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]

@@ -1,0 +1,26 @@
+language: gitattributes
+description: "Test basic gitattributes file structure"
+
+tests:
+  - name: "Empty file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single comment"
+    code: |
+      # This is a comment
+    expected:
+      - type: File
+        children:
+          - type: Comment
+            roles: [Comment]
+
+  - name: "Simple pattern with attribute"
+    code: |
+      *.txt text
+    expected:
+      - type: File
+        children:
+          - type: Literal
+            roles: [Literal]

@@ -1,0 +1,15 @@
+suite: sql
+name: basic-queries
+
+query_cases:
+  - name: find_identifiers
+    input: |
+      SELECT name FROM users
+    query: rfilter(.type == "Identifier") |> map(.token)
+    output:
+      results:
+        - ""
+        - name
+        - ""
+        - users
+        - users

@@ -1,0 +1,62 @@
+language: cmake
+description: "Test CMake command calls"
+
+tests:
+  - name: "Simple command"
+    code: |
+      cmake_minimum_required(VERSION 3.10)
+    expected:
+      - type: File
+        children:
+          - type: Call
+            roles: [Call]
+
+  - name: "Command with identifier"
+    code: |
+      project(MyProject)
+    expected:
+      - type: File
+        children:
+          - type: Call
+            children:
+              - type: Identifier
+                roles: [Name]
+                token: "project"
+              - type: List
+
+  - name: "Multiple commands"
+    code: |
+      cmake_minimum_required(VERSION 3.10)
+      project(MyProject)
+    expected:
+      - type: File
+        children:
+          - type: Call
+            roles: [Call]
+          - type: Call
+            roles: [Call]
+
+  - name: "Set command"
+    code: |
+      set(MY_VAR "value")
+    expected:
+      - type: File
+        children:
+          - type: Call
+            children:
+              - type: Identifier
+                token: "set"
+              - type: List
+                roles: [Literal]
+
+  - name: "Add executable command"
+    code: |
+      add_executable(myapp main.cpp)
+    expected:
+      - type: File
+        children:
+          - type: Call
+            children:
+              - type: Identifier
+                token: "add_executable"
+              - type: List

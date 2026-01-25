@@ -1,0 +1,24 @@
+language: html
+tests:
+  - name: "Text content is Literal"
+    code: |
+      <p>Hello World</p>
+    query: rfilter(.type == "Literal") |> rfilter(.token == "Hello World") |> map(.token)
+    expected:
+      - "Hello World"
+
+  - name: "Attribute value is Literal"
+    code: |
+      <div data="value"></div>
+    query: rfilter(.type == "Literal") |> rfilter(.token == "value") |> map(.token)
+    expected:
+      - "value"
+
+  - name: "Nested elements are Calls"
+    code: |
+      <div><span><a></a></span></div>
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+      - "Call"
+      - "Call"

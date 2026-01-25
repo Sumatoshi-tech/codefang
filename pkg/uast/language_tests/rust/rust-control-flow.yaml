@@ -1,0 +1,42 @@
+suite: control-flow
+name: rust-control-flow
+
+query_cases:
+  - name: find_if_types
+    input: |
+      fn main() {
+          if true {
+              println!("yes");
+          }
+      }
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+
+  - name: find_loop_types
+    input: |
+      fn main() {
+          for i in 0..10 {}
+          while true {}
+          loop {}
+      }
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"
+        - "Loop"
+
+  - name: find_match_types
+    input: |
+      fn main() {
+          match x {
+              1 => println!("one"),
+              _ => println!("other"),
+          }
+      }
+    query: 'rfilter(.type == "Match") |> map(.type)'
+    output:
+      results:
+        - "Match"

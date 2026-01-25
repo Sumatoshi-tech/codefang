@@ -1,0 +1,368 @@
+[language "scala", extensions: ".scala", ".sc"]
+
+compilation_unit <- (compilation_unit) => uast(
+    type: "File"
+)
+
+package_clause <- (package_clause) => uast(
+    type: "Module",
+    roles: "Module"
+)
+
+package_identifier <- (package_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+import_declaration <- (import_declaration) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+namespace_selectors <- (namespace_selectors) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+type_identifier <- (type_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+operator_identifier <- (operator_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Operator"
+)
+
+integer_literal <- (integer_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+floating_point_literal <- (floating_point_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean_literal <- (boolean_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+character_literal <- (character_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+interpolated_string <- (interpolated_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+interpolated_string_expression <- (interpolated_string_expression) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+interpolation <- (interpolation) => uast(
+    type: "Synthetic"
+)
+
+null_literal <- (null_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+symbol_literal <- (symbol_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+class_definition <- (class_definition) => uast(
+    type: "Class",
+    roles: "Declaration"
+)
+
+object_definition <- (object_definition) => uast(
+    type: "Class",
+    roles: "Declaration"
+)
+
+trait_definition <- (trait_definition) => uast(
+    type: "Interface",
+    roles: "Declaration"
+)
+
+case_class_definition <- (case_class_definition) => uast(
+    type: "Class",
+    roles: "Declaration"
+)
+
+function_definition <- (function_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+class_parameters <- (class_parameters) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+class_parameter <- (class_parameter) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+parameters <- (parameters) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+parameter <- (parameter) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+val_definition <- (val_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+var_definition <- (var_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+if_expression <- (if_expression) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+match_expression <- (match_expression) => uast(
+    type: "Switch",
+    roles: "Switch"
+)
+
+case_block <- (case_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+case_clause <- (case_clause) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+guard <- (guard) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+for_expression <- (for_expression) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+while_expression <- (while_expression) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+do_while_expression <- (do_while_expression) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+enumerators <- (enumerators) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+enumerator <- (enumerator) => uast(
+    type: "Variable",
+    roles: "Variable"
+)
+
+call_expression <- (call_expression) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+field_expression <- (field_expression) => uast(
+    type: "MemberAccess",
+    roles: "Member"
+)
+
+infix_expression <- (infix_expression) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+prefix_expression <- (prefix_expression) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+postfix_expression <- (postfix_expression) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+instance_expression <- (instance_expression) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+parenthesized_expression <- (parenthesized_expression) => uast(
+    type: "Synthetic"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+template_body <- (template_body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+arguments <- (arguments) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+type_annotation <- (type_annotation) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+modifiers <- (modifiers) => uast(
+    type: "Synthetic"
+)
+
+access_modifier <- (access_modifier) => uast(
+    type: "Synthetic"
+)
+
+extends_clause <- (extends_clause) => uast(
+    type: "Synthetic"
+)
+
+try_expression <- (try_expression) => uast(
+    type: "Try",
+    roles: "Try"
+)
+
+catch_clause <- (catch_clause) => uast(
+    type: "Catch",
+    roles: "Catch"
+)
+
+finally_clause <- (finally_clause) => uast(
+    type: "Finally",
+    roles: "Finally"
+)
+
+throw_expression <- (throw_expression) => uast(
+    type: "Throw",
+    roles: "Throw"
+)
+
+return_expression <- (return_expression) => uast(
+    type: "Return",
+    roles: "Return"
+)
+
+lambda_expression <- (lambda_expression) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+tuple_expression <- (tuple_expression) => uast(
+    type: "Tuple",
+    roles: "Literal"
+)
+
+wildcard <- (wildcard) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block_comment <- (block_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+annotation <- (annotation) => uast(
+    type: "Annotation",
+    roles: "Annotation"
+)
+
+enum_definition <- (enum_definition) => uast(
+    type: "Enum",
+    roles: "Declaration"
+)
+
+enum_case_definition <- (enum_case_definition) => uast(
+    type: "EnumMember",
+    roles: "Declaration"
+)
+
+given_definition <- (given_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+using_directive <- (using_directive) => uast(
+    type: "Synthetic"
+)
+
+extension_definition <- (extension_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+assignment_expression <- (assignment_expression) => uast(
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+yield <- (yield) => uast(
+    type: "Yield",
+    roles: "Yield"
+)

@@ -1,0 +1,44 @@
+language: make
+description: "Test Makefile include directives (imports)"
+
+tests:
+  - name: "Include directive"
+    code: |
+      include config.mk
+    expected:
+      - type: File
+        children:
+          - type: Import
+            roles: [Import]
+
+  - name: "Optional include directive"
+    code: |
+      -include optional.mk
+    expected:
+      - type: File
+        children:
+          - type: Import
+            roles: [Import]
+
+  - name: "Multiple includes"
+    code: |
+      include config.mk
+      include rules.mk
+    expected:
+      - type: File
+        children:
+          - type: Import
+            roles: [Import]
+          - type: Import
+            roles: [Import]
+
+  - name: "Include with list"
+    code: |
+      include config.mk
+    expected:
+      - type: File
+        children:
+          - type: Import
+            children:
+              - type: List
+                roles: [Literal]

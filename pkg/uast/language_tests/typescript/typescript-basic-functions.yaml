@@ -1,0 +1,39 @@
+suite: basic-functions
+name: typescript-basic-functions
+
+query_cases:
+  - name: find_functions
+    input: |
+      function hello(): string {
+          return "Hello";
+      }
+      function add(a: number, b: number): number {
+          return a + b;
+      }
+    query: 'rfilter(.type == "Function") |> map(.type)'
+    output:
+      results:
+        - "Function"
+        - "Function"
+
+  - name: find_arrow_functions
+    input: |
+      const greet = (name: string): string => {
+          return `Hello, ${name}`;
+      };
+      const add = (a: number, b: number) => a + b;
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"
+
+  - name: find_function_name
+    input: |
+      function myFunc(): void {
+          return;
+      }
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "myFunc"

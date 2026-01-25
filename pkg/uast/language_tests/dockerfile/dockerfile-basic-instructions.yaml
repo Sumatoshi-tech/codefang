@@ -1,0 +1,92 @@
+language: dockerfile
+tests:
+  - name: "Root is File"
+    code: |
+      FROM alpine
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "FROM is Import"
+    code: |
+      FROM alpine:latest
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      FROM ubuntu:22.04
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]
+
+  - name: "Image name is Identifier"
+    code: |
+      FROM golang:1.21
+    query: rfilter(.type == "Identifier" and .token == "golang") |> map(.token)
+    expected:
+      - "golang"
+
+  - name: "ARG is Variable"
+    code: |
+      ARG VERSION=1.0.0
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+
+  - name: "Variable has Declaration role"
+    code: |
+      ARG BUILD_DATE
+    query: rfilter(.type == "Variable") |> map(.roles)
+    expected:
+      - ["Variable", "Declaration"]
+
+  - name: "ENV is Variable"
+    code: |
+      ENV APP_HOME=/app
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+
+  - name: "RUN is Call"
+    code: |
+      RUN apt-get update
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "Call has Call role"
+    code: |
+      RUN npm install
+    query: rfilter(.type == "Call") |> map(.roles)
+    expected:
+      - ["Call"]
+
+  - name: "COPY is Call"
+    code: |
+      COPY . /app
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "CMD is Call"
+    code: |
+      CMD ["./app"]
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "WORKDIR is Call"
+    code: |
+      WORKDIR /app
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "EXPOSE is Call"
+    code: |
+      EXPOSE 8080
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"

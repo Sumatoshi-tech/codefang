@@ -1,0 +1,732 @@
+[language "go", extensions: ".go"]
+
+_expression <- (_expression) => uast(
+    type: "Synthetic"
+)
+
+_simple_statement <- (_simple_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+_simple_type <- (_simple_type) => uast(
+    type: "Synthetic"
+)
+
+_statement <- (_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+_type <- (_type) => uast(
+    type: "Synthetic"
+)
+
+argument_list <- (argument_list) => uast(
+    token: "self",
+    type: "List"
+)
+
+array_type <- (array_type) => uast(
+    type: "Synthetic",
+    children: "_expression", "_type"
+)
+
+assignment_statement <- (assignment_statement) => uast(
+    token: "self",
+    type: "Assignment",
+    roles: "Assignment",
+    children: "expression_list"
+)
+
+binary_expression <- (binary_expression) => uast(
+    type: "BinaryOp",
+    roles: "Operator",
+    children: "_expression"
+)
+
+block <- (block) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+break_statement <- (break_statement) => uast(
+    type: "Break",
+    roles: "Break"
+)
+
+call_expression <- (call_expression) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call",
+    children: "_expression", "argument_list", "type_arguments"
+)
+
+channel_type <- (channel_type) => uast(
+    type: "Synthetic",
+    children: "_type"
+)
+
+communication_case <- (communication_case) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch",
+    children: "receive_statement", "send_statement"
+)
+
+composite_literal <- (composite_literal) => uast(
+    type: "Literal",
+    roles: "Literal",
+    children: "array_type", "generic_type", "implicit_length_array_type", "literal_value", "map_type", "qualified_type", "slice_type", "struct_type", "type_identifier"
+)
+
+const_declaration <- (const_declaration) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Declaration", "Constant",
+    children: "const_spec"
+)
+
+const_spec <- (const_spec) => uast(
+    type: "Synthetic",
+    children: "_type", "expression_list", "identifier"
+)
+
+continue_statement <- (continue_statement) => uast(
+    token: "self",
+    type: "Continue",
+    roles: "Continue"
+)
+
+dec_statement <- (dec_statement) => uast(
+    type: "Synthetic"
+)
+
+default_case <- (default_case) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch"
+)
+
+defer_statement <- (defer_statement) => uast(
+    type: "Synthetic"
+)
+
+dot <- (dot) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+empty_statement <- (empty_statement) => uast(
+    type: "Synthetic"
+)
+
+expression_case <- (expression_case) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch",
+    children: "expression_list"
+)
+
+expression_list <- (expression_list) => uast(
+    type: "List"
+)
+
+expression_statement <- (expression_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+expression_switch_statement <- (expression_switch_statement) => uast(
+    type: "Switch",
+    children: "_expression", "_simple_statement"
+)
+
+fallthrough_statement <- (fallthrough_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+field_declaration <- (field_declaration) => uast(
+    type: "Field",
+    roles: "Member",
+    children: "_type", "field_identifier", "generic_type", "interpreted_string_literal", "qualified_type", "raw_string_literal", "type_identifier"
+)
+
+field_declaration_list <- (field_declaration_list) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "field_declaration"
+)
+
+for_clause <- (for_clause) => uast(
+    type: "Loop",
+    roles: "Loop",
+    children: "_expression", "_simple_statement"
+)
+
+for_statement <- (for_statement) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop",
+    children: "block"
+)
+
+func_literal <- (func_literal) => uast(
+    type: "Lambda",
+    roles: "Lambda",
+    children: "_simple_type", "block", "parameter_list"
+)
+
+function_declaration <- (function_declaration) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration",
+    children: "_simple_type", "block", "identifier", "parameter_list", "type_parameter_list"
+)
+
+function_type <- (function_type) => uast(
+    type: "Function",
+    roles: "Function", "Declaration",
+    children: "_simple_type", "parameter_list"
+)
+
+generic_type <- (generic_type) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "negated_type", "qualified_type", "type_arguments", "type_identifier"
+)
+
+go_statement <- (go_statement) => uast(
+    type: "Synthetic"
+)
+
+goto_statement <- (goto_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+if_statement <- (if_statement) => uast(
+    type: "If",
+    children: "_expression", "_simple_statement", "block", "if_statement"
+)
+
+implicit_length_array_type <- (implicit_length_array_type) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "_type"
+)
+
+import_declaration <- (import_declaration) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+import_spec <- (import_spec) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import",
+    children: "blank_identifier", "dot", "interpreted_string_literal", "package_identifier", "raw_string_literal"
+)
+
+import_spec_list <- (import_spec_list) => uast(
+    type: "Synthetic"
+)
+
+inc_statement <- (inc_statement) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+index_expression <- (index_expression) => uast(
+    type: "Index",
+    roles: "Index",
+    children: "_expression"
+)
+
+interface_type <- (interface_type) => uast(
+    token: "self",
+    type: "Interface",
+    roles: "Interface", "Declaration"
+)
+
+interpreted_string_literal <- (interpreted_string_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+keyed_element <- (keyed_element) => uast(
+    token: "self",
+    type: "KeyValue",
+    roles: "Key",
+    children: "literal_element"
+)
+
+labeled_statement <- (labeled_statement) => uast(
+    type: "Synthetic",
+    children: "label_name"
+)
+
+literal_element <- (literal_element) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+literal_value <- (literal_value) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+map_type <- (map_type) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "_type"
+)
+
+method_declaration <- (method_declaration) => uast(
+    type: "Method",
+    roles: "Function", "Declaration", "Member",
+    children: "_simple_type", "block", "field_identifier", "parameter_list"
+)
+
+method_elem <- (method_elem) => uast(
+    token: "child:identifier",
+    type: "Method",
+    roles: "Function", "Declaration", "Member",
+    children: "_simple_type", "field_identifier", "parameter_list"
+)
+
+negated_type <- (negated_type) => uast(
+    type: "Synthetic"
+)
+
+package_clause <- (package_clause) => uast(
+    token: "self",
+    type: "Package",
+    roles: "Module"
+)
+
+parameter_declaration <- (parameter_declaration) => uast(
+    type: "Parameter",
+    roles: "Parameter",
+    children: "_type", "identifier"
+)
+
+parameter_list <- (parameter_list) => uast(
+    token: "self",
+    type: "Parameter",
+    roles: "Parameter"
+)
+
+parenthesized_expression <- (parenthesized_expression) => uast(
+    type: "Synthetic"
+)
+
+parenthesized_type <- (parenthesized_type) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pointer_type <- (pointer_type) => uast(
+    type: "Synthetic"
+)
+
+qualified_type <- (qualified_type) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "package_identifier", "type_identifier"
+)
+
+range_clause <- (range_clause) => uast(
+    type: "Synthetic",
+    children: "_expression", "expression_list"
+)
+
+raw_string_literal <- (raw_string_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+receive_statement <- (receive_statement) => uast(
+    type: "Synthetic",
+    children: "_expression", "expression_list"
+)
+
+return_statement <- (return_statement) => uast(
+    token: "self",
+    type: "Return",
+    roles: "Return"
+)
+
+select_statement <- (select_statement) => uast(
+    type: "Synthetic"
+)
+
+selector_expression <- (selector_expression) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "_expression", "field_identifier"
+)
+
+send_statement <- (send_statement) => uast(
+    type: "Synthetic",
+    children: "_expression"
+)
+
+short_var_declaration <- (short_var_declaration) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration",
+    children: "expression_list"
+)
+
+slice_expression <- (slice_expression) => uast(
+    type: "Slice",
+    children: "_expression"
+)
+
+slice_type <- (slice_type) => uast(
+    token: "self",
+    type: "Slice",
+    children: "_type"
+)
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+struct_type <- (struct_type) => uast(
+    token: "self",
+    type: "Struct",
+    roles: "Struct", "Declaration"
+)
+
+type_alias <- (type_alias) => uast(
+    type: "Synthetic",
+    children: "_type", "type_identifier"
+)
+
+type_arguments <- (type_arguments) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+type_assertion_expression <- (type_assertion_expression) => uast(
+    type: "Synthetic",
+    children: "_expression", "_type"
+)
+
+type_case <- (type_case) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch",
+    children: "_type"
+)
+
+type_constraint <- (type_constraint) => uast(
+    type: "Synthetic"
+)
+
+type_conversion_expression <- (type_conversion_expression) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "_expression", "_type"
+)
+
+type_declaration <- (type_declaration) => uast(
+    type: "Synthetic"
+)
+
+type_elem <- (type_elem) => uast(
+    token: "child:identifier",
+    type: "Synthetic"
+)
+
+type_instantiation_expression <- (type_instantiation_expression) => uast(
+    type: "Synthetic",
+    children: "_type"
+)
+
+type_parameter_declaration <- (type_parameter_declaration) => uast(
+    token: "self",
+    type: "Parameter",
+    roles: "Parameter",
+    children: "identifier", "type_constraint"
+)
+
+type_parameter_list <- (type_parameter_list) => uast(
+    type: "Parameter",
+    roles: "Parameter"
+)
+
+type_spec <- (type_spec) => uast(
+    token: "self",
+    type: "List",
+    children: "_type", "type_identifier", "type_parameter_list"
+)
+
+type_switch_statement <- (type_switch_statement) => uast(
+    type: "Switch",
+    children: "_expression", "_simple_statement", "expression_list"
+)
+
+unary_expression <- (unary_expression) => uast(
+    token: "self",
+    type: "UnaryOp",
+    roles: "Operator",
+    children: "_expression"
+)
+
+var_declaration <- (var_declaration) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+var_spec <- (var_spec) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration",
+    children: "_type", "expression_list", "identifier"
+)
+
+var_spec_list <- (var_spec_list) => uast(
+    type: "List"
+)
+
+variadic_argument <- (variadic_argument) => uast(
+    token: "self",
+    type: "List"
+)
+
+variadic_parameter_declaration <- (variadic_parameter_declaration) => uast(
+    type: "Parameter",
+    roles: "Parameter",
+    children: "_type", "identifier"
+)
+
+blank_identifier <- (blank_identifier) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+break <- (break) => uast(
+    type: "Break",
+    roles: "Break"
+)
+
+case <- (case) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch"
+)
+
+chan <- (chan) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+const <- (const) => uast(
+    type: "Synthetic"
+)
+
+continue <- (continue) => uast(
+    token: "self",
+    type: "Continue",
+    roles: "Continue"
+)
+
+default <- (default) => uast(
+    type: "Synthetic"
+)
+
+defer <- (defer) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+fallthrough <- (fallthrough) => uast(
+    type: "Synthetic"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+field_identifier <- (field_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+float_literal <- (float_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+for <- (for) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+func <- (func) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+go <- (go) => uast(
+    type: "Synthetic"
+)
+
+goto <- (goto) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+if <- (if) => uast(
+    token: "self",
+    type: "If"
+)
+
+imaginary_literal <- (imaginary_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+import <- (import) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+int_literal <- (int_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+interface <- (interface) => uast(
+    token: "self",
+    type: "Interface",
+    roles: "Interface", "Declaration"
+)
+
+interpreted_string_literal_content <- (interpreted_string_literal_content) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+iota <- (iota) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+label_name <- (label_name) => uast(
+    type: "Synthetic"
+)
+
+map <- (map) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+nil <- (nil) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+package <- (package) => uast(
+    token: "self",
+    type: "Package",
+    roles: "Module"
+)
+
+package_identifier <- (package_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+range <- (range) => uast(
+    token: "self",
+    roles: "Reference",
+    type: "Identifier"
+)
+
+raw_string_literal_content <- (raw_string_literal_content) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+return <- (return) => uast(
+    token: "self",
+    type: "Return",
+    roles: "Return"
+)
+
+rune_literal <- (rune_literal) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+select <- (select) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+struct <- (struct) => uast(
+    type: "Struct",
+    roles: "Struct", "Declaration"
+)
+
+switch <- (switch) => uast(
+    token: "self",
+    type: "Switch"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+type <- (type) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+type_identifier <- (type_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+var <- (var) => uast(
+    token: "self",
+    roles: "Reference",
+    type: "Identifier"
+)

@@ -1,0 +1,60 @@
+language: markdown
+tests:
+  - name: "Root is File"
+    code: |
+      # Heading
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Heading is Identifier"
+    code: |
+      # Main Title
+    query: rfilter(.type == "Identifier") |> map(.type)
+    expected:
+      - "Identifier"
+
+  - name: "Heading has Name role"
+    code: |
+      # Test Heading
+    query: rfilter(.type == "Identifier") |> map(.roles)
+    expected:
+      - ["Name"]
+
+  - name: "Paragraph is Literal"
+    code: |
+      This is a paragraph.
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+      - "Literal"
+
+  - name: "List is List type"
+    code: |
+      - Item 1
+      - Item 2
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"
+
+  - name: "List has Literal role"
+    code: |
+      - First
+      - Second
+    query: rfilter(.type == "List") |> map(.roles)
+    expected:
+      - ["Literal"]
+
+  - name: "Block quote is Block"
+    code: |
+      > This is a quote
+    query: rfilter(.type == "Block") |> map(.type)
+    expected:
+      - "Block"
+
+  - name: "Block quote has Body role"
+    code: |
+      > Quote text
+    query: rfilter(.type == "Block") |> map(.roles)
+    expected:
+      - ["Body"]

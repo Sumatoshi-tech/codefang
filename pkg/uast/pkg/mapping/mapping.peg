@@ -1,0 +1,67 @@
+package mapping
+
+type MappingDSL Peg {
+    
+}
+
+Start <- Spacing LanguageDeclaration? Spacing RuleList Spacing !.
+
+Spacing         <- Space*
+Space           <- [ \t\r\n]+
+
+// Language declaration at the top of the file
+LanguageDeclaration <- '[' Spacing 'language' Spacing '"' LanguageName '"' Spacing (ExtensionsSection FilesSection? / FilesSection ExtensionsSection? / ExtensionsSection / FilesSection) Spacing ']'
+ExtensionsSection <- Spacing ',' Spacing 'extensions:' Spacing ExtensionList
+FilesSection     <- Spacing ',' Spacing 'files:' Spacing FileList
+LanguageName     <- [a-zA-Z_][a-zA-Z0-9_]*
+ExtensionList    <- Extension (Spacing ',' Spacing Extension)*
+Extension        <- '"' [a-zA-Z0-9_.]+ '"'
+FileList         <- File (Spacing ',' Spacing File)*
+File             <- '"' [a-zA-Z0-9_.]+ '"'
+
+// Comment not used for now
+Comment         <- '//' (![\r\n] .)*
+
+RuleList        <- Rule (Spacing Rule)*
+
+Rule            <- Identifier Spacing '<-' Spacing Pattern Spacing '=>' Spacing UASTSpec (Spacing ConditionList)? (Spacing InheritanceComment)? (Spacing ConditionList)?
+
+Identifier      <- [a-zA-Z_][a-zA-Z0-9_]*
+
+# Enhanced Pattern to support multiple captures
+Pattern         <- '(' Spacing NodeType PatternElements Spacing ')'
+NodeType        <- Identifier
+PatternElements <- (Spacing PatternElement)*
+
+PatternElement  <- Field / CapturedElement / Identifier
+
+Field           <- FieldName ':' Spacing FieldValue
+FieldName       <- Identifier
+FieldValue      <- '(' Identifier ')' Spacing Capture?
+
+CapturedElement <- '(' Identifier ')' Spacing Capture
+
+Capture         <- '@' Identifier
+
+UASTSpec        <- 'uast(' Spacing UASTFields Spacing ')'
+UASTFields      <- UASTField (Spacing ',' Spacing UASTField)*
+
+UASTField       <- UASTFieldName ':' Spacing UASTFieldValue
+UASTFieldValue  <- MultipleStrings / String / MultipleCaptures / Capture / Identifier
+
+MultipleCaptures <- Capture (Spacing ',' Spacing Capture)*
+MultipleStrings <- String (',' Spacing String)*
+
+String          <- '"' (!'"' .)* '"'
+
+Condition       <- Identifier Spacing Operator Spacing String
+ConditionList   <- 'when' Spacing Condition (Spacing 'and' Spacing Condition)*
+
+Operator        <- '==' / '!='
+
+InheritanceComment <- '#' Spacing 'Extends' Spacing Identifier ConditionList?
+
+// Not used for now
+ErrorRecovery   <- (![\r\n] .)*
+
+UASTFieldName   <- Identifier

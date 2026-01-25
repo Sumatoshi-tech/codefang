@@ -1,0 +1,133 @@
+suite: basic-functions
+name: go-basic-functions
+
+parse_cases:
+  - name: simple_function
+    input: |
+      func Hello() string {
+          return "Hello, World!"
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func Hello() string {
+                return "Hello, World!"
+            }
+          props:
+            name: "Hello"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "Hello"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Identifier"
+              token: "string"
+              roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    return "Hello, World!"
+                }
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: 'return "Hello, World!"'
+                  roles: ["Return"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "Literal"
+                          roles: ["Literal"]
+                          children:
+                            - type: "Literal"
+                              roles: ["Literal"]
+
+  - name: function_with_params
+    input: |
+      func Add(a int, b int) int {
+          return a + b
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func Add(a int, b int) int {
+                return a + b
+            }
+          props:
+            name: "Add"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "Add"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "(a int, b int)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  props:
+                    name: "a"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+                - type: "Parameter"
+                  props:
+                    name: "b"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+            - type: "Identifier"
+              token: "int"
+              roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    return a + b
+                }
+              roles: ["Body"]
+              children:
+                - type: "Return"
+                  token: "return a + b"
+                  roles: ["Return"]
+                  children:
+                    - type: "List"
+                      roles: []
+                      children:
+                        - type: "BinaryOp"
+                          roles: ["Operator"]
+                          children:
+                            - type: "Identifier"
+                              token: "a"
+                              roles: ["Name"]
+                            - type: "Identifier"
+                              token: "b"
+                              roles: ["Name"]
+
+query_cases:
+  - name: find_function_names
+    input: |
+      func MyFunction() {}
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "MyFunction"

@@ -1,0 +1,175 @@
+suite: basic-functions
+name: java-basic-functions
+
+parse_cases:
+  - name: simple_function
+    input: |
+      public class Test {
+          public String hello() {
+              return "Hello, World!";
+          }
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Class"
+          token: |-
+            public class Test {
+                public String hello() {
+                    return "Hello, World!";
+                }
+            }
+          props:
+            name: "Test"
+          roles: ["Class", "Declaration"]
+          children:
+            - type: "Synthetic"
+              token: "public"
+              roles: []
+            - type: "Identifier"
+              token: "Test"
+              roles: ["Name"]
+            - type: "Class"
+              roles: ["Class", "Declaration"]
+              children:
+                - type: "Method"
+                  props:
+                    name: "hello"
+                  roles: ["Function", "Declaration", "Member"]
+                  children:
+                    - type: "Synthetic"
+                      token: "public"
+                      roles: []
+                    - type: "Identifier"
+                      token: "String"
+                      roles: ["Name", "Type"]
+                    - type: "Identifier"
+                      token: "hello"
+                      roles: ["Name"]
+                    - type: "Parameter"
+                      roles: ["Parameter"]
+                    - type: "Block"
+                      roles: ["Body"]
+                      children:
+                        - type: "Return"
+                          roles: ["Return"]
+                          children:
+                            - type: "Literal"
+                              roles: ["Literal"]
+                              children:
+                                - type: "Synthetic"
+                                  token: "Hello, World!"
+                                  roles: []
+
+  - name: function_with_params
+    input: |
+      public class Calculator {
+          public int add(int a, int b) {
+              return a + b;
+          }
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Class"
+          token: |-
+            public class Calculator {
+                public int add(int a, int b) {
+                    return a + b;
+                }
+            }
+          props:
+            name: "Calculator"
+          roles: ["Class", "Declaration"]
+          children:
+            - type: "Synthetic"
+              token: "public"
+              roles: []
+            - type: "Identifier"
+              token: "Calculator"
+              roles: ["Name"]
+            - type: "Class"
+              roles: ["Class", "Declaration"]
+              children:
+                - type: "Method"
+                  props:
+                    name: "add"
+                  roles: ["Function", "Declaration", "Member"]
+                  children:
+                    - type: "Synthetic"
+                      token: "public"
+                      roles: []
+                    - type: "Synthetic"
+                      token: "int"
+                      roles: []
+                    - type: "Identifier"
+                      token: "add"
+                      roles: ["Name"]
+                    - type: "Parameter"
+                      roles: ["Parameter"]
+                      children:
+                        - type: "Parameter"
+                          token: "int a"
+                          props:
+                            name: "a"
+                          roles: ["Parameter"]
+                          children:
+                            - type: "Synthetic"
+                              token: "int"
+                              roles: []
+                            - type: "Identifier"
+                              token: "a"
+                              roles: ["Name"]
+                        - type: "Parameter"
+                          token: "int b"
+                          props:
+                            name: "b"
+                          roles: ["Parameter"]
+                          children:
+                            - type: "Synthetic"
+                              token: "int"
+                              roles: []
+                            - type: "Identifier"
+                              token: "b"
+                              roles: ["Name"]
+                    - type: "Block"
+                      roles: ["Body"]
+                      children:
+                        - type: "Return"
+                          roles: ["Return"]
+                          children:
+                            - type: "BinaryOp"
+                              token: "a + b"
+                              roles: ["Operator"]
+                              children:
+                                - type: "Identifier"
+                                  token: "a"
+                                  roles: ["Name"]
+                                - type: "Identifier"
+                                  token: "b"
+                                  roles: ["Name"]
+
+query_cases:
+  - name: find_methods
+    input: |
+      public class Test {
+          public void method1() {}
+          public void method2() {}
+      }
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "method1"
+        - "method2"
+
+  - name: find_method_names
+    input: |
+      public class Test {
+          public void myMethod() {}
+      }
+    query: 'rfilter(.type == "Method") |> map(.props.name)'
+    output:
+      results:
+        - "myMethod"

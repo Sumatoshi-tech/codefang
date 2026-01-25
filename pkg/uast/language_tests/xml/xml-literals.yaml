@@ -1,0 +1,22 @@
+language: xml
+tests:
+  - name: "Text content is Literal"
+    code: |
+      <msg>Hello World</msg>
+    query: rfilter(.type == "Literal") |> rfilter(.token == "Hello World") |> map(.token)
+    expected:
+      - "Hello World"
+
+  - name: "Attribute value is Literal"
+    code: |
+      <item value="test"></item>
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Literals have Literal role"
+    code: |
+      <data>content</data>
+    query: rfilter(.type == "Literal") |> rfilter(.token == "content") |> map(.roles)
+    expected:
+      - ["Literal"]

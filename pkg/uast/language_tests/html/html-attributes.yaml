@@ -1,0 +1,30 @@
+language: html
+tests:
+  - name: "Attribute is Property"
+    code: |
+      <div id="main"></div>
+    query: rfilter(.type == "Property") |> map(.type)
+    expected:
+      - "Property"
+
+  - name: "Property has Member role"
+    code: |
+      <input type="text"/>
+    query: rfilter(.type == "Property") |> map(.roles)
+    expected:
+      - ["Member"]
+
+  - name: "Attribute name is Identifier"
+    code: |
+      <div class="test"></div>
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "class") |> map(.token)
+    expected:
+      - "class"
+
+  - name: "Multiple attributes"
+    code: |
+      <a href="link" target="_blank"></a>
+    query: rfilter(.type == "Property") |> map(.type)
+    expected:
+      - "Property"
+      - "Property"

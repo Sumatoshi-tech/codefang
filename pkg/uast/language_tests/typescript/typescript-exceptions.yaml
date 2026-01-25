@@ -1,0 +1,17 @@
+suite: exceptions
+name: typescript-exceptions
+
+query_cases:
+  - name: find_try_catch_finally
+    input: |
+      try {
+          throw new Error("test");
+      } catch (e) {
+          console.log(e);
+      } finally {
+          console.log("done");
+      }
+    query: 'rfilter(.type == "Try") |> map(.type)'
+    output:
+      results:
+        - "Try"

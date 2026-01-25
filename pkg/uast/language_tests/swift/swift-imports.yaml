@@ -1,0 +1,36 @@
+suite: imports
+name: swift-imports
+
+query_cases:
+  - name: find_imports
+    input: |
+      import Foundation
+      import UIKit
+      import SwiftUI
+
+      class Test {}
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: import_has_import_role
+    input: |
+      import Foundation
+      class Test {}
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+
+  - name: import_contains_identifier
+    input: |
+      import Foundation
+      class Test {}
+    query: 'rfilter(.type == "Import") |> rfilter(.type == "Identifier") |> map(.type)'
+    output:
+      results:
+        - "Identifier"
+        - "Identifier"

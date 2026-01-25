@@ -1,0 +1,48 @@
+suite: control-flow
+name: csharp-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      class Test {
+          void Method() {
+              if (true) { }
+              if (false) { }
+          }
+      }
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"
+
+  - name: find_loops
+    input: |
+      class Test {
+          void Method() {
+              for (int i = 0; i < 10; i++) { }
+              while (true) { }
+              do { } while (true);
+          }
+      }
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"
+        - "Loop"
+
+  - name: find_switch
+    input: |
+      class Test {
+          void Method(int x) {
+              switch (x) {
+                  case 1: break;
+                  default: break;
+              }
+          }
+      }
+    query: 'rfilter(.type == "Switch") |> map(.type)'
+    output:
+      results:
+        - "Switch"

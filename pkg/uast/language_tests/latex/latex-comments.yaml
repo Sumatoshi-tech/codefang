@@ -1,0 +1,14 @@
+suite: latex
+name: latex-comments
+
+parse_cases:
+  - name: line comment
+    input: |
+      % This is a comment
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Comment
+          token: "% This is a comment"
+          roles: [Comment]

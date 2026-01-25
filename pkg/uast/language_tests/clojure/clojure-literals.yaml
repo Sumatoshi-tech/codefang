@@ -1,0 +1,24 @@
+suite: literals
+name: clojure-literals
+
+query_cases:
+  - name: find_number_tokens
+    input: |
+      (+ 1 2 3)
+    query: 'rfilter(.type == "Literal") |> map(.token)'
+    output:
+      results:
+        - "1"
+        - "2"
+        - "3"
+
+  - name: find_literal_types
+    input: |
+      (println 42 "hello" true nil)
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+        - "Literal"
+        - "Literal"
+        - "Literal"

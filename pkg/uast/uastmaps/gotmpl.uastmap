@@ -1,0 +1,224 @@
+[language "gotmpl", extensions: ".gotmpl", ".go.tmpl"]
+
+template <- (template) => uast(
+    type: "File"
+)
+
+template_action <- (template_action) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+block_action <- (block_action) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+define_action <- (define_action) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+if_action <- (if_action) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+range_action <- (range_action) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+with_action <- (with_action) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+function_call <- (function_call) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+method_call <- (method_call) => uast(
+    type: "Call",
+    roles: "Call", "Member"
+)
+
+parenthesized_pipeline <- (parenthesized_pipeline) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+chained_pipeline <- (chained_pipeline) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+argument_list <- (argument_list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+field <- (field) => uast(
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+field_identifier <- (field_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+variable <- (variable) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+variable_definition <- (variable_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+range_variable_definition <- (range_variable_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+assignment <- (assignment) => uast(
+    token: "self",
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+selector_expression <- (selector_expression) => uast(
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+dot <- (dot) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+text <- (text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+interpreted_string_literal <- (interpreted_string_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+raw_string_literal <- (raw_string_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+int_literal <- (int_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float_literal <- (float_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+imaginary_literal <- (imaginary_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+rune_literal <- (rune_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+nil <- (nil) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block <- (block) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+define <- (define) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+if <- (if) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    type: "Synthetic"
+)
+
+end <- (end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+range <- (range) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+with <- (with) => uast(
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+yaml_no_injection_text <- (yaml_no_injection_text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

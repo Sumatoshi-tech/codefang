@@ -1,0 +1,37 @@
+suite: imports
+name: typescript-imports
+
+query_cases:
+  - name: find_imports
+    input: |
+      import { Component } from '@angular/core';
+      import * as fs from 'fs';
+      import path from 'path';
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+        - "Import"
+
+  - name: import_has_module_name
+    input: |
+      import { readFile } from 'fs';
+    query: 'rfilter(.type == "Literal") |> map(.token)'
+    output:
+      results:
+        - "'fs'"
+
+  - name: named_import_identifiers
+    input: |
+      import { Component, OnInit } from '@angular/core';
+    query: 'rfilter(.type == "Identifier") |> map(.token)'
+    output:
+      results:
+        - "Component"
+        - "OnInit"

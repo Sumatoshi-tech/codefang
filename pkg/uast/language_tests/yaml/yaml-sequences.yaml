@@ -1,0 +1,26 @@
+language: yaml
+tests:
+  - name: "Block sequence is List"
+    code: |
+      items:
+        - apple
+        - banana
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"
+
+  - name: "List has Literal role"
+    code: |
+      items:
+        - one
+        - two
+    query: rfilter(.type == "List") |> map(.roles)
+    expected:
+      - ["Literal"]
+
+  - name: "Flow sequence is List"
+    code: |
+      colors: [red, green, blue]
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"

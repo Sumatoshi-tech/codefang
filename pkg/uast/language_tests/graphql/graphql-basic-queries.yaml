@@ -1,0 +1,15 @@
+suite: graphql
+name: basic-queries
+
+query_cases:
+  - name: find_functions
+    input: |
+      query GetUser {
+        user {
+          name
+        }
+      }
+    query: rfilter(.type == "Function") |> map(.type)
+    output:
+      results:
+        - Function

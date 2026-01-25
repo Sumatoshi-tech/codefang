@@ -1,0 +1,568 @@
+[language "latex", extensions: ".tex", ".ltx"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+class_include <- (class_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+package_include <- (package_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+latex_include <- (latex_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+import_include <- (import_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+biblatex_include <- (biblatex_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+bibtex_include <- (bibtex_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+bibstyle_include <- (bibstyle_include) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+tikz_library_import <- (tikz_library_import) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+graphics_include <- (graphics_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+svg_include <- (svg_include) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+inkscape_include <- (inkscape_include) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+verbatim_include <- (verbatim_include) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+path <- (path) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+curly_group_path <- (curly_group_path) => uast(
+    type: "Synthetic"
+)
+
+curly_group_path_list <- (curly_group_path_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+generic_environment <- (generic_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+begin <- (begin) => uast(
+    type: "Synthetic"
+)
+
+end <- (end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+curly_group_text <- (curly_group_text) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+section <- (section) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+subsection <- (subsection) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+subsubsection <- (subsubsection) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+chapter <- (chapter) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+part <- (part) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+paragraph <- (paragraph) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+subparagraph <- (subparagraph) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+text <- (text) => uast(
+    type: "Synthetic"
+)
+
+word <- (word) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+line_comment <- (line_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block_comment <- (block_comment) => uast(
+    type: "Comment",
+    roles: "Comment"
+)
+
+comment_environment <- (comment_environment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+new_command_definition <- (new_command_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+environment_definition <- (environment_definition) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+old_command_definition <- (old_command_definition) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+let_command_definition <- (let_command_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+command_name <- (command_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+generic_command <- (generic_command) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+curly_group <- (curly_group) => uast(
+    type: "Synthetic"
+)
+
+brack_group <- (brack_group) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+brack_group_argc <- (brack_group_argc) => uast(
+    type: "Synthetic"
+)
+
+brack_group_text <- (brack_group_text) => uast(
+    type: "Synthetic"
+)
+
+brack_group_key_value <- (brack_group_key_value) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal"
+)
+
+curly_group_key_value <- (curly_group_key_value) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal"
+)
+
+key_value_pair <- (key_value_pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+value <- (value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+label_definition <- (label_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+label_reference <- (label_reference) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+label <- (label) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+curly_group_label <- (curly_group_label) => uast(
+    type: "Synthetic"
+)
+
+curly_group_label_list <- (curly_group_label_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+citation <- (citation) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+curly_group_text_list <- (curly_group_text_list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+curly_group_author_list <- (curly_group_author_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+curly_group_uri <- (curly_group_uri) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+uri <- (uri) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+hyperlink <- (hyperlink) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+author <- (author) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+author_declaration <- (author_declaration) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+title_declaration <- (title_declaration) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+caption <- (caption) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+math_environment <- (math_environment) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+inline_formula <- (inline_formula) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+displayed_equation <- (displayed_equation) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+subscript <- (subscript) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+superscript <- (superscript) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+operator <- (operator) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+
+math_delimiter <- (math_delimiter) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+enum_item <- (enum_item) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+listing_environment <- (listing_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+minted_environment <- (minted_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+verbatim_environment <- (verbatim_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+source_code <- (source_code) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+asy_environment <- (asy_environment) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+asydef_environment <- (asydef_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+luacode_environment <- (luacode_environment) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+pycode_environment <- (pycode_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+sageblock_environment <- (sageblock_environment) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+sagesilent_environment <- (sagesilent_environment) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+color_definition <- (color_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+color_set_definition <- (color_set_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+color_reference <- (color_reference) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+theorem_definition <- (theorem_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+glossary_entry_definition <- (glossary_entry_definition) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+glossary_entry_reference <- (glossary_entry_reference) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+acronym_definition <- (acronym_definition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+acronym_reference <- (acronym_reference) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+todo <- (todo) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+todo_command_name <- (todo_command_name) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+changes_replaced <- (changes_replaced) => uast(
+    type: "Synthetic"
+)
+
+glob_pattern <- (glob_pattern) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+curly_group_glob_pattern <- (curly_group_glob_pattern) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+curly_group_impl <- (curly_group_impl) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+curly_group_spec <- (curly_group_spec) => uast(
+    type: "Synthetic"
+)
+
+curly_group_command_name <- (curly_group_command_name) => uast(
+    type: "Synthetic"
+)
+
+paired_delimiter_definition <- (paired_delimiter_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+label_number <- (label_number) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+label_reference_range <- (label_reference_range) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+text_mode <- (text_mode) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+argc <- (argc) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+letter <- (letter) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+placeholder <- (placeholder) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+delimiter <- (delimiter) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+_ <- (_) => uast(
+    token: "self",
+    type: "Synthetic"
+)

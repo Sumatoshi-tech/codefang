@@ -1,0 +1,373 @@
+[language "dockerfile", extensions: ".dockerfile", files: "Dockerfile"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+from_instruction <- (from_instruction) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+image_spec <- (image_spec) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+image_name <- (image_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+image_tag <- (image_tag) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+image_digest <- (image_digest) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+image_alias <- (image_alias) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+arg_instruction <- (arg_instruction) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+env_instruction <- (env_instruction) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+env_pair <- (env_pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+run_instruction <- (run_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+cmd_instruction <- (cmd_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+entrypoint_instruction <- (entrypoint_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+copy_instruction <- (copy_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+add_instruction <- (add_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+workdir_instruction <- (workdir_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+expose_instruction <- (expose_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+expose_port <- (expose_port) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+volume_instruction <- (volume_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+user_instruction <- (user_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+label_instruction <- (label_instruction) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+label_pair <- (label_pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+maintainer_instruction <- (maintainer_instruction) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+shell_instruction <- (shell_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+healthcheck_instruction <- (healthcheck_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+stopsignal_instruction <- (stopsignal_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+onbuild_instruction <- (onbuild_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+cross_build_instruction <- (cross_build_instruction) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+shell_command <- (shell_command) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+shell_fragment <- (shell_fragment) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+json_string_array <- (json_string_array) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+json_string <- (json_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+double_quoted_string <- (double_quoted_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+single_quoted_string <- (single_quoted_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+unquoted_string <- (unquoted_string) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+path <- (path) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+variable <- (variable) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Variable"
+)
+
+expansion <- (expansion) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+param <- (param) => uast(
+    token: "self",
+    type: "Property",
+    roles: "Member"
+)
+
+mount_param <- (mount_param) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+mount_param_param <- (mount_param_param) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+heredoc_block <- (heredoc_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+heredoc_line <- (heredoc_line) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+heredoc_marker <- (heredoc_marker) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+heredoc_end <- (heredoc_end) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+line_continuation <- (line_continuation) => uast(
+    type: "Synthetic"
+)
+
+mount <- (mount) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+FROM <- (FROM) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+AS <- (AS) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ARG <- (ARG) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ENV <- (ENV) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+RUN <- (RUN) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+CMD <- (CMD) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ENTRYPOINT <- (ENTRYPOINT) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+COPY <- (COPY) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ADD <- (ADD) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+WORKDIR <- (WORKDIR) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+EXPOSE <- (EXPOSE) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+VOLUME <- (VOLUME) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+USER <- (USER) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+LABEL <- (LABEL) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+MAINTAINER <- (MAINTAINER) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+SHELL <- (SHELL) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+HEALTHCHECK <- (HEALTHCHECK) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+STOPSIGNAL <- (STOPSIGNAL) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+ONBUILD <- (ONBUILD) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+CROSS_BUILD <- (CROSS_BUILD) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+NONE <- (NONE) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+_heredoc_nl <- (_heredoc_nl) => uast(
+    type: "Synthetic"
+)

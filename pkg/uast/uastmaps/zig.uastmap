@@ -1,0 +1,312 @@
+[language "zig", extensions: ".zig"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+builtin_identifier <- (builtin_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+builtin_type <- (builtin_type) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+builtin_function <- (builtin_function) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_content <- (string_content) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+char_literal <- (char_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null <- (null) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+undefined <- (undefined) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+struct_declaration <- (struct_declaration) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+enum_declaration <- (enum_declaration) => uast(
+    type: "Enum",
+    roles: "Declaration"
+)
+
+union_declaration <- (union_declaration) => uast(
+    type: "Struct",
+    roles: "Declaration"
+)
+
+container_field <- (container_field) => uast(
+    type: "Property",
+    roles: "Member", "Declaration"
+)
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+test_declaration <- (test_declaration) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+parameters <- (parameters) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+parameter <- (parameter) => uast(
+    type: "Parameter",
+    roles: "Declaration"
+)
+
+variable_declaration <- (variable_declaration) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+if_statement <- (if_statement) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+else_clause <- (else_clause) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+switch_expression <- (switch_expression) => uast(
+    type: "Switch",
+    roles: "Switch"
+)
+
+switch_case <- (switch_case) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+while_statement <- (while_statement) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+for_statement <- (for_statement) => uast(
+    type: "Loop",
+    roles: "Loop"
+)
+
+call_expression <- (call_expression) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+field_expression <- (field_expression) => uast(
+    type: "MemberAccess",
+    roles: "Member"
+)
+
+binary_expression <- (binary_expression) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_expression <- (unary_expression) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+assignment_expression <- (assignment_expression) => uast(
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+block_expression <- (block_expression) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+return_expression <- (return_expression) => uast(
+    type: "Return",
+    roles: "Return"
+)
+
+break_expression <- (break_expression) => uast(
+    type: "Break",
+    roles: "Break"
+)
+
+continue_expression <- (continue_expression) => uast(
+    type: "Continue",
+    roles: "Continue"
+)
+
+try_expression <- (try_expression) => uast(
+    type: "Try",
+    roles: "Try"
+)
+
+catch_expression <- (catch_expression) => uast(
+    type: "Catch",
+    roles: "Catch"
+)
+
+defer_statement <- (defer_statement) => uast(
+    type: "Synthetic"
+)
+
+errdefer_statement <- (errdefer_statement) => uast(
+    type: "Synthetic"
+)
+
+arguments <- (arguments) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+struct_initializer <- (struct_initializer) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+anonymous_struct_initializer <- (anonymous_struct_initializer) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+initializer_list <- (initializer_list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+array_type <- (array_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+slice_type <- (slice_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+pointer_type <- (pointer_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+error_union_type <- (error_union_type) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+payload <- (payload) => uast(
+    type: "Variable",
+    roles: "Variable"
+)
+
+labeled_statement <- (labeled_statement) => uast(
+    type: "Synthetic"
+)
+
+expression_statement <- (expression_statement) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+doc_comment <- (doc_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+comptime_block <- (comptime_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+asm_expression <- (asm_expression) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+suspend_expression <- (suspend_expression) => uast(
+    type: "Synthetic"
+)
+
+resume_expression <- (resume_expression) => uast(
+    type: "Synthetic"
+)

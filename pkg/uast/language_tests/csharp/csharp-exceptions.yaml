@@ -1,0 +1,24 @@
+suite: exceptions
+name: csharp-exceptions
+
+query_cases:
+  - name: find_try_catch_finally
+    input: |
+      class Test {
+          void Method() {
+              try {
+                  throw new Exception();
+              } catch (Exception e) {
+                  Console.WriteLine(e);
+              } finally {
+                  Cleanup();
+              }
+          }
+      }
+    query: 'rfilter(.type == "Try" || .type == "Catch" || .type == "Finally" || .type == "Throw") |> map(.type)'
+    output:
+      results:
+        - "Try"
+        - "Throw"
+        - "Catch"
+        - "Finally"

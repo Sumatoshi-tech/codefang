@@ -1,0 +1,91 @@
+language: bash
+tests:
+  - name: "If statement"
+    code: |
+      if [ "$x" -gt 10 ]; then
+          echo "big"
+      fi
+    query: rfilter(.type == "If") |> map(.type)
+    expected:
+      - "If"
+
+  - name: "If statement has Condition role"
+    code: |
+      if [ "$x" -eq 0 ]; then
+          echo "zero"
+      fi
+    query: rfilter(.type == "If") |> map(.roles)
+    expected:
+      - ["Condition"]
+
+  - name: "If-elif-else structure"
+    code: |
+      if [ "$x" -gt 10 ]; then
+          echo "big"
+      elif [ "$x" -gt 5 ]; then
+          echo "medium"
+      else
+          echo "small"
+      fi
+    query: rfilter(.type == "If") |> map(.type)
+    expected:
+      - "If"
+      - "If"
+
+  - name: "For loop"
+    code: |
+      for i in 1 2 3; do
+          echo $i
+      done
+    query: rfilter(.type == "Loop") |> map(.type)
+    expected:
+      - "Loop"
+
+  - name: "For loop has Loop role"
+    code: |
+      for item in a b c; do
+          echo $item
+      done
+    query: rfilter(.type == "Loop") |> map(.roles)
+    expected:
+      - ["Loop"]
+
+  - name: "While loop"
+    code: |
+      while true; do
+          break
+      done
+    query: rfilter(.type == "Loop") |> map(.type)
+    expected:
+      - "Loop"
+
+  - name: "Until loop"
+    code: |
+      until false; do
+          break
+      done
+    query: rfilter(.type == "Loop") |> map(.type)
+    expected:
+      - "Loop"
+
+  - name: "Case statement is Switch"
+    code: |
+      case "$x" in
+          "a") echo "A" ;;
+          "b") echo "B" ;;
+          *) echo "default" ;;
+      esac
+    query: rfilter(.type == "Switch") |> map(.type)
+    expected:
+      - "Switch"
+
+  - name: "Case items"
+    code: |
+      case "$x" in
+          "yes") echo "yes" ;;
+          "no") echo "no" ;;
+      esac
+    query: rfilter(.type == "Case") |> map(.type)
+    expected:
+      - "Case"
+      - "Case"

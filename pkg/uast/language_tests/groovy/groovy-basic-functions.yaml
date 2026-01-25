@@ -1,0 +1,11 @@
+suite: groovy
+name: basic-functions
+
+query_cases:
+  - name: find_imports
+    input: |
+      import groovy.json.JsonSlurper
+    query: rfilter(.type == "Import") |> map(.type)
+    output:
+      results:
+        - Import

@@ -1,0 +1,38 @@
+language: toml
+tests:
+  - name: "Array is List"
+    code: |
+      ports = [8001, 8002, 8003]
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"
+
+  - name: "List has Literal role"
+    code: |
+      ports = [8001, 8002]
+    query: rfilter(.type == "List") |> map(.roles)
+    expected:
+      - ["Literal"]
+
+  - name: "Array elements are Literals"
+    code: |
+      numbers = [1, 2, 3]
+    query: rfilter(.type == "Literal" and (.token == "1" or .token == "2" or .token == "3")) |> map(.token)
+    expected:
+      - "1"
+      - "2"
+      - "3"
+
+  - name: "String array"
+    code: |
+      colors = ["red", "green", "blue"]
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"
+
+  - name: "Mixed array parsed"
+    code: |
+      mixed = [1, "two", 3.0]
+    query: rfilter(.type == "List") |> map(.type)
+    expected:
+      - "List"

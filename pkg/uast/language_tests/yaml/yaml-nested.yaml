@@ -1,0 +1,30 @@
+language: yaml
+tests:
+  - name: "Nested mapping is Dict"
+    code: |
+      person:
+        name: John
+        age: 30
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+      - "Dict"
+
+  - name: "Flow mapping is Dict"
+    code: |
+      person: {name: Jane, age: 25}
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+      - "Dict"
+
+  - name: "Multiple KeyValue pairs"
+    code: |
+      first: one
+      second: two
+      third: three
+    query: rfilter(.type == "KeyValue") |> map(.type)
+    expected:
+      - "KeyValue"
+      - "KeyValue"
+      - "KeyValue"

@@ -1,0 +1,42 @@
+[language "proxima", extensions: ".proxima"]
+
+arg_name <- (arg_name) => uast(
+    type: "Synthetic"
+)
+
+argument <- (argument) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+document <- (document) => uast(
+    type: "Synthetic"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+tag <- (tag) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+escaped_char <- (escaped_char) => uast(
+    type: "Synthetic"
+)
+
+tag_at <- (tag_at) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+text <- (text) => uast(
+    type: "Synthetic"
+)

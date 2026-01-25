@@ -1,0 +1,35 @@
+suite: lambdas
+name: lua-lambdas
+
+query_cases:
+  - name: find_anonymous_functions
+    input: |
+      local fn = function(x)
+        return x * 2
+      end
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_lambda_in_table
+    input: |
+      local obj = {
+        getValue = function()
+          return 42
+        end
+      }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_callback_lambda
+    input: |
+      doSomething(function(result)
+        print(result)
+      end)
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"

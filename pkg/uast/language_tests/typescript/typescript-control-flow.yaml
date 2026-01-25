@@ -1,0 +1,46 @@
+suite: control-flow
+name: typescript-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      if (true) {
+          console.log("yes");
+      } else {
+          console.log("no");
+      }
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+
+  - name: find_loops
+    input: |
+      for (let i = 0; i < 10; i++) {
+          console.log(i);
+      }
+      while (true) {
+          break;
+      }
+      do {
+          console.log("once");
+      } while (false);
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"
+        - "Loop"
+
+  - name: find_switch
+    input: |
+      switch (x) {
+          case 1:
+              break;
+          default:
+              break;
+      }
+    query: 'rfilter(.type == "Switch") |> map(.type)'
+    output:
+      results:
+        - "Switch"

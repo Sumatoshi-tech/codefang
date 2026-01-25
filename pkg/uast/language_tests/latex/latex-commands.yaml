@@ -1,0 +1,80 @@
+suite: latex
+name: latex-commands
+
+parse_cases:
+  - name: newcommand definition
+    input: |
+      \newcommand{\mycmd}[1]{#1}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Function
+          roles: [Function, Declaration]
+          children:
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Identifier
+                  token: "\\mycmd"
+                  roles: [Name]
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Literal
+                  token: "1"
+                  roles: [Literal]
+            - type: Synthetic
+              roles: []
+              children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                    - type: Identifier
+                      token: "#1"
+                      roles: [Reference]
+
+  - name: label definition
+    input: |
+      \label{sec:intro}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Variable
+          token: "\\label{sec:intro}"
+          roles: [Variable, Declaration]
+          props:
+            name: "{sec:intro}"
+          children:
+            - type: Synthetic
+              token: "{sec:intro}"
+              roles: []
+              children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                    - type: Literal
+                      token: "sec:intro"
+                      roles: [Literal]
+
+  - name: label reference
+    input: |
+      \ref{sec:intro}
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Identifier
+          token: "\\ref{sec:intro}"
+          roles: [Reference]
+          children:
+            - type: List
+              roles: [Literal]
+              children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                    - type: Literal
+                      token: "sec:intro"
+                      roles: [Literal]

@@ -1,0 +1,64 @@
+suite: exceptions
+name: ruby-exceptions
+
+query_cases:
+  - name: find_begin_rescue
+    input: |
+      begin
+        risky_operation
+      rescue StandardError => e
+        puts e.message
+      end
+    query: 'rfilter(.type == "Try") |> map(.type)'
+    output:
+      results:
+        - "Try"
+
+  - name: find_rescue_blocks
+    input: |
+      begin
+        risky_operation
+      rescue StandardError => e
+        puts e.message
+      end
+    query: 'rfilter(.type == "Catch") |> map(.type)'
+    output:
+      results:
+        - "Catch"
+
+  - name: find_ensure_blocks
+    input: |
+      begin
+        risky_operation
+      ensure
+        cleanup
+      end
+    query: 'rfilter(.type == "Finally") |> map(.type)'
+    output:
+      results:
+        - "Finally"
+
+  - name: find_multiple_rescue
+    input: |
+      begin
+        risky_operation
+      rescue IOError
+        puts "IO error"
+      rescue StandardError
+        puts "Standard error"
+      end
+    query: 'rfilter(.type == "Catch") |> map(.type)'
+    output:
+      results:
+        - "Catch"
+        - "Catch"
+
+  - name: find_raise_calls
+    input: |
+      def validate(x)
+        raise "Invalid" if x < 0
+      end
+    query: 'rfilter(.type == "Identifier") |> rfilter(.token == "raise") |> map(.token)'
+    output:
+      results:
+        - "raise"

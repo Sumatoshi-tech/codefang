@@ -1,0 +1,412 @@
+[language "sql", extensions: ".sql"]
+
+program <- (program) => uast(
+    type: "File"
+)
+
+statement <- (statement) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+select <- (select) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+insert <- (insert) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+update <- (update) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+delete <- (delete) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+create_table <- (create_table) => uast(
+    type: "Call",
+    roles: "Call", "Declaration"
+)
+
+create_view <- (create_view) => uast(
+    type: "Call",
+    roles: "Call", "Declaration"
+)
+
+create_index <- (create_index) => uast(
+    type: "Call",
+    roles: "Call", "Declaration"
+)
+
+drop_table <- (drop_table) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+alter_table <- (alter_table) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+object_reference <- (object_reference) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+column <- (column) => uast(
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+column_definition <- (column_definition) => uast(
+    type: "Property",
+    roles: "Member", "Declaration"
+)
+
+column_definitions <- (column_definitions) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+field <- (field) => uast(
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+literal <- (literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+int <- (int) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+varchar <- (varchar) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+timestamp <- (timestamp) => uast(
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+
+from <- (from) => uast(
+    type: "Synthetic"
+)
+
+where <- (where) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+join <- (join) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+relation <- (relation) => uast(
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+order_by <- (order_by) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+order_target <- (order_target) => uast(
+    type: "Synthetic"
+)
+
+direction <- (direction) => uast(
+    type: "Synthetic"
+)
+
+limit <- (limit) => uast(
+    type: "Synthetic"
+)
+
+list <- (list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+select_expression <- (select_expression) => uast(
+    type: "Synthetic"
+)
+
+binary_expression <- (binary_expression) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_expression <- (unary_expression) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+assignment <- (assignment) => uast(
+    type: "Assignment",
+    roles: "Assignment"
+)
+
+term <- (term) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+keyword_select <- (keyword_select) => uast(
+    type: "Synthetic"
+)
+
+keyword_from <- (keyword_from) => uast(
+    type: "Synthetic"
+)
+
+keyword_where <- (keyword_where) => uast(
+    type: "Synthetic"
+)
+
+keyword_insert <- (keyword_insert) => uast(
+    type: "Synthetic"
+)
+
+keyword_into <- (keyword_into) => uast(
+    type: "Synthetic"
+)
+
+keyword_values <- (keyword_values) => uast(
+    type: "Synthetic"
+)
+
+keyword_update <- (keyword_update) => uast(
+    type: "Synthetic"
+)
+
+keyword_set <- (keyword_set) => uast(
+    type: "Synthetic"
+)
+
+keyword_delete <- (keyword_delete) => uast(
+    type: "Synthetic"
+)
+
+keyword_create <- (keyword_create) => uast(
+    type: "Synthetic"
+)
+
+keyword_table <- (keyword_table) => uast(
+    type: "Synthetic"
+)
+
+keyword_primary <- (keyword_primary) => uast(
+    type: "Synthetic"
+)
+
+keyword_key <- (keyword_key) => uast(
+    type: "Synthetic"
+)
+
+keyword_not <- (keyword_not) => uast(
+    type: "Synthetic"
+)
+
+keyword_null <- (keyword_null) => uast(
+    type: "Synthetic"
+)
+
+keyword_unique <- (keyword_unique) => uast(
+    type: "Synthetic"
+)
+
+keyword_default <- (keyword_default) => uast(
+    type: "Synthetic"
+)
+
+keyword_auto_increment <- (keyword_auto_increment) => uast(
+    type: "Synthetic"
+)
+
+keyword_current_timestamp <- (keyword_current_timestamp) => uast(
+    type: "Synthetic"
+)
+
+keyword_int <- (keyword_int) => uast(
+    type: "Synthetic"
+)
+
+keyword_varchar <- (keyword_varchar) => uast(
+    type: "Synthetic"
+)
+
+keyword_timestamp <- (keyword_timestamp) => uast(
+    type: "Synthetic"
+)
+
+keyword_inner <- (keyword_inner) => uast(
+    type: "Synthetic"
+)
+
+keyword_join <- (keyword_join) => uast(
+    type: "Synthetic"
+)
+
+keyword_on <- (keyword_on) => uast(
+    type: "Synthetic"
+)
+
+keyword_order <- (keyword_order) => uast(
+    type: "Synthetic"
+)
+
+keyword_by <- (keyword_by) => uast(
+    type: "Synthetic"
+)
+
+keyword_limit <- (keyword_limit) => uast(
+    type: "Synthetic"
+)
+
+keyword_desc <- (keyword_desc) => uast(
+    type: "Synthetic"
+)
+
+keyword_asc <- (keyword_asc) => uast(
+    type: "Synthetic"
+)
+
+keyword_and <- (keyword_and) => uast(
+    type: "Synthetic"
+)
+
+keyword_or <- (keyword_or) => uast(
+    type: "Synthetic"
+)
+
+keyword_in <- (keyword_in) => uast(
+    type: "Synthetic"
+)
+
+keyword_like <- (keyword_like) => uast(
+    type: "Synthetic"
+)
+
+keyword_between <- (keyword_between) => uast(
+    type: "Synthetic"
+)
+
+keyword_is <- (keyword_is) => uast(
+    type: "Synthetic"
+)
+
+keyword_as <- (keyword_as) => uast(
+    type: "Synthetic"
+)
+
+keyword_group <- (keyword_group) => uast(
+    type: "Synthetic"
+)
+
+keyword_having <- (keyword_having) => uast(
+    type: "Synthetic"
+)
+
+keyword_distinct <- (keyword_distinct) => uast(
+    type: "Synthetic"
+)
+
+keyword_union <- (keyword_union) => uast(
+    type: "Synthetic"
+)
+
+keyword_all <- (keyword_all) => uast(
+    type: "Synthetic"
+)
+
+keyword_left <- (keyword_left) => uast(
+    type: "Synthetic"
+)
+
+keyword_right <- (keyword_right) => uast(
+    type: "Synthetic"
+)
+
+keyword_outer <- (keyword_outer) => uast(
+    type: "Synthetic"
+)
+
+keyword_cross <- (keyword_cross) => uast(
+    type: "Synthetic"
+)
+
+keyword_full <- (keyword_full) => uast(
+    type: "Synthetic"
+)
+
+subquery <- (subquery) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+function_call <- (function_call) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+case_expression <- (case_expression) => uast(
+    type: "Switch",
+    roles: "Switch"
+)
+
+when_clause <- (when_clause) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+else_clause <- (else_clause) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+group_by <- (group_by) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+having <- (having) => uast(
+    type: "If",
+    roles: "Condition"
+)
+
+cte <- (cte) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+with_clause <- (with_clause) => uast(
+    type: "Block",
+    roles: "Body"
+)

@@ -1,0 +1,32 @@
+language: proto
+description: "Test Protocol Buffers enum definitions"
+
+tests:
+  - name: "Simple enum"
+    code: |
+      syntax = "proto3";
+      enum Status {
+        UNKNOWN = 0;
+        ACTIVE = 1;
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Enum
+            roles: [Enum, Declaration]
+
+  - name: "Enum with identifier"
+    code: |
+      syntax = "proto3";
+      enum Color {
+        RED = 0;
+      }
+    expected:
+      - type: File
+        children:
+          - type: Variable
+          - type: Enum
+            children:
+              - type: Identifier
+                roles: [Name]

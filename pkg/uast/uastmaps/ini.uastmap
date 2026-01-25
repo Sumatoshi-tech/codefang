@@ -1,0 +1,44 @@
+[language "ini", extensions: ".ini"]
+
+document <- (document) => uast(
+    type: "File"
+)
+
+section <- (section) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+section_name <- (section_name) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+setting <- (setting) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+setting_name <- (setting_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+setting_value <- (setting_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+text <- (text) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)

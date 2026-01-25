@@ -1,0 +1,118 @@
+suite: control-flow
+name: ruby-control-flow
+
+query_cases:
+  - name: find_if_statements
+    input: |
+      if x > 0
+        puts "positive"
+      end
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+
+  - name: find_if_elsif_else
+    input: |
+      if x > 0
+        puts "positive"
+      elsif x < 0
+        puts "negative"
+      else
+        puts "zero"
+      end
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"
+
+  - name: find_unless
+    input: |
+      unless x.nil?
+        puts x
+      end
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+
+  - name: find_while_loops
+    input: |
+      while x > 0
+        x -= 1
+      end
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_until_loops
+    input: |
+      until x == 0
+        x -= 1
+      end
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_for_loops
+    input: |
+      for i in 1..10
+        puts i
+      end
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+
+  - name: find_case_statement
+    input: |
+      case x
+      when 1
+        puts "one"
+      when 2
+        puts "two"
+      else
+        puts "other"
+      end
+    query: 'rfilter(.type == "Switch") |> map(.type)'
+    output:
+      results:
+        - "Switch"
+
+  - name: find_case_branches
+    input: |
+      case x
+      when 1
+        puts "one"
+      when 2
+        puts "two"
+      end
+    query: 'rfilter(.type == "Case") |> map(.type)'
+    output:
+      results:
+        - "Case"
+        - "Case"
+
+  - name: find_break_statements
+    input: |
+      while true
+        break if done
+      end
+    query: 'rfilter(.type == "Break") |> map(.type)'
+    output:
+      results:
+        - "Break"
+
+  - name: find_next_statements
+    input: |
+      [1, 2, 3].each do |n|
+        next if n == 2
+        puts n
+      end
+    query: 'rfilter(.type == "Continue") |> map(.type)'
+    output:
+      results:
+        - "Continue"

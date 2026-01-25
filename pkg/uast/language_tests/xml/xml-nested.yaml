@@ -1,0 +1,20 @@
+language: xml
+tests:
+  - name: "Nested elements are Calls"
+    code: |
+      <root><child><grandchild></grandchild></child></root>
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+      - "Call"
+      - "Call"
+
+  - name: "Multiple sibling elements"
+    code: |
+      <root><a></a><b></b><c></c></root>
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+      - "Call"
+      - "Call"
+      - "Call"

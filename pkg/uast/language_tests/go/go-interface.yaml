@@ -1,0 +1,99 @@
+suite: interface
+name: go-interface
+
+parse_cases:
+  - name: interface
+    input: |
+      type Reader interface {
+          Read(p []byte) (n int, err error)
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "List"
+              token: |-
+                Reader interface {
+                    Read(p []byte) (n int, err error)
+                }
+              props:
+                name: "Reader"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "Reader"
+                  roles: ["Name", "Type"]
+                - type: "Interface"
+                  token: |-
+                    interface {
+                        Read(p []byte) (n int, err error)
+                    }
+                  roles: ["Interface", "Declaration"]
+                  children:
+                    - type: "Method"
+                      props:
+                        name: "Read"
+                      roles: ["Function", "Declaration", "Member"]
+                      children:
+                        - type: "Identifier"
+                          token: "Read"
+                          roles: ["Name"]
+                        - type: "Parameter"
+                          token: "(p []byte)"
+                          roles: ["Parameter"]
+                          children:
+                            - type: "Parameter"
+                              props:
+                                name: "p"
+                              roles: ["Parameter"]
+                              children:
+                                - type: "Identifier"
+                                  token: "p"
+                                  roles: ["Name"]
+                                - type: "Slice"
+                                  token: "[]byte"
+                                  roles: []
+                                  children:
+                                    - type: "Identifier"
+                                      token: "byte"
+                                      roles: ["Name", "Type"]
+                        - type: "Parameter"
+                          token: "(n int, err error)"
+                          roles: ["Parameter"]
+                          children:
+                            - type: "Parameter"
+                              props:
+                                name: "n"
+                              roles: ["Parameter"]
+                              children:
+                                - type: "Identifier"
+                                  token: "n"
+                                  roles: ["Name"]
+                                - type: "Identifier"
+                                  token: "int"
+                                  roles: ["Name", "Type"]
+                            - type: "Parameter"
+                              props:
+                                name: "err"
+                              roles: ["Parameter"]
+                              children:
+                                - type: "Identifier"
+                                  token: "err"
+                                  roles: ["Name"]
+                                - type: "Identifier"
+                                  token: "error"
+                                  roles: ["Name", "Type"]
+
+query_cases:
+  - name: find_interfaces
+    input: |
+      type A interface {}
+      type B interface {}
+    query: 'rfilter(.type == "Interface") |> map(.type)'
+    output:
+      results:
+        - "Interface"
+        - "Interface"

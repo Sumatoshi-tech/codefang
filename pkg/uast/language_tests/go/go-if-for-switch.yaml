@@ -1,0 +1,225 @@
+suite: control-flow
+name: go-if-for-switch
+
+parse_cases:
+  - name: if_for
+    input: |
+      func f() {
+          if x > 0 {
+              return
+          }
+          for i := 0; i < 10; i++ {
+              break
+          }
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func f() {
+                if x > 0 {
+                    return
+                }
+                for i := 0; i < 10; i++ {
+                    break
+                }
+            }
+          props:
+            name: "f"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "f"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "()"
+              roles: ["Parameter"]
+            - type: "Block"
+              token: |-
+                {
+                    if x > 0 {
+                        return
+                    }
+                    for i := 0; i < 10; i++ {
+                        break
+                    }
+                }
+              roles: ["Body"]
+              children:
+                - type: "If"
+                  roles: []
+                  children:
+                    - type: "BinaryOp"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "x"
+                          roles: ["Name"]
+                        - type: "Literal"
+                          roles: ["Literal"]
+                    - type: "Block"
+                      token: |-
+                        {
+                                return
+                            }
+                      roles: ["Body"]
+                      children:
+                        - type: "Return"
+                          token: "return"
+                          roles: ["Return"]
+                - type: "Loop"
+                  token: |-
+                    for i := 0; i < 10; i++ {
+                            break
+                        }
+                  roles: ["Loop"]
+                  children:
+                    - type: "Loop"
+                      roles: ["Loop"]
+                      children:
+                        - type: "Variable"
+                          token: "i := 0"
+                          roles: ["Variable", "Declaration"]
+                          children:
+                            - type: "List"
+                              roles: []
+                              children:
+                                - type: "Identifier"
+                                  token: "i"
+                                  roles: ["Name"]
+                            - type: "List"
+                              roles: []
+                              children:
+                                - type: "Literal"
+                                  roles: ["Literal"]
+                        - type: "BinaryOp"
+                          roles: ["Operator"]
+                          children:
+                            - type: "Identifier"
+                              token: "i"
+                              roles: ["Name"]
+                            - type: "Literal"
+                              roles: ["Literal"]
+                        - type: "Synthetic"
+                          token: "i++"
+                          roles: []
+                          children:
+                            - type: "Identifier"
+                              token: "i"
+                              roles: ["Name"]
+                    - type: "Block"
+                      token: |-
+                        {
+                                break
+                            }
+                      roles: ["Body"]
+                      children:
+                        - type: "Break"
+                          roles: ["Break"]
+
+  - name: switch_case
+    input: |
+      func f(x int) {
+          switch x {
+          case 1:
+              break
+          default:
+              break
+          }
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Function"
+          token: |-
+            func f(x int) {
+                switch x {
+                case 1:
+                    break
+                default:
+                    break
+                }
+            }
+          props:
+            name: "f"
+          roles: ["Function", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "f"
+              roles: ["Name"]
+            - type: "Parameter"
+              token: "(x int)"
+              roles: ["Parameter"]
+              children:
+                - type: "Parameter"
+                  props:
+                    name: "x"
+                  roles: ["Parameter"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "int"
+                      roles: ["Name", "Type"]
+            - type: "Block"
+              token: |-
+                {
+                    switch x {
+                    case 1:
+                        break
+                    default:
+                        break
+                    }
+                }
+              roles: ["Body"]
+              children:
+                - type: "Switch"
+                  roles: []
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+                    - type: "Case"
+                      token: |
+                        case 1:
+                                break
+                      roles: ["Branch"]
+                      children:
+                        - type: "List"
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              roles: ["Literal"]
+                        - type: "Break"
+                          roles: ["Break"]
+                    - type: "Case"
+                      token: |
+                        default:
+                                break
+                      roles: ["Branch"]
+                      children:
+                        - type: "Break"
+                          roles: ["Break"]
+
+query_cases:
+  - name: find_loops
+    input: |
+      func f() { for {} for {} }
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"
+
+  - name: find_if_statements
+    input: |
+      func f() { if true {} if false {} }
+    query: 'rfilter(.type == "If") |> map(.type)'
+    output:
+      results:
+        - "If"
+        - "If"

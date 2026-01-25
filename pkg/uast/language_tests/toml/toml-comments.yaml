@@ -1,0 +1,28 @@
+language: toml
+tests:
+  - name: "Comment is Comment"
+    code: |
+      # This is a comment
+      name = "John"
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+
+  - name: "Comment has Comment role"
+    code: |
+      # Configuration file
+      enabled = true
+    query: rfilter(.type == "Comment") |> map(.roles)
+    expected:
+      - ["Comment"]
+
+  - name: "Multiple comments"
+    code: |
+      # First comment
+      name = "John"
+      # Second comment
+      age = 30
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"
+      - "Comment"

@@ -1,0 +1,41 @@
+suite: basic-functions
+name: swift-basic-functions
+
+query_cases:
+  - name: find_functions
+    input: |
+      func add(_ a: Int, _ b: Int) -> Int {
+          return a + b
+      }
+      func subtract(_ a: Int, _ b: Int) -> Int {
+          return a - b
+      }
+    query: 'rfilter(.type == "Function") |> map(.type)'
+    output:
+      results:
+        - "Function"
+        - "Function"
+
+  - name: find_classes
+    input: |
+      class Calculator {
+          func add(_ a: Int, _ b: Int) -> Int {
+              return a + b
+          }
+      }
+    query: 'rfilter(.type == "Class") |> map(.type)'
+    output:
+      results:
+        - "Class"
+
+  - name: find_identifiers
+    input: |
+      class Test {
+          var value: Int = 0
+      }
+    query: 'rfilter(.type == "Identifier") |> map(.type)'
+    output:
+      results:
+        - "Identifier"
+        - "Identifier"
+        - "Identifier"

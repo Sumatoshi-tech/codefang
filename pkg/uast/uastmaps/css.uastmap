@@ -1,0 +1,339 @@
+[language "css", extensions: ".css"]
+
+stylesheet <- (stylesheet) => uast(
+    type: "File"
+)
+
+import_statement <- (import_statement) => uast(
+    type: "Import",
+    roles: "Import"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+js_comment <- (js_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+class_name <- (class_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Class"
+)
+
+id_name <- (id_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+tag_name <- (tag_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+property_name <- (property_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Member"
+)
+
+function_name <- (function_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Function"
+)
+
+keyframes_name <- (keyframes_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+namespace_name <- (namespace_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Module"
+)
+
+feature_name <- (feature_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+attribute_name <- (attribute_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Attribute"
+)
+
+string_value <- (string_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_content <- (string_content) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer_value <- (integer_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float_value <- (float_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+color_value <- (color_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+plain_value <- (plain_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+unit <- (unit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+grid_value <- (grid_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+rule_set <- (rule_set) => uast(
+    type: "Synthetic"
+)
+
+selectors <- (selectors) => uast(
+    type: "Synthetic"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+declaration <- (declaration) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+important <- (important) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+class_selector <- (class_selector) => uast(
+    type: "Synthetic"
+)
+
+id_selector <- (id_selector) => uast(
+    type: "Synthetic"
+)
+
+universal_selector <- (universal_selector) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+attribute_selector <- (attribute_selector) => uast(
+    type: "Synthetic"
+)
+
+pseudo_class_selector <- (pseudo_class_selector) => uast(
+    type: "Synthetic"
+)
+
+pseudo_element_selector <- (pseudo_element_selector) => uast(
+    type: "Synthetic"
+)
+
+child_selector <- (child_selector) => uast(
+    type: "Synthetic"
+)
+
+descendant_selector <- (descendant_selector) => uast(
+    type: "Synthetic"
+)
+
+adjacent_sibling_selector <- (adjacent_sibling_selector) => uast(
+    type: "Synthetic"
+)
+
+sibling_selector <- (sibling_selector) => uast(
+    type: "Synthetic"
+)
+
+namespace_selector <- (namespace_selector) => uast(
+    type: "Synthetic"
+)
+
+nesting_selector <- (nesting_selector) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+call_expression <- (call_expression) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+arguments <- (arguments) => uast(
+    type: "Synthetic"
+)
+
+parenthesized_value <- (parenthesized_value) => uast(
+    type: "Synthetic"
+)
+
+binary_expression <- (binary_expression) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+at_rule <- (at_rule) => uast(
+    type: "Synthetic"
+)
+
+at_keyword <- (at_keyword) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+media_statement <- (media_statement) => uast(
+    type: "Synthetic"
+)
+
+keyframes_statement <- (keyframes_statement) => uast(
+    type: "Synthetic"
+)
+
+keyframe_block <- (keyframe_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+keyframe_block_list <- (keyframe_block_list) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+charset_statement <- (charset_statement) => uast(
+    type: "Synthetic"
+)
+
+namespace_statement <- (namespace_statement) => uast(
+    type: "Namespace",
+    roles: "Module"
+)
+
+supports_statement <- (supports_statement) => uast(
+    type: "Synthetic"
+)
+
+postcss_statement <- (postcss_statement) => uast(
+    type: "Synthetic"
+)
+
+binary_query <- (binary_query) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_query <- (unary_query) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+selector_query <- (selector_query) => uast(
+    type: "Synthetic"
+)
+
+feature_query <- (feature_query) => uast(
+    type: "Synthetic"
+)
+
+parenthesized_query <- (parenthesized_query) => uast(
+    type: "Synthetic"
+)
+
+keyword_query <- (keyword_query) => uast(
+    type: "Synthetic"
+)
+
+and <- (and) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+or <- (or) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+not <- (not) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+only <- (only) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+from <- (from) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+to <- (to) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+of <- (of) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+selector <- (selector) => uast(
+    type: "Synthetic"
+)

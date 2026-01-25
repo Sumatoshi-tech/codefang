@@ -1,0 +1,25 @@
+language: cmake
+description: "Test CMake function definitions"
+
+tests:
+  - name: "Function definition"
+    code: |
+      function(my_func ARG1)
+        message(${ARG1})
+      endfunction()
+    expected:
+      - type: File
+        children:
+          - type: Function
+            roles: [Function, Declaration]
+
+  - name: "Macro definition"
+    code: |
+      macro(my_macro ARG1)
+        message(${ARG1})
+      endmacro()
+    expected:
+      - type: File
+        children:
+          - type: Function
+            roles: [Function, Declaration]

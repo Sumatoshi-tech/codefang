@@ -1,0 +1,23 @@
+language: dockerfile
+tests:
+  - name: "LABEL is Property"
+    code: |
+      LABEL maintainer="test@example.com"
+    query: rfilter(.type == "Property") |> map(.type)
+    expected:
+      - "Property"
+
+  - name: "Property has Member role"
+    code: |
+      LABEL version="1.0"
+    query: rfilter(.type == "Property") |> map(.roles)
+    expected:
+      - ["Member"]
+
+  - name: "Label pair is KeyValue"
+    code: |
+      LABEL name="app" version="1.0"
+    query: rfilter(.type == "KeyValue") |> map(.type)
+    expected:
+      - "KeyValue"
+      - "KeyValue"

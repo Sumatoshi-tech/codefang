@@ -1,0 +1,268 @@
+suite: control-flow
+name: kotlin-control-flow
+
+parse_cases:
+  - name: for_loop
+    input: |
+      fun loop() {
+          for (i in 1..10) {
+              println(i)
+          }
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Synthetic
+            roles: []
+            children:
+            - type: Loop
+              roles:
+              - Loop
+              children:
+              - type: Variable
+                roles:
+                - Variable
+                - Declaration
+                children:
+                - type: Identifier
+                  roles:
+                  - Name
+              - type: BinaryOp
+                roles:
+                - Operator
+                children:
+                - type: Literal
+                  roles:
+                  - Literal
+                - type: Literal
+                  roles:
+                  - Literal
+              - type: Block
+                roles:
+                - Body
+                children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                  - type: Call
+                    roles:
+                    - Call
+                    children:
+                    - type: Identifier
+                      roles:
+                      - Name
+                    - type: Synthetic
+                      roles: []
+                      children:
+                      - type: Synthetic
+                        roles: []
+                        children:
+                        - type: Synthetic
+                          roles:
+                          - Argument
+                          children:
+                          - type: Identifier
+                            roles:
+                            - Name
+
+  - name: when_expression
+    input: |
+      fun test(x: Int) = when (x) {
+          1 -> "one"
+          else -> "other"
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Match
+            roles:
+            - Match
+            children:
+            - type: Synthetic
+              roles: []
+              children:
+              - type: Identifier
+                roles:
+                - Name
+            - type: Case
+              roles:
+              - Branch
+              children:
+              - type: Pattern
+                roles:
+                - Pattern
+                children:
+                - type: Literal
+                  roles:
+                  - Literal
+              - type: Block
+                roles:
+                - Body
+                children:
+                - type: Literal
+                  roles:
+                  - Literal
+                  children:
+                  - type: Synthetic
+                    roles: []
+            - type: Case
+              roles:
+              - Branch
+              children:
+              - type: Block
+                roles:
+                - Body
+                children:
+                - type: Literal
+                  roles:
+                  - Literal
+                  children:
+                  - type: Synthetic
+                    roles: []
+
+query_cases:
+  - name: find_loops
+    input: |
+      fun test() {
+          for (i in 1..10) { }
+          while (true) { }
+      }
+    query: "rfilter(.type == 'Loop')"
+    output:
+      results:
+      - type: Loop
+        roles:
+        - Loop
+        children:
+        - type: Variable
+          roles:
+          - Variable
+          - Declaration
+          children:
+          - type: Identifier
+            roles:
+            - Name
+        - type: BinaryOp
+          roles:
+          - Operator
+          children:
+          - type: Literal
+            roles:
+            - Literal
+          - type: Literal
+            roles:
+            - Literal
+        - type: Block
+          roles:
+          - Body
+      - type: Loop
+        roles:
+        - Loop
+        children:
+        - type: Literal
+          roles:
+          - Literal
+        - type: Block
+          roles:
+          - Body
+
+  - name: find_match
+    input: |
+      fun test(x: Int) = when (x) {
+          1 -> "one"
+          else -> "other"
+      }
+    query: "rfilter(.type == 'Match')"
+    output:
+      results:
+      - type: Match
+        roles:
+        - Match
+        children:
+        - type: Synthetic
+          roles: []
+          children:
+          - type: Identifier
+            roles:
+            - Name
+        - type: Case
+          roles:
+          - Branch
+          children:
+          - type: Pattern
+            roles:
+            - Pattern
+            children:
+            - type: Literal
+              roles:
+              - Literal
+          - type: Block
+            roles:
+            - Body
+            children:
+            - type: Literal
+              roles:
+              - Literal
+              children:
+              - type: Synthetic
+                roles: []
+        - type: Case
+          roles:
+          - Branch
+          children:
+          - type: Block
+            roles:
+            - Body
+            children:
+            - type: Literal
+              roles:
+              - Literal
+              children:
+              - type: Synthetic
+                roles: []

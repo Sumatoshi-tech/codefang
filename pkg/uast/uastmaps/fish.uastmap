@@ -1,0 +1,269 @@
+[language "fish", extensions: ".fish"]
+
+program <- (program) => uast(
+    type: "File"
+)
+
+command <- (command) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+function_definition <- (function_definition) => uast(
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+
+function <- (function) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+if_statement <- (if_statement) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+
+if <- (if) => uast(
+    type: "Synthetic"
+)
+
+else_clause <- (else_clause) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+else_if_clause <- (else_if_clause) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+
+else <- (else) => uast(
+    type: "Synthetic"
+)
+
+for_statement <- (for_statement) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+
+for <- (for) => uast(
+    type: "Synthetic"
+)
+
+while_statement <- (while_statement) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+
+while <- (while) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+switch_statement <- (switch_statement) => uast(
+    token: "self",
+    type: "Switch",
+    roles: "Branch"
+)
+
+switch <- (switch) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+case_clause <- (case_clause) => uast(
+    type: "Case",
+    roles: "Branch"
+)
+
+case <- (case) => uast(
+    type: "Synthetic"
+)
+
+begin_statement <- (begin_statement) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+begin <- (begin) => uast(
+    type: "Synthetic"
+)
+
+end <- (end) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+return <- (return) => uast(
+    token: "self",
+    type: "Return",
+    roles: "Return"
+)
+
+break <- (break) => uast(
+    token: "self",
+    type: "Break",
+    roles: "Break"
+)
+
+continue <- (continue) => uast(
+    type: "Continue",
+    roles: "Continue"
+)
+
+word <- (word) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+variable_name <- (variable_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+variable_expansion <- (variable_expansion) => uast(
+    type: "Identifier",
+    roles: "Reference"
+)
+
+double_quote_string <- (double_quote_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+single_quote_string <- (single_quote_string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+pipe <- (pipe) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+conditional_execution <- (conditional_execution) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+and <- (and) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+or <- (or) => uast(
+    type: "Synthetic"
+)
+
+not <- (not) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+negated_statement <- (negated_statement) => uast(
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+index <- (index) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+range <- (range) => uast(
+    token: "self",
+    type: "Slice",
+    roles: "Index"
+)
+
+list_element_access <- (list_element_access) => uast(
+    token: "self",
+    type: "Index",
+    roles: "Index"
+)
+
+concatenation <- (concatenation) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+brace_expansion <- (brace_expansion) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal"
+)
+
+command_substitution <- (command_substitution) => uast(
+    type: "Call",
+    roles: "Call"
+)
+
+file_redirect <- (file_redirect) => uast(
+    type: "Synthetic"
+)
+
+stream_redirect <- (stream_redirect) => uast(
+    type: "Synthetic"
+)
+
+redirect_statement <- (redirect_statement) => uast(
+    type: "Synthetic"
+)
+
+direction <- (direction) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+glob <- (glob) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+home_dir_expansion <- (home_dir_expansion) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+in <- (in) => uast(
+    token: "self",
+    type: "Synthetic"
+)

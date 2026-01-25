@@ -1,0 +1,422 @@
+suite: advanced-features
+name: kotlin-advanced-features
+
+parse_cases:
+  - name: class_definition
+    input: |
+      class Person(val name: String) {
+          fun greet(): String {
+              return "Hello!"
+          }
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Function
+          roles:
+          - Function
+          - Declaration
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            - Declaration
+            children:
+            - type: Pattern
+              roles:
+              - Pattern
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Function
+            roles:
+            - Function
+            - Declaration
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: Synthetic
+              roles: []
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+            - type: Block
+              roles:
+              - Body
+              children:
+              - type: Synthetic
+                roles: []
+                children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                  - type: Literal
+                    roles:
+                    - Literal
+                    children:
+                    - type: Synthetic
+                      roles: []
+
+  - name: data_class
+    input: |
+      data class User(val id: Int, val email: String)
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Synthetic
+          roles: []
+          children:
+          - type: Synthetic
+            roles: []
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Function
+          roles:
+          - Function
+          - Declaration
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            - Declaration
+            children:
+            - type: Pattern
+              roles:
+              - Pattern
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+          - type: Parameter
+            roles:
+            - Parameter
+            - Declaration
+            children:
+            - type: Pattern
+              roles:
+              - Pattern
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+
+  - name: object_declaration
+    input: |
+      object Singleton {
+          fun getInstance() = this
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Function
+            roles:
+            - Function
+            - Declaration
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: Synthetic
+              roles: []
+            - type: Block
+              roles:
+              - Body
+              children:
+              - type: Identifier
+                roles:
+                - Reference
+
+  - name: enum_class
+    input: |
+      enum class Color { RED, GREEN, BLUE }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: EnumMember
+            roles:
+            - Member
+            - Declaration
+            children:
+            - type: Identifier
+              roles:
+              - Name
+          - type: EnumMember
+            roles:
+            - Member
+            - Declaration
+            children:
+            - type: Identifier
+              roles:
+              - Name
+          - type: EnumMember
+            roles:
+            - Member
+            - Declaration
+            children:
+            - type: Identifier
+              roles:
+              - Name
+
+query_cases:
+  - name: find_classes
+    input: |
+      class User(val name: String)
+      class Product(val id: Int)
+    query: "filter(.type == 'Class')"
+    output:
+      results:
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Function
+          roles:
+          - Function
+          - Declaration
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            - Declaration
+            children:
+            - type: Pattern
+              roles:
+              - Pattern
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+      - type: Class
+        roles:
+        - Class
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Type
+          - Name
+        - type: Function
+          roles:
+          - Function
+          - Declaration
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            - Declaration
+            children:
+            - type: Pattern
+              roles:
+              - Pattern
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+
+  - name: find_functions
+    input: |
+      fun hello(): String { return "Hello" }
+      fun add(a: Int, b: Int): Int { return a + b }
+    query: "filter(.type == 'Function')"
+    output:
+      results:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+        - type: TypeAnnotation
+          roles:
+          - Type
+          children:
+          - type: Identifier
+            roles:
+            - Type
+            - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Synthetic
+            roles: []
+            children:
+            - type: Synthetic
+              roles: []
+              children:
+              - type: Literal
+                roles:
+                - Literal
+                children:
+                - type: Synthetic
+                  roles: []
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+          - type: Parameter
+            roles:
+            - Parameter
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+        - type: TypeAnnotation
+          roles:
+          - Type
+          children:
+          - type: Identifier
+            roles:
+            - Type
+            - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Synthetic
+            roles: []
+            children:
+            - type: Synthetic
+              roles: []
+              children:
+              - type: BinaryOp
+                roles:
+                - Operator
+                children:
+                - type: Identifier
+                  roles:
+                  - Name
+                - type: Identifier
+                  roles:
+                  - Name

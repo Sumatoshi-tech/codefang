@@ -1,0 +1,29 @@
+suite: imports
+name: rust-imports
+
+query_cases:
+  - name: find_imports_types
+    input: |
+      use std::collections::HashMap;
+      use std::io::Read;
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+        - "Import"
+
+  - name: find_extern_crate_type
+    input: |
+      extern crate serde;
+    query: 'rfilter(.type == "Import") |> map(.type)'
+    output:
+      results:
+        - "Import"
+
+  - name: find_import_roles
+    input: |
+      use std::collections::HashMap;
+    query: 'rfilter(.type == "Import") |> map(.roles)'
+    output:
+      results:
+        - "Import"

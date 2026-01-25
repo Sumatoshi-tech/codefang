@@ -1,0 +1,29 @@
+language: psv
+description: "Test basic PSV file structure"
+
+tests:
+  - name: "Empty file"
+    code: ""
+    expected:
+      - type: File
+
+  - name: "Single row"
+    code: |
+      a|b|c
+    expected:
+      - type: File
+        children:
+          - type: List
+            roles: [Literal]
+
+  - name: "Multiple rows"
+    code: |
+      a|b|c
+      1|2|3
+    expected:
+      - type: File
+        children:
+          - type: List
+            roles: [Literal]
+          - type: List
+            roles: [Literal]

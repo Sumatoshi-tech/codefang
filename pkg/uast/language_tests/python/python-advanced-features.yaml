@@ -1,0 +1,274 @@
+suite: advanced-features
+name: python-advanced-features
+
+parse_cases:
+  - name: import_statements
+    input: |
+      import os
+      from datetime import datetime
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Import"
+          token: "import os"
+          props:
+            name: "os"
+          roles: ["Import"]
+          children:
+            - type: "Pattern"
+              token: "os"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "os"
+                  roles: ["Name"]
+        - type: "Import"
+          token: "from datetime import datetime"
+          props:
+            name: "datetime"
+          roles: ["Import"]
+          children:
+            - type: "Pattern"
+              token: "datetime"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "datetime"
+                  roles: ["Name"]
+            - type: "Pattern"
+              token: "datetime"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "datetime"
+                  roles: ["Name"]
+
+  - name: class_definition
+    input: |
+      class MyClass:
+          def method(self):
+              pass
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Class"
+          props:
+            name: "MyClass"
+          roles: ["Class", "Declaration"]
+          children:
+            - type: "Identifier"
+              token: "MyClass"
+              roles: ["Name"]
+            - type: "Block"
+              token: |-
+                def method(self):
+                        pass
+              roles: ["Body"]
+              children:
+                - type: "Function"
+                  props:
+                    name: "method"
+                  roles: ["Function", "Declaration"]
+                  children:
+                    - type: "Identifier"
+                      token: "method"
+                      roles: ["Name"]
+                    - type: "Parameter"
+                      roles: ["Parameter"]
+                      children:
+                        - type: "Identifier"
+                          token: "self"
+                          roles: ["Name"]
+                    - type: "Block"
+                      token: "pass"
+                      roles: ["Body"]
+                      children:
+                        - type: "Synthetic"
+                          token: "pass"
+                          roles: []
+
+  - name: lambda_expression
+    input: |
+      add = lambda x, y: x + y
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "Assignment"
+              roles: ["Assignment"]
+              children:
+                - type: "Identifier"
+                  token: "add"
+                  roles: ["Name"]
+                - type: "Lambda"
+                  roles: ["Lambda"]
+                  children:
+                    - type: "Parameter"
+                      token: "x, y"
+                      roles: ["Parameter"]
+                      children:
+                        - type: "Identifier"
+                          token: "x"
+                          roles: ["Name"]
+                        - type: "Identifier"
+                          token: "y"
+                          roles: ["Name"]
+                    - type: "BinaryOp"
+                      roles: ["Operator"]
+                      children:
+                        - type: "Identifier"
+                          token: "x"
+                          roles: ["Name"]
+                        - type: "Identifier"
+                          token: "y"
+                          roles: ["Name"]
+
+  - name: if_statement
+    input: |
+      if x > 0:
+          print("positive")
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "If"
+          roles: ["Condition"]
+          children:
+            - type: "Synthetic"
+              roles: []
+              children:
+                - type: "Identifier"
+                  token: "x"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "0"
+                  roles: ["Literal"]
+            - type: "Block"
+              token: 'print("positive")'
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Call"
+                      roles: ["Call"]
+                      children:
+                        - type: "Identifier"
+                          token: "print"
+                          roles: ["Name"]
+                        - type: "List"
+                          token: '("positive")'
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              token: '"positive"'
+                              roles: ["Literal"]
+                              children:
+                                - type: "Synthetic"
+                                  roles: []
+                                - type: "Synthetic"
+                                  roles: []
+                                - type: "Synthetic"
+                                  token: '"'
+                                  roles: []
+
+  - name: for_loop
+    input: |
+      for i in range(10):
+          print(i)
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Loop"
+          token: |-
+            for i in range(10):
+                print(i)
+          roles: ["Loop"]
+          children:
+            - type: "Identifier"
+              token: "i"
+              roles: ["Name"]
+            - type: "Call"
+              roles: ["Call"]
+              children:
+                - type: "Identifier"
+                  token: "range"
+                  roles: ["Name"]
+                - type: "List"
+                  token: "(10)"
+                  roles: []
+                  children:
+                    - type: "Literal"
+                      token: "10"
+                      roles: ["Literal"]
+            - type: "Block"
+              token: "print(i)"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Call"
+                      roles: ["Call"]
+                      children:
+                        - type: "Identifier"
+                          token: "print"
+                          roles: ["Name"]
+                        - type: "List"
+                          token: "(i)"
+                          roles: []
+                          children:
+                            - type: "Identifier"
+                              token: "i"
+                              roles: ["Name"]
+
+query_cases:
+  - name: find_imports
+    input: |
+      import os
+      from datetime import datetime
+    query: 'rfilter(.type == "Import") |> map(.props.name)'
+    output:
+      results:
+        - "os"
+        - "datetime"
+
+  - name: find_classes
+    input: |
+      class A:
+          pass
+      class B:
+          pass
+    query: 'rfilter(.type == "Class") |> map(.props.name)'
+    output:
+      results:
+        - "A"
+        - "B"
+
+  - name: find_lambdas
+    input: |
+      add = lambda x, y: x + y
+      sub = lambda x, y: x - y
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+        - "Lambda"
+
+  - name: find_loops
+    input: |
+      for i in range(10):
+          print(i)
+      while True:
+          break
+    query: 'rfilter(.type == "Loop") |> map(.type)'
+    output:
+      results:
+        - "Loop"
+        - "Loop"

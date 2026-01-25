@@ -1,0 +1,145 @@
+[language "gitignore", extensions: ".gitignore"]
+
+document <- (document) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+pattern <- (pattern) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+pattern_char <- (pattern_char) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pattern_char_escaped <- (pattern_char_escaped) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+negation <- (negation) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+directory_separator <- (directory_separator) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+directory_separator_escaped <- (directory_separator_escaped) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+wildcard_char_single <- (wildcard_char_single) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+wildcard_chars <- (wildcard_chars) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+wildcard_chars_allow_slash <- (wildcard_chars_allow_slash) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+bracket_expr <- (bracket_expr) => uast(
+    type: "Synthetic"
+)
+
+bracket_negation <- (bracket_negation) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+bracket_char <- (bracket_char) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+bracket_char_escaped <- (bracket_char_escaped) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+bracket_range <- (bracket_range) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+bracket_char_class <- (bracket_char_class) => uast(
+    type: "Synthetic"
+)
+
+alnum <- (alnum) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+alpha <- (alpha) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+blank <- (blank) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+cntrl <- (cntrl) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+digit <- (digit) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+graph <- (graph) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+lower <- (lower) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+print <- (print) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+punct <- (punct) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+space <- (space) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+upper <- (upper) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+xdigit <- (xdigit) => uast(
+    token: "self",
+    type: "Synthetic"
+)

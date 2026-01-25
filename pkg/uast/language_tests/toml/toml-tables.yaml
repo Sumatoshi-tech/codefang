@@ -1,0 +1,52 @@
+language: toml
+tests:
+  - name: "Table is Dict"
+    code: |
+      [owner]
+      name = "John"
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+
+  - name: "Dict has Literal role"
+    code: |
+      [owner]
+      name = "John"
+    query: rfilter(.type == "Dict") |> map(.roles)
+    expected:
+      - ["Literal"]
+
+  - name: "Table name is Identifier"
+    code: |
+      [owner]
+      name = "John"
+    query: rfilter(.type == "Identifier" and .token == "owner") |> map(.token)
+    expected:
+      - "owner"
+
+  - name: "Nested table with dotted key"
+    code: |
+      [servers.alpha]
+      ip = "10.0.0.1"
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+
+  - name: "Multiple tables"
+    code: |
+      [database]
+      host = "localhost"
+
+      [cache]
+      enabled = true
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"
+      - "Dict"
+
+  - name: "Inline table is Dict"
+    code: |
+      point = { x = 1, y = 2 }
+    query: rfilter(.type == "Dict") |> map(.type)
+    expected:
+      - "Dict"

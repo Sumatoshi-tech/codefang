@@ -1,0 +1,47 @@
+language: helm
+tests:
+  - name: "Root is File"
+    code: |
+      {{ .Values.name }}
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Field identifier is Identifier"
+    code: |
+      {{ .Values.version }}
+    query: rfilter(.type == "Identifier") |> map(.type)
+    expected:
+      - "Identifier"
+      - "Identifier"
+
+  - name: "Identifier has Name role"
+    code: |
+      {{ .Values.app }}
+    query: rfilter(.type == "Identifier") |> map(.roles)
+    expected:
+      - ["Name"]
+      - ["Name"]
+
+  - name: "Variable is Variable type"
+    code: |
+      {{ $myVar := "value" }}
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+
+  - name: "If action is If type"
+    code: |
+      {{- if .Values.enabled }}
+      enabled: true
+      {{- end }}
+    query: rfilter(.type == "If") |> map(.type)
+    expected:
+      - "If"
+
+  - name: "String literal is Literal"
+    code: |
+      {{ "hello" }}
+    query: rfilter(.type == "Literal" and .token != "") |> map(.type)
+    expected:
+      - "Literal"

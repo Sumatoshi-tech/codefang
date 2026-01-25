@@ -1,0 +1,34 @@
+suite: types
+name: rust-types
+
+query_cases:
+  - name: find_struct_types
+    input: |
+      struct Person {
+          name: String,
+      }
+    query: 'rfilter(.type == "Struct") |> map(.type)'
+    output:
+      results:
+        - "Struct"
+
+  - name: find_enum_types
+    input: |
+      enum Status {
+          Active,
+          Inactive,
+      }
+    query: 'rfilter(.type == "Enum") |> map(.type)'
+    output:
+      results:
+        - "Enum"
+
+  - name: find_trait_types
+    input: |
+      trait Display {
+          fn display(&self) -> String;
+      }
+    query: 'rfilter(.type == "Interface") |> map(.type)'
+    output:
+      results:
+        - "Interface"

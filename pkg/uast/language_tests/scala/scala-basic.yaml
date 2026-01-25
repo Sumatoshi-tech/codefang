@@ -1,0 +1,40 @@
+language: scala
+tests:
+  - name: "Root is File"
+    code: |
+      object Main extends App {
+        println("Hello")
+      }
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Object is Class"
+    code: |
+      object Main extends App {
+        println("Hello")
+      }
+    query: rfilter(.type == "Class") |> map(.type)
+    expected:
+      - "Class"
+
+  - name: "Identifier has Name role"
+    code: |
+      val x = 42
+    query: rfilter(.type == "Identifier" and .roles contains "Name") |> map(.type)
+    expected:
+      - "Identifier"
+
+  - name: "Integer literal is Literal"
+    code: |
+      val x = 42
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Val definition is Variable"
+    code: |
+      val x = 42
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"

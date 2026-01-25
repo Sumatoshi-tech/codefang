@@ -1,0 +1,50 @@
+language: json
+tests:
+  - name: "String literal"
+    code: |
+      "hello"
+    query: rfilter(.type == "Literal") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Number literal integer"
+    code: |
+      42
+    query: rfilter(.type == "Literal") |> rfilter(.token == "42") |> map(.token)
+    expected:
+      - "42"
+
+  - name: "Number literal float"
+    code: |
+      3.14
+    query: rfilter(.type == "Literal") |> rfilter(.token == "3.14") |> map(.token)
+    expected:
+      - "3.14"
+
+  - name: "Boolean true"
+    code: |
+      true
+    query: rfilter(.type == "Literal") |> rfilter(.token == "true") |> map(.token)
+    expected:
+      - "true"
+
+  - name: "Boolean false"
+    code: |
+      false
+    query: rfilter(.type == "Literal") |> rfilter(.token == "false") |> map(.token)
+    expected:
+      - "false"
+
+  - name: "Null literal"
+    code: |
+      null
+    query: rfilter(.type == "Literal") |> rfilter(.token == "null") |> map(.token)
+    expected:
+      - "null"
+
+  - name: "Literals have Literal role"
+    code: |
+      123
+    query: rfilter(.type == "Literal") |> map(.roles)
+    expected:
+      - ["Literal"]

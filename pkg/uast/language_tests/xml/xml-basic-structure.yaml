@@ -1,0 +1,45 @@
+language: xml
+tests:
+  - name: "Root is File"
+    code: |
+      <root></root>
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Element is Call"
+    code: |
+      <item>value</item>
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "Call has Call role"
+    code: |
+      <element>content</element>
+    query: rfilter(.type == "Call") |> map(.roles)
+    expected:
+      - ["Call"]
+
+  - name: "Tag name is Identifier"
+    code: |
+      <myTag></myTag>
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "myTag") |> map(.token)
+    expected:
+      - "myTag"
+      - "myTag"
+
+  - name: "Content is Block"
+    code: |
+      <root><child></child></root>
+    query: rfilter(.type == "Block") |> map(.type)
+    expected:
+      - "Block"
+      - "Block"
+
+  - name: "Comment is properly typed"
+    code: |
+      <!-- comment --><root></root>
+    query: rfilter(.type == "Comment") |> map(.type)
+    expected:
+      - "Comment"

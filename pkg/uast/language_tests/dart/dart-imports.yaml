@@ -1,0 +1,32 @@
+suite: dart-imports
+name: Dart import statements
+
+parse_cases:
+  - name: Parse dart import
+    input: "import 'dart:async';"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Import
+          token: "import 'dart:async';"
+          roles:
+            - Import
+          children:
+            - type: Import
+              roles:
+                - Import
+              children:
+                - type: Synthetic
+                  roles: []
+                  children:
+                    - type: Synthetic
+                      roles: []
+                      children:
+                        - type: Synthetic
+                          roles: []
+                          children:
+                            - type: Literal
+                              token: "'dart:async'"
+                              roles:
+                                - Literal

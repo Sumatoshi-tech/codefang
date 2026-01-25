@@ -1,0 +1,85 @@
+language: ini
+description: "Test INI literal values"
+
+tests:
+  - name: "String literal value"
+    code: |
+      [strings]
+      name = hello world
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "name"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "Integer literal value"
+    code: |
+      [numbers]
+      count = 42
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "count"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "Decimal value"
+    code: |
+      [numbers]
+      rate = 3.14
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "IP address value"
+    code: |
+      [network]
+      ip = 192.168.1.1
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "ip"
+                  - type: Literal
+                    roles: [Literal]
+
+  - name: "Empty value"
+    code: |
+      [config]
+      empty =
+    expected:
+      - type: File
+        children:
+          - type: Dict
+            children:
+              - type: Identifier
+              - type: KeyValue
+                children:
+                  - type: Identifier
+                    token: "empty"

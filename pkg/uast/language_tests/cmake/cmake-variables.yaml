@@ -1,0 +1,28 @@
+language: cmake
+description: "Test CMake variable references"
+
+tests:
+  - name: "Variable reference in command"
+    code: |
+      message(${MY_VAR})
+    expected:
+      - type: File
+        children:
+          - type: Call
+            children:
+              - type: Identifier
+                token: "message"
+              - type: List
+
+  - name: "Set variable command"
+    code: |
+      set(SRC main.cpp utils.cpp)
+    expected:
+      - type: File
+        children:
+          - type: Call
+            children:
+              - type: Identifier
+                token: "set"
+              - type: List
+                roles: [Literal]

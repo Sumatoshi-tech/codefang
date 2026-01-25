@@ -1,0 +1,31 @@
+suite: imports
+name: clojure-imports
+
+query_cases:
+  - name: find_require_keyword_names
+    input: |
+      (ns my-app.core
+        (:require [clojure.string]))
+    query: 'rfilter(.type == "Identifier" && .props.name == "require") |> map(.props.name)'
+    output:
+      results:
+        - "require"
+
+  - name: find_import_keyword_names
+    input: |
+      (ns my-app.core
+        (:import [java.util Date]))
+    query: 'rfilter(.type == "Identifier" && .props.name == "import") |> map(.props.name)'
+    output:
+      results:
+        - "import"
+
+  - name: find_imported_module_names
+    input: |
+      (ns my-app.core
+        (:require [clojure.string]
+                  [clojure.set]))
+    query: 'rfilter(.type == "Identifier" && .token == "clojure.string") |> map(.token)'
+    output:
+      results:
+        - "clojure.string"

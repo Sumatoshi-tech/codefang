@@ -1,0 +1,159 @@
+[language "tcl", extensions: ".tcl"]
+source_file <- (source_file) => uast(
+    type: "File"
+)
+simple_word <- (simple_word) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+quoted_word <- (quoted_word) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+braced_word <- (braced_word) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+braced_word_simple <- (braced_word_simple) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+number <- (number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+command <- (command) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+procedure <- (procedure) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+if <- (if) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+elseif <- (elseif) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+else <- (else) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+while <- (while) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+foreach <- (foreach) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+set <- (set) => uast(
+    token: "self",
+    type: "Assignment",
+    roles: "Assignment"
+)
+try <- (try) => uast(
+    token: "self",
+    type: "Try",
+    roles: "Try"
+)
+catch <- (catch) => uast(
+    token: "self",
+    type: "Catch",
+    roles: "Catch"
+)
+finally <- (finally) => uast(
+    token: "self",
+    type: "Finally",
+    roles: "Finally"
+)
+namespace <- (namespace) => uast(
+    token: "self",
+    type: "Module",
+    roles: "Module"
+)
+variable_substitution <- (variable_substitution) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+command_substitution <- (command_substitution) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+expr <- (expr) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+binop_expr <- (binop_expr) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+unary_expr <- (unary_expr) => uast(
+    token: "self",
+    type: "UnaryOp",
+    roles: "Operator"
+)
+ternary_expr <- (ternary_expr) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+word_list <- (word_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Argument"
+)
+arguments <- (arguments) => uast(
+    token: "self",
+    type: "List",
+    roles: "Parameter"
+)
+argument <- (argument) => uast(
+    token: "self",
+    type: "Parameter",
+    roles: "Parameter"
+)
+array_index <- (array_index) => uast(
+    token: "self",
+    type: "Index",
+    roles: "Index"
+)
+global <- (global) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+regexp <- (regexp) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+escaped_character <- (escaped_character) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

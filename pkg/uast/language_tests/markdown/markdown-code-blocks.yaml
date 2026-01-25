@@ -1,0 +1,37 @@
+language: markdown
+tests:
+  - name: "Fenced code block is Block"
+    code: |
+      ```python
+      print("hello")
+      ```
+    query: rfilter(.type == "Block") |> map(.type)
+    expected:
+      - "Block"
+
+  - name: "Code block has Body role"
+    code: |
+      ```javascript
+      console.log("test")
+      ```
+    query: rfilter(.type == "Block") |> map(.roles)
+    expected:
+      - ["Body"]
+
+  - name: "Language info is Identifier"
+    code: |
+      ```rust
+      fn main() {}
+      ```
+    query: rfilter(.type == "Identifier" and .roles contains "Name") |> map(.type)
+    expected:
+      - "Identifier"
+
+  - name: "Code content is Literal"
+    code: |
+      ```go
+      func main() {}
+      ```
+    query: rfilter(.type == "Literal" and .token != "") |> map(.type)
+    expected:
+      - "Literal"

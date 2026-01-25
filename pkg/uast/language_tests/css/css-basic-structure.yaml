@@ -1,0 +1,79 @@
+language: css
+tests:
+  - name: "Root is File"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "File") |> map(.type)
+    expected:
+      - "File"
+
+  - name: "Declaration block is Block"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "Block") |> map(.type)
+    expected:
+      - "Block"
+
+  - name: "Block has Body role"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "Block") |> map(.roles)
+    expected:
+      - ["Body"]
+
+  - name: "Property declaration is KeyValue"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "KeyValue") |> map(.type)
+    expected:
+      - "KeyValue"
+
+  - name: "KeyValue has Key and Value roles"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "KeyValue") |> map(.roles)
+    expected:
+      - ["Key", "Value"]
+
+  - name: "Property name is Identifier with Member role"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "Identifier" and .roles contains "Member") |> map(.token)
+    expected:
+      - "color"
+
+  - name: "Value is Literal"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "Literal" and .token == "red") |> map(.token)
+    expected:
+      - "red"
+
+  - name: "Class name is Identifier with Class role"
+    code: |
+      .button { color: red; }
+    query: rfilter(.type == "Identifier" and .roles contains "Class") |> map(.token)
+    expected:
+      - "button"
+
+  - name: "Multiple declarations parsed correctly"
+    code: |
+      .button { color: red; font-size: 14px; }
+    query: rfilter(.type == "KeyValue") |> map(.type)
+    expected:
+      - "KeyValue"
+      - "KeyValue"
+
+  - name: "Color value is Literal"
+    code: |
+      .button { background: #fff; }
+    query: rfilter(.type == "Literal" and .token == "#fff") |> map(.token)
+    expected:
+      - "#fff"
+
+  - name: "Integer value with unit is Literal"
+    code: |
+      .button { font-size: 16px; }
+    query: rfilter(.type == "Literal" and .token == "16px") |> map(.token)
+    expected:
+      - "16px"

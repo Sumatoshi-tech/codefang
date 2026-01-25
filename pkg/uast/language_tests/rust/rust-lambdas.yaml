@@ -1,0 +1,33 @@
+suite: lambdas
+name: rust-lambdas
+
+query_cases:
+  - name: find_closure_types
+    input: |
+      fn main() {
+          let add = |a, b| a + b;
+      }
+    query: 'rfilter(.type == "Lambda") |> map(.type)'
+    output:
+      results:
+        - "Lambda"
+
+  - name: find_module_types
+    input: |
+      mod utils {
+          pub fn helper() {}
+      }
+    query: 'rfilter(.type == "Module") |> map(.type)'
+    output:
+      results:
+        - "Module"
+
+  - name: find_function_names
+    input: |
+      fn main() {}
+      fn helper() {}
+    query: 'rfilter(.type == "Function") |> map(.props.name)'
+    output:
+      results:
+        - "main"
+        - "helper"

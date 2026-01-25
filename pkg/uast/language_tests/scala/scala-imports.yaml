@@ -1,0 +1,22 @@
+language: scala
+tests:
+  - name: "Import declaration is Import"
+    code: |
+      import scala.collection.mutable
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      import java.util.List
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]
+
+  - name: "Package clause is Module"
+    code: |
+      package com.example
+    query: rfilter(.type == "Module") |> map(.type)
+    expected:
+      - "Module"

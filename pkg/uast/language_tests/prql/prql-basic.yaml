@@ -1,0 +1,31 @@
+language: prql
+tests:
+  - name: "from query"
+    input: |
+      from employees
+    output:
+      type: "File"
+      children:
+        - type: "Block"
+          roles: ["Body"]
+
+  - name: "filter query"
+    input: |
+      from employees
+      filter age > 30
+    output:
+      type: "File"
+      children:
+        - type: "Block"
+          roles: ["Body"]
+
+queries:
+  - name: "find filter conditions"
+    input: |
+      from employees
+      filter age > 30
+      select name
+    query: "//If"
+    output:
+      - type: "If"
+        roles: ["Condition"]

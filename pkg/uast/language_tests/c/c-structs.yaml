@@ -1,0 +1,58 @@
+suite: structs
+name: c-structs
+
+query_cases:
+  - name: find_struct
+    input: |
+      struct Point { int x; };
+    query: 'rfilter(.type == "Struct")'
+    output:
+      results:
+        - type: Struct
+          roles: [Struct, Declaration]
+          props:
+            name: Point
+          children:
+            - type: Identifier
+              roles: [Name, Type]
+              token: Point
+            - type: List
+              roles: []
+              children:
+                - type: Field
+                  roles: [Member, Declaration]
+                  token: "int x;"
+                  children:
+                    - type: Identifier
+                      roles: [Type, Name]
+                      token: int
+                    - type: Identifier
+                      roles: [Name, Member]
+                      token: x
+
+  - name: find_enum
+    input: |
+      enum Color { RED };
+    query: 'rfilter(.type == "Enum")'
+    output:
+      results:
+        - type: Enum
+          roles: [Enum, Declaration]
+          props:
+            name: Color
+          children:
+            - type: Identifier
+              roles: [Name, Type]
+              token: Color
+            - type: List
+              roles: []
+              children:
+                - type: EnumMember
+                  roles: [Member, Declaration]
+                  token: RED
+                  props:
+                    name: RED
+                  children:
+                    - type: Identifier
+                      roles: [Name]
+                      token: RED

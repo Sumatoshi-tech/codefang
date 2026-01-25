@@ -1,0 +1,54 @@
+language: bash
+tests:
+  - name: "Variable assignment"
+    code: |
+      name="John"
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+
+  - name: "Variable has Declaration role"
+    code: |
+      count=0
+    query: rfilter(.type == "Variable") |> map(.roles)
+    expected:
+      - ["Variable", "Declaration"]
+
+  - name: "Variable name is identifier"
+    code: |
+      foo=123
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "foo") |> map(.token)
+    expected:
+      - "foo"
+
+  - name: "Readonly variable"
+    code: |
+      readonly PI=3.14
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+      - "Variable"
+
+  - name: "Local variable in function"
+    code: |
+      func() {
+          local x=10
+      }
+    query: rfilter(.type == "Variable") |> map(.type)
+    expected:
+      - "Variable"
+      - "Variable"
+
+  - name: "Variable expansion is Identifier"
+    code: |
+      echo $name
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "name") |> map(.token)
+    expected:
+      - "name"
+
+  - name: "Variable in string expansion"
+    code: |
+      echo "Hello, $user!"
+    query: rfilter(.type == "Identifier") |> rfilter(.token == "user") |> map(.token)
+    expected:
+      - "user"

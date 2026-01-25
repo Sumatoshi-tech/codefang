@@ -1,0 +1,430 @@
+suite: operators
+name: javascript-operators
+
+parse_cases:
+  - name: binary_operators
+    input: |
+      const sum = a + b;
+      const diff = a - b;
+      const prod = a * b;
+      const quot = a / b;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "sum"
+              props:
+                name: "sum"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "sum"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a + b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "diff"
+              props:
+                name: "diff"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "diff"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a - b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "prod"
+              props:
+                name: "prod"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "prod"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a * b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "quot"
+              props:
+                name: "quot"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "quot"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a / b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+
+  - name: comparison_operators
+    input: |
+      const eq = a === b;
+      const neq = a !== b;
+      const lt = a < b;
+      const gt = a > b;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "eq"
+              props:
+                name: "eq"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "eq"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a === b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "neq"
+              props:
+                name: "neq"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "neq"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a !== b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "lt"
+              props:
+                name: "lt"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "lt"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a < b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "gt"
+              props:
+                name: "gt"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "gt"
+                  roles: ["Name"]
+                - type: "BinaryOp"
+                  token: "a > b"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "a"
+                      roles: ["Name"]
+                    - type: "Identifier"
+                      token: "b"
+                      roles: ["Name"]
+
+  - name: unary_operators
+    input: |
+      const neg = -x;
+      const not = !flag;
+      x++;
+      y--;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "neg"
+              props:
+                name: "neg"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "neg"
+                  roles: ["Name"]
+                - type: "UnaryOp"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "x"
+                      roles: ["Name"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "not"
+              props:
+                name: "not"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "not"
+                  roles: ["Name"]
+                - type: "UnaryOp"
+                  roles: ["Operator"]
+                  children:
+                    - type: "Identifier"
+                      token: "flag"
+                      roles: ["Name"]
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "UnaryOp"
+              token: "x++"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "x"
+                  roles: ["Name"]
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "UnaryOp"
+              token: "y--"
+              roles: ["Operator"]
+              children:
+                - type: "Identifier"
+                  token: "y"
+                  roles: ["Name"]
+
+  - name: assignment_operators
+    input: |
+      x = 1;
+      y += 2;
+      z -= 3;
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "Assignment"
+              token: "x = 1"
+              roles: ["Assignment"]
+              children:
+                - type: "Identifier"
+                  token: "x"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "1"
+                  roles: ["Literal"]
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "Assignment"
+              token: "y += 2"
+              roles: ["Assignment"]
+              children:
+                - type: "Identifier"
+                  token: "y"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "2"
+                  roles: ["Literal"]
+        - type: "Synthetic"
+          roles: []
+          children:
+            - type: "Assignment"
+              token: "z -= 3"
+              roles: ["Assignment"]
+              children:
+                - type: "Identifier"
+                  token: "z"
+                  roles: ["Name"]
+                - type: "Literal"
+                  token: "3"
+                  roles: ["Literal"]
+
+  - name: spread_operator
+    input: |
+      const arr2 = [...arr1, 4, 5];
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "arr2"
+              props:
+                name: "arr2"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "arr2"
+                  roles: ["Name"]
+                - type: "List"
+                  roles: ["Literal"]
+                  children:
+                    - type: "Spread"
+                      token: "...arr1"
+                      roles: ["Spread"]
+                      children:
+                        - type: "Identifier"
+                          token: "arr1"
+                          roles: ["Name"]
+                    - type: "Literal"
+                      token: "4"
+                      roles: ["Literal"]
+                    - type: "Literal"
+                      token: "5"
+                      roles: ["Literal"]
+
+  - name: index_operator
+    input: |
+      const item = arr[0];
+      const prop = obj["key"];
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "item"
+              props:
+                name: "item"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "item"
+                  roles: ["Name"]
+                - type: "Index"
+                  roles: ["Index"]
+                  children:
+                    - type: "Identifier"
+                      token: "arr"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: "0"
+                      roles: ["Literal"]
+        - type: "Variable"
+          roles: ["Variable", "Declaration"]
+          children:
+            - type: "Variable"
+              token: "prop"
+              props:
+                name: "prop"
+              roles: ["Variable", "Declaration"]
+              children:
+                - type: "Identifier"
+                  token: "prop"
+                  roles: ["Name"]
+                - type: "Index"
+                  roles: ["Index"]
+                  children:
+                    - type: "Identifier"
+                      token: "obj"
+                      roles: ["Name"]
+                    - type: "Literal"
+                      token: '"key"'
+                      roles: ["Literal"]
+                      children:
+                        - type: "Synthetic"
+                          token: "key"
+                          roles: []
+
+query_cases:
+  - name: find_binary_operators
+    input: |
+      const x = a + b * c - d / e;
+    query: 'rfilter(.type == "BinaryOp") |> map(.type)'
+    output:
+      results:
+        - "BinaryOp"
+        - "BinaryOp"
+        - "BinaryOp"
+        - "BinaryOp"
+
+  - name: find_assignments
+    input: |
+      x = 1;
+      y = 2;
+    query: 'rfilter(.type == "Assignment") |> map(.type)'
+    output:
+      results:
+        - "Assignment"
+        - "Assignment"

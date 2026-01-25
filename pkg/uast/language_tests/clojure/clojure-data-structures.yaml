@@ -1,0 +1,39 @@
+suite: data-structures
+name: clojure-data-structures
+
+query_cases:
+  - name: find_dict_types
+    input: |
+      {:a 1}
+      {:b 2}
+    query: 'rfilter(.type == "Dict") |> map(.type)'
+    output:
+      results:
+        - "Dict"
+        - "Dict"
+
+  - name: find_set_types
+    input: |
+      #{1 2}
+    query: 'rfilter(.type == "Set") |> map(.type)'
+    output:
+      results:
+        - "Set"
+
+  - name: find_vector_types
+    input: |
+      [1 2]
+      [3 4 5]
+    query: 'rfilter(.type == "List") |> map(.type)'
+    output:
+      results:
+        - "List"
+        - "List"
+
+  - name: find_keyword_names_in_map
+    input: |
+      {:name "John" :age 30}
+    query: 'rfilter(.type == "Identifier" && .token == ":name") |> map(.props.name)'
+    output:
+      results:
+        - "name"

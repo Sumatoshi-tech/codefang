@@ -1,0 +1,29 @@
+suite: dart-basic
+name: Basic Dart constructs
+
+parse_cases:
+  - name: Parse variable declaration
+    input: "var x = 1;"
+    output:
+      type: File
+      roles: []
+      children:
+        - type: Synthetic
+          roles: []
+        - type: List
+          roles: []
+          children:
+            - type: Variable
+              token: "x = 1"
+              roles:
+                - Variable
+                - Declaration
+              children:
+                - type: Identifier
+                  token: "x"
+                  roles:
+                    - Name
+                - type: Literal
+                  token: "1"
+                  roles:
+                    - Literal

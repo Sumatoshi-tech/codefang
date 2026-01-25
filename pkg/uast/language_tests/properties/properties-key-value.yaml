@@ -1,0 +1,80 @@
+language: properties
+description: "Test Properties key-value pairs"
+
+tests:
+  - name: "Simple property"
+    code: |
+      key=value
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            roles: [Key, Value]
+
+  - name: "Property with identifier and literal"
+    code: |
+      db.host=localhost
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            children:
+              - type: Identifier
+                roles: [Name]
+                token: "db.host"
+              - type: Literal
+                roles: [Literal]
+                token: "localhost"
+
+  - name: "Multiple properties"
+    code: |
+      key1=value1
+      key2=value2
+      key3=value3
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            roles: [Key, Value]
+          - type: KeyValue
+            roles: [Key, Value]
+          - type: KeyValue
+            roles: [Key, Value]
+
+  - name: "Property with spaces"
+    code: |
+      app.name = My Application
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            children:
+              - type: Identifier
+                token: "app.name"
+              - type: Literal
+
+  - name: "Numeric value"
+    code: |
+      port=8080
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            children:
+              - type: Identifier
+                token: "port"
+              - type: Literal
+                token: "8080"
+
+  - name: "Boolean value"
+    code: |
+      enabled=true
+    expected:
+      - type: File
+        children:
+          - type: KeyValue
+            children:
+              - type: Identifier
+                token: "enabled"
+              - type: Literal
+                token: "true"

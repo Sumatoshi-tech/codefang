@@ -1,0 +1,52 @@
+language: css
+tests:
+  - name: "Import statement is Import"
+    code: |
+      @import "styles.css";
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "Import has Import role"
+    code: |
+      @import "styles.css";
+    query: rfilter(.type == "Import") |> map(.roles)
+    expected:
+      - ["Import"]
+
+  - name: "Import with url() function"
+    code: |
+      @import url("styles.css");
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+
+  - name: "url() is Call"
+    code: |
+      @import url("styles.css");
+    query: rfilter(.type == "Call") |> map(.type)
+    expected:
+      - "Call"
+
+  - name: "url function name is Identifier"
+    code: |
+      @import url("styles.css");
+    query: rfilter(.type == "Identifier" and .token == "url") |> map(.token)
+    expected:
+      - "url"
+
+  - name: "Import path is Literal"
+    code: |
+      @import "styles.css";
+    query: rfilter(.type == "Literal" and .token contains "styles.css") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Multiple imports"
+    code: |
+      @import "base.css";
+      @import "theme.css";
+    query: rfilter(.type == "Import") |> map(.type)
+    expected:
+      - "Import"
+      - "Import"

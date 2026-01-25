@@ -1,0 +1,67 @@
+suite: literals
+name: ruby-literals
+
+query_cases:
+  - name: find_integers
+    input: |
+      x = 42
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "42") |> map(.token)'
+    output:
+      results:
+        - "42"
+
+  - name: find_floats
+    input: |
+      pi = 3.14
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "3.14") |> map(.token)'
+    output:
+      results:
+        - "3.14"
+
+  - name: find_strings
+    input: |
+      name = "hello"
+    query: 'rfilter(.type == "Literal") |> map(.type)'
+    output:
+      results:
+        - "Literal"
+
+  - name: find_booleans
+    input: |
+      a = true
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "true") |> map(.token)'
+    output:
+      results:
+        - "true"
+
+  - name: find_nil
+    input: |
+      x = nil
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == "nil") |> map(.token)'
+    output:
+      results:
+        - "nil"
+
+  - name: find_symbols
+    input: |
+      sym = :my_symbol
+    query: 'rfilter(.type == "Literal") |> rfilter(.token == ":my_symbol") |> map(.token)'
+    output:
+      results:
+        - ":my_symbol"
+
+  - name: find_arrays
+    input: |
+      arr = [1, 2, 3]
+    query: 'rfilter(.type == "List") |> map(.type)'
+    output:
+      results:
+        - "List"
+
+  - name: find_hashes
+    input: |
+      hash = {a: 1, b: 2}
+    query: 'rfilter(.type == "Dict") |> map(.type)'
+    output:
+      results:
+        - "Dict"

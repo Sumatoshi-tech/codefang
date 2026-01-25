@@ -1,0 +1,65 @@
+language: css
+tests:
+  - name: "Plain value is Literal"
+    code: |
+      .button { display: flex; }
+    query: rfilter(.type == "Literal" and .token == "flex") |> map(.token)
+    expected:
+      - "flex"
+
+  - name: "Color hex is Literal"
+    code: |
+      .button { color: #3498db; }
+    query: rfilter(.type == "Literal" and .token == "#3498db") |> map(.token)
+    expected:
+      - "#3498db"
+
+  - name: "Shorthand color hex is Literal"
+    code: |
+      .button { color: #fff; }
+    query: rfilter(.type == "Literal" and .token == "#fff") |> map(.token)
+    expected:
+      - "#fff"
+
+  - name: "Integer with px unit is Literal"
+    code: |
+      .button { padding: 10px; }
+    query: rfilter(.type == "Literal" and .token == "10px") |> map(.token)
+    expected:
+      - "10px"
+
+  - name: "Integer with em unit is Literal"
+    code: |
+      .button { margin: 2em; }
+    query: rfilter(.type == "Literal" and .token == "2em") |> map(.token)
+    expected:
+      - "2em"
+
+  - name: "Percentage is Literal"
+    code: |
+      .container { width: 100%; }
+    query: rfilter(.type == "Literal" and .token == "100%") |> map(.token)
+    expected:
+      - "100%"
+
+  - name: "Float with unit is Literal"
+    code: |
+      .button { line-height: 1.5em; }
+    query: rfilter(.type == "Literal" and .token == "1.5em") |> map(.token)
+    expected:
+      - "1.5em"
+
+  - name: "String value is Literal"
+    code: |
+      .button::before { content: "Hello"; }
+    query: rfilter(.type == "Literal" and .token contains "Hello") |> map(.type)
+    expected:
+      - "Literal"
+
+  - name: "Multiple values in declaration"
+    code: |
+      .button { margin: 10px 20px; }
+    query: rfilter(.type == "Literal" and (.token == "10px" or .token == "20px")) |> map(.token)
+    expected:
+      - "10px"
+      - "20px"

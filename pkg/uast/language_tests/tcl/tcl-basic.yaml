@@ -1,0 +1,42 @@
+language: tcl
+tests:
+  - name: "package require (import)"
+    input: |
+      package require Tk
+    output:
+      type: "File"
+      children:
+        - type: "Call"
+          roles: ["Call"]
+
+  - name: "set variable"
+    input: |
+      set x 42
+    output:
+      type: "File"
+      children:
+        - type: "Assignment"
+          roles: ["Assignment"]
+
+  - name: "proc declaration"
+    input: |
+      proc greet {name} {
+          puts "Hello"
+      }
+    output:
+      type: "File"
+      children:
+        - type: "Function"
+          roles: ["Function", "Declaration"]
+
+queries:
+  - name: "find all calls"
+    input: |
+      package require Tk
+      puts "Hello"
+    query: "//Call"
+    output:
+      - type: "Call"
+        roles: ["Call"]
+      - type: "Call"
+        roles: ["Call"]

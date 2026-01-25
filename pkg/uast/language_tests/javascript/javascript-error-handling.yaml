@@ -1,0 +1,215 @@
+suite: error-handling
+name: javascript-error-handling
+
+parse_cases:
+  - name: try_catch
+    input: |
+      try {
+          throw new Error("test");
+      } catch (e) {
+          console.error(e);
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Try"
+          token: |-
+            try {
+                throw new Error("test");
+            } catch (e) {
+                console.error(e);
+            }
+          roles: ["Try"]
+          children:
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Throw"
+                  roles: ["Throw"]
+                  children:
+                    - type: "Call"
+                      token: 'new Error("test")'
+                      roles: ["Call"]
+                      children:
+                        - type: "Identifier"
+                          token: "Error"
+                          roles: ["Name"]
+                        - type: "Synthetic"
+                          token: '("test")'
+                          roles: []
+                          children:
+                            - type: "Literal"
+                              token: '"test"'
+                              roles: ["Literal"]
+                              children:
+                                - type: "Synthetic"
+                                  token: "test"
+                                  roles: []
+            - type: "Catch"
+              roles: ["Catch"]
+              children:
+                - type: "Identifier"
+                  token: "e"
+                  roles: ["Name"]
+                - type: "Block"
+                  roles: ["Body"]
+                  children:
+                    - type: "Synthetic"
+                      roles: []
+                      children:
+                        - type: "Call"
+                          token: "console.error(e)"
+                          roles: ["Call"]
+                          children:
+                            - type: "Synthetic"
+                              token: "console.error"
+                              roles: ["Member"]
+                              children:
+                                - type: "Identifier"
+                                  token: "console"
+                                  roles: ["Name"]
+                                - type: "Identifier"
+                                  token: "error"
+                                  roles: ["Name"]
+                            - type: "Synthetic"
+                              token: "(e)"
+                              roles: []
+                              children:
+                                - type: "Identifier"
+                                  token: "e"
+                                  roles: ["Name"]
+
+  - name: try_catch_finally
+    input: |
+      try {
+          doSomething();
+      } catch (e) {
+          handleError(e);
+      } finally {
+          cleanup();
+      }
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Try"
+          token: |-
+            try {
+                doSomething();
+            } catch (e) {
+                handleError(e);
+            } finally {
+                cleanup();
+            }
+          roles: ["Try"]
+          children:
+            - type: "Block"
+              roles: ["Body"]
+              children:
+                - type: "Synthetic"
+                  roles: []
+                  children:
+                    - type: "Call"
+                      token: "doSomething()"
+                      roles: ["Call"]
+                      children:
+                        - type: "Identifier"
+                          token: "doSomething"
+                          roles: ["Name"]
+                        - type: "Synthetic"
+                          token: "()"
+                          roles: []
+            - type: "Catch"
+              roles: ["Catch"]
+              children:
+                - type: "Identifier"
+                  token: "e"
+                  roles: ["Name"]
+                - type: "Block"
+                  roles: ["Body"]
+                  children:
+                    - type: "Synthetic"
+                      roles: []
+                      children:
+                        - type: "Call"
+                          token: "handleError(e)"
+                          roles: ["Call"]
+                          children:
+                            - type: "Identifier"
+                              token: "handleError"
+                              roles: ["Name"]
+                            - type: "Synthetic"
+                              token: "(e)"
+                              roles: []
+                              children:
+                                - type: "Identifier"
+                                  token: "e"
+                                  roles: ["Name"]
+            - type: "Finally"
+              roles: ["Finally"]
+              children:
+                - type: "Block"
+                  roles: ["Body"]
+                  children:
+                    - type: "Synthetic"
+                      roles: []
+                      children:
+                        - type: "Call"
+                          token: "cleanup()"
+                          roles: ["Call"]
+                          children:
+                            - type: "Identifier"
+                              token: "cleanup"
+                              roles: ["Name"]
+                            - type: "Synthetic"
+                              token: "()"
+                              roles: []
+
+  - name: throw_statement
+    input: |
+      throw new Error("Something went wrong");
+    output:
+      type: "File"
+      roles: []
+      children:
+        - type: "Throw"
+          roles: ["Throw"]
+          children:
+            - type: "Call"
+              token: 'new Error("Something went wrong")'
+              roles: ["Call"]
+              children:
+                - type: "Identifier"
+                  token: "Error"
+                  roles: ["Name"]
+                - type: "Synthetic"
+                  token: '("Something went wrong")'
+                  roles: []
+                  children:
+                    - type: "Literal"
+                      token: '"Something went wrong"'
+                      roles: ["Literal"]
+                      children:
+                        - type: "Synthetic"
+                          token: "Something went wrong"
+                          roles: []
+
+query_cases:
+  - name: find_try_blocks
+    input: |
+      try { a(); } catch (e) {}
+      try { b(); } finally {}
+    query: 'rfilter(.type == "Try") |> map(.type)'
+    output:
+      results:
+        - "Try"
+        - "Try"
+
+  - name: find_catch_blocks
+    input: |
+      try { a(); } catch (e) { handleError(e); }
+    query: 'rfilter(.type == "Catch") |> map(.type)'
+    output:
+      results:
+        - "Catch"

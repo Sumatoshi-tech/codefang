@@ -1,0 +1,186 @@
+[language "commonlisp", extensions: ".lisp", ".lsp"]
+source <- (source) => uast(
+    type: "File"
+)
+sym_lit <- (sym_lit) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+kwd_lit <- (kwd_lit) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+kwd_symbol <- (kwd_symbol) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+num_lit <- (num_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+str_lit <- (str_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+char_lit <- (char_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+nil_lit <- (nil_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+complex_num_lit <- (complex_num_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+fancy_literal <- (fancy_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+list_lit <- (list_lit) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+vec_lit <- (vec_lit) => uast(
+    token: "self",
+    type: "List"
+)
+set_lit <- (set_lit) => uast(
+    token: "self",
+    type: "Set"
+)
+map_lit <- (map_lit) => uast(
+    token: "self",
+    type: "Dict"
+)
+defun <- (defun) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+defun_header <- (defun_header) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+defmacro <- (defmacro) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+defmethod <- (defmethod) => uast(
+    token: "self",
+    type: "Method",
+    roles: "Function", "Declaration", "Member"
+)
+defgeneric <- (defgeneric) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+package_lit <- (package_lit) => uast(
+    token: "self",
+    type: "Module",
+    roles: "Module"
+)
+loop_macro <- (loop_macro) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+loop_clause <- (loop_clause) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+for_clause <- (for_clause) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+while_clause <- (while_clause) => uast(
+    token: "self",
+    type: "Loop",
+    roles: "Loop"
+)
+quoting_lit <- (quoting_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+syn_quoting_lit <- (syn_quoting_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+unquoting_lit <- (unquoting_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+unquote_splicing_lit <- (unquote_splicing_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+var_quoting_lit <- (var_quoting_lit) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+block_comment <- (block_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+meta_lit <- (meta_lit) => uast(
+    token: "self",
+    type: "Attribute",
+    roles: "Attribute"
+)
+old_meta_lit <- (old_meta_lit) => uast(
+    token: "self",
+    type: "Attribute",
+    roles: "Attribute"
+)
+read_cond_lit <- (read_cond_lit) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+splicing_read_cond_lit <- (splicing_read_cond_lit) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+return <- (return) => uast(
+    token: "self",
+    type: "Return",
+    roles: "Return"
+)
+finally <- (finally) => uast(
+    token: "self",
+    type: "Finally",
+    roles: "Finally"
+)
+path_lit <- (path_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

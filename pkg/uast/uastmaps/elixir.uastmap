@@ -1,0 +1,304 @@
+[language "elixir", extensions: ".ex", ".exs"]
+
+source <- (source) => uast(
+    type: "File"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+alias <- (alias) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+boolean <- (boolean) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+nil <- (nil) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_content <- (quoted_content) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+atom <- (atom) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+quoted_atom <- (quoted_atom) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+char <- (char) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+charlist <- (charlist) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+sigil <- (sigil) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+sigil_name <- (sigil_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+sigil_modifiers <- (sigil_modifiers) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+map <- (map) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal"
+)
+
+map_content <- (map_content) => uast(
+    type: "Synthetic"
+)
+
+list <- (list) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+tuple <- (tuple) => uast(
+    type: "Tuple",
+    roles: "Literal"
+)
+
+keywords <- (keywords) => uast(
+    type: "Synthetic"
+)
+
+pair <- (pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+keyword <- (keyword) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Key"
+)
+
+quoted_keyword <- (quoted_keyword) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Key"
+)
+
+bitstring <- (bitstring) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+call <- (call) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+anonymous_function <- (anonymous_function) => uast(
+    type: "Lambda",
+    roles: "Function"
+)
+
+arguments <- (arguments) => uast(
+    type: "List",
+    roles: "Argument"
+)
+
+stab_clause <- (stab_clause) => uast(
+    type: "Case",
+    roles: "Case"
+)
+
+body <- (body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+binary_operator <- (binary_operator) => uast(
+    type: "BinaryOp",
+    roles: "Operator"
+)
+
+unary_operator <- (unary_operator) => uast(
+    token: "self",
+    type: "UnaryOp",
+    roles: "Operator"
+)
+
+operator_identifier <- (operator_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+do_block <- (do_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+after_block <- (after_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+rescue_block <- (rescue_block) => uast(
+    type: "Catch",
+    roles: "Catch"
+)
+
+catch_block <- (catch_block) => uast(
+    type: "Catch",
+    roles: "Catch"
+)
+
+else_block <- (else_block) => uast(
+    type: "Block",
+    roles: "Else"
+)
+
+access_call <- (access_call) => uast(
+    type: "Index",
+    roles: "Index"
+)
+
+dot <- (dot) => uast(
+    type: "Call",
+    roles: "Call", "Member"
+)
+
+struct <- (struct) => uast(
+    token: "self",
+    type: "Struct",
+    roles: "Struct", "Declaration"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+interpolation <- (interpolation) => uast(
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+do <- (do) => uast(
+    type: "Synthetic"
+)
+
+end <- (end) => uast(
+    type: "Synthetic"
+)
+
+fn <- (fn) => uast(
+    type: "Synthetic"
+)
+
+after <- (after) => uast(
+    type: "Synthetic"
+)
+
+rescue <- (rescue) => uast(
+    type: "Synthetic"
+)
+
+catch <- (catch) => uast(
+    type: "Synthetic"
+)
+
+else <- (else) => uast(
+    type: "Synthetic"
+)
+
+when <- (when) => uast(
+    type: "Synthetic"
+)
+
+and <- (and) => uast(
+    type: "Synthetic"
+)
+
+or <- (or) => uast(
+    type: "Synthetic"
+)
+
+not <- (not) => uast(
+    type: "Synthetic"
+)
+
+in <- (in) => uast(
+    type: "Synthetic"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

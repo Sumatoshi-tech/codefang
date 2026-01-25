@@ -1,0 +1,161 @@
+suite: basic-functions
+name: kotlin-basic-functions
+
+parse_cases:
+  - name: simple_function
+    input: |
+      fun hello(): String {
+          return "Hello, World!"
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+        - type: TypeAnnotation
+          roles:
+          - Type
+          children:
+          - type: Identifier
+            roles:
+            - Type
+            - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Synthetic
+            roles: []
+            children:
+            - type: Synthetic
+              roles: []
+              children:
+              - type: Literal
+                roles:
+                - Literal
+                children:
+                - type: Synthetic
+                  roles: []
+
+  - name: function_with_params
+    input: |
+      fun add(a: Int, b: Int): Int {
+          return a + b
+      }
+    output:
+      type: File
+      roles: []
+      children:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+          children:
+          - type: Parameter
+            roles:
+            - Parameter
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+          - type: Parameter
+            roles:
+            - Parameter
+            children:
+            - type: Identifier
+              roles:
+              - Name
+            - type: TypeAnnotation
+              roles:
+              - Type
+              children:
+              - type: Identifier
+                roles:
+                - Type
+                - Name
+        - type: TypeAnnotation
+          roles:
+          - Type
+          children:
+          - type: Identifier
+            roles:
+            - Type
+            - Name
+        - type: Block
+          roles:
+          - Body
+          children:
+          - type: Synthetic
+            roles: []
+            children:
+            - type: Synthetic
+              roles: []
+              children:
+              - type: BinaryOp
+                roles:
+                - Operator
+                children:
+                - type: Identifier
+                  roles:
+                  - Name
+                - type: Identifier
+                  roles:
+                  - Name
+
+query_cases:
+  - name: find_functions
+    input: |
+      fun func1() {}
+      fun func2() {}
+    query: "filter(.type == \"Function\")"
+    output:
+      results:
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+        - type: Block
+          roles:
+          - Body
+      - type: Function
+        roles:
+        - Function
+        - Declaration
+        children:
+        - type: Identifier
+          roles:
+          - Name
+        - type: Synthetic
+          roles: []
+        - type: Block
+          roles:
+          - Body
