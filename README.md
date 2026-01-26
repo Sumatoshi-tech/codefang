@@ -1,7 +1,7 @@
 # Codefang
 
 <p align="center">
-  <img src="assets/uast.png" alt="Codefang Logo" width="500">
+  <img src="assets/uast.png" alt="Codefang Logo" width="250">
 </p>
 
 [![CI](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml)
