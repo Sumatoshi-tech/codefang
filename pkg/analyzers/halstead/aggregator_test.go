@@ -1,12 +1,15 @@
-package halstead
+package halstead //nolint:testpackage // testing internal implementation.
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 func TestNewHalsteadAggregator(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	if aggregator == nil {
@@ -23,6 +26,8 @@ func TestNewHalsteadAggregator(t *testing.T) {
 }
 
 func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	report := analyze.Report{
@@ -39,7 +44,7 @@ func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
 		"vocabulary":         20,
 		"length":             55,
 		"estimated_length":   52.3,
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "func1", "volume": 75.0},
 			{"name": "func2", "volume": 75.5},
 		},
@@ -57,7 +62,7 @@ func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
 		t.Errorf("Expected total_functions=2, got %v", total)
 	}
 
-	if functions, ok := result["functions"].([]map[string]interface{}); ok {
+	if functions, ok := result["functions"].([]map[string]any); ok {
 		if len(functions) != 2 {
 			t.Errorf("Expected 2 functions in result, got %d", len(functions))
 		}
@@ -65,6 +70,8 @@ func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
 }
 
 func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	report1 := analyze.Report{
@@ -81,7 +88,7 @@ func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
 		"vocabulary":         15,
 		"length":             35,
 		"estimated_length":   33.0,
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "file1_func1", "volume": 50.0},
 			{"name": "file1_func2", "volume": 50.0},
 		},
@@ -101,7 +108,7 @@ func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
 		"vocabulary":         22,
 		"length":             60,
 		"estimated_length":   58.0,
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "file2_func1", "volume": 60.0},
 			{"name": "file2_func2", "volume": 70.0},
 			{"name": "file2_func3", "volume": 70.0},
@@ -117,13 +124,13 @@ func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Check aggregated totals
+	// Check aggregated totals.
 	if total, ok := result["total_functions"]; !ok || total != 5 {
 		t.Errorf("Expected total_functions=5, got %v", total)
 	}
 
-	// Check detailed functions are collected
-	if functions, ok := result["functions"].([]map[string]interface{}); ok {
+	// Check detailed functions are collected.
+	if functions, ok := result["functions"].([]map[string]any); ok {
 		if len(functions) != 5 {
 			t.Errorf("Expected 5 functions in result, got %d", len(functions))
 		}
@@ -131,9 +138,11 @@ func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
 }
 
 func TestHalsteadAggregator_Aggregate_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
-	// Aggregate with nil report
+	// Aggregate with nil report.
 	aggregator.Aggregate(map[string]analyze.Report{"halstead": nil})
 
 	result := aggregator.GetResult()
@@ -142,13 +151,15 @@ func TestHalsteadAggregator_Aggregate_EmptyReport(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Should return empty result
+	// Should return empty result.
 	if total, ok := result["total_functions"]; !ok || total != 0 {
 		t.Errorf("Expected total_functions=0 for empty report, got %v", total)
 	}
 }
 
 func TestHalsteadAggregator_GetResult_NoAggregation(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	result := aggregator.GetResult()
@@ -157,7 +168,7 @@ func TestHalsteadAggregator_GetResult_NoAggregation(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Should return empty result
+	// Should return empty result.
 	if total, ok := result["total_functions"]; !ok || total != 0 {
 		t.Errorf("Expected total_functions=0, got %v", total)
 	}
@@ -168,6 +179,8 @@ func TestHalsteadAggregator_GetResult_NoAggregation(t *testing.T) {
 }
 
 func TestHalsteadAggregator_DetailedFunctionsCollection(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	report := analyze.Report{
@@ -175,7 +188,7 @@ func TestHalsteadAggregator_DetailedFunctionsCollection(t *testing.T) {
 		"volume":          100.0,
 		"difficulty":      5.0,
 		"effort":          500.0,
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{
 				"name":       "testFunc",
 				"volume":     100.0,
@@ -189,21 +202,23 @@ func TestHalsteadAggregator_DetailedFunctionsCollection(t *testing.T) {
 
 	result := aggregator.GetResult()
 
-	functions, ok := result["functions"].([]map[string]interface{})
+	functions, ok := result["functions"].([]map[string]any)
 	if !ok {
-		t.Fatal("Expected functions to be []map[string]interface{}")
+		t.Fatal("Expected functions to be []map[string]any")
 	}
 
 	if len(functions) != 1 {
 		t.Fatalf("Expected 1 function, got %d", len(functions))
 	}
 
-	if name, ok := functions[0]["name"]; !ok || name != "testFunc" {
+	if name, nameOK := functions[0]["name"]; !nameOK || name != "testFunc" {
 		t.Errorf("Expected function name='testFunc', got %v", name)
 	}
 }
 
 func TestHalsteadGetNumericKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getNumericKeys()
 
 	expectedKeys := []string{
@@ -217,13 +232,8 @@ func TestHalsteadGetNumericKeys(t *testing.T) {
 	}
 
 	for _, expected := range expectedKeys {
-		found := false
-		for _, key := range keys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(keys, expected)
+
 		if !found {
 			t.Errorf("Expected numeric key '%s' not found", expected)
 		}
@@ -231,6 +241,8 @@ func TestHalsteadGetNumericKeys(t *testing.T) {
 }
 
 func TestHalsteadGetCountKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getCountKeys()
 
 	expectedKeys := []string{"total_functions"}
@@ -239,13 +251,8 @@ func TestHalsteadGetCountKeys(t *testing.T) {
 	}
 
 	for _, expected := range expectedKeys {
-		found := false
-		for _, key := range keys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(keys, expected)
+
 		if !found {
 			t.Errorf("Expected count key '%s' not found", expected)
 		}
@@ -253,20 +260,22 @@ func TestHalsteadGetCountKeys(t *testing.T) {
 }
 
 func TestBuildHalsteadMessage(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		volume   float64
 		expected string
+		volume   float64
 	}{
-		{50.0, "Low Halstead complexity - well-structured code"},
-		{99.0, "Low Halstead complexity - well-structured code"},
-		{100.0, "Moderate Halstead complexity - acceptable"},
-		{500.0, "Moderate Halstead complexity - acceptable"},
-		{999.0, "Moderate Halstead complexity - acceptable"},
-		{1000.0, "High Halstead complexity - consider refactoring"},
-		{3000.0, "High Halstead complexity - consider refactoring"},
-		{4999.0, "High Halstead complexity - consider refactoring"},
-		{5000.0, "Very high Halstead complexity - significant refactoring recommended"},
-		{10000.0, "Very high Halstead complexity - significant refactoring recommended"},
+		{"Low Halstead complexity - well-structured code", 50.0},
+		{"Low Halstead complexity - well-structured code", 99.0},
+		{"Moderate Halstead complexity - acceptable", 100.0},
+		{"Moderate Halstead complexity - acceptable", 500.0},
+		{"Moderate Halstead complexity - acceptable", 999.0},
+		{"High Halstead complexity - consider refactoring", 1000.0},
+		{"High Halstead complexity - consider refactoring", 3000.0},
+		{"High Halstead complexity - consider refactoring", 4999.0},
+		{"Very high Halstead complexity - significant refactoring recommended", 5000.0},
+		{"Very high Halstead complexity - significant refactoring recommended", 10000.0},
 	}
 
 	for _, tt := range tests {
@@ -278,6 +287,8 @@ func TestBuildHalsteadMessage(t *testing.T) {
 }
 
 func TestBuildEmptyHalsteadResult(t *testing.T) {
+	t.Parallel()
+
 	result := buildEmptyHalsteadResult()
 
 	if result == nil {
@@ -307,11 +318,13 @@ func TestBuildEmptyHalsteadResult(t *testing.T) {
 }
 
 func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
-	// Test with valid functions
+	// Test with valid functions.
 	report := analyze.Report{
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "func1"},
 			{"name": "func2"},
 		},
@@ -323,7 +336,7 @@ func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
 		t.Errorf("Expected 2 functions extracted, got %d", len(aggregator.detailedFunctions))
 	}
 
-	// Test with no functions key
+	// Test with no functions key.
 	aggregator2 := NewHalsteadAggregator()
 	reportNoFunctions := analyze.Report{
 		"total_functions": 0,
@@ -337,21 +350,23 @@ func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
 }
 
 func TestHalsteadAggregator_CollectDetailedFunctions(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
 
 	results := map[string]analyze.Report{
 		"file1": {
-			"functions": []map[string]interface{}{
+			"functions": []map[string]any{
 				{"name": "file1_func1"},
 			},
 		},
 		"file2": {
-			"functions": []map[string]interface{}{
+			"functions": []map[string]any{
 				{"name": "file2_func1"},
 				{"name": "file2_func2"},
 			},
 		},
-		"file3": nil, // nil report should be skipped
+		"file3": nil, // Nil report should be skipped.
 	}
 
 	aggregator.collectDetailedFunctions(results)
@@ -362,8 +377,10 @@ func TestHalsteadAggregator_CollectDetailedFunctions(t *testing.T) {
 }
 
 func TestHalsteadAggregator_AddDetailedFunctionsToResult(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewHalsteadAggregator()
-	aggregator.detailedFunctions = []map[string]interface{}{
+	aggregator.detailedFunctions = []map[string]any{
 		{"name": "func1"},
 		{"name": "func2"},
 	}
@@ -371,8 +388,8 @@ func TestHalsteadAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 	result := analyze.Report{}
 	aggregator.addDetailedFunctionsToResult(result)
 
-	functions, ok := result["functions"].([]map[string]interface{})
-	if !ok {
+	functions, fnOK := result["functions"].([]map[string]any)
+	if !fnOK {
 		t.Fatal("Expected functions to be added to result")
 	}
 
@@ -380,12 +397,12 @@ func TestHalsteadAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 		t.Errorf("Expected 2 functions in result, got %d", len(functions))
 	}
 
-	// Test with empty detailed functions
+	// Test with empty detailed functions.
 	aggregator2 := NewHalsteadAggregator()
 	result2 := analyze.Report{}
 	aggregator2.addDetailedFunctionsToResult(result2)
 
-	if _, ok := result2["functions"]; ok {
+	if _, hasFunc := result2["functions"]; hasFunc {
 		t.Error("Expected no functions key when detailedFunctions is empty")
 	}
 }

@@ -1,34 +1,38 @@
-package halstead
+package halstead //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestHalsteadVisitor_Basic(t *testing.T) {
+	t.Parallel()
+
 	visitor := NewHalsteadVisitor()
 	traverser := analyze.NewMultiAnalyzerTraverser()
 	traverser.RegisterVisitor(visitor)
 
-	// Create a simple function
+	// Create a simple function.
 	functionNode := &node.Node{Type: node.UASTFunction}
 	functionNode.Roles = []node.Role{node.RoleFunction, node.RoleDeclaration}
-	
-	// Add function name
+
+	// Add function name.
 	nameNode := node.NewNodeWithToken(node.UASTIdentifier, "simpleFunction")
 	nameNode.Roles = []node.Role{node.RoleName}
 	functionNode.AddChild(nameNode)
 
-	// Add an operator (+)
+	// Add an operator (+).
 	opNode := &node.Node{Type: node.UASTBinaryOp}
 	opNode.Props = map[string]string{"operator": "+"}
 	opNode.Roles = []node.Role{node.RoleOperator}
 	functionNode.AddChild(opNode)
 
-	// Add operands (a, b)
+	// Add operands (a, b).
 	operand1 := &node.Node{Type: node.UASTIdentifier, Token: "a"}
 	operand1.Roles = []node.Role{node.RoleVariable}
 	functionNode.AddChild(operand1)
@@ -42,27 +46,31 @@ func TestHalsteadVisitor_Basic(t *testing.T) {
 
 	traverser.Traverse(root)
 
-	// Get results
+	// Get results.
 	report := visitor.GetReport()
-	
-	metrics := report["functions"].([]map[string]interface{})
-	assert.Equal(t, 1, len(metrics))
-	
+
+	metrics, ok := report["functions"].([]map[string]any)
+	require.True(t, ok, "type assertion failed for metrics")
+	assert.Len(t, metrics, 1)
+
 	fn := metrics[0]
 	assert.Equal(t, "simpleFunction", fn["name"])
-    
-    // Debug assertions
-    ops := fn["operators"].(map[string]int)
-    operands := fn["operands"].(map[string]int)
-    assert.Equal(t, 1, len(ops), "Operators count")
-    assert.Equal(t, 3, len(operands), "Operands count")
-	
+
+	// Debug assertions.
+	ops, ok := fn["operators"].(map[string]int)
+	require.True(t, ok, "type assertion failed for ops")
+	operands, ok := fn["operands"].(map[string]int)
+	require.True(t, ok, "type assertion failed for operands")
+
+	assert.Len(t, ops, 1, "Operators count")
+	assert.Len(t, operands, 3, "Operands count")
+
 	// 1 operator (+), 2 operands (a, b)
 	// Distinct Operators: 1
 	// Distinct Operands: 2
 	// Vocabulary: 3
 	// Length: 3
-	// Volume: 3 * log2(3) approx 3 * 1.58 = 4.75
-	
+	// Volume: 3 * log2(3) approx 3 * 1.58 = 4.75.
+
 	assert.NotZero(t, fn["volume"])
 }

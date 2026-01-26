@@ -2,19 +2,28 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/spf13/cobra"
+)
+
+// Sentinel errors for the parse command.
+var (
+	ErrNoSourceFiles       = errors.New("no source files found in the codebase")
+	ErrUnsupportedParseFmt = errors.New("unsupported format")
 )
 
 func parseCmd() *cobra.Command {
 	var lang, output, format string
+
 	var progress, all bool
 
 	cmd := &cobra.Command{
@@ -47,17 +56,19 @@ Examples:
 func runParse(files []string, lang, output, format string, progress, all bool, writer io.Writer) error {
 	if all {
 		var err error
+
 		files, err = collectSourceFiles(".")
 		if err != nil {
 			return fmt.Errorf("failed to collect source files: %w", err)
 		}
+
 		if len(files) == 0 {
-			return fmt.Errorf("no source files found in the codebase")
+			return ErrNoSourceFiles
 		}
 	}
 
 	if len(files) == 0 {
-		// Read from stdin
+		// Read from stdin.
 		return parseStdin(lang, output, format, writer)
 	}
 
@@ -65,13 +76,14 @@ func runParse(files []string, lang, output, format string, progress, all bool, w
 		fmt.Fprintf(os.Stderr, "Parsing %d files...\n", len(files))
 	}
 
-	for i, file := range files {
+	for idx, file := range files {
 		if progress {
-			fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", i+1, len(files), file)
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", idx+1, len(files), file)
 		}
 
-		if err := ParseFile(file, lang, output, format, writer); err != nil {
-			return fmt.Errorf("failed to parse %s: %w", file, err)
+		parseErr := ParseFile(file, lang, output, format, writer)
+		if parseErr != nil {
+			return fmt.Errorf("failed to parse %s: %w", file, parseErr)
 		}
 	}
 
@@ -94,16 +106,17 @@ func parseStdin(lang, output, format string, writer io.Writer) error {
 		filename = "stdin." + lang
 	}
 
-	node, err := parser.Parse(filename, code)
+	parsedNode, err := parser.Parse(filename, code)
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	node.AssignStableIDs()
+	parsedNode.AssignStableIDs()
 
-	return outputNode(node, output, format, writer)
+	return outputNode(parsedNode, output, format, writer)
 }
 
+// ParseFile parses a single source file into UAST format.
 func ParseFile(file, lang, output, format string, writer io.Writer) error {
 	code, err := os.ReadFile(file)
 	if err != nil {
@@ -121,49 +134,69 @@ func ParseFile(file, lang, output, format string, writer io.Writer) error {
 		filename = strings.TrimSuffix(file, ext) + "." + lang
 	}
 
-	node, err := parser.Parse(filename, code)
+	parsedNode, err := parser.Parse(filename, code)
 	if err != nil {
 		return fmt.Errorf("parse error in %s: %w", file, err)
 	}
 
-	node.AssignStableIDs()
+	parsedNode.AssignStableIDs()
 
-	return outputNode(node, output, format, writer)
+	return outputNode(parsedNode, output, format, writer)
 }
 
-func outputNode(node *node.Node, output, format string, writer io.Writer) error {
+func outputNode(parsedNode *node.Node, output, format string, writer io.Writer) error {
 	if output != "" {
-		f, err := os.Create(output)
+		outputFile, err := os.Create(output)
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer f.Close()
-		writer = f
+		defer outputFile.Close()
+
+		writer = outputFile
 	}
 
 	switch format {
-	case "json":
+	case formatJSON:
 		enc := json.NewEncoder(writer)
 		enc.SetIndent("", "  ")
-		return enc.Encode(node.ToMap())
+
+		encodeErr := enc.Encode(parsedNode.ToMap())
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
+		}
+
+		return nil
 	case "compact":
 		enc := json.NewEncoder(writer)
-		return enc.Encode(node.ToMap())
+
+		encodeErr := enc.Encode(parsedNode.ToMap())
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode compact JSON: %w", encodeErr)
+		}
+
+		return nil
 	default:
-		return fmt.Errorf("unsupported format: %s", format)
+		return fmt.Errorf("%w: %s", ErrUnsupportedParseFmt, format)
 	}
 }
 
 func collectSourceFiles(dir string) ([]string, error) {
-	files := []string{}
+	var files []string
+
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if !info.IsDir() {
 			files = append(files, path)
 		}
+
 		return nil
 	})
-	return files, err
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
+	}
+
+	return files, nil
 }

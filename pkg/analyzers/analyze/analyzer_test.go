@@ -1,4 +1,4 @@
-package analyze
+package analyze //nolint:testpackage // testing internal implementation.
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// mockAnalyzer implements StaticAnalyzer for testing
+// mockAnalyzer implements StaticAnalyzer for testing.
 type mockAnalyzer struct {
-	name         string
 	analyzeFunc  func(root *node.Node) (Report, error)
 	thresholds   Thresholds
+	name         string
 	formatCalled bool
 }
 
@@ -36,7 +36,7 @@ func (m *mockAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption
 	return []pipeline.ConfigurationOption{}
 }
 
-func (m *mockAnalyzer) Configure(facts map[string]interface{}) error {
+func (m *mockAnalyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
@@ -44,6 +44,7 @@ func (m *mockAnalyzer) Analyze(root *node.Node) (Report, error) {
 	if m.analyzeFunc != nil {
 		return m.analyzeFunc(root)
 	}
+
 	return Report{"result": "success"}, nil
 }
 
@@ -57,11 +58,13 @@ func (m *mockAnalyzer) CreateAggregator() ResultAggregator {
 
 func (m *mockAnalyzer) FormatReport(_ Report, _ io.Writer) error {
 	m.formatCalled = true
+
 	return nil
 }
 
 func (m *mockAnalyzer) FormatReportJSON(_ Report, _ io.Writer) error {
 	m.formatCalled = true
+
 	return nil
 }
 
@@ -70,6 +73,8 @@ func newMockAnalyzer(name string) *mockAnalyzer {
 }
 
 func TestNewFactory(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := newMockAnalyzer("analyzer1")
 	analyzer2 := newMockAnalyzer("analyzer2")
 
@@ -93,6 +98,8 @@ func TestNewFactory(t *testing.T) {
 }
 
 func TestNewFactory_Empty(t *testing.T) {
+	t.Parallel()
+
 	factory := NewFactory([]StaticAnalyzer{})
 
 	if factory == nil {
@@ -105,6 +112,8 @@ func TestNewFactory_Empty(t *testing.T) {
 }
 
 func TestRegisterAnalyzer(t *testing.T) {
+	t.Parallel()
+
 	factory := NewFactory([]StaticAnalyzer{})
 	analyzer := newMockAnalyzer("test-analyzer")
 
@@ -120,6 +129,8 @@ func TestRegisterAnalyzer(t *testing.T) {
 }
 
 func TestRegisterAnalyzer_Override(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := newMockAnalyzer("same-name")
 	analyzer2 := newMockAnalyzer("same-name")
 
@@ -136,6 +147,8 @@ func TestRegisterAnalyzer_Override(t *testing.T) {
 }
 
 func TestRunAnalyzer_Success(t *testing.T) {
+	t.Parallel()
+
 	expectedReport := Report{"metric": 42}
 	analyzer := &mockAnalyzer{
 		name: "test-analyzer",
@@ -147,7 +160,6 @@ func TestRunAnalyzer_Success(t *testing.T) {
 	factory := NewFactory([]StaticAnalyzer{analyzer})
 
 	report, err := factory.RunAnalyzer("test-analyzer", nil)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,10 +170,11 @@ func TestRunAnalyzer_Success(t *testing.T) {
 }
 
 func TestRunAnalyzer_NotFound(t *testing.T) {
+	t.Parallel()
+
 	factory := NewFactory([]StaticAnalyzer{})
 
 	_, err := factory.RunAnalyzer("nonexistent", nil)
-
 	if err == nil {
 		t.Fatal("expected error for nonexistent analyzer")
 	}
@@ -173,6 +186,8 @@ func TestRunAnalyzer_NotFound(t *testing.T) {
 }
 
 func TestRunAnalyzer_AnalyzerError(t *testing.T) {
+	t.Parallel()
+
 	expectedErr := errors.New("analysis failed")
 	analyzer := &mockAnalyzer{
 		name: "failing-analyzer",
@@ -184,7 +199,6 @@ func TestRunAnalyzer_AnalyzerError(t *testing.T) {
 	factory := NewFactory([]StaticAnalyzer{analyzer})
 
 	_, err := factory.RunAnalyzer("failing-analyzer", nil)
-
 	if err == nil {
 		t.Fatal("expected error from analyzer")
 	}
@@ -195,6 +209,8 @@ func TestRunAnalyzer_AnalyzerError(t *testing.T) {
 }
 
 func TestRunAnalyzers_Success(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := &mockAnalyzer{
 		name: "analyzer1",
 		analyzeFunc: func(_ *node.Node) (Report, error) {
@@ -211,7 +227,6 @@ func TestRunAnalyzers_Success(t *testing.T) {
 	factory := NewFactory([]StaticAnalyzer{analyzer1, analyzer2})
 
 	reports, err := factory.RunAnalyzers(context.Background(), nil, []string{"analyzer1", "analyzer2"})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -230,10 +245,11 @@ func TestRunAnalyzers_Success(t *testing.T) {
 }
 
 func TestRunAnalyzers_Empty(t *testing.T) {
+	t.Parallel()
+
 	factory := NewFactory([]StaticAnalyzer{})
 
 	reports, err := factory.RunAnalyzers(context.Background(), nil, []string{})
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,6 +260,8 @@ func TestRunAnalyzers_Empty(t *testing.T) {
 }
 
 func TestRunAnalyzers_PartialFailure(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := &mockAnalyzer{
 		name: "analyzer1",
 		analyzeFunc: func(_ *node.Node) (Report, error) {
@@ -259,29 +277,32 @@ func TestRunAnalyzers_PartialFailure(t *testing.T) {
 
 	factory := NewFactory([]StaticAnalyzer{analyzer1, failingAnalyzer})
 
-	// First analyzer should succeed, second should fail
+	// First analyzer should succeed, second should fail.
 	_, err := factory.RunAnalyzers(context.Background(), nil, []string{"analyzer1", "failing"})
-
 	if err == nil {
 		t.Fatal("expected error from failing analyzer")
 	}
 }
 
 func TestRunAnalyzers_NotFoundFailFast(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := newMockAnalyzer("analyzer1")
 
 	factory := NewFactory([]StaticAnalyzer{analyzer1})
 
-	// Request an analyzer that doesn't exist
+	// Request an analyzer that doesn't exist.
 	_, err := factory.RunAnalyzers(context.Background(), nil, []string{"nonexistent", "analyzer1"})
-
 	if err == nil {
 		t.Fatal("expected error for nonexistent analyzer")
 	}
 }
 
 func TestRunAnalyzers_Parallel(t *testing.T) {
+	t.Parallel()
+
 	var counter int32
+
 	delay := 10 * time.Millisecond
 
 	analyzer1 := &mockAnalyzer{
@@ -289,6 +310,7 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 		analyzeFunc: func(_ *node.Node) (Report, error) {
 			time.Sleep(delay)
 			atomic.AddInt32(&counter, 1)
+
 			return Report{"p1": "r1"}, nil
 		},
 	}
@@ -297,6 +319,7 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 		analyzeFunc: func(_ *node.Node) (Report, error) {
 			time.Sleep(delay)
 			atomic.AddInt32(&counter, 1)
+
 			return Report{"p2": "r2"}, nil
 		},
 	}
@@ -315,7 +338,7 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 	if atomic.LoadInt32(&counter) != 2 {
 		t.Errorf("expected 2 executions, got %d", counter)
 	}
-	
+
 	if len(reports) != 2 {
 		t.Errorf("expected 2 reports, got %d", len(reports))
 	}
@@ -329,25 +352,27 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 }
 
 func TestRunAnalyzers_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	analyzer1 := &mockAnalyzer{
 		name: "slow",
 		analyzeFunc: func(_ *node.Node) (Report, error) {
 			time.Sleep(50 * time.Millisecond)
+
 			return Report{"res": "ok"}, nil
 		},
 	}
 
 	factory := NewFactory([]StaticAnalyzer{analyzer1})
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cancel() // Cancel immediately.
 
 	_, err := factory.RunAnalyzers(ctx, nil, []string{"slow"})
-
 	if err == nil {
 		t.Fatal("expected context cancellation error")
 	}
-	
+
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}

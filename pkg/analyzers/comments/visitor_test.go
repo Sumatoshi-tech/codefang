@@ -1,38 +1,41 @@
-package comments
+package comments //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestCommentsVisitor_Basic(t *testing.T) {
+	t.Parallel()
+
 	visitor := NewCommentsVisitor()
 	traverser := analyze.NewMultiAnalyzerTraverser()
 	traverser.RegisterVisitor(visitor)
 
-	// Create a simple function
+	// Create a simple function.
 	functionNode := &node.Node{Type: node.UASTFunction}
 	functionNode.Roles = []node.Role{node.RoleFunction, node.RoleDeclaration}
-	
-	// Add function name
+
+	// Add function name.
 	nameNode := node.NewNodeWithToken(node.UASTIdentifier, "simpleFunction")
 	nameNode.Roles = []node.Role{node.RoleName}
 	functionNode.AddChild(nameNode)
-	
-	// Add position for function
+
+	// Add position for function.
 	functionNode.Pos = &node.Positions{
 		StartLine: 10,
-		EndLine: 15,
+		EndLine:   15,
 	}
 
-	// Add a comment above the function
+	// Add a comment above the function.
 	commentNode := &node.Node{Type: node.UASTComment, Token: "// simple function"}
 	commentNode.Pos = &node.Positions{
 		StartLine: 9,
-		EndLine: 9,
+		EndLine:   9,
 	}
 
 	root := &node.Node{Type: node.UASTFile}
@@ -41,9 +44,9 @@ func TestCommentsVisitor_Basic(t *testing.T) {
 
 	traverser.Traverse(root)
 
-	// Get results
+	// Get results.
 	report := visitor.GetReport()
-	
+
 	assert.Equal(t, 1, report["total_comments"])
 	assert.Equal(t, 1, report["total_functions"])
 	assert.Equal(t, 1, report["documented_functions"])

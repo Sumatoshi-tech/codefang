@@ -1,3 +1,4 @@
+// Package halstead provides halstead functionality.
 package halstead
 
 import (
@@ -5,13 +6,19 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 )
 
-// HalsteadAggregator aggregates Halstead analysis results
+const (
+	magic100            = 100
+	magic1000           = 1000
+	volumeThresholdHigh = 5000
+)
+
+// HalsteadAggregator aggregates Halstead analysis results.
 type HalsteadAggregator struct {
-	*common.Aggregator
-	detailedFunctions []map[string]interface{}
+	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	detailedFunctions  []map[string]any
 }
 
-// NewHalsteadAggregator creates a new Halstead aggregator
+// NewHalsteadAggregator creates a new Halstead aggregator.
 func NewHalsteadAggregator() *HalsteadAggregator {
 	numericKeys := getNumericKeys()
 	countKeys := getCountKeys()
@@ -28,48 +35,50 @@ func NewHalsteadAggregator() *HalsteadAggregator {
 			messageBuilder,
 			emptyResultBuilder,
 		),
-		detailedFunctions: make([]map[string]interface{}, 0),
+		detailedFunctions: make([]map[string]any, 0),
 	}
 }
 
-// Aggregate overrides the base Aggregate method to collect detailed functions
+// Aggregate overrides the base Aggregate method to collect detailed functions.
 func (ha *HalsteadAggregator) Aggregate(results map[string]analyze.Report) {
 	ha.collectDetailedFunctions(results)
 	ha.Aggregator.Aggregate(results)
 }
 
-// GetResult overrides the base GetResult method to include detailed functions
+// GetResult overrides the base GetResult method to include detailed functions.
 func (ha *HalsteadAggregator) GetResult() analyze.Report {
 	result := ha.Aggregator.GetResult()
 	ha.addDetailedFunctionsToResult(result)
+
 	return result
 }
 
-// collectDetailedFunctions extracts detailed functions from all reports
+// collectDetailedFunctions extracts detailed functions from all reports.
 func (ha *HalsteadAggregator) collectDetailedFunctions(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
 		}
+
 		ha.extractFunctionsFromReport(report)
 	}
 }
 
-// extractFunctionsFromReport extracts functions from a single report
+// extractFunctionsFromReport extracts functions from a single report.
 func (ha *HalsteadAggregator) extractFunctionsFromReport(report analyze.Report) {
-	if functions, ok := report["functions"].([]map[string]interface{}); ok {
+	if functions, ok := report["functions"].([]map[string]any); ok {
 		ha.detailedFunctions = append(ha.detailedFunctions, functions...)
 	}
 }
 
-// addDetailedFunctionsToResult adds detailed functions to the result
+// addDetailedFunctionsToResult adds detailed functions to the result.
 func (ha *HalsteadAggregator) addDetailedFunctionsToResult(result analyze.Report) {
 	if len(ha.detailedFunctions) > 0 {
 		result["functions"] = ha.detailedFunctions
 	}
 }
 
-// getNumericKeys returns the numeric keys for Halstead aggregation
+// getNumericKeys returns the numeric keys for Halstead aggregation.
 func getNumericKeys() []string {
 	return []string{
 		"volume",
@@ -87,26 +96,26 @@ func getNumericKeys() []string {
 	}
 }
 
-// getCountKeys returns the count keys for Halstead aggregation
+// getCountKeys returns the count keys for Halstead aggregation.
 func getCountKeys() []string {
 	return []string{"total_functions"}
 }
 
-// buildHalsteadMessage creates a message based on the volume metric
+// buildHalsteadMessage creates a message based on the volume metric.
 func buildHalsteadMessage(volume float64) string {
 	switch {
-	case volume >= 5000:
+	case volume >= volumeThresholdHigh:
 		return "Very high Halstead complexity - significant refactoring recommended"
-	case volume >= 1000:
+	case volume >= magic1000:
 		return "High Halstead complexity - consider refactoring"
-	case volume >= 100:
+	case volume >= magic100:
 		return "Moderate Halstead complexity - acceptable"
 	default:
 		return "Low Halstead complexity - well-structured code"
 	}
 }
 
-// buildEmptyHalsteadResult creates an empty result with default Halstead values
+// buildEmptyHalsteadResult creates an empty result with default Halstead values.
 func buildEmptyHalsteadResult() analyze.Report {
 	return analyze.Report{
 		"total_functions":    0,

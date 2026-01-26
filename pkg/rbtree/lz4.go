@@ -1,3 +1,5 @@
+// Package rbtree provides a red-black tree implementation with memory allocation
+// and serialization support, including LZ4 compression and sharded allocators.
 package rbtree
 
 import (
@@ -7,27 +9,40 @@ import (
 	"github.com/pierrec/lz4/v4"
 )
 
+// uint32ByteSize is the number of bytes in a uint32.
+const uint32ByteSize = 4
+
 // CompressUInt32Slice compresses a slice of uint32-s with LZ4.
 func CompressUInt32Slice(data []uint32) []byte {
 	buf := new(bytes.Buffer)
-	_ = binary.Write(buf, binary.LittleEndian, data)
 
-	compressed := make([]byte, lz4.CompressBlockBound(buf.Len()))
-	n, err := lz4.CompressBlock(buf.Bytes(), compressed, nil)
-	if err != nil || n == 0 {
+	writeErr := binary.Write(buf, binary.LittleEndian, data)
+	if writeErr != nil {
 		return nil
 	}
 
-	return compressed[:n]
+	compressed := make([]byte, lz4.CompressBlockBound(buf.Len()))
+
+	written, err := lz4.CompressBlock(buf.Bytes(), compressed, nil)
+	if err != nil || written == 0 {
+		return nil
+	}
+
+	return compressed[:written]
 }
 
 // DecompressUInt32Slice decompresses a slice of uint32-s previously compressed with LZ4.
 // `result` must be preallocated.
 func DecompressUInt32Slice(data []byte, result []uint32) {
-	decompressed := make([]byte, len(result)*4)
+	decompressed := make([]byte, len(result)*uint32ByteSize)
+
 	_, err := lz4.UncompressBlock(data, decompressed)
 	if err != nil {
 		return
 	}
-	_ = binary.Read(bytes.NewReader(decompressed), binary.LittleEndian, result)
+
+	readErr := binary.Read(bytes.NewReader(decompressed), binary.LittleEndian, result)
+	if readErr != nil {
+		return
+	}
 }

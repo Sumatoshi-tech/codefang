@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -13,65 +12,82 @@ import (
 
 // FileDiffData is the type of the dependency provided by FileDiff.
 type FileDiffData struct {
+	Diffs          []diffmatchpatch.Diff
 	OldLinesOfCode int
 	NewLinesOfCode int
-	Diffs          []diffmatchpatch.Diff
 }
 
-// ErrorBinary is raised in CachedBlob.CountLines() if the file is binary.
-var ErrorBinary = errors.New("binary")
+// ErrBinary is raised in CachedBlob.CountLines() if the file is binary.
+var ErrBinary = errors.New("binary")
+
+// ErrIncompleteRead is raised when the blob data size does not match the declared size.
+var ErrIncompleteRead = errors.New("incomplete read")
 
 // CachedBlob allows to explicitly cache the binary data associated with the Blob object.
 type CachedBlob struct {
 	object.Blob
+
 	// Data is the read contents of the blob object.
 	Data []byte
 }
 
-// Reader returns a reader allow the access to the content of the blob
-func (b *CachedBlob) Reader() (io.ReadCloser, error) {
-	return ioutil.NopCloser(bytes.NewReader(b.Data)), nil
+// Reader returns a reader allowing access to the content of the blob.
+func (blob *CachedBlob) Reader() (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(blob.Data)), nil
 }
 
 // Cache reads the underlying blob object and sets CachedBlob.Data.
-func (b *CachedBlob) Cache() error {
-	reader, err := b.Blob.Reader()
+func (blob *CachedBlob) Cache() error {
+	reader, err := blob.Blob.Reader()
 	if err != nil {
-		return err
+		return fmt.Errorf("opening blob reader: %w", err)
 	}
+
 	defer reader.Close()
+
 	buf := new(bytes.Buffer)
-	buf.Grow(int(b.Size))
+	buf.Grow(int(blob.Size))
+
 	size, err := buf.ReadFrom(reader)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading blob data: %w", err)
 	}
-	if size != b.Size {
-		return fmt.Errorf("incomplete read of %s: %d while the declared size is %d",
-			b.Hash.String(), size, b.Size)
+
+	if size != blob.Size {
+		return fmt.Errorf("%w of %s: %d while the declared size is %d",
+			ErrIncompleteRead, blob.Hash.String(), size, blob.Size)
 	}
-	b.Data = buf.Bytes()
+
+	blob.Data = buf.Bytes()
+
 	return nil
 }
 
-// CountLines returns the number of lines in the blob or (0, ErrorBinary) if it is binary.
-func (b *CachedBlob) CountLines() (int, error) {
-	if len(b.Data) == 0 {
+// binarySniffLength is the number of bytes to scan for null bytes when detecting binary content.
+// 8000 was taken from go-git's utils/binary.IsBinary().
+const binarySniffLength = 8000
+
+// CountLines returns the number of lines in the blob or (0, ErrBinary) if it is binary.
+func (blob *CachedBlob) CountLines() (int, error) {
+	if len(blob.Data) == 0 {
 		return 0, nil
 	}
-	// 8000 was taken from go-git's utils/binary.IsBinary()
-	sniffLen := 8000
-	sniff := b.Data
-	if len(sniff) > sniffLen {
-		sniff = sniff[:sniffLen]
+
+	sniff := blob.Data
+	if len(sniff) > binarySniffLength {
+		sniff = sniff[:binarySniffLength]
 	}
+
 	if bytes.IndexByte(sniff, 0) >= 0 {
-		return 0, ErrorBinary
+		return 0, ErrBinary
 	}
-	lines := bytes.Count(b.Data, []byte{'\n'})
-	if b.Data[len(b.Data)-1] != '\n' {
+
+	lines := bytes.Count(blob.Data, []byte{'\n'})
+
+	if blob.Data[len(blob.Data)-1] != '\n' {
 		lines++
 	}
+
 	return lines, nil
 }
 

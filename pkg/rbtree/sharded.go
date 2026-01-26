@@ -1,10 +1,20 @@
 package rbtree
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"sync"
 )
+
+// ErrSerializeShards is returned when shard serialization fails.
+var ErrSerializeShards = errors.New("failed to serialize shards")
+
+// ErrDeserializeShards is returned when shard deserialization fails.
+var ErrDeserializeShards = errors.New("failed to deserialize shards")
+
+// minHibernationThreshold is the minimal reasonable default if division results in 0.
+const minHibernationThreshold = 1000
 
 // ShardedAllocator manages multiple Allocators to allow parallel access.
 type ShardedAllocator struct {
@@ -12,124 +22,155 @@ type ShardedAllocator struct {
 }
 
 // NewShardedAllocator creates a new ShardedAllocator with n shards.
-func NewShardedAllocator(n int, hibernationThreshold int) *ShardedAllocator {
-	if n <= 0 {
-		n = 1
+func NewShardedAllocator(shardCount, hibernationThreshold int) *ShardedAllocator {
+	if shardCount <= 0 {
+		shardCount = 1
 	}
-	shards := make([]*Allocator, n)
-	for i := 0; i < n; i++ {
-		shards[i] = NewAllocator()
+
+	shards := make([]*Allocator, shardCount)
+
+	for idx := range shardCount {
+		shards[idx] = NewAllocator()
+
 		if hibernationThreshold > 0 {
-			shards[i].HibernationThreshold = hibernationThreshold / n
-			if shards[i].HibernationThreshold == 0 {
-				shards[i].HibernationThreshold = 1000 // minimal reasonable default if division results in 0
+			shards[idx].HibernationThreshold = hibernationThreshold / shardCount
+			if shards[idx].HibernationThreshold == 0 {
+				shards[idx].HibernationThreshold = minHibernationThreshold
 			}
 		}
 	}
+
 	return &ShardedAllocator{shards: shards}
 }
 
 // GetShard returns the allocator shard for the given key.
-func (s *ShardedAllocator) GetShard(key string) *Allocator {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	idx := int(h.Sum32()) % len(s.shards)
+func (sa *ShardedAllocator) GetShard(key string) *Allocator {
+	hasher := fnv.New32a()
+	hasher.Write([]byte(key))
+
+	idx := int(hasher.Sum32()) % len(sa.shards)
 	if idx < 0 {
 		idx = -idx
 	}
-	return s.shards[idx]
+
+	return sa.shards[idx]
 }
 
 // Shards returns all underlying allocators.
-func (s *ShardedAllocator) Shards() []*Allocator {
-	return s.shards
+func (sa *ShardedAllocator) Shards() []*Allocator {
+	return sa.shards
 }
 
 // Hibernate hibernates all shards in parallel.
-func (s *ShardedAllocator) Hibernate() {
+func (sa *ShardedAllocator) Hibernate() {
 	wg := sync.WaitGroup{}
-	wg.Add(len(s.shards))
-	for _, shard := range s.shards {
-		go func(a *Allocator) {
+	wg.Add(len(sa.shards))
+
+	for _, shard := range sa.shards {
+		go func(alloc *Allocator) {
 			defer wg.Done()
-			// Force hibernation even if below threshold by temporarily setting threshold to 0
-			originalThreshold := a.HibernationThreshold
-			a.HibernationThreshold = 0
-			a.Hibernate()
-			a.HibernationThreshold = originalThreshold
+
+			// Force hibernation even if below threshold by temporarily setting threshold to 0.
+			originalThreshold := alloc.HibernationThreshold
+			alloc.HibernationThreshold = 0
+			alloc.Hibernate()
+			alloc.HibernationThreshold = originalThreshold
 		}(shard)
 	}
+
 	wg.Wait()
 }
 
 // Boot boots all shards in parallel.
-func (s *ShardedAllocator) Boot() {
+func (sa *ShardedAllocator) Boot() {
 	wg := sync.WaitGroup{}
-	wg.Add(len(s.shards))
-	for _, shard := range s.shards {
-		go func(a *Allocator) {
+	wg.Add(len(sa.shards))
+
+	for _, shard := range sa.shards {
+		go func(alloc *Allocator) {
 			defer wg.Done()
-			a.Boot()
+
+			alloc.Boot()
 		}(shard)
 	}
+
 	wg.Wait()
 }
 
 // Serialize serializes all shards to disk.
 // It uses basePath as a prefix and appends ".shard.N".
 // Only hibernated shards are serialized (empty shards are skipped).
-func (s *ShardedAllocator) Serialize(basePath string) error {
+func (sa *ShardedAllocator) Serialize(basePath string) error {
 	var errs []error
-	var mu sync.Mutex
-	wg := sync.WaitGroup{}
-	wg.Add(len(s.shards))
 
-	for i, shard := range s.shards {
-		go func(idx int, a *Allocator) {
+	var mu sync.Mutex
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(sa.shards))
+
+	for idx, shard := range sa.shards {
+		go func(shardIdx int, alloc *Allocator) {
 			defer wg.Done()
-			// Only serialize if hibernated (storage == nil)
-			if a.storage != nil {
-				// Skip non-hibernated shards (they're likely empty and below threshold)
+
+			// Only serialize if hibernated (storage == nil).
+			if alloc.storage != nil {
+				// Skip non-hibernated shards (they're likely empty and below threshold).
 				return
 			}
-			path := fmt.Sprintf("%s.shard.%d", basePath, idx)
-			if err := a.Serialize(path); err != nil {
+
+			path := fmt.Sprintf("%s.shard.%d", basePath, shardIdx)
+
+			err := alloc.Serialize(path)
+			if err != nil {
 				mu.Lock()
+
 				errs = append(errs, err)
+
 				mu.Unlock()
 			}
-		}(i, shard)
+		}(idx, shard)
 	}
+
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("failed to serialize shards: %v", errs)
+		return fmt.Errorf("%w: %v", ErrSerializeShards, errs)
 	}
+
 	return nil
 }
 
 // Deserialize reads all shards from disk.
-func (s *ShardedAllocator) Deserialize(basePath string) error {
+func (sa *ShardedAllocator) Deserialize(basePath string) error {
 	var errs []error
-	var mu sync.Mutex
-	wg := sync.WaitGroup{}
-	wg.Add(len(s.shards))
 
-	for i, shard := range s.shards {
-		go func(idx int, a *Allocator) {
+	var mu sync.Mutex
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(sa.shards))
+
+	for idx, shard := range sa.shards {
+		go func(shardIdx int, alloc *Allocator) {
 			defer wg.Done()
-			path := fmt.Sprintf("%s.shard.%d", basePath, idx)
-			if err := a.Deserialize(path); err != nil {
+
+			path := fmt.Sprintf("%s.shard.%d", basePath, shardIdx)
+
+			err := alloc.Deserialize(path)
+			if err != nil {
 				mu.Lock()
+
 				errs = append(errs, err)
+
 				mu.Unlock()
 			}
-		}(i, shard)
+		}(idx, shard)
 	}
+
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("failed to deserialize shards: %v", errs)
+		return fmt.Errorf("%w: %v", ErrDeserializeShards, errs)
 	}
+
 	return nil
 }

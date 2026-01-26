@@ -4,20 +4,20 @@ import "github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 
 // JSONReport is the top-level structured JSON output.
 type JSONReport struct {
-	OverallScore      float64       `json:"overall_score"`
 	OverallScoreLabel string        `json:"overall_score_label"`
 	Sections          []JSONSection `json:"sections"`
+	OverallScore      float64       `json:"overall_score"`
 }
 
 // JSONSection represents one analyzer's output in JSON.
 type JSONSection struct {
 	Title        string             `json:"title"`
-	Score        float64            `json:"score"`
 	ScoreLabel   string             `json:"score_label"`
 	Status       string             `json:"status"`
 	Metrics      []JSONMetric       `json:"metrics"`
 	Distribution []JSONDistribution `json:"distribution,omitempty"`
 	Issues       []JSONIssue        `json:"issues"`
+	Score        float64            `json:"score"`
 }
 
 // JSONMetric is a key-value metric in JSON output.
@@ -43,12 +43,12 @@ type JSONIssue struct {
 
 // SectionToJSON converts a ReportSection to a JSONSection.
 func SectionToJSON(section analyze.ReportSection) JSONSection {
-	metrics := make([]JSONMetric, 0)
+	metrics := make([]JSONMetric, 0) //nolint:prealloc // preallocation is not needed here.
 	for _, m := range section.KeyMetrics() {
 		metrics = append(metrics, JSONMetric{Label: m.Label, Value: m.Value})
 	}
 
-	var distribution []JSONDistribution
+	var distribution []JSONDistribution //nolint:prealloc // preallocation is not needed here.
 	for _, d := range section.Distribution() {
 		distribution = append(distribution, JSONDistribution{
 			Label:   d.Label,
@@ -57,7 +57,7 @@ func SectionToJSON(section analyze.ReportSection) JSONSection {
 		})
 	}
 
-	issues := make([]JSONIssue, 0)
+	issues := make([]JSONIssue, 0) //nolint:prealloc // preallocation is not needed here.
 	for _, i := range section.AllIssues() {
 		issues = append(issues, JSONIssue{
 			Name:     i.Name,

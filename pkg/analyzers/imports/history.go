@@ -2,11 +2,17 @@ package imports
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/go-git/go-git/v6"
+	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/go-git/go-git/v6/utils/merkletrie"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -15,50 +21,51 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
 )
 
+const (
+	defaultGoroutines       = 4
+	defaultMaxFileSizeShift = 20
+	defaultTickHours        = 24
+)
+
+// ImportsMap maps file paths to their import lists.
 type ImportsMap = map[int]map[string]map[string]map[int]int64
 
+// ImportsHistoryAnalyzer tracks import usage across commit history.
 type ImportsHistoryAnalyzer struct {
-	// Configuration
-	TickSize    time.Duration
-	Goroutines  int
-	MaxFileSize int
-
-	// Dependencies
-	TreeDiff  *plumbing.TreeDiffAnalyzer
-	BlobCache *plumbing.BlobCacheAnalyzer
-	Identity  *plumbing.IdentityDetector
-	Ticks     *plumbing.TicksSinceStart
-
-	// State
-	imports            ImportsMap
-	reversedPeopleDict []string
-	parser             *uast.Parser
-
-	// Internal
-	l interface {
-		Warnf(format string, args ...interface{})
-		Errorf(format string, args ...interface{})
+	l interface { //nolint:unused // used via dependency injection.
+		Warnf(format string, args ...any)
+		Errorf(format string, args ...any)
 	}
+	TreeDiff           *plumbing.TreeDiffAnalyzer
+	BlobCache          *plumbing.BlobCacheAnalyzer
+	Identity           *plumbing.IdentityDetector
+	Ticks              *plumbing.TicksSinceStart
+	imports            ImportsMap
+	parser             *uast.Parser
+	reversedPeopleDict []string
+	TickSize           time.Duration
+	Goroutines         int
+	MaxFileSize        int
 }
 
+// Name returns the name of the analyzer.
 func (h *ImportsHistoryAnalyzer) Name() string {
 	return "ImportsPerDeveloper"
 }
 
+// Flag returns the CLI flag for the analyzer.
 func (h *ImportsHistoryAnalyzer) Flag() string {
 	return "imports-per-dev"
 }
 
+// Description returns a human-readable description of the analyzer.
 func (h *ImportsHistoryAnalyzer) Description() string {
 	return "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author."
 }
 
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (h *ImportsHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
@@ -66,48 +73,57 @@ func (h *ImportsHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configura
 			Description: "Specifies the number of goroutines to run in parallel for the imports extraction.",
 			Flag:        "import-goroutines",
 			Type:        pipeline.IntConfigurationOption,
-			Default:     4,
+			Default:     defaultGoroutines,
 		},
 		{
 			Name:        "Imports.MaxFileSize",
 			Description: "Specifies the file size threshold. Files that exceed it are ignored.",
 			Flag:        "import-max-file-size",
 			Type:        pipeline.IntConfigurationOption,
-			Default:     1 << 20,
+			Default:     1 << defaultMaxFileSizeShift,
 		},
 	}
 }
 
-func (h *ImportsHistoryAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure sets up the analyzer with the provided facts.
+func (h *ImportsHistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
 		h.reversedPeopleDict = val
 	}
+
 	if val, exists := facts[pkgplumbing.FactTickSize].(time.Duration); exists {
 		h.TickSize = val
 	}
+
 	if val, exists := facts["Imports.Goroutines"].(int); exists {
 		h.Goroutines = val
 	}
+
 	if val, exists := facts["Imports.MaxFileSize"].(int); exists {
 		h.MaxFileSize = val
 	}
+
 	return nil
 }
 
-func (h *ImportsHistoryAnalyzer) Initialize(repository *git.Repository) error {
+// Initialize prepares the analyzer for processing commits.
+func (h *ImportsHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	h.imports = ImportsMap{}
 	if h.TickSize == 0 {
-		h.TickSize = time.Hour * 24
-	}
-	if h.Goroutines < 1 {
-		h.Goroutines = 4
-	}
-	if h.MaxFileSize == 0 {
-		h.MaxFileSize = 1 << 20
+		h.TickSize = time.Hour * defaultTickHours
 	}
 
-	// Initialize UAST parser
+	if h.Goroutines < 1 {
+		h.Goroutines = defaultGoroutines
+	}
+
+	if h.MaxFileSize == 0 {
+		h.MaxFileSize = 1 << defaultMaxFileSizeShift
+	}
+
+	// Initialize UAST parser.
 	var err error
+
 	h.parser, err = uast.NewParser()
 	if err != nil {
 		return fmt.Errorf("failed to initialize UAST parser: %w", err)
@@ -118,24 +134,24 @@ func (h *ImportsHistoryAnalyzer) Initialize(repository *git.Repository) error {
 
 func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
-		return nil, fmt.Errorf("parser not initialized")
+		return nil, fmt.Errorf("parser not initialized") //nolint:err113,perfsprint // fmt.Sprintf is clearer than string concat.
 	}
 
-	// Check if supported
+	// Check if supported.
 	if !h.parser.IsSupported(name) {
-		return nil, fmt.Errorf("unsupported language for %s", name)
+		return nil, fmt.Errorf("unsupported language for %s", name) //nolint:err113 // dynamic error is acceptable here.
 	}
 
-	// Parse
+	// Parse.
 	root, err := h.parser.Parse(name, data)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract imports using logic from analyzer.go (in same package)
+	// Extract imports using logic from analyzer.go (in same package).
 	imports := extractImportsFromUAST(root)
 
-	// Determine language
+	// Determine language.
 	lang := h.parser.GetLanguage(name)
 	if lang == "" {
 		lang = "uast"
@@ -147,7 +163,10 @@ func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*impo
 	}, nil
 }
 
-func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+// Consume processes a single commit with the provided dependency results.
+//
+//nolint:funlen,gocognit // complex commit processing logic.
+func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
 	changes := h.TreeDiff.Changes
 	cache := h.BlobCache.Cache
 
@@ -157,20 +176,24 @@ func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	wg := sync.WaitGroup{}
 	wg.Add(h.Goroutines)
 
-	for i := 0; i < h.Goroutines; i++ {
+	for range h.Goroutines {
 		go func() {
 			for change := range jobs {
 				blob := cache[change.To.TreeEntry.Hash]
 				if blob.Size > int64(h.MaxFileSize) {
 					continue
 				}
+
 				file, err := h.extractImports(change.To.TreeEntry.Name, blob.Data)
 				if err == nil {
 					resultSync.Lock()
+
 					extractedImports[change.To.TreeEntry.Hash] = *file
+
 					resultSync.Unlock()
 				}
 			}
+
 			wg.Done()
 		}()
 	}
@@ -180,6 +203,7 @@ func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		if err != nil {
 			continue
 		}
+
 		switch action {
 		case merkletrie.Modify, merkletrie.Insert:
 			jobs <- change
@@ -187,6 +211,7 @@ func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			continue
 		}
 	}
+
 	close(jobs)
 	wg.Wait()
 
@@ -205,12 +230,14 @@ func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			limps = map[string]map[int]int64{}
 			aimps[file.Lang] = limps
 		}
+
 		for _, imp := range file.Imports {
 			timps, exists := limps[imp]
 			if !exists {
 				timps = map[int]int64{}
 				limps[imp] = timps
 			}
+
 			timps[tick]++
 		}
 	}
@@ -218,6 +245,7 @@ func (h *ImportsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	return nil
 }
 
+// Finalize completes the analysis and returns the result.
 func (h *ImportsHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	return analyze.Report{
 		"imports":      h.imports,
@@ -226,45 +254,67 @@ func (h *ImportsHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}, nil
 }
 
+// Fork creates a copy of the analyzer for parallel processing.
 func (h *ImportsHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
-	for i := 0; i < n; i++ {
-		// Use shared state legacy behavior for now
+	for i := range n {
+		// Use shared state legacy behavior for now.
 		forks[i] = h
 	}
+
 	return forks
 }
 
-func (h *ImportsHistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+// Merge combines results from forked analyzer branches.
+func (h *ImportsHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
-func (h *ImportsHistoryAnalyzer) Serialize(result analyze.Report, binary bool, writer io.Writer) error {
-	imports := result["imports"].(ImportsMap)
-	reversedPeopleDict := result["author_index"].([]string)
-	tickSize := result["tick_size"].(time.Duration)
+// Serialize writes the analysis result to the given writer.
+func (h *ImportsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+	imports, ok := result["imports"].(ImportsMap)
+	if !ok {
+		return errors.New("expected ImportsMap for imports") //nolint:err113 // descriptive error for type assertion failure.
+	}
+
+	reversedPeopleDict, ok := result["author_index"].([]string)
+	if !ok {
+		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
+	}
+
+	tickSize, ok := result["tick_size"].(time.Duration)
+	if !ok {
+		return errors.New("expected time.Duration for tickSize") //nolint:err113 // descriptive error for type assertion failure.
+	}
 
 	devs := make([]int, 0, len(imports))
 	for dev := range imports {
 		devs = append(devs, dev)
 	}
+
 	sort.Ints(devs)
 	fmt.Fprintln(writer, "  tick_size:", int(tickSize.Seconds()))
 	fmt.Fprintln(writer, "  imports:")
+
 	for _, dev := range devs {
 		imps := imports[dev]
+
 		obj, err := json.Marshal(imps)
 		if err != nil {
-			return err
+			return fmt.Errorf("serialize: %w", err)
 		}
+
 		devName := fmt.Sprintf("dev_%d", dev)
 		if dev >= 0 && dev < len(reversedPeopleDict) {
 			devName = reversedPeopleDict[dev]
 		}
+
 		fmt.Fprintf(writer, "    %s: %s\n", devName, string(obj))
 	}
+
 	return nil
 }
 
+// FormatReport writes the formatted analysis report to the given writer.
 func (h *ImportsHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return h.Serialize(report, false, writer)
 }

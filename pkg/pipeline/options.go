@@ -1,3 +1,4 @@
+// Package pipeline defines configuration option types for analysis pipeline items.
 package pipeline
 
 import (
@@ -24,7 +25,7 @@ const (
 	PathConfigurationOption
 )
 
-// String() returns an empty string for the boolean type, "int" for integers and "string" for
+// String returns an empty string for the boolean type, "int" for integers and "string" for
 // strings. It is used in the command line interface to show the argument's type.
 func (opt ConfigurationOptionType) String() string {
 	switch opt {
@@ -41,12 +42,16 @@ func (opt ConfigurationOptionType) String() string {
 	case PathConfigurationOption:
 		return "path"
 	}
+
 	log.Panicf("Invalid ConfigurationOptionType value %d", opt)
+
 	return ""
 }
 
 // ConfigurationOption allows for the unified, retrospective way to setup PipelineItem-s.
 type ConfigurationOption struct {
+	// Default is the initial value of the configuration option.
+	Default any
 	// Name identifies the configuration option in facts.
 	Name string
 	// Description represents the help text about the configuration option.
@@ -55,18 +60,23 @@ type ConfigurationOption struct {
 	Flag string
 	// Type specifies the kind of the configuration option's value.
 	Type ConfigurationOptionType
-	// Default is the initial value of the configuration option.
-	Default interface{}
 }
 
 // FormatDefault converts the default value of ConfigurationOption to string.
 // Used in the command line interface to show the argument's default value.
 func (opt ConfigurationOption) FormatDefault() string {
 	if opt.Type == StringsConfigurationOption {
-		return fmt.Sprintf("\"%s\"", strings.Join(opt.Default.([]string), ","))
+		strSlice, ok := opt.Default.([]string)
+		if !ok {
+			return fmt.Sprint(opt.Default)
+		}
+
+		return fmt.Sprintf("%q", strings.Join(strSlice, ","))
 	}
+
 	if opt.Type != StringConfigurationOption {
 		return fmt.Sprint(opt.Default)
 	}
-	return fmt.Sprintf("\"%s\"", opt.Default)
+
+	return fmt.Sprintf("%q", opt.Default)
 }

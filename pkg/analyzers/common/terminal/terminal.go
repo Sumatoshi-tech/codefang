@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// Default width constants
+// Default width constants.
 const (
 	DefaultWidth = 80
 	MinWidth     = 60

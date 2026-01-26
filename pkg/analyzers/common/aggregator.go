@@ -1,27 +1,28 @@
+// Package common provides common functionality.
 package common
 
 import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-// Aggregator provides generic aggregation capabilities for analyzers
+// Aggregator provides generic aggregation capabilities for analyzers.
 type Aggregator struct {
 	metricsProcessor   *MetricsProcessor
 	dataCollector      *DataCollector
 	resultBuilder      *ResultBuilder
-	analyzerName       string
 	messageBuilder     func(float64) string
 	emptyResultBuilder func() analyze.Report
+	analyzerName       string
 }
 
-// NewAggregator creates a new Aggregator with configurable components
+// NewAggregator creates a new Aggregator with configurable components.
 func NewAggregator(
 	analyzerName string,
 	numericKeys, countKeys []string,
 	collectionKey, identifierKey string,
 	messageBuilder func(float64) string,
 	emptyResultBuilder func() analyze.Report,
-) *Aggregator {
+) *Aggregator { //nolint:whitespace // whitespace is intentional for readability.
 	return &Aggregator{
 		metricsProcessor:   NewMetricsProcessor(numericKeys, countKeys),
 		dataCollector:      NewDataCollector(collectionKey, identifierKey),
@@ -32,7 +33,7 @@ func NewAggregator(
 	}
 }
 
-// Aggregate combines multiple analysis results
+// Aggregate combines multiple analysis results.
 func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
@@ -44,12 +45,13 @@ func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
 	}
 }
 
-// GetResult returns the aggregated analysis result
+// GetResult returns the aggregated analysis result.
 func (a *Aggregator) GetResult() analyze.Report {
 	if a.metricsProcessor.GetReportCount() == 0 {
 		if a.emptyResultBuilder != nil {
 			return a.emptyResultBuilder()
 		}
+
 		return a.resultBuilder.BuildEmptyResult(a.analyzerName)
 	}
 
@@ -57,24 +59,28 @@ func (a *Aggregator) GetResult() analyze.Report {
 	counts := a.metricsProcessor.GetCounts()
 	collectedData := a.dataCollector.GetSortedData()
 
-	// Build metrics map
-	metrics := make(map[string]interface{})
+	// Build metrics map.
+	metrics := make(map[string]any)
 	for key, value := range averages {
 		metrics[key] = value
 	}
+
 	for key, value := range counts {
 		metrics[key] = value
 	}
 
-	// Build message
+	// Build message.
 	var message string
+
 	if a.messageBuilder != nil {
-		// Use the first numeric metric for message building (can be customized)
+		// Use the first numeric metric for message building (can be customized).
 		for _, value := range averages {
 			message = a.messageBuilder(value)
+
 			break
 		}
 	}
+
 	if message == "" {
 		message = "Analysis completed"
 	}
@@ -88,17 +94,17 @@ func (a *Aggregator) GetResult() analyze.Report {
 	)
 }
 
-// GetMetricsProcessor returns the metrics processor
+// GetMetricsProcessor returns the metrics processor.
 func (a *Aggregator) GetMetricsProcessor() *MetricsProcessor {
 	return a.metricsProcessor
 }
 
-// GetDataCollector returns the data collector
+// GetDataCollector returns the data collector.
 func (a *Aggregator) GetDataCollector() *DataCollector {
 	return a.dataCollector
 }
 
-// GetResultBuilder returns the result builder
+// GetResultBuilder returns the result builder.
 func (a *Aggregator) GetResultBuilder() *ResultBuilder {
 	return a.resultBuilder
 }

@@ -1,20 +1,19 @@
 package comments
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 )
 
-// Section rendering constants
+// Section rendering constants.
 const (
 	SectionTitle = "COMMENTS"
 
-	// Score is overall_score directly (already 0-1)
+	// MetricTotalComments score is overall_score directly (already 0-1).
 
-	// Metric labels
+	// MetricTotalComments and related constants define metric labels.
 	MetricTotalComments  = "Total Comments"
 	MetricGoodComments   = "Good Comments"
 	MetricBadComments    = "Bad Comments"
@@ -22,15 +21,15 @@ const (
 	MetricGoodRatio      = "Good Ratio"
 	MetricTotalFunctions = "Total Functions"
 
-	// Distribution labels
+	// DistLabelDocumented is the distribution label for documented functions.
 	DistLabelDocumented   = "Documented"
 	DistLabelUndocumented = "Undocumented"
 
-	// Issue constants
+	// IssueAssessmentBad is the assessment value indicating a function has no comment.
 	IssueAssessmentBad = "❌ No Comment"
 	IssueValueNoDoc    = "undocumented"
 
-	// Report key names
+	// KeyOverallScore is the report key for the overall comments score.
 	KeyOverallScore   = "overall_score"
 	KeyTotalComments  = "total_comments"
 	KeyGoodComments   = "good_comments"
@@ -44,13 +43,14 @@ const (
 	KeyFuncName       = "function"
 	KeyFuncAssessment = "assessment"
 
-	// Default status message
+	// DefaultStatusMessage is the fallback message when no comment data is available.
 	DefaultStatusMessage = "No comment data available"
 )
 
 // CommentsReportSection implements analyze.ReportSection for comments analysis.
 type CommentsReportSection struct {
 	analyze.BaseReportSection
+
 	report analyze.Report
 }
 
@@ -61,6 +61,7 @@ func NewCommentsReportSection(report analyze.Report) *CommentsReportSection {
 	}
 
 	score := reportutil.GetFloat64(report, KeyOverallScore)
+
 	msg := reportutil.GetString(report, KeyMessage)
 	if msg == "" {
 		msg = DefaultStatusMessage
@@ -110,6 +111,7 @@ func (s *CommentsReportSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(issues) {
 		return issues
 	}
+
 	return issues[:n]
 }
 
@@ -126,11 +128,13 @@ func (s *CommentsReportSection) buildIssues() []analyze.Issue {
 	}
 
 	var issues []analyze.Issue
+
 	for _, fn := range functions {
 		assessment := reportutil.MapString(fn, KeyFuncAssessment)
 		if assessment != IssueAssessmentBad {
 			continue
 		}
+
 		name := reportutil.MapString(fn, KeyFuncName)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
@@ -144,11 +148,6 @@ func (s *CommentsReportSection) buildIssues() []analyze.Issue {
 	})
 
 	return issues
-}
-
-// formatDocCoverage formats documented/total as "N/M" string.
-func formatDocCoverage(documented, total int) string {
-	return fmt.Sprintf("%d/%d", documented, total)
 }
 
 // CreateReportSection creates a ReportSection from report data.

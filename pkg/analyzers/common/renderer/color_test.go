@@ -1,4 +1,4 @@
-package renderer
+package renderer //nolint:testpackage // testing internal implementation.
 
 import (
 	"strings"
@@ -11,6 +11,8 @@ import (
 const ansiEscape = "\033["
 
 func TestColorForSeverity_Good(t *testing.T) {
+	t.Parallel()
+
 	color := ColorForSeverity(analyze.SeverityGood)
 	if color != terminal.ColorGreen {
 		t.Errorf("ColorForSeverity(%q) = %v, want ColorGreen", analyze.SeverityGood, color)
@@ -18,6 +20,8 @@ func TestColorForSeverity_Good(t *testing.T) {
 }
 
 func TestColorForSeverity_Fair(t *testing.T) {
+	t.Parallel()
+
 	color := ColorForSeverity(analyze.SeverityFair)
 	if color != terminal.ColorYellow {
 		t.Errorf("ColorForSeverity(%q) = %v, want ColorYellow", analyze.SeverityFair, color)
@@ -25,6 +29,8 @@ func TestColorForSeverity_Fair(t *testing.T) {
 }
 
 func TestColorForSeverity_Poor(t *testing.T) {
+	t.Parallel()
+
 	color := ColorForSeverity(analyze.SeverityPoor)
 	if color != terminal.ColorRed {
 		t.Errorf("ColorForSeverity(%q) = %v, want ColorRed", analyze.SeverityPoor, color)
@@ -32,6 +38,8 @@ func TestColorForSeverity_Poor(t *testing.T) {
 }
 
 func TestColorForSeverity_Info(t *testing.T) {
+	t.Parallel()
+
 	color := ColorForSeverity(analyze.SeverityInfo)
 	if color != terminal.ColorBlue {
 		t.Errorf("ColorForSeverity(%q) = %v, want ColorBlue", analyze.SeverityInfo, color)
@@ -39,17 +47,21 @@ func TestColorForSeverity_Info(t *testing.T) {
 }
 
 func TestColorForSeverity_Unknown(t *testing.T) {
+	t.Parallel()
+
 	color := ColorForSeverity("unknown")
 	if color != terminal.ColorBlue {
 		t.Errorf("ColorForSeverity(%q) = %v, want ColorBlue (default)", "unknown", color)
 	}
 }
 
-// --- Render color tests ---
+// --- Render color tests ---.
 
 func TestRender_ColorEnabled_ContainsANSI(t *testing.T) {
-	r := NewSectionRenderer(testWidth, false, false) // color enabled
-	section := newMockSection()                      // score 0.8 = green
+	t.Parallel()
+
+	r := NewSectionRenderer(testWidth, false, false) // Color enabled.
+	section := newMockSection()                      // Score 0.8 = green.
 
 	result := r.Render(section)
 
@@ -59,7 +71,9 @@ func TestRender_ColorEnabled_ContainsANSI(t *testing.T) {
 }
 
 func TestRender_ColorDisabled_NoANSI(t *testing.T) {
-	r := NewSectionRenderer(testWidth, false, true) // color disabled
+	t.Parallel()
+
+	r := NewSectionRenderer(testWidth, false, true) // Color disabled.
 	section := newMockSection()
 
 	result := r.Render(section)
@@ -70,6 +84,8 @@ func TestRender_ColorDisabled_NoANSI(t *testing.T) {
 }
 
 func TestRender_GoodScore_GreenColor(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := &mockSection{
 		BaseReportSection: analyze.BaseReportSection{
@@ -81,13 +97,15 @@ func TestRender_GoodScore_GreenColor(t *testing.T) {
 
 	result := r.Render(section)
 
-	// Green ANSI code = \033[32m
+	// Green ANSI code = \033[32m.
 	if !strings.Contains(result, "\033[32m") {
 		t.Errorf("Good score should use green color, got %q", result)
 	}
 }
 
 func TestRender_FairScore_YellowColor(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := &mockSection{
 		BaseReportSection: analyze.BaseReportSection{
@@ -99,13 +117,15 @@ func TestRender_FairScore_YellowColor(t *testing.T) {
 
 	result := r.Render(section)
 
-	// Yellow ANSI code = \033[33m
+	// Yellow ANSI code = \033[33m.
 	if !strings.Contains(result, "\033[33m") {
 		t.Errorf("Fair score should use yellow color, got %q", result)
 	}
 }
 
 func TestRender_PoorScore_RedColor(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := &mockSection{
 		BaseReportSection: analyze.BaseReportSection{
@@ -117,42 +137,49 @@ func TestRender_PoorScore_RedColor(t *testing.T) {
 
 	result := r.Render(section)
 
-	// Red ANSI code = \033[31m
+	// Red ANSI code = \033[31m.
 	if !strings.Contains(result, "\033[31m") {
 		t.Errorf("Poor score should use red color, got %q", result)
 	}
 }
 
 func TestRender_IssuesSeverityColored(t *testing.T) {
-	r := NewSectionRenderer(testWidth, false, false) // color enabled
-	section := newMockSectionWithIssues()            // has poor/fair issues
+	t.Parallel()
+
+	r := NewSectionRenderer(testWidth, false, false) // Color enabled.
+	section := newMockSectionWithIssues()            // Has poor/fair issues.
 
 	result := r.Render(section)
 
-	// Poor severity = red (\033[31m), Fair = yellow (\033[33m)
+	// Poor severity = red (\033[31m), Fair = yellow (\033[33m).
 	if !strings.Contains(result, "\033[31m") {
 		t.Errorf("Poor severity issue should contain red ANSI, got %q", result)
 	}
+
 	if !strings.Contains(result, "\033[33m") {
 		t.Errorf("Fair severity issue should contain yellow ANSI, got %q", result)
 	}
 }
 
 func TestRender_TitleColoredBlue(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := newMockSection()
 
 	result := r.Render(section)
 
-	// Blue ANSI = \033[34m
+	// Blue ANSI = \033[34m.
 	if !strings.Contains(result, "\033[34m") {
 		t.Errorf("Section title should be colored blue, got %q", result)
 	}
 }
 
-// --- RenderCompact color tests ---
+// --- RenderCompact color tests ---.
 
 func TestRenderCompact_ColorEnabled_ContainsANSI(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := newMockSection()
 
@@ -164,6 +191,8 @@ func TestRenderCompact_ColorEnabled_ContainsANSI(t *testing.T) {
 }
 
 func TestRenderCompact_ColorDisabled_NoANSI(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
@@ -174,9 +203,11 @@ func TestRenderCompact_ColorDisabled_NoANSI(t *testing.T) {
 	}
 }
 
-// --- RenderSummary color tests ---
+// --- RenderSummary color tests ---.
 
 func TestRenderSummary_ColorEnabled_ContainsANSI(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	sections := []analyze.ReportSection{
 		newMockSection(),
@@ -191,6 +222,8 @@ func TestRenderSummary_ColorEnabled_ContainsANSI(t *testing.T) {
 }
 
 func TestRenderSummary_ColorDisabled_NoANSI(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	sections := []analyze.ReportSection{
 		newMockSection(),
@@ -205,6 +238,8 @@ func TestRenderSummary_ColorDisabled_NoANSI(t *testing.T) {
 }
 
 func TestRenderSummary_ScoreRowsColored(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	goodSection := &mockSection{
 		BaseReportSection: analyze.BaseReportSection{
@@ -225,24 +260,27 @@ func TestRenderSummary_ScoreRowsColored(t *testing.T) {
 
 	result := r.RenderSummary(summary)
 
-	// Should contain green (for good) and red (for poor)
+	// Should contain green (for good) and red (for poor).
 	if !strings.Contains(result, "\033[32m") {
 		t.Errorf("Summary should contain green for good score, got %q", result)
 	}
+
 	if !strings.Contains(result, "\033[31m") {
 		t.Errorf("Summary should contain red for poor score, got %q", result)
 	}
 }
 
-// --- Muted elements tests ---
+// --- Muted elements tests ---.
 
 func TestRender_MetricsHeaderMuted(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 	section := newMockSectionWithMetrics()
 
 	result := r.Render(section)
 
-	// Gray ANSI = \033[90m
+	// Gray ANSI = \033[90m.
 	if !strings.Contains(result, "\033[90m") {
 		t.Errorf("Section headers should use muted gray, got %q", result)
 	}

@@ -169,9 +169,10 @@ clean:
 	rm -f test/benchmarks/benchmark_results.txt
 	rm -rf benchmark_plots/
 
-# Linting tools
-GOLINT=golangci-lint
-DEADCODE=deadcode
+# Linting tools (resolve from GOPATH/bin if not on PATH)
+GOPATH_BIN=$(shell go env GOPATH)/bin
+GOLINT=$(or $(shell command -v golangci-lint 2>/dev/null),$(GOPATH_BIN)/golangci-lint)
+DEADCODE=$(or $(shell command -v deadcode 2>/dev/null),$(GOPATH_BIN)/deadcode)
 
 # Package paths for linting
 INTERNAL_PKGS=./cmd/... ./pkg/...
