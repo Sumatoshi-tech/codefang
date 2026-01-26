@@ -18,10 +18,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestTyposHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	a := &TyposHistoryAnalyzer{}
+	a := &HistoryAnalyzer{}
 
 	err := a.Configure(map[string]any{
 		ConfigTyposDatasetMaximumAllowedDistance: 2,
@@ -34,7 +34,7 @@ func TestTyposHistoryAnalyzer_Configure(t *testing.T) {
 		t.Errorf("expected max distance 2, got %d", a.MaximumAllowedDistance)
 	}
 
-	a = &TyposHistoryAnalyzer{}
+	a = &HistoryAnalyzer{}
 	require.NoError(t, a.Configure(nil))
 
 	if a.MaximumAllowedDistance != DefaultMaximumAllowedTypoDistance {
@@ -42,10 +42,10 @@ func TestTyposHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestTyposHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	a := &TyposHistoryAnalyzer{}
+	a := &HistoryAnalyzer{}
 
 	err := a.Initialize(nil)
 	if err != nil {
@@ -57,10 +57,10 @@ func TestTyposHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestTyposHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	a := &TyposHistoryAnalyzer{
+	a := &HistoryAnalyzer{
 		UASTChanges:            &plumbing.UASTChangesAnalyzer{},
 		FileDiff:               &plumbing.FileDiffAnalyzer{},
 		BlobCache:              &plumbing.BlobCacheAnalyzer{},
@@ -168,10 +168,10 @@ func TestTyposHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestTyposHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
+func TestHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
 	t.Parallel()
 
-	a := &TyposHistoryAnalyzer{}
+	a := &HistoryAnalyzer{}
 	a.typos = []Typo{
 		{Wrong: "a", Correct: "b", File: "f", Line: 1},
 		{Wrong: "a", Correct: "b", File: "f", Line: 1}, // Duplicate.
@@ -219,10 +219,10 @@ func TestTyposHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
 	}
 }
 
-func TestTyposHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	a := &TyposHistoryAnalyzer{}
+	a := &HistoryAnalyzer{}
 	if a.Name() == "" {
 		t.Error("Name empty")
 	}

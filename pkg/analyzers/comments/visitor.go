@@ -6,15 +6,15 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// CommentsVisitor implements NodeVisitor for comment analysis.
-type CommentsVisitor struct {
+// Visitor implements NodeVisitor for comment analysis.
+type Visitor struct {
 	extractor *common.DataExtractor
 	comments  []*node.Node
 	functions []*node.Node
 }
 
-// NewCommentsVisitor creates a new CommentsVisitor.
-func NewCommentsVisitor() *CommentsVisitor {
+// NewVisitor creates a new Visitor.
+func NewVisitor() *Visitor {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
@@ -22,7 +22,7 @@ func NewCommentsVisitor() *CommentsVisitor {
 		},
 	}
 
-	return &CommentsVisitor{
+	return &Visitor{
 		comments:  make([]*node.Node, 0),
 		functions: make([]*node.Node, 0),
 		extractor: common.NewDataExtractor(extractionConfig),
@@ -30,7 +30,7 @@ func NewCommentsVisitor() *CommentsVisitor {
 }
 
 // OnEnter is called when entering a node during AST traversal.
-func (v *CommentsVisitor) OnEnter(n *node.Node, _ int) {
+func (v *Visitor) OnEnter(n *node.Node, _ int) {
 	if n.Type == node.UASTComment {
 		v.comments = append(v.comments, n)
 	}
@@ -41,13 +41,13 @@ func (v *CommentsVisitor) OnEnter(n *node.Node, _ int) {
 }
 
 // OnExit is called when exiting a node during AST traversal.
-func (v *CommentsVisitor) OnExit(_ *node.Node, _ int) {
+func (v *Visitor) OnExit(_ *node.Node, _ int) {
 	// Nothing to do on exit.
 }
 
 // GetReport returns the collected analysis report.
-func (v *CommentsVisitor) GetReport() analyze.Report {
-	analyzer := &CommentsAnalyzer{
+func (v *Visitor) GetReport() analyze.Report {
+	analyzer := &Analyzer{
 		traverser: common.NewUASTTraverser(common.TraversalConfig{}),
 		extractor: v.extractor,
 	}
@@ -63,7 +63,7 @@ func (v *CommentsVisitor) GetReport() analyze.Report {
 	return analyzer.buildResult(commentDetails, v.functions, metrics)
 }
 
-func (v *CommentsVisitor) isFunction(target *node.Node) bool {
+func (v *Visitor) isFunction(target *node.Node) bool {
 	functionTypes := map[node.Type]bool{
 		node.UASTFunction:  true,
 		node.UASTMethod:    true,

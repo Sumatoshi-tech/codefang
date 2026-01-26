@@ -6,10 +6,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestComplexityAnalyzer_Basic(t *testing.T) {
+func TestAnalyzer_Basic(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test basic functionality.
 	if analyzer.Name() != "complexity" {
@@ -30,10 +30,10 @@ func TestComplexityAnalyzer_Basic(t *testing.T) {
 	}
 }
 
-func TestComplexityAnalyzer_NilRoot(t *testing.T) {
+func TestAnalyzer_NilRoot(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	result, err := analyzer.Analyze(nil)
 	if err != nil {
@@ -54,10 +54,10 @@ func TestComplexityAnalyzer_NilRoot(t *testing.T) {
 	}
 }
 
-func TestComplexityAnalyzer_SimpleFunction(t *testing.T) {
+func TestAnalyzer_SimpleFunction(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a simple function.
 	functionNode := &node.Node{Type: node.UASTFunction}
@@ -96,10 +96,10 @@ func TestComplexityAnalyzer_SimpleFunction(t *testing.T) {
 	}
 }
 
-func TestComplexityAnalyzer_ExtractFunctionName(t *testing.T) {
+func TestAnalyzer_ExtractFunctionName(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test function with name.
 	functionNode := &node.Node{Type: node.UASTFunction}
@@ -121,10 +121,10 @@ func TestComplexityAnalyzer_ExtractFunctionName(t *testing.T) {
 	}
 }
 
-func TestComplexityAnalyzer_IsDecisionPoint(t *testing.T) {
+func TestAnalyzer_IsDecisionPoint(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test decision point types.
 	decisionTypes := []string{
@@ -164,10 +164,10 @@ func TestComplexityAnalyzer_IsDecisionPoint(t *testing.T) {
 	}
 }
 
-func TestComplexityAnalyzer_WithIfStatement(t *testing.T) {
+func TestAnalyzer_WithIfStatement(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewComplexityAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a function with an if statement.
 	functionNode := &node.Node{Type: node.UASTFunction}

@@ -11,8 +11,8 @@ const (
 	MaxDepthValue = 10
 )
 
-// CohesionAnalyzer performs cohesion analysis on UAST.
-type CohesionAnalyzer struct {
+// Analyzer performs cohesion analysis on UAST.
+type Analyzer struct {
 	traverser *common.UASTTraverser
 	extractor *common.DataExtractor
 }
@@ -25,8 +25,8 @@ type Function struct {
 	Cohesion  float64
 }
 
-// NewCohesionAnalyzer creates a new CohesionAnalyzer with generic components.
-func NewCohesionAnalyzer() *CohesionAnalyzer {
+// NewAnalyzer creates a new Analyzer with generic components.
+func NewAnalyzer() *Analyzer {
 	// Configure UAST traverser for functions.
 	traversalConfig := common.TraversalConfig{
 		Filters: []common.NodeFilter{
@@ -47,13 +47,13 @@ func NewCohesionAnalyzer() *CohesionAnalyzer {
 		},
 	}
 
-	return &CohesionAnalyzer{
+	return &Analyzer{
 		traverser: common.NewUASTTraverser(traversalConfig),
 		extractor: common.NewDataExtractor(extractionConfig),
 	}
 }
 
 // CreateAggregator creates a new aggregator for cohesion analysis.
-func (c *CohesionAnalyzer) CreateAggregator() analyze.ResultAggregator {
-	return NewCohesionAggregator()
+func (c *Analyzer) CreateAggregator() analyze.ResultAggregator {
+	return NewAggregator()
 }

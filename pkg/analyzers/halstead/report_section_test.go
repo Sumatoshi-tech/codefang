@@ -27,7 +27,7 @@ func newTestHalsteadReport() analyze.Report {
 func TestHalsteadTitle(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -36,7 +36,7 @@ func TestHalsteadTitle(t *testing.T) {
 func TestHalsteadNilReport(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(nil)
+	section := NewReportSection(nil)
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -45,7 +45,7 @@ func TestHalsteadNilReport(t *testing.T) {
 func TestHalsteadScore_Good(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 	// Difficulty=12.3 -> <= 15 -> 0.8 (good).
 	if section.Score() != ScoreGood {
 		t.Errorf("Score() = %v, want %v for difficulty=12.3", section.Score(), ScoreGood)
@@ -57,7 +57,7 @@ func TestHalsteadScore_Excellent(t *testing.T) {
 
 	report := analyze.Report{"difficulty": 3.0}
 
-	section := NewHalsteadReportSection(report)
+	section := NewReportSection(report)
 	if section.Score() != ScoreExcellent {
 		t.Errorf("Score() = %v, want %v", section.Score(), ScoreExcellent)
 	}
@@ -68,7 +68,7 @@ func TestHalsteadScore_Fair(t *testing.T) {
 
 	report := analyze.Report{"difficulty": 25.0}
 
-	section := NewHalsteadReportSection(report)
+	section := NewReportSection(report)
 	if section.Score() != ScoreFair {
 		t.Errorf("Score() = %v, want %v", section.Score(), ScoreFair)
 	}
@@ -79,7 +79,7 @@ func TestHalsteadScore_Poor(t *testing.T) {
 
 	report := analyze.Report{"difficulty": 50.0}
 
-	section := NewHalsteadReportSection(report)
+	section := NewReportSection(report)
 	if section.Score() != ScorePoor {
 		t.Errorf("Score() = %v, want %v", section.Score(), ScorePoor)
 	}
@@ -88,7 +88,7 @@ func TestHalsteadScore_Poor(t *testing.T) {
 func TestHalsteadScore_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	// Difficulty=0 -> excellent.
 	if section.Score() != ScoreExcellent {
 		t.Errorf("Score() = %v, want %v for empty", section.Score(), ScoreExcellent)
@@ -98,7 +98,7 @@ func TestHalsteadScore_Empty(t *testing.T) {
 func TestHalsteadStatusMessage(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 
 	want := "Good complexity - code is reasonably complex"
 	if section.StatusMessage() != want {
@@ -109,7 +109,7 @@ func TestHalsteadStatusMessage(t *testing.T) {
 func TestHalsteadStatusMessage_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.StatusMessage() == "" {
 		t.Error("StatusMessage() should not be empty for empty report")
 	}
@@ -118,7 +118,7 @@ func TestHalsteadStatusMessage_Empty(t *testing.T) {
 func TestHalsteadKeyMetrics_Count(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 
 	const expectedCount = 6
 
@@ -131,7 +131,7 @@ func TestHalsteadKeyMetrics_Count(t *testing.T) {
 func TestHalsteadKeyMetrics_Labels(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 	metrics := section.KeyMetrics()
 
 	expectedLabels := []string{
@@ -148,7 +148,7 @@ func TestHalsteadKeyMetrics_Labels(t *testing.T) {
 func TestHalsteadDistribution(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 	dist := section.Distribution()
 
 	const expectedCategories = 4
@@ -179,7 +179,7 @@ func TestHalsteadDistribution_HighVolume(t *testing.T) {
 			{"name": "Huge", "volume": 8000.0, "effort": 200000.0},
 		},
 	}
-	section := NewHalsteadReportSection(report)
+	section := NewReportSection(report)
 	dist := section.Distribution()
 
 	const expectedHigh = 1
@@ -198,7 +198,7 @@ func TestHalsteadDistribution_HighVolume(t *testing.T) {
 func TestHalsteadDistribution_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.Distribution() != nil {
 		t.Error("Distribution() should be nil for empty report")
 	}
@@ -207,7 +207,7 @@ func TestHalsteadDistribution_Empty(t *testing.T) {
 func TestHalsteadTopIssues_SortedByEffort(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 
 	const topN = 2
 
@@ -224,7 +224,7 @@ func TestHalsteadTopIssues_SortedByEffort(t *testing.T) {
 func TestHalsteadTopIssues_Severity(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 
 	const topN = 3
 
@@ -247,7 +247,7 @@ func TestHalsteadTopIssues_SeverityPoor(t *testing.T) {
 			{"name": "Monster", "effort": 60000.0},
 		},
 	}
-	section := NewHalsteadReportSection(report)
+	section := NewReportSection(report)
 
 	issues := section.TopIssues(1)
 	if issues[0].Severity != analyze.SeverityPoor {
@@ -258,7 +258,7 @@ func TestHalsteadTopIssues_SeverityPoor(t *testing.T) {
 func TestHalsteadAllIssues(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(newTestHalsteadReport())
+	section := NewReportSection(newTestHalsteadReport())
 
 	const totalFunctions = 4
 
@@ -271,7 +271,7 @@ func TestHalsteadAllIssues(t *testing.T) {
 func TestHalsteadTopIssues_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewHalsteadReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 
 	const n = 5
 	if len(section.TopIssues(n)) != 0 {
@@ -282,5 +282,5 @@ func TestHalsteadTopIssues_Empty(t *testing.T) {
 func TestHalsteadImplementsInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ analyze.ReportSection = (*HalsteadReportSection)(nil)
+	var _ analyze.ReportSection = (*ReportSection)(nil)
 }

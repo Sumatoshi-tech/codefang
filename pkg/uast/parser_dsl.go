@@ -37,7 +37,7 @@ type DSLParser struct {
 	patternMatcher  *mapping.PatternMatcher
 	langInfo        *mapping.LanguageInfo
 	originalDSL     string
-	mappingRules    []mapping.MappingRule
+	mappingRules    []mapping.Rule
 	IncludeUnmapped bool
 }
 
@@ -60,7 +60,7 @@ func (parser *DSLParser) Load() error {
 	parser.originalDSL = string(content)
 
 	// Parse the mapping.
-	rules, langInfo, parseErr := (&mapping.MappingParser{}).ParseMapping(
+	rules, langInfo, parseErr := (&mapping.Parser{}).ParseMapping(
 		strings.NewReader(parser.originalDSL),
 	)
 	if parseErr != nil {
@@ -139,7 +139,7 @@ type DSLNode struct {
 	PatternMatcher  *mapping.PatternMatcher
 	Language        string
 	ParentContext   string
-	MappingRules    []mapping.MappingRule
+	MappingRules    []mapping.Rule
 	Source          []byte
 	IncludeUnmapped bool
 }
@@ -184,8 +184,8 @@ func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, cont
 }
 
 // findMappingRule finds a mapping rule for the given node type, resolving inheritance and merging fields.
-func (dn *DSLNode) findMappingRule(nodeType string) *mapping.MappingRule {
-	var rule *mapping.MappingRule
+func (dn *DSLNode) findMappingRule(nodeType string) *mapping.Rule {
+	var rule *mapping.Rule
 
 	for idx := range dn.MappingRules {
 		if dn.MappingRules[idx].Name == nodeType {
@@ -203,12 +203,12 @@ func (dn *DSLNode) findMappingRule(nodeType string) *mapping.MappingRule {
 }
 
 // resolveInheritance recursively merges base rule fields if Extends is set.
-func (dn *DSLNode) resolveInheritance(rule *mapping.MappingRule) *mapping.MappingRule {
+func (dn *DSLNode) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
 	if rule.Extends == "" {
 		return rule
 	}
 
-	var base *mapping.MappingRule
+	var base *mapping.Rule
 
 	for idx := range dn.MappingRules {
 		if dn.MappingRules[idx].Name == rule.Extends {
@@ -262,7 +262,7 @@ func (dn *DSLNode) resolveInheritance(rule *mapping.MappingRule) *mapping.Mappin
 }
 
 // processChildren processes all children of the node.
-func (dn *DSLNode) processChildren(mappingRule *mapping.MappingRule) []*node.Node {
+func (dn *DSLNode) processChildren(mappingRule *mapping.Rule) []*node.Node {
 	childCount := dn.Root.NamedChildCount()
 	children := make([]*node.Node, 0, childCount)
 
@@ -284,7 +284,7 @@ func (dn *DSLNode) processChildren(mappingRule *mapping.MappingRule) []*node.Nod
 }
 
 // createChildNode creates a child DSLNode with proper parent context.
-func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.MappingRule) *DSLNode {
+func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.Rule) *DSLNode {
 	parentContext := ""
 	if mappingRule != nil {
 		parentContext = mappingRule.UASTSpec.Type
@@ -309,7 +309,7 @@ func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.Mappi
 // Pattern Matching and Capture Extraction.
 
 // matchPattern returns the capture map for the current node and mapping rule, or nil if no match.
-func (dn *DSLNode) matchPattern(mappingRule *mapping.MappingRule) map[string]string {
+func (dn *DSLNode) matchPattern(mappingRule *mapping.Rule) map[string]string {
 	if mappingRule == nil || mappingRule.Pattern == "" {
 		return nil
 	}
@@ -378,7 +378,7 @@ func findDescendantByType(tsNode sitter.Node, typ string) sitter.Node {
 // Condition Evaluation.
 
 // evaluateConditions returns true if all conditions are satisfied for the current node.
-func (dn *DSLNode) evaluateConditions(mappingRule *mapping.MappingRule) bool {
+func (dn *DSLNode) evaluateConditions(mappingRule *mapping.Rule) bool {
 	if mappingRule == nil || len(mappingRule.Conditions) == 0 {
 		return true
 	}
@@ -455,7 +455,7 @@ func (dn *DSLNode) evaluateComparisonOp(expr, op string, captures map[string]str
 // Node/Child Inclusion/Exclusion.
 
 // shouldSkipNode checks if the current node should be skipped based on mapping rule conditions.
-func (dn *DSLNode) shouldSkipNode(mappingRule *mapping.MappingRule) bool {
+func (dn *DSLNode) shouldSkipNode(mappingRule *mapping.Rule) bool {
 	if mappingRule == nil {
 		return false
 	}
@@ -464,7 +464,7 @@ func (dn *DSLNode) shouldSkipNode(mappingRule *mapping.MappingRule) bool {
 }
 
 // shouldExcludeChild checks if a child should be excluded based on mapping rules and conditions.
-func (dn *DSLNode) shouldExcludeChild(childNode *DSLNode, mappingRule *mapping.MappingRule) bool {
+func (dn *DSLNode) shouldExcludeChild(childNode *DSLNode, mappingRule *mapping.Rule) bool {
 	if mappingRule == nil {
 		return false
 	}
@@ -496,7 +496,7 @@ func (dn *DSLNode) shouldSkipEmptyFile(nodeType string, children []*node.Node) b
 
 // createMappedNode creates a UAST node from a mapped Tree-sitter node.
 func (dn *DSLNode) createMappedNode(
-	mappingRule *mapping.MappingRule, children []*node.Node,
+	mappingRule *mapping.Rule, children []*node.Node,
 	props map[string]string, roles []node.Role,
 ) *node.Node {
 	dn.extractRoles(mappingRule, &roles)
@@ -515,7 +515,7 @@ func (dn *DSLNode) createMappedNode(
 }
 
 // extractRoles extracts roles from the mapping rule.
-func (dn *DSLNode) extractRoles(mappingRule *mapping.MappingRule, roles *[]node.Role) {
+func (dn *DSLNode) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
 	if mappingRule == nil {
 		return
 	}
@@ -526,7 +526,7 @@ func (dn *DSLNode) extractRoles(mappingRule *mapping.MappingRule, roles *[]node.
 }
 
 // extractName extracts name from the node if specified in mapping.
-func (dn *DSLNode) extractName(mappingRule *mapping.MappingRule, props map[string]string) {
+func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]string) {
 	// For now, extract name from the first identifier child if available.
 	if mappingRule == nil {
 		return
@@ -589,7 +589,7 @@ func (dn *DSLNode) extractNameFromProps() string {
 }
 
 // extractProperties extracts properties from the mapping rule.
-func (dn *DSLNode) extractProperties(mappingRule *mapping.MappingRule, props map[string]string) {
+func (dn *DSLNode) extractProperties(mappingRule *mapping.Rule, props map[string]string) {
 	if mappingRule == nil || mappingRule.UASTSpec.Props == nil {
 		return
 	}
@@ -643,7 +643,7 @@ func (dn *DSLNode) extractChildText(child sitter.Node) string {
 }
 
 // extractToken extracts token from the mapping rule.
-func (dn *DSLNode) extractToken(mappingRule *mapping.MappingRule, uastNode *node.Node) {
+func (dn *DSLNode) extractToken(mappingRule *mapping.Rule, uastNode *node.Node) {
 	if mappingRule == nil || mappingRule.UASTSpec.Token == "" {
 		return
 	}
@@ -719,7 +719,7 @@ func (dn *DSLNode) findDescendantToken(nodeType string) string {
 }
 
 // extractTokenText extracts the token text based on the mapping rule.
-func (dn *DSLNode) extractTokenText(mappingRule *mapping.MappingRule) string {
+func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
 	if mappingRule == nil || mappingRule.UASTSpec.Token == "" {
 		return ""
 	}

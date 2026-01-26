@@ -22,8 +22,8 @@ const (
 	readBufferSize = 32 * 1024 // 32KB read buffer.
 )
 
-// CouplesHistoryAnalyzer identifies co-change coupling between files and developers.
-type CouplesHistoryAnalyzer struct {
+// HistoryAnalyzer identifies co-change coupling between files and developers.
+type HistoryAnalyzer struct {
 	l                  interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
 	Identity           *plumbing.IdentityDetector
 	TreeDiff           *plumbing.TreeDiffAnalyzer
@@ -48,28 +48,28 @@ const (
 )
 
 // Name returns the name of the analyzer.
-func (c *CouplesHistoryAnalyzer) Name() string {
+func (c *HistoryAnalyzer) Name() string {
 	return "Couples"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (c *CouplesHistoryAnalyzer) Flag() string {
+func (c *HistoryAnalyzer) Flag() string {
 	return "couples"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (c *CouplesHistoryAnalyzer) Description() string {
+func (c *HistoryAnalyzer) Description() string {
 	return "The result is a square matrix, the value in each cell corresponds to the number of times " +
 		"the pair of files appeared in the same commit or pair of developers committed to the same file."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (c *CouplesHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (c *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (c *CouplesHistoryAnalyzer) Configure(facts map[string]any) error {
+func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[identity.FactIdentityDetectorPeopleCount].(int); exists {
 		c.PeopleNumber = val
 
@@ -85,7 +85,7 @@ func (c *CouplesHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (c *CouplesHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (c *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	c.people = make([]map[string]int, c.PeopleNumber+1)
 	for i := range c.people {
 		c.people[i] = map[string]int{}
@@ -100,7 +100,7 @@ func (c *CouplesHistoryAnalyzer) Initialize(_ *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (c *CouplesHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
 	shouldConsume := true
 
@@ -137,7 +137,7 @@ func (c *CouplesHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 // processTreeChanges processes the tree diff changes and returns the list of files that form the coupling context.
 //
 //nolint:gocognit // complexity is inherent to multi-action change processing with merge mode.
-func (c *CouplesHistoryAnalyzer) processTreeChanges(
+func (c *HistoryAnalyzer) processTreeChanges(
 	treeDiff object.Changes, mergeMode bool, author int,
 ) ([]string, error) {
 	context := make([]string, 0, len(treeDiff))
@@ -177,7 +177,7 @@ func (c *CouplesHistoryAnalyzer) processTreeChanges(
 }
 
 // updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
-func (c *CouplesHistoryAnalyzer) updateFileCouplings(context []string) {
+func (c *HistoryAnalyzer) updateFileCouplings(context []string) {
 	if len(context) > CouplesMaximumMeaningfulContextSize {
 		return
 	}
@@ -196,7 +196,7 @@ func (c *CouplesHistoryAnalyzer) updateFileCouplings(context []string) {
 }
 
 // Finalize completes the analysis and returns the result.
-func (c *CouplesHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (c *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	files, people := c.propagateRenames(c.currentFiles())
 	filesSequence, filesIndex := buildFilesIndex(files)
 	filesLines := c.computeFilesLines(filesSequence)
@@ -231,7 +231,7 @@ func buildFilesIndex(files map[string]map[string]int) (sequence []string, index 
 }
 
 // computeFilesLines counts the number of newlines in each file at the last commit.
-func (c *CouplesHistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
+func (c *HistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
 	filesLines := make([]int, len(filesSequence))
 
 	if c.lastCommit == nil {
@@ -331,7 +331,7 @@ func countNewlines(p []byte) int {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (c *CouplesHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *c
@@ -342,11 +342,11 @@ func (c *CouplesHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (c *CouplesHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (c *CouplesHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (c *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
 	if !ok {
 		return errors.New("expected []map[int]int64 for peopleMatrix") //nolint:err113 // descriptive error for type assertion failure.
@@ -428,11 +428,11 @@ func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (c *CouplesHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (c *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return c.Serialize(report, false, writer)
 }
 
-func (c *CouplesHistoryAnalyzer) currentFiles() map[string]bool {
+func (c *HistoryAnalyzer) currentFiles() map[string]bool {
 	files := map[string]bool{}
 	if c.lastCommit == nil { //nolint:nestif // complex tree traversal with nested iteration
 		for key := range c.files {
@@ -456,7 +456,7 @@ func (c *CouplesHistoryAnalyzer) currentFiles() map[string]bool {
 	return files
 }
 
-func (c *CouplesHistoryAnalyzer) propagateRenames(
+func (c *HistoryAnalyzer) propagateRenames(
 	files map[string]bool,
 ) (reducedFiles map[string]map[string]int, people []map[string]int) {
 	// Renames := *c.renames.

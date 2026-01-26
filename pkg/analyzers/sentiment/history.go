@@ -24,8 +24,8 @@ const (
 	MinCommentLengthThresholdHigh = 10
 )
 
-// SentimentHistoryAnalyzer tracks comment sentiment across commit history.
-type SentimentHistoryAnalyzer struct {
+// HistoryAnalyzer tracks comment sentiment across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
@@ -62,22 +62,22 @@ var (
 )
 
 // Name returns the name of the analyzer.
-func (s *SentimentHistoryAnalyzer) Name() string {
+func (s *HistoryAnalyzer) Name() string {
 	return "Sentiment"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (s *SentimentHistoryAnalyzer) Flag() string {
+func (s *HistoryAnalyzer) Flag() string {
 	return "sentiment"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (s *SentimentHistoryAnalyzer) Description() string {
+func (s *HistoryAnalyzer) Description() string {
 	return "Classifies each new or changed comment per commit as containing positive or negative emotions."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (s *SentimentHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (s *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
 			Name:        ConfigCommentSentimentMinLength,
@@ -97,7 +97,7 @@ func (s *SentimentHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configu
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (s *SentimentHistoryAnalyzer) Configure(facts map[string]any) error {
+func (s *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigCommentSentimentGap].(float32); exists {
 		s.Gap = val
 	}
@@ -115,7 +115,7 @@ func (s *SentimentHistoryAnalyzer) Configure(facts map[string]any) error {
 	return nil
 }
 
-func (s *SentimentHistoryAnalyzer) validate() {
+func (s *HistoryAnalyzer) validate() {
 	if s.Gap < 0 || s.Gap >= 1 {
 		s.Gap = DefaultCommentSentimentGap
 	}
@@ -126,7 +126,7 @@ func (s *SentimentHistoryAnalyzer) validate() {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (s *SentimentHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (s *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	s.commentsByTick = map[int][]string{}
 	s.validate()
 
@@ -134,7 +134,7 @@ func (s *SentimentHistoryAnalyzer) Initialize(_ *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (s *SentimentHistoryAnalyzer) Consume(_ *analyze.Context) error {
+func (s *HistoryAnalyzer) Consume(_ *analyze.Context) error {
 	changes := s.UASTChanges.Changes
 	tick := s.Ticks.Tick
 
@@ -258,7 +258,7 @@ func filterComments(comments []string, minLength int) []string {
 	return filteredComments
 }
 
-func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
+func (s *HistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
 	lines, lineNums := groupCommentsByLine(extracted)
 	mergedComments := mergeAdjacentComments(lines, lineNums)
 
@@ -266,7 +266,7 @@ func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []strin
 }
 
 // Finalize completes the analysis and returns the result.
-func (s *SentimentHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	emotions := map[int]float32{}
 	// Sentiment analysis logic (placeholders).
 	for tick, comments := range s.commentsByTick {
@@ -283,7 +283,7 @@ func (s *SentimentHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (s *SentimentHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		res[i] = s // Shared state.
@@ -293,11 +293,11 @@ func (s *SentimentHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *SentimentHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (s *SentimentHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (s *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	emotions, ok := result["emotions_by_tick"].(map[int]float32)
 	if !ok {
 		return errors.New("expected map[int]float32 for emotions") //nolint:err113 // descriptive error for type assertion failure.
@@ -339,6 +339,6 @@ func (s *SentimentHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writ
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (s *SentimentHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (s *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return s.Serialize(report, false, writer)
 }

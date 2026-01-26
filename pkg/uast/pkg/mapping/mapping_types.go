@@ -34,8 +34,8 @@ const (
 	Operator
 )
 
-// MappingRule represents a mapping from a Tree-Sitter pattern to a UAST specification.
-type MappingRule struct {
+// Rule represents a mapping from a Tree-Sitter pattern to a UAST specification.
+type Rule struct {
 	Name       string
 	Pattern    string // S-expression or DSL.
 	Extends    string // Optional: inheritance.

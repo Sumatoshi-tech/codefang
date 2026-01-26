@@ -1,4 +1,4 @@
-package file_history //nolint:staticcheck,testpackage // testing internal implementation.
+package filehistory //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
@@ -17,10 +17,10 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-func TestFileHistoryAnalyzer_Consume(t *testing.T) {
+func TestAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	h := &FileHistoryAnalyzer{
+	h := &Analyzer{
 		Identity:  &plumbing.IdentityDetector{},
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		LineStats: &plumbing.LinesStatsCalculator{},
@@ -133,10 +133,10 @@ func TestFileHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestFileHistoryAnalyzer_Merge(t *testing.T) {
+func TestAnalyzer_Merge(t *testing.T) {
 	t.Parallel()
 
-	h := &FileHistoryAnalyzer{
+	h := &Analyzer{
 		Identity:  &plumbing.IdentityDetector{},
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		LineStats: &plumbing.LinesStatsCalculator{},
@@ -173,10 +173,10 @@ func TestFileHistoryAnalyzer_Merge(t *testing.T) {
 	// We can check by side effects.
 }
 
-func TestFileHistoryAnalyzer_Serialize(t *testing.T) {
+func TestAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	h := &FileHistoryAnalyzer{}
+	h := &Analyzer{}
 	require.NoError(t, h.Initialize(nil))
 
 	// Manually construct report to avoid Finalize logic dependencies.
@@ -220,10 +220,10 @@ func TestFileHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestFileHistoryAnalyzer_Misc(t *testing.T) {
+func TestAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	h := &FileHistoryAnalyzer{}
+	h := &Analyzer{}
 	if h.Name() == "" {
 		t.Error("Name empty")
 	}
@@ -253,7 +253,7 @@ func TestFileHistoryAnalyzer_Misc(t *testing.T) {
 		t.Error("expected 2 clones")
 	}
 
-	c1, ok := clones[0].(*FileHistoryAnalyzer)
+	c1, ok := clones[0].(*Analyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
 	if len(c1.files) != 1 {

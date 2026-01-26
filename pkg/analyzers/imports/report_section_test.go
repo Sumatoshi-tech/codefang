@@ -30,7 +30,7 @@ func newSimpleImportsReport() analyze.Report {
 func TestImportsTitle(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -39,7 +39,7 @@ func TestImportsTitle(t *testing.T) {
 func TestImportsNilReport(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(nil)
+	section := NewReportSection(nil)
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -48,7 +48,7 @@ func TestImportsNilReport(t *testing.T) {
 func TestImportsScore_InfoOnly(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 	if section.Score() != analyze.ScoreInfoOnly {
 		t.Errorf("Score() = %v, want %v", section.Score(), analyze.ScoreInfoOnly)
 	}
@@ -57,7 +57,7 @@ func TestImportsScore_InfoOnly(t *testing.T) {
 func TestImportsStatusMessage(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	want := "Found 4 unique imports"
 	if section.StatusMessage() != want {
@@ -68,7 +68,7 @@ func TestImportsStatusMessage(t *testing.T) {
 func TestImportsStatusMessage_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.StatusMessage() != DefaultStatusMessage {
 		t.Errorf("StatusMessage() = %q, want %q", section.StatusMessage(), DefaultStatusMessage)
 	}
@@ -77,7 +77,7 @@ func TestImportsStatusMessage_Empty(t *testing.T) {
 func TestImportsKeyMetrics_Count(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	const expectedCount = 2
 
@@ -90,7 +90,7 @@ func TestImportsKeyMetrics_Count(t *testing.T) {
 func TestImportsKeyMetrics_Labels(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	metrics := section.KeyMetrics()
 	if metrics[0].Label != MetricUniqueImports {
@@ -105,7 +105,7 @@ func TestImportsKeyMetrics_Labels(t *testing.T) {
 func TestImportsKeyMetrics_Values(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	metrics := section.KeyMetrics()
 	if metrics[0].Value != "4" {
@@ -120,7 +120,7 @@ func TestImportsKeyMetrics_Values(t *testing.T) {
 func TestImportsDistribution_Nil(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 	if section.Distribution() != nil {
 		t.Error("Distribution() should be nil for imports")
 	}
@@ -129,7 +129,7 @@ func TestImportsDistribution_Nil(t *testing.T) {
 func TestImportsTopIssues_FromCounts(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	const topN = 2
 
@@ -150,7 +150,7 @@ func TestImportsTopIssues_FromCounts(t *testing.T) {
 func TestImportsTopIssues_FromList(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newSimpleImportsReport())
+	section := NewReportSection(newSimpleImportsReport())
 
 	const topN = 2
 
@@ -167,7 +167,7 @@ func TestImportsTopIssues_FromList(t *testing.T) {
 func TestImportsAllIssues(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(newTestImportsReport())
+	section := NewReportSection(newTestImportsReport())
 
 	const expectedImports = 4
 
@@ -180,7 +180,7 @@ func TestImportsAllIssues(t *testing.T) {
 func TestImportsTopIssues_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewImportsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 
 	const n = 5
 	if len(section.TopIssues(n)) != 0 {
@@ -191,5 +191,5 @@ func TestImportsTopIssues_Empty(t *testing.T) {
 func TestImportsImplementsInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ analyze.ReportSection = (*ImportsReportSection)(nil)
+	var _ analyze.ReportSection = (*ReportSection)(nil)
 }

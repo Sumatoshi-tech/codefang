@@ -40,7 +40,7 @@ func ApplyHeuristicClassification(nodes []NodeTypeInfo) []NodeTypeInfo {
 }
 
 // CoverageAnalysis computes mapping coverage statistics.
-func CoverageAnalysis(rules []MappingRule, nodeTypes []NodeTypeInfo) (float64, error) {
+func CoverageAnalysis(rules []Rule, nodeTypes []NodeTypeInfo) (float64, error) {
 	mapped := make(map[string]bool)
 
 	for _, rule := range rules {

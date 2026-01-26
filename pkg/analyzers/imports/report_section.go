@@ -27,16 +27,16 @@ const (
 	StatusMessageSuffix  = " unique imports"
 )
 
-// ImportsReportSection implements analyze.ReportSection for import analysis.
+// ReportSection implements analyze.ReportSection for import analysis.
 // This is an info-only section (no score).
-type ImportsReportSection struct {
+type ReportSection struct {
 	analyze.BaseReportSection
 
 	report analyze.Report
 }
 
-// NewImportsReportSection creates a ReportSection from an imports report.
-func NewImportsReportSection(report analyze.Report) *ImportsReportSection {
+// NewReportSection creates a ReportSection from an imports report.
+func NewReportSection(report analyze.Report) *ReportSection {
 	if report == nil {
 		report = analyze.Report{}
 	}
@@ -44,7 +44,7 @@ func NewImportsReportSection(report analyze.Report) *ImportsReportSection {
 	count := reportutil.GetInt(report, KeyCount)
 	msg := buildStatusMessage(count)
 
-	return &ImportsReportSection{
+	return &ReportSection{
 		BaseReportSection: analyze.BaseReportSection{
 			Title:      SectionTitle,
 			Message:    msg,
@@ -55,7 +55,7 @@ func NewImportsReportSection(report analyze.Report) *ImportsReportSection {
 }
 
 // KeyMetrics returns the key metrics for the imports section.
-func (s *ImportsReportSection) KeyMetrics() []analyze.Metric {
+func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
 		{Label: MetricUniqueImports, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyCount))},
 		{Label: MetricTotalFiles, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyTotalFiles))},
@@ -63,12 +63,12 @@ func (s *ImportsReportSection) KeyMetrics() []analyze.Metric {
 }
 
 // Distribution returns nil for imports (no distribution).
-func (s *ImportsReportSection) Distribution() []analyze.DistributionItem {
+func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	return nil
 }
 
 // TopIssues returns the top N most used imports as info items.
-func (s *ImportsReportSection) TopIssues(n int) []analyze.Issue {
+func (s *ReportSection) TopIssues(n int) []analyze.Issue {
 	issues := s.buildImportIssues()
 	if n >= len(issues) {
 		return issues
@@ -78,12 +78,12 @@ func (s *ImportsReportSection) TopIssues(n int) []analyze.Issue {
 }
 
 // AllIssues returns all imports as info items.
-func (s *ImportsReportSection) AllIssues() []analyze.Issue {
+func (s *ReportSection) AllIssues() []analyze.Issue {
 	return s.buildImportIssues()
 }
 
 // buildImportIssues creates issues from import counts, sorted by frequency.
-func (s *ImportsReportSection) buildImportIssues() []analyze.Issue {
+func (s *ReportSection) buildImportIssues() []analyze.Issue {
 	counts := reportutil.GetStringIntMap(s.report, KeyImportCounts)
 	if len(counts) > 0 {
 		return buildIssuesFromCounts(counts)
@@ -156,6 +156,6 @@ func buildStatusMessage(count int) string {
 }
 
 // CreateReportSection creates a ReportSection from report data.
-func (a *ImportsAnalyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
-	return NewImportsReportSection(report)
+func (a *Analyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
+	return NewReportSection(report)
 }

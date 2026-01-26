@@ -18,10 +18,10 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-func TestImportsHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{}
+	h := &HistoryAnalyzer{}
 	facts := map[string]any{
 		identity.FactIdentityDetectorReversedPeopleDict: []string{"dev1"},
 		pkgplumbing.FactTickSize:                        12 * time.Hour,
@@ -51,10 +51,10 @@ func TestImportsHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{}
+	h := &HistoryAnalyzer{}
 	err := h.Initialize(nil)
 	// Initialize might fail if UAST parser cannot be loaded.
 	// If it fails, we should skip tests that require it?
@@ -73,10 +73,10 @@ func TestImportsHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{
+	h := &HistoryAnalyzer{
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		BlobCache: &plumbing.BlobCacheAnalyzer{Cache: map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}},
 		Identity:  &plumbing.IdentityDetector{},
@@ -125,10 +125,10 @@ func TestImportsHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Consume_MaxFileSize(t *testing.T) {
+func TestHistoryAnalyzer_Consume_MaxFileSize(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{
+	h := &HistoryAnalyzer{
 		MaxFileSize: 10,
 		TreeDiff:    &plumbing.TreeDiffAnalyzer{},
 		BlobCache:   &plumbing.BlobCacheAnalyzer{Cache: map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}},
@@ -157,10 +157,10 @@ func TestImportsHistoryAnalyzer_Consume_MaxFileSize(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Consume_Delete(t *testing.T) {
+func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{
+	h := &HistoryAnalyzer{
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		BlobCache: &plumbing.BlobCacheAnalyzer{Cache: map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}},
 		Identity:  &plumbing.IdentityDetector{},
@@ -176,7 +176,7 @@ func TestImportsHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	// Object.Change.Action() checks hashes. If To is empty/zero -> Delete.
 
 	h.TreeDiff.Changes = object.Changes{change1}
-	h.imports = ImportsMap{}
+	h.imports = Map{}
 
 	// Should not panic or do anything.
 	err := h.Consume(&analyze.Context{})
@@ -185,14 +185,14 @@ func TestImportsHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Finalize(t *testing.T) {
+func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{
+	h := &HistoryAnalyzer{
 		reversedPeopleDict: []string{"dev1"},
 		TickSize:           24 * time.Hour,
 	}
-	h.imports = ImportsMap{
+	h.imports = Map{
 		0: map[string]map[string]map[int]int64{
 			"Python": {
 				"os": {0: 1},
@@ -205,7 +205,7 @@ func TestImportsHistoryAnalyzer_Finalize(t *testing.T) {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 
-	imps, ok := report["imports"].(ImportsMap)
+	imps, ok := report["imports"].(Map)
 	require.True(t, ok, "type assertion failed for imps")
 
 	if imps[0]["Python"]["os"][0] != 1 {
@@ -213,12 +213,12 @@ func TestImportsHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{}
+	h := &HistoryAnalyzer{}
 
-	imports := ImportsMap{
+	imports := Map{
 		0: map[string]map[string]map[int]int64{
 			"Python": {
 				"os": {0: 1},
@@ -257,10 +257,10 @@ func TestImportsHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestImportsHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	h := &ImportsHistoryAnalyzer{}
+	h := &HistoryAnalyzer{}
 	if h.Name() == "" {
 		t.Error("Name empty")
 	}

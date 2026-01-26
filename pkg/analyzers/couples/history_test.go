@@ -17,10 +17,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 )
 
-func TestCouplesHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{}
+	c := &HistoryAnalyzer{}
 	facts := map[string]any{
 		identity.FactIdentityDetectorPeopleCount:        10,
 		identity.FactIdentityDetectorReversedPeopleDict: []string{"dev1"},
@@ -40,10 +40,10 @@ func TestCouplesHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{PeopleNumber: 1}
+	c := &HistoryAnalyzer{PeopleNumber: 1}
 
 	err := c.Initialize(nil)
 	if err != nil {
@@ -63,10 +63,10 @@ func TestCouplesHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{
+	c := &HistoryAnalyzer{
 		PeopleNumber: 1,
 		Identity:     &plumbing.IdentityDetector{},
 		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
@@ -127,10 +127,10 @@ func TestCouplesHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Consume_Merge(t *testing.T) {
+func TestHistoryAnalyzer_Consume_Merge(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{
+	c := &HistoryAnalyzer{
 		PeopleNumber: 1,
 		Identity:     &plumbing.IdentityDetector{},
 		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
@@ -165,10 +165,10 @@ func TestCouplesHistoryAnalyzer_Consume_Merge(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Finalize(t *testing.T) {
+func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{
+	c := &HistoryAnalyzer{
 		PeopleNumber:       1,
 		reversedPeopleDict: []string{"dev1"},
 	}
@@ -203,10 +203,10 @@ func TestCouplesHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{}
+	c := &HistoryAnalyzer{}
 
 	report := analyze.Report{
 		"PeopleMatrix":       []map[int]int64{{1: 5}, {0: 5}},
@@ -242,10 +242,10 @@ func TestCouplesHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestCouplesHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	c := &CouplesHistoryAnalyzer{}
+	c := &HistoryAnalyzer{}
 	if c.Name() == "" {
 		t.Error("Name empty")
 	}

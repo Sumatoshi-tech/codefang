@@ -119,8 +119,8 @@ func runMappingGenerate(nodes []mapping.NodeTypeInfo, language, extensions strin
 	return nil
 }
 
-func loadMappingRules(mappingPath string) ([]mapping.MappingRule, error) {
-	var rules []mapping.MappingRule
+func loadMappingRules(mappingPath string) ([]mapping.Rule, error) {
+	var rules []mapping.Rule
 
 	if mappingPath != "" {
 		data, openErr := os.Open(mappingPath)
@@ -129,7 +129,7 @@ func loadMappingRules(mappingPath string) ([]mapping.MappingRule, error) {
 		}
 		defer data.Close()
 
-		_, _, parseErr := (&mapping.MappingParser{}).ParseMapping(data)
+		_, _, parseErr := (&mapping.Parser{}).ParseMapping(data)
 		if parseErr != nil {
 			return nil, fmt.Errorf("failed to load mapping DSL: %w", parseErr)
 		}
@@ -138,7 +138,7 @@ func loadMappingRules(mappingPath string) ([]mapping.MappingRule, error) {
 	return rules, nil
 }
 
-func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.Rule, coverage bool) error {
 	out := map[string]any{
 		"node_count": len(nodes),
 		"categories": summarizeCategories(nodes),
@@ -165,7 +165,7 @@ func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule
 	return nil
 }
 
-func outputMappingText(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+func outputMappingText(nodes []mapping.NodeTypeInfo, rules []mapping.Rule, coverage bool) error {
 	fmt.Fprintf(os.Stdout, "Node types: %d\n", len(nodes))
 
 	cats := summarizeCategories(nodes)

@@ -12,16 +12,16 @@ const (
 	scoreThresholdMedium = 0.6
 )
 
-// CohesionAggregator aggregates results from multiple cohesion analyses.
-type CohesionAggregator struct {
+// Aggregator aggregates results from multiple cohesion analyses.
+type Aggregator struct {
 	*common.Aggregator
 }
 
-// NewCohesionAggregator creates a new CohesionAggregator.
-func NewCohesionAggregator() *CohesionAggregator {
+// NewAggregator creates a new Aggregator.
+func NewAggregator() *Aggregator {
 	config := buildAggregatorConfig()
 
-	return &CohesionAggregator{
+	return &Aggregator{
 		Aggregator: common.NewAggregator(
 			"cohesion",
 			config.numericKeys,

@@ -15,8 +15,8 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-func TestBurndownHistoryAnalyzer_Configure_NegativePeople(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{}
+func TestHistoryAnalyzer_Configure_NegativePeople(t *testing.T) {
+	b := &HistoryAnalyzer{}
 	facts := map[string]any{
 		ConfigBurndownTrackPeople:                true,
 		identity.FactIdentityDetectorPeopleCount: -1,
@@ -28,8 +28,8 @@ func TestBurndownHistoryAnalyzer_Configure_NegativePeople(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Initialize_NegativePeople(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Initialize_NegativePeople(t *testing.T) {
+	b := &HistoryAnalyzer{
 		PeopleNumber: -1,
 	}
 
@@ -39,8 +39,8 @@ func TestBurndownHistoryAnalyzer_Initialize_NegativePeople(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Insert_Exists(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Consume_Insert_Exists(t *testing.T) {
+	b := &HistoryAnalyzer{
 		TrackFiles: true,
 	}
 	require.NoError(t, b.Initialize(nil))
@@ -79,8 +79,8 @@ func TestBurndownHistoryAnalyzer_Consume_Insert_Exists(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Modify_Binary(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{TrackFiles: true}
+func TestHistoryAnalyzer_Modify_Binary(t *testing.T) {
+	b := &HistoryAnalyzer{TrackFiles: true}
 	require.NoError(t, b.Initialize(nil))
 
 	hashText := gitplumbing.NewHash("1111111111111111111111111111111111111111")
@@ -146,8 +146,8 @@ func TestBurndownHistoryAnalyzer_Modify_Binary(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Hibernated(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{TrackFiles: true}
+func TestHistoryAnalyzer_Consume_Hibernated(t *testing.T) {
+	b := &HistoryAnalyzer{TrackFiles: true}
 	require.NoError(t, b.Initialize(nil))
 
 	name := "test.txt"
@@ -172,8 +172,8 @@ func TestBurndownHistoryAnalyzer_Consume_Hibernated(t *testing.T) {
 	require.NoError(t, b.Consume(&analyze.Context{}))
 }
 
-func TestBurndownHistoryAnalyzer_Finalize_Empty(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{PeopleNumber: 1}
+func TestHistoryAnalyzer_Finalize_Empty(t *testing.T) {
+	b := &HistoryAnalyzer{PeopleNumber: 1}
 	require.NoError(t, b.Initialize(nil))
 
 	report, err := b.Finalize()
@@ -186,8 +186,8 @@ func TestBurndownHistoryAnalyzer_Finalize_Empty(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Merge_Paths(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{TrackFiles: true}
+func TestHistoryAnalyzer_Consume_Merge_Paths(t *testing.T) {
+	b := &HistoryAnalyzer{TrackFiles: true}
 	require.NoError(t, b.Initialize(nil))
 
 	hash1 := gitplumbing.NewHash("1111111111111111111111111111111111111111")
