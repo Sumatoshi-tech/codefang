@@ -150,7 +150,6 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
-      ignore-tests: true
 
     gocritic:
       enable-all: true
@@ -261,9 +260,6 @@ linters:
     perfsprint:
       strconcat: false
 
-    predeclared:
-      qualified: true
-
     reassign:
       patterns: [".*"]
 
@@ -339,9 +335,6 @@ linters:
 
     testifylint:
       enable-all: true
-
-    tparallel:
-      all: true
 
     unconvert:
       fast-math: true

@@ -230,7 +230,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   release:
-    name: Create Release
+    name: Release
     runs-on: ubuntu-latest
     needs: [test, integration-test, docker-build]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -240,30 +240,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build binaries
-        run: |
-          # Build for multiple platforms
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o codefang-linux-amd64 ./cmd/codefang
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o codefang-linux-arm64 ./cmd/codefang
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o codefang-darwin-amd64 ./cmd/codefang
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o codefang-darwin-arm64 ./cmd/codefang
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-w -s" -o codefang-windows-amd64.exe ./cmd/codefang
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          files: |
-            codefang-linux-amd64
-            codefang-linux-arm64
-            codefang-darwin-amd64
-            codefang-darwin-arm64
-            codefang-windows-amd64.exe
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          distribution: goreleaser-cross
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/cmd/codefang/commands"
+	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
 var (
@@ -58,7 +59,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Show version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Fprintln(os.Stdout, "codefang version 1.0.0")
+			fmt.Fprintf(os.Stdout, "codefang %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date)
 		},
 	}
 }

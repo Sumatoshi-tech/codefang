@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
 // formatJSON is the constant for the "json" output format string.
@@ -52,8 +54,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Show version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Fprintf(os.Stdout, "UAST CLI v0.1.0\n")
-			fmt.Fprintf(os.Stdout, "Go version: %s\n", "1.22")
+			fmt.Fprintf(os.Stdout, "uast %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date)
 		},
 	}
 
