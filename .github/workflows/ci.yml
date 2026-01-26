@@ -39,7 +39,7 @@ jobs:
 
       - name: Run tests
         run: |
-          CGO_ENABLED=0 go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+          CGO_ENABLED=1 go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
           go tool cover -html=coverage.txt -o coverage.html
 
       - name: Upload coverage to Codecov
