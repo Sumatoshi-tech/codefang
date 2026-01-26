@@ -10,10 +10,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestCohesionVisitor_Basic(t *testing.T) {
+func TestVisitor_Basic(t *testing.T) {
 	t.Parallel()
 
-	visitor := NewCohesionVisitor()
+	visitor := NewVisitor()
 	traverser := analyze.NewMultiAnalyzerTraverser()
 	traverser.RegisterVisitor(visitor)
 

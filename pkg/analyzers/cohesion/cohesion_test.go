@@ -12,21 +12,21 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestCohesionAnalyzer_Name(t *testing.T) {
+func TestAnalyzer_Name(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	expected := "cohesion"
 	if got := analyzer.Name(); got != expected {
-		t.Errorf("CohesionAnalyzer.Name() = %v, want %v", got, expected)
+		t.Errorf("Analyzer.Name() = %v, want %v", got, expected)
 	}
 }
 
-func TestCohesionAnalyzer_Thresholds(t *testing.T) {
+func TestAnalyzer_Thresholds(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 	thresholds := analyzer.Thresholds()
 
 	// Check that all expected metrics are present.
@@ -53,10 +53,10 @@ func TestCohesionAnalyzer_Thresholds(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_Analyze_NilRoot(t *testing.T) {
+func TestAnalyzer_Analyze_NilRoot(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	_, err := analyzer.Analyze(nil)
 	if err == nil {
@@ -68,10 +68,10 @@ func TestCohesionAnalyzer_Analyze_NilRoot(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_Analyze_NoFunctions(t *testing.T) {
+func TestAnalyzer_Analyze_NoFunctions(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a simple UAST with no functions.
 	root := &node.Node{
@@ -107,10 +107,10 @@ func TestCohesionAnalyzer_Analyze_NoFunctions(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_Analyze_SingleFunction(t *testing.T) {
+func TestAnalyzer_Analyze_SingleFunction(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a UAST with a single function.
 	root := &node.Node{
@@ -174,10 +174,10 @@ func TestCohesionAnalyzer_Analyze_SingleFunction(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
+func TestAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a UAST with multiple functions that share variables.
 	root := &node.Node{
@@ -268,10 +268,10 @@ func TestCohesionAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
 	// LCOM can be positive when functions don't share variables (poor cohesion).
 }
 
-func TestCohesionAnalyzer_FormatReport(t *testing.T) {
+func TestAnalyzer_FormatReport(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a test report.
 	report := analyze.Report{
@@ -322,10 +322,10 @@ func TestCohesionAnalyzer_FormatReport(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_FormatReportJSON(t *testing.T) {
+func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a test report.
 	report := analyze.Report{
@@ -375,10 +375,10 @@ func TestCohesionAnalyzer_FormatReportJSON(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_CreateAggregator(t *testing.T) {
+func TestAnalyzer_CreateAggregator(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 	aggregator := analyzer.CreateAggregator()
 
 	if aggregator == nil {
@@ -386,15 +386,15 @@ func TestCohesionAnalyzer_CreateAggregator(t *testing.T) {
 	}
 
 	// Check that it's the right type.
-	if _, ok := aggregator.(*CohesionAggregator); !ok {
-		t.Error("Expected CreateAggregator to return a CohesionAggregator")
+	if _, ok := aggregator.(*Aggregator); !ok {
+		t.Error("Expected CreateAggregator to return a Aggregator")
 	}
 }
 
-func TestCohesionAggregator_Aggregate(t *testing.T) {
+func TestAggregator_Aggregate(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	// Create test results.
 	results := map[string]analyze.Report{
@@ -456,10 +456,10 @@ func TestCohesionAggregator_Aggregate(t *testing.T) {
 	}
 }
 
-func TestCohesionAggregator_GetResult(t *testing.T) {
+func TestAggregator_GetResult(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	// Create test results to populate the aggregator.
 	results := map[string]analyze.Report{
@@ -506,10 +506,10 @@ func TestCohesionAggregator_GetResult(t *testing.T) {
 	}
 }
 
-func TestCohesionAggregator_GetResult_NoFunctions(t *testing.T) {
+func TestAggregator_GetResult_NoFunctions(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	result := aggregator.GetResult()
 
@@ -527,10 +527,10 @@ func TestCohesionAggregator_GetResult_NoFunctions(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_HelperFunctions(t *testing.T) {
+func TestAnalyzer_HelperFunctions(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test haveSharedVariables.
 	fn1 := Function{
@@ -590,10 +590,10 @@ func TestCohesionAnalyzer_HelperFunctions(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_EdgeCases(t *testing.T) {
+func TestAnalyzer_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test with empty function list.
 	lcom := analyzer.calculateLCOM([]Function{})
@@ -624,10 +624,10 @@ func TestCohesionAnalyzer_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestCohesionAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	testCases := []struct {
 		name        string
@@ -720,10 +720,10 @@ func TestCohesionAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tpar
 		})
 	}
 }
-func TestCohesionAnalyzer_Integration(t *testing.T) {
+func TestAnalyzer_Integration(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCohesionAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a realistic UAST structure.
 	root := &node.Node{
@@ -888,8 +888,8 @@ func TestCohesionAnalyzer_Integration(t *testing.T) {
 }
 
 // Benchmark tests.
-func BenchmarkCohesionAnalyzer_Analyze(b *testing.B) {
-	analyzer := NewCohesionAnalyzer()
+func BenchmarkAnalyzer_Analyze(b *testing.B) {
+	analyzer := NewAnalyzer()
 
 	// Create a complex UAST for benchmarking.
 	root := createComplexUAST()
@@ -904,8 +904,8 @@ func BenchmarkCohesionAnalyzer_Analyze(b *testing.B) {
 	}
 }
 
-func BenchmarkCohesionAggregator_Aggregate(b *testing.B) {
-	aggregator := NewCohesionAggregator()
+func BenchmarkAggregator_Aggregate(b *testing.B) {
+	aggregator := NewAggregator()
 
 	// Create test results for benchmarking.
 	results := createBenchmarkResults()

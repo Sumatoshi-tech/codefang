@@ -47,15 +47,15 @@ const (
 	DefaultStatusMessage = "No comment data available"
 )
 
-// CommentsReportSection implements analyze.ReportSection for comments analysis.
-type CommentsReportSection struct {
+// ReportSection implements analyze.ReportSection for comments analysis.
+type ReportSection struct {
 	analyze.BaseReportSection
 
 	report analyze.Report
 }
 
-// NewCommentsReportSection creates a ReportSection from a comments report.
-func NewCommentsReportSection(report analyze.Report) *CommentsReportSection {
+// NewReportSection creates a ReportSection from a comments report.
+func NewReportSection(report analyze.Report) *ReportSection {
 	if report == nil {
 		report = analyze.Report{}
 	}
@@ -67,7 +67,7 @@ func NewCommentsReportSection(report analyze.Report) *CommentsReportSection {
 		msg = DefaultStatusMessage
 	}
 
-	return &CommentsReportSection{
+	return &ReportSection{
 		BaseReportSection: analyze.BaseReportSection{
 			Title:      SectionTitle,
 			Message:    msg,
@@ -78,7 +78,7 @@ func NewCommentsReportSection(report analyze.Report) *CommentsReportSection {
 }
 
 // KeyMetrics returns the key metrics for the comments section.
-func (s *CommentsReportSection) KeyMetrics() []analyze.Metric {
+func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
 		{Label: MetricTotalComments, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyTotalComments))},
 		{Label: MetricGoodComments, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyGoodComments))},
@@ -90,7 +90,7 @@ func (s *CommentsReportSection) KeyMetrics() []analyze.Metric {
 }
 
 // Distribution returns documented vs undocumented function distribution.
-func (s *CommentsReportSection) Distribution() []analyze.DistributionItem {
+func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	total := reportutil.GetInt(s.report, KeyTotalFunctions)
 	if total == 0 {
 		return nil
@@ -106,7 +106,7 @@ func (s *CommentsReportSection) Distribution() []analyze.DistributionItem {
 }
 
 // TopIssues returns the top N undocumented functions.
-func (s *CommentsReportSection) TopIssues(n int) []analyze.Issue {
+func (s *ReportSection) TopIssues(n int) []analyze.Issue {
 	issues := s.buildIssues()
 	if n >= len(issues) {
 		return issues
@@ -116,12 +116,12 @@ func (s *CommentsReportSection) TopIssues(n int) []analyze.Issue {
 }
 
 // AllIssues returns all undocumented functions.
-func (s *CommentsReportSection) AllIssues() []analyze.Issue {
+func (s *ReportSection) AllIssues() []analyze.Issue {
 	return s.buildIssues()
 }
 
 // buildIssues extracts undocumented functions from the report.
-func (s *CommentsReportSection) buildIssues() []analyze.Issue {
+func (s *ReportSection) buildIssues() []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
@@ -151,6 +151,6 @@ func (s *CommentsReportSection) buildIssues() []analyze.Issue {
 }
 
 // CreateReportSection creates a ReportSection from report data.
-func (c *CommentsAnalyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
-	return NewCommentsReportSection(report)
+func (c *Analyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
+	return NewReportSection(report)
 }

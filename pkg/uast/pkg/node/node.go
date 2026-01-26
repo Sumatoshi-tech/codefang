@@ -195,8 +195,8 @@ type nodeTransformFrame struct {
 // Sentinel errors for DSL operations.
 var errEmptyQuery = errors.New("query string is empty")
 
-// NodeBuilder provides a fluent interface for building Node instances.
-type NodeBuilder struct {
+// Builder provides a fluent interface for building Node instances.
+type Builder struct {
 	node *Node
 }
 
@@ -205,60 +205,60 @@ const (
 	initialChildCap = 4
 )
 
-// NewBuilder creates a new NodeBuilder with a node from the pool.
-func NewBuilder() *NodeBuilder {
+// NewBuilder creates a new Builder with a node from the pool.
+func NewBuilder() *Builder {
 	poolNode, ok := nodePool.Get().(*Node)
 	if !ok {
 		poolNode = &Node{}
 	}
 
-	return &NodeBuilder{node: poolNode}
+	return &Builder{node: poolNode}
 }
 
 // WithID sets the node ID.
-func (builder *NodeBuilder) WithID(nodeID string) *NodeBuilder {
+func (builder *Builder) WithID(nodeID string) *Builder {
 	builder.node.ID = nodeID
 
 	return builder
 }
 
 // WithType sets the node type.
-func (builder *NodeBuilder) WithType(nodeType Type) *NodeBuilder {
+func (builder *Builder) WithType(nodeType Type) *Builder {
 	builder.node.Type = nodeType
 
 	return builder
 }
 
 // WithToken sets the node token.
-func (builder *NodeBuilder) WithToken(token string) *NodeBuilder {
+func (builder *Builder) WithToken(token string) *Builder {
 	builder.node.Token = token
 
 	return builder
 }
 
 // WithRoles sets the node roles.
-func (builder *NodeBuilder) WithRoles(roles []Role) *NodeBuilder {
+func (builder *Builder) WithRoles(roles []Role) *Builder {
 	builder.node.Roles = roles
 
 	return builder
 }
 
 // WithPosition sets the node position.
-func (builder *NodeBuilder) WithPosition(pos *Positions) *NodeBuilder {
+func (builder *Builder) WithPosition(pos *Positions) *Builder {
 	builder.node.Pos = pos
 
 	return builder
 }
 
 // WithProps sets the node properties.
-func (builder *NodeBuilder) WithProps(props map[string]string) *NodeBuilder {
+func (builder *Builder) WithProps(props map[string]string) *Builder {
 	builder.node.Props = props
 
 	return builder
 }
 
 // Build creates and returns the final Node.
-func (builder *NodeBuilder) Build() *Node {
+func (builder *Builder) Build() *Node {
 	builder.node.Children = make([]*Node, 0, initialChildCap)
 
 	return builder.node

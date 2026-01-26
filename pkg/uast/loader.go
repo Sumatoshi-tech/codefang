@@ -16,7 +16,7 @@ import (
 type PrecompiledMapping struct {
 	Language   string                 `json:"language"`
 	Extensions []string               `json:"extensions"`
-	Rules      []mapping.MappingRule  `json:"rules"`
+	Rules      []mapping.Rule         `json:"rules"`
 	Patterns   map[string]interface{} `json:"patterns"`
 	CompiledAt string                 `json:"compiled_at"`
 }

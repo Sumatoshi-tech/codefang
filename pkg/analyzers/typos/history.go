@@ -20,8 +20,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// TyposHistoryAnalyzer detects typo-fix identifier pairs across commit history.
-type TyposHistoryAnalyzer struct {
+// HistoryAnalyzer detects typo-fix identifier pairs across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
@@ -50,22 +50,22 @@ const (
 )
 
 // Name returns the name of the analyzer.
-func (t *TyposHistoryAnalyzer) Name() string {
+func (t *HistoryAnalyzer) Name() string {
 	return "TyposDataset"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (t *TyposHistoryAnalyzer) Flag() string {
+func (t *HistoryAnalyzer) Flag() string {
 	return "typos-dataset"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (t *TyposHistoryAnalyzer) Description() string {
+func (t *HistoryAnalyzer) Description() string {
 	return "Extracts typo-fix identifier pairs from source code in commit diffs."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (t *TyposHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (t *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
 			Name:        ConfigTyposDatasetMaximumAllowedDistance,
@@ -78,7 +78,7 @@ func (t *TyposHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configurati
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (t *TyposHistoryAnalyzer) Configure(facts map[string]any) error {
+func (t *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTyposDatasetMaximumAllowedDistance].(int); exists {
 		t.MaximumAllowedDistance = val
 	}
@@ -91,7 +91,7 @@ func (t *TyposHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (t *TyposHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (t *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	t.lcontext = &levenshtein.Context{}
 	if t.MaximumAllowedDistance <= 0 {
 		t.MaximumAllowedDistance = DefaultMaximumAllowedTypoDistance
@@ -116,7 +116,7 @@ type typoCandidateResult struct {
 // lines are within the maximum allowed Levenshtein distance, indicating a potential typo fix.
 //
 //nolint:gocognit // complexity is inherent to diff-based line pair matching with distance calculation.
-func (t *TyposHistoryAnalyzer) findTypoCandidates(
+func (t *HistoryAnalyzer) findTypoCandidates(
 	diffs []diffmatchpatch.Diff,
 	linesBefore, linesAfter [][]byte,
 ) typoCandidateResult {
@@ -172,7 +172,7 @@ func (t *TyposHistoryAnalyzer) findTypoCandidates(
 
 // matchTypoIdentifiers extracts identifiers from the before/after UAST nodes that fall on
 // the focused lines, and returns the matched typo pairs from the given candidates.
-func (t *TyposHistoryAnalyzer) matchTypoIdentifiers(
+func (t *HistoryAnalyzer) matchTypoIdentifiers(
 	change uast.Change,
 	result typoCandidateResult,
 	commit gitplumbing.Hash,
@@ -221,7 +221,7 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit.Hash
 
 	changes := t.UASTChanges.Changes
@@ -268,7 +268,7 @@ func extractIdentifiers(root *node.Node) []*node.Node {
 }
 
 // Finalize completes the analysis and returns the result.
-func (t *TyposHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (t *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	// Deduplicate.
 	typos := make([]Typo, 0, len(t.typos))
 	pairs := map[string]bool{}
@@ -288,7 +288,7 @@ func (t *TyposHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (t *TyposHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (t *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		res[i] = t // Shared state.
@@ -298,11 +298,11 @@ func (t *TyposHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (t *TyposHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (t *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (t *TyposHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (t *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	typos, ok := result["typos"].([]Typo)
 	if !ok {
 		return errors.New("expected []Typo for typos") //nolint:err113 // descriptive error for type assertion failure.
@@ -320,6 +320,6 @@ func (t *TyposHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer i
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (t *TyposHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (t *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return t.Serialize(report, false, writer)
 }

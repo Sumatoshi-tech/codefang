@@ -14,7 +14,7 @@ func TestHandleParseWithCustomUASTMaps(t *testing.T) {
 	t.Parallel()
 
 	// Test data.
-	customMaps := map[string]uast.UASTMap{
+	customMaps := map[string]uast.Map{
 		"test_lang": {
 			Extensions: []string{".test"},
 			UAST: `[language "json", extensions: ".test"]
@@ -170,7 +170,7 @@ func TestHandleParseWithInvalidUASTMaps(t *testing.T) {
 	t.Parallel()
 
 	// Test with invalid UAST maps.
-	customMaps := map[string]uast.UASTMap{
+	customMaps := map[string]uast.Map{
 		"invalid_lang": {
 			Extensions: []string{".invalid"},
 			UAST:       `invalid uast mapping syntax`,

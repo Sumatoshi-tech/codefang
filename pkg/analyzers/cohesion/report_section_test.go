@@ -26,7 +26,7 @@ func newTestCohesionReport() analyze.Report {
 func TestCohesionTitle(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -35,7 +35,7 @@ func TestCohesionTitle(t *testing.T) {
 func TestCohesionNilReport(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(nil)
+	section := NewReportSection(nil)
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -44,7 +44,7 @@ func TestCohesionNilReport(t *testing.T) {
 func TestCohesionScore(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	const expectedScore = 0.7
 	if section.Score() != expectedScore {
@@ -55,7 +55,7 @@ func TestCohesionScore(t *testing.T) {
 func TestCohesionScore_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.Score() != 0 {
 		t.Errorf("Score() = %v, want 0 for empty report", section.Score())
 	}
@@ -64,7 +64,7 @@ func TestCohesionScore_Empty(t *testing.T) {
 func TestCohesionStatusMessage(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	want := "Good cohesion - functions have reasonable focus"
 	if section.StatusMessage() != want {
@@ -75,7 +75,7 @@ func TestCohesionStatusMessage(t *testing.T) {
 func TestCohesionStatusMessage_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.StatusMessage() == "" {
 		t.Error("StatusMessage() should not be empty for empty report")
 	}
@@ -84,7 +84,7 @@ func TestCohesionStatusMessage_Empty(t *testing.T) {
 func TestCohesionKeyMetrics_Count(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	const expectedCount = 4
 
@@ -97,7 +97,7 @@ func TestCohesionKeyMetrics_Count(t *testing.T) {
 func TestCohesionKeyMetrics_Labels(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 	metrics := section.KeyMetrics()
 
 	expectedLabels := []string{MetricTotalFunctions, MetricLCOM, MetricCohesionScore, MetricFunctionCohesion}
@@ -111,7 +111,7 @@ func TestCohesionKeyMetrics_Labels(t *testing.T) {
 func TestCohesionDistribution(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 	dist := section.Distribution()
 
 	const expectedCategories = 4
@@ -150,7 +150,7 @@ func TestCohesionDistribution(t *testing.T) {
 func TestCohesionDistribution_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.Distribution() != nil {
 		t.Error("Distribution() should be nil for empty report")
 	}
@@ -159,7 +159,7 @@ func TestCohesionDistribution_Empty(t *testing.T) {
 func TestCohesionTopIssues_SortedAscending(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	const topN = 2
 
@@ -176,7 +176,7 @@ func TestCohesionTopIssues_SortedAscending(t *testing.T) {
 func TestCohesionTopIssues_Severity(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	const topN = 3
 
@@ -198,7 +198,7 @@ func TestCohesionTopIssues_Severity(t *testing.T) {
 func TestCohesionAllIssues(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(newTestCohesionReport())
+	section := NewReportSection(newTestCohesionReport())
 
 	const totalFunctions = 5
 
@@ -211,7 +211,7 @@ func TestCohesionAllIssues(t *testing.T) {
 func TestCohesionTopIssues_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCohesionReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 
 	const n = 5
 	if len(section.TopIssues(n)) != 0 {
@@ -222,5 +222,5 @@ func TestCohesionTopIssues_Empty(t *testing.T) {
 func TestCohesionImplementsInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ analyze.ReportSection = (*CohesionReportSection)(nil)
+	var _ analyze.ReportSection = (*ReportSection)(nil)
 }

@@ -13,7 +13,7 @@ import (
 //nolint:funlen // This example function is long due to the inline UAST mapping definition which cannot be shortened.
 func ExampleCustomMappings(logger *slog.Logger) {
 	// Define a custom UAST mapping for a simple configuration language.
-	customMaps := map[string]uast.UASTMap{
+	customMaps := map[string]uast.Map{
 		"simple_config": {
 			Extensions: []string{".scfg", ".simple"},
 			UAST: `[language "json", extensions: ".scfg", ".simple"]
@@ -84,7 +84,7 @@ true <- (true) => uast(
 	}
 
 	// Add custom mappings using the option pattern.
-	parser = parser.WithUASTMap(customMaps)
+	parser = parser.WithMap(customMaps)
 
 	// Test that the custom parser is loaded.
 	filename := "config.scfg"
@@ -117,7 +117,7 @@ true <- (true) => uast(
 //nolint:funlen // This example function is long due to inline UAST mapping definitions which cannot be shortened.
 func ExampleMultipleCustomMappings(logger *slog.Logger) {
 	// Define multiple custom UAST mappings.
-	customMaps := map[string]uast.UASTMap{
+	customMaps := map[string]uast.Map{
 		"config_lang": {
 			Extensions: []string{".config"},
 			UAST: `[language "json", extensions: ".config"]
@@ -193,7 +193,7 @@ string <- (string) => uast(
 		os.Exit(1)
 	}
 
-	parser = parser.WithUASTMap(customMaps)
+	parser = parser.WithMap(customMaps)
 
 	// Test multiple file extensions.
 	testFiles := []string{

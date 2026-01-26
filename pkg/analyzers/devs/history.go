@@ -19,8 +19,8 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-// DevsHistoryAnalyzer calculates per-developer line statistics across commit history.
-type DevsHistoryAnalyzer struct {
+// HistoryAnalyzer calculates per-developer line statistics across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
@@ -53,22 +53,22 @@ const (
 )
 
 // Name returns the name of the analyzer.
-func (d *DevsHistoryAnalyzer) Name() string {
+func (d *HistoryAnalyzer) Name() string {
 	return "Devs"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (d *DevsHistoryAnalyzer) Flag() string {
+func (d *HistoryAnalyzer) Flag() string {
 	return "devs"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (d *DevsHistoryAnalyzer) Description() string {
+func (d *HistoryAnalyzer) Description() string {
 	return "Calculates the number of commits, added, removed and changed lines per developer through time."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (d *DevsHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (d *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{{
 		Name:        ConfigDevsConsiderEmptyCommits,
 		Description: "Take into account empty commits such as trivial merges.",
@@ -79,7 +79,7 @@ func (d *DevsHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configuratio
 }
 
 // Configure configures the analyzer with the given facts.
-func (d *DevsHistoryAnalyzer) Configure(facts map[string]any) error {
+func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigDevsConsiderEmptyCommits].(bool); exists {
 		d.ConsiderEmptyCommits = val
 	}
@@ -96,7 +96,7 @@ func (d *DevsHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (d *DevsHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (d *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	if d.tickSize == 0 {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
@@ -108,7 +108,7 @@ func (d *DevsHistoryAnalyzer) Initialize(_ *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *DevsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	// OneShotMergeProcessor logic.
 	commit := ctx.Commit
 	shouldConsume := true
@@ -173,7 +173,7 @@ func (d *DevsHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (d *DevsHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	return analyze.Report{
 		"Ticks":              d.ticks,
 		"ReversedPeopleDict": d.reversedPeopleDict,
@@ -182,7 +182,7 @@ func (d *DevsHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (d *DevsHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (d *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *d
@@ -193,11 +193,11 @@ func (d *DevsHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (d *DevsHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (d *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (d *DevsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (d *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.
@@ -278,6 +278,6 @@ func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (d *DevsHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (d *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return d.Serialize(report, false, writer)
 }

@@ -18,8 +18,8 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-func TestBurndownHistoryAnalyzer_Initialize(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{}
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
+	b := &HistoryAnalyzer{}
 
 	err := b.Initialize(nil)
 	if err != nil {
@@ -35,8 +35,8 @@ func TestBurndownHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Insert(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Consume_Insert(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity: 30,
 		Sampling:    30,
 		TrackFiles:  true,
@@ -93,8 +93,8 @@ func TestBurndownHistoryAnalyzer_Consume_Insert(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Modify(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Consume_Modify(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity: 30,
 		Sampling:    30,
 		TrackFiles:  true,
@@ -158,8 +158,8 @@ func TestBurndownHistoryAnalyzer_Consume_Modify(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Delete(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity: 30,
 		Sampling:    30,
 		TrackFiles:  true,
@@ -203,8 +203,8 @@ func TestBurndownHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Consume_Rename(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Consume_Rename(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity: 30,
 		Sampling:    30,
 		TrackFiles:  true,
@@ -262,8 +262,8 @@ func TestBurndownHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Configure(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{}
+func TestHistoryAnalyzer_Configure(t *testing.T) {
+	b := &HistoryAnalyzer{}
 	facts := map[string]any{
 		ConfigBurndownGranularity:                       60,
 		ConfigBurndownSampling:                          60,
@@ -304,8 +304,8 @@ func TestBurndownHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Finalize(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Finalize(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity:        30,
 		Sampling:           30,
 		TrackFiles:         true,
@@ -346,8 +346,8 @@ func TestBurndownHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Serialize(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Serialize(t *testing.T) {
+	b := &HistoryAnalyzer{
 		Granularity: 30,
 		Sampling:    30,
 		TickSize:    24 * time.Hour,
@@ -392,8 +392,8 @@ func TestBurndownHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Hibernate_Boot(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Hibernate_Boot(t *testing.T) {
+	b := &HistoryAnalyzer{
 		HibernationToDisk:    true,
 		HibernationDirectory: "/tmp",
 	}
@@ -423,16 +423,16 @@ func TestBurndownHistoryAnalyzer_Hibernate_Boot(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Fork(t *testing.T) { //nolint:revive // testing.T needed for test signature
+func TestHistoryAnalyzer_Fork(t *testing.T) { //nolint:revive // testing.T needed for test signature
 	// Skip for now as Fork panics.
 }
 
-func TestBurndownHistoryAnalyzer_Merge(t *testing.T) { //nolint:revive // testing.T needed for test signature
+func TestHistoryAnalyzer_Merge(t *testing.T) { //nolint:revive // testing.T needed for test signature
 	// Skip for now as Merge panics.
 }
 
-func TestBurndownHistoryAnalyzer_Delete_NonExistent(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{}
+func TestHistoryAnalyzer_Delete_NonExistent(t *testing.T) {
+	b := &HistoryAnalyzer{}
 	require.NoError(t, b.Initialize(nil))
 	b.TreeDiff = &plumbing.TreeDiffAnalyzer{}
 	b.BlobCache = &plumbing.BlobCacheAnalyzer{Cache: map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}}
@@ -451,8 +451,8 @@ func TestBurndownHistoryAnalyzer_Delete_NonExistent(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_Errors(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_Errors(t *testing.T) {
+	b := &HistoryAnalyzer{
 		TrackFiles: true,
 	}
 	require.NoError(t, b.Initialize(nil))
@@ -479,8 +479,8 @@ func TestBurndownHistoryAnalyzer_Errors(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_IntegrityError(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_IntegrityError(t *testing.T) {
+	b := &HistoryAnalyzer{
 		TrackFiles: true,
 	}
 	require.NoError(t, b.Initialize(nil))
@@ -532,8 +532,8 @@ func TestBurndownHistoryAnalyzer_IntegrityError(t *testing.T) {
 	}
 }
 
-func TestBurndownHistoryAnalyzer_PeopleMatrix(t *testing.T) {
-	b := &BurndownHistoryAnalyzer{
+func TestHistoryAnalyzer_PeopleMatrix(t *testing.T) {
+	b := &HistoryAnalyzer{
 		PeopleNumber: 2,
 		TrackFiles:   true,
 	}

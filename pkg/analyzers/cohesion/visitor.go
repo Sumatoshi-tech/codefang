@@ -12,15 +12,15 @@ type cohesionContext struct {
 	nestingLevel int //nolint:unused // used via reflection or external caller.
 }
 
-// CohesionVisitor implements NodeVisitor for cohesion analysis.
-type CohesionVisitor struct {
+// Visitor implements NodeVisitor for cohesion analysis.
+type Visitor struct {
 	extractor *common.DataExtractor
 	contexts  []*cohesionContext
 	functions []Function
 }
 
-// NewCohesionVisitor creates a new CohesionVisitor.
-func NewCohesionVisitor() *CohesionVisitor {
+// NewVisitor creates a new Visitor.
+func NewVisitor() *Visitor {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
@@ -29,7 +29,7 @@ func NewCohesionVisitor() *CohesionVisitor {
 		},
 	}
 
-	return &CohesionVisitor{
+	return &Visitor{
 		contexts:  make([]*cohesionContext, 0),
 		functions: make([]Function, 0),
 		extractor: common.NewDataExtractor(extractionConfig),
@@ -37,7 +37,7 @@ func NewCohesionVisitor() *CohesionVisitor {
 }
 
 // OnEnter is called when entering a node during AST traversal.
-func (v *CohesionVisitor) OnEnter(n *node.Node, _ int) {
+func (v *Visitor) OnEnter(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.pushContext(n)
 	}
@@ -48,15 +48,15 @@ func (v *CohesionVisitor) OnEnter(n *node.Node, _ int) {
 }
 
 // OnExit is called when exiting a node during AST traversal.
-func (v *CohesionVisitor) OnExit(n *node.Node, _ int) {
+func (v *Visitor) OnExit(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.popContext()
 	}
 }
 
 // GetReport returns the collected analysis report.
-func (v *CohesionVisitor) GetReport() analyze.Report {
-	analyzer := &CohesionAnalyzer{
+func (v *Visitor) GetReport() analyze.Report {
+	analyzer := &Analyzer{
 		traverser: common.NewUASTTraverser(common.TraversalConfig{}),
 		extractor: v.extractor,
 	}
@@ -75,13 +75,13 @@ func (v *CohesionVisitor) GetReport() analyze.Report {
 	return analyzer.buildResult(v.functions, metrics)
 }
 
-func (v *CohesionVisitor) isFunction(n *node.Node) bool {
+func (v *Visitor) isFunction(n *node.Node) bool {
 	return n.HasAnyType(node.UASTFunction, node.UASTMethod) ||
 		n.HasAllRoles(node.RoleFunction, node.RoleDeclaration)
 }
 
-func (v *CohesionVisitor) pushContext(funcNode *node.Node) {
-	analyzer := &CohesionAnalyzer{
+func (v *Visitor) pushContext(funcNode *node.Node) {
+	analyzer := &Analyzer{
 		traverser: common.NewUASTTraverser(common.TraversalConfig{}),
 		extractor: v.extractor,
 	}
@@ -103,7 +103,7 @@ func (v *CohesionVisitor) pushContext(funcNode *node.Node) {
 	v.contexts = append(v.contexts, ctx)
 }
 
-func (v *CohesionVisitor) popContext() {
+func (v *Visitor) popContext() {
 	if len(v.contexts) == 0 {
 		return
 	}
@@ -115,7 +115,7 @@ func (v *CohesionVisitor) popContext() {
 	v.functions = append(v.functions, ctx.function)
 }
 
-func (v *CohesionVisitor) currentContext() *cohesionContext {
+func (v *Visitor) currentContext() *cohesionContext {
 	if len(v.contexts) == 0 {
 		return nil
 	}
@@ -123,10 +123,10 @@ func (v *CohesionVisitor) currentContext() *cohesionContext {
 	return v.contexts[len(v.contexts)-1]
 }
 
-func (v *CohesionVisitor) processNode(ctx *cohesionContext, current *node.Node) {
+func (v *Visitor) processNode(ctx *cohesionContext, current *node.Node) {
 	// Create temporary analyzer to reuse helper methods
 	// In a real implementation, we might want to move these helpers to a shared utility.
-	analyzer := &CohesionAnalyzer{
+	analyzer := &Analyzer{
 		extractor: v.extractor,
 	}
 

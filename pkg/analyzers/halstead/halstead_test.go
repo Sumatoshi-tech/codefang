@@ -8,10 +8,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestHalsteadAnalyzer_Basic(t *testing.T) {
+func TestAnalyzer_Basic(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test empty result.
 	_, err := analyzer.Analyze(nil)
@@ -32,10 +32,10 @@ func TestHalsteadAnalyzer_Basic(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_SimpleFunction(t *testing.T) {
+func TestAnalyzer_SimpleFunction(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a simple function node.
 	functionNode := node.New(
@@ -94,10 +94,10 @@ func TestHalsteadAnalyzer_SimpleFunction(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_CalculateMetrics(t *testing.T) {
+func TestAnalyzer_CalculateMetrics(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test metrics calculation with known values.
 	metrics := &FunctionHalsteadMetrics{
@@ -136,10 +136,10 @@ func TestHalsteadAnalyzer_CalculateMetrics(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_Thresholds(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
+func TestAnalyzer_Thresholds(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 	thresholds := analyzer.Thresholds()
 
 	// Check that thresholds exist.
@@ -181,10 +181,10 @@ func TestHalsteadAnalyzer_Thresholds(t *testing.T) { //nolint:gocognit // cognit
 	}
 }
 
-func TestHalsteadAnalyzer_MessageGeneration(t *testing.T) {
+func TestAnalyzer_MessageGeneration(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test excellent complexity.
 	message := analyzer.formatter.GetHalsteadMessage(50, 3, 500)
@@ -199,10 +199,10 @@ func TestHalsteadAnalyzer_MessageGeneration(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_OperatorOperandDetection(t *testing.T) {
+func TestAnalyzer_OperatorOperandDetection(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test operator detection.
 	operatorNode := node.New("op", "BinaryOp", "+", []node.Role{node.RoleOperator}, nil, map[string]string{"operator": "+"})
@@ -223,10 +223,10 @@ func TestHalsteadAnalyzer_OperatorOperandDetection(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_FunctionNameExtraction(t *testing.T) {
+func TestAnalyzer_FunctionNameExtraction(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test function with name in properties.
 	functionNode := node.New("func", "FunctionDecl", "", []node.Role{node.RoleFunction}, nil, map[string]string{"name": "testFunction"})
@@ -247,10 +247,10 @@ func TestHalsteadAnalyzer_FunctionNameExtraction(t *testing.T) {
 	}
 }
 
-func TestHalsteadAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
+func TestAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a function with specific operators and operands.
 	functionNode := node.New(
@@ -341,10 +341,10 @@ func TestHalsteadAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // c
 	}
 }
 
-func TestHalsteadAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
+func TestAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewHalsteadAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a root node to hold multiple functions.
 	rootNode := node.New("root", "File", "", nil, nil, nil)

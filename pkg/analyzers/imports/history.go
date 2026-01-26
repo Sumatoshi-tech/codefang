@@ -29,11 +29,11 @@ const (
 	defaultTickHours        = 24
 )
 
-// ImportsMap maps file paths to their import lists.
-type ImportsMap = map[int]map[string]map[string]map[int]int64
+// Map maps file paths to their import lists.
+type Map = map[int]map[string]map[string]map[int]int64
 
-// ImportsHistoryAnalyzer tracks import usage across commit history.
-type ImportsHistoryAnalyzer struct {
+// HistoryAnalyzer tracks import usage across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 		Errorf(format string, args ...any)
@@ -42,7 +42,7 @@ type ImportsHistoryAnalyzer struct {
 	BlobCache          *plumbing.BlobCacheAnalyzer
 	Identity           *plumbing.IdentityDetector
 	Ticks              *plumbing.TicksSinceStart
-	imports            ImportsMap
+	imports            Map
 	parser             *uast.Parser
 	reversedPeopleDict []string
 	TickSize           time.Duration
@@ -51,22 +51,22 @@ type ImportsHistoryAnalyzer struct {
 }
 
 // Name returns the name of the analyzer.
-func (h *ImportsHistoryAnalyzer) Name() string {
+func (h *HistoryAnalyzer) Name() string {
 	return "ImportsPerDeveloper"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (h *ImportsHistoryAnalyzer) Flag() string {
+func (h *HistoryAnalyzer) Flag() string {
 	return "imports-per-dev"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (h *ImportsHistoryAnalyzer) Description() string {
+func (h *HistoryAnalyzer) Description() string {
 	return "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (h *ImportsHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (h *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
 			Name:        "Imports.Goroutines",
@@ -86,7 +86,7 @@ func (h *ImportsHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configura
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (h *ImportsHistoryAnalyzer) Configure(facts map[string]any) error {
+func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
 		h.reversedPeopleDict = val
 	}
@@ -107,8 +107,8 @@ func (h *ImportsHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (h *ImportsHistoryAnalyzer) Initialize(_ *git.Repository) error {
-	h.imports = ImportsMap{}
+func (h *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+	h.imports = Map{}
 	if h.TickSize == 0 {
 		h.TickSize = time.Hour * defaultTickHours
 	}
@@ -132,7 +132,7 @@ func (h *ImportsHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	return nil
 }
 
-func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
+func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
 		return nil, errors.New("parser not initialized") //nolint:err113 // simple guard, no sentinel needed
 	}
@@ -167,7 +167,7 @@ func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*impo
 // parallel and returns per-blob import results.
 //
 //nolint:gocognit // complexity is inherent to parallel worker pool with mutex coordination.
-func (h *ImportsHistoryAnalyzer) extractImportsParallel(
+func (h *HistoryAnalyzer) extractImportsParallel(
 	changes object.Changes,
 	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
 ) map[gitplumbing.Hash]importmodel.File {
@@ -225,7 +225,7 @@ func (h *ImportsHistoryAnalyzer) extractImportsParallel(
 
 // aggregateImports folds the per-blob import data into the analyzer's
 // cumulative imports map, keyed by author and tick.
-func (h *ImportsHistoryAnalyzer) aggregateImports(
+func (h *HistoryAnalyzer) aggregateImports(
 	extractedImports map[gitplumbing.Hash]importmodel.File,
 	author, tick int,
 ) {
@@ -255,7 +255,7 @@ func (h *ImportsHistoryAnalyzer) aggregateImports(
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
+func (h *HistoryAnalyzer) Consume(_ *analyze.Context) error {
 	extracted := h.extractImportsParallel(h.TreeDiff.Changes, h.BlobCache.Cache)
 	h.aggregateImports(extracted, h.Identity.AuthorID, h.Ticks.Tick)
 
@@ -263,7 +263,7 @@ func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (h *ImportsHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	return analyze.Report{
 		"imports":      h.imports,
 		"author_index": h.reversedPeopleDict,
@@ -272,7 +272,7 @@ func (h *ImportsHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (h *ImportsHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		// Use shared state legacy behavior for now.
@@ -283,14 +283,14 @@ func (h *ImportsHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *ImportsHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (h *ImportsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
-	imports, ok := result["imports"].(ImportsMap)
+func (h *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+	imports, ok := result["imports"].(Map)
 	if !ok {
-		return errors.New("expected ImportsMap for imports") //nolint:err113 // descriptive error for type assertion failure.
+		return errors.New("expected Map for imports") //nolint:err113 // descriptive error for type assertion failure.
 	}
 
 	reversedPeopleDict, ok := result["author_index"].([]string)
@@ -332,6 +332,6 @@ func (h *ImportsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (h *ImportsHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (h *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return h.Serialize(report, false, writer)
 }

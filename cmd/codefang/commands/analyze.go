@@ -68,11 +68,11 @@ func (ac *AnalyzeCommand) Run(_ *cobra.Command, _ []string) error {
 func (ac *AnalyzeCommand) newService() *Service {
 	return &Service{
 		availableAnalyzers: []analyze.StaticAnalyzer{
-			complexity.NewComplexityAnalyzer(),
-			comments.NewCommentsAnalyzer(),
-			halstead.NewHalsteadAnalyzer(),
-			cohesion.NewCohesionAnalyzer(),
-			imports.NewImportsAnalyzer(),
+			complexity.NewAnalyzer(),
+			comments.NewAnalyzer(),
+			halstead.NewAnalyzer(),
+			cohesion.NewAnalyzer(),
+			imports.NewAnalyzer(),
 		},
 	}
 }
