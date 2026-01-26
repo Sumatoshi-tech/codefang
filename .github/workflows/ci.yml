@@ -67,9 +67,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Sanitize platform name
-        id: sanitize
-        run: echo "platform=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+      - name: Prepare build metadata
+        id: prep
+        run: |
+          platform=$(echo '${{ matrix.platform }}' | tr '/' '-')
+          image=$(echo '${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')
+          echo "tag=${image}:test-${platform}" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -77,7 +80,7 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           push: false
-          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:test-${{ steps.sanitize.outputs.platform }}
+          tags: ${{ steps.prep.outputs.tag }}
 
   integration-test:
     name: Integration Test
