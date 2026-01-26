@@ -16,10 +16,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ["1.24"]
-        platform: [ubuntu-latest, macos-latest]
 
     steps:
       - name: Checkout code
@@ -27,10 +23,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go ${{ matrix.go-version }}
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Install dependencies
         run: |
