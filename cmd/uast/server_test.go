@@ -11,7 +11,9 @@ import (
 )
 
 func TestHandleParseWithCustomUASTMaps(t *testing.T) {
-	// Test data
+	t.Parallel()
+
+	// Test data.
 	customMaps := map[string]uast.UASTMap{
 		"test_lang": {
 			Extensions: []string{".test"},
@@ -50,108 +52,124 @@ string <- (string) => uast(
 
 	request := ParseRequest{
 		Code:     `{"name": "test", "value": 42}`,
-		Language: "json", // Use json as the base language since our custom map uses json tree-sitter
+		Language: "json", // Use json as the base language since our custom map uses json tree-sitter.
 		UASTMaps: customMaps,
 	}
 
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		t.Fatalf("Failed to marshal request: %v", err)
+	jsonData, marshalErr := json.Marshal(request)
+	if marshalErr != nil {
+		t.Fatalf("Failed to marshal request: %v", marshalErr)
 	}
 
-	// Create test request
-	req := httptest.NewRequest("POST", "/api/parse", bytes.NewBuffer(jsonData))
+	// Create test request.
+	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Create response recorder
-	w := httptest.NewRecorder()
+	// Create response recorder.
+	recorder := httptest.NewRecorder()
 
-	// Call the handler
-	handleParse(w, req)
+	// Call the handler.
+	handleParse(recorder, req)
 
-	// Check response status
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-		t.Logf("Response body: %s", w.Body.String())
+	// Check response status.
+	if recorder.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", recorder.Code)
+		t.Logf("Response body: %s", recorder.Body.String())
+
 		return
 	}
 
-	// Parse response
+	// Parse response.
 	var response ParseResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
+
+	unmarshalErr := json.Unmarshal(recorder.Body.Bytes(), &response)
+	if unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal response: %v", unmarshalErr)
 	}
 
-	// Check for errors
+	// Check for errors.
 	if response.Error != "" {
 		t.Errorf("Expected no error, got: %s", response.Error)
+
 		return
 	}
 
-	// Check that UAST was generated
+	// Check that UAST was generated.
 	if response.UAST == "" {
 		t.Error("Expected UAST in response, got empty string")
+
 		return
 	}
 
-	// Verify the UAST is valid JSON
-	var uastData interface{}
-	if err := json.Unmarshal([]byte(response.UAST), &uastData); err != nil {
-		t.Errorf("Response UAST is not valid JSON: %v", err)
+	// Verify the UAST is valid JSON.
+	var uastData any
+
+	uastUnmarshalErr := json.Unmarshal([]byte(response.UAST), &uastData)
+	if uastUnmarshalErr != nil {
+		t.Errorf("Response UAST is not valid JSON: %v", uastUnmarshalErr)
 	}
 }
 
 func TestHandleParseWithoutCustomUASTMaps(t *testing.T) {
-	// Test without custom UAST maps (should work with built-in parsers)
+	t.Parallel()
+
+	// Test without custom UAST maps (should work with built-in parsers).
 	request := ParseRequest{
 		Code:     `{"name": "test", "value": 42}`,
 		Language: "json",
-		// UASTMaps is omitted
+		// UASTMaps is omitted.
 	}
 
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		t.Fatalf("Failed to marshal request: %v", err)
+	jsonData, marshalErr := json.Marshal(request)
+	if marshalErr != nil {
+		t.Fatalf("Failed to marshal request: %v", marshalErr)
 	}
 
-	// Create test request
-	req := httptest.NewRequest("POST", "/api/parse", bytes.NewBuffer(jsonData))
+	// Create test request.
+	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Create response recorder
-	w := httptest.NewRecorder()
+	// Create response recorder.
+	recorder := httptest.NewRecorder()
 
-	// Call the handler
-	handleParse(w, req)
+	// Call the handler.
+	handleParse(recorder, req)
 
-	// Check response status
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-		t.Logf("Response body: %s", w.Body.String())
+	// Check response status.
+	if recorder.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", recorder.Code)
+		t.Logf("Response body: %s", recorder.Body.String())
+
 		return
 	}
 
-	// Parse response
+	// Parse response.
 	var response ParseResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
+
+	unmarshalErr := json.Unmarshal(recorder.Body.Bytes(), &response)
+	if unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal response: %v", unmarshalErr)
 	}
 
-	// Check for errors
+	// Check for errors.
 	if response.Error != "" {
 		t.Errorf("Expected no error, got: %s", response.Error)
+
 		return
 	}
 
-	// Check that UAST was generated
+	// Check that UAST was generated.
 	if response.UAST == "" {
 		t.Error("Expected UAST in response, got empty string")
+
 		return
 	}
 }
 
 func TestHandleParseWithInvalidUASTMaps(t *testing.T) {
-	// Test with invalid UAST maps
+	t.Parallel()
+
+	// Test with invalid UAST maps.
 	customMaps := map[string]uast.UASTMap{
 		"invalid_lang": {
 			Extensions: []string{".invalid"},
@@ -165,35 +183,38 @@ func TestHandleParseWithInvalidUASTMaps(t *testing.T) {
 		UASTMaps: customMaps,
 	}
 
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		t.Fatalf("Failed to marshal request: %v", err)
+	jsonData, marshalErr := json.Marshal(request)
+	if marshalErr != nil {
+		t.Fatalf("Failed to marshal request: %v", marshalErr)
 	}
 
-	// Create test request
-	req := httptest.NewRequest("POST", "/api/parse", bytes.NewBuffer(jsonData))
+	// Create test request.
+	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Create response recorder
-	w := httptest.NewRecorder()
+	// Create response recorder.
+	recorder := httptest.NewRecorder()
 
-	// Call the handler
-	handleParse(w, req)
+	// Call the handler.
+	handleParse(recorder, req)
 
-	// Check response status - should still be 200 but with error in response
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-		t.Logf("Response body: %s", w.Body.String())
+	// Check response status -- should still be 200 but with error in response.
+	if recorder.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", recorder.Code)
+		t.Logf("Response body: %s", recorder.Body.String())
+
 		return
 	}
 
-	// Parse response
+	// Parse response.
 	var response ParseResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
+
+	unmarshalErr := json.Unmarshal(recorder.Body.Bytes(), &response)
+	if unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal response: %v", unmarshalErr)
 	}
 
-	// Should have an error due to invalid UAST mapping
+	// Should have an error due to invalid UAST mapping.
 	if response.Error == "" {
 		t.Error("Expected error for invalid UAST mapping, got none")
 	}

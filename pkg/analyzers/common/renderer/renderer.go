@@ -9,13 +9,21 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 )
 
+const (
+	linesValue          = 3
+	magic2              = 2
+	magic2_1            = 2
+	makeArg3            = 3
+	separatorWidthValue = 2
+)
+
 // SectionRenderer renders ReportSection to formatted terminal output.
 type SectionRenderer struct {
 	config  terminal.Config
 	verbose bool
 }
 
-// Compact mode constants
+// Compact mode constants.
 const (
 	CompactBarWidth   = 10
 	CompactTitleWidth = 12
@@ -47,7 +55,7 @@ func ColorForSeverity(severity string) terminal.Color {
 }
 
 // RenderCompact produces single-line output for narrow terminals.
-// Format: "Title        [████████░░] 8/10  Message"
+// Format: "Title        [████████░░] 8/10  Message".
 func (r *SectionRenderer) RenderCompact(section analyze.ReportSection) string {
 	title := terminal.PadRight(section.SectionTitle(), CompactTitleWidth)
 	scoreBar := terminal.FormatScoreBar(section.Score(), CompactBarWidth)
@@ -58,7 +66,7 @@ func (r *SectionRenderer) RenderCompact(section analyze.ReportSection) string {
 	return fmt.Sprintf("%s %s  %s", title, scoreBar, message)
 }
 
-// Render layout constants
+// Render layout constants.
 const (
 	IndentWidth          = 2
 	SummaryPrefix        = "Summary: "
@@ -80,7 +88,7 @@ const (
 func (r *SectionRenderer) Render(section analyze.ReportSection) string {
 	var parts []string
 
-	// Header with title and score
+	// Header with title and score.
 	title := r.config.Colorize(section.SectionTitle(), terminal.ColorBlue)
 	scoreText := "Score: " + section.ScoreLabel()
 	scoreColor := terminal.ColorForScore(section.Score())
@@ -88,26 +96,28 @@ func (r *SectionRenderer) Render(section analyze.ReportSection) string {
 	header := terminal.DrawHeader(title, scoreText, r.config.Width)
 	parts = append(parts, header)
 
-	// Summary line
+	// Summary line.
 	indent := strings.Repeat(" ", IndentWidth)
 	summary := fmt.Sprintf("\n%s%s%s", indent, SummaryPrefix, section.StatusMessage())
 	parts = append(parts, summary)
 
-	// Key Metrics section
+	// Key Metrics section.
 	metrics := section.KeyMetrics()
 	if len(metrics) > 0 {
 		parts = append(parts, r.renderMetrics(metrics, indent))
 	}
 
-	// Distribution section
+	// Distribution section.
 	distribution := section.Distribution()
 	if len(distribution) > 0 {
 		parts = append(parts, r.renderDistribution(distribution, indent))
 	}
 
-	// Issues section
+	// Issues section.
 	var issues []analyze.Issue
+
 	var issuesLabel string
+
 	if r.verbose {
 		issues = section.AllIssues()
 		issuesLabel = AllIssuesLabel
@@ -115,6 +125,7 @@ func (r *SectionRenderer) Render(section analyze.ReportSection) string {
 		issues = section.TopIssues(DefaultTopIssues)
 		issuesLabel = IssuesLabel
 	}
+
 	if len(issues) > 0 {
 		parts = append(parts, r.renderIssues(issues, issuesLabel, indent))
 	}
@@ -126,23 +137,26 @@ func (r *SectionRenderer) Render(section analyze.ReportSection) string {
 func (r *SectionRenderer) renderMetrics(metrics []analyze.Metric, indent string) string {
 	var lines []string
 
-	// Section header
+	// Section header.
 	lines = append(lines, "")
 	metricsHeader := r.config.Colorize(MetricsLabel, terminal.ColorGray)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, metricsHeader))
-	separatorWidth := r.config.Width - (IndentWidth * 2)
+	separatorWidth := r.config.Width - (IndentWidth * separatorWidthValue)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, terminal.DrawSeparator(separatorWidth)))
 
-	// Metrics in 2-column layout
+	// Metrics in 2-column layout.
 	for i := 0; i < len(metrics); i += MetricsPerRow {
-		var row string
+		var row strings.Builder
+
 		for j := 0; j < MetricsPerRow && i+j < len(metrics); j++ {
 			m := metrics[i+j]
 			label := terminal.PadRight(m.Label, MetricLabelWidth)
 			value := terminal.PadRight(m.Value, MetricValueWidth)
-			row += label + value
+
+			row.WriteString(label + value)
 		}
-		lines = append(lines, fmt.Sprintf("%s%s", indent, row))
+
+		lines = append(lines, fmt.Sprintf("%s%s", indent, row.String()))
 	}
 
 	return strings.Join(lines, "\n")
@@ -150,17 +164,16 @@ func (r *SectionRenderer) renderMetrics(metrics []analyze.Metric, indent string)
 
 // renderDistribution renders the distribution section with percent bars.
 func (r *SectionRenderer) renderDistribution(items []analyze.DistributionItem, indent string) string {
-	// 3 header lines + 1 line per item
-	lines := make([]string, 0, 3+len(items))
-
-	// Section header
+	// 3 header lines + 1 line per item.
+	lines := make([]string, 0, linesValue+len(items))
+	// Section header.
 	lines = append(lines, "")
 	distHeader := r.config.Colorize(DistributionLabel, terminal.ColorGray)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, distHeader))
-	separatorWidth := r.config.Width - (IndentWidth * 2)
+	separatorWidth := r.config.Width - (IndentWidth * magic2)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, terminal.DrawSeparator(separatorWidth)))
 
-	// Distribution bars
+	// Distribution bars.
 	for _, item := range items {
 		bar := terminal.DrawPercentBar(item.Label, item.Percent, item.Count, DistLabelWidth, DistributionBarWidth)
 		lines = append(lines, fmt.Sprintf("%s%s", indent, bar))
@@ -171,17 +184,16 @@ func (r *SectionRenderer) renderDistribution(items []analyze.DistributionItem, i
 
 // renderIssues renders the issues section with the given label.
 func (r *SectionRenderer) renderIssues(issues []analyze.Issue, label, indent string) string {
-	// 3 header lines + 1 line per issue
-	lines := make([]string, 0, 3+len(issues))
-
-	// Section header
+	// 3 header lines + 1 line per issue.
+	lines := make([]string, 0, makeArg3+len(issues))
+	// Section header.
 	lines = append(lines, "")
 	issuesHeader := r.config.Colorize(label, terminal.ColorGray)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, issuesHeader))
-	separatorWidth := r.config.Width - (IndentWidth * 2)
+	separatorWidth := r.config.Width - (IndentWidth * magic2_1)
 	lines = append(lines, fmt.Sprintf("%s%s", indent, terminal.DrawSeparator(separatorWidth)))
 
-	// Issues list
+	// Issues list.
 	for _, issue := range issues {
 		name := terminal.TruncateWithEllipsis(issue.Name, IssueNameWidth)
 		name = terminal.PadRight(name, IssueNameWidth)

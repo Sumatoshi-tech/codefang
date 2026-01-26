@@ -1,8 +1,11 @@
-package uast
+package uast //nolint:testpackage // Tests need access to internal parser and test runner.
 
 import (
+	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,19 +14,18 @@ import (
 	"strings"
 	"testing"
 
-	"context"
-
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/spec"
 	"github.com/xeipuuv/gojsonschema"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/spec"
 )
 
 //go:embed language_tests/**/*.yaml
 var LanguageTestsFS embed.FS
 
-// TestSuite represents a test suite loaded from YAML
+// TestSuite represents a test suite loaded from YAML.
 type TestSuite struct {
 	Suite      string      `yaml:"suite"`
 	Name       string      `yaml:"name"`
@@ -31,143 +33,150 @@ type TestSuite struct {
 	QueryCases []QueryCase `yaml:"query_cases"`
 }
 
-// ParseCase represents a single parse test case
+// ParseCase represents a single parse test case.
 type ParseCase struct {
-	Name   string         `yaml:"name"`
 	Input  string         `yaml:"input"`
 	Output map[string]any `yaml:"output"`
+	Name   string         `yaml:"name"`
 }
 
-// QueryCase represents a single query test case
+// QueryCase represents a single query test case.
 type QueryCase struct {
-	Name   string         `yaml:"name"`
 	Input  string         `yaml:"input"`
 	Query  string         `yaml:"query"`
 	Output map[string]any `yaml:"output"`
+	Name   string         `yaml:"name"`
 }
 
-// RawAST represents the raw Tree-sitter AST structure
+// RawAST represents the raw Tree-sitter AST structure.
 type RawAST struct {
+	Fields   map[string]any `json:"fields,omitempty"`
 	Type     string         `json:"type"`
 	Text     string         `json:"text,omitempty"`
 	Children []RawAST       `json:"children,omitempty"`
-	Fields   map[string]any `json:"fields,omitempty"`
 }
 
-// LanguageTestSuite represents a discovered test suite
+// LanguageTestSuite represents a discovered test suite.
 type LanguageTestSuite struct {
-	Language string
+	Language string // Language name.
 	Suite    string
 	Test     string
-	Path     string // Path in embed.FS
+	Path     string // Path in embed.FS.
 }
 
-// TestRunner handles running language-specific tests
+// TestRunner handles running language-specific tests.
 type TestRunner struct {
 	parser *Parser
 }
 
-// NewTestRunner creates a new test runner
+// NewTestRunner creates a new test runner.
 func NewTestRunner() (*TestRunner, error) {
 	parser, err := NewParser()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create parser: %v", err)
+		return nil, fmt.Errorf("failed to create parser: %w", err)
 	}
+
 	return &TestRunner{parser: parser}, nil
 }
 
-// LoadTestSuite loads a test suite from a YAML file
-func (tr *TestRunner) LoadTestSuite(filepath string) (*TestSuite, error) {
-	data, err := LanguageTestsFS.ReadFile(filepath)
+// LoadTestSuite loads a test suite from a YAML file.
+func (tr *TestRunner) LoadTestSuite(fpath string) (*TestSuite, error) {
+	data, err := LanguageTestsFS.ReadFile(fpath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read test file: %v", err)
+		return nil, fmt.Errorf("failed to read test file: %w", err)
 	}
 
 	var suite TestSuite
-	if err := yaml.Unmarshal(data, &suite); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %v", err)
+
+	unmarshalErr := yaml.Unmarshal(data, &suite)
+	if unmarshalErr != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", unmarshalErr)
 	}
 
 	return &suite, nil
 }
 
-// DumpRawAST dumps the raw AST for debugging purposes
-func (tr *TestRunner) DumpRawAST(language, input string, filename string) error {
-	// Get the language provider for this language using the loader
+// DumpRawAST dumps the raw AST for debugging purposes.
+func (tr *TestRunner) DumpRawAST(language, input, filename string) error {
+	// Get the language provider for this language using the loader.
 	ext := "." + getLanguageFileExtension(language)
+
 	provider, exists := tr.parser.loader.LanguageParser(ext)
 	if !exists {
 		return fmt.Errorf("no provider found for language: %s", language)
 	}
 
-	// Try to get raw tree-sitter AST if it's a DSL provider
+	// Try to get raw tree-sitter AST if it's a DSL provider.
 	if dslProvider, ok := provider.(*DSLParser); ok {
 		return tr.DumpRawTreeSitterAST(dslProvider, input, filename)
 	}
 
-	// Fallback to UAST conversion for non-tree-sitter providers
-	node, err := provider.Parse("test."+getLanguageFileExtension(language), []byte(input))
+	// Fallback to UAST conversion for non-tree-sitter providers.
+	nd, err := provider.Parse("test."+getLanguageFileExtension(language), []byte(input))
 	if err != nil {
-		return fmt.Errorf("failed to parse input: %v", err)
+		return fmt.Errorf("failed to parse input: %w", err)
 	}
 
-	// Convert the UAST node back to raw AST structure
-	rawAST := convertNodeToRawAST(node)
+	// Convert the UAST node back to raw AST structure.
+	rawAST := convertNodeToRawAST(nd)
 
 	data, err := json.MarshalIndent(rawAST, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal raw AST: %v", err)
+		return fmt.Errorf("failed to marshal raw AST: %w", err)
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
-// DumpRawTreeSitterAST dumps the actual tree-sitter AST before mapping
-func (tr *TestRunner) DumpRawTreeSitterAST(provider *DSLParser, input string, filename string) error {
-	parser := sitter.NewParser()
-	parser.SetLanguage(provider.language)
-	tree, err := parser.ParseString(context.Background(), nil, []byte(input))
+// DumpRawTreeSitterAST dumps the actual tree-sitter AST before mapping.
+func (tr *TestRunner) DumpRawTreeSitterAST(provider *DSLParser, input, filename string) error {
+	tsParser := sitter.NewParser()
+	tsParser.SetLanguage(provider.language)
+
+	tree, err := tsParser.ParseString(context.Background(), nil, []byte(input))
 	if err != nil {
-		return fmt.Errorf("failed to parse with tree-sitter: %v", err)
+		return fmt.Errorf("failed to parse with tree-sitter: %w", err)
 	}
 
 	root := tree.RootNode()
 	if root.IsNull() {
-		return fmt.Errorf("tree-sitter: no root node")
+		return errors.New("tree-sitter: no root node")
 	}
 
-	// Convert tree-sitter node to raw AST structure
-	rawAST := convertTreeSitterNodeToRawAST(root, []byte(input))
+	// Convert tree-sitter node to raw AST structure.
+	rawAST := convertTreeSitterNodeToRawAST(root)
 
 	data, err := json.MarshalIndent(rawAST, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal raw AST: %v", err)
+		return fmt.Errorf("failed to marshal raw AST: %w", err)
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
-// convertNodeToRawAST converts a UAST node to raw AST structure
-func convertNodeToRawAST(n *node.Node) RawAST {
-	if n == nil {
+// convertNodeToRawAST converts a UAST node to raw AST structure.
+func convertNodeToRawAST(nd *node.Node) RawAST {
+	if nd == nil {
 		return RawAST{Type: "null"}
 	}
 
 	rawAST := RawAST{
-		Type: string(n.Type),
-		Text: n.Token,
+		Type: string(nd.Type),
+		Text: nd.Token,
 	}
 
-	if len(n.Props) > 0 {
-		rawAST.Fields = make(map[string]interface{})
-		for k, v := range n.Props {
+	if len(nd.Props) > 0 {
+		rawAST.Fields = make(map[string]any)
+
+		for k, v := range nd.Props {
 			rawAST.Fields[k] = v
 		}
 	}
 
-	if len(n.Children) > 0 {
-		rawAST.Children = make([]RawAST, len(n.Children))
-		for i, child := range n.Children {
+	if len(nd.Children) > 0 {
+		rawAST.Children = make([]RawAST, len(nd.Children))
+
+		for i, child := range nd.Children {
 			rawAST.Children[i] = convertNodeToRawAST(child)
 		}
 	}
@@ -175,90 +184,97 @@ func convertNodeToRawAST(n *node.Node) RawAST {
 	return rawAST
 }
 
-// convertTreeSitterNodeToRawAST converts a tree-sitter node to raw AST structure
-func convertTreeSitterNodeToRawAST(node sitter.Node, source []byte) RawAST {
+// convertTreeSitterNodeToRawAST converts a tree-sitter node to raw AST structure.
+func convertTreeSitterNodeToRawAST(nd sitter.Node) RawAST {
 	rawAST := RawAST{
-		Type: node.Type(),
-		Text: node.String(),
+		Type: nd.Type(),
+		Text: nd.String(),
 	}
 
-	// Add position information
-	rawAST.Fields = map[string]interface{}{
-		"start_line":   node.StartPoint().Row,
-		"start_column": node.StartPoint().Column,
-		"end_line":     node.EndPoint().Row,
-		"end_column":   node.EndPoint().Column,
-		"start_byte":   node.StartByte(),
-		"end_byte":     node.EndByte(),
+	// Add position information.
+	rawAST.Fields = map[string]any{
+		"start_line":   nd.StartPoint().Row,
+		"start_column": nd.StartPoint().Column,
+		"end_line":     nd.EndPoint().Row,
+		"end_column":   nd.EndPoint().Column,
+		"start_byte":   nd.StartByte(),
+		"end_byte":     nd.EndByte(),
 	}
 
-	// Add children
-	childCount := node.NamedChildCount()
+	// Add children.
+	childCount := nd.NamedChildCount()
 	if childCount > 0 {
 		rawAST.Children = make([]RawAST, childCount)
-		for i := uint32(0); i < childCount; i++ {
-			child := node.NamedChild(i)
-			rawAST.Children[i] = convertTreeSitterNodeToRawAST(child, source)
+
+		for i := range childCount {
+			child := nd.NamedChild(i)
+			rawAST.Children[i] = convertTreeSitterNodeToRawAST(child)
 		}
 	}
 
 	return rawAST
 }
 
-// ValidateUAST validates a UAST node against the schema
-func (tr *TestRunner) ValidateUAST(node *node.Node, testName string) error {
-	if node == nil {
-		return fmt.Errorf("node is nil")
+// ValidateUAST validates a UAST node against the schema.
+//
+//nolint:gocognit,gocyclo,cyclop // Complex validation logic with multiple error categories.
+func (tr *TestRunner) ValidateUAST(nd *node.Node, testName string) error {
+	if nd == nil {
+		return errors.New("node is nil")
 	}
 
-	// Convert node to map for validation
-	nodeMap := nodeToMap(node)
+	// Convert node to map for validation.
+	nodeMap := nodeToMap(nd)
 
-	// Load schema from embed.FS
+	// Load schema from embed.FS.
 	schemaBytes, err := spec.UASTSchemaFS.ReadFile("uast-schema.json")
 	if err != nil {
-		return fmt.Errorf("failed to read embedded schema: %v", err)
+		return fmt.Errorf("failed to read embedded schema: %w", err)
 	}
+
 	schemaLoader := gojsonschema.NewBytesLoader(schemaBytes)
 	inputLoader := gojsonschema.NewGoLoader(nodeMap)
 
 	result, err := gojsonschema.Validate(schemaLoader, inputLoader)
 	if err != nil {
-		return fmt.Errorf("schema validation error: %v", err)
+		return fmt.Errorf("schema validation error: %w", err)
 	}
 
 	if result.Valid() {
 		return nil
 	}
 
-	// Calculate compliance
+	// Calculate compliance.
 	compliance := calculateCompliance(nodeMap, result.Errors())
 
-	// Build Rust-style error message
-	var errorMsgs []string
-	errorMsgs = append(errorMsgs, fmt.Sprintf("❌ UAST validation failed for %s (Compliance: %d%%)", testName, compliance))
-	errorMsgs = append(errorMsgs, "")
-	errorMsgs = append(errorMsgs, "📋 Validation Errors:")
-	errorMsgs = append(errorMsgs, "")
+	// Build Rust-style error message.
+	errorMsgs := []string{
+		fmt.Sprintf("UAST validation failed for %s (Compliance: %d%%)", testName, compliance),
+		"",
+		"Validation Errors:",
+		"",
+	}
 
-	// Group errors by type for better organization
+	// Group errors by type for better organization.
 	roleErrors := make([]gojsonschema.ResultError, 0)
 	typeErrors := make([]gojsonschema.ResultError, 0)
 	otherErrors := make([]gojsonschema.ResultError, 0)
 
 	for _, verr := range result.Errors() {
-		if strings.Contains(verr.Description(), "must be one of the following") {
+		switch {
+		case strings.Contains(verr.Description(), "must be one of the following"):
 			roleErrors = append(roleErrors, verr)
-		} else if strings.Contains(verr.Description(), "type") {
+		case strings.Contains(verr.Description(), "type"):
 			typeErrors = append(typeErrors, verr)
-		} else {
+		default:
 			otherErrors = append(otherErrors, verr)
 		}
 	}
 
-	// Report role errors
+	// Report role errors.
 	if len(roleErrors) > 0 {
-		errorMsgs = append(errorMsgs, "🔑 Role Validation Errors:")
+		errorMsgs = append(errorMsgs, "Role Validation Errors:")
+
 		for _, verr := range roleErrors {
 			actualValue := getActualValue(nodeMap, verr.Field())
 			errorPath := strings.Split(verr.Field(), ".")
@@ -266,73 +282,89 @@ func (tr *TestRunner) ValidateUAST(node *node.Node, testName string) error {
 			suggestion := getRoleSuggestion(verr.Description(), actualValue)
 			nodeType := getNodeTypeAtPath(nodeMap, verr.Field())
 
-			errorMsgs = append(errorMsgs, "   • UAST Tree Structure (full):")
-			errorMsgs = append(errorMsgs, treeWithHighlight)
+			errorMsgs = append(errorMsgs, "   UAST Tree Structure (full):", treeWithHighlight)
+
 			if nodeType != "" {
 				errorMsgs = append(errorMsgs, fmt.Sprintf("     Node Type: %s", nodeType))
 			}
+
 			errorMsgs = append(errorMsgs, fmt.Sprintf("     Expected: %s", extractExpectedRoles(verr.Description())))
+
 			if actualValue != "" {
 				errorMsgs = append(errorMsgs, fmt.Sprintf("     Got: %q", actualValue))
 			}
+
 			if suggestion != "" {
-				errorMsgs = append(errorMsgs, fmt.Sprintf("     💡 %s", suggestion))
+				errorMsgs = append(errorMsgs, fmt.Sprintf("     Hint: %s", suggestion))
 			}
+
 			errorMsgs = append(errorMsgs, "")
 		}
 	}
 
-	// Report type errors
+	// Report type errors.
 	if len(typeErrors) > 0 {
-		errorMsgs = append(errorMsgs, "🏷️  Type Validation Errors:")
+		errorMsgs = append(errorMsgs, "Type Validation Errors:")
+
 		for _, verr := range typeErrors {
 			actualValue := getActualValue(nodeMap, verr.Field())
 			fieldPath := formatFieldPath(verr.Field(), nodeMap)
 
-			errorMsgs = append(errorMsgs, fmt.Sprintf("   • %s", fieldPath))
-			errorMsgs = append(errorMsgs, fmt.Sprintf("     %s", verr.Description()))
+			errorMsgs = append(errorMsgs,
+				fmt.Sprintf("   %s", fieldPath),
+				fmt.Sprintf("     %s", verr.Description()),
+			)
+
 			if actualValue != "" {
 				errorMsgs = append(errorMsgs, fmt.Sprintf("     Got: %q", actualValue))
 			}
+
 			errorMsgs = append(errorMsgs, "")
 		}
 	}
 
-	// Report other errors
+	// Report other errors.
 	if len(otherErrors) > 0 {
-		errorMsgs = append(errorMsgs, "⚠️  Other Validation Errors:")
+		errorMsgs = append(errorMsgs, "Other Validation Errors:")
+
 		for _, verr := range otherErrors {
 			actualValue := getActualValue(nodeMap, verr.Field())
 			fieldPath := formatFieldPath(verr.Field(), nodeMap)
 
-			errorMsgs = append(errorMsgs, fmt.Sprintf("   • %s", fieldPath))
-			errorMsgs = append(errorMsgs, fmt.Sprintf("     %s", verr.Description()))
+			errorMsgs = append(errorMsgs,
+				fmt.Sprintf("   %s", fieldPath),
+				fmt.Sprintf("     %s", verr.Description()),
+			)
+
 			if actualValue != "" {
 				errorMsgs = append(errorMsgs, fmt.Sprintf("     Got: %q", actualValue))
 			}
+
 			errorMsgs = append(errorMsgs, "")
 		}
 	}
 
-	// Add helpful suggestions
-	errorMsgs = append(errorMsgs, "💡 Suggestions:")
-	errorMsgs = append(errorMsgs, "   • Check that all nodes have valid roles from the UAST schema")
-	errorMsgs = append(errorMsgs, "   • Ensure Block nodes have roles: \"Body\" where appropriate")
-	errorMsgs = append(errorMsgs, "   • Verify parameter grouping matches provider output structure")
-	errorMsgs = append(errorMsgs, "   • Update test YAML to match actual provider output exactly")
-	errorMsgs = append(errorMsgs, "")
+	// Add helpful suggestions.
+	errorMsgs = append(errorMsgs,
+		"Suggestions:",
+		"   Check that all nodes have valid roles from the UAST schema",
+		"   Ensure Block nodes have roles: Body where appropriate",
+		"   Verify parameter grouping matches provider output structure",
+		"   Update test YAML to match actual provider output exactly",
+		"",
+	)
 
 	return fmt.Errorf("%s", strings.Join(errorMsgs, "\n"))
 }
 
-// calculateCompliance calculates compliance percentage
-func calculateCompliance(data interface{}, errors []gojsonschema.ResultError) int {
+// calculateCompliance calculates compliance percentage.
+func calculateCompliance(data any, errs []gojsonschema.ResultError) int {
 	totalNodes := countNodes(data)
 	if totalNodes == 0 {
 		return 0
 	}
 
-	validNodes := totalNodes - len(errors)
+	validNodes := totalNodes - len(errs)
 	compliance := int(float64(validNodes) / float64(totalNodes) * 100)
 
 	if compliance < 0 {
@@ -344,18 +376,18 @@ func calculateCompliance(data interface{}, errors []gojsonschema.ResultError) in
 	return compliance
 }
 
-// countNodes counts total nodes in UAST
-func countNodes(data interface{}) int {
+// countNodes counts total nodes in UAST.
+func countNodes(data any) int {
 	count := 1
 
 	switch v := data.(type) {
-	case map[string]interface{}:
-		if children, ok := v["children"].([]interface{}); ok {
+	case map[string]any:
+		if children, ok := v["children"].([]any); ok {
 			for _, child := range children {
 				count += countNodes(child)
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, item := range v {
 			count += countNodes(item)
 		}
@@ -364,25 +396,26 @@ func countNodes(data interface{}) int {
 	return count
 }
 
-// getActualValue gets the actual value at a field path
-func getActualValue(data interface{}, fieldPath string) string {
-	parts := strings.Split(fieldPath, ".")
-
+// getActualValue gets the actual value at a field path.
+func getActualValue(data any, fieldPath string) string {
 	current := data
-	for _, part := range parts {
+
+	for part := range strings.SplitSeq(fieldPath, ".") {
 		switch v := current.(type) {
-		case map[string]interface{}:
-			if val, ok := v[part]; ok {
-				current = val
-			} else {
+		case map[string]any:
+			val, ok := v[part]
+			if !ok {
 				return ""
 			}
-		case []interface{}:
-			if idx, err := strconv.Atoi(part); err == nil && idx >= 0 && idx < len(v) {
-				current = v[idx]
-			} else {
+
+			current = val
+		case []any:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(v) {
 				return ""
 			}
+
+			current = v[idx]
 		default:
 			return ""
 		}
@@ -402,94 +435,101 @@ func getActualValue(data interface{}, fieldPath string) string {
 	}
 }
 
-// getCwd returns current working directory
-func getCwd() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return cwd
-}
-
-// RunParseTest runs a single parse test case
+// RunParseTest runs a single parse test case.
 func (tr *TestRunner) RunParseTest(t *testing.T, language, testName string, tc ParseCase, suitePath string) {
-	// Dump raw AST before parsing
+	t.Helper()
+
+	// Dump raw AST before parsing.
 	rawASTFile := filepath.Join(filepath.Dir(suitePath), fmt.Sprintf("%s-%s-%s.rawast.json", language, testName, tc.Name))
-	if err := tr.DumpRawAST(language, tc.Input, rawASTFile); err != nil {
-		t.Logf("Warning: failed to dump raw AST: %v", err)
+
+	dumpErr := tr.DumpRawAST(language, tc.Input, rawASTFile)
+	if dumpErr != nil {
+		t.Logf("Warning: failed to dump raw AST: %v", dumpErr)
 	}
 
-	// Parse the input
-	node, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
+	// Parse the input.
+	nd, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
 	if err != nil {
 		t.Errorf("Parse failed: %v", err)
+
 		return
 	}
 
-	// Validate UAST against schema
-	if err := tr.ValidateUAST(node, fmt.Sprintf("%s/%s", testName, tc.Name)); err != nil {
-		t.Errorf("UAST validation failed: %v", err)
-		// Continue with comparison even if validation fails
+	// Validate UAST against schema.
+	validateErr := tr.ValidateUAST(nd, fmt.Sprintf("%s/%s", testName, tc.Name))
+	if validateErr != nil {
+		t.Errorf("UAST validation failed: %v", validateErr)
+		// Continue with comparison even if validation fails.
 	}
 
-	// Convert node to comparable format
-	actual := nodeToMap(node)
+	// Convert node to comparable format.
+	actual := nodeToMap(nd)
 	expected := tc.Output
 
-	// Compare results
+	// Compare results.
 	if !compareUAST(actual, expected) {
 		t.Errorf("Parse result mismatch for %s/%s", testName, tc.Name)
 		t.Logf("Expected: %+v", expected)
 		t.Logf("Actual: %+v", actual)
-		t.Logf("Raw node: %+v", node)
-		// Dump actual as YAML for debugging
-		actualYAML, err := yaml.Marshal(actual)
-		if err == nil {
+		t.Logf("Raw node: %+v", nd)
+
+		// Dump actual as YAML for debugging.
+		actualYAML, yamlErr := yaml.Marshal(actual)
+		if yamlErr == nil {
 			t.Logf("Actual YAML:\n%s", string(actualYAML))
 		}
+
 		t.FailNow()
 	}
 }
 
-// RunQueryTest runs a single query test case
+// RunQueryTest runs a single query test case.
 func (tr *TestRunner) RunQueryTest(t *testing.T, language, testName string, tc QueryCase, suitePath string) {
-	// Dump raw AST before parsing
+	t.Helper()
+
+	// Dump raw AST before parsing.
 	rawASTFile := filepath.Join(filepath.Dir(suitePath), fmt.Sprintf("%s-%s-%s.rawast.json", language, testName, tc.Name))
-	if err := tr.DumpRawAST(language, tc.Input, rawASTFile); err != nil {
-		t.Logf("Warning: failed to dump raw AST: %v", err)
+
+	dumpErr := tr.DumpRawAST(language, tc.Input, rawASTFile)
+	if dumpErr != nil {
+		t.Logf("Warning: failed to dump raw AST: %v", dumpErr)
 	}
 
-	// Parse the input
-	node, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
+	// Parse the input.
+	nd, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
 	if err != nil {
 		t.Errorf("Parse failed: %v", err)
+
 		return
 	}
 
-	// Check if node is nil before querying
-	if node == nil {
+	// Check if node is nil before querying.
+	if nd == nil {
 		t.Errorf("Parsed node is nil for %s/%s", testName, tc.Name)
+
 		return
 	}
 
-	// Validate UAST against schema
-	if err := tr.ValidateUAST(node, fmt.Sprintf("%s/%s", testName, tc.Name)); err != nil {
-		t.Errorf("UAST validation failed: %v", err)
-		// Continue with query even if validation fails
+	// Validate UAST against schema.
+	validateErr := tr.ValidateUAST(nd, fmt.Sprintf("%s/%s", testName, tc.Name))
+	if validateErr != nil {
+		t.Errorf("UAST validation failed: %v", validateErr)
+		// Continue with query even if validation fails.
 	}
 
-	// Execute query
-	results, err := node.FindDSL(tc.Query)
+	// Execute query.
+	results, err := nd.FindDSL(tc.Query)
 	if err != nil {
 		t.Errorf("Query failed: %v", err)
+
 		return
 	}
 
-	// Convert results to comparable format
+	// Convert results to comparable format.
 	actual := nodesToMap(results)
 	expected := tc.Output
 
-	// Compare results
+	// Compare results.
 	if !compareUAST(actual, expected) {
 		t.Errorf("Query result mismatch for %s/%s", testName, tc.Name)
 		t.Logf("Expected: %+v", expected)
@@ -497,8 +537,10 @@ func (tr *TestRunner) RunQueryTest(t *testing.T, language, testName string, tc Q
 	}
 }
 
-// RunTestSuite runs all tests in a test suite
+// RunTestSuite runs all tests in a test suite.
 func (tr *TestRunner) RunTestSuite(t *testing.T, language, suitePath string) {
+	t.Helper()
+
 	suite, err := tr.LoadTestSuite(suitePath)
 	if err != nil {
 		t.Fatalf("Failed to load test suite: %v", err)
@@ -506,14 +548,14 @@ func (tr *TestRunner) RunTestSuite(t *testing.T, language, suitePath string) {
 
 	testName := strings.TrimSuffix(filepath.Base(suitePath), ".yaml")
 
-	// Run parse tests
+	// Run parse tests.
 	for _, tc := range suite.ParseCases {
 		t.Run(fmt.Sprintf("Parse_%s_%s", testName, tc.Name), func(t *testing.T) {
 			tr.RunParseTest(t, language, testName, tc, suitePath)
 		})
 	}
 
-	// Run query tests
+	// Run query tests.
 	for _, tc := range suite.QueryCases {
 		t.Run(fmt.Sprintf("Query_%s_%s", testName, tc.Name), func(t *testing.T) {
 			tr.RunQueryTest(t, language, testName, tc, suitePath)
@@ -521,33 +563,39 @@ func (tr *TestRunner) RunTestSuite(t *testing.T, language, suitePath string) {
 	}
 }
 
-// DiscoverTestSuites finds all test suite files in the embedded language_tests directory
+// DiscoverTestSuites finds all test suite files in the embedded language_tests directory.
 func DiscoverTestSuites() ([]LanguageTestSuite, error) {
 	var suites []LanguageTestSuite
 
-	err := fs.WalkDir(LanguageTestsFS, "language_tests", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := fs.WalkDir(LanguageTestsFS, "language_tests", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+
 		if d.IsDir() {
 			return nil
 		}
+
 		if !strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".yml") {
 			return nil
 		}
 
-		// path: language_tests/{language}/{suite}-{test}.yaml
+		// path: language_tests/{language}/{suite}-{test}.yaml.
 		relPath := strings.TrimPrefix(path, "language_tests/")
+
 		pathParts := strings.Split(relPath, string(filepath.Separator))
 		if len(pathParts) != 2 {
 			return fmt.Errorf("invalid test file format: %s", relPath)
 		}
+
 		language := pathParts[0]
 		filename := pathParts[1]
+
 		parts := strings.Split(strings.TrimSuffix(filename, ".yaml"), "-")
 		if len(parts) < 2 {
 			return fmt.Errorf("invalid test file format: %s", relPath)
 		}
+
 		suite := parts[0]
 		test := strings.Join(parts[1:], "-")
 		suites = append(suites, LanguageTestSuite{
@@ -556,12 +604,14 @@ func DiscoverTestSuites() ([]LanguageTestSuite, error) {
 			Test:     test,
 			Path:     path,
 		})
+
 		return nil
 	})
+
 	return suites, err
 }
 
-// Helper functions
+// Helper functions.
 
 func getLanguageFileExtension(language string) string {
 	extensions := map[string]string{
@@ -637,101 +687,121 @@ func getLanguageFileExtension(language string) string {
 	if ext, ok := extensions[language]; ok {
 		return ext
 	}
+
 	return "txt"
 }
 
-func nodeToMap(n *node.Node) map[string]interface{} {
-	if n == nil {
+func nodeToMap(nd *node.Node) map[string]any {
+	if nd == nil {
 		return nil
 	}
 
-	result := map[string]interface{}{
-		"type": n.Type,
+	result := map[string]any{
+		"type": nd.Type,
 	}
 
-	if n.Token != "" {
-		result["token"] = n.Token
+	if nd.Token != "" {
+		result["token"] = nd.Token
 	}
 
-	if len(n.Props) > 0 {
-		result["props"] = n.Props
+	if len(nd.Props) > 0 {
+		result["props"] = nd.Props
 	}
 
-	// Always include roles, even if empty
-	roles := make([]string, len(n.Roles))
-	for i, role := range n.Roles {
+	// Always include roles, even if empty.
+	roles := make([]string, len(nd.Roles))
+	for i, role := range nd.Roles {
 		roles[i] = string(role)
 	}
+
 	result["roles"] = roles
 
-	if len(n.Children) > 0 {
-		children := make([]map[string]interface{}, len(n.Children))
-		for i, child := range n.Children {
+	if len(nd.Children) > 0 {
+		children := make([]map[string]any, len(nd.Children))
+
+		for i, child := range nd.Children {
 			children[i] = nodeToMap(child)
 		}
+
 		result["children"] = children
 	}
 
 	return result
 }
 
-func nodesToMap(nodes []*node.Node) map[string]interface{} {
+func nodesToMap(nodes []*node.Node) map[string]any {
 	if len(nodes) == 0 {
-		return map[string]interface{}{"results": []interface{}{}}
+		return map[string]any{"results": []any{}}
 	}
 
-	// Check if all nodes are literal nodes (type "Literal")
+	// Check if all nodes are literal nodes (type "Literal").
 	allLiterals := true
-	for _, node := range nodes {
-		if node.Type != "Literal" {
+
+	for _, nd := range nodes {
+		if nd.Type != "Literal" {
 			allLiterals = false
+
 			break
 		}
 	}
 
-	// If all nodes are literals, return just the token values
+	// If all nodes are literals, return just the token values.
 	if allLiterals {
-		results := make([]interface{}, len(nodes))
-		for i, node := range nodes {
-			results[i] = node.Token
+		results := make([]any, len(nodes))
+
+		for i, nd := range nodes {
+			results[i] = nd.Token
 		}
-		return map[string]interface{}{"results": results}
+
+		return map[string]any{"results": results}
 	}
 
-	// Otherwise, convert to node maps as before
+	// Otherwise, convert to node maps as before.
 	if len(nodes) == 1 {
-		return map[string]interface{}{"results": []interface{}{nodeToMap(nodes[0])}}
+		return map[string]any{"results": []any{nodeToMap(nodes[0])}}
 	}
 
-	results := make([]interface{}, len(nodes))
-	for i, node := range nodes {
-		results[i] = nodeToMap(node)
+	results := make([]any, len(nodes))
+
+	for i, nd := range nodes {
+		results[i] = nodeToMap(nd)
 	}
 
-	return map[string]interface{}{"results": results}
+	return map[string]any{"results": results}
 }
 
-func compareUAST(actual, expected map[string]interface{}) bool {
-	// Simple comparison for now - can be enhanced with more sophisticated matching
-	actualJSON, _ := json.Marshal(actual)
-	expectedJSON, _ := json.Marshal(expected)
-	return string(actualJSON) == string(expectedJSON)
+func compareUAST(actual, expected map[string]any) bool {
+	// Simple comparison for now - can be enhanced with more sophisticated matching.
+	actualJSON, err := json.Marshal(actual)
+	if err != nil {
+		return false
+	}
+
+	expectedJSON, err := json.Marshal(expected)
+	if err != nil {
+		return false
+	}
+
+	return bytes.Equal(actualJSON, expectedJSON)
 }
 
-// Test functions
+// Test functions.
 
 func TestAllLanguageTests(t *testing.T) {
 	suites, err := DiscoverTestSuites()
 	if err != nil {
 		t.Fatalf("Failed to discover test suites: %v", err)
 	}
+
 	if len(suites) == 0 {
 		t.Skip("No test suites found")
 	}
+
 	runner, err := NewTestRunner()
 	if err != nil {
 		t.Fatalf("Failed to create test runner: %v", err)
 	}
+
 	for _, suite := range suites {
 		t.Run(fmt.Sprintf("%s_%s_%s", suite.Language, suite.Suite, suite.Test), func(t *testing.T) {
 			runner.RunTestSuite(t, suite.Language, suite.Path)
@@ -739,88 +809,101 @@ func TestAllLanguageTests(t *testing.T) {
 	}
 }
 
-// formatFieldPath creates a Rust-style error format showing the actual UAST tree with highlighting
-func formatFieldPath(fieldPath string, nodeMap map[string]interface{}) string {
+// formatFieldPath creates a Rust-style error format showing the actual UAST tree with highlighting.
+func formatFieldPath(fieldPath string, nodeMap map[string]any) string {
 	parts := strings.Split(fieldPath, ".")
 
-	// Build the complete tree structure
+	// Build the complete tree structure.
 	treeLines := buildTreeStructure(nodeMap, 0, "")
 
-	// Find and highlight the error location
+	// Find and highlight the error location.
 	highlightedLines := highlightErrorLocation(treeLines, parts)
 
 	return strings.Join(highlightedLines, "\n")
 }
 
-// buildTreeStructure recursively builds a visual representation of the UAST tree
-func buildTreeStructure(data interface{}, depth int, prefix string) []string {
+// buildTreeStructure recursively builds a visual representation of the UAST tree.
+//
+//nolint:gocognit,gocyclo,cyclop // Recursive tree building with multiple node types.
+func buildTreeStructure(data any, depth int, prefix string) []string {
 	var lines []string
 
 	switch v := data.(type) {
-	case map[string]interface{}:
-		// Add node type and properties
+	case map[string]any:
+		// Add node type and properties.
 		nodeType := "Unknown"
 		if t, ok := v["type"].(string); ok {
 			nodeType = t
 		}
 
-		// Add roles if present
+		// Add roles if present.
 		roles := ""
-		if r, ok := v["roles"].([]interface{}); ok && len(r) > 0 {
+
+		if r, ok := v["roles"].([]any); ok && len(r) > 0 {
 			roleStrs := make([]string, len(r))
+
 			for i, role := range r {
 				roleStrs[i] = fmt.Sprintf("%v", role)
 			}
+
 			roles = fmt.Sprintf(" [%s]", strings.Join(roleStrs, ", "))
 		}
 
-		// Add token if present
+		// Add token if present.
 		token := ""
+
 		if t, ok := v["token"].(string); ok && t != "" {
 			token = fmt.Sprintf(" '%s'", t)
 		}
 
-		// Add props if present
+		// Add props if present.
 		props := ""
-		if p, ok := v["props"].(map[string]interface{}); ok && len(p) > 0 {
+
+		if p, ok := v["props"].(map[string]any); ok && len(p) > 0 {
 			propStrs := make([]string, 0, len(p))
+
 			for k, val := range p {
 				propStrs = append(propStrs, fmt.Sprintf("%s:%v", k, val))
 			}
+
 			props = fmt.Sprintf(" {%s}", strings.Join(propStrs, ", "))
 		}
 
 		line := fmt.Sprintf("%s%s%s%s%s", prefix, nodeType, roles, token, props)
 		lines = append(lines, line)
 
-		// Add children
-		if children, ok := v["children"].([]interface{}); ok && len(children) > 0 {
+		// Add children.
+		if children, ok := v["children"].([]any); ok && len(children) > 0 { //nolint:nestif // Tree traversal.
 			for i, child := range children {
 				isLast := i == len(children)-1
 				childPrefix := prefix
+
 				if depth > 0 {
 					if isLast {
-						childPrefix += "   └─ "
+						childPrefix += "   end "
 					} else {
-						childPrefix += "   ├─ "
+						childPrefix += "   mid "
 					}
 				}
+
 				childLines := buildTreeStructure(child, depth+1, childPrefix)
 				lines = append(lines, childLines...)
 			}
 		}
 
-	case []interface{}:
+	case []any:
 		for i, item := range v {
 			isLast := i == len(v)-1
 			itemPrefix := prefix
+
 			if depth > 0 {
 				if isLast {
-					itemPrefix += "   └─ "
+					itemPrefix += "   end "
 				} else {
-					itemPrefix += "   ├─ "
+					itemPrefix += "   mid "
 				}
 			}
+
 			itemLines := buildTreeStructure(item, depth+1, itemPrefix)
 			lines = append(lines, itemLines...)
 		}
@@ -829,18 +912,19 @@ func buildTreeStructure(data interface{}, depth int, prefix string) []string {
 	return lines
 }
 
-// highlightErrorLocation highlights the problematic part of the tree
-func highlightErrorLocation(treeLines []string, errorPath []string) []string {
+// highlightErrorLocation highlights the problematic part of the tree.
+func highlightErrorLocation(treeLines, errorPath []string) []string {
 	if len(errorPath) < 2 {
 		return treeLines
 	}
 
-	// Find the line that corresponds to the error
+	// Find the line that corresponds to the error.
 	for i, line := range treeLines {
-		// Check if this line represents the error location
+		// Check if this line represents the error location.
 		if isErrorLocation(line, errorPath) {
-			// Highlight the problematic part
+			// Highlight the problematic part.
 			treeLines[i] = fmt.Sprintf(">>> %s <<< ERROR HERE", strings.TrimSpace(line))
+
 			break
 		}
 	}
@@ -848,9 +932,9 @@ func highlightErrorLocation(treeLines []string, errorPath []string) []string {
 	return treeLines
 }
 
-// isErrorLocation checks if a line represents the error location
+// isErrorLocation checks if a line represents the error location.
 func isErrorLocation(line string, errorPath []string) bool {
-	// Look for the last part of the error path (the actual error field)
+	// Look for the last part of the error path (the actual error field).
 	if len(errorPath) == 0 {
 		return false
 	}
@@ -858,58 +942,58 @@ func isErrorLocation(line string, errorPath []string) bool {
 	lastPart := errorPath[len(errorPath)-1]
 	trimmedLine := strings.TrimSpace(line)
 
-	// Check if this line contains the error field
+	// Check if this line contains the error field.
 	if strings.Contains(trimmedLine, lastPart) {
 		return true
 	}
 
-	// Check for array indices
-	if idx, err := strconv.Atoi(lastPart); err == nil {
-		// Look for array-like patterns in the line
-		if strings.Contains(trimmedLine, fmt.Sprintf("[%d]", idx)) {
-			return true
-		}
+	// Check for array indices.
+	idx, err := strconv.Atoi(lastPart)
+	if err != nil {
+		return false
 	}
 
-	return false
+	// Look for array-like patterns in the line.
+	return strings.Contains(trimmedLine, fmt.Sprintf("[%d]", idx))
 }
 
-// getNodeTypeAtPath gets the node type at a specific field path
-func getNodeTypeAtPath(data interface{}, fieldPath string) string {
-	// Remove the last part (which is usually "roles" or "type") to get to the node
+// getNodeTypeAtPath gets the node type at a specific field path.
+func getNodeTypeAtPath(data any, fieldPath string) string {
+	// Remove the last part (which is usually "roles" or "type") to get to the node.
 	parts := strings.Split(fieldPath, ".")
 	if len(parts) < 2 {
 		return ""
 	}
 
-	// Reconstruct path to the node (without the last part)
+	// Reconstruct path to the node (without the last part).
 	nodePath := strings.Join(parts[:len(parts)-1], ".")
 
 	current := data
-	pathParts := strings.Split(nodePath, ".")
-	for _, part := range pathParts {
+
+	for part := range strings.SplitSeq(nodePath, ".") {
 		switch v := current.(type) {
-		case map[string]interface{}:
-			if val, ok := v[part]; ok {
-				current = val
-			} else {
+		case map[string]any:
+			val, ok := v[part]
+			if !ok {
 				return ""
 			}
-		case []interface{}:
-			if idx, err := strconv.Atoi(part); err == nil && idx >= 0 && idx < len(v) {
-				current = v[idx]
-			} else {
+
+			current = val
+		case []any:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(v) {
 				return ""
 			}
+
+			current = v[idx]
 		default:
 			return ""
 		}
 	}
 
-	// Try to get the type from the node
-	switch v := current.(type) {
-	case map[string]interface{}:
-		if nodeType, ok := v["type"].(string); ok {
+	// Try to get the type from the node.
+	if m, ok := current.(map[string]any); ok {
+		if nodeType, typeOK := m["type"].(string); typeOK {
 			return nodeType
 		}
 	}
@@ -917,151 +1001,181 @@ func getNodeTypeAtPath(data interface{}, fieldPath string) string {
 	return ""
 }
 
-// Improved pretty-printer for UAST tree with better tree structure
-func printUASTWithHighlight(data interface{}, errorPath []string) string {
+// printUASTWithHighlight is an improved pretty-printer for UAST tree with better tree structure.
+func printUASTWithHighlight(data any, errorPath []string) string {
 	var lines []string
-	// If the error is on a role (ends with 'roles' or 'roles.N'), highlight the parent node
+
+	// If the error is on a role (ends with 'roles' or 'roles.N'), highlight the parent node.
 	highlightPath := errorPath
 	if len(errorPath) >= 2 && (errorPath[len(errorPath)-2] == "roles" || errorPath[len(errorPath)-1] == "roles") {
 		highlightPath = errorPath[:len(errorPath)-2]
 	}
+
 	printUASTTreeRec(data, highlightPath, []string{}, &lines, "", true)
+
 	return strings.Join(lines, "\n")
 }
 
-// printUASTTreeRec prints the tree with improved structure
-func printUASTTreeRec(data interface{}, errorPath []string, curPath []string, lines *[]string, prefix string, isLast bool) {
+// printUASTTreeRec prints the tree with improved structure.
+//
+//nolint:gocognit,gocyclo,cyclop // Recursive tree printer with multiple node types.
+func printUASTTreeRec(data any, errorPath, curPath []string, lines *[]string, prefix string, isLast bool) {
 	highlight := len(curPath) == len(errorPath)
 	if highlight {
 		for i := range curPath {
 			if curPath[i] != errorPath[i] {
 				highlight = false
+
 				break
 			}
 		}
 	}
 
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		nodeType := "Unknown"
 		if t, ok := v["type"].(string); ok {
 			nodeType = t
 		}
+
 		roles := []string{}
+
 		if r, ok := v["roles"].([]string); ok && len(r) > 0 {
 			roles = r
-		} else if r, ok := v["roles"].([]interface{}); ok && len(r) > 0 {
+		} else if r, okAny := v["roles"].([]any); okAny && len(r) > 0 {
 			for _, role := range r {
 				roles = append(roles, fmt.Sprintf("%v", role))
 			}
 		}
-		rolesStr := ""
+
+		var rolesStr string
 		if len(roles) > 0 {
 			rolesStr = fmt.Sprintf(" [%s]", strings.Join(roles, ", "))
 		} else {
 			rolesStr = " []"
 		}
+
 		token := ""
 		if t, ok := v["token"].(string); ok && t != "" {
 			token = fmt.Sprintf(" '%s'", t)
 		}
+
 		props := ""
-		if p, ok := v["props"].(map[string]interface{}); ok && len(p) > 0 {
+
+		if p, ok := v["props"].(map[string]any); ok && len(p) > 0 {
 			propStrs := make([]string, 0, len(p))
+
 			for k, val := range p {
 				propStrs = append(propStrs, fmt.Sprintf("%s:%v", k, val))
 			}
+
 			props = fmt.Sprintf(" {%s}", strings.Join(propStrs, ", "))
 		}
-		branch := "├─"
+
+		branch := "mid"
 		if isLast {
-			branch = "└─"
+			branch = "end"
 		}
+
 		line := prefix + branch + " " + nodeType + rolesStr + token + props
 		if highlight {
 			line += "   <--- ERROR HERE"
 		}
+
 		*lines = append(*lines, line)
-		// Children
+
+		// Children.
 		childrenCount := 0
+
 		if childrenRaw, ok := v["children"]; ok {
 			switch children := childrenRaw.(type) {
-			case []interface{}:
+			case []any:
 				childrenCount = len(children)
-			case []map[string]interface{}:
+			case []map[string]any:
 				childrenCount = len(children)
 			}
 		}
+
 		childIdx := 0
-		if childrenRaw, ok := v["children"]; ok {
+
+		if childrenRaw, ok := v["children"]; ok { //nolint:nestif // Tree traversal requires nested type switches.
 			switch children := childrenRaw.(type) {
-			case []interface{}:
+			case []any:
 				for i, child := range children {
 					isChildLast := i == childrenCount-1
+
 					nextPrefix := prefix
 					if isLast {
 						nextPrefix += "   "
 					} else {
-						nextPrefix += "│  "
+						nextPrefix += "|  "
 					}
-					printUASTTreeRec(child, errorPath, append(curPath, "children", fmt.Sprintf("%d", childIdx)), lines, nextPrefix, isChildLast)
+
+					printUASTTreeRec(child, errorPath, append(curPath, "children", strconv.Itoa(childIdx)), lines, nextPrefix, isChildLast)
 					childIdx++
 				}
-			case []map[string]interface{}:
+			case []map[string]any:
 				for i, child := range children {
 					isChildLast := i == childrenCount-1
+
 					nextPrefix := prefix
 					if isLast {
 						nextPrefix += "   "
 					} else {
-						nextPrefix += "│  "
+						nextPrefix += "|  "
 					}
-					printUASTTreeRec(child, errorPath, append(curPath, "children", fmt.Sprintf("%d", childIdx)), lines, nextPrefix, isChildLast)
+
+					printUASTTreeRec(child, errorPath, append(curPath, "children", strconv.Itoa(childIdx)), lines, nextPrefix, isChildLast)
 					childIdx++
 				}
 			}
 		}
-	case []interface{}:
+	case []any:
 		for i, item := range v {
 			isLastItem := i == len(v)-1
-			printUASTTreeRec(item, errorPath, append(curPath, fmt.Sprintf("%d", i)), lines, prefix, isLastItem)
+
+			printUASTTreeRec(item, errorPath, append(curPath, strconv.Itoa(i)), lines, prefix, isLastItem)
 		}
 	case string, float64, int, bool:
 		line := prefix + fmt.Sprintf("%v", v)
 		if highlight {
 			line += "   <--- ERROR HERE"
 		}
+
 		*lines = append(*lines, line)
 	}
 }
 
-// getRoleSuggestion provides helpful suggestions for role validation errors
+// getRoleSuggestion provides helpful suggestions for role validation errors.
 func getRoleSuggestion(description, actualValue string) string {
-	if strings.Contains(description, "roles") {
-		if actualValue == "" || actualValue == "[]" {
-			return "Node is missing roles. Consider adding appropriate roles like 'Identifier', 'Function', 'Declaration', etc."
-		}
-		return "Check that the roles match the expected UAST schema roles for this node type."
+	if !strings.Contains(description, "roles") {
+		return ""
 	}
-	return ""
+
+	if actualValue == "" || actualValue == "[]" {
+		return "Node is missing roles. Consider adding appropriate roles like 'Identifier', 'Function', 'Declaration', etc."
+	}
+
+	return "Check that the roles match the expected UAST schema roles for this node type."
 }
 
-// extractExpectedRoles extracts expected roles from validation error description
+// extractExpectedRoles extracts expected roles from validation error description.
 func extractExpectedRoles(description string) string {
-	// Look for patterns like "expected one of [Role1, Role2, Role3]"
+	// Look for patterns like "expected one of [Role1, Role2, Role3]".
 	if strings.Contains(description, "expected one of") {
 		start := strings.Index(description, "[")
 		end := strings.Index(description, "]")
+
 		if start != -1 && end != -1 && end > start {
 			return description[start+1 : end]
 		}
 	}
 
-	// Look for patterns like "must be one of: Role1, Role2, Role3"
+	// Look for patterns like "must be one of: Role1, Role2, Role3".
 	if strings.Contains(description, "must be one of:") {
-		parts := strings.Split(description, "must be one of:")
-		if len(parts) > 1 {
-			return strings.TrimSpace(parts[1])
+		_, after, found := strings.Cut(description, "must be one of:")
+		if found {
+			return strings.TrimSpace(after)
 		}
 	}
 

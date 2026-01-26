@@ -1,3 +1,4 @@
+// Package cohesion provides cohesion functionality.
 package cohesion
 
 import (
@@ -5,12 +6,18 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 )
 
-// CohesionAggregator aggregates results from multiple cohesion analyses
+const (
+	scoreThresholdHigh   = 0.8
+	scoreThresholdLow    = 0.3
+	scoreThresholdMedium = 0.6
+)
+
+// CohesionAggregator aggregates results from multiple cohesion analyses.
 type CohesionAggregator struct {
 	*common.Aggregator
 }
 
-// NewCohesionAggregator creates a new CohesionAggregator
+// NewCohesionAggregator creates a new CohesionAggregator.
 func NewCohesionAggregator() *CohesionAggregator {
 	config := buildAggregatorConfig()
 
@@ -27,15 +34,15 @@ func NewCohesionAggregator() *CohesionAggregator {
 	}
 }
 
-// aggregatorConfig holds the configuration for the aggregator
+// aggregatorConfig holds the configuration for the aggregator.
 type aggregatorConfig struct {
-	numericKeys        []string
-	countKeys          []string
 	messageBuilder     func(float64) string
 	emptyResultBuilder func() analyze.Report
+	numericKeys        []string
+	countKeys          []string
 }
 
-// buildAggregatorConfig creates the configuration for the cohesion aggregator
+// buildAggregatorConfig creates the configuration for the cohesion aggregator.
 func buildAggregatorConfig() aggregatorConfig {
 	return aggregatorConfig{
 		numericKeys:        getNumericKeys(),
@@ -45,45 +52,44 @@ func buildAggregatorConfig() aggregatorConfig {
 	}
 }
 
-// getNumericKeys returns the numeric keys for aggregation
+// getNumericKeys returns the numeric keys for aggregation.
 func getNumericKeys() []string {
 	return []string{"lcom", "cohesion_score", "function_cohesion"}
 }
 
-// getCountKeys returns the count keys for aggregation
+// getCountKeys returns the count keys for aggregation.
 func getCountKeys() []string {
 	return []string{"total_functions"}
 }
 
-// buildMessageBuilder creates the message builder function
+// buildMessageBuilder creates the message builder function.
 func buildMessageBuilder() func(float64) string {
-	return func(score float64) string {
-		return getCohesionMessage(score)
-	}
+	return getCohesionMessage
 }
 
-// getCohesionMessage returns a message based on the cohesion score
+// getCohesionMessage returns a message based on the cohesion score.
 func getCohesionMessage(score float64) string {
-	if score >= 0.8 {
+	if score >= scoreThresholdHigh {
 		return "Excellent overall cohesion across all analyzed code"
 	}
-	if score >= 0.6 {
+
+	if score >= scoreThresholdMedium {
 		return "Good overall cohesion with room for improvement"
 	}
-	if score >= 0.3 {
+
+	if score >= scoreThresholdLow {
 		return "Fair overall cohesion - consider refactoring some functions"
 	}
+
 	return "Poor overall cohesion - significant refactoring recommended"
 }
 
-// buildEmptyResultBuilder creates the empty result builder function
+// buildEmptyResultBuilder creates the empty result builder function.
 func buildEmptyResultBuilder() func() analyze.Report {
-	return func() analyze.Report {
-		return createEmptyResult()
-	}
+	return createEmptyResult
 }
 
-// createEmptyResult creates an empty result when no functions are found
+// createEmptyResult creates an empty result when no functions are found.
 func createEmptyResult() analyze.Report {
 	return analyze.Report{
 		"total_functions":   0,

@@ -4,36 +4,38 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// OperatorOperandDetector handles detection of operators and operands in UAST nodes
+// OperatorOperandDetector handles detection of operators and operands in UAST nodes.
 type OperatorOperandDetector struct{}
 
-// NewOperatorOperandDetector creates a new detector
+// NewOperatorOperandDetector creates a new detector.
 func NewOperatorOperandDetector() *OperatorOperandDetector {
 	return &OperatorOperandDetector{}
 }
 
-// CollectOperatorsAndOperands recursively collects operators and operands from a node
-func (d *OperatorOperandDetector) CollectOperatorsAndOperands(node *node.Node, operators map[string]int, operands map[string]int) {
-	if node == nil {
+// CollectOperatorsAndOperands recursively collects operators and operands from a node.
+func (d *OperatorOperandDetector) CollectOperatorsAndOperands(
+	nd *node.Node, operators, operands map[string]int,
+) { //nolint:whitespace // multi-line signature.
+	if nd == nil {
 		return
 	}
 
-	if d.IsOperator(node) {
-		operator := d.GetOperatorName(node)
+	if d.IsOperator(nd) {
+		operator := d.GetOperatorName(nd)
 		operators[string(operator)]++
-	} else if d.IsOperand(node) {
-		operand := d.GetOperandName(node)
+	} else if d.IsOperand(nd) {
+		operand := d.GetOperandName(nd)
 		operands[string(operand)]++
 	}
 
-	for _, child := range node.Children {
+	for _, child := range nd.Children {
 		d.CollectOperatorsAndOperands(child, operators, operands)
 	}
 }
 
-// IsOperator determines if a node represents an operator in Halstead complexity analysis
-func (d *OperatorOperandDetector) IsOperator(n *node.Node) bool {
-	if n == nil {
+// IsOperator determines if a node represents an operator in Halstead complexity analysis.
+func (d *OperatorOperandDetector) IsOperator(target *node.Node) bool {
+	if target == nil {
 		return false
 	}
 
@@ -46,17 +48,17 @@ func (d *OperatorOperandDetector) IsOperator(n *node.Node) bool {
 		node.UASTIndex:      true,
 		node.UASTSlice:      true,
 	}
-	if operatorTypes[n.Type] {
+	if operatorTypes[target.Type] {
 		return true
 	}
 
-	// Check if the node has operator-related roles (operator, assignment, function call)
+	// Check if the node has operator-related roles (operator, assignment, function call).
 	operatorRoles := map[node.Role]bool{
 		node.RoleOperator:   true,
 		node.RoleAssignment: true,
 		node.RoleCall:       true,
 	}
-	for _, role := range n.Roles {
+	for _, role := range target.Roles {
 		if operatorRoles[role] {
 			return true
 		}
@@ -65,9 +67,9 @@ func (d *OperatorOperandDetector) IsOperator(n *node.Node) bool {
 	return false
 }
 
-// IsOperand determines if a node represents an operand in Halstead complexity analysis
-func (d *OperatorOperandDetector) IsOperand(n *node.Node) bool {
-	if n == nil {
+// IsOperand determines if a node represents an operand in Halstead complexity analysis.
+func (d *OperatorOperandDetector) IsOperand(target *node.Node) bool {
+	if target == nil {
 		return false
 	}
 
@@ -79,11 +81,11 @@ func (d *OperatorOperandDetector) IsOperand(n *node.Node) bool {
 		node.UASTParameter:  true,
 		node.UASTField:      true,
 	}
-	if operandTypes[n.Type] {
+	if operandTypes[target.Type] {
 		return true
 	}
 
-	// Check if the node has operand-related roles (names, literals, variables, parameters)
+	// Check if the node has operand-related roles (names, literals, variables, parameters).
 	operandRoles := map[node.Role]bool{
 		node.RoleName:      true,
 		node.RoleLiteral:   true,
@@ -92,7 +94,7 @@ func (d *OperatorOperandDetector) IsOperand(n *node.Node) bool {
 		node.RoleArgument:  true,
 		node.RoleValue:     true,
 	}
-	for _, role := range n.Roles {
+	for _, role := range target.Roles {
 		if operandRoles[role] {
 			return true
 		}
@@ -101,40 +103,40 @@ func (d *OperatorOperandDetector) IsOperand(n *node.Node) bool {
 	return false
 }
 
-// GetOperatorName extracts the operator name from a node
-func (d *OperatorOperandDetector) GetOperatorName(n *node.Node) node.Type {
-	if n == nil {
+// GetOperatorName extracts the operator name from a node.
+func (d *OperatorOperandDetector) GetOperatorName(target *node.Node) node.Type {
+	if target == nil {
 		return ""
 	}
 
-	if n.Token != "" {
-		return node.Type(n.Token)
+	if target.Token != "" {
+		return node.Type(target.Token)
 	}
 
-	if op, ok := n.Props["operator"]; ok {
+	if op, ok := target.Props["operator"]; ok {
 		return node.Type(op)
 	}
 
-	return n.Type
+	return target.Type
 }
 
-// GetOperandName extracts the operand name from a node
-func (d *OperatorOperandDetector) GetOperandName(n *node.Node) node.Type {
-	if n == nil {
+// GetOperandName extracts the operand name from a node.
+func (d *OperatorOperandDetector) GetOperandName(target *node.Node) node.Type {
+	if target == nil {
 		return ""
 	}
 
-	if n.Token != "" {
-		return node.Type(n.Token)
+	if target.Token != "" {
+		return node.Type(target.Token)
 	}
 
-	if name, ok := n.Props["name"]; ok {
+	if name, ok := target.Props["name"]; ok {
 		return node.Type(name)
 	}
 
-	if value, ok := n.Props["value"]; ok {
+	if value, ok := target.Props["value"]; ok {
 		return node.Type(value)
 	}
 
-	return n.Type
+	return target.Type
 }

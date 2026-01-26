@@ -1,6 +1,6 @@
 package node
 
-// ClassifyDSLNode classifies DSL nodes by type
+// ClassifyDSLNode classifies DSL nodes by type.
 func ClassifyDSLNode(node DSLNode) DSLNodeType {
 	switch node.(type) {
 	case *PipelineNode:
@@ -26,8 +26,9 @@ func ClassifyDSLNode(node DSLNode) DSLNodeType {
 	}
 }
 
-// isLiteralNode checks if a node is a literal node
-func isLiteralNode(n DSLNode) bool {
-	_, ok := n.(*LiteralNode)
+// isLiteralNode checks if a node is a literal node.
+func isLiteralNode(dslNode DSLNode) bool {
+	_, ok := dslNode.(*LiteralNode)
+
 	return ok
 }

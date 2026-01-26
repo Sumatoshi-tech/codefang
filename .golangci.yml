@@ -1,101 +1,459 @@
-# golangci-lint configuration for Codefang
-# See https://golangci-lint.run/usage/configuration/
+# golangci-lint v2 strict configuration for Codefang
+# See https://golangci-lint.run/docs/configuration/
+
+version: "2"
 
 run:
-  timeout: 5m
+  timeout: 10m
   tests: true
   modules-download-mode: readonly
-
-linters:
-  enable:
-    - gofmt # Code formatting
-    - goimports # Import organization
-    - govet # Go vet checks
-    - errcheck # Unchecked error detection
-    - staticcheck # Static analysis
-    - gosimple # Simplification suggestions
-    - unused # Unused code detection
-    - ineffassign # Ineffectual assignments
-    - misspell # Spelling errors
-    - revive # Replacement for golint
-    - gocyclo # Cyclomatic complexity
-    - dupl # Code duplication
-    - gosec # Security issues
-    - unconvert # Unnecessary type conversions
-    - prealloc # Slice pre-allocation
-    - nolintlint # Validate //nolint directives
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-
-  dupl:
-    threshold: 100
-
-  govet:
-    enable-all: true
-    disable:
-      - shadow # Too strict for some cases
-      - fieldalignment # Not critical, can reduce readability
-
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
-          - "disableStutteringCheck"
-      - name: var-naming
-      - name: package-comments
-      - name: error-return
-      - name: error-naming
-      - name: if-return
-      - name: increment-decrement
-      - name: var-declaration
-      - name: range
-      - name: context-keys-type
-      - name: time-naming
-      - name: indent-error-flow
-      - name: errorf
-
-  gosec:
-    excludes:
-      - G204 # Subprocess launched with variable - needed for command execution
-    severity: medium
-    confidence: medium
-
-  errcheck:
-    check-type-assertions: true
-    check-blank: false # Allow _ = f() intentionally
+  go: "1.24"
 
 issues:
-  exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - dupl
-        - gosec
-        - gocyclo
-        - errcheck # Tests often intentionally ignore errors
-        - govet # Tests may have unused writes for initialization
-
-    # Exclude TODO comments from failing the build
-    - linters:
-        - godot
-      text: "Comment should end in a period"
-
-    # Allow unused functions that are planned for future use
-    - linters:
-        - unused
-      text: "is unused"
-
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
-  uniq-by-line: true
+  uniq-by-line: false
 
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-  sort-results: true
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+  sort-order:
+    - linter
+    - file
+  show-stats: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Sumatoshi-tech/codefang
+
+linters:
+  # Enable ALL linters, only disable what's truly inapplicable.
+  default: all
+  disable:
+    # --- Deprecated ---
+    - wsl # Deprecated in v2; replaced by wsl_v5
+
+    # --- Framework/DB-specific: not used in this project ---
+    - arangolint # ArangoDB
+    - ginkgolinter # Ginkgo testing framework
+    - loggercheck # logr/klog/zap structured loggers
+    - promlinter # Prometheus metrics naming
+    - protogetter # Protobuf getters
+    - rowserrcheck # database/sql rows.Err()
+    - spancheck # OpenTelemetry spans
+    - sqlclosecheck # database/sql Close()
+    - zerologlint # zerolog
+
+    # --- Too noisy for this codebase ---
+    - exhaustruct # Go idiom is zero-value initialization; this linter fights the language
+
+  settings:
+    cyclop:
+      max-complexity: 15
+      package-average: 7.0
+
+    depguard:
+      rules:
+        "deprecated":
+          files: ["$all"]
+          deny:
+            - pkg: github.com/golang/protobuf
+              desc: "Use google.golang.org/protobuf instead"
+            - pkg: github.com/satori/go.uuid
+              desc: "Use github.com/google/uuid instead"
+            - pkg: github.com/gofrs/uuid$
+              desc: "Use github.com/gofrs/uuid/v5 or later"
+        "non-test":
+          files: ["!$test"]
+          deny:
+            - pkg: math/rand$
+              desc: "Use math/rand/v2 instead"
+
+    dupl:
+      threshold: 100
+
+    embeddedstructfieldcheck:
+      forbid-mutex: true
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+      errorf-multi: true
+
+    exhaustive:
+      check: [switch, map]
+      default-signifies-exhaustive: false
+
+    exhaustruct:
+      exclude:
+        # Standard library
+        - ^net/http\.(Client|Cookie|Request|Response|Server|Transport)$
+        - ^net/url\.URL$
+        - ^os/exec\.Cmd$
+        - ^reflect\.StructField$
+        # Third-party
+        - ^github\.com/spf13/cobra\.(Command|CompletionOptions)$
+        - ^github\.com/stretchr/testify/mock\.Mock$
+        - ^golang\.org/x/tools/go/analysis\.Analyzer$
+        - ^gopkg\.in/yaml\.v3\.Node$
+        - ^github\.com/go-git/go-git
+        - ^github\.com/tliron/glsp
+        - ^github\.com/sergi/go-diff
+        # Project-internal: analyzers and plumbing (zero values are intentional by design)
+        - ^github\.com/Sumatoshi-tech/codefang/pkg/analyzers/
+        - ^github\.com/Sumatoshi-tech/codefang/pkg/uast/
+        - ^github\.com/Sumatoshi-tech/codefang/pkg/importmodel\.
+        - ^github\.com/Sumatoshi-tech/codefang/pkg/plumbing\.
+        - ^github\.com/Sumatoshi-tech/codefang/cmd/
+      allow-empty-returns: true
+
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: "Use log/slog for structured output instead of fmt.Print"
+          pkg: ^fmt$
+      analyze-types: true
+
+    funcorder:
+      struct-method: false
+
+    funlen:
+      lines: 80
+      statements: 40
+      ignore-comments: true
+
+    gochecksumtype:
+      default-signifies-exhaustive: false
+
+    gocognit:
+      min-complexity: 15
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+      settings:
+        captLocal:
+          paramsOnly: false
+        underef:
+          skipRecvDeref: false
+
+    gocyclo:
+      min-complexity: 15
+
+    godoclint:
+      enable:
+        - no-unused-link
+        - require-stdlib-doclink
+
+    godot:
+      scope: all
+      capital: true
+
+    gomoddirectives:
+      replace-local: true
+
+    gosec:
+      excludes:
+        - G204 # Subprocess launched with variable - needed for command execution
+      severity: medium
+      confidence: medium
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # conflicts with embeddedstructfieldcheck
+      settings:
+        shadow:
+          strict: true
+
+    iface:
+      enable: [identical, unused, opaque]
+
+    inamedparam:
+      skip-single-param: true
+
+    interfacebloat:
+      max: 5
+
+    ireturn:
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        - generic
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ResultAggregator
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
+        - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.DSLNode
+        - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
+        - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.ValueExtractor
+        - github\.com/xeipuuv/gojsonschema\.JSONLoader
+
+    lll:
+      line-length: 140
+      tab-width: 4
+
+    maintidx:
+      under: 20
+
+    misspell:
+      locale: US
+
+    mnd:
+      ignored-functions:
+        - args.Error
+        - flag.Arg
+        - flag.Duration.*
+        - flag.Float.*
+        - flag.Int.*
+        - flag.Uint.*
+        - os.Chmod
+        - os.Mkdir.*
+        - os.OpenFile
+        - os.WriteFile
+        - strconv.Format*
+        - strconv.Parse*
+
+    nakedret:
+      max-func-lines: 0
+
+    nestif:
+      min-complexity: 4
+
+    nilnil:
+      checked-types: [ptr, func, iface, map, chan]
+
+    nolintlint:
+      allow-no-explanation: [funlen, gocognit, lll]
+      require-explanation: true
+      require-specific: true
+
+    nonamedreturns:
+      report-error-in-defer: true
+
+    perfsprint:
+      strconcat: false
+
+    predeclared:
+      qualified: true
+
+    reassign:
+      patterns: [".*"]
+
+    revive:
+      rules:
+        - name: exported
+          arguments: ["checkPrivateReceivers", "disableStutteringCheck"]
+        - name: var-naming
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-declaration
+        - name: range
+        - name: context-keys-type
+        - name: time-naming
+        - name: indent-error-flow
+        - name: errorf
+        - name: unexported-return
+        - name: blank-imports
+        - name: dot-imports
+        - name: context-as-argument
+        - name: early-return
+        - name: unnecessary-stmt
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: confusing-naming
+        - name: modifies-value-receiver
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: waitgroup-by-value
+        - name: atomic
+        - name: empty-block
+        - name: bool-literal-in-expr
+        - name: constant-logical-expr
+        - name: identical-branches
+        - name: modifies-parameter
+        - name: string-of-int
+        - name: defer
+          arguments:
+            - [
+                "call-chain",
+                "loop",
+                "method-call",
+                "recover",
+                "immediate-recover",
+                "return",
+              ]
+        - name: range-val-address
+        - name: range-val-in-closure
+        - name: get-return
+        - name: string-format
+
+    sloglint:
+      no-global: all
+      context: scope
+
+    staticcheck:
+      checks: [all]
+
+    tagalign:
+      align: true
+      sort: true
+
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+          xml: camel
+
+    testifylint:
+      enable-all: true
+
+    tparallel:
+      all: true
+
+    unconvert:
+      fast-math: true
+      safe: true
+
+    unparam:
+      check-exported: false
+
+    usestdlibvars:
+      http-method: true
+      http-status-code: true
+      time-weekday: true
+      time-month: true
+      time-layout: true
+      crypto-hash: true
+      default-rpc-path: true
+      sql-isolation-level: true
+      tls-signature-scheme: true
+
+    usetesting:
+      os-temp-dir: true
+
+    varnamelen:
+      max-distance: 6
+      min-name-length: 2
+      check-receiver: false
+      check-return: true
+      check-type-param: true
+      ignore-type-assert-ok: true
+      ignore-map-index-ok: true
+      ignore-chan-recv-ok: true
+      ignore-names:
+        - ok
+        - err
+        - id
+        - wg
+        - mu
+        - db
+        - tx
+        - fn
+        - fs
+        - ip
+        - tt
+        - tc
+        - tb
+        - sb
+        - fd
+        - rw
+        - kv
+      ignore-decls:
+        - i int
+        - j int
+        - k int
+        - n int
+        - t testing.T
+        - b testing.B
+        - f testing.F
+        - e error
+        - w io.Writer
+        - r io.Reader
+        - s string
+
+    whitespace:
+      multi-if: true
+      multi-func: true
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+      ignore-package-globs:
+        - github.com/Sumatoshi-tech/codefang/*
+
+    wsl_v5: {}
+
+  exclusions:
+    warn-unused: true
+    presets:
+      - std-error-handling
+      - common-false-positives
+    # Generated PEG parser files - machine-generated, exclude from all linting.
+    paths:
+      - '\.peg\.go$'
+    rules:
+      # Relax selected linters in test files.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - dupl
+          - funlen
+          - goconst
+          - gosec
+          - noctx
+          - wrapcheck
+          - exhaustruct
+          - varnamelen
+          - err113
+          - mnd
+          - paralleltest
+
+      # The "common" package name is intentional for shared analyzer utilities.
+      - path: pkg/analyzers/common/
+        text: "avoid meaningless package names"
+        linters: [revive]
+
+      # Package-comment style exclusions for nolint/TODO lines.
+      - text: 'package comment should be of the form ".+"'
+        source: "// ?(nolint|TODO)"
+        linters: [revive]
+      - text: 'comment on exported \S+ \S+ should be of the form ".+"'
+        source: "// ?(nolint|TODO)"
+        linters: [revive, staticcheck]

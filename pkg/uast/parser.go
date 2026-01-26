@@ -2,9 +2,11 @@ package uast
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"strings"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -13,8 +15,15 @@ import (
 //go:embed uastmaps/*.uastmap
 var uastMapFs embed.FS
 
-// Parser implements LanguageParser using embedded parsers
-// Entry point for UAST parsing
+// Sentinel errors for parser operations.
+var (
+	errNoFileExtension = errors.New("no file extension found")
+	errNoParser        = errors.New("no parser found for extension")
+	errMappingNotFound = errors.New("mapping not found")
+)
+
+// Parser implements LanguageParser using embedded parsers.
+// Entry point for UAST parsing.
 // Parser is the main entry point for UAST parsing. It manages language parsers and their configurations.
 type Parser struct {
 	loader     *Loader
@@ -27,107 +36,107 @@ type Parser struct {
 func NewParser() (*Parser, error) {
 	loader := NewLoader(uastMapFs)
 
-	p := &Parser{
+	parser := &Parser{
 		loader:     loader,
 		customMaps: make(map[string]UASTMap),
 	}
 
-	return p, nil
+	return parser, nil
 }
 
 // WithUASTMap adds custom UAST mappings to the parser using the option pattern.
 // This method allows passing custom UAST map configurations that will be used
 // in addition to or as a replacement for the embedded mappings.
-func (p *Parser) WithUASTMap(maps map[string]UASTMap) *Parser {
-	// Store custom maps
-	for name, uastMap := range maps {
-		p.customMaps[name] = uastMap
-	}
+func (parser *Parser) WithUASTMap(uastMaps map[string]UASTMap) *Parser {
+	// Store custom maps.
+	maps.Copy(parser.customMaps, uastMaps)
 
-	// Load custom parsers from the provided mappings
-	p.loadCustomParsers()
+	// Load custom parsers from the provided mappings.
+	parser.loadCustomParsers()
 
-	return p
+	return parser
 }
 
-// loadCustomParsers loads parsers from custom UAST mappings
-func (p *Parser) loadCustomParsers() {
-	for name, uastMap := range p.customMaps {
-		// Create a reader from the UAST string
+// loadCustomParsers loads parsers from custom UAST mappings.
+func (parser *Parser) loadCustomParsers() {
+	for _, uastMap := range parser.customMaps {
+		// Create a reader from the UAST string.
 		reader := strings.NewReader(uastMap.UAST)
 
-		// Load parser from the custom mapping
-		parser, err := p.loader.LoadParser(reader)
-		if err != nil {
-			fmt.Printf("failed to load custom parser for %s: %v\n", name, err)
+		// Load parser from the custom mapping.
+		langParser, loadErr := parser.loader.LoadParser(reader)
+		if loadErr != nil {
 			continue
 		}
 
-		// Register the parser with the loader
-		p.loader.parsers[parser.Language()] = parser
+		// Register the parser with the loader.
+		parser.loader.parsers[langParser.Language()] = langParser
 
-		// Register extensions
-		for _, ext := range parser.Extensions() {
-			p.loader.extensions[strings.ToLower(ext)] = parser
+		// Register extensions.
+		for _, ext := range langParser.Extensions() {
+			parser.loader.extensions[strings.ToLower(ext)] = langParser
 		}
 	}
 }
 
 // IsSupported returns true if the given filename is supported by any parser.
-func (p *Parser) IsSupported(filename string) bool {
-	// Get file extension
+func (parser *Parser) IsSupported(filename string) bool {
+	// Get file extension.
 	ext := strings.ToLower(getFileExtension(filename))
 	if ext == "" {
 		return false
 	}
 
-	// Check if any parser supports this file extension
-	_, exists := p.loader.LanguageParser(ext)
+	// Check if any parser supports this file extension.
+	_, exists := parser.loader.LanguageParser(ext)
+
 	return exists
 }
 
 // GetLanguage returns the language name for the given filename if supported, or empty string.
-func (p *Parser) GetLanguage(filename string) string {
+func (parser *Parser) GetLanguage(filename string) string {
 	ext := strings.ToLower(getFileExtension(filename))
 	if ext == "" {
 		return ""
 	}
-	parser, exists := p.loader.LanguageParser(ext)
+
+	langParser, exists := parser.loader.LanguageParser(ext)
 	if !exists {
 		return ""
 	}
-	return parser.Language()
+
+	return langParser.Language()
 }
 
 // Parse parses a file and returns its UAST.
-func (p *Parser) Parse(filename string, content []byte) (*node.Node, error) {
-	// Get file extension
+func (parser *Parser) Parse(filename string, content []byte) (*node.Node, error) {
+	// Get file extension.
 	ext := strings.ToLower(getFileExtension(filename))
 	if ext == "" {
-		return nil, fmt.Errorf("no file extension found for %s", filename)
+		return nil, fmt.Errorf("%w for %s", errNoFileExtension, filename)
 	}
 
-	// Get parser for this extension
-	parser, exists := p.loader.LanguageParser(ext)
+	// Get parser for this extension.
+	langParser, exists := parser.loader.LanguageParser(ext)
 	if !exists {
-		return nil, fmt.Errorf("no parser found for extension %s", ext)
+		return nil, fmt.Errorf("%w %s", errNoParser, ext)
 	}
 
-	// Parse using the parser
-	return parser.Parse(filename, content)
+	// Parse using the parser.
+	return langParser.Parse(filename, content)
 }
 
-// GetEmbeddedMappings returns all embedded UAST mappings
-func (p *Parser) GetEmbeddedMappings() map[string]UASTMap {
+// GetEmbeddedMappings returns all embedded UAST mappings.
+func (parser *Parser) GetEmbeddedMappings() map[string]UASTMap {
 	mappings := make(map[string]UASTMap)
 
-	// Read from the embedded filesystem
-	err := fs.WalkDir(uastMapFs, "uastmaps", func(path string, d fs.DirEntry, err error) error {
+	// Read from the embedded filesystem.
+	walkErr := fs.WalkDir(uastMapFs, "uastmaps", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() {
+		if entry.IsDir() {
 			return nil
 		}
 
@@ -135,56 +144,52 @@ func (p *Parser) GetEmbeddedMappings() map[string]UASTMap {
 			return nil
 		}
 
-		// Extract language name from filename
-		language := strings.TrimSuffix(d.Name(), ".uastmap")
+		// Extract language name from filename.
+		language := strings.TrimSuffix(entry.Name(), ".uastmap")
 
-		// Read the file content
-		file, err := uastMapFs.Open(path)
-		if err != nil {
-			fmt.Printf("failed to open %s: %v\n", path, err)
+		// Read the file content.
+		file, openErr := uastMapFs.Open(path)
+		if openErr != nil {
 			return nil
 		}
 		defer file.Close()
 
-		content, err := io.ReadAll(file)
-		if err != nil {
-			fmt.Printf("failed to read %s: %v\n", path, err)
+		content, readErr := io.ReadAll(file)
+		if readErr != nil {
 			return nil
 		}
 
-		// Parse the DSL to get extensions
+		// Parse the DSL to get extensions.
 		dslParser := NewDSLParser(strings.NewReader(string(content)))
-		if err := dslParser.Load(); err != nil {
-			fmt.Printf("failed to parse DSL for %s: %v\n", language, err)
+
+		parseErr := dslParser.Load()
+		if parseErr != nil {
 			return nil
 		}
 
 		mappings[language] = UASTMap{
-			Extensions: dslParser.Extensions(),
 			UAST:       string(content),
+			Extensions: dslParser.Extensions(),
 		}
 
 		return nil
 	})
-
-	if err != nil {
-		fmt.Printf("error reading embedded mappings: %v\n", err)
-	}
+	_ = walkErr
 
 	return mappings
 }
 
-// GetEmbeddedMappingsList returns a lightweight list of embedded UAST mappings (without full content)
-func (p *Parser) GetEmbeddedMappingsList() map[string]map[string]interface{} {
-	mappings := make(map[string]map[string]interface{})
+// GetEmbeddedMappingsList returns a lightweight list of embedded UAST mappings (without full content).
+func (parser *Parser) GetEmbeddedMappingsList() map[string]map[string]any {
+	mappings := make(map[string]map[string]any)
 
-	// Read from the embedded filesystem
-	err := fs.WalkDir(uastMapFs, "uastmaps", func(path string, d fs.DirEntry, err error) error {
+	// Read from the embedded filesystem.
+	walkErr := fs.WalkDir(uastMapFs, "uastmaps", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() {
+		if entry.IsDir() {
 			return nil
 		}
 
@@ -192,64 +197,60 @@ func (p *Parser) GetEmbeddedMappingsList() map[string]map[string]interface{} {
 			return nil
 		}
 
-		// Extract language name from filename
-		language := strings.TrimSuffix(d.Name(), ".uastmap")
+		// Extract language name from filename.
+		language := strings.TrimSuffix(entry.Name(), ".uastmap")
 
-		// Read the file content
-		file, err := uastMapFs.Open(path)
-		if err != nil {
-			fmt.Printf("failed to open %s: %v\n", path, err)
+		// Read the file content.
+		file, openErr := uastMapFs.Open(path)
+		if openErr != nil {
 			return nil
 		}
 		defer file.Close()
 
-		content, err := io.ReadAll(file)
-		if err != nil {
-			fmt.Printf("failed to read %s: %v\n", path, err)
+		content, readErr := io.ReadAll(file)
+		if readErr != nil {
 			return nil
 		}
 
-		// For the list endpoint, we don't need to parse the DSL
-		// Just provide basic file info
-		mappings[language] = map[string]interface{}{
+		// For the list endpoint, provide basic file info.
+		mappings[language] = map[string]any{
 			"size": len(content),
 		}
 
 		return nil
 	})
-
-	if err != nil {
-		fmt.Printf("error reading embedded mappings: %v\n", err)
-	}
+	_ = walkErr
 
 	return mappings
 }
 
-// GetMapping returns a specific embedded UAST mapping by name
-func (p *Parser) GetMapping(language string) (*UASTMap, error) {
-	// Construct the file path
+// GetMapping returns a specific embedded UAST mapping by name.
+func (parser *Parser) GetMapping(language string) (*UASTMap, error) {
+	// Construct the file path.
 	filePath := fmt.Sprintf("uastmaps/%s.uastmap", language)
 
-	// Read the file content
+	// Read the file content.
 	file, err := uastMapFs.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("mapping not found: %s", language)
+		return nil, fmt.Errorf("%w: %s", errMappingNotFound, language)
 	}
 	defer file.Close()
 
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read mapping: %v", err)
+		return nil, fmt.Errorf("reading mapping: %w", err)
 	}
 
-	// Parse the DSL to get extensions
+	// Parse the DSL to get extensions.
 	dslParser := NewDSLParser(strings.NewReader(string(content)))
-	if err := dslParser.Load(); err != nil {
-		return nil, fmt.Errorf("failed to parse DSL: %v", err)
+
+	parseErr := dslParser.Load()
+	if parseErr != nil {
+		return nil, fmt.Errorf("parsing DSL: %w", parseErr)
 	}
 
 	return &UASTMap{
-		Extensions: dslParser.Extensions(),
 		UAST:       string(content),
+		Extensions: dslParser.Extensions(),
 	}, nil
 }

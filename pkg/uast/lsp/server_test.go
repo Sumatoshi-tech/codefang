@@ -1,4 +1,4 @@
-package lsp
+package lsp //nolint:testpackage // Tests unexported helpers: extractWordAtPosition, isWordChar, splitLines, completionItem.
 
 import (
 	"testing"
@@ -7,6 +7,8 @@ import (
 )
 
 func TestNewDocumentStore(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 
 	if store == nil {
@@ -19,15 +21,17 @@ func TestNewDocumentStore(t *testing.T) {
 }
 
 func TestDocumentStore_SetAndGet(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 
 	uri := "file:///test.uastmap"
 	content := "test content"
 
-	// Set document
+	// Set document.
 	store.Set(uri, content)
 
-	// Get document
+	// Get document.
 	got, ok := store.Get(uri)
 	if !ok {
 		t.Errorf("Expected document to exist for URI %s", uri)
@@ -39,6 +43,8 @@ func TestDocumentStore_SetAndGet(t *testing.T) {
 }
 
 func TestDocumentStore_Get_NotFound(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 
 	_, ok := store.Get("file:///nonexistent.uastmap")
@@ -48,16 +54,18 @@ func TestDocumentStore_Get_NotFound(t *testing.T) {
 }
 
 func TestDocumentStore_Delete(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 
 	uri := "file:///test.uastmap"
 	content := "test content"
 
-	// Set and then delete
+	// Set and then delete.
 	store.Set(uri, content)
 	store.Delete(uri)
 
-	// Verify it's gone
+	// Verify it's gone.
 	_, ok := store.Get(uri)
 	if ok {
 		t.Error("Expected document to be deleted")
@@ -65,19 +73,21 @@ func TestDocumentStore_Delete(t *testing.T) {
 }
 
 func TestDocumentStore_Update(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 
 	uri := "file:///test.uastmap"
 	content1 := "initial content"
 	content2 := "updated content"
 
-	// Set initial content
+	// Set initial content.
 	store.Set(uri, content1)
 
-	// Update content
+	// Update content.
 	store.Set(uri, content2)
 
-	// Verify update
+	// Verify update.
 	got, ok := store.Get(uri)
 	if !ok {
 		t.Errorf("Expected document to exist for URI %s", uri)
@@ -89,6 +99,8 @@ func TestDocumentStore_Update(t *testing.T) {
 }
 
 func TestNewServer(t *testing.T) {
+	t.Parallel()
+
 	server := NewServer()
 
 	if server == nil {
@@ -101,12 +113,14 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestExtractWordAtPosition(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		text      string
+		expected  string
 		line      int
 		character int
-		expected  string
 	}{
 		{
 			name:      "simple word",
@@ -169,7 +183,8 @@ func TestExtractWordAtPosition(t *testing.T) {
 			text:      "short",
 			line:      0,
 			character: 100,
-			expected:  "short", // clamps to line length and returns last word
+			// Clamps to line length and returns last word.
+			expected: "short",
 		},
 		{
 			name:      "underscore in word",
@@ -189,6 +204,8 @@ func TestExtractWordAtPosition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := extractWordAtPosition(tt.text, tt.line, tt.character)
 			if got != tt.expected {
 				t.Errorf("extractWordAtPosition(%q, %d, %d) = %q, expected %q",
@@ -199,6 +216,8 @@ func TestExtractWordAtPosition(t *testing.T) {
 }
 
 func TestIsWordChar(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		char     byte
 		expected bool
@@ -226,6 +245,8 @@ func TestIsWordChar(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.char), func(t *testing.T) {
+			t.Parallel()
+
 			got := isWordChar(tt.char)
 			if got != tt.expected {
 				t.Errorf("isWordChar(%q) = %v, expected %v", tt.char, got, tt.expected)
@@ -235,6 +256,8 @@ func TestIsWordChar(t *testing.T) {
 }
 
 func TestSplitLines(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -269,12 +292,16 @@ func TestSplitLines(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := splitLines(tt.input)
 			if len(got) != len(tt.expected) {
 				t.Errorf("splitLines(%q) returned %d lines, expected %d",
 					tt.input, len(got), len(tt.expected))
+
 				return
 			}
+
 			for i, line := range got {
 				if line != tt.expected[i] {
 					t.Errorf("splitLines(%q)[%d] = %q, expected %q",
@@ -285,48 +312,46 @@ func TestSplitLines(t *testing.T) {
 	}
 }
 
-func TestPtrCompletionKind(t *testing.T) {
-	kind := protocol.CompletionItemKindKeyword
-	result := ptrCompletionKind(kind)
+func TestCompletionItem(t *testing.T) {
+	t.Parallel()
 
-	if result == nil {
-		t.Fatal("Expected non-nil pointer")
+	item := completionItem("test", protocol.CompletionItemKindKeyword, "Test detail")
+
+	if item.Label != "test" {
+		t.Errorf("Expected label %q, got %q", "test", item.Label)
 	}
 
-	if *result != kind {
-		t.Errorf("Expected %v, got %v", kind, *result)
-	}
-}
-
-func TestPtrString(t *testing.T) {
-	str := "test string"
-	result := ptrString(str)
-
-	if result == nil {
-		t.Fatal("Expected non-nil pointer")
+	if item.Kind == nil || *item.Kind != protocol.CompletionItemKindKeyword {
+		t.Error("Expected CompletionItemKindKeyword")
 	}
 
-	if *result != str {
-		t.Errorf("Expected %q, got %q", str, *result)
+	if item.Detail == nil || *item.Detail != "Test detail" {
+		t.Errorf("Expected detail %q, got %v", "Test detail", item.Detail)
 	}
 }
 
 func TestMappingDSLKeywords(t *testing.T) {
-	// Verify that the keywords are defined
+	t.Parallel()
+
+	// Verify that the keywords are defined.
 	if len(mappingDSLKeywords) == 0 {
 		t.Error("Expected mapping DSL keywords to be defined")
 	}
 
-	// Check for expected keywords
+	// Check for expected keywords.
 	expectedLabels := []string{"<-", "=>", "uast"}
+
 	for _, expected := range expectedLabels {
 		found := false
+
 		for _, item := range mappingDSLKeywords {
 			if item.Label == expected {
 				found = true
+
 				break
 			}
 		}
+
 		if !found {
 			t.Errorf("Expected keyword %q not found in mappingDSLKeywords", expected)
 		}
@@ -334,21 +359,27 @@ func TestMappingDSLKeywords(t *testing.T) {
 }
 
 func TestUastFields(t *testing.T) {
-	// Verify that UAST fields are defined
+	t.Parallel()
+
+	// Verify that UAST fields are defined.
 	if len(uastFields) == 0 {
 		t.Error("Expected UAST fields to be defined")
 	}
 
-	// Check for expected fields
+	// Check for expected fields.
 	expectedLabels := []string{"type", "token", "roles", "props", "children"}
+
 	for _, expected := range expectedLabels {
 		found := false
+
 		for _, item := range uastFields {
 			if item.Label == expected {
 				found = true
+
 				break
 			}
 		}
+
 		if !found {
 			t.Errorf("Expected field %q not found in uastFields", expected)
 		}
@@ -356,20 +387,23 @@ func TestUastFields(t *testing.T) {
 }
 
 func TestHoverDocs(t *testing.T) {
-	// Verify that hover docs are defined
+	t.Parallel()
+
+	// Verify that hover docs are defined.
 	if len(hoverDocs) == 0 {
 		t.Error("Expected hover docs to be defined")
 	}
 
-	// Check for expected documentation
+	// Check for expected documentation.
 	expectedKeys := []string{"<-", "=>", "uast", "type", "token", "roles", "props", "children"}
+
 	for _, expected := range expectedKeys {
 		if _, ok := hoverDocs[expected]; !ok {
 			t.Errorf("Expected hover doc for %q not found", expected)
 		}
 	}
 
-	// Verify docs are non-empty
+	// Verify docs are non-empty.
 	for key, doc := range hoverDocs {
 		if doc == "" {
 			t.Errorf("Hover doc for %q is empty", key)
@@ -378,51 +412,58 @@ func TestHoverDocs(t *testing.T) {
 }
 
 func TestDocumentStore_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	store := NewDocumentStore()
 	done := make(chan bool)
 
-	// Concurrent writes
+	// Concurrent writes.
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			store.Set("file:///test1.uastmap", "content1")
 		}
+
 		done <- true
 	}()
 
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			store.Set("file:///test2.uastmap", "content2")
 		}
+
 		done <- true
 	}()
 
-	// Concurrent reads
+	// Concurrent reads.
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			store.Get("file:///test1.uastmap")
 		}
+
 		done <- true
 	}()
 
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			store.Get("file:///test2.uastmap")
 		}
+
 		done <- true
 	}()
 
-	// Wait for all goroutines
-	for i := 0; i < 4; i++ {
+	// Wait for all goroutines.
+	for range 4 {
 		<-done
 	}
 
-	// Verify final state
+	// Verify final state.
 	content1, ok1 := store.Get("file:///test1.uastmap")
 	content2, ok2 := store.Get("file:///test2.uastmap")
 
 	if !ok1 || content1 != "content1" {
 		t.Error("Expected test1.uastmap to have content1")
 	}
+
 	if !ok2 || content2 != "content2" {
 		t.Error("Expected test2.uastmap to have content2")
 	}

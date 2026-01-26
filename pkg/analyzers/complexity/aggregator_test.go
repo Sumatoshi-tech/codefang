@@ -1,12 +1,15 @@
-package complexity
+package complexity //nolint:testpackage // testing internal implementation.
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 func TestNewComplexityAggregator(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	if aggregator == nil {
@@ -23,6 +26,8 @@ func TestNewComplexityAggregator(t *testing.T) {
 }
 
 func TestComplexityAggregator_Aggregate_SingleReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	report := analyze.Report{
@@ -51,7 +56,7 @@ func TestComplexityAggregator_Aggregate_SingleReport(t *testing.T) {
 		t.Errorf("Expected total_functions=2, got %v", total)
 	}
 
-	if functions, ok := result["functions"].([]map[string]interface{}); ok {
+	if functions, ok := result["functions"].([]map[string]any); ok {
 		if len(functions) != 2 {
 			t.Errorf("Expected 2 functions in result, got %d", len(functions))
 		}
@@ -59,6 +64,8 @@ func TestComplexityAggregator_Aggregate_SingleReport(t *testing.T) {
 }
 
 func TestComplexityAggregator_Aggregate_MultipleReports(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	report1 := analyze.Report{
@@ -99,23 +106,23 @@ func TestComplexityAggregator_Aggregate_MultipleReports(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Check aggregated totals
+	// Check aggregated totals.
 	if total, ok := result["total_functions"]; !ok || total != 5 {
 		t.Errorf("Expected total_functions=5, got %v", total)
 	}
 
-	// max_complexity tracks the true max across files (max(3, 6) = 6)
+	// Max_complexity tracks the true max across files (max(3, 6) = 6).
 	if maxComplexity, ok := result["max_complexity"]; !ok || maxComplexity != 6 {
 		t.Errorf("Expected max_complexity=6, got %v", maxComplexity)
 	}
 
-	// average_complexity is derived from total_complexity / total_functions = 16 / 5 = 3.2
+	// Average_complexity is derived from total_complexity / total_functions = 16 / 5 = 3.2.
 	if avgComplexity, ok := result["average_complexity"].(float64); !ok || avgComplexity != 3.2 {
 		t.Errorf("Expected average_complexity=3.2, got %v", result["average_complexity"])
 	}
 
-	// Check detailed functions are collected
-	if functions, ok := result["functions"].([]map[string]interface{}); ok {
+	// Check detailed functions are collected.
+	if functions, ok := result["functions"].([]map[string]any); ok {
 		if len(functions) != 5 {
 			t.Errorf("Expected 5 functions in result, got %d", len(functions))
 		}
@@ -123,9 +130,11 @@ func TestComplexityAggregator_Aggregate_MultipleReports(t *testing.T) {
 }
 
 func TestComplexityAggregator_Aggregate_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
-	// Aggregate with nil report
+	// Aggregate with nil report.
 	aggregator.Aggregate(map[string]analyze.Report{"complexity": nil})
 
 	result := aggregator.GetResult()
@@ -134,13 +143,15 @@ func TestComplexityAggregator_Aggregate_EmptyReport(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Should return empty result
+	// Should return empty result.
 	if total, ok := result["total_functions"]; !ok || total != 0 {
 		t.Errorf("Expected total_functions=0 for empty report, got %v", total)
 	}
 }
 
 func TestComplexityAggregator_GetResult_NoAggregation(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	result := aggregator.GetResult()
@@ -149,7 +160,7 @@ func TestComplexityAggregator_GetResult_NoAggregation(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Should return empty result
+	// Should return empty result.
 	if total, ok := result["total_functions"]; !ok || total != 0 {
 		t.Errorf("Expected total_functions=0, got %v", total)
 	}
@@ -160,6 +171,8 @@ func TestComplexityAggregator_GetResult_NoAggregation(t *testing.T) {
 }
 
 func TestComplexityAggregator_DetailedFunctionsCollection(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	report := analyze.Report{
@@ -181,37 +194,34 @@ func TestComplexityAggregator_DetailedFunctionsCollection(t *testing.T) {
 
 	result := aggregator.GetResult()
 
-	functions, ok := result["functions"].([]map[string]interface{})
+	functions, ok := result["functions"].([]map[string]any)
 	if !ok {
-		t.Fatal("Expected functions to be []map[string]interface{}")
+		t.Fatal("Expected functions to be []map[string]any")
 	}
 
 	if len(functions) != 1 {
 		t.Fatalf("Expected 1 function, got %d", len(functions))
 	}
 
-	if name, ok := functions[0]["name"]; !ok || name != "testFunc" {
+	if name, nameOK := functions[0]["name"]; !nameOK || name != "testFunc" {
 		t.Errorf("Expected function name='testFunc', got %v", name)
 	}
 }
 
 func TestGetNumericKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getNumericKeys()
 
-	// average_complexity is a derived metric, not aggregated via numericKeys
+	// Average_complexity is a derived metric, not aggregated via numericKeys.
 	expectedKeys := []string{"cognitive_complexity", "nesting_depth"}
 	if len(keys) != len(expectedKeys) {
 		t.Errorf("Expected %d numeric keys, got %d", len(expectedKeys), len(keys))
 	}
 
 	for _, expected := range expectedKeys {
-		found := false
-		for _, key := range keys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(keys, expected)
+
 		if !found {
 			t.Errorf("Expected numeric key '%s' not found", expected)
 		}
@@ -219,22 +229,19 @@ func TestGetNumericKeys(t *testing.T) {
 }
 
 func TestGetCountKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getCountKeys()
 
-	// max_complexity is tracked separately (true max, not sum)
+	// Max_complexity is tracked separately (true max, not sum).
 	expectedKeys := []string{"total_functions", "total_complexity", "decision_points"}
 	if len(keys) != len(expectedKeys) {
 		t.Errorf("Expected %d count keys, got %d", len(expectedKeys), len(keys))
 	}
 
 	for _, expected := range expectedKeys {
-		found := false
-		for _, key := range keys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(keys, expected)
+
 		if !found {
 			t.Errorf("Expected count key '%s' not found", expected)
 		}
@@ -242,18 +249,20 @@ func TestGetCountKeys(t *testing.T) {
 }
 
 func TestBuildComplexityMessage(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		score    float64
 		expected string
+		score    float64
 	}{
-		{0.5, "Excellent complexity - functions are simple and maintainable"},
-		{1.0, "Excellent complexity - functions are simple and maintainable"},
-		{2.0, "Good complexity - functions have reasonable complexity"},
-		{3.0, "Good complexity - functions have reasonable complexity"},
-		{5.0, "Fair complexity - some functions could be simplified"},
-		{7.0, "Fair complexity - some functions could be simplified"},
-		{10.0, "High complexity - functions are complex and should be refactored"},
-		{15.0, "High complexity - functions are complex and should be refactored"},
+		{"Excellent complexity - functions are simple and maintainable", 0.5},
+		{"Excellent complexity - functions are simple and maintainable", 1.0},
+		{"Good complexity - functions have reasonable complexity", 2.0},
+		{"Good complexity - functions have reasonable complexity", 3.0},
+		{"Fair complexity - some functions could be simplified", 5.0},
+		{"Fair complexity - some functions could be simplified", 7.0},
+		{"High complexity - functions are complex and should be refactored", 10.0},
+		{"High complexity - functions are complex and should be refactored", 15.0},
 	}
 
 	for _, tt := range tests {
@@ -265,6 +274,8 @@ func TestBuildComplexityMessage(t *testing.T) {
 }
 
 func TestBuildEmptyComplexityResult(t *testing.T) {
+	t.Parallel()
+
 	result := buildEmptyComplexityResult()
 
 	if result == nil {
@@ -288,9 +299,11 @@ func TestBuildEmptyComplexityResult(t *testing.T) {
 }
 
 func TestComplexityAggregator_ExtractFunctionsFromReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
-	// Test with valid functions
+	// Test with valid functions.
 	report := analyze.Report{
 		"functions": []map[string]any{
 			{"name": "func1"},
@@ -304,7 +317,7 @@ func TestComplexityAggregator_ExtractFunctionsFromReport(t *testing.T) {
 		t.Errorf("Expected 2 functions extracted, got %d", len(aggregator.detailedFunctions))
 	}
 
-	// Test with no functions key
+	// Test with no functions key.
 	aggregator2 := NewComplexityAggregator()
 	reportNoFunctions := analyze.Report{
 		"total_functions": 0,
@@ -318,6 +331,8 @@ func TestComplexityAggregator_ExtractFunctionsFromReport(t *testing.T) {
 }
 
 func TestComplexityAggregator_CollectDetailedFunctions(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
 
 	results := map[string]analyze.Report{
@@ -332,7 +347,7 @@ func TestComplexityAggregator_CollectDetailedFunctions(t *testing.T) {
 				{"name": "file2_func2"},
 			},
 		},
-		"file3": nil, // nil report should be skipped
+		"file3": nil, // Nil report should be skipped.
 	}
 
 	aggregator.collectDetailedFunctions(results)
@@ -343,8 +358,10 @@ func TestComplexityAggregator_CollectDetailedFunctions(t *testing.T) {
 }
 
 func TestComplexityAggregator_AddDetailedFunctionsToResult(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewComplexityAggregator()
-	aggregator.detailedFunctions = []map[string]interface{}{
+	aggregator.detailedFunctions = []map[string]any{
 		{"name": "func1"},
 		{"name": "func2"},
 	}
@@ -352,8 +369,8 @@ func TestComplexityAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 	result := analyze.Report{}
 	aggregator.addDetailedFunctionsToResult(result)
 
-	functions, ok := result["functions"].([]map[string]interface{})
-	if !ok {
+	functions, fnOK := result["functions"].([]map[string]any)
+	if !fnOK {
 		t.Fatal("Expected functions to be added to result")
 	}
 
@@ -361,12 +378,12 @@ func TestComplexityAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 		t.Errorf("Expected 2 functions in result, got %d", len(functions))
 	}
 
-	// Test with empty detailed functions
+	// Test with empty detailed functions.
 	aggregator2 := NewComplexityAggregator()
 	result2 := analyze.Report{}
 	aggregator2.addDetailedFunctionsToResult(result2)
 
-	if _, ok := result2["functions"]; ok {
+	if _, hasFunc := result2["functions"]; hasFunc {
 		t.Error("Expected no functions key when detailedFunctions is empty")
 	}
 }

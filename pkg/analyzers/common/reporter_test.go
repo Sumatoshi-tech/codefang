@@ -1,4 +1,4 @@
-package common
+package common //nolint:testpackage // testing internal implementation.
 
 import (
 	"encoding/json"
@@ -9,6 +9,8 @@ import (
 )
 
 func TestNewReporter(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format:         "text",
 		IncludeDetails: true,
@@ -33,6 +35,8 @@ func TestNewReporter(t *testing.T) {
 }
 
 func TestNewReporter_DefaultConfig(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{}
 	reporter := NewReporter(config)
 
@@ -42,6 +46,8 @@ func TestNewReporter_DefaultConfig(t *testing.T) {
 }
 
 func TestReporter_GenerateReport_Text(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "text",
 	}
@@ -54,7 +60,6 @@ func TestReporter_GenerateReport_Text(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateReport(report)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,6 +70,8 @@ func TestReporter_GenerateReport_Text(t *testing.T) {
 }
 
 func TestReporter_GenerateReport_JSON(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "json",
 	}
@@ -77,14 +84,13 @@ func TestReporter_GenerateReport_JSON(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateReport(report)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify it's valid JSON
-	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+	// Verify it's valid JSON.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil { //nolint:govet,noinlineerr // inline error return is clear.
 		t.Errorf("result is not valid JSON: %v", err)
 	}
 
@@ -94,6 +100,8 @@ func TestReporter_GenerateReport_JSON(t *testing.T) {
 }
 
 func TestReporter_GenerateReport_Summary(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "summary",
 	}
@@ -107,7 +115,6 @@ func TestReporter_GenerateReport_Summary(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateReport(report)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,6 +129,8 @@ func TestReporter_GenerateReport_Summary(t *testing.T) {
 }
 
 func TestReporter_GenerateReport_DefaultFormat(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "unknown",
 	}
@@ -132,25 +141,25 @@ func TestReporter_GenerateReport_DefaultFormat(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateReport(report)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should default to text format
+	// Should default to text format.
 	if result == "" {
 		t.Error("expected non-empty result for default format")
 	}
 }
 
 func TestReporter_GenerateSummaryReport_NilReport(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "summary",
 	}
 	reporter := NewReporter(config)
 
 	result, err := reporter.GenerateReport(nil)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,6 +170,8 @@ func TestReporter_GenerateSummaryReport_NilReport(t *testing.T) {
 }
 
 func TestReporter_GenerateSummaryReport_WithMetricKeys(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format:     "summary",
 		MetricKeys: []string{"score"},
@@ -176,7 +187,6 @@ func TestReporter_GenerateSummaryReport_WithMetricKeys(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateReport(report)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -187,6 +197,8 @@ func TestReporter_GenerateSummaryReport_WithMetricKeys(t *testing.T) {
 }
 
 func TestReporter_GenerateComparisonReport_Empty(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "text",
 	}
@@ -195,7 +207,6 @@ func TestReporter_GenerateComparisonReport_Empty(t *testing.T) {
 	reports := map[string]analyze.Report{}
 
 	result, err := reporter.GenerateComparisonReport(reports)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,6 +217,8 @@ func TestReporter_GenerateComparisonReport_Empty(t *testing.T) {
 }
 
 func TestReporter_GenerateComparisonReport_Text(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "text",
 	}
@@ -217,7 +230,6 @@ func TestReporter_GenerateComparisonReport_Text(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateComparisonReport(reports)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,6 +244,8 @@ func TestReporter_GenerateComparisonReport_Text(t *testing.T) {
 }
 
 func TestReporter_GenerateComparisonReport_JSON(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "json",
 	}
@@ -243,14 +257,13 @@ func TestReporter_GenerateComparisonReport_JSON(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateComparisonReport(reports)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify it's valid JSON
-	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+	// Verify it's valid JSON.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil { //nolint:govet,noinlineerr // inline error return is clear.
 		t.Errorf("result is not valid JSON: %v", err)
 	}
 
@@ -264,6 +277,8 @@ func TestReporter_GenerateComparisonReport_JSON(t *testing.T) {
 }
 
 func TestReporter_GenerateComparisonReport_Summary(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format: "summary",
 	}
@@ -275,7 +290,6 @@ func TestReporter_GenerateComparisonReport_Summary(t *testing.T) {
 	}
 
 	result, err := reporter.GenerateComparisonReport(reports)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,19 +300,20 @@ func TestReporter_GenerateComparisonReport_Summary(t *testing.T) {
 }
 
 func TestReporter_GenerateComparisonReport_SingleReport(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format:     "text",
 		MetricKeys: []string{"score"},
 	}
 	reporter := NewReporter(config)
 
-	// Single report - comparison metrics should be empty
+	// Single report - comparison metrics should be empty.
 	reports := map[string]analyze.Report{
 		"report1": {"score": 0.85},
 	}
 
 	result, err := reporter.GenerateComparisonReport(reports)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -308,21 +323,23 @@ func TestReporter_GenerateComparisonReport_SingleReport(t *testing.T) {
 	}
 }
 
-func TestReporter_ToFloat(t *testing.T) {
+func TestReporter_ToFloat(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+	t.Parallel()
+
 	reporter := NewReporter(ReportConfig{})
 
 	tests := []struct {
+		input    any
 		name     string
-		input    interface{}
 		expected float64
 		ok       bool
 	}{
-		{"float64", float64(1.5), 1.5, true},
-		{"int", int(10), 10.0, true},
-		{"int32", int32(20), 20.0, true},
-		{"int64", int64(30), 30.0, true},
-		{"string", "not a number", 0, false},
-		{"nil", nil, 0, false},
+		{float64(1.5), "float64", 1.5, true},
+		{int(10), "int", 10.0, true},
+		{int32(20), "int32", 20.0, true},
+		{int64(30), "int64", 30.0, true},
+		{"not a number", "string", 0, false},
+		{nil, "nil", 0, false},
 	}
 
 	for _, tt := range tests {
@@ -331,6 +348,7 @@ func TestReporter_ToFloat(t *testing.T) {
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)
 			}
+
 			if ok && result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -338,21 +356,23 @@ func TestReporter_ToFloat(t *testing.T) {
 	}
 }
 
-func TestReporter_ToInt(t *testing.T) {
+func TestReporter_ToInt(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+	t.Parallel()
+
 	reporter := NewReporter(ReportConfig{})
 
 	tests := []struct {
+		input    any
 		name     string
-		input    interface{}
 		expected int
 		ok       bool
 	}{
-		{"int", int(10), 10, true},
-		{"int32", int32(20), 20, true},
-		{"int64", int64(30), 30, true},
-		{"float64", float64(40.5), 40, true},
-		{"string", "not a number", 0, false},
-		{"nil", nil, 0, false},
+		{int(10), "int", 10, true},
+		{int32(20), "int32", 20, true},
+		{int64(30), "int64", 30, true},
+		{float64(40.5), "float64", 40, true},
+		{"not a number", "string", 0, false},
+		{nil, "nil", 0, false},
 	}
 
 	for _, tt := range tests {
@@ -361,6 +381,7 @@ func TestReporter_ToInt(t *testing.T) {
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)
 			}
+
 			if ok && result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -369,6 +390,8 @@ func TestReporter_ToInt(t *testing.T) {
 }
 
 func TestReporter_ExtractKeyMetrics_WithConfiguredKeys(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		MetricKeys: []string{"score", "complexity"},
 	}
@@ -401,6 +424,8 @@ func TestReporter_ExtractKeyMetrics_WithConfiguredKeys(t *testing.T) {
 }
 
 func TestReporter_ExtractKeyMetrics_WithoutConfiguredKeys(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{}
 	reporter := NewReporter(config)
 
@@ -412,7 +437,7 @@ func TestReporter_ExtractKeyMetrics_WithoutConfiguredKeys(t *testing.T) {
 
 	metrics := reporter.extractKeyMetrics(report)
 
-	// Should extract all numeric values
+	// Should extract all numeric values.
 	if _, ok := metrics["score"]; !ok {
 		t.Error("expected score to be extracted")
 	}
@@ -423,6 +448,8 @@ func TestReporter_ExtractKeyMetrics_WithoutConfiguredKeys(t *testing.T) {
 }
 
 func TestReporter_ExtractCounts_WithConfiguredKeys(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		CountKeys: []string{"total_items"},
 	}
@@ -446,6 +473,8 @@ func TestReporter_ExtractCounts_WithConfiguredKeys(t *testing.T) {
 }
 
 func TestReporter_CompareMetrics_WithConfiguredKeys(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		Format:     "text",
 		MetricKeys: []string{"score"},
@@ -463,13 +492,15 @@ func TestReporter_CompareMetrics_WithConfiguredKeys(t *testing.T) {
 		t.Error("expected comparison to include configured metric")
 	}
 
-	// Should only compare configured metrics
+	// Should only compare configured metrics.
 	if strings.Contains(result, "other") {
 		t.Error("should not compare non-configured metrics")
 	}
 }
 
 func TestReporter_CompareMetricsData(t *testing.T) {
+	t.Parallel()
+
 	config := ReportConfig{
 		MetricKeys: []string{"score"},
 	}
@@ -497,6 +528,8 @@ func TestReporter_CompareMetricsData(t *testing.T) {
 }
 
 func TestReporter_FormatMetricComparison_Empty(t *testing.T) {
+	t.Parallel()
+
 	reporter := NewReporter(ReportConfig{})
 
 	result := reporter.formatMetricComparison("test", map[string]float64{})
@@ -507,6 +540,8 @@ func TestReporter_FormatMetricComparison_Empty(t *testing.T) {
 }
 
 func TestReporter_FormatMetricComparison_Sorted(t *testing.T) {
+	t.Parallel()
+
 	reporter := NewReporter(ReportConfig{})
 
 	values := map[string]float64{
@@ -517,18 +552,18 @@ func TestReporter_FormatMetricComparison_Sorted(t *testing.T) {
 
 	result := reporter.formatMetricComparison("score", values)
 
-	// Should be sorted by value descending
+	// Should be sorted by value descending.
 	lines := strings.Split(result, "\n")
 	if len(lines) < 4 {
 		t.Fatalf("expected at least 4 lines, got %d", len(lines))
 	}
 
-	// First line is the metric name
+	// First line is the metric name.
 	if !strings.Contains(lines[0], "score") {
 		t.Error("expected first line to contain metric name")
 	}
 
-	// Values should be sorted descending
+	// Values should be sorted descending.
 	if !strings.Contains(lines[1], "high") {
 		t.Error("expected 'high' to be first (highest value)")
 	}

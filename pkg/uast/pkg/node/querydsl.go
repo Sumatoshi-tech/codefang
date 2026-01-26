@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -9,13 +10,17 @@ import (
 // Returns an error for invalid syntax or unsupported constructs.
 func ParseDSL(input string) (DSLNode, error) {
 	parser := &QueryDSL{Buffer: input}
+
 	if isParserInitFailed(parser.Init()) {
 		return nil, createParserInitError(parser.Init())
 	}
+
 	if isParseFailed(parser.Parse()) {
 		return nil, createParseError(parser.Parse())
 	}
-	ast := parser.tokens32.AST()
+
+	ast := parser.AST()
+
 	return ConvertAST(ast, input), nil
 }
 
@@ -31,11 +36,16 @@ func isParseFailed(err error) bool {
 	return err != nil
 }
 
+// errUnknownInput is returned when the parser encounters unknown input.
+var errUnknownInput = errors.New("parse error at 1:1: unknown input")
+
 func createParseError(err error) error {
 	errStr := err.Error()
+
 	if isUnknownInputError(errStr) {
-		return fmt.Errorf("parse error at 1:1: unknown input")
+		return errUnknownInput
 	}
+
 	return fmt.Errorf("parse error: %w", err)
 }
 
@@ -44,12 +54,14 @@ func isUnknownInputError(errStr string) bool {
 }
 
 // ConvertAST converts a *node32 parse tree to the legacy DSLNode AST.
-func ConvertAST(n *node32, buffer string) DSLNode {
-	if isNodeNilNode(n) {
+func ConvertAST(root *node32, buffer string) DSLNode {
+	if isNodeNilNode(root) {
 		return nil
 	}
-	rule := rul3s[n.pegRule]
-	return convertNodeByRule(n, rule, buffer)
+
+	rule := rul3s[root.pegRule]
+
+	return convertNodeByRule(root, rule, buffer)
 }
 
 func isNodeNilNode(n *node32) bool {
@@ -60,15 +72,18 @@ func isNilDSLNode(n DSLNode) bool {
 	return n == nil
 }
 
-func convertNodeByRule(n *node32, rule string, buffer string) DSLNode {
+func convertNodeByRule(n *node32, rule, buffer string) DSLNode {
 	converter := getRuleConverter(rule)
+
 	return converter(n, buffer)
 }
 
 type nodeConverter func(*node32, string) DSLNode
 
+//nolint:gochecknoglobals // Package-level lookup table for rule converters.
 var ruleConverters map[string]nodeConverter
 
+//nolint:gochecknoinits // Initializes the ruleConverters lookup table.
 func init() {
 	ruleConverters = map[string]nodeConverter{
 		"Query":       convertPipelineNode,
@@ -95,25 +110,31 @@ func getRuleConverter(rule string) nodeConverter {
 	if converter, exists := ruleConverters[rule]; exists {
 		return converter
 	}
+
 	return convertDefaultNode
 }
 
 func convertPipelineNode(n *node32, buffer string) DSLNode {
 	stages := collectStages(n, buffer)
+
 	if isSingleStage(stages) {
 		return stages[0]
 	}
+
 	return &PipelineNode{Stages: stages}
 }
 
 func collectStages(n *node32, buffer string) []DSLNode {
 	var stages []DSLNode
+
 	for c := n.up; c != nil; c = c.next {
 		stage := ConvertAST(c, buffer)
+
 		if isNotNullStage(stage) {
 			stages = append(stages, stage)
 		}
 	}
+
 	return stages
 }
 
@@ -133,16 +154,16 @@ func newExprNodeFactory(nodeType string) *exprNodeFactory {
 	return &exprNodeFactory{nodeType: nodeType}
 }
 
-func (f *exprNodeFactory) create(n *node32, buffer string) DSLNode {
+func (f *exprNodeFactory) create(node *node32, buffer string) DSLNode {
 	switch f.nodeType {
 	case "Map":
-		return &MapNode{Expr: ConvertAST(n.up, buffer)}
+		return &MapNode{Expr: ConvertAST(node.up, buffer)}
 	case "RMap":
-		return &RMapNode{Expr: ConvertAST(n.up, buffer)}
+		return &RMapNode{Expr: ConvertAST(node.up, buffer)}
 	case "Filter":
-		return &FilterNode{Expr: ConvertAST(n.up, buffer)}
+		return &FilterNode{Expr: ConvertAST(node.up, buffer)}
 	case "RFilter":
-		return &RFilterNode{Expr: ConvertAST(n.up, buffer)}
+		return &RFilterNode{Expr: ConvertAST(node.up, buffer)}
 	default:
 		return nil
 	}
@@ -167,8 +188,10 @@ func convertRFilterNode(n *node32, buffer string) DSLNode {
 func convertReduceNode(n *node32, buffer string) DSLNode {
 	if hasUpNode(n) {
 		name := extractNodeName(n, buffer)
+
 		return &ReduceNode{Expr: &CallNode{Name: name, Args: nil}}
 	}
+
 	return &ReduceNode{Expr: nil}
 }
 
@@ -184,16 +207,20 @@ func extractNodeText(node *node32, buffer string) string {
 	return buffer[node.begin:node.end]
 }
 
+//nolint:iface // Returns DSLNode by design.
 func convertFieldAccessNode(n *node32, buffer string) DSLNode {
 	var fields []string
+
 	for c := n.up; c != nil; c = c.next {
 		if isIdentifierRule(c) {
 			fields = append(fields, buffer[c.begin:c.end])
 		}
 	}
+
 	if len(fields) > 0 {
 		return &FieldNode{Fields: fields}
 	}
+
 	return nil
 }
 
@@ -204,19 +231,25 @@ func isIdentifierRule(c *node32) bool {
 func convertLiteralNode(n *node32, buffer string) DSLNode {
 	if hasUpNode(n) {
 		val := ConvertAST(n.up, buffer)
+
 		if isLiteralNode(val) {
 			return val
 		}
+
 		return &LiteralNode{Value: val}
 	}
+
 	return nil
 }
 
+//nolint:iface // Returns DSLNode by design.
 func convertStringNode(n *node32, buffer string) DSLNode {
 	val := buffer[n.begin:n.end]
+
 	if isQuotedString(val) {
 		val = removeQuotes(val)
 	}
+
 	return &LiteralNode{Value: val}
 }
 
@@ -232,22 +265,28 @@ func convertNumberBooleanNode(n *node32, buffer string) DSLNode {
 	return createLiteralFromNode(n, buffer)
 }
 
+//nolint:iface // Returns DSLNode by design.
 func createLiteralFromNode(n *node32, buffer string) DSLNode {
 	return &LiteralNode{Value: buffer[n.begin:n.end]}
 }
 
+//nolint:iface // Returns DSLNode by design.
 func convertComparisonNode(n *node32, buffer string) DSLNode {
 	left, right, op := extractComparisonParts(n, buffer)
 	left = wrapAsLiteralIfNeeded(left)
 	right = wrapAsLiteralIfNeeded(right)
+
 	return &CallNode{Name: op, Args: []DSLNode{left, right}}
 }
 
+//nolint:gocritic // Unnamed results for multi-return.
 func extractComparisonParts(n *node32, buffer string) (DSLNode, DSLNode, string) {
 	parts := &comparisonParts{}
+
 	for c := n.up; c != nil; c = c.next {
 		parts.processChild(c, buffer)
 	}
+
 	return parts.left, parts.right, parts.op
 }
 
@@ -257,13 +296,14 @@ type comparisonParts struct {
 	valueCount  int
 }
 
-func (p *comparisonParts) processChild(c *node32, buffer string) {
-	rule := rul3s[c.pegRule]
+func (p *comparisonParts) processChild(child *node32, buffer string) {
+	rule := rul3s[child.pegRule]
+
 	switch rule {
 	case "Value":
-		p.processValue(c, buffer)
+		p.processValue(child, buffer)
 	case "CompOp":
-		p.op = buffer[c.begin:c.end]
+		p.op = buffer[child.begin:child.end]
 	}
 }
 
@@ -289,30 +329,37 @@ func wrapAsLiteralIfNeeded(node DSLNode) DSLNode {
 	if isStringNode(node) {
 		return &LiteralNode{Value: node}
 	}
+
 	return node
 }
 
 func isStringNode(node DSLNode) bool {
 	_, ok := node.(string)
+
 	return ok
 }
 
 func convertOrExprNode(n *node32, buffer string) DSLNode {
 	args := collectOrExprArgs(n, buffer)
+
 	if isSingleArg(args) {
 		return args[0]
 	}
+
 	return foldOrExprArgs(args)
 }
 
 func collectOrExprArgs(n *node32, buffer string) []DSLNode {
 	var args []DSLNode
+
 	for c := n.up; c != nil; c = c.next {
 		child := ConvertAST(c, buffer)
+
 		if isNotNullStage(child) {
 			args = append(args, child)
 		}
 	}
+
 	return args
 }
 
@@ -322,57 +369,73 @@ func isSingleArg(args []DSLNode) bool {
 
 func foldOrExprArgs(args []DSLNode) DSLNode {
 	cur := args[0]
+
 	for i := 1; i < len(args); i++ {
 		cur = &CallNode{Name: "||", Args: []DSLNode{cur, args[i]}}
 	}
+
 	return cur
 }
 
 func convertAndExprNode(n *node32, buffer string) DSLNode {
 	args := collectAndExprArgs(n, buffer)
+
 	if isSingleArg(args) {
 		return args[0]
 	}
+
 	return foldAndExprArgs(args)
 }
 
 func collectAndExprArgs(n *node32, buffer string) []DSLNode {
 	var args []DSLNode
+
 	for c := n.up; c != nil; c = c.next {
 		child := ConvertAST(c, buffer)
+
 		if isNotNullStage(child) {
 			args = append(args, child)
 		}
 	}
+
 	return args
 }
 
 func foldAndExprArgs(args []DSLNode) DSLNode {
 	cur := args[0]
+
 	for i := 1; i < len(args); i++ {
 		cur = &CallNode{Name: "&&", Args: []DSLNode{cur, args[i]}}
 	}
+
 	return cur
 }
 
+//nolint:iface // Returns DSLNode by design.
 func convertMembershipNode(n *node32, buffer string) DSLNode {
 	left, right := extractMembershipParts(n, buffer)
+
 	if isIncompleteMembership(left, right) {
 		return nil
 	}
+
 	return &CallNode{Name: "has", Args: []DSLNode{left, right}}
 }
 
+//nolint:gocritic // Unnamed results for multi-return.
 func extractMembershipParts(n *node32, buffer string) (DSLNode, DSLNode) {
 	var left, right DSLNode
+
 	for c := n.up; c != nil; c = c.next {
 		rule := rul3s[c.pegRule]
+
 		if isFieldAccessRule(rule) && isNilDSLNode(left) {
 			left = ConvertAST(c, buffer)
 		} else if isValueRule(rule) && isNilDSLNode(right) {
 			right = ConvertAST(c, buffer)
 		}
 	}
+
 	return left, right
 }
 
@@ -392,50 +455,63 @@ func convertDefaultNode(n *node32, buffer string) DSLNode {
 	if hasUpNode(n) {
 		return ConvertAST(n.up, buffer)
 	}
+
 	return nil
 }
 
-func convertNotExprNode(n *node32, buffer string) DSLNode {
-	text := buffer[n.begin:n.end]
+func convertNotExprNode(exprNode *node32, buffer string) DSLNode {
+	text := buffer[exprNode.begin:exprNode.end]
+
 	if strings.HasPrefix(text, "!") {
-		return convertNotExpression(n, buffer)
+		return convertNotExpression(exprNode, buffer)
 	}
-	return convertNormalExpression(n, buffer)
+
+	return convertNormalExpression(exprNode, buffer)
 }
 
+//nolint:iface // Returns DSLNode by design.
 func convertNotExpression(n *node32, buffer string) DSLNode {
 	child := findPrimaryExpression(n, buffer)
+
 	if child != nil {
 		return &CallNode{Name: "!", Args: []DSLNode{child}}
 	}
+
 	return nil
 }
 
 func findPrimaryExpression(n *node32, buffer string) DSLNode {
 	for c := n.up; c != nil; c = c.next {
 		rule := rul3s[c.pegRule]
+
 		if rule == "PrimaryExpr" {
 			return ConvertAST(c, buffer)
 		}
 	}
+
 	return nil
 }
 
 func convertNormalExpression(n *node32, buffer string) DSLNode {
 	children := collectValidChildren(n, buffer)
+
 	if len(children) > 0 {
 		return children[0]
 	}
+
 	return nil
 }
 
 func collectValidChildren(n *node32, buffer string) []DSLNode {
 	var children []DSLNode
+
 	for c := n.up; c != nil; c = c.next {
 		child := ConvertAST(c, buffer)
+
 		if child != nil {
 			children = append(children, child)
 		}
 	}
+
 	return children
 }

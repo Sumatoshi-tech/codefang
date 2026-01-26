@@ -1,11 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
+
+// ErrUnsupportedShell is returned when an unsupported shell is specified.
+var ErrUnsupportedShell = errors.New("unsupported shell")
 
 func completionCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -18,7 +22,7 @@ Examples:
   uast completion zsh                   # Generate zsh completion
   uast completion fish                  # Generate fish completion`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return runCompletion(args[0])
 		},
 	}
@@ -40,16 +44,24 @@ func runCompletion(shell string) error {
 	rootCmd.AddCommand(completionCmd())
 	rootCmd.AddCommand(versionCmd())
 
+	var err error
+
 	switch shell {
 	case "bash":
-		return rootCmd.GenBashCompletion(os.Stdout)
+		err = rootCmd.GenBashCompletion(os.Stdout)
 	case "zsh":
-		return rootCmd.GenZshCompletion(os.Stdout)
+		err = rootCmd.GenZshCompletion(os.Stdout)
 	case "fish":
-		return rootCmd.GenFishCompletion(os.Stdout, true)
+		err = rootCmd.GenFishCompletion(os.Stdout, true)
 	case "powershell":
-		return rootCmd.GenPowerShellCompletion(os.Stdout)
+		err = rootCmd.GenPowerShellCompletion(os.Stdout)
 	default:
-		return fmt.Errorf("unsupported shell: %s", shell)
+		return fmt.Errorf("%w: %s", ErrUnsupportedShell, shell)
 	}
+
+	if err != nil {
+		return fmt.Errorf("failed to generate %s completion: %w", shell, err)
+	}
+
+	return nil
 }

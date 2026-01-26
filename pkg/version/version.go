@@ -1,3 +1,4 @@
+// Package version provides the build version information for the Codefang binary.
 package version
 
 import (
@@ -7,14 +8,15 @@ import (
 )
 
 // BinaryGitHash is the Git hash of the Codefang binary file which is executing.
-var BinaryGitHash = "<unknown>"
+var BinaryGitHash = "<unknown>" //nolint:gochecknoglobals // package-level version state is intentional.
 
-// BinaryVersion is Codefang's API version. It matches the package name.
-var Binary = 0
+// Binary is Codefang's API version. It matches the package name.
+var Binary = 0 //nolint:gochecknoglobals // package-level version state is intentional.
 
 type versionProbe struct{}
 
+//nolint:gochecknoinits // init is required to extract the version from the package path at startup.
 func init() {
-	parts := strings.Split(reflect.TypeOf(versionProbe{}).PkgPath(), ".")
-	Binary, _ = strconv.Atoi(parts[len(parts)-1][1:])
+	parts := strings.Split(reflect.TypeFor[versionProbe]().PkgPath(), ".")
+	Binary, _ = strconv.Atoi(parts[len(parts)-1][1:]) //nolint:errcheck // best-effort version parsing.
 }

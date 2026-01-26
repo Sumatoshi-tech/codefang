@@ -5,7 +5,7 @@ import "fmt"
 // Color represents ANSI terminal colors.
 type Color int
 
-// Color constants
+// Color constants.
 const (
 	ColorNone Color = iota
 	ColorGreen
@@ -15,7 +15,7 @@ const (
 	ColorGray
 )
 
-// ANSI color codes
+// ANSI color codes.
 const (
 	ansiReset  = "\033[0m"
 	ansiGreen  = "\033[32m"
@@ -25,7 +25,7 @@ const (
 	ansiGray   = "\033[90m"
 )
 
-// Score thresholds for color assignment
+// Score thresholds for color assignment.
 const (
 	ScoreThresholdGood = 0.8
 	ScoreThresholdFair = 0.5
@@ -38,7 +38,8 @@ func (c Config) Colorize(text string, color Color) string {
 	}
 
 	var code string
-	switch color {
+
+	switch color { //nolint:exhaustive // not all cases need handling.
 	case ColorGreen:
 		code = ansiGreen
 	case ColorYellow:
@@ -61,8 +62,10 @@ func ColorForScore(score float64) Color {
 	if score >= ScoreThresholdGood {
 		return ColorGreen
 	}
+
 	if score >= ScoreThresholdFair {
 		return ColorYellow
 	}
+
 	return ColorRed
 }

@@ -1,16 +1,18 @@
+// Package main provides the entry point for the codefang CLI tool.
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/Sumatoshi-tech/codefang/cmd/codefang/commands"
 	"github.com/spf13/cobra"
+
+	"github.com/Sumatoshi-tech/codefang/cmd/codefang/commands"
 )
 
 var (
-	verbose bool
-	quiet   bool
+	verbose bool //nolint:gochecknoglobals // CLI flag variable
+	quiet   bool //nolint:gochecknoglobals // CLI flag variable
 )
 
 func main() {
@@ -39,12 +41,13 @@ History Analysis Examples:
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress output")
 
-	// Add commands
+	// Add commands.
 	rootCmd.AddCommand(commands.NewAnalyzeCommand())
 	rootCmd.AddCommand(commands.NewHistoryCommand())
 	rootCmd.AddCommand(versionCmd())
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -54,8 +57,8 @@ func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("codefang version 1.0.0")
+		Run: func(_ *cobra.Command, _ []string) {
+			fmt.Println("codefang version 1.0.0") //nolint:forbidigo // CLI user output
 		},
 	}
 }

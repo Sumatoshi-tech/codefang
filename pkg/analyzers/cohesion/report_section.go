@@ -7,17 +7,17 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 )
 
-// Section rendering constants
+// Section rendering constants.
 const (
 	SectionTitle = "COHESION"
 
-	// Metric labels
+	// MetricTotalFunctions and related constants define metric labels.
 	MetricTotalFunctions   = "Total Functions"
 	MetricLCOM             = "LCOM Score"
 	MetricCohesionScore    = "Cohesion Score"
 	MetricFunctionCohesion = "Avg Cohesion"
 
-	// Distribution thresholds for function cohesion
+	// DistExcellentMin and related constants define distribution thresholds for function cohesion.
 	DistExcellentMin   = 0.8
 	DistGoodMin        = 0.6
 	DistFairMin        = 0.3
@@ -26,12 +26,12 @@ const (
 	DistLabelFair      = "Fair (0.3-0.6)"
 	DistLabelPoor      = "Poor (<0.3)"
 
-	// Issue severity thresholds
+	// IssueSeverityFairMax and related constants define issue severity thresholds.
 	IssueSeverityFairMax = 0.6
 	IssueSeverityPoorMax = 0.3
 	IssueValuePrefix     = "cohesion="
 
-	// Report key names
+	// KeyTotalFunctions and related constants define report key names.
 	KeyTotalFunctions   = "total_functions"
 	KeyLCOM             = "lcom"
 	KeyCohesionScore    = "cohesion_score"
@@ -41,13 +41,14 @@ const (
 	KeyFuncName         = "name"
 	KeyFuncCohesion     = "cohesion"
 
-	// Default status message
+	// DefaultStatusMessage is the default status message.
 	DefaultStatusMessage = "No cohesion data available"
 )
 
 // CohesionReportSection implements analyze.ReportSection for cohesion analysis.
 type CohesionReportSection struct {
 	analyze.BaseReportSection
+
 	report analyze.Report
 }
 
@@ -58,6 +59,7 @@ func NewCohesionReportSection(report analyze.Report) *CohesionReportSection {
 	}
 
 	score := reportutil.GetFloat64(report, KeyCohesionScore)
+
 	msg := reportutil.GetString(report, KeyMessage)
 	if msg == "" {
 		msg = DefaultStatusMessage
@@ -107,6 +109,7 @@ func (s *CohesionReportSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(issues) {
 		return issues
 	}
+
 	return issues[:n]
 }
 
@@ -133,7 +136,7 @@ func (s *CohesionReportSection) buildSortedIssues() []analyze.Issue {
 		})
 	}
 
-	// Sort ascending (lowest cohesion = worst = first)
+	// Sort ascending (lowest cohesion = worst = first).
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Value < issues[j].Value
 	})
@@ -141,7 +144,7 @@ func (s *CohesionReportSection) buildSortedIssues() []analyze.Issue {
 	return issues
 }
 
-// --- Distribution helpers ---
+// --- Distribution helpers ---.
 
 type cohesionDistCounts struct {
 	excellent int
@@ -150,8 +153,9 @@ type cohesionDistCounts struct {
 	poor      int
 }
 
-func categorizeCohesion(functions []map[string]interface{}) cohesionDistCounts {
+func categorizeCohesion(functions []map[string]any) cohesionDistCounts {
 	var counts cohesionDistCounts
+
 	for _, fn := range functions {
 		coh := reportutil.MapFloat64(fn, KeyFuncCohesion)
 		switch {
@@ -165,10 +169,11 @@ func categorizeCohesion(functions []map[string]interface{}) cohesionDistCounts {
 			counts.poor++
 		}
 	}
+
 	return counts
 }
 
-// --- Severity helpers ---
+// --- Severity helpers ---.
 
 func severityForCohesion(coh float64) string {
 	switch {

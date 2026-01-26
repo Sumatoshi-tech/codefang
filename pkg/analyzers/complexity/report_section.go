@@ -7,11 +7,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-// Section rendering constants
+// Section rendering constants.
 const (
 	SectionTitle = "COMPLEXITY"
 
-	// Score thresholds map average complexity to a 0-1 score
+	// ScoreExcellentThreshold is the upper bound of average complexity for an excellent score.
 	ScoreExcellentThreshold = 1.0
 	ScoreGoodThreshold      = 3.0
 	ScoreFairThreshold      = 5.0
@@ -25,7 +25,7 @@ const (
 	ScorePoor      = 0.2
 	ScoreCritical  = 0.1
 
-	// Distribution thresholds for cyclomatic complexity
+	// DistSimpleMax is the maximum cyclomatic complexity for the "simple" distribution bucket.
 	DistSimpleMax    = 5
 	DistModerateMax  = 10
 	DistComplexMax   = 20
@@ -34,12 +34,12 @@ const (
 	DistLabelComplex = "Complex (11-20)"
 	DistLabelVeryC   = "Very Complex (>20)"
 
-	// Issue severity thresholds for cyclomatic complexity
+	// IssueSeverityFairMin is the minimum cyclomatic complexity for fair severity.
 	IssueSeverityFairMin = 6
 	IssueSeverityPoorMin = 11
 	IssueValuePrefix     = "CC="
 
-	// Metric labels
+	// MetricTotalFunctions is the label for the total functions metric.
 	MetricTotalFunctions  = "Total Functions"
 	MetricAvgComplexity   = "Avg Complexity"
 	MetricMaxComplexity   = "Max Complexity"
@@ -47,10 +47,10 @@ const (
 	MetricCognitiveTotal  = "Cognitive Total"
 	MetricDecisionPoints  = "Decision Points"
 
-	// Default status message when report has no message
+	// DefaultStatusMessage is the fallback message when no complexity data is available.
 	DefaultStatusMessage = "No complexity data available"
 
-	// Report key names
+	// KeyAvgComplexity is the report key for average complexity.
 	KeyAvgComplexity       = "average_complexity"
 	KeyTotalFunctions      = "total_functions"
 	KeyMaxComplexity       = "max_complexity"
@@ -66,6 +66,7 @@ const (
 // ComplexityReportSection implements analyze.ReportSection for complexity analysis.
 type ComplexityReportSection struct {
 	analyze.BaseReportSection
+
 	report analyze.Report
 }
 
@@ -76,6 +77,7 @@ func NewComplexityReportSection(report analyze.Report) *ComplexityReportSection 
 	}
 
 	avg := getFloat64(report, KeyAvgComplexity)
+
 	msg := getString(report, KeyMessage)
 	if msg == "" {
 		msg = DefaultStatusMessage
@@ -122,6 +124,7 @@ func (s *ComplexityReportSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(issues) {
 		return issues
 	}
+
 	return issues[:n]
 }
 
@@ -155,7 +158,7 @@ func (s *ComplexityReportSection) buildSortedIssues() []analyze.Issue {
 	return issues
 }
 
-// --- Score calculation ---
+// --- Score calculation ---.
 
 func calculateScore(avgComplexity float64) float64 {
 	switch {
@@ -174,7 +177,7 @@ func calculateScore(avgComplexity float64) float64 {
 	}
 }
 
-// --- Distribution helpers ---
+// --- Distribution helpers ---.
 
 type distCounts struct {
 	simple      int
@@ -183,8 +186,9 @@ type distCounts struct {
 	veryComplex int
 }
 
-func categorize(functions []map[string]interface{}) distCounts {
+func categorize(functions []map[string]any) distCounts {
 	var counts distCounts
+
 	for _, fn := range functions {
 		cc := getIntFromMap(fn, KeyFuncCyclomatic)
 		switch {
@@ -198,6 +202,7 @@ func categorize(functions []map[string]interface{}) distCounts {
 			counts.veryComplex++
 		}
 	}
+
 	return counts
 }
 
@@ -214,10 +219,11 @@ func pct(count, total int) float64 {
 	if total == 0 {
 		return 0
 	}
+
 	return float64(count) / float64(total)
 }
 
-// --- Severity helpers ---
+// --- Severity helpers ---.
 
 func severityForComplexity(cc int) string {
 	switch {
@@ -230,7 +236,7 @@ func severityForComplexity(cc int) string {
 	}
 }
 
-// --- Type-safe report field accessors ---
+// --- Type-safe report field accessors ---.
 
 func getFloat64(report analyze.Report, key string) float64 {
 	if v, ok := report[key]; ok {
@@ -241,6 +247,7 @@ func getFloat64(report analyze.Report, key string) float64 {
 			return float64(val)
 		}
 	}
+
 	return 0
 }
 
@@ -253,37 +260,41 @@ func getInt(report analyze.Report, key string) int {
 			return int(val)
 		}
 	}
+
 	return 0
 }
 
 func getString(report analyze.Report, key string) string {
 	if v, ok := report[key]; ok {
-		if s, ok := v.(string); ok {
+		if s, isStr := v.(string); isStr {
 			return s
 		}
 	}
+
 	return ""
 }
 
-func getFunctions(report analyze.Report) []map[string]interface{} {
+func getFunctions(report analyze.Report) []map[string]any {
 	if v, ok := report[KeyFunctions]; ok {
-		if fns, ok := v.([]map[string]interface{}); ok {
+		if fns, isFns := v.([]map[string]any); isFns {
 			return fns
 		}
 	}
+
 	return nil
 }
 
-func getStringFromMap(m map[string]interface{}, key string) string {
+func getStringFromMap(m map[string]any, key string) string {
 	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
+		if s, isStr := v.(string); isStr {
 			return s
 		}
 	}
+
 	return ""
 }
 
-func getIntFromMap(m map[string]interface{}, key string) int {
+func getIntFromMap(m map[string]any, key string) int {
 	if v, ok := m[key]; ok {
 		switch val := v.(type) {
 		case int:
@@ -292,13 +303,14 @@ func getIntFromMap(m map[string]interface{}, key string) int {
 			return int(val)
 		}
 	}
+
 	return 0
 }
 
-// --- Formatting helpers ---
+// --- Formatting helpers ---.
 
 func formatInt(v int) string {
-	return fmt.Sprintf("%d", v)
+	return fmt.Sprintf("%d", v) //nolint:perfsprint // fmt.Sprintf is clearer than string concat.
 }
 
 func formatFloat(v float64) string {

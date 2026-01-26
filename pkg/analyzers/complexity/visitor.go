@@ -6,21 +6,23 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const anonymousFunctionName = "anonymous"
+
 type complexityContext struct {
 	functionNode *node.Node
 	metrics      FunctionMetrics
 	nestingLevel int
 }
 
-// ComplexityVisitor implements NodeVisitor for complexity analysis
+// ComplexityVisitor implements NodeVisitor for complexity analysis.
 type ComplexityVisitor struct {
-	contexts          []*complexityContext
 	totals            map[string]int
+	contexts          []*complexityContext
+	detailedFunctions []map[string]any
 	maxComplexity     int
-	detailedFunctions []map[string]interface{}
 }
 
-// NewComplexityVisitor creates a new ComplexityVisitor
+// NewComplexityVisitor creates a new ComplexityVisitor.
 func NewComplexityVisitor() *ComplexityVisitor {
 	return &ComplexityVisitor{
 		contexts: make([]*complexityContext, 0),
@@ -30,11 +32,12 @@ func NewComplexityVisitor() *ComplexityVisitor {
 			"nesting_depth":    0,
 			"decision_points":  0,
 		},
-		detailedFunctions: make([]map[string]interface{}, 0),
+		detailedFunctions: make([]map[string]any, 0),
 	}
 }
 
-func (v *ComplexityVisitor) OnEnter(n *node.Node, depth int) {
+// OnEnter is called when entering a node during AST traversal.
+func (v *ComplexityVisitor) OnEnter(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.pushContext(n)
 	}
@@ -44,7 +47,8 @@ func (v *ComplexityVisitor) OnEnter(n *node.Node, depth int) {
 	}
 }
 
-func (v *ComplexityVisitor) OnExit(n *node.Node, depth int) {
+// OnExit is called when exiting a node during AST traversal.
+func (v *ComplexityVisitor) OnExit(n *node.Node, _ int) {
 	if ctx := v.currentContext(); ctx != nil {
 		v.updateMetricsExit(ctx, n)
 	}
@@ -54,6 +58,7 @@ func (v *ComplexityVisitor) OnExit(n *node.Node, depth int) {
 	}
 }
 
+// GetReport returns the collected analysis report.
 func (v *ComplexityVisitor) GetReport() analyze.Report {
 	totalFunctions := v.totals["total_functions"]
 	totalComplexity := v.totals["total_complexity"]
@@ -85,17 +90,17 @@ func (v *ComplexityVisitor) isFunction(n *node.Node) bool {
 		n.HasAllRoles(node.RoleFunction, node.RoleDeclaration)
 }
 
-func (v *ComplexityVisitor) pushContext(n *node.Node) {
-	name, _ := common.ExtractFunctionName(n)
+func (v *ComplexityVisitor) pushContext(funcNode *node.Node) {
+	name, _ := common.ExtractFunctionName(funcNode)
 	if name == "" {
-		name = "anonymous"
+		name = anonymousFunctionName
 	}
 
 	ctx := &complexityContext{
-		functionNode: n,
+		functionNode: funcNode,
 		metrics: FunctionMetrics{
 			Name:                 name,
-			CyclomaticComplexity: 1, // Base complexity
+			CyclomaticComplexity: 1, // Base complexity.
 		},
 		nestingLevel: 0,
 	}
@@ -106,10 +111,11 @@ func (v *ComplexityVisitor) popContext() {
 	if len(v.contexts) == 0 {
 		return
 	}
+
 	ctx := v.contexts[len(v.contexts)-1]
 	v.contexts = v.contexts[:len(v.contexts)-1]
 
-	// Aggregate results
+	// Aggregate results.
 	v.totals["total_functions"]++
 	v.totals["total_complexity"] += ctx.metrics.CyclomaticComplexity
 	v.totals["nesting_depth"] += ctx.metrics.NestingDepth
@@ -119,8 +125,8 @@ func (v *ComplexityVisitor) popContext() {
 		v.maxComplexity = ctx.metrics.CyclomaticComplexity
 	}
 
-	// Collect detailed function info
-	v.detailedFunctions = append(v.detailedFunctions, map[string]interface{}{
+	// Collect detailed function info.
+	v.detailedFunctions = append(v.detailedFunctions, map[string]any{
 		"name":                  ctx.metrics.Name,
 		"cyclomatic_complexity": ctx.metrics.CyclomaticComplexity,
 		"nesting_depth":         ctx.metrics.NestingDepth,
@@ -131,6 +137,7 @@ func (v *ComplexityVisitor) currentContext() *complexityContext {
 	if len(v.contexts) == 0 {
 		return nil
 	}
+
 	return v.contexts[len(v.contexts)-1]
 }
 
@@ -158,9 +165,11 @@ func (v *ComplexityVisitor) isDecisionPoint(n *node.Node) bool {
 	if n.Type == node.UASTIf || n.Type == node.UASTLoop || n.Type == node.UASTSwitch {
 		return true
 	}
+
 	if n.HasAnyRole(node.RoleCondition) {
 		return true
 	}
+
 	return false
 }
 

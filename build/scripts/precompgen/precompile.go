@@ -1,9 +1,11 @@
+// Package main provides the precompilation tool for UAST mapping files.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,31 +15,40 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
 
+// errNoUASTMapFiles is returned when no .uastmap files are found.
+var errNoUASTMapFiles = errors.New("no .uastmap files found")
+
 func main() {
 	var (
-		output  = flag.String("o", "pkg/uast/embedded_mappings.gen.go", "output file for embedded mappings")
-		quiet   = flag.Bool("q", false, "suppress output")
-		verbose = flag.Bool("v", false, "verbose output")
+		output = flag.String("o", "pkg/uast/embedded_mappings.gen.go", "output file for embedded mappings")
+		quiet  = flag.Bool("q", false, "suppress output")
 	)
+
 	flag.Parse()
 
-	if err := runPrecompile(*output, *quiet, *verbose); err != nil {
-		log.Fatal(err)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	err := runPrecompile(logger, *output, *quiet)
+	if err != nil {
+		logger.Error("precompile failed", "error", err)
+		os.Exit(1)
 	}
 }
 
-func runPrecompile(outputFile string, quiet, verbose bool) error {
+//nolint:gocognit // This function orchestrates file discovery, parsing, and collection which are tightly coupled steps.
+func runPrecompile(logger *slog.Logger, outputFile string, quiet bool) error {
 	uastmapsDir := "pkg/uast/uastmaps"
 	if !quiet {
-		fmt.Printf("Looking for .uastmap files in %s...\n", uastmapsDir)
+		logger.Info("Looking for .uastmap files", "dir", uastmapsDir)
 	}
 
-	entries, err := os.ReadDir(uastmapsDir)
-	if err != nil {
-		return fmt.Errorf("failed to read uastmaps directory: %w", err)
+	entries, readErr := os.ReadDir(uastmapsDir)
+	if readErr != nil {
+		return fmt.Errorf("failed to read uastmaps directory: %w", readErr)
 	}
 
 	var uastmapFiles []string
+
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".uastmap") {
 			uastmapFiles = append(uastmapFiles, filepath.Join(uastmapsDir, entry.Name()))
@@ -45,77 +56,88 @@ func runPrecompile(outputFile string, quiet, verbose bool) error {
 	}
 
 	if len(uastmapFiles) == 0 {
-		return fmt.Errorf("no .uastmap files found in %s/", uastmapsDir)
+		return fmt.Errorf("%w in %s/", errNoUASTMapFiles, uastmapsDir)
 	}
 
 	if !quiet {
-		fmt.Printf("Found %d uastmap files to pre-compile\n", len(uastmapFiles))
+		logger.Info("Found uastmap files to pre-compile", "count", len(uastmapFiles))
 	}
 
 	var allMappings []uast.PrecompiledMapping
+
 	successCount := 0
 
 	for _, filePath := range uastmapFiles {
 		if !quiet {
-			fmt.Printf("Processing %s...\n", filepath.Base(filePath))
+			logger.Info("Processing file", "file", filepath.Base(filePath))
 		}
 
-		f, err := os.Open(filePath)
-		if err != nil {
+		uastFile, openErr := os.Open(filePath)
+		if openErr != nil {
 			if !quiet {
-				fmt.Printf("Warning: Failed to open %s: %v\n", filepath.Base(filePath), err)
+				logger.Warn("Failed to open file", "file", filepath.Base(filePath), "error", openErr)
 			}
+
 			continue
 		}
-		defer f.Close()
 
-		parser := &mapping.MappingParser{}
-		rules, langInfo, err := parser.ParseMapping(f)
-		if err != nil {
+		mappingParser := &mapping.MappingParser{}
+
+		rules, langInfo, parseErr := mappingParser.ParseMapping(uastFile)
+
+		uastFile.Close()
+
+		if parseErr != nil {
 			if !quiet {
-				fmt.Printf("Warning: Failed to pre-compile %s: %v\n", filepath.Base(filePath), err)
+				logger.Warn("Failed to pre-compile", "file", filepath.Base(filePath), "error", parseErr)
 			}
+
 			continue
 		}
 
 		languageName := filepath.Base(filePath)
 		languageName = strings.TrimSuffix(languageName, ".uastmap")
 
-		mapping := uast.PrecompiledMapping{
+		precompiled := uast.PrecompiledMapping{
 			Language:   languageName,
 			Extensions: langInfo.Extensions,
 			Rules:      rules,
+			Patterns:   nil,
+			CompiledAt: "",
 		}
 
-		allMappings = append(allMappings, mapping)
+		allMappings = append(allMappings, precompiled)
 		successCount++
 	}
 
 	if !quiet {
-		fmt.Printf("Successfully pre-compiled %d/%d uastmap files\n", successCount, len(uastmapFiles))
+		logger.Info("Pre-compilation complete", "success", successCount, "total", len(uastmapFiles))
 	}
 
-	return runPrecompileGo(allMappings, outputFile, quiet)
+	return runPrecompileGo(logger, allMappings, outputFile, quiet)
 }
 
-func runPrecompileGo(mappings []uast.PrecompiledMapping, outputFile string, quiet bool) error {
+func runPrecompileGo(logger *slog.Logger, mappings []uast.PrecompiledMapping, outputFile string, quiet bool) error {
 	goCode := generateGoCode(mappings)
 
-	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
+	mkdirErr := os.MkdirAll(filepath.Dir(outputFile), 0o750)
+	if mkdirErr != nil {
+		return fmt.Errorf("failed to create output directory: %w", mkdirErr)
 	}
 
-	if err := os.WriteFile(outputFile, []byte(goCode), 0644); err != nil {
-		return fmt.Errorf("failed to write Go file: %w", err)
+	writeErr := os.WriteFile(outputFile, []byte(goCode), 0o600)
+	if writeErr != nil {
+		return fmt.Errorf("failed to write Go file: %w", writeErr)
 	}
 
 	if !quiet {
-		fmt.Printf("Go code with embedded mappings saved to: %s\n", outputFile)
+		logger.Info("Go code with embedded mappings saved", "file", outputFile)
 	}
 
 	return nil
 }
 
+//nolint:funlen // This function defines a Go template which is inherently long but cannot be meaningfully split.
 func generateGoCode(mappings []uast.PrecompiledMapping) string {
 	const goTemplate = `// Code generated by scripts/precompile.go. DO NOT EDIT.
 
@@ -257,7 +279,7 @@ func new{{.Language}}PatternMatcher() *{{.Language}}PatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -312,7 +334,7 @@ func GetPatternMatcher(language string) interface{} {
 {{range .}}
 func validate{{.Language}}Rules() error {
 	matcher := new{{.Language}}PatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -320,13 +342,13 @@ func validate{{.Language}}Rules() error {
 				return fmt.Errorf("{{.Language}}: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("{{.Language}}: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 {{end}}
@@ -361,14 +383,16 @@ func GetPatternMatchStats() map[string]int64 {
 }
 `
 
-	tmpl, err := template.New("go").Parse(goTemplate)
-	if err != nil {
-		panic(fmt.Sprintf("failed to parse template: %v", err))
+	tmpl, tmplErr := template.New("go").Parse(goTemplate)
+	if tmplErr != nil {
+		panic(fmt.Sprintf("failed to parse template: %v", tmplErr))
 	}
 
 	var buf strings.Builder
-	if err := tmpl.Execute(&buf, mappings); err != nil {
-		panic(fmt.Sprintf("failed to execute template: %v", err))
+
+	execErr := tmpl.Execute(&buf, mappings)
+	if execErr != nil {
+		panic(fmt.Sprintf("failed to execute template: %v", execErr))
 	}
 
 	return buf.String()

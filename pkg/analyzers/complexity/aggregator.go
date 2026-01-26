@@ -1,3 +1,4 @@
+// Package complexity provides complexity functionality.
 package complexity
 
 import (
@@ -5,14 +6,21 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 )
 
-// ComplexityAggregator aggregates results from multiple complexity analyses
+const (
+	magic7p0           = 7.0
+	scoreThresholdHigh = 3.0
+)
+
+const msgGoodComplexity = "Good complexity - functions have reasonable complexity"
+
+// ComplexityAggregator aggregates results from multiple complexity analyses.
 type ComplexityAggregator struct {
-	*common.Aggregator
-	detailedFunctions []map[string]interface{}
-	maxComplexity     int
+	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	detailedFunctions  []map[string]any
+	maxComplexity      int
 }
 
-// NewComplexityAggregator creates a new ComplexityAggregator
+// NewComplexityAggregator creates a new ComplexityAggregator.
 func NewComplexityAggregator() *ComplexityAggregator {
 	numericKeys := getNumericKeys()
 	countKeys := getCountKeys()
@@ -51,27 +59,29 @@ func (ca *ComplexityAggregator) GetResult() analyze.Report {
 	if ca.GetMetricsProcessor().GetReportCount() > 0 {
 		ca.addDerivedMetrics(result)
 	}
+
 	return result
 }
 
-// collectDetailedFunctions extracts detailed functions from all reports
+// collectDetailedFunctions extracts detailed functions from all reports.
 func (ca *ComplexityAggregator) collectDetailedFunctions(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
 		}
+
 		ca.extractFunctionsFromReport(report)
 	}
 }
 
-// extractFunctionsFromReport extracts functions from a single report
+// extractFunctionsFromReport extracts functions from a single report.
 func (ca *ComplexityAggregator) extractFunctionsFromReport(report analyze.Report) {
 	if functions, ok := report["functions"].([]map[string]any); ok {
 		ca.detailedFunctions = append(ca.detailedFunctions, functions...)
 	}
 }
 
-// addDetailedFunctionsToResult adds detailed functions to the result
+// addDetailedFunctionsToResult adds detailed functions to the result.
 func (ca *ComplexityAggregator) addDetailedFunctionsToResult(result analyze.Report) {
 	if len(ca.detailedFunctions) > 0 {
 		result["functions"] = ca.detailedFunctions
@@ -84,6 +94,7 @@ func (ca *ComplexityAggregator) trackMaxComplexity(results map[string]analyze.Re
 		if report == nil {
 			continue
 		}
+
 		if val, ok := extractIntFromReport(report, "max_complexity"); ok {
 			if val > ca.maxComplexity {
 				ca.maxComplexity = val
@@ -99,6 +110,7 @@ func (ca *ComplexityAggregator) addDerivedMetrics(result analyze.Report) {
 	if v, ok := extractIntFromReport(result, "total_complexity"); ok {
 		totalComplexity = v
 	}
+
 	totalFunctions := 0
 	if v, ok := extractIntFromReport(result, "total_functions"); ok {
 		totalFunctions = v
@@ -120,6 +132,7 @@ func extractIntFromReport(report analyze.Report, key string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
+
 	switch v := val.(type) {
 	case int:
 		return v, true
@@ -146,21 +159,21 @@ func getCountKeys() []string {
 	return []string{"total_functions", "total_complexity", "decision_points"}
 }
 
-// buildComplexityMessage creates a message based on the complexity score
+// buildComplexityMessage creates a message based on the complexity score.
 func buildComplexityMessage(score float64) string {
 	switch {
 	case score <= 1.0:
 		return "Excellent complexity - functions are simple and maintainable"
-	case score <= 3.0:
-		return "Good complexity - functions have reasonable complexity"
-	case score <= 7.0:
+	case score <= scoreThresholdHigh:
+		return msgGoodComplexity
+	case score <= magic7p0:
 		return "Fair complexity - some functions could be simplified"
 	default:
 		return "High complexity - functions are complex and should be refactored"
 	}
 }
 
-// buildEmptyComplexityResult creates an empty result with default values
+// buildEmptyComplexityResult creates an empty result with default values.
 func buildEmptyComplexityResult() analyze.Report {
 	return analyze.Report{
 		"total_functions":    0,

@@ -1,20 +1,21 @@
-package renderer
+package renderer //nolint:testpackage // testing internal implementation.
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 // jsonMockSection implements analyze.ReportSection for JSON tests.
 type jsonMockSection struct {
-	analyze.BaseReportSection
-	metrics      []analyze.Metric
-	distribution []analyze.DistributionItem
-	issues       []analyze.Issue
+	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	metrics                   []analyze.Metric
+	distribution              []analyze.DistributionItem
+	issues                    []analyze.Issue
 }
 
 func (m *jsonMockSection) KeyMetrics() []analyze.Metric             { return m.metrics }
@@ -23,6 +24,7 @@ func (m *jsonMockSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(m.issues) {
 		return m.issues
 	}
+
 	return m.issues[:n]
 }
 func (m *jsonMockSection) AllIssues() []analyze.Issue { return m.issues }
@@ -38,6 +40,8 @@ func newJSONMock(title string, score float64, msg string) *jsonMockSection {
 }
 
 func TestSectionToJSON_Fields(t *testing.T) {
+	t.Parallel()
+
 	mock := newJSONMock("COMPLEXITY", 0.8, "Good - reasonable complexity")
 	mock.metrics = []analyze.Metric{
 		{Label: "Total Functions", Value: "42"},
@@ -72,6 +76,8 @@ func TestSectionToJSON_Fields(t *testing.T) {
 }
 
 func TestSectionToJSON_InfoOnly(t *testing.T) {
+	t.Parallel()
+
 	mock := newJSONMock("IMPORTS", analyze.ScoreInfoOnly, "5 unique imports found")
 
 	result := SectionToJSON(mock)
@@ -83,6 +89,8 @@ func TestSectionToJSON_InfoOnly(t *testing.T) {
 }
 
 func TestSectionToJSON_EmptyIssues(t *testing.T) {
+	t.Parallel()
+
 	mock := newJSONMock("COMMENTS", 0.6, "Fair comment quality")
 
 	result := SectionToJSON(mock)
@@ -92,6 +100,8 @@ func TestSectionToJSON_EmptyIssues(t *testing.T) {
 }
 
 func TestSectionToJSON_EmptyMetrics(t *testing.T) {
+	t.Parallel()
+
 	mock := newJSONMock("TEST", 0.5, "Test section")
 
 	result := SectionToJSON(mock)
@@ -101,6 +111,8 @@ func TestSectionToJSON_EmptyMetrics(t *testing.T) {
 }
 
 func TestSectionsToJSON_MultipleSections(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("COMPLEXITY", 0.8, "Good"),
 		newJSONMock("COMMENTS", 0.6, "Fair"),
@@ -114,6 +126,8 @@ func TestSectionsToJSON_MultipleSections(t *testing.T) {
 }
 
 func TestSectionsToJSON_IncludesOverall(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("COMPLEXITY", 0.8, "Good"),
 		newJSONMock("COMMENTS", 0.6, "Fair"),
@@ -126,6 +140,8 @@ func TestSectionsToJSON_IncludesOverall(t *testing.T) {
 }
 
 func TestSectionsToJSON_OverallExcludesInfoOnly(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("COMPLEXITY", 0.8, "Good"),
 		newJSONMock("IMPORTS", analyze.ScoreInfoOnly, "Info"),
@@ -137,6 +153,8 @@ func TestSectionsToJSON_OverallExcludesInfoOnly(t *testing.T) {
 }
 
 func TestSectionsToJSON_SingleSection(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("COMPLEXITY", 0.8, "Good"),
 	}
@@ -148,6 +166,8 @@ func TestSectionsToJSON_SingleSection(t *testing.T) {
 }
 
 func TestSectionsToJSON_AllInfoOnly(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("IMPORTS", analyze.ScoreInfoOnly, "Info"),
 	}
@@ -159,6 +179,8 @@ func TestSectionsToJSON_AllInfoOnly(t *testing.T) {
 }
 
 func TestSectionsToJSON_Serializable(t *testing.T) {
+	t.Parallel()
+
 	sections := []analyze.ReportSection{
 		newJSONMock("COMPLEXITY", 0.8, "Good"),
 	}

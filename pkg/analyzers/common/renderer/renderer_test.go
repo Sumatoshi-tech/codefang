@@ -1,4 +1,4 @@
-package renderer
+package renderer //nolint:testpackage // testing internal implementation.
 
 import (
 	"strings"
@@ -13,31 +13,39 @@ const (
 )
 
 func TestNewSectionRenderer_Defaults(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, false)
 
 	if r.config.Width != testWidth {
 		t.Errorf("Width = %d, want %d", r.config.Width, testWidth)
 	}
-	if r.verbose != false {
+
+	if r.verbose != false { //nolint:revive // explicit bool comparison needed.
 		t.Errorf("verbose = %v, want false", r.verbose)
 	}
-	if r.config.NoColor != false {
+
+	if r.config.NoColor != false { //nolint:revive // explicit bool comparison needed.
 		t.Errorf("NoColor = %v, want false", r.config.NoColor)
 	}
 }
 
 func TestNewSectionRenderer_Verbose(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, true, false)
 
-	if r.verbose != true {
+	if r.verbose != true { //nolint:revive // explicit bool comparison needed.
 		t.Errorf("verbose = %v, want true", r.verbose)
 	}
 }
 
 func TestNewSectionRenderer_NoColor(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 
-	if r.config.NoColor != true {
+	if r.config.NoColor != true { //nolint:revive // explicit bool comparison needed.
 		t.Errorf("NoColor = %v, want true", r.config.NoColor)
 	}
 }
@@ -58,54 +66,64 @@ func newMockSection() *mockSection {
 }
 
 func TestRenderCompact_Format(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
 	result := r.RenderCompact(section)
 
-	// Should contain title
+	// Should contain title.
 	if !strings.Contains(result, "COMPLEXITY") {
 		t.Errorf("RenderCompact should contain title, got %q", result)
 	}
 }
 
 func TestRenderCompact_ContainsBar(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
 	result := r.RenderCompact(section)
 
-	// Should contain progress bar characters
+	// Should contain progress bar characters.
 	if !strings.Contains(result, "█") && !strings.Contains(result, "░") {
 		t.Errorf("RenderCompact should contain progress bar, got %q", result)
 	}
 }
 
 func TestRenderCompact_ContainsScore(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
 	result := r.RenderCompact(section)
 
-	// Should contain score
+	// Should contain score.
 	if !strings.Contains(result, "8/10") {
 		t.Errorf("RenderCompact should contain score, got %q", result)
 	}
 }
 
 func TestRenderCompact_ContainsMessage(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
 	result := r.RenderCompact(section)
 
-	// Should contain message
+	// Should contain message.
 	if !strings.Contains(result, "Good - reasonable complexity") {
 		t.Errorf("RenderCompact should contain message, got %q", result)
 	}
 }
 
 func TestRender_ContainsTitle(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
@@ -117,6 +135,8 @@ func TestRender_ContainsTitle(t *testing.T) {
 }
 
 func TestRender_ContainsScore(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
@@ -128,6 +148,8 @@ func TestRender_ContainsScore(t *testing.T) {
 }
 
 func TestRender_ContainsSummary(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
@@ -139,12 +161,14 @@ func TestRender_ContainsSummary(t *testing.T) {
 }
 
 func TestRender_ContainsHeaderBox(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSection()
 
 	result := r.Render(section)
 
-	// Should have heavy box characters from DrawHeader
+	// Should have heavy box characters from DrawHeader.
 	if !strings.Contains(result, "┏") || !strings.Contains(result, "┗") {
 		t.Errorf("Render should contain header box, got %q", result)
 	}
@@ -152,8 +176,8 @@ func TestRender_ContainsHeaderBox(t *testing.T) {
 
 // mockSectionWithMetrics adds metrics to the mock section.
 type mockSectionWithMetrics struct {
-	analyze.BaseReportSection
-	metrics []analyze.Metric
+	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	metrics                   []analyze.Metric
 }
 
 func (m *mockSectionWithMetrics) KeyMetrics() []analyze.Metric {
@@ -177,6 +201,8 @@ func newMockSectionWithMetrics() *mockSectionWithMetrics {
 }
 
 func TestRender_ContainsMetricsSection(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithMetrics()
 
@@ -188,6 +214,8 @@ func TestRender_ContainsMetricsSection(t *testing.T) {
 }
 
 func TestRender_ContainsMetricValues(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithMetrics()
 
@@ -196,18 +224,21 @@ func TestRender_ContainsMetricValues(t *testing.T) {
 	if !strings.Contains(result, "Total Functions") {
 		t.Errorf("Render should contain metric label, got %q", result)
 	}
+
 	if !strings.Contains(result, "156") {
 		t.Errorf("Render should contain metric value, got %q", result)
 	}
 }
 
 func TestRender_EmptyMetrics(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
-	section := newMockSection() // No metrics
+	section := newMockSection() // No metrics.
 
 	result := r.Render(section)
 
-	// Should NOT contain Key Metrics section when empty
+	// Should NOT contain Key Metrics section when empty.
 	if strings.Contains(result, "Key Metrics") {
 		t.Errorf("Render should not contain 'Key Metrics' when empty, got %q", result)
 	}
@@ -215,8 +246,8 @@ func TestRender_EmptyMetrics(t *testing.T) {
 
 // mockSectionWithDistribution adds distribution to the mock section.
 type mockSectionWithDistribution struct {
-	analyze.BaseReportSection
-	distribution []analyze.DistributionItem
+	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	distribution              []analyze.DistributionItem
 }
 
 func (m *mockSectionWithDistribution) Distribution() []analyze.DistributionItem {
@@ -239,6 +270,8 @@ func newMockSectionWithDistribution() *mockSectionWithDistribution {
 }
 
 func TestRender_ContainsDistributionSection(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithDistribution()
 
@@ -250,24 +283,28 @@ func TestRender_ContainsDistributionSection(t *testing.T) {
 }
 
 func TestRender_ContainsDistributionBars(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithDistribution()
 
 	result := r.Render(section)
 
-	// Should contain progress bar characters
+	// Should contain progress bar characters.
 	if !strings.Contains(result, "█") {
 		t.Errorf("Render should contain distribution bars, got %q", result)
 	}
-	// Should contain percentage
+	// Should contain percentage.
 	if !strings.Contains(result, "68%") {
 		t.Errorf("Render should contain percentage, got %q", result)
 	}
 }
 
 func TestRender_EmptyDistribution(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
-	section := newMockSection() // No distribution
+	section := newMockSection() // No distribution.
 
 	result := r.Render(section)
 
@@ -278,14 +315,15 @@ func TestRender_EmptyDistribution(t *testing.T) {
 
 // mockSectionWithIssues adds issues to the mock section.
 type mockSectionWithIssues struct {
-	analyze.BaseReportSection
-	issues []analyze.Issue
+	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
+	issues                    []analyze.Issue
 }
 
 func (m *mockSectionWithIssues) TopIssues(n int) []analyze.Issue {
 	if n > len(m.issues) {
 		return m.issues
 	}
+
 	return m.issues[:n]
 }
 
@@ -309,6 +347,8 @@ func newMockSectionWithIssues() *mockSectionWithIssues {
 }
 
 func TestRender_ContainsIssuesSection(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithIssues()
 
@@ -320,6 +360,8 @@ func TestRender_ContainsIssuesSection(t *testing.T) {
 }
 
 func TestRender_ContainsIssueDetails(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithIssues()
 
@@ -328,14 +370,17 @@ func TestRender_ContainsIssueDetails(t *testing.T) {
 	if !strings.Contains(result, "ProcessData") {
 		t.Errorf("Render should contain issue name, got %q", result)
 	}
+
 	if !strings.Contains(result, "processor.go") {
 		t.Errorf("Render should contain issue location, got %q", result)
 	}
 }
 
 func TestRender_EmptyIssues(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
-	section := newMockSection() // No issues
+	section := newMockSection() // No issues.
 
 	result := r.Render(section)
 
@@ -354,6 +399,7 @@ func newMockSectionWithManyIssues() *mockSectionWithIssues {
 		{Name: "Func6", Value: "CC=11", Severity: analyze.SeverityFair},
 		{Name: "Func7", Value: "CC=10", Severity: analyze.SeverityFair},
 	}
+
 	return &mockSectionWithIssues{
 		BaseReportSection: analyze.BaseReportSection{
 			Title:      "COMPLEXITY",
@@ -365,48 +411,58 @@ func newMockSectionWithManyIssues() *mockSectionWithIssues {
 }
 
 func TestRender_NonVerboseShowsTopIssues(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, false, true)
 	section := newMockSectionWithManyIssues()
 
 	result := r.Render(section)
 
-	// TopIssues(5) should show Func1..Func5 but NOT Func6, Func7
+	// TopIssues(5) should show Func1..Func5 but NOT Func6, Func7.
 	if !strings.Contains(result, "Func1") {
 		t.Errorf("Non-verbose should contain Func1, got %q", result)
 	}
+
 	if !strings.Contains(result, "Func5") {
 		t.Errorf("Non-verbose should contain Func5, got %q", result)
 	}
+
 	if strings.Contains(result, "Func6") {
 		t.Errorf("Non-verbose should NOT contain Func6, got %q", result)
 	}
 }
 
 func TestRender_VerboseShowsAllIssues(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, true, true)
 	section := newMockSectionWithManyIssues()
 
 	result := r.Render(section)
 
-	// AllIssues should show all 7 functions
+	// AllIssues should show all 7 functions.
 	if !strings.Contains(result, "Func1") {
 		t.Errorf("Verbose should contain Func1, got %q", result)
 	}
+
 	if !strings.Contains(result, "Func7") {
 		t.Errorf("Verbose should contain Func7, got %q", result)
 	}
 }
 
 func TestRender_VerboseChangesLabel(t *testing.T) {
+	t.Parallel()
+
 	r := NewSectionRenderer(testWidth, true, true)
 	section := newMockSectionWithManyIssues()
 
 	result := r.Render(section)
 
-	// Verbose should show "All Issues" instead of "Top Issues"
+	// Verbose should show "All Issues" instead of "Top Issues".
 	if !strings.Contains(result, "All Issues") {
 		t.Errorf("Verbose should show 'All Issues' label, got %q", result)
 	}
+
 	if strings.Contains(result, "Top Issues") {
 		t.Errorf("Verbose should NOT show 'Top Issues' label, got %q", result)
 	}

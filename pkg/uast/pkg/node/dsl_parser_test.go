@@ -1,4 +1,4 @@
-package node
+package node //nolint:testpackage // Tests need access to internal types.
 
 import (
 	"fmt"
@@ -8,17 +8,19 @@ import (
 	"testing"
 )
 
-// stringifyAST is a test helper that converts a DSLNode to a string representation
+// StringifyAST is a test helper that converts a DSLNode to a string representation.
 func stringifyAST(n DSLNode) string {
 	if n == nil {
 		return "<nil>"
 	}
+
 	switch v := n.(type) {
 	case *PipelineNode:
 		parts := make([]string, 0, len(v.Stages))
 		for _, s := range v.Stages {
 			parts = append(parts, stringifyAST(s))
 		}
+
 		return fmt.Sprintf("Pipeline(%s)", strings.Join(parts, " | "))
 	case *MapNode:
 		return fmt.Sprintf("Map(%s)", stringifyAST(v.Expr))
@@ -38,10 +40,12 @@ func stringifyAST(n DSLNode) string {
 		if len(v.Args) == 0 {
 			return fmt.Sprintf("Call(%s)", v.Name)
 		}
+
 		args := make([]string, 0, len(v.Args))
 		for _, a := range v.Args {
 			args = append(args, stringifyAST(a))
 		}
+
 		return fmt.Sprintf("Call(%s, %s)", v.Name, strings.Join(args, ", "))
 	default:
 		return fmt.Sprintf("<%T>", n)
@@ -49,23 +53,36 @@ func stringifyAST(n DSLNode) string {
 }
 
 func TestDSLParser_Parse_Valid(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
 		{"map(.children)", "Map(Field(children))"},
-		{"map(.children) |> filter(.type == \"FunctionDecl\")", "Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(FunctionDecl))))"},
+		{
+			"map(.children) |> filter(.type == \"FunctionDecl\")",
+			"Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(FunctionDecl))))",
+		},
 		{".foo", "Field(foo)"},
 		{"42", "Literal(42)"},
-		{"map(.children) |> filter(.type == \"FunctionDecl\") |> reduce(count)", "Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(FunctionDecl))) | Reduce(Call(count)))"},
+		{
+			"map(.children) |> filter(.type == \"FunctionDecl\") |> reduce(count)",
+			"Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(FunctionDecl))) | Reduce(Call(count)))",
+		},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -74,16 +91,22 @@ func TestDSLParser_Parse_Valid(t *testing.T) {
 }
 
 func TestDSLParser_Parse_Invalid(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantErr string
 	}{
-		// {"bad", "parse error at 1:1: unexpected token 'bad'"},
+		// {"bad", "parse error at 1:1: unexpected token 'bad'"}.
 		{"@#$", "parse error at 1:1: unknown input"},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := ParseDSL(tc.input)
+
 			if err == nil || err.Error() != tc.wantErr {
 				t.Errorf("got error %v, want %q", err, tc.wantErr)
 			}
@@ -91,7 +114,10 @@ func TestDSLParser_Parse_Invalid(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_LoweringAndExecution(t *testing.T) {
+	t.Parallel()
+
 	testUAST := &Node{
 		Type:  "Root",
 		Props: map[string]string{"foo": "bar", "type": "FunctionDecl"},
@@ -101,10 +127,11 @@ func TestDSLParser_LoweringAndExecution(t *testing.T) {
 			{Type: "Child", Props: map[string]string{"foo": "qux", "type": "FunctionDecl"}, Roles: []Role{"FunctionDecl"}},
 		},
 	}
+
 	cases := []struct {
 		dsl     string
 		input   *Node
-		want    []string // expected output tokens
+		want    []string // Expected output tokens.
 		wantErr bool
 	}{
 		{".foo", testUAST, []string{"bar"}, false},
@@ -115,31 +142,43 @@ func TestDSLParser_LoweringAndExecution(t *testing.T) {
 		{"bad syntax", testUAST, nil, true},
 		{"map(.notfound)", testUAST, []string{}, false},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.dsl, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.dsl)
 			if tc.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
+
 			qf, err := LowerDSL(ast)
 			if err != nil {
 				t.Fatalf("lowering error: %v", err)
 			}
+
 			out := qf([]*Node{tc.input})
+
 			var got []string
+
 			for _, n := range out {
 				got = append(got, n.Token)
 			}
+
 			if len(got) != len(tc.want) {
 				t.Errorf("%s got %v, want %v", tc.dsl, got, tc.want)
+
 				return
 			}
+
 			for i := range got {
 				if got[i] != tc.want[i] {
 					t.Errorf("%s got %v, want %v", tc.dsl, got, tc.want)
@@ -150,14 +189,20 @@ func TestDSLParser_LoweringAndExecution(t *testing.T) {
 }
 
 func TestDSLParser_Parse_MembershipAndLogical(t *testing.T) {
+	t.Parallel()
+
 	query := "filter(.type == \"Function\" && .roles has \"Exported\")"
+
 	_, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("ParseDSL failed: %v", err)
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RecursiveFunctions(t *testing.T) {
+	t.Parallel()
+
 	testUAST := &Node{
 		Type:  "Root",
 		Props: map[string]string{"foo": "bar", "type": "FunctionDecl"},
@@ -166,51 +211,64 @@ func TestDSLParser_RecursiveFunctions(t *testing.T) {
 			{Type: "Child", Props: map[string]string{"foo": "qux", "type": "FunctionDecl"}},
 		},
 	}
+
 	cases := []struct {
 		dsl     string
 		input   *Node
-		want    []string // expected output tokens
+		want    []string // Expected output tokens.
 		wantErr bool
 	}{
-		// Recursive filter: should find all FunctionDecl nodes in the entire tree
+		// Recursive filter: should find all FunctionDecl nodes in the entire tree.
 		{"rfilter(.props.type == \"FunctionDecl\")", testUAST, []string{"Root", "Child"}, false},
-		// Recursive map: should map all foo values in the entire tree
+		// Recursive map: should map all foo values in the entire tree.
 		{"rmap(.foo)", testUAST, []string{"bar", "baz", "qux"}, false},
-		// Recursive filter + recursive map: should find FunctionDecl nodes and map their foo values recursively
+		// Recursive filter + recursive map: should find FunctionDecl nodes and map their foo values recursively.
 		{"rfilter(.props.type == \"FunctionDecl\") |> rmap(.foo)", testUAST, []string{"bar", "baz", "qux", "qux"}, false},
-		// Recursive filter + non-recursive map: should find FunctionDecl nodes but only map those specific nodes
+		// Recursive filter + non-recursive map: should find FunctionDecl nodes but only map those specific nodes.
 		{"rfilter(.props.type == \"FunctionDecl\") |> map(.foo)", testUAST, []string{"bar", "qux"}, false},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.dsl, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.dsl)
 			if tc.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
+
 			qf, err := LowerDSL(ast)
 			if err != nil {
 				t.Fatalf("lowering error: %v", err)
 			}
+
 			out := qf([]*Node{tc.input})
+
 			var got []string
+
 			for _, n := range out {
-				// For filter results, use the node type; for map results, use the token
+				// For filter results, use the node type; for map results, use the token.
 				if strings.Contains(tc.dsl, "rfilter") && !strings.Contains(tc.dsl, "map") {
 					got = append(got, string(n.Type))
 				} else {
 					got = append(got, n.Token)
 				}
 			}
+
 			if len(got) != len(tc.want) {
 				t.Errorf("%s got %v, want %v", tc.dsl, got, tc.want)
+
 				return
 			}
+
 			for i := range got {
 				if got[i] != tc.want[i] {
 					t.Errorf("got %v, want %v", got, tc.want)
@@ -221,7 +279,9 @@ func TestDSLParser_RecursiveFunctions(t *testing.T) {
 }
 
 func TestNestedFieldAccess(t *testing.T) {
-	// Test parsing nested field access
+	t.Parallel()
+
+	// Test parsing nested field access.
 	ast, err := ParseDSL(".props.name")
 	if err != nil {
 		t.Fatalf("Failed to parse nested field access: %v", err)
@@ -244,7 +304,7 @@ func TestNestedFieldAccess(t *testing.T) {
 		t.Errorf("Expected second field to be 'name', got '%s'", fieldNode.Fields[1])
 	}
 
-	// Test deeper nesting
+	// Test deeper nesting.
 	ast, err = ParseDSL(".props.deep.nested.field")
 	if err != nil {
 		t.Fatalf("Failed to parse deep nested field access: %v", err)
@@ -256,6 +316,7 @@ func TestNestedFieldAccess(t *testing.T) {
 	}
 
 	expected := []string{"props", "deep", "nested", "field"}
+
 	if len(fieldNode.Fields) != len(expected) {
 		t.Fatalf("Expected %d fields, got %d", len(expected), len(fieldNode.Fields))
 	}
@@ -268,7 +329,9 @@ func TestNestedFieldAccess(t *testing.T) {
 }
 
 func TestNestedFieldAccessExecution(t *testing.T) {
-	// Create a test node with nested properties
+	t.Parallel()
+
+	// Create a test node with nested properties.
 	testNode := &Node{
 		Type: "Function",
 		Props: map[string]string{
@@ -277,7 +340,7 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 		},
 	}
 
-	// Test single field access (backward compatibility)
+	// Test single field access (backward compatibility).
 	ast, err := ParseDSL(".type")
 	if err != nil {
 		t.Fatalf("Failed to parse single field access: %v", err)
@@ -289,6 +352,7 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 	}
 
 	results := queryFunc([]*Node{testNode})
+
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
@@ -297,13 +361,13 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 		t.Errorf("Expected 'Function', got '%s'", results[0].Token)
 	}
 
-	// Test nested field access
+	// Test nested field access.
 	ast, err = ParseDSL(".props.name")
 	if err != nil {
 		t.Fatalf("Failed to parse nested field access: %v", err)
 	}
 
-	// Debug: print the AST
+	// Debug: print the AST.
 	t.Logf("AST: %+v", ast)
 
 	queryFunc, err = LowerDSL(ast)
@@ -313,6 +377,7 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 
 	results = queryFunc([]*Node{testNode})
 	t.Logf("Results: %+v", results)
+
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
@@ -322,8 +387,11 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_HasSyntax(t *testing.T) {
-	// Test cases for "has" syntax
+	t.Parallel()
+
+	// Test cases for "has" syntax.
 	testCases := []struct {
 		name        string
 		query       string
@@ -353,28 +421,37 @@ func TestDSLParser_HasSyntax(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Parse the query
+			t.Parallel()
+
+			// Parse the query.
 			ast, err := ParseDSL(tc.query)
-			if tc.shouldParse {
+
+			if tc.shouldParse { //nolint:nestif // Test validation logic.
 				if err != nil {
 					t.Fatalf("Failed to parse query '%s': %v", tc.query, err)
 				}
+
 				if ast == nil {
 					t.Fatalf("AST is nil for query '%s'", tc.query)
 				}
+
 				t.Logf("Successfully parsed: %s", tc.query)
 			} else {
 				if err == nil {
 					t.Fatalf("Expected parse error for '%s' but got none", tc.query)
 				}
+
 				t.Logf("Expected parse error for: %s", tc.query)
 			}
 		})
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_HasSyntaxExecution(t *testing.T) {
-	// Create a test node with roles
+	t.Parallel()
+
+	// Create a test node with roles.
 	testNode := &Node{
 		Type:  "Function",
 		Token: "testFunction",
@@ -408,19 +485,21 @@ func TestDSLParser_HasSyntaxExecution(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Parse the query
+			t.Parallel()
+
+			// Parse the query.
 			ast, err := ParseDSL(tc.query)
 			if err != nil {
 				t.Fatalf("Failed to parse query '%s': %v", tc.query, err)
 			}
 
-			// Lower the DSL
+			// Lower the DSL.
 			queryFunc, err := LowerDSL(ast)
 			if err != nil {
 				t.Fatalf("Failed to lower DSL for '%s': %v", tc.query, err)
 			}
 
-			// Execute the query
+			// Execute the query.
 			results := queryFunc([]*Node{testNode})
 
 			t.Logf("Query: %s", tc.query)
@@ -440,16 +519,19 @@ func TestDSLParser_HasSyntaxExecution(t *testing.T) {
 }
 
 func TestPropertyAccess(t *testing.T) {
-	// Create a test node with a name property
-	node := &Node{
+	t.Parallel()
+
+	// Create a test node with a name property.
+	nd := &Node{
 		Type: "Function",
 		Props: map[string]string{
 			"name": "my_function",
 		},
 	}
 
-	// Test the query: map(.name)
+	// Test the query: map(.name).
 	query := "map(.name)"
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("Failed to parse query: %v", err)
@@ -460,7 +542,8 @@ func TestPropertyAccess(t *testing.T) {
 		t.Fatalf("Failed to lower DSL: %v", err)
 	}
 
-	result := fn([]*Node{node})
+	result := fn([]*Node{nd})
+
 	if len(result) == 0 {
 		t.Fatalf("Expected result, got empty")
 	}
@@ -475,18 +558,21 @@ func TestPropertyAccess(t *testing.T) {
 }
 
 func TestDebugFunctionNameQuery(t *testing.T) {
-	// Create a test node that matches the actual UAST structure from the Perl test
-	node := &Node{
+	t.Parallel()
+
+	// Create a test node that matches the actual UAST structure from the Perl test.
+	nd := &Node{
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
 			"name": "my_function",
 		},
-		Token: "my_function", // Also set as token
+		Token: "my_function", // Also set as token.
 	}
 
-	// Test the full query: filter(.type == "Function") |> map(.name)
+	// Test the full query: filter(.type == "Function") |> map(.name).
 	query := `filter(.type == "Function") |> map(.name)`
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("Failed to parse query: %v", err)
@@ -497,7 +583,7 @@ func TestDebugFunctionNameQuery(t *testing.T) {
 		t.Fatalf("Failed to lower DSL: %v", err)
 	}
 
-	result := fn([]*Node{node})
+	result := fn([]*Node{nd})
 	t.Logf("Query result: %+v", result)
 
 	if len(result) == 0 {
@@ -514,8 +600,10 @@ func TestDebugFunctionNameQuery(t *testing.T) {
 }
 
 func TestDebugMapFunction(t *testing.T) {
-	// Create a test node that matches the actual UAST structure from the Perl test
-	node := &Node{
+	t.Parallel()
+
+	// Create a test node that matches the actual UAST structure from the Perl test.
+	nd := &Node{
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
@@ -531,8 +619,9 @@ func TestDebugMapFunction(t *testing.T) {
 		},
 	}
 
-	// Test the exact query from the Perl test
+	// Test the exact query from the Perl test.
 	query := `filter(.type == "Function") |> map(.name)`
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("Failed to parse query: %v", err)
@@ -543,8 +632,8 @@ func TestDebugMapFunction(t *testing.T) {
 		t.Fatalf("Failed to lower DSL: %v", err)
 	}
 
-	result := fn([]*Node{node})
-	t.Logf("Input node: %+v", node)
+	result := fn([]*Node{nd})
+	t.Logf("Input node: %+v", nd)
 	t.Logf("Query result: %+v", result)
 
 	if len(result) == 0 {
@@ -561,7 +650,9 @@ func TestDebugMapFunction(t *testing.T) {
 }
 
 func TestDebugFilterPart(t *testing.T) {
-	node := &Node{
+	t.Parallel()
+
+	nd := &Node{
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
@@ -570,8 +661,9 @@ func TestDebugFilterPart(t *testing.T) {
 		Token: "my_function",
 	}
 
-	// Test just the filter part
+	// Test just the filter part.
 	query := `filter(.type == "Function")`
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("Failed to parse query: %v", err)
@@ -582,7 +674,7 @@ func TestDebugFilterPart(t *testing.T) {
 		t.Fatalf("Failed to lower DSL: %v", err)
 	}
 
-	result := fn([]*Node{node})
+	result := fn([]*Node{nd})
 	t.Logf("Filter result: %+v", result)
 
 	if len(result) == 0 {
@@ -591,7 +683,9 @@ func TestDebugFilterPart(t *testing.T) {
 }
 
 func TestDebugMapPart(t *testing.T) {
-	node := &Node{
+	t.Parallel()
+
+	nd := &Node{
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
@@ -600,8 +694,9 @@ func TestDebugMapPart(t *testing.T) {
 		Token: "my_function",
 	}
 
-	// Test just the map part
+	// Test just the map part.
 	query := `map(.name)`
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("Failed to parse query: %v", err)
@@ -612,7 +707,7 @@ func TestDebugMapPart(t *testing.T) {
 		t.Fatalf("Failed to lower DSL: %v", err)
 	}
 
-	result := fn([]*Node{node})
+	result := fn([]*Node{nd})
 	t.Logf("Map result: %+v", result)
 
 	if len(result) == 0 {
@@ -621,7 +716,9 @@ func TestDebugMapPart(t *testing.T) {
 }
 
 func TestHasSyntax(t *testing.T) {
-	// Test cases for "has" syntax
+	t.Parallel()
+
+	// Test cases for "has" syntax.
 	testCases := []struct {
 		name     string
 		query    string
@@ -635,18 +732,20 @@ func TestHasSyntax(t *testing.T) {
 		{
 			name:     "has with type",
 			query:    `.type has "Function"`,
-			expected: false, // type is a single value, not a collection
+			expected: false, // Type is a single value, not a collection.
 		},
 		{
 			name:     "has with props",
 			query:    `.props has "name"`,
-			expected: false, // props is a map, not a collection
+			expected: false, // Props is a map, not a collection.
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create a test node with roles
+			t.Parallel()
+
+			// Create a test node with roles.
 			testNode := &Node{
 				Type:  "Function",
 				Token: "testFunction",
@@ -656,37 +755,39 @@ func TestHasSyntax(t *testing.T) {
 				},
 			}
 
-			// Parse the query
+			// Parse the query.
 			ast, err := ParseDSL(tc.query)
 			if err != nil {
 				t.Fatalf("Failed to parse query '%s': %v", tc.query, err)
 			}
 
-			// Lower the DSL
+			// Lower the DSL.
 			queryFunc, err := LowerDSL(ast)
 			if err != nil {
 				t.Fatalf("Failed to lower DSL for '%s': %v", tc.query, err)
 			}
 
-			// Execute the query
+			// Execute the query.
 			results := queryFunc([]*Node{testNode})
 
-			fmt.Printf("Query: %s\n", tc.query)
-			fmt.Printf("Results: %+v\n", results)
+			t.Logf("Query: %s", tc.query)
+			t.Logf("Results: %+v", results)
 
 			if len(results) > 0 {
-				fmt.Printf("First result: %+v\n", results[0])
+				t.Logf("First result: %+v", results[0])
 			}
 		})
 	}
 }
 
 func TestDSLParser_Operators(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Comparison operators
+		// Comparison operators.
 		{".type == \"Function\"", "Call(==, Field(type), Literal(Function))"},
 		{".type != \"Function\"", "Call(!=, Field(type), Literal(Function))"},
 		{".id > 10", "Call(>, Field(id), Literal(10))"},
@@ -694,23 +795,36 @@ func TestDSLParser_Operators(t *testing.T) {
 		{".id < 10", "Call(<, Field(id), Literal(10))"},
 		{".id <= 10", "Call(<=, Field(id), Literal(10))"},
 
-		// Logical operators
-		{".type == \"Function\" && .roles has \"Exported\"", "Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported)))"},
-		{".type == \"Function\" || .type == \"Method\"", "Call(||, Call(==, Field(type), Literal(Function)), Call(==, Field(type), Literal(Method)))"},
+		// Logical operators.
+		{
+			".type == \"Function\" && .roles has \"Exported\"",
+			"Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported)))",
+		},
+		{
+			".type == \"Function\" || .type == \"Method\"",
+			"Call(||, Call(==, Field(type), Literal(Function)), Call(==, Field(type), Literal(Method)))",
+		},
 		{"!.type == \"Function\"", "Call(!, Call(==, Field(type), Literal(Function)))"},
 
-		// Parentheses
+		// Parentheses.
 		{"(.type == \"Function\")", "Call(==, Field(type), Literal(Function))"},
-		{"(.type == \"Function\" && .roles has \"Exported\")", "Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported)))"},
+		{
+			"(.type == \"Function\" && .roles has \"Exported\")",
+			"Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported)))",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -719,35 +833,41 @@ func TestDSLParser_Operators(t *testing.T) {
 }
 
 func TestDSLParser_Literals(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Numbers
+		// Numbers.
 		{"42", "Literal(42)"},
 		{"123", "Literal(123)"},
 		{"3.14", "Literal(3.14)"},
 		{"0", "Literal(0)"},
 
-		// Strings
+		// Strings.
 		{"\"hello\"", "Literal(hello)"},
 		{"'world'", "Literal(world)"},
 		{"\"function name\"", "Literal(function name)"},
 		{"\"\"", "Literal()"},
 		{"''", "Literal()"},
 
-		// Booleans
+		// Booleans.
 		{"true", "Literal(true)"},
 		{"false", "Literal(false)"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -756,34 +876,40 @@ func TestDSLParser_Literals(t *testing.T) {
 }
 
 func TestDSLParser_FieldAccess(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Simple field access
+		// Simple field access.
 		{".type", "Field(type)"},
 		{".token", "Field(token)"},
 		{".id", "Field(id)"},
 		{".children", "Field(children)"},
 		{".roles", "Field(roles)"},
 
-		// Nested field access
+		// Nested field access.
 		{".props.name", "Field(props.name)"},
 		{".props.deep.nested.field", "Field(props.deep.nested.field)"},
 		{".props.foo.bar.baz", "Field(props.foo.bar.baz)"},
 
-		// Properties
+		// Properties.
 		{".name", "Field(name)"},
 		{".value", "Field(value)"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -792,6 +918,8 @@ func TestDSLParser_FieldAccess(t *testing.T) {
 }
 
 func TestDSLParser_Membership(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
@@ -805,11 +933,15 @@ func TestDSLParser_Membership(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -818,36 +950,45 @@ func TestDSLParser_Membership(t *testing.T) {
 }
 
 func TestDSLParser_Functions(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Map function
+		// Map function.
 		{"map(.children)", "Map(Field(children))"},
 		{"map(.type)", "Map(Field(type))"},
 		{"map(.name)", "Map(Field(name))"},
 		{"map(.props.name)", "Map(Field(props.name))"},
 
-		// Filter function
+		// Filter function.
 		{"filter(.type == \"Function\")", "Filter(Call(==, Field(type), Literal(Function)))"},
 		{"filter(.roles has \"Exported\")", "Filter(Call(has, Field(roles), Literal(Exported)))"},
-		{"filter(.type == \"Function\" && .roles has \"Exported\")", "Filter(Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported))))"},
+		{
+			"filter(.type == \"Function\" && .roles has \"Exported\")",
+			"Filter(Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported))))",
+		},
 
-		// Recursive functions
+		// Recursive functions.
 		{"rmap(.children)", "RMap(Field(children))"},
 		{"rfilter(.type == \"Function\")", "RFilter(Call(==, Field(type), Literal(Function)))"},
 
-		// Reduce function
+		// Reduce function.
 		{"reduce(count)", "Reduce(Call(count))"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -856,27 +997,49 @@ func TestDSLParser_Functions(t *testing.T) {
 }
 
 func TestDSLParser_Pipelines(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Simple pipelines
-		{"map(.children) |> filter(.type == \"Function\")", "Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(Function))))"},
-		{"filter(.type == \"Function\") |> map(.name)", "Pipeline(Filter(Call(==, Field(type), Literal(Function))) | Map(Field(name)))"},
-		{"map(.children) |> filter(.type == \"Function\") |> reduce(count)", "Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(Function))) | Reduce(Call(count)))"},
+		// Simple pipelines.
+		{
+			"map(.children) |> filter(.type == \"Function\")",
+			"Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(Function))))",
+		},
+		{
+			"filter(.type == \"Function\") |> map(.name)",
+			"Pipeline(Filter(Call(==, Field(type), Literal(Function))) | Map(Field(name)))",
+		},
+		{
+			"map(.children) |> filter(.type == \"Function\") |> reduce(count)",
+			"Pipeline(Map(Field(children)) | Filter(Call(==, Field(type), Literal(Function))) | Reduce(Call(count)))",
+		},
 
-		// Complex pipelines
-		{"rfilter(.type == \"Function\") |> map(.name) |> filter(.name != \"\")", "Pipeline(RFilter(Call(==, Field(type), Literal(Function))) | Map(Field(name)) | Filter(Call(!=, Field(name), Literal())))"},
-		{"map(.children) |> filter(.type == \"Function\" || .type == \"Method\") |> map(.name)", "Pipeline(Map(Field(children)) | Filter(Call(||, Call(==, Field(type), Literal(Function)), Call(==, Field(type), Literal(Method)))) | Map(Field(name)))"},
+		// Complex pipelines.
+		{
+			"rfilter(.type == \"Function\") |> map(.name) |> filter(.name != \"\")",
+			"Pipeline(RFilter(Call(==, Field(type), Literal(Function))) | Map(Field(name)) | Filter(Call(!=, Field(name), Literal())))",
+		},
+		{
+			"map(.children) |> filter(.type == \"Function\" || .type == \"Method\") |> map(.name)",
+			"Pipeline(Map(Field(children)) | Filter(Call(||, Call(==, Field(type), Literal(Function)), " +
+				"Call(==, Field(type), Literal(Method)))) | Map(Field(name)))",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -885,29 +1048,52 @@ func TestDSLParser_Pipelines(t *testing.T) {
 }
 
 func TestDSLParser_ComplexQueries(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Complex logical expressions
-		{".type == \"Function\" && .roles has \"Exported\" && .name != \"\"", "Call(&&, Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported))), Call(!=, Field(name), Literal()))"},
-		{".type == \"Function\" || .type == \"Method\" || .type == \"Constructor\"", "Call(||, Call(||, Call(==, Field(type), Literal(Function)), Call(==, Field(type), Literal(Method))), Call(==, Field(type), Literal(Constructor)))"},
+		// Complex logical expressions.
+		{
+			`.type == "Function" && .roles has "Exported" && .name != ""`,
+			//nolint:dupword // Repeated Call(&&,) is correct AST representation.
+			"Call(&&, Call(&&, Call(==, Field(type), Literal(Function)), " +
+				"Call(has, Field(roles), Literal(Exported))), Call(!=, Field(name), Literal()))",
+		},
+		{
+			`.type == "Function" || .type == "Method" || .type == "Constructor"`,
+			//nolint:dupword // Repeated Call(||,) is correct AST representation.
+			"Call(||, Call(||, Call(==, Field(type), Literal(Function)), " +
+				"Call(==, Field(type), Literal(Method))), Call(==, Field(type), Literal(Constructor)))",
+		},
 
-		// Nested parentheses
-		{"(.type == \"Function\" && .roles has \"Exported\") || (.type == \"Method\" && .roles has \"Private\")", "Call(||, Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported))), Call(&&, Call(==, Field(type), Literal(Method)), Call(has, Field(roles), Literal(Private))))"},
+		// Nested parentheses.
+		{
+			`(.type == "Function" && .roles has "Exported") || (.type == "Method" && .roles has "Private")`,
+			"Call(||, Call(&&, Call(==, Field(type), Literal(Function)), Call(has, Field(roles), Literal(Exported))), " +
+				"Call(&&, Call(==, Field(type), Literal(Method)), Call(has, Field(roles), Literal(Private))))",
+		},
 
-		// Complex field access
+		// Complex field access.
 		{".props.function.name == \"main\"", "Call(==, Field(props.function.name), Literal(main))"},
-		{".props.deeply.nested.property.has.value == true", "Call(==, Field(props.deeply.nested.property.has.value), Literal(true))"},
+		{
+			".props.deeply.nested.property.has.value == true",
+			"Call(==, Field(props.deeply.nested.property.has.value), Literal(true))",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -916,6 +1102,8 @@ func TestDSLParser_ComplexQueries(t *testing.T) {
 }
 
 func TestDSLParser_InvalidSyntax(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input string
 		want  string
@@ -942,11 +1130,15 @@ func TestDSLParser_InvalidSyntax(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			_, err := ParseDSL(tc.input)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
+
 			got := err.Error()
+
 			if got != tc.want {
 				t.Errorf("got error %q, want %q", got, tc.want)
 			}
@@ -955,11 +1147,13 @@ func TestDSLParser_InvalidSyntax(t *testing.T) {
 }
 
 func TestDSLParser_Spacing(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		input   string
 		wantAST string
 	}{
-		// Basic spacing
+		// Basic spacing.
 		{".type == \"Function\"", "Call(==, Field(type), Literal(Function))"},
 		{"map(.children)", "Map(Field(children))"},
 		{"filter(.type == \"Function\")", "Filter(Call(==, Field(type), Literal(Function)))"},
@@ -967,11 +1161,15 @@ func TestDSLParser_Spacing(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			got := stringifyAST(ast)
+
 			if got != tc.wantAST {
 				t.Errorf("got %q, want %q", got, tc.wantAST)
 			}
@@ -979,7 +1177,10 @@ func TestDSLParser_Spacing(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_ExecutionWithComplexQueries(t *testing.T) {
+	t.Parallel()
+
 	testUAST := &Node{
 		Type:  "Root",
 		Token: "root",
@@ -1018,43 +1219,59 @@ func TestDSLParser_ExecutionWithComplexQueries(t *testing.T) {
 			},
 		},
 	}
+
 	cases := []struct {
 		dsl     string
 		input   *Node
 		want    []string
 		wantErr bool
 	}{
-		// Complex filter with logical operators
+		// Complex filter with logical operators.
 		{"rfilter(.type == \"Function\" && .roles has \"Exported\")", testUAST, []string{"Function"}, false},
-		{"rfilter(.type == \"Function\" || .type == \"Method\")", testUAST, []string{"Function", "Method", "Function"}, false},
+		{
+			"rfilter(.type == \"Function\" || .type == \"Method\")",
+			testUAST, []string{"Function", "Method", "Function"}, false,
+		},
 		{"rfilter(.type == \"Function\" && .name != \"\")", testUAST, []string{"Function", "Function"}, false},
-		// Complex pipeline
+		// Complex pipeline.
 		{"rfilter(.type == \"Function\") |> map(.name)", testUAST, []string{"function1", "function2"}, false},
 		{"rfilter(.roles has \"Exported\") |> map(.name)", testUAST, []string{"function1"}, false},
-		// Recursive queries
+		// Recursive queries.
 		{"rfilter(.props.type == \"Function\")", testUAST, []string{"Root", "Function", "Function"}, false},
 		{"rfilter(.roles has \"Exported\")", testUAST, []string{"Function"}, false},
-		// Complex nested queries
-		{"rfilter(.type == \"Function\" && .roles has \"Exported\") |> map(.name)", testUAST, []string{"function1"}, false},
+		// Complex nested queries.
+		{
+			"rfilter(.type == \"Function\" && .roles has \"Exported\") |> map(.name)",
+			testUAST, []string{"function1"}, false,
+		},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.dsl, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.dsl)
 			if tc.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
+
 			qf, err := LowerDSL(ast)
 			if err != nil {
 				t.Fatalf("lowering error: %v", err)
 			}
+
 			out := qf([]*Node{tc.input})
+
 			var got []string
+
 			for _, n := range out {
 				if strings.Contains(tc.dsl, "map") {
 					got = append(got, n.Token)
@@ -1062,10 +1279,13 @@ func TestDSLParser_ExecutionWithComplexQueries(t *testing.T) {
 					got = append(got, string(n.Type))
 				}
 			}
+
 			if len(got) != len(tc.want) {
 				t.Errorf("got %v, want %v", got, tc.want)
+
 				return
 			}
+
 			for i := range got {
 				if got[i] != tc.want[i] {
 					t.Errorf("got %v, want %v", got, tc.want)
@@ -1076,6 +1296,8 @@ func TestDSLParser_ExecutionWithComplexQueries(t *testing.T) {
 }
 
 func TestDSLParser_Lowering_ComplexOrQuery(t *testing.T) {
+	t.Parallel()
+
 	testUAST := &Node{
 		Type: "Root",
 		Children: []*Node{
@@ -1090,24 +1312,32 @@ func TestDSLParser_Lowering_ComplexOrQuery(t *testing.T) {
 		},
 	}
 
-	query := `rfilter(.type == "If" || .type == "Loop" || .type == "Switch" || .type == "Case" || .type == "Try" || .type == "Catch" || .type == "Throw")`
+	query := `rfilter(.type == "If" || .type == "Loop" || .type == "Switch"` +
+		` || .type == "Case" || .type == "Try" || .type == "Catch" || .type == "Throw")`
+
 	ast, err := ParseDSL(query)
 	if err != nil {
 		t.Fatalf("ParseDSL failed: %v", err)
 	}
+
 	qf, err := LowerDSL(ast)
 	if err != nil {
 		t.Fatalf("LowerDSL failed: %v", err)
 	}
+
 	out := qf([]*Node{testUAST})
 	got := make([]string, 0, len(out))
+
 	for _, n := range out {
 		got = append(got, string(n.Type))
 	}
+
 	want := []string{"If", "Loop", "Switch", "Case", "Try", "Catch", "Throw"}
+
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
+
 	for i := range got {
 		if got[i] != want[i] {
 			t.Errorf("at %d: got %v, want %v", i, got[i], want[i])
@@ -1115,8 +1345,11 @@ func TestDSLParser_Lowering_ComplexOrQuery(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
-	// Create a deeply nested UAST structure with 3+ levels
+	t.Parallel()
+
+	// Create a deeply nested UAST structure with 3+ levels.
 	deepUAST := &Node{
 		Type:  "Root",
 		Props: map[string]string{"type": "Root", "name": "root"},
@@ -1209,7 +1442,7 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 	testCases := []struct {
 		name     string
 		query    string
-		expected []string // Expected node names/types to be found
+		expected []string // Expected node names/types to be found.
 	}{
 		{
 			name:     "rfilter_one_node_type",
@@ -1217,8 +1450,9 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 			expected: []string{"func1"},
 		},
 		{
-			name:     "rfilter_all_decision_nodes",
-			query:    `rfilter(.type == "If" || .type == "Loop" || .type == "Switch" || .type == "Case" || .type == "Try" || .type == "Catch" || .type == "Throw")`,
+			name: "rfilter_all_decision_nodes",
+			query: `rfilter(.type == "If" || .type == "Loop" || .type == "Switch"` +
+				` || .type == "Case" || .type == "Try" || .type == "Catch" || .type == "Throw")`,
 			expected: []string{"if1", "loop1", "switch1", "case1", "try1", "catch1", "throw1"},
 		},
 		{
@@ -1242,13 +1476,17 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 			expected: []string{"try1", "catch1", "throw1"},
 		},
 		{
-			name:     "rfilter_with_name_condition",
-			query:    `rfilter(.name != "" && .name != "root")`,
-			expected: []string{"func1", "if1", "loop1", "switch1", "case1", "try1", "catch1", "throw1", "method1", "ctor1", "class1", "field1", "var1"},
+			name:  "rfilter_with_name_condition",
+			query: `rfilter(.name != "" && .name != "root")`,
+			expected: []string{
+				"func1", "if1", "loop1", "switch1", "case1", "try1",
+				"catch1", "throw1", "method1", "ctor1", "class1", "field1", "var1",
+			},
 		},
 		{
-			name:     "rfilter_complex_condition",
-			query:    `rfilter((.type == "Function" && .roles has "Exported") || (.type == "Method" && .roles has "Private"))`,
+			name: "rfilter_complex_condition",
+			query: `rfilter((.type == "Function" && .roles has "Exported")` +
+				` || (.type == "Method" && .roles has "Private"))`,
 			expected: []string{"func1", "method1"},
 		},
 		{
@@ -1257,14 +1495,19 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 			expected: []string{"if1", "loop1", "switch1"},
 		},
 		{
-			name:     "rfilter_with_not_operator",
-			query:    `rfilter(!(.type == "Root" || .type == "Class"))`,
-			expected: []string{"func1", "if1", "loop1", "switch1", "case1", "try1", "catch1", "throw1", "method1", "ctor1", "field1", "var1"},
+			name:  "rfilter_with_not_operator",
+			query: `rfilter(!(.type == "Root" || .type == "Class"))`,
+			expected: []string{
+				"func1", "if1", "loop1", "switch1", "case1", "try1",
+				"catch1", "throw1", "method1", "ctor1", "field1", "var1",
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.query)
 			if err != nil {
 				t.Fatalf("ParseDSL failed: %v", err)
@@ -1277,15 +1520,16 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 
 			result := qf([]*Node{deepUAST})
 
-			// Extract names from result nodes
+			// Extract names from result nodes.
 			var foundNames []string
-			for _, node := range result {
-				if name, ok := node.Props["name"]; ok {
+
+			for _, nd := range result {
+				if name, ok := nd.Props["name"]; ok {
 					foundNames = append(foundNames, name)
 				}
 			}
 
-			// Sort both slices for comparison
+			// Sort both slices for comparison.
 			sort.Strings(foundNames)
 			sort.Strings(tc.expected)
 
@@ -1299,8 +1543,11 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
-	// Create a nested structure for pipeline testing
+	t.Parallel()
+
+	// Create a nested structure for pipeline testing.
 	nestedUAST := &Node{
 		Type:  "Root",
 		Props: map[string]string{"type": "Root", "name": "root"},
@@ -1342,8 +1589,9 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "rfilter_then_map_names",
-			query:    `rfilter(.type == "Function" || .type == "If" || .type == "Loop" || .type == "Switch" || .type == "Try") |> map(.name)`,
+			name: "rfilter_then_map_names",
+			query: `rfilter(.type == "Function" || .type == "If" || .type == "Loop"` +
+				` || .type == "Switch" || .type == "Try") |> map(.name)`,
 			expected: []string{"func1", "if1", "loop1", "func2", "switch1", "try1"},
 		},
 		{
@@ -1352,8 +1600,9 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 			expected: []string{"func1", "func2"},
 		},
 		{
-			name:     "rfilter_then_map_complexity",
-			query:    `rfilter(.type == "Function" || .type == "If" || .type == "Loop" || .type == "Switch" || .type == "Try") |> map(.complexity)`,
+			name: "rfilter_then_map_complexity",
+			query: `rfilter(.type == "Function" || .type == "If" || .type == "Loop"` +
+				` || .type == "Switch" || .type == "Try") |> map(.complexity)`,
 			expected: []string{"5", "2", "3", "8", "4", "1"},
 		},
 		{
@@ -1365,6 +1614,8 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ast, err := ParseDSL(tc.query)
 			if err != nil {
 				t.Fatalf("ParseDSL failed: %v", err)
@@ -1377,15 +1628,16 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 
 			result := qf([]*Node{nestedUAST})
 
-			// Extract values from result nodes
+			// Extract values from result nodes.
 			var foundValues []string
-			for _, node := range result {
-				if node.Type == "Literal" {
-					foundValues = append(foundValues, node.Token)
+
+			for _, nd := range result {
+				if nd.Type == "Literal" {
+					foundValues = append(foundValues, nd.Token)
 				}
 			}
 
-			// Sort both slices for comparison
+			// Sort both slices for comparison.
 			sort.Strings(foundValues)
 			sort.Strings(tc.expected)
 
@@ -1400,38 +1652,50 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 }
 
 func TestDSLParser_ComplexityAnalyzerQuery(t *testing.T) {
-	// Test the specific query used in the complexity analyzer
-	query := `rfilter(.type == "If" || .type == "Loop" || .type == "Switch" || .type == "Case" || .type == "Try" || .type == "Catch" || .type == "Throw" || .type == "Conditional" || .type == "While" || .type == "For" || .type == "DoWhile" || .type == "ForEach" || .type == "Guard" || .type == "Assert" || .type == "Break" || .type == "Continue" || .type == "Return" || .type == "Goto" || .type == "Label" || .type == "BinaryOp" || .type == "UnaryOp")`
+	t.Parallel()
+
+	// Test the specific query used in the complexity analyzer.
+	query := `rfilter(.type == "If" || .type == "Loop" || .type == "Switch"` +
+		` || .type == "Case" || .type == "Try" || .type == "Catch"` +
+		` || .type == "Throw" || .type == "Conditional" || .type == "While"` +
+		` || .type == "For" || .type == "DoWhile" || .type == "ForEach"` +
+		` || .type == "Guard" || .type == "Assert" || .type == "Break"` +
+		` || .type == "Continue" || .type == "Return" || .type == "Goto"` +
+		` || .type == "Label" || .type == "BinaryOp" || .type == "UnaryOp")`
 
 	ast, err := ParseDSL(query)
-
 	if err != nil {
 		t.Fatalf("ParseDSL failed: %v", err)
 	}
+
 	if ast == nil {
 		t.Fatalf("ParseDSL returned nil")
 	}
 
-	// Verify it's a recursive filter
+	// Verify it's a recursive filter.
 	rfilterNode, ok := ast.(*RFilterNode)
 	if !ok {
 		t.Fatalf("ParseDSL returned wrong type")
 	}
+
 	if rfilterNode.Expr == nil {
 		t.Fatalf("ParseDSL returned nil expr")
 	}
 
-	// Verify the condition is a complex OR expression
+	// Verify the condition is a complex OR expression.
 	callNode, ok := rfilterNode.Expr.(*CallNode)
 	if !ok {
 		t.Fatalf("ParseDSL returned wrong type")
 	}
+
 	if callNode.Name != "||" {
 		t.Fatalf("ParseDSL returned wrong name")
 	}
+
 	if callNode.Args == nil {
 		t.Fatalf("ParseDSL returned nil args")
 	}
+
 	if len(callNode.Args) != 2 {
 		t.Fatalf("ParseDSL returned wrong args length")
 	}

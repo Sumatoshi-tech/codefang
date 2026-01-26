@@ -1,10 +1,11 @@
-package renderer
+package renderer //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 // summaryMockSection is a ReportSection for summary tests.
@@ -23,25 +24,31 @@ func newSummaryMock(title string, score float64, message string) *summaryMockSec
 }
 
 func TestNewExecutiveSummary_StoresSections(t *testing.T) {
+	t.Parallel()
+
 	s1 := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	s2 := newSummaryMock("COMMENTS", 0.6, "Fair")
 	sections := []analyze.ReportSection{s1, s2}
 
 	summary := NewExecutiveSummary(sections)
 
-	assert.Equal(t, 2, len(summary.Sections))
+	assert.Len(t, summary.Sections, 2)
 	assert.Equal(t, "COMPLEXITY", summary.Sections[0].SectionTitle())
 	assert.Equal(t, "COMMENTS", summary.Sections[1].SectionTitle())
 }
 
 func TestNewExecutiveSummary_Empty(t *testing.T) {
+	t.Parallel()
+
 	summary := NewExecutiveSummary(nil)
 
 	assert.NotNil(t, summary)
-	assert.Equal(t, 0, len(summary.Sections))
+	assert.Empty(t, summary.Sections)
 }
 
 func TestOverallScore_SingleSection(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 
@@ -49,6 +56,8 @@ func TestOverallScore_SingleSection(t *testing.T) {
 }
 
 func TestOverallScore_MultipleSections(t *testing.T) {
+	t.Parallel()
+
 	s1 := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	s2 := newSummaryMock("COMMENTS", 0.6, "Fair")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s1, s2})
@@ -57,6 +66,8 @@ func TestOverallScore_MultipleSections(t *testing.T) {
 }
 
 func TestOverallScore_SkipsInfoOnly(t *testing.T) {
+	t.Parallel()
+
 	s1 := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	s2 := newSummaryMock("IMPORTS", analyze.ScoreInfoOnly, "5 imports")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s1, s2})
@@ -65,19 +76,25 @@ func TestOverallScore_SkipsInfoOnly(t *testing.T) {
 }
 
 func TestOverallScore_AllInfoOnly(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("IMPORTS", analyze.ScoreInfoOnly, "5 imports")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 
-	assert.Equal(t, analyze.ScoreInfoOnly, summary.OverallScore())
+	assert.InDelta(t, analyze.ScoreInfoOnly, summary.OverallScore(), 0.001)
 }
 
 func TestOverallScore_Empty(t *testing.T) {
+	t.Parallel()
+
 	summary := NewExecutiveSummary(nil)
 
-	assert.Equal(t, analyze.ScoreInfoOnly, summary.OverallScore())
+	assert.InDelta(t, analyze.ScoreInfoOnly, summary.OverallScore(), 0.001)
 }
 
 func TestOverallScoreLabel_Formatted(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 
@@ -85,6 +102,8 @@ func TestOverallScoreLabel_Formatted(t *testing.T) {
 }
 
 func TestOverallScoreLabel_InfoOnly(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("IMPORTS", analyze.ScoreInfoOnly, "5 imports")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 
@@ -92,6 +111,8 @@ func TestOverallScoreLabel_InfoOnly(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsTitle(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 	r := NewSectionRenderer(testWidth, false, true)
@@ -102,6 +123,8 @@ func TestRenderSummary_ContainsTitle(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsOverallScore(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 	r := NewSectionRenderer(testWidth, false, true)
@@ -112,6 +135,8 @@ func TestRenderSummary_ContainsOverallScore(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsColumnHeaders(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 	r := NewSectionRenderer(testWidth, false, true)
@@ -124,6 +149,8 @@ func TestRenderSummary_ContainsColumnHeaders(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsAllAnalyzers(t *testing.T) {
+	t.Parallel()
+
 	s1 := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	s2 := newSummaryMock("COMMENTS", 0.6, "Fair")
 	s3 := newSummaryMock("IMPORTS", analyze.ScoreInfoOnly, "5 imports")
@@ -138,6 +165,8 @@ func TestRenderSummary_ContainsAllAnalyzers(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsScores(t *testing.T) {
+	t.Parallel()
+
 	s1 := newSummaryMock("COMPLEXITY", 0.8, "Good")
 	s2 := newSummaryMock("COMMENTS", 0.6, "Fair")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s1, s2})
@@ -150,6 +179,8 @@ func TestRenderSummary_ContainsScores(t *testing.T) {
 }
 
 func TestRenderSummary_ContainsMessages(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("COMPLEXITY", 0.8, "Good - reasonable complexity")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 	r := NewSectionRenderer(testWidth, false, true)
@@ -160,6 +191,8 @@ func TestRenderSummary_ContainsMessages(t *testing.T) {
 }
 
 func TestRenderSummary_InfoOnlySection(t *testing.T) {
+	t.Parallel()
+
 	s := newSummaryMock("IMPORTS", analyze.ScoreInfoOnly, "5 imports")
 	summary := NewExecutiveSummary([]analyze.ReportSection{s})
 	r := NewSectionRenderer(testWidth, false, true)
@@ -171,6 +204,8 @@ func TestRenderSummary_InfoOnlySection(t *testing.T) {
 }
 
 func TestRenderSummary_EmptySections(t *testing.T) {
+	t.Parallel()
+
 	summary := NewExecutiveSummary(nil)
 	r := NewSectionRenderer(testWidth, false, true)
 
