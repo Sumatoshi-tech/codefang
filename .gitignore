@@ -77,3 +77,7 @@ leaves.test
 identity.test
 instructions/
 specs/
+
+# Editor/IDE configs
+.cursor/
+.vscode/
