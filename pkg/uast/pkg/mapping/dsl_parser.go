@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Sentinel errors for DSL parsing.
@@ -203,6 +204,10 @@ func (parser *Parser) ParseMapping(reader io.Reader) ([]Rule, *LanguageInfo, err
 	input := string(content)
 	input = strings.ReplaceAll(input, "\r\n", "\n")
 	input = strings.ReplaceAll(input, "\r", "\n")
+
+	// Serialize access to the global nodeTextBuffer used during parsing and AST traversal.
+	nodeTextMu.Lock()
+	defer nodeTextMu.Unlock()
 
 	ast, parseErr := parseMappingDSL(input)
 	if parseErr != nil {
@@ -427,7 +432,10 @@ func extractText(parseNode *node32) string {
 }
 
 //nolint:gochecknoglobals // Set by parseMappingDSL for text extraction across the parse tree.
-var nodeTextBuffer string
+var (
+	nodeTextBuffer string
+	nodeTextMu     sync.Mutex
+)
 
 func extractPattern(patternNode *node32) string {
 	return extractText(patternNode)
