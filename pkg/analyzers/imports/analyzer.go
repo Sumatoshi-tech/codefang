@@ -20,52 +20,52 @@ const (
 	magic2_2 = 2
 )
 
-// ImportsAnalyzer analyzes import statements in source code.
-type ImportsAnalyzer struct {
+// Analyzer analyzes import statements in source code.
+type Analyzer struct {
 }
 
-// NewImportsAnalyzer creates a new ImportsAnalyzer.
-func NewImportsAnalyzer() *ImportsAnalyzer {
-	return &ImportsAnalyzer{}
+// NewAnalyzer creates a new Analyzer.
+func NewAnalyzer() *Analyzer {
+	return &Analyzer{}
 }
 
 // Name returns the name of the analyzer.
-func (a *ImportsAnalyzer) Name() string {
+func (a *Analyzer) Name() string {
 	return "imports"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (a *ImportsAnalyzer) Flag() string {
+func (a *Analyzer) Flag() string {
 	return "imports-analysis"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (a *ImportsAnalyzer) Description() string {
+func (a *Analyzer) Description() string {
 	return "Extracts and analyzes import statements from code"
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (a *ImportsAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (a *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (a *ImportsAnalyzer) Configure(_ map[string]any) error {
+func (a *Analyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
 // Thresholds returns the scoring thresholds for the analysis.
-func (a *ImportsAnalyzer) Thresholds() analyze.Thresholds {
+func (a *Analyzer) Thresholds() analyze.Thresholds {
 	return nil
 }
 
 // CreateAggregator returns a new aggregator for collecting results.
-func (a *ImportsAnalyzer) CreateAggregator() analyze.ResultAggregator {
-	return NewImportsAggregator()
+func (a *Analyzer) CreateAggregator() analyze.ResultAggregator {
+	return NewAggregator()
 }
 
 // Analyze runs the analysis on the given AST root node.
-func (a *ImportsAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
+func (a *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	imports := extractImportsFromUAST(root)
 
 	return analyze.Report{
@@ -75,8 +75,8 @@ func (a *ImportsAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (a *ImportsAnalyzer) FormatReport(report analyze.Report, w io.Writer) error {
-	section := NewImportsReportSection(report)
+func (a *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
+	section := NewReportSection(report)
 	config := terminal.NewConfig()
 	r := renderer.NewSectionRenderer(config.Width, false, config.NoColor)
 
@@ -89,7 +89,7 @@ func (a *ImportsAnalyzer) FormatReport(report analyze.Report, w io.Writer) error
 }
 
 // FormatReportJSON writes the analysis report in JSON format.
-func (a *ImportsAnalyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
+func (a *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	err := json.NewEncoder(w).Encode(report)
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)

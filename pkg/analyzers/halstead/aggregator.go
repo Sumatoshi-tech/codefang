@@ -12,20 +12,20 @@ const (
 	volumeThresholdHigh = 5000
 )
 
-// HalsteadAggregator aggregates Halstead analysis results.
-type HalsteadAggregator struct {
+// Aggregator aggregates Halstead analysis results.
+type Aggregator struct {
 	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
 	detailedFunctions  []map[string]any
 }
 
-// NewHalsteadAggregator creates a new Halstead aggregator.
-func NewHalsteadAggregator() *HalsteadAggregator {
+// NewAggregator creates a new Halstead aggregator.
+func NewAggregator() *Aggregator {
 	numericKeys := getNumericKeys()
 	countKeys := getCountKeys()
 	messageBuilder := buildHalsteadMessage
 	emptyResultBuilder := buildEmptyHalsteadResult
 
-	return &HalsteadAggregator{
+	return &Aggregator{
 		Aggregator: common.NewAggregator(
 			"halstead",
 			numericKeys,
@@ -40,13 +40,13 @@ func NewHalsteadAggregator() *HalsteadAggregator {
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed functions.
-func (ha *HalsteadAggregator) Aggregate(results map[string]analyze.Report) {
+func (ha *Aggregator) Aggregate(results map[string]analyze.Report) {
 	ha.collectDetailedFunctions(results)
 	ha.Aggregator.Aggregate(results)
 }
 
 // GetResult overrides the base GetResult method to include detailed functions.
-func (ha *HalsteadAggregator) GetResult() analyze.Report {
+func (ha *Aggregator) GetResult() analyze.Report {
 	result := ha.Aggregator.GetResult()
 	ha.addDetailedFunctionsToResult(result)
 
@@ -54,7 +54,7 @@ func (ha *HalsteadAggregator) GetResult() analyze.Report {
 }
 
 // collectDetailedFunctions extracts detailed functions from all reports.
-func (ha *HalsteadAggregator) collectDetailedFunctions(results map[string]analyze.Report) {
+func (ha *Aggregator) collectDetailedFunctions(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
@@ -65,14 +65,14 @@ func (ha *HalsteadAggregator) collectDetailedFunctions(results map[string]analyz
 }
 
 // extractFunctionsFromReport extracts functions from a single report.
-func (ha *HalsteadAggregator) extractFunctionsFromReport(report analyze.Report) {
+func (ha *Aggregator) extractFunctionsFromReport(report analyze.Report) {
 	if functions, ok := report["functions"].([]map[string]any); ok {
 		ha.detailedFunctions = append(ha.detailedFunctions, functions...)
 	}
 }
 
 // addDetailedFunctionsToResult adds detailed functions to the result.
-func (ha *HalsteadAggregator) addDetailedFunctionsToResult(result analyze.Report) {
+func (ha *Aggregator) addDetailedFunctionsToResult(result analyze.Report) {
 	if len(ha.detailedFunctions) > 0 {
 		result["functions"] = ha.detailedFunctions
 	}

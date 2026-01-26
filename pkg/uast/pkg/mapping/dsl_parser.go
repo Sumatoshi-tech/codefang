@@ -10,12 +10,12 @@ import (
 
 // Sentinel errors for DSL parsing.
 var (
-	errInvalidASTRoot     = errors.New("invalid AST root type")
-	errNoLangDeclaration  = errors.New("no language declaration found")
-	errInvalidLangFormat  = errors.New("invalid language declaration format")
-	errInvalidMappingRule = errors.New("invalid mapping rule")
-	errNoMappingRules     = errors.New("no mapping rules found in DSL")
-	errMissingUASTFields  = errors.New("missing UAST field list")
+	errInvalidASTRoot    = errors.New("invalid AST root type")
+	errNoLangDeclaration = errors.New("no language declaration found")
+	errInvalidLangFormat = errors.New("invalid language declaration format")
+	errInvalidRule       = errors.New("invalid mapping rule")
+	errNoRules           = errors.New("no mapping rules found in DSL")
+	errMissingUASTFields = errors.New("missing UAST field list")
 )
 
 // Minimum number of fields required when parsing an "extends" declaration.
@@ -190,11 +190,11 @@ func parseQuotedList(text string) []string {
 	return parser.items
 }
 
-// MappingParser parses the mapping DSL and returns validated mapping rules.
-type MappingParser struct{}
+// Parser parses the mapping DSL and returns validated mapping rules.
+type Parser struct{}
 
 // ParseMapping parses the mapping DSL input and returns mapping rules.
-func (parser *MappingParser) ParseMapping(reader io.Reader) ([]MappingRule, *LanguageInfo, error) {
+func (parser *Parser) ParseMapping(reader io.Reader) ([]Rule, *LanguageInfo, error) {
 	content, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading input: %w", err)
@@ -209,7 +209,7 @@ func (parser *MappingParser) ParseMapping(reader io.Reader) ([]MappingRule, *Lan
 		return nil, nil, parseErr
 	}
 
-	rules, buildErr := buildMappingRulesFromAST(ast)
+	rules, buildErr := buildRulesFromAST(ast)
 	if buildErr != nil {
 		return nil, nil, buildErr
 	}
@@ -241,9 +241,9 @@ func parseMappingDSL(input string) (any, error) {
 	return parser.AST(), nil
 }
 
-// buildMappingRulesFromAST converts the PEG AST to []MappingRule.
-func buildMappingRulesFromAST(ast any) ([]MappingRule, error) {
-	var rules []MappingRule
+// buildRulesFromAST converts the PEG AST to []Rule.
+func buildRulesFromAST(ast any) ([]Rule, error) {
+	var rules []Rule
 
 	var walk func(parseNode *node32)
 
@@ -253,7 +253,7 @@ func buildMappingRulesFromAST(ast any) ([]MappingRule, error) {
 		}
 
 		if parseNode.pegRule == ruleRule {
-			rule, extractErr := extractMappingRule(parseNode)
+			rule, extractErr := extractRule(parseNode)
 			if extractErr == nil {
 				rules = append(rules, rule)
 			}
@@ -281,7 +281,7 @@ func buildMappingRulesFromAST(ast any) ([]MappingRule, error) {
 	}
 
 	if len(rules) == 0 {
-		return nil, errNoMappingRules
+		return nil, errNoRules
 	}
 
 	return rules, nil
@@ -303,8 +303,8 @@ func findInheritanceNode(ruleNode *node32) *node32 {
 	return nil
 }
 
-func extractMappingRule(ruleNode *node32) (MappingRule, error) {
-	var rule MappingRule
+func extractRule(ruleNode *node32) (Rule, error) {
+	var rule Rule
 
 	nameNode := findChild(ruleNode, ruleIdentifier)
 	patternNode := findChild(ruleNode, rulePattern)
@@ -350,7 +350,7 @@ func extractMappingRule(ruleNode *node32) (MappingRule, error) {
 
 	broken := rule.Name == "" || rule.Pattern == "" || rule.UASTSpec.Type == ""
 	if broken {
-		return rule, errInvalidMappingRule
+		return rule, errInvalidRule
 	}
 
 	return rule, nil

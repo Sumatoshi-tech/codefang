@@ -23,7 +23,7 @@ const (
 )
 
 // calculateLCOM calculates the Lack of Cohesion of Methods.
-func (c *CohesionAnalyzer) calculateLCOM(functions []Function) float64 {
+func (c *Analyzer) calculateLCOM(functions []Function) float64 {
 	if len(functions) <= 1 {
 		return 0.0
 	}
@@ -34,7 +34,7 @@ func (c *CohesionAnalyzer) calculateLCOM(functions []Function) float64 {
 }
 
 // calculateFunctionPairs calculates all function pairs and their shared variable status.
-func (c *CohesionAnalyzer) calculateFunctionPairs(functions []Function) functionPairs {
+func (c *Analyzer) calculateFunctionPairs(functions []Function) functionPairs {
 	pairs := functionPairs{
 		shared: 0,
 		total:  0,
@@ -59,7 +59,7 @@ type functionPairs struct {
 }
 
 // computeLCOMScore computes the final LCOM score from function pairs.
-func (c *CohesionAnalyzer) computeLCOMScore(pairs functionPairs) float64 {
+func (c *Analyzer) computeLCOMScore(pairs functionPairs) float64 {
 	if pairs.total == 0 {
 		return 0.0
 	}
@@ -68,7 +68,7 @@ func (c *CohesionAnalyzer) computeLCOMScore(pairs functionPairs) float64 {
 }
 
 // haveSharedVariables checks if two functions share any variables.
-func (c *CohesionAnalyzer) haveSharedVariables(fn1, fn2 Function) bool {
+func (c *Analyzer) haveSharedVariables(fn1, fn2 Function) bool {
 	for _, var1 := range fn1.Variables {
 		if c.containsVariable(fn2.Variables, var1) {
 			return true
@@ -79,12 +79,12 @@ func (c *CohesionAnalyzer) haveSharedVariables(fn1, fn2 Function) bool {
 }
 
 // containsVariable checks if a variable exists in the variables slice.
-func (c *CohesionAnalyzer) containsVariable(variables []string, target string) bool {
+func (c *Analyzer) containsVariable(variables []string, target string) bool {
 	return slices.Contains(variables, target)
 }
 
 // calculateCohesionScore calculates a normalized cohesion score (0-1).
-func (c *CohesionAnalyzer) calculateCohesionScore(lcom float64, functionCount int) float64 {
+func (c *Analyzer) calculateCohesionScore(lcom float64, functionCount int) float64 {
 	if functionCount <= 1 {
 		return 1.0
 	}
@@ -101,17 +101,17 @@ func (c *CohesionAnalyzer) calculateCohesionScore(lcom float64, functionCount in
 }
 
 // calculateMaxLCOM calculates the maximum possible LCOM value.
-func (c *CohesionAnalyzer) calculateMaxLCOM(functionCount int) float64 {
+func (c *Analyzer) calculateMaxLCOM(functionCount int) float64 {
 	return float64(functionCount * (functionCount - 1) / float64Arg2)
 }
 
 // clampCohesionScore ensures the cohesion score is within valid bounds.
-func (c *CohesionAnalyzer) clampCohesionScore(score float64) float64 {
+func (c *Analyzer) clampCohesionScore(score float64) float64 {
 	return math.Max(0.0, math.Min(1.0, score))
 }
 
 // calculateFunctionCohesion calculates average function-level cohesion.
-func (c *CohesionAnalyzer) calculateFunctionCohesion(functions []Function) float64 {
+func (c *Analyzer) calculateFunctionCohesion(functions []Function) float64 {
 	if len(functions) == 0 {
 		return 1.0
 	}
@@ -122,7 +122,7 @@ func (c *CohesionAnalyzer) calculateFunctionCohesion(functions []Function) float
 }
 
 // sumFunctionCohesion calculates the sum of all function cohesion values.
-func (c *CohesionAnalyzer) sumFunctionCohesion(functions []Function) float64 {
+func (c *Analyzer) sumFunctionCohesion(functions []Function) float64 {
 	total := 0.0
 	for _, fn := range functions {
 		total += fn.Cohesion
@@ -146,7 +146,7 @@ func (c *CohesionAnalyzer) sumFunctionCohesion(functions []Function) float64 {
 // 3. Larger functions: Logarithmic scaling to avoid harsh penalties
 //   - Uses variable density with logarithmic penalty curve
 //   - More forgiving than linear scaling for moderately complex functions.
-func (c *CohesionAnalyzer) calculateFunctionLevelCohesion(fn Function) float64 {
+func (c *Analyzer) calculateFunctionLevelCohesion(fn Function) float64 {
 	if fn.LineCount == 0 {
 		return 1.0
 	}
@@ -159,12 +159,12 @@ func (c *CohesionAnalyzer) calculateFunctionLevelCohesion(fn Function) float64 {
 }
 
 // IsSmallFunction checks if a function is small (≤5 lines).
-func (c *CohesionAnalyzer) isSmallFunction(fn Function) bool {
+func (c *Analyzer) isSmallFunction(fn Function) bool {
 	return fn.LineCount <= LineCountThresholdHigh
 }
 
 // calculateSmallFunctionCohesion calculates cohesion for small functions.
-func (c *CohesionAnalyzer) calculateSmallFunctionCohesion(fn Function) float64 {
+func (c *Analyzer) calculateSmallFunctionCohesion(fn Function) float64 {
 	if c.hasFewVariables(fn) {
 		return 1.0
 	}
@@ -173,19 +173,19 @@ func (c *CohesionAnalyzer) calculateSmallFunctionCohesion(fn Function) float64 {
 }
 
 // hasFewVariables checks if a function has 3 or fewer variables.
-func (c *CohesionAnalyzer) hasFewVariables(fn Function) bool {
+func (c *Analyzer) hasFewVariables(fn Function) bool {
 	return len(fn.Variables) <= lenArg3
 }
 
 // calculateSmallFunctionPenalty calculates the penalty for small functions with many variables.
-func (c *CohesionAnalyzer) calculateSmallFunctionPenalty(fn Function) float64 {
+func (c *Analyzer) calculateSmallFunctionPenalty(fn Function) float64 {
 	penalty := float64(len(fn.Variables)-lenArg3) * float64Arg0p1
 
 	return math.Max(MaxArg0p7, 1.0-penalty)
 }
 
 // calculateLargeFunctionCohesion calculates cohesion for larger functions.
-func (c *CohesionAnalyzer) calculateLargeFunctionCohesion(fn Function) float64 {
+func (c *Analyzer) calculateLargeFunctionCohesion(fn Function) float64 {
 	variableDensity := c.calculateVariableDensity(fn)
 
 	if c.hasLowVariableDensity(variableDensity) {
@@ -196,22 +196,22 @@ func (c *CohesionAnalyzer) calculateLargeFunctionCohesion(fn Function) float64 {
 }
 
 // calculateVariableDensity calculates the ratio of variables to lines of code.
-func (c *CohesionAnalyzer) calculateVariableDensity(fn Function) float64 {
+func (c *Analyzer) calculateVariableDensity(fn Function) float64 {
 	return float64(len(fn.Variables)) / float64(fn.LineCount)
 }
 
 // HasLowVariableDensity checks if the variable density is low (≤0.5).
-func (c *CohesionAnalyzer) hasLowVariableDensity(density float64) bool {
+func (c *Analyzer) hasLowVariableDensity(density float64) bool {
 	return density <= densityThresholdMedium
 }
 
 // calculateLowDensityCohesion calculates cohesion for functions with low variable density.
-func (c *CohesionAnalyzer) calculateLowDensityCohesion(density float64) float64 {
+func (c *Analyzer) calculateLowDensityCohesion(density float64) float64 {
 	return 1.0 - density
 }
 
 // calculateHighDensityCohesion calculates cohesion for functions with high variable density.
-func (c *CohesionAnalyzer) calculateHighDensityCohesion(density float64) float64 {
+func (c *Analyzer) calculateHighDensityCohesion(density float64) float64 {
 	penalty := c.calculateLogarithmicPenalty(density)
 	cohesion := 1.0 - math.Min(cohesionValue, penalty)
 
@@ -219,6 +219,6 @@ func (c *CohesionAnalyzer) calculateHighDensityCohesion(density float64) float64
 }
 
 // calculateLogarithmicPenalty calculates the logarithmic penalty for high variable density.
-func (c *CohesionAnalyzer) calculateLogarithmicPenalty(density float64) float64 {
+func (c *Analyzer) calculateLogarithmicPenalty(density float64) float64 {
 	return math.Log2(1.0+density) / Log2Arg2p0
 }

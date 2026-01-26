@@ -20,7 +20,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".yaml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "stream",
@@ -546,7 +546,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".zsh",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -2476,7 +2476,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".h",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "translation_unit",
@@ -6226,7 +6226,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".cs",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "compilation_unit",
@@ -12036,7 +12036,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".edn",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source",
@@ -13690,7 +13690,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".cmake",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -14686,7 +14686,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".lsp",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source",
@@ -15388,7 +15388,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".h",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "translation_unit",
@@ -21608,7 +21608,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".cr",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "expressions",
@@ -24542,7 +24542,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".css",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "stylesheet",
@@ -25654,7 +25654,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".csv",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -25824,7 +25824,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".dart",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -30306,7 +30306,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".dockerfile",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -31510,7 +31510,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".env",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -31808,7 +31808,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".exs",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source",
@@ -32816,7 +32816,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".elm",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "file",
@@ -33688,7 +33688,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".fish",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -34552,7 +34552,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".f95",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "translation_unit",
@@ -35934,7 +35934,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".gitconfig",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "config",
@@ -36192,7 +36192,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".gitattributes",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "file",
@@ -36818,7 +36818,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".gitignore",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -37244,7 +37244,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".go",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "_expression",
@@ -39760,7 +39760,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 		Extensions: []string{
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "checksum",
@@ -40026,7 +40026,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".go.tmpl",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "template",
@@ -40756,7 +40756,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 		Extensions: []string{
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "comment",
@@ -41036,7 +41036,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".gql",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -41996,7 +41996,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".gradle",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -42992,7 +42992,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".lhs",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "haskell",
@@ -43972,7 +43972,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".tf",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "config_file",
@@ -45160,7 +45160,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".yml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "argument_list",
@@ -46334,7 +46334,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".htm",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -46748,7 +46748,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".ini",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -46902,7 +46902,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".java",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "_literal",
@@ -50774,7 +50774,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".mjs",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "declaration",
@@ -53960,7 +53960,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".json",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -54214,7 +54214,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".kts",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -57588,7 +57588,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".ltx",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -59450,7 +59450,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".lua",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "chunk",
@@ -60724,7 +60724,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".makefile",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "makefile",
@@ -62420,7 +62420,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".markdown",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -63272,7 +63272,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".markdown",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "atx_heading",
@@ -64054,7 +64054,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".nim",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -65604,7 +65604,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".nim",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "double_curlies",
@@ -65918,7 +65918,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".t",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -66672,7 +66672,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".phtml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -71238,7 +71238,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".psd1",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -72372,7 +72372,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".properties",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "file",
@@ -72542,7 +72542,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".proto",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -73874,7 +73874,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".proxima",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "arg_name",
@@ -74016,7 +74016,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".prql",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -74748,7 +74748,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".psv",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -74922,7 +74922,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".pyi",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "_compound_statement",
@@ -77952,7 +77952,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".Rmd",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -78610,7 +78610,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".rego",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -79584,7 +79584,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".rbw",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -83014,7 +83014,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".rs",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -87328,7 +87328,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".sc",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "compilation_unit",
@@ -88620,7 +88620,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".sql",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -90090,7 +90090,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".ssh_config",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "config",
@@ -92868,7 +92868,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".swift",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -97430,7 +97430,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".tcl",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -98018,7 +98018,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".toml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -98370,7 +98370,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".tsx",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -103504,7 +103504,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".ts",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "program",
@@ -108420,7 +108420,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".xml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "document",
@@ -109678,7 +109678,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".yml",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "stream",
@@ -110396,7 +110396,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			".zig",
 
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 
 			{
 				Name: "source_file",
@@ -111516,13 +111516,13 @@ func (l *Loader) loadFromEmbeddedMappingsData() bool {
 
 // ansiblePatternMatcher provides pre-compiled pattern matching for ansible
 type ansiblePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newansiblePatternMatcher() *ansiblePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "stream",
@@ -112030,7 +112030,7 @@ func newansiblePatternMatcher() *ansiblePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -112045,14 +112045,14 @@ func newansiblePatternMatcher() *ansiblePatternMatcher {
 	}
 }
 
-func (m *ansiblePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *ansiblePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *ansiblePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *ansiblePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -112062,7 +112062,7 @@ func (m *ansiblePatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *ansiblePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *ansiblePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -112072,13 +112072,13 @@ func (m *ansiblePatternMatcher) GetRulesCount() int {
 
 // bashPatternMatcher provides pre-compiled pattern matching for bash
 type bashPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newbashPatternMatcher() *bashPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -113998,7 +113998,7 @@ func newbashPatternMatcher() *bashPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -114013,14 +114013,14 @@ func newbashPatternMatcher() *bashPatternMatcher {
 	}
 }
 
-func (m *bashPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *bashPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *bashPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *bashPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -114030,7 +114030,7 @@ func (m *bashPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *bashPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *bashPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -114040,13 +114040,13 @@ func (m *bashPatternMatcher) GetRulesCount() int {
 
 // cPatternMatcher provides pre-compiled pattern matching for c
 type cPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcPatternMatcher() *cPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "translation_unit",
@@ -117788,7 +117788,7 @@ func newcPatternMatcher() *cPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -117803,14 +117803,14 @@ func newcPatternMatcher() *cPatternMatcher {
 	}
 }
 
-func (m *cPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *cPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *cPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *cPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -117820,7 +117820,7 @@ func (m *cPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *cPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *cPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -117830,13 +117830,13 @@ func (m *cPatternMatcher) GetRulesCount() int {
 
 // c_sharpPatternMatcher provides pre-compiled pattern matching for c_sharp
 type c_sharpPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newc_sharpPatternMatcher() *c_sharpPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "compilation_unit",
@@ -123632,7 +123632,7 @@ func newc_sharpPatternMatcher() *c_sharpPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -123647,14 +123647,14 @@ func newc_sharpPatternMatcher() *c_sharpPatternMatcher {
 	}
 }
 
-func (m *c_sharpPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *c_sharpPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *c_sharpPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *c_sharpPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -123664,7 +123664,7 @@ func (m *c_sharpPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *c_sharpPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *c_sharpPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -123674,13 +123674,13 @@ func (m *c_sharpPatternMatcher) GetRulesCount() int {
 
 // clojurePatternMatcher provides pre-compiled pattern matching for clojure
 type clojurePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newclojurePatternMatcher() *clojurePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source",
@@ -125326,7 +125326,7 @@ func newclojurePatternMatcher() *clojurePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -125341,14 +125341,14 @@ func newclojurePatternMatcher() *clojurePatternMatcher {
 	}
 }
 
-func (m *clojurePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *clojurePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *clojurePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *clojurePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -125358,7 +125358,7 @@ func (m *clojurePatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *clojurePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *clojurePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -125368,13 +125368,13 @@ func (m *clojurePatternMatcher) GetRulesCount() int {
 
 // cmakePatternMatcher provides pre-compiled pattern matching for cmake
 type cmakePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcmakePatternMatcher() *cmakePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -126360,7 +126360,7 @@ func newcmakePatternMatcher() *cmakePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -126375,14 +126375,14 @@ func newcmakePatternMatcher() *cmakePatternMatcher {
 	}
 }
 
-func (m *cmakePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *cmakePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *cmakePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *cmakePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -126392,7 +126392,7 @@ func (m *cmakePatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *cmakePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *cmakePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -126402,13 +126402,13 @@ func (m *cmakePatternMatcher) GetRulesCount() int {
 
 // commonlispPatternMatcher provides pre-compiled pattern matching for commonlisp
 type commonlispPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcommonlispPatternMatcher() *commonlispPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source",
@@ -127092,7 +127092,7 @@ func newcommonlispPatternMatcher() *commonlispPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -127107,14 +127107,14 @@ func newcommonlispPatternMatcher() *commonlispPatternMatcher {
 	}
 }
 
-func (m *commonlispPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *commonlispPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *commonlispPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *commonlispPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -127124,7 +127124,7 @@ func (m *commonlispPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *commonlispPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *commonlispPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -127134,13 +127134,13 @@ func (m *commonlispPatternMatcher) GetRulesCount() int {
 
 // cppPatternMatcher provides pre-compiled pattern matching for cpp
 type cppPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcppPatternMatcher() *cppPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "translation_unit",
@@ -133352,7 +133352,7 @@ func newcppPatternMatcher() *cppPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -133367,14 +133367,14 @@ func newcppPatternMatcher() *cppPatternMatcher {
 	}
 }
 
-func (m *cppPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *cppPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *cppPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *cppPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -133384,7 +133384,7 @@ func (m *cppPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *cppPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *cppPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -133394,13 +133394,13 @@ func (m *cppPatternMatcher) GetRulesCount() int {
 
 // crystalPatternMatcher provides pre-compiled pattern matching for crystal
 type crystalPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcrystalPatternMatcher() *crystalPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "expressions",
@@ -136326,7 +136326,7 @@ func newcrystalPatternMatcher() *crystalPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -136341,14 +136341,14 @@ func newcrystalPatternMatcher() *crystalPatternMatcher {
 	}
 }
 
-func (m *crystalPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *crystalPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *crystalPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *crystalPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -136358,7 +136358,7 @@ func (m *crystalPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *crystalPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *crystalPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -136368,13 +136368,13 @@ func (m *crystalPatternMatcher) GetRulesCount() int {
 
 // cssPatternMatcher provides pre-compiled pattern matching for css
 type cssPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcssPatternMatcher() *cssPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "stylesheet",
@@ -137478,7 +137478,7 @@ func newcssPatternMatcher() *cssPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -137493,14 +137493,14 @@ func newcssPatternMatcher() *cssPatternMatcher {
 	}
 }
 
-func (m *cssPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *cssPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *cssPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *cssPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -137510,7 +137510,7 @@ func (m *cssPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *cssPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *cssPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -137520,13 +137520,13 @@ func (m *cssPatternMatcher) GetRulesCount() int {
 
 // csvPatternMatcher provides pre-compiled pattern matching for csv
 type csvPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newcsvPatternMatcher() *csvPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -137688,7 +137688,7 @@ func newcsvPatternMatcher() *csvPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -137703,14 +137703,14 @@ func newcsvPatternMatcher() *csvPatternMatcher {
 	}
 }
 
-func (m *csvPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *csvPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *csvPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *csvPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -137720,7 +137720,7 @@ func (m *csvPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *csvPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *csvPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -137730,13 +137730,13 @@ func (m *csvPatternMatcher) GetRulesCount() int {
 
 // dartPatternMatcher provides pre-compiled pattern matching for dart
 type dartPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newdartPatternMatcher() *dartPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -142210,7 +142210,7 @@ func newdartPatternMatcher() *dartPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -142225,14 +142225,14 @@ func newdartPatternMatcher() *dartPatternMatcher {
 	}
 }
 
-func (m *dartPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *dartPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *dartPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *dartPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -142242,7 +142242,7 @@ func (m *dartPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *dartPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *dartPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -142252,13 +142252,13 @@ func (m *dartPatternMatcher) GetRulesCount() int {
 
 // dockerfilePatternMatcher provides pre-compiled pattern matching for dockerfile
 type dockerfilePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newdockerfilePatternMatcher() *dockerfilePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -143454,7 +143454,7 @@ func newdockerfilePatternMatcher() *dockerfilePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -143469,14 +143469,14 @@ func newdockerfilePatternMatcher() *dockerfilePatternMatcher {
 	}
 }
 
-func (m *dockerfilePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *dockerfilePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *dockerfilePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *dockerfilePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -143486,7 +143486,7 @@ func (m *dockerfilePatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *dockerfilePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *dockerfilePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -143496,13 +143496,13 @@ func (m *dockerfilePatternMatcher) GetRulesCount() int {
 
 // dotenvPatternMatcher provides pre-compiled pattern matching for dotenv
 type dotenvPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newdotenvPatternMatcher() *dotenvPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -143790,7 +143790,7 @@ func newdotenvPatternMatcher() *dotenvPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -143805,14 +143805,14 @@ func newdotenvPatternMatcher() *dotenvPatternMatcher {
 	}
 }
 
-func (m *dotenvPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *dotenvPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *dotenvPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *dotenvPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -143822,7 +143822,7 @@ func (m *dotenvPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *dotenvPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *dotenvPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -143832,13 +143832,13 @@ func (m *dotenvPatternMatcher) GetRulesCount() int {
 
 // elixirPatternMatcher provides pre-compiled pattern matching for elixir
 type elixirPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newelixirPatternMatcher() *elixirPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source",
@@ -144838,7 +144838,7 @@ func newelixirPatternMatcher() *elixirPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -144853,14 +144853,14 @@ func newelixirPatternMatcher() *elixirPatternMatcher {
 	}
 }
 
-func (m *elixirPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *elixirPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *elixirPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *elixirPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -144870,7 +144870,7 @@ func (m *elixirPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *elixirPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *elixirPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -144880,13 +144880,13 @@ func (m *elixirPatternMatcher) GetRulesCount() int {
 
 // elmPatternMatcher provides pre-compiled pattern matching for elm
 type elmPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newelmPatternMatcher() *elmPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "file",
@@ -145750,7 +145750,7 @@ func newelmPatternMatcher() *elmPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -145765,14 +145765,14 @@ func newelmPatternMatcher() *elmPatternMatcher {
 	}
 }
 
-func (m *elmPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *elmPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *elmPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *elmPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -145782,7 +145782,7 @@ func (m *elmPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *elmPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *elmPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -145792,13 +145792,13 @@ func (m *elmPatternMatcher) GetRulesCount() int {
 
 // fishPatternMatcher provides pre-compiled pattern matching for fish
 type fishPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newfishPatternMatcher() *fishPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -146650,7 +146650,7 @@ func newfishPatternMatcher() *fishPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -146665,14 +146665,14 @@ func newfishPatternMatcher() *fishPatternMatcher {
 	}
 }
 
-func (m *fishPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *fishPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *fishPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *fishPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -146682,7 +146682,7 @@ func (m *fishPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *fishPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *fishPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -146692,13 +146692,13 @@ func (m *fishPatternMatcher) GetRulesCount() int {
 
 // fortranPatternMatcher provides pre-compiled pattern matching for fortran
 type fortranPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newfortranPatternMatcher() *fortranPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "translation_unit",
@@ -148072,7 +148072,7 @@ func newfortranPatternMatcher() *fortranPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -148087,14 +148087,14 @@ func newfortranPatternMatcher() *fortranPatternMatcher {
 	}
 }
 
-func (m *fortranPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *fortranPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *fortranPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *fortranPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -148104,7 +148104,7 @@ func (m *fortranPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *fortranPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *fortranPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -148114,13 +148114,13 @@ func (m *fortranPatternMatcher) GetRulesCount() int {
 
 // git_configPatternMatcher provides pre-compiled pattern matching for git_config
 type git_configPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgit_configPatternMatcher() *git_configPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "config",
@@ -148370,7 +148370,7 @@ func newgit_configPatternMatcher() *git_configPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -148385,14 +148385,14 @@ func newgit_configPatternMatcher() *git_configPatternMatcher {
 	}
 }
 
-func (m *git_configPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *git_configPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *git_configPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *git_configPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -148402,7 +148402,7 @@ func (m *git_configPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *git_configPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *git_configPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -148412,13 +148412,13 @@ func (m *git_configPatternMatcher) GetRulesCount() int {
 
 // gitattributesPatternMatcher provides pre-compiled pattern matching for gitattributes
 type gitattributesPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgitattributesPatternMatcher() *gitattributesPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "file",
@@ -149036,7 +149036,7 @@ func newgitattributesPatternMatcher() *gitattributesPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -149051,14 +149051,14 @@ func newgitattributesPatternMatcher() *gitattributesPatternMatcher {
 	}
 }
 
-func (m *gitattributesPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *gitattributesPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *gitattributesPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *gitattributesPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -149068,7 +149068,7 @@ func (m *gitattributesPatternMatcher) GetRuleIndex(patternName string) (int, boo
 	return index, exists
 }
 
-func (m *gitattributesPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *gitattributesPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -149078,13 +149078,13 @@ func (m *gitattributesPatternMatcher) GetRulesCount() int {
 
 // gitignorePatternMatcher provides pre-compiled pattern matching for gitignore
 type gitignorePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgitignorePatternMatcher() *gitignorePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -149502,7 +149502,7 @@ func newgitignorePatternMatcher() *gitignorePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -149517,14 +149517,14 @@ func newgitignorePatternMatcher() *gitignorePatternMatcher {
 	}
 }
 
-func (m *gitignorePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *gitignorePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *gitignorePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *gitignorePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -149534,7 +149534,7 @@ func (m *gitignorePatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *gitignorePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *gitignorePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -149544,13 +149544,13 @@ func (m *gitignorePatternMatcher) GetRulesCount() int {
 
 // goPatternMatcher provides pre-compiled pattern matching for go
 type goPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgoPatternMatcher() *goPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "_expression",
@@ -152060,7 +152060,7 @@ func newgoPatternMatcher() *goPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -152075,14 +152075,14 @@ func newgoPatternMatcher() *goPatternMatcher {
 	}
 }
 
-func (m *goPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *goPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *goPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *goPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -152092,7 +152092,7 @@ func (m *goPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *goPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *goPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -152102,13 +152102,13 @@ func (m *goPatternMatcher) GetRulesCount() int {
 
 // gosumPatternMatcher provides pre-compiled pattern matching for gosum
 type gosumPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgosumPatternMatcher() *gosumPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "checksum",
@@ -152364,7 +152364,7 @@ func newgosumPatternMatcher() *gosumPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -152379,14 +152379,14 @@ func newgosumPatternMatcher() *gosumPatternMatcher {
 	}
 }
 
-func (m *gosumPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *gosumPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *gosumPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *gosumPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -152396,7 +152396,7 @@ func (m *gosumPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *gosumPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *gosumPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -152406,13 +152406,13 @@ func (m *gosumPatternMatcher) GetRulesCount() int {
 
 // gotmplPatternMatcher provides pre-compiled pattern matching for gotmpl
 type gotmplPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgotmplPatternMatcher() *gotmplPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "template",
@@ -153136,7 +153136,7 @@ func newgotmplPatternMatcher() *gotmplPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -153151,14 +153151,14 @@ func newgotmplPatternMatcher() *gotmplPatternMatcher {
 	}
 }
 
-func (m *gotmplPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *gotmplPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *gotmplPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *gotmplPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -153168,7 +153168,7 @@ func (m *gotmplPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *gotmplPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *gotmplPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -153178,13 +153178,13 @@ func (m *gotmplPatternMatcher) GetRulesCount() int {
 
 // goworkPatternMatcher provides pre-compiled pattern matching for gowork
 type goworkPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgoworkPatternMatcher() *goworkPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "comment",
@@ -153454,7 +153454,7 @@ func newgoworkPatternMatcher() *goworkPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -153469,14 +153469,14 @@ func newgoworkPatternMatcher() *goworkPatternMatcher {
 	}
 }
 
-func (m *goworkPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *goworkPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *goworkPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *goworkPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -153486,7 +153486,7 @@ func (m *goworkPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *goworkPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *goworkPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -153496,13 +153496,13 @@ func (m *goworkPatternMatcher) GetRulesCount() int {
 
 // graphqlPatternMatcher provides pre-compiled pattern matching for graphql
 type graphqlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgraphqlPatternMatcher() *graphqlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -154452,7 +154452,7 @@ func newgraphqlPatternMatcher() *graphqlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -154467,14 +154467,14 @@ func newgraphqlPatternMatcher() *graphqlPatternMatcher {
 	}
 }
 
-func (m *graphqlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *graphqlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *graphqlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *graphqlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -154484,7 +154484,7 @@ func (m *graphqlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *graphqlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *graphqlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -154494,13 +154494,13 @@ func (m *graphqlPatternMatcher) GetRulesCount() int {
 
 // groovyPatternMatcher provides pre-compiled pattern matching for groovy
 type groovyPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newgroovyPatternMatcher() *groovyPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -155486,7 +155486,7 @@ func newgroovyPatternMatcher() *groovyPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -155501,14 +155501,14 @@ func newgroovyPatternMatcher() *groovyPatternMatcher {
 	}
 }
 
-func (m *groovyPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *groovyPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *groovyPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *groovyPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -155518,7 +155518,7 @@ func (m *groovyPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *groovyPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *groovyPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -155528,13 +155528,13 @@ func (m *groovyPatternMatcher) GetRulesCount() int {
 
 // haskellPatternMatcher provides pre-compiled pattern matching for haskell
 type haskellPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newhaskellPatternMatcher() *haskellPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "haskell",
@@ -156504,7 +156504,7 @@ func newhaskellPatternMatcher() *haskellPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -156519,14 +156519,14 @@ func newhaskellPatternMatcher() *haskellPatternMatcher {
 	}
 }
 
-func (m *haskellPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *haskellPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *haskellPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *haskellPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -156536,7 +156536,7 @@ func (m *haskellPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *haskellPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *haskellPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -156546,13 +156546,13 @@ func (m *haskellPatternMatcher) GetRulesCount() int {
 
 // hclPatternMatcher provides pre-compiled pattern matching for hcl
 type hclPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newhclPatternMatcher() *hclPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "config_file",
@@ -157730,7 +157730,7 @@ func newhclPatternMatcher() *hclPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -157745,14 +157745,14 @@ func newhclPatternMatcher() *hclPatternMatcher {
 	}
 }
 
-func (m *hclPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *hclPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *hclPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *hclPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -157762,7 +157762,7 @@ func (m *hclPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *hclPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *hclPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -157772,13 +157772,13 @@ func (m *hclPatternMatcher) GetRulesCount() int {
 
 // helmPatternMatcher provides pre-compiled pattern matching for helm
 type helmPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newhelmPatternMatcher() *helmPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "argument_list",
@@ -158942,7 +158942,7 @@ func newhelmPatternMatcher() *helmPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -158957,14 +158957,14 @@ func newhelmPatternMatcher() *helmPatternMatcher {
 	}
 }
 
-func (m *helmPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *helmPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *helmPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *helmPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -158974,7 +158974,7 @@ func (m *helmPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *helmPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *helmPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -158984,13 +158984,13 @@ func (m *helmPatternMatcher) GetRulesCount() int {
 
 // htmlPatternMatcher provides pre-compiled pattern matching for html
 type htmlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newhtmlPatternMatcher() *htmlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -159396,7 +159396,7 @@ func newhtmlPatternMatcher() *htmlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -159411,14 +159411,14 @@ func newhtmlPatternMatcher() *htmlPatternMatcher {
 	}
 }
 
-func (m *htmlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *htmlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *htmlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *htmlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -159428,7 +159428,7 @@ func (m *htmlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *htmlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *htmlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -159438,13 +159438,13 @@ func (m *htmlPatternMatcher) GetRulesCount() int {
 
 // iniPatternMatcher provides pre-compiled pattern matching for ini
 type iniPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newiniPatternMatcher() *iniPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -159590,7 +159590,7 @@ func newiniPatternMatcher() *iniPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -159605,14 +159605,14 @@ func newiniPatternMatcher() *iniPatternMatcher {
 	}
 }
 
-func (m *iniPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *iniPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *iniPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *iniPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -159622,7 +159622,7 @@ func (m *iniPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *iniPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *iniPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -159632,13 +159632,13 @@ func (m *iniPatternMatcher) GetRulesCount() int {
 
 // javaPatternMatcher provides pre-compiled pattern matching for java
 type javaPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newjavaPatternMatcher() *javaPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "_literal",
@@ -163498,7 +163498,7 @@ func newjavaPatternMatcher() *javaPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -163513,14 +163513,14 @@ func newjavaPatternMatcher() *javaPatternMatcher {
 	}
 }
 
-func (m *javaPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *javaPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *javaPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *javaPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -163530,7 +163530,7 @@ func (m *javaPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *javaPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *javaPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -163540,13 +163540,13 @@ func (m *javaPatternMatcher) GetRulesCount() int {
 
 // javascriptPatternMatcher provides pre-compiled pattern matching for javascript
 type javascriptPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newjavascriptPatternMatcher() *javascriptPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "declaration",
@@ -166724,7 +166724,7 @@ func newjavascriptPatternMatcher() *javascriptPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -166739,14 +166739,14 @@ func newjavascriptPatternMatcher() *javascriptPatternMatcher {
 	}
 }
 
-func (m *javascriptPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *javascriptPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *javascriptPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *javascriptPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -166756,7 +166756,7 @@ func (m *javascriptPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *javascriptPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *javascriptPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -166766,13 +166766,13 @@ func (m *javascriptPatternMatcher) GetRulesCount() int {
 
 // jsonPatternMatcher provides pre-compiled pattern matching for json
 type jsonPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newjsonPatternMatcher() *jsonPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -167016,7 +167016,7 @@ func newjsonPatternMatcher() *jsonPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -167031,14 +167031,14 @@ func newjsonPatternMatcher() *jsonPatternMatcher {
 	}
 }
 
-func (m *jsonPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *jsonPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *jsonPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *jsonPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -167048,7 +167048,7 @@ func (m *jsonPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *jsonPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *jsonPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -167058,13 +167058,13 @@ func (m *jsonPatternMatcher) GetRulesCount() int {
 
 // kotlinPatternMatcher provides pre-compiled pattern matching for kotlin
 type kotlinPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newkotlinPatternMatcher() *kotlinPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -170428,7 +170428,7 @@ func newkotlinPatternMatcher() *kotlinPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -170443,14 +170443,14 @@ func newkotlinPatternMatcher() *kotlinPatternMatcher {
 	}
 }
 
-func (m *kotlinPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *kotlinPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *kotlinPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *kotlinPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -170460,7 +170460,7 @@ func (m *kotlinPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *kotlinPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *kotlinPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -170470,13 +170470,13 @@ func (m *kotlinPatternMatcher) GetRulesCount() int {
 
 // latexPatternMatcher provides pre-compiled pattern matching for latex
 type latexPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newlatexPatternMatcher() *latexPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -172330,7 +172330,7 @@ func newlatexPatternMatcher() *latexPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -172345,14 +172345,14 @@ func newlatexPatternMatcher() *latexPatternMatcher {
 	}
 }
 
-func (m *latexPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *latexPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *latexPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *latexPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -172362,7 +172362,7 @@ func (m *latexPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *latexPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *latexPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -172372,13 +172372,13 @@ func (m *latexPatternMatcher) GetRulesCount() int {
 
 // luaPatternMatcher provides pre-compiled pattern matching for lua
 type luaPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newluaPatternMatcher() *luaPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "chunk",
@@ -173644,7 +173644,7 @@ func newluaPatternMatcher() *luaPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -173659,14 +173659,14 @@ func newluaPatternMatcher() *luaPatternMatcher {
 	}
 }
 
-func (m *luaPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *luaPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *luaPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *luaPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -173676,7 +173676,7 @@ func (m *luaPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *luaPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *luaPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -173686,13 +173686,13 @@ func (m *luaPatternMatcher) GetRulesCount() int {
 
 // makePatternMatcher provides pre-compiled pattern matching for make
 type makePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newmakePatternMatcher() *makePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "makefile",
@@ -175378,7 +175378,7 @@ func newmakePatternMatcher() *makePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -175393,14 +175393,14 @@ func newmakePatternMatcher() *makePatternMatcher {
 	}
 }
 
-func (m *makePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *makePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *makePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *makePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -175410,7 +175410,7 @@ func (m *makePatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *makePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *makePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -175420,13 +175420,13 @@ func (m *makePatternMatcher) GetRulesCount() int {
 
 // markdownPatternMatcher provides pre-compiled pattern matching for markdown
 type markdownPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newmarkdownPatternMatcher() *markdownPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -176268,7 +176268,7 @@ func newmarkdownPatternMatcher() *markdownPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -176283,14 +176283,14 @@ func newmarkdownPatternMatcher() *markdownPatternMatcher {
 	}
 }
 
-func (m *markdownPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *markdownPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *markdownPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *markdownPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -176300,7 +176300,7 @@ func (m *markdownPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *markdownPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *markdownPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -176310,13 +176310,13 @@ func (m *markdownPatternMatcher) GetRulesCount() int {
 
 // markdown_inlinePatternMatcher provides pre-compiled pattern matching for markdown_inline
 type markdown_inlinePatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newmarkdown_inlinePatternMatcher() *markdown_inlinePatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "atx_heading",
@@ -177090,7 +177090,7 @@ func newmarkdown_inlinePatternMatcher() *markdown_inlinePatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -177105,14 +177105,14 @@ func newmarkdown_inlinePatternMatcher() *markdown_inlinePatternMatcher {
 	}
 }
 
-func (m *markdown_inlinePatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *markdown_inlinePatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *markdown_inlinePatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *markdown_inlinePatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -177122,7 +177122,7 @@ func (m *markdown_inlinePatternMatcher) GetRuleIndex(patternName string) (int, b
 	return index, exists
 }
 
-func (m *markdown_inlinePatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *markdown_inlinePatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -177132,13 +177132,13 @@ func (m *markdown_inlinePatternMatcher) GetRulesCount() int {
 
 // nimPatternMatcher provides pre-compiled pattern matching for nim
 type nimPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newnimPatternMatcher() *nimPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -178680,7 +178680,7 @@ func newnimPatternMatcher() *nimPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -178695,14 +178695,14 @@ func newnimPatternMatcher() *nimPatternMatcher {
 	}
 }
 
-func (m *nimPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *nimPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *nimPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *nimPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -178712,7 +178712,7 @@ func (m *nimPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *nimPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *nimPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -178722,13 +178722,13 @@ func (m *nimPatternMatcher) GetRulesCount() int {
 
 // nim_format_stringPatternMatcher provides pre-compiled pattern matching for nim_format_string
 type nim_format_stringPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newnim_format_stringPatternMatcher() *nim_format_stringPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "double_curlies",
@@ -179030,7 +179030,7 @@ func newnim_format_stringPatternMatcher() *nim_format_stringPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -179045,14 +179045,14 @@ func newnim_format_stringPatternMatcher() *nim_format_stringPatternMatcher {
 	}
 }
 
-func (m *nim_format_stringPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *nim_format_stringPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *nim_format_stringPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *nim_format_stringPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -179062,7 +179062,7 @@ func (m *nim_format_stringPatternMatcher) GetRuleIndex(patternName string) (int,
 	return index, exists
 }
 
-func (m *nim_format_stringPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *nim_format_stringPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -179072,13 +179072,13 @@ func (m *nim_format_stringPatternMatcher) GetRulesCount() int {
 
 // perlPatternMatcher provides pre-compiled pattern matching for perl
 type perlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newperlPatternMatcher() *perlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -179822,7 +179822,7 @@ func newperlPatternMatcher() *perlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -179837,14 +179837,14 @@ func newperlPatternMatcher() *perlPatternMatcher {
 	}
 }
 
-func (m *perlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *perlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *perlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *perlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -179854,7 +179854,7 @@ func (m *perlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *perlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *perlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -179864,13 +179864,13 @@ func (m *perlPatternMatcher) GetRulesCount() int {
 
 // phpPatternMatcher provides pre-compiled pattern matching for php
 type phpPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newphpPatternMatcher() *phpPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -184424,7 +184424,7 @@ func newphpPatternMatcher() *phpPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -184439,14 +184439,14 @@ func newphpPatternMatcher() *phpPatternMatcher {
 	}
 }
 
-func (m *phpPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *phpPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *phpPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *phpPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -184456,7 +184456,7 @@ func (m *phpPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *phpPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *phpPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -184466,13 +184466,13 @@ func (m *phpPatternMatcher) GetRulesCount() int {
 
 // powershellPatternMatcher provides pre-compiled pattern matching for powershell
 type powershellPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newpowershellPatternMatcher() *powershellPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -185598,7 +185598,7 @@ func newpowershellPatternMatcher() *powershellPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -185613,14 +185613,14 @@ func newpowershellPatternMatcher() *powershellPatternMatcher {
 	}
 }
 
-func (m *powershellPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *powershellPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *powershellPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *powershellPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -185630,7 +185630,7 @@ func (m *powershellPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *powershellPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *powershellPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -185640,13 +185640,13 @@ func (m *powershellPatternMatcher) GetRulesCount() int {
 
 // propertiesPatternMatcher provides pre-compiled pattern matching for properties
 type propertiesPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newpropertiesPatternMatcher() *propertiesPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "file",
@@ -185808,7 +185808,7 @@ func newpropertiesPatternMatcher() *propertiesPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -185823,14 +185823,14 @@ func newpropertiesPatternMatcher() *propertiesPatternMatcher {
 	}
 }
 
-func (m *propertiesPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *propertiesPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *propertiesPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *propertiesPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -185840,7 +185840,7 @@ func (m *propertiesPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *propertiesPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *propertiesPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -185850,13 +185850,13 @@ func (m *propertiesPatternMatcher) GetRulesCount() int {
 
 // protoPatternMatcher provides pre-compiled pattern matching for proto
 type protoPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newprotoPatternMatcher() *protoPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -187180,7 +187180,7 @@ func newprotoPatternMatcher() *protoPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -187195,14 +187195,14 @@ func newprotoPatternMatcher() *protoPatternMatcher {
 	}
 }
 
-func (m *protoPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *protoPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *protoPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *protoPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -187212,7 +187212,7 @@ func (m *protoPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *protoPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *protoPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -187222,13 +187222,13 @@ func (m *protoPatternMatcher) GetRulesCount() int {
 
 // proximaPatternMatcher provides pre-compiled pattern matching for proxima
 type proximaPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newproximaPatternMatcher() *proximaPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "arg_name",
@@ -187362,7 +187362,7 @@ func newproximaPatternMatcher() *proximaPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -187377,14 +187377,14 @@ func newproximaPatternMatcher() *proximaPatternMatcher {
 	}
 }
 
-func (m *proximaPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *proximaPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *proximaPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *proximaPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -187394,7 +187394,7 @@ func (m *proximaPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *proximaPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *proximaPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -187404,13 +187404,13 @@ func (m *proximaPatternMatcher) GetRulesCount() int {
 
 // prqlPatternMatcher provides pre-compiled pattern matching for prql
 type prqlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newprqlPatternMatcher() *prqlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -188134,7 +188134,7 @@ func newprqlPatternMatcher() *prqlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -188149,14 +188149,14 @@ func newprqlPatternMatcher() *prqlPatternMatcher {
 	}
 }
 
-func (m *prqlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *prqlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *prqlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *prqlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -188166,7 +188166,7 @@ func (m *prqlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *prqlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *prqlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -188176,13 +188176,13 @@ func (m *prqlPatternMatcher) GetRulesCount() int {
 
 // psvPatternMatcher provides pre-compiled pattern matching for psv
 type psvPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newpsvPatternMatcher() *psvPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -188344,7 +188344,7 @@ func newpsvPatternMatcher() *psvPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -188359,14 +188359,14 @@ func newpsvPatternMatcher() *psvPatternMatcher {
 	}
 }
 
-func (m *psvPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *psvPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *psvPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *psvPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -188376,7 +188376,7 @@ func (m *psvPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *psvPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *psvPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -188386,13 +188386,13 @@ func (m *psvPatternMatcher) GetRulesCount() int {
 
 // pythonPatternMatcher provides pre-compiled pattern matching for python
 type pythonPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newpythonPatternMatcher() *pythonPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "_compound_statement",
@@ -191408,7 +191408,7 @@ func newpythonPatternMatcher() *pythonPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -191423,14 +191423,14 @@ func newpythonPatternMatcher() *pythonPatternMatcher {
 	}
 }
 
-func (m *pythonPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *pythonPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *pythonPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *pythonPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -191440,7 +191440,7 @@ func (m *pythonPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *pythonPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *pythonPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -191450,13 +191450,13 @@ func (m *pythonPatternMatcher) GetRulesCount() int {
 
 // rPatternMatcher provides pre-compiled pattern matching for r
 type rPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newrPatternMatcher() *rPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -192106,7 +192106,7 @@ func newrPatternMatcher() *rPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -192121,14 +192121,14 @@ func newrPatternMatcher() *rPatternMatcher {
 	}
 }
 
-func (m *rPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *rPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *rPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *rPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -192138,7 +192138,7 @@ func (m *rPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *rPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *rPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -192148,13 +192148,13 @@ func (m *rPatternMatcher) GetRulesCount() int {
 
 // regoPatternMatcher provides pre-compiled pattern matching for rego
 type regoPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newregoPatternMatcher() *regoPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -193118,7 +193118,7 @@ func newregoPatternMatcher() *regoPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -193133,14 +193133,14 @@ func newregoPatternMatcher() *regoPatternMatcher {
 	}
 }
 
-func (m *regoPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *regoPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *regoPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *regoPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -193150,7 +193150,7 @@ func (m *regoPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *regoPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *regoPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -193160,13 +193160,13 @@ func (m *regoPatternMatcher) GetRulesCount() int {
 
 // rubyPatternMatcher provides pre-compiled pattern matching for ruby
 type rubyPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newrubyPatternMatcher() *rubyPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -196588,7 +196588,7 @@ func newrubyPatternMatcher() *rubyPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -196603,14 +196603,14 @@ func newrubyPatternMatcher() *rubyPatternMatcher {
 	}
 }
 
-func (m *rubyPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *rubyPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *rubyPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *rubyPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -196620,7 +196620,7 @@ func (m *rubyPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *rubyPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *rubyPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -196630,13 +196630,13 @@ func (m *rubyPatternMatcher) GetRulesCount() int {
 
 // rustPatternMatcher provides pre-compiled pattern matching for rust
 type rustPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newrustPatternMatcher() *rustPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -200940,7 +200940,7 @@ func newrustPatternMatcher() *rustPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -200955,14 +200955,14 @@ func newrustPatternMatcher() *rustPatternMatcher {
 	}
 }
 
-func (m *rustPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *rustPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *rustPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *rustPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -200972,7 +200972,7 @@ func (m *rustPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *rustPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *rustPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -200982,13 +200982,13 @@ func (m *rustPatternMatcher) GetRulesCount() int {
 
 // scalaPatternMatcher provides pre-compiled pattern matching for scala
 type scalaPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newscalaPatternMatcher() *scalaPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "compilation_unit",
@@ -202272,7 +202272,7 @@ func newscalaPatternMatcher() *scalaPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -202287,14 +202287,14 @@ func newscalaPatternMatcher() *scalaPatternMatcher {
 	}
 }
 
-func (m *scalaPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *scalaPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *scalaPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *scalaPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -202304,7 +202304,7 @@ func (m *scalaPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *scalaPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *scalaPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -202314,13 +202314,13 @@ func (m *scalaPatternMatcher) GetRulesCount() int {
 
 // sqlPatternMatcher provides pre-compiled pattern matching for sql
 type sqlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newsqlPatternMatcher() *sqlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -203782,7 +203782,7 @@ func newsqlPatternMatcher() *sqlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -203797,14 +203797,14 @@ func newsqlPatternMatcher() *sqlPatternMatcher {
 	}
 }
 
-func (m *sqlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *sqlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *sqlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *sqlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -203814,7 +203814,7 @@ func (m *sqlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *sqlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *sqlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -203824,13 +203824,13 @@ func (m *sqlPatternMatcher) GetRulesCount() int {
 
 // ssh_configPatternMatcher provides pre-compiled pattern matching for ssh_config
 type ssh_configPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newssh_configPatternMatcher() *ssh_configPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "config",
@@ -206600,7 +206600,7 @@ func newssh_configPatternMatcher() *ssh_configPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -206615,14 +206615,14 @@ func newssh_configPatternMatcher() *ssh_configPatternMatcher {
 	}
 }
 
-func (m *ssh_configPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *ssh_configPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *ssh_configPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *ssh_configPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -206632,7 +206632,7 @@ func (m *ssh_configPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *ssh_configPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *ssh_configPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -206642,13 +206642,13 @@ func (m *ssh_configPatternMatcher) GetRulesCount() int {
 
 // swiftPatternMatcher provides pre-compiled pattern matching for swift
 type swiftPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newswiftPatternMatcher() *swiftPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -211202,7 +211202,7 @@ func newswiftPatternMatcher() *swiftPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -211217,14 +211217,14 @@ func newswiftPatternMatcher() *swiftPatternMatcher {
 	}
 }
 
-func (m *swiftPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *swiftPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *swiftPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *swiftPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -211234,7 +211234,7 @@ func (m *swiftPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *swiftPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *swiftPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -211244,13 +211244,13 @@ func (m *swiftPatternMatcher) GetRulesCount() int {
 
 // tclPatternMatcher provides pre-compiled pattern matching for tcl
 type tclPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newtclPatternMatcher() *tclPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -211830,7 +211830,7 @@ func newtclPatternMatcher() *tclPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -211845,14 +211845,14 @@ func newtclPatternMatcher() *tclPatternMatcher {
 	}
 }
 
-func (m *tclPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *tclPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *tclPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *tclPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -211862,7 +211862,7 @@ func (m *tclPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *tclPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *tclPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -211872,13 +211872,13 @@ func (m *tclPatternMatcher) GetRulesCount() int {
 
 // tomlPatternMatcher provides pre-compiled pattern matching for toml
 type tomlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newtomlPatternMatcher() *tomlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -212222,7 +212222,7 @@ func newtomlPatternMatcher() *tomlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -212237,14 +212237,14 @@ func newtomlPatternMatcher() *tomlPatternMatcher {
 	}
 }
 
-func (m *tomlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *tomlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *tomlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *tomlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -212254,7 +212254,7 @@ func (m *tomlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *tomlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *tomlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -212264,13 +212264,13 @@ func (m *tomlPatternMatcher) GetRulesCount() int {
 
 // tsxPatternMatcher provides pre-compiled pattern matching for tsx
 type tsxPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newtsxPatternMatcher() *tsxPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -217396,7 +217396,7 @@ func newtsxPatternMatcher() *tsxPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -217411,14 +217411,14 @@ func newtsxPatternMatcher() *tsxPatternMatcher {
 	}
 }
 
-func (m *tsxPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *tsxPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *tsxPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *tsxPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -217428,7 +217428,7 @@ func (m *tsxPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *tsxPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *tsxPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -217438,13 +217438,13 @@ func (m *tsxPatternMatcher) GetRulesCount() int {
 
 // typescriptPatternMatcher provides pre-compiled pattern matching for typescript
 type typescriptPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newtypescriptPatternMatcher() *typescriptPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "program",
@@ -222352,7 +222352,7 @@ func newtypescriptPatternMatcher() *typescriptPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -222367,14 +222367,14 @@ func newtypescriptPatternMatcher() *typescriptPatternMatcher {
 	}
 }
 
-func (m *typescriptPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *typescriptPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *typescriptPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *typescriptPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -222384,7 +222384,7 @@ func (m *typescriptPatternMatcher) GetRuleIndex(patternName string) (int, bool) 
 	return index, exists
 }
 
-func (m *typescriptPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *typescriptPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -222394,13 +222394,13 @@ func (m *typescriptPatternMatcher) GetRulesCount() int {
 
 // xmlPatternMatcher provides pre-compiled pattern matching for xml
 type xmlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newxmlPatternMatcher() *xmlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "document",
@@ -223648,7 +223648,7 @@ func newxmlPatternMatcher() *xmlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -223663,14 +223663,14 @@ func newxmlPatternMatcher() *xmlPatternMatcher {
 	}
 }
 
-func (m *xmlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *xmlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *xmlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *xmlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -223680,7 +223680,7 @@ func (m *xmlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *xmlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *xmlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -223690,13 +223690,13 @@ func (m *xmlPatternMatcher) GetRulesCount() int {
 
 // yamlPatternMatcher provides pre-compiled pattern matching for yaml
 type yamlPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newyamlPatternMatcher() *yamlPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "stream",
@@ -224406,7 +224406,7 @@ func newyamlPatternMatcher() *yamlPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -224421,14 +224421,14 @@ func newyamlPatternMatcher() *yamlPatternMatcher {
 	}
 }
 
-func (m *yamlPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *yamlPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *yamlPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *yamlPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -224438,7 +224438,7 @@ func (m *yamlPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *yamlPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *yamlPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 
@@ -224448,13 +224448,13 @@ func (m *yamlPatternMatcher) GetRulesCount() int {
 
 // zigPatternMatcher provides pre-compiled pattern matching for zig
 type zigPatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func newzigPatternMatcher() *zigPatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 
 		{
 			Name: "source_file",
@@ -225534,7 +225534,7 @@ func newzigPatternMatcher() *zigPatternMatcher {
 
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -225549,14 +225549,14 @@ func newzigPatternMatcher() *zigPatternMatcher {
 	}
 }
 
-func (m *zigPatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *zigPatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *zigPatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *zigPatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -225566,7 +225566,7 @@ func (m *zigPatternMatcher) GetRuleIndex(patternName string) (int, bool) {
 	return index, exists
 }
 
-func (m *zigPatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *zigPatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 

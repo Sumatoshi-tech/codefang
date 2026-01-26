@@ -16,9 +16,9 @@ func TestPatternMatcherOptimizations(t *testing.T) {
 
 	// Test type assertion - use interface{} since we don't know exact type.
 	if matcher, ok := goMatcher.(interface {
-		MatchPattern(string) (mapping.MappingRule, bool)
+		MatchPattern(string) (mapping.Rule, bool)
 		GetRulesCount() int
-		GetRuleByIndex(int) (mapping.MappingRule, bool)
+		GetRuleByIndex(int) (mapping.Rule, bool)
 		GetRuleIndex(string) (int, bool)
 	}); ok {
 		// Test pattern matching.
@@ -119,7 +119,7 @@ func BenchmarkPatternMatching(b *testing.B) {
 	for b.Loop() {
 		// Test O(1) pattern lookup.
 		if matcher, ok := goMatcher.(interface {
-			MatchPattern(string) (mapping.MappingRule, bool)
+			MatchPattern(string) (mapping.Rule, bool)
 		}); ok {
 			rule, exists := matcher.MatchPattern("function_declaration")
 			if !exists {
@@ -141,7 +141,7 @@ func BenchmarkRuleByIndex(b *testing.B) {
 	for b.Loop() {
 		// Test O(1) index lookup.
 		if matcher, ok := goMatcher.(interface {
-			GetRuleByIndex(int) (mapping.MappingRule, bool)
+			GetRuleByIndex(int) (mapping.Rule, bool)
 			GetRulesCount() int
 		}); ok {
 			rule, exists := matcher.GetRuleByIndex(0)

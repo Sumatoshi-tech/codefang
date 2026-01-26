@@ -12,15 +12,15 @@ const (
 	scoreThresholdMedium = 0.6
 )
 
-// CommentsAggregator aggregates results from multiple comment analyses.
-type CommentsAggregator struct {
+// Aggregator aggregates results from multiple comment analyses.
+type Aggregator struct {
 	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
 	detailedComments   []map[string]any
 	detailedFunctions  []map[string]any
 }
 
-// NewCommentsAggregator creates a new CommentsAggregator.
-func NewCommentsAggregator() *CommentsAggregator {
+// NewAggregator creates a new Aggregator.
+func NewAggregator() *Aggregator {
 	numericKeys := []string{"overall_score", "good_comments_ratio", "documentation_coverage"}
 	countKeys := []string{
 		"total_comments", "good_comments", "bad_comments",
@@ -30,7 +30,7 @@ func NewCommentsAggregator() *CommentsAggregator {
 	messageBuilder := buildMessage
 	emptyResultBuilder := buildEmptyResult
 
-	return &CommentsAggregator{
+	return &Aggregator{
 		Aggregator: common.NewAggregator(
 			"comments",
 			numericKeys,
@@ -46,13 +46,13 @@ func NewCommentsAggregator() *CommentsAggregator {
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed comments and functions.
-func (ca *CommentsAggregator) Aggregate(results map[string]analyze.Report) {
+func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
 	ca.collectDetailedData(results)
 	ca.Aggregator.Aggregate(results)
 }
 
 // GetResult overrides the base GetResult method to include detailed comments and functions.
-func (ca *CommentsAggregator) GetResult() analyze.Report {
+func (ca *Aggregator) GetResult() analyze.Report {
 	result := ca.Aggregator.GetResult()
 	ca.addDetailedDataToResult(result)
 
@@ -60,7 +60,7 @@ func (ca *CommentsAggregator) GetResult() analyze.Report {
 }
 
 // collectDetailedData extracts detailed comments and functions from all reports.
-func (ca *CommentsAggregator) collectDetailedData(results map[string]analyze.Report) {
+func (ca *Aggregator) collectDetailedData(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
@@ -72,21 +72,21 @@ func (ca *CommentsAggregator) collectDetailedData(results map[string]analyze.Rep
 }
 
 // extractCommentsFromReport extracts comments from a single report.
-func (ca *CommentsAggregator) extractCommentsFromReport(report analyze.Report) {
+func (ca *Aggregator) extractCommentsFromReport(report analyze.Report) {
 	if comments, ok := report["comments"].([]map[string]any); ok {
 		ca.detailedComments = append(ca.detailedComments, comments...)
 	}
 }
 
 // extractFunctionsFromReport extracts functions from a single report.
-func (ca *CommentsAggregator) extractFunctionsFromReport(report analyze.Report) {
+func (ca *Aggregator) extractFunctionsFromReport(report analyze.Report) {
 	if functions, ok := report["functions"].([]map[string]any); ok {
 		ca.detailedFunctions = append(ca.detailedFunctions, functions...)
 	}
 }
 
 // addDetailedDataToResult adds detailed comments and functions to the result.
-func (ca *CommentsAggregator) addDetailedDataToResult(result analyze.Report) {
+func (ca *Aggregator) addDetailedDataToResult(result analyze.Report) {
 	if len(ca.detailedComments) > 0 {
 		result["comments"] = ca.detailedComments
 	}

@@ -10,10 +10,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestHalsteadVisitor_Basic(t *testing.T) {
+func TestVisitor_Basic(t *testing.T) {
 	t.Parallel()
 
-	visitor := NewHalsteadVisitor()
+	visitor := NewVisitor()
 	traverser := analyze.NewMultiAnalyzerTraverser()
 	traverser.RegisterVisitor(visitor)
 

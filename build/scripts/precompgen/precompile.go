@@ -112,7 +112,7 @@ func processUASTMapFile(logger *slog.Logger, filePath string, quiet bool) (uast.
 		return uast.PrecompiledMapping{}, fmt.Errorf("open UAST map file: %w", openErr)
 	}
 
-	mappingParser := &mapping.MappingParser{}
+	mappingParser := &mapping.Parser{}
 
 	rules, langInfo, parseErr := mappingParser.ParseMapping(uastFile)
 
@@ -180,7 +180,7 @@ var embeddedMappingsData = []PrecompiledMapping{
 			"{{.}}",
 {{end}}
 		},
-		Rules: []mapping.MappingRule{
+		Rules: []mapping.Rule{
 {{range .Rules}}
 			{
 				Name: "{{.Name}}",
@@ -256,13 +256,13 @@ func (l *Loader) loadFromEmbeddedMappingsData() bool {
 {{range .}}
 // {{.Language}}PatternMatcher provides pre-compiled pattern matching for {{.Language}}
 type {{.Language}}PatternMatcher struct {
-	patterns map[string]mapping.MappingRule
+	patterns map[string]mapping.Rule
 	ruleIndex map[string]int
-	rules []mapping.MappingRule
+	rules []mapping.Rule
 }
 
 func new{{.Language}}PatternMatcher() *{{.Language}}PatternMatcher {
-	rules := []mapping.MappingRule{
+	rules := []mapping.Rule{
 {{range .Rules}}
 		{
 			Name: "{{.Name}}",
@@ -298,7 +298,7 @@ func new{{.Language}}PatternMatcher() *{{.Language}}PatternMatcher {
 {{end}}
 	}
 
-	patterns := make(map[string]mapping.MappingRule)
+	patterns := make(map[string]mapping.Rule)
 	ruleIndex := make(map[string]int)
 
 	for i, rule := range rules {
@@ -313,14 +313,14 @@ func new{{.Language}}PatternMatcher() *{{.Language}}PatternMatcher {
 	}
 }
 
-func (m *{{.Language}}PatternMatcher) MatchPattern(patternName string) (mapping.MappingRule, bool) {
+func (m *{{.Language}}PatternMatcher) MatchPattern(patternName string) (mapping.Rule, bool) {
 	rule, exists := m.patterns[patternName]
 	return rule, exists
 }
 
-func (m *{{.Language}}PatternMatcher) GetRuleByIndex(index int) (mapping.MappingRule, bool) {
+func (m *{{.Language}}PatternMatcher) GetRuleByIndex(index int) (mapping.Rule, bool) {
 	if index < 0 || index >= len(m.rules) {
-		return mapping.MappingRule{}, false
+		return mapping.Rule{}, false
 	}
 	return m.rules[index], true
 }
@@ -330,7 +330,7 @@ func (m *{{.Language}}PatternMatcher) GetRuleIndex(patternName string) (int, boo
 	return index, exists
 }
 
-func (m *{{.Language}}PatternMatcher) GetAllPatterns() map[string]mapping.MappingRule {
+func (m *{{.Language}}PatternMatcher) GetAllPatterns() map[string]mapping.Rule {
 	return m.patterns
 }
 

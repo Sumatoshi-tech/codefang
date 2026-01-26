@@ -13,21 +13,21 @@ const (
 
 const msgGoodComplexity = "Good complexity - functions have reasonable complexity"
 
-// ComplexityAggregator aggregates results from multiple complexity analyses.
-type ComplexityAggregator struct {
+// Aggregator aggregates results from multiple complexity analyses.
+type Aggregator struct {
 	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
 	detailedFunctions  []map[string]any
 	maxComplexity      int
 }
 
-// NewComplexityAggregator creates a new ComplexityAggregator.
-func NewComplexityAggregator() *ComplexityAggregator {
+// NewAggregator creates a new Aggregator.
+func NewAggregator() *Aggregator {
 	numericKeys := getNumericKeys()
 	countKeys := getCountKeys()
 	messageBuilder := buildComplexityMessage
 	emptyResultBuilder := buildEmptyComplexityResult
 
-	return &ComplexityAggregator{
+	return &Aggregator{
 		Aggregator: common.NewAggregator(
 			"complexity",
 			numericKeys,
@@ -43,7 +43,7 @@ func NewComplexityAggregator() *ComplexityAggregator {
 
 // Aggregate overrides the base Aggregate method to collect detailed functions
 // and track the true maximum complexity across all files.
-func (ca *ComplexityAggregator) Aggregate(results map[string]analyze.Report) {
+func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
 	ca.collectDetailedFunctions(results)
 	ca.trackMaxComplexity(results)
 	ca.Aggregator.Aggregate(results)
@@ -51,7 +51,7 @@ func (ca *ComplexityAggregator) Aggregate(results map[string]analyze.Report) {
 
 // GetResult overrides the base GetResult method to include detailed functions
 // and compute derived metrics (average_complexity, max_complexity, message).
-func (ca *ComplexityAggregator) GetResult() analyze.Report {
+func (ca *Aggregator) GetResult() analyze.Report {
 	result := ca.Aggregator.GetResult()
 	ca.addDetailedFunctionsToResult(result)
 	// Only add derived metrics when we actually aggregated reports;
@@ -64,7 +64,7 @@ func (ca *ComplexityAggregator) GetResult() analyze.Report {
 }
 
 // collectDetailedFunctions extracts detailed functions from all reports.
-func (ca *ComplexityAggregator) collectDetailedFunctions(results map[string]analyze.Report) {
+func (ca *Aggregator) collectDetailedFunctions(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
@@ -75,21 +75,21 @@ func (ca *ComplexityAggregator) collectDetailedFunctions(results map[string]anal
 }
 
 // extractFunctionsFromReport extracts functions from a single report.
-func (ca *ComplexityAggregator) extractFunctionsFromReport(report analyze.Report) {
+func (ca *Aggregator) extractFunctionsFromReport(report analyze.Report) {
 	if functions, ok := report["functions"].([]map[string]any); ok {
 		ca.detailedFunctions = append(ca.detailedFunctions, functions...)
 	}
 }
 
 // addDetailedFunctionsToResult adds detailed functions to the result.
-func (ca *ComplexityAggregator) addDetailedFunctionsToResult(result analyze.Report) {
+func (ca *Aggregator) addDetailedFunctionsToResult(result analyze.Report) {
 	if len(ca.detailedFunctions) > 0 {
 		result["functions"] = ca.detailedFunctions
 	}
 }
 
 // trackMaxComplexity tracks the true maximum complexity across all files.
-func (ca *ComplexityAggregator) trackMaxComplexity(results map[string]analyze.Report) {
+func (ca *Aggregator) trackMaxComplexity(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
@@ -105,7 +105,7 @@ func (ca *ComplexityAggregator) trackMaxComplexity(results map[string]analyze.Re
 
 // addDerivedMetrics computes average_complexity, max_complexity, and a
 // deterministic message from the aggregated totals.
-func (ca *ComplexityAggregator) addDerivedMetrics(result analyze.Report) {
+func (ca *Aggregator) addDerivedMetrics(result analyze.Report) {
 	totalComplexity := 0
 	if v, ok := extractIntFromReport(result, "total_complexity"); ok {
 		totalComplexity = v
@@ -154,7 +154,7 @@ func getNumericKeys() []string {
 
 // getCountKeys returns the count keys for complexity analysis
 // Note: max_complexity is excluded because it needs max-tracking (not summing).
-// It is tracked separately in ComplexityAggregator.maxComplexity.
+// It is tracked separately in Aggregator.maxComplexity.
 func getCountKeys() []string {
 	return []string{"total_functions", "total_complexity", "decision_points"}
 }

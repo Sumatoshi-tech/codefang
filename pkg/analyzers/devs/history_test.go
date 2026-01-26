@@ -18,10 +18,10 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-func TestDevsHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{}
+	d := &HistoryAnalyzer{}
 	facts := map[string]any{
 		ConfigDevsConsiderEmptyCommits:                  true,
 		identity.FactIdentityDetectorReversedPeopleDict: []string{"dev1"},
@@ -46,10 +46,10 @@ func TestDevsHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestDevsHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{}
+	d := &HistoryAnalyzer{}
 
 	err := d.Initialize(nil)
 	if err != nil {
@@ -69,10 +69,10 @@ func TestDevsHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestDevsHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{
+	d := &HistoryAnalyzer{
 		Identity:  &plumbing.IdentityDetector{},
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		Ticks:     &plumbing.TicksSinceStart{},
@@ -158,10 +158,10 @@ func TestDevsHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestDevsHistoryAnalyzer_Finalize(t *testing.T) {
+func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{
+	d := &HistoryAnalyzer{
 		reversedPeopleDict: []string{"dev1"},
 		tickSize:           24 * time.Hour,
 	}
@@ -183,10 +183,10 @@ func TestDevsHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestDevsHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{}
+	d := &HistoryAnalyzer{}
 
 	ticks := map[int]map[int]*DevTick{
 		0: {
@@ -236,10 +236,10 @@ func TestDevsHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestDevsHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	d := &DevsHistoryAnalyzer{}
+	d := &HistoryAnalyzer{}
 	if d.Name() == "" {
 		t.Error("Name empty")
 	}

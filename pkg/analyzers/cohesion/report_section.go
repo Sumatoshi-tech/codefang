@@ -45,15 +45,15 @@ const (
 	DefaultStatusMessage = "No cohesion data available"
 )
 
-// CohesionReportSection implements analyze.ReportSection for cohesion analysis.
-type CohesionReportSection struct {
+// ReportSection implements analyze.ReportSection for cohesion analysis.
+type ReportSection struct {
 	analyze.BaseReportSection
 
 	report analyze.Report
 }
 
-// NewCohesionReportSection creates a ReportSection from a cohesion report.
-func NewCohesionReportSection(report analyze.Report) *CohesionReportSection {
+// NewReportSection creates a ReportSection from a cohesion report.
+func NewReportSection(report analyze.Report) *ReportSection {
 	if report == nil {
 		report = analyze.Report{}
 	}
@@ -65,7 +65,7 @@ func NewCohesionReportSection(report analyze.Report) *CohesionReportSection {
 		msg = DefaultStatusMessage
 	}
 
-	return &CohesionReportSection{
+	return &ReportSection{
 		BaseReportSection: analyze.BaseReportSection{
 			Title:      SectionTitle,
 			Message:    msg,
@@ -76,7 +76,7 @@ func NewCohesionReportSection(report analyze.Report) *CohesionReportSection {
 }
 
 // KeyMetrics returns the key metrics for the cohesion section.
-func (s *CohesionReportSection) KeyMetrics() []analyze.Metric {
+func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
 		{Label: MetricTotalFunctions, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyTotalFunctions))},
 		{Label: MetricLCOM, Value: reportutil.FormatFloat(reportutil.GetFloat64(s.report, KeyLCOM))},
@@ -86,7 +86,7 @@ func (s *CohesionReportSection) KeyMetrics() []analyze.Metric {
 }
 
 // Distribution returns cohesion distribution categories.
-func (s *CohesionReportSection) Distribution() []analyze.DistributionItem {
+func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
@@ -104,7 +104,7 @@ func (s *CohesionReportSection) Distribution() []analyze.DistributionItem {
 }
 
 // TopIssues returns the top N functions with lowest cohesion.
-func (s *CohesionReportSection) TopIssues(n int) []analyze.Issue {
+func (s *ReportSection) TopIssues(n int) []analyze.Issue {
 	issues := s.buildSortedIssues()
 	if n >= len(issues) {
 		return issues
@@ -114,12 +114,12 @@ func (s *CohesionReportSection) TopIssues(n int) []analyze.Issue {
 }
 
 // AllIssues returns all functions sorted by cohesion ascending (worst first).
-func (s *CohesionReportSection) AllIssues() []analyze.Issue {
+func (s *ReportSection) AllIssues() []analyze.Issue {
 	return s.buildSortedIssues()
 }
 
 // buildSortedIssues extracts functions sorted by cohesion ascending.
-func (s *CohesionReportSection) buildSortedIssues() []analyze.Issue {
+func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
@@ -187,6 +187,6 @@ func severityForCohesion(coh float64) string {
 }
 
 // CreateReportSection creates a ReportSection from report data.
-func (c *CohesionAnalyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
-	return NewCohesionReportSection(report)
+func (c *Analyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
+	return NewReportSection(report)
 }

@@ -21,8 +21,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// ShotnessHistoryAnalyzer measures co-change frequency of code entities across commit history.
-type ShotnessHistoryAnalyzer struct {
+// HistoryAnalyzer measures co-change frequency of code entities across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
@@ -64,22 +64,22 @@ const (
 )
 
 // Name returns the name of the analyzer.
-func (s *ShotnessHistoryAnalyzer) Name() string {
+func (s *HistoryAnalyzer) Name() string {
 	return "Shotness"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (s *ShotnessHistoryAnalyzer) Flag() string {
+func (s *HistoryAnalyzer) Flag() string {
 	return "shotness"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (s *ShotnessHistoryAnalyzer) Description() string {
+func (s *HistoryAnalyzer) Description() string {
 	return "Structural hotness - a fine-grained alternative to --couples."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (s *ShotnessHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (s *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
 			Name:        ConfigShotnessDSLStruct,
@@ -99,7 +99,7 @@ func (s *ShotnessHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configur
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (s *ShotnessHistoryAnalyzer) Configure(facts map[string]any) error {
+func (s *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigShotnessDSLStruct].(string); exists {
 		s.DSLStruct = val
 	} else {
@@ -116,7 +116,7 @@ func (s *ShotnessHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (s *ShotnessHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (s *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	s.nodes = map[string]*nodeShotness{}
 	s.files = map[string]map[string]*nodeShotness{}
 	s.merges = map[gitplumbing.Hash]bool{}
@@ -126,7 +126,7 @@ func (s *ShotnessHistoryAnalyzer) Initialize(_ *git.Repository) error {
 
 // shouldConsumeCommit checks whether this commit should be processed,
 // implementing OneShotMergeProcessor logic for merge commits.
-func (s *ShotnessHistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) bool {
+func (s *HistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) bool {
 	if commit.NumParents() <= 1 {
 		return true
 	}
@@ -141,7 +141,7 @@ func (s *ShotnessHistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) boo
 }
 
 // addNode registers or increments a node in the analyzer's tracking state.
-func (s *ShotnessHistoryAnalyzer) addNode(name string, n *node.Node, fileName string, allNodes map[string]bool) {
+func (s *HistoryAnalyzer) addNode(name string, n *node.Node, fileName string, allNodes map[string]bool) {
 	nodeSummary := NodeSummary{
 		Type: string(n.Type),
 		Name: name,
@@ -173,7 +173,7 @@ func (s *ShotnessHistoryAnalyzer) addNode(name string, n *node.Node, fileName st
 }
 
 // handleDeletion removes all nodes and file entries associated with a deleted file.
-func (s *ShotnessHistoryAnalyzer) handleDeletion(change uast.Change) {
+func (s *HistoryAnalyzer) handleDeletion(change uast.Change) {
 	for key, summary := range s.files[change.Change.From.Name] {
 		for subkey := range summary.Couples {
 			delete(s.nodes[subkey].Couples, key)
@@ -188,7 +188,7 @@ func (s *ShotnessHistoryAnalyzer) handleDeletion(change uast.Change) {
 }
 
 // handleInsertion extracts nodes from a newly inserted file and registers them.
-func (s *ShotnessHistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[string]bool) {
+func (s *HistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[string]bool) {
 	toName := change.Change.To.Name
 
 	nodes, err := s.extractNodes(change.After)
@@ -204,7 +204,7 @@ func (s *ShotnessHistoryAnalyzer) handleInsertion(change uast.Change, allNodes m
 // handleModification processes a file modification, including renames and diff-based node tracking.
 //
 //nolint:gocognit,cyclop,gocyclo // complexity is inherent to coordinating rename, diff, and node tracking logic.
-func (s *ShotnessHistoryAnalyzer) handleModification(
+func (s *HistoryAnalyzer) handleModification(
 	change uast.Change,
 	diffs map[string]pkgplumbing.FileDiffData,
 	allNodes map[string]bool,
@@ -274,7 +274,7 @@ func (s *ShotnessHistoryAnalyzer) handleModification(
 }
 
 // applyRename updates internal state when a file is renamed from oldName to newName.
-func (s *ShotnessHistoryAnalyzer) applyRename(oldName, newName string) {
+func (s *HistoryAnalyzer) applyRename(oldName, newName string) {
 	oldFile := s.files[oldName]
 	newFile := map[string]*nodeShotness{}
 
@@ -302,7 +302,7 @@ func (s *ShotnessHistoryAnalyzer) applyRename(oldName, newName string) {
 }
 
 // updateCouplings increments the coupling counters between all co-changed nodes.
-func (s *ShotnessHistoryAnalyzer) updateCouplings(allNodes map[string]bool) {
+func (s *HistoryAnalyzer) updateCouplings(allNodes map[string]bool) {
 	for keyi := range allNodes {
 		for keyj := range allNodes {
 			if keyi == keyj {
@@ -375,7 +375,7 @@ func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (s *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	if !s.shouldConsumeCommit(ctx.Commit) {
 		return nil
 	}
@@ -401,7 +401,7 @@ func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	// Logic to build report.
 	nodes := make([]NodeSummary, len(s.nodes))
 	counters := make([]map[int]int, len(s.nodes))
@@ -439,7 +439,7 @@ func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (s *ShotnessHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *s
@@ -451,11 +451,11 @@ func (s *ShotnessHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *ShotnessHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (s *ShotnessHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (s *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	nodes, ok := result["Nodes"].([]NodeSummary)
 	if !ok {
 		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
@@ -493,11 +493,11 @@ func (s *ShotnessHistoryAnalyzer) Serialize(result analyze.Report, _ bool, write
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (s *ShotnessHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (s *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return s.Serialize(report, false, writer)
 }
 
-func (s *ShotnessHistoryAnalyzer) extractNodes(root *node.Node) (map[string]*node.Node, error) {
+func (s *HistoryAnalyzer) extractNodes(root *node.Node) (map[string]*node.Node, error) {
 	if root == nil {
 		return map[string]*node.Node{}, nil
 	}

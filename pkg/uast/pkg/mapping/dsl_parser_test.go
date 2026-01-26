@@ -32,7 +32,7 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
     roles: "Declaration",
     children: @body
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -85,7 +85,7 @@ base_rule <- (base_node) => uast(
     type: "Base",
     roles: "ChildRole", "ExtraRole"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -132,7 +132,7 @@ inherited_rule <- (inherited_node) => uast(
     type: "Inherited"
 ) # Extends base_rule
 `
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -243,7 +243,7 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
     roles: "Declaration",
     children: @body
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -269,7 +269,7 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
 
 func TestLoadMappings_Invalid(t *testing.T) {
 	input := `function_declaration <- (function_declaration) => uast()` // Missing fields.
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	_, _, err := parser.ParseMapping(strings.NewReader(input))
 	if err == nil {
@@ -281,7 +281,7 @@ func TestParseLanguageDeclaration_WithFiles(t *testing.T) {
 	input := `[language "cmake", extensions: ".cmake", files: "CMakeLists.txt"]
 
 cmake_list_file <- (cmake_list_file) => uast(type: "CMakeListFile")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -317,7 +317,7 @@ func TestParseLanguageDeclaration_WithMultipleFiles(t *testing.T) {
 	input := `[language "dockerfile", extensions: ".dockerfile", files: "Dockerfile", "dockerfile"]
 
 dockerfile_instruction <- (dockerfile_instruction) => uast(type: "Instruction")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -356,7 +356,7 @@ func TestParseLanguageDeclaration_ExtensionsOnly(t *testing.T) {
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(type: "Function")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -388,7 +388,7 @@ func TestParseLanguageDeclaration_FilesOnly(t *testing.T) {
 	input := `[language "gosum", files: "go.sum"]
 
 checksum <- (checksum) => uast(type: "Checksum")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -420,7 +420,7 @@ func TestParseLanguageDeclaration_Gotmpl(t *testing.T) {
 	input := `[language "gotmpl", extensions: ".gotmpl", ".go.tmpl"]
 
 function_call <- (function_call) => uast(type: "Function")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -471,7 +471,7 @@ variable_declaration <- (variable_declaration name: (identifier) @name) => uast(
     roles: "Declaration"
 )`
 
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -524,7 +524,7 @@ variable_declaration <- (variable_declaration name: (identifier) @name) => uast(
 
 func TestParseLanguageDeclaration_MissingDeclaration(t *testing.T) {
 	input := `function_declaration <- (function_declaration) => uast(type: "Function")`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	_, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err == nil {
@@ -540,7 +540,7 @@ func TestParseMappingRule_ChildrenDeduplication(t *testing.T) {
 	input := `[language "go", extensions: ".go"]
 
 complex_node <- (complex_node field1: (child1) @c1 (child2) @c2 (child1) @c1) => uast(type: "Complex", children: @c1, @c2)`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -578,7 +578,7 @@ child_rule <- (child_node) => uast(
     type: "Child",
     roles: "ChildRole"
 ) # Extends base when field == "val"`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -626,7 +626,7 @@ descendant_token <- (complex_expression) => uast(
     type: "Expression",
     token: "descendant:identifier"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -678,7 +678,7 @@ function_declaration <- (function_declaration name: (identifier) @name params: (
     params: "@params",
     body: "@body"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -749,7 +749,7 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
     roles: "Statement", "Conditional",
     children: "@cond", "@conseq", "@alt"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -863,7 +863,7 @@ comparison_expression <- (comparison_expression left: (expression) @left operato
     token: "@op",
     roles: "Expression", "Comparison"
 ) # Extends base_expression`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, _, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -946,7 +946,7 @@ js_function <- (function_declaration name: (identifier) @name params: (formal_pa
     roles: "Declaration", "Function",
     children: "@params", "@body"
 ) # Extends function_base`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -1020,7 +1020,7 @@ logical_expression <- (binary_expression left: (expression) @left operator: (log
     token: "@op",
     roles: "Expression", "Logical"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -1089,7 +1089,7 @@ typed_variable <- (variable_declaration name: (identifier) @name type: (type_ann
     name: "child:identifier",
     type_info: "descendant:type_annotation"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -1151,7 +1151,7 @@ conditional_role <- (identifier) => uast(
     token: "self",
     roles: "Name"
 )`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {
@@ -1212,7 +1212,7 @@ arithmetic_expression <- (arithmetic_expression left: (expression) @left op: (ar
     token: "@op",
     roles: "Expression", "Arithmetic"
 ) # Extends binary_expression`
-	parser := &MappingParser{}
+	parser := &Parser{}
 
 	rules, langInfo, err := parser.ParseMapping(strings.NewReader(input))
 	if err != nil {

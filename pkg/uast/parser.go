@@ -27,7 +27,7 @@ var (
 // Parser is the main entry point for UAST parsing. It manages language parsers and their configurations.
 type Parser struct {
 	loader     *Loader
-	customMaps map[string]UASTMap
+	customMaps map[string]Map
 }
 
 // NewParser creates a new Parser with DSL-based language parsers.
@@ -38,16 +38,16 @@ func NewParser() (*Parser, error) {
 
 	parser := &Parser{
 		loader:     loader,
-		customMaps: make(map[string]UASTMap),
+		customMaps: make(map[string]Map),
 	}
 
 	return parser, nil
 }
 
-// WithUASTMap adds custom UAST mappings to the parser using the option pattern.
+// WithMap adds custom UAST mappings to the parser using the option pattern.
 // This method allows passing custom UAST map configurations that will be used
 // in addition to or as a replacement for the embedded mappings.
-func (parser *Parser) WithUASTMap(uastMaps map[string]UASTMap) *Parser {
+func (parser *Parser) WithMap(uastMaps map[string]Map) *Parser {
 	// Store custom maps.
 	maps.Copy(parser.customMaps, uastMaps)
 
@@ -127,8 +127,8 @@ func (parser *Parser) Parse(filename string, content []byte) (*node.Node, error)
 }
 
 // GetEmbeddedMappings returns all embedded UAST mappings.
-func (parser *Parser) GetEmbeddedMappings() map[string]UASTMap {
-	mappings := make(map[string]UASTMap)
+func (parser *Parser) GetEmbeddedMappings() map[string]Map {
+	mappings := make(map[string]Map)
 
 	// Read from the embedded filesystem.
 	walkErr := fs.WalkDir(uastMapFs, "uastmaps", func(path string, entry fs.DirEntry, err error) error {
@@ -167,7 +167,7 @@ func (parser *Parser) GetEmbeddedMappings() map[string]UASTMap {
 			return nil
 		}
 
-		mappings[language] = UASTMap{
+		mappings[language] = Map{
 			UAST:       string(content),
 			Extensions: dslParser.Extensions(),
 		}
@@ -225,7 +225,7 @@ func (parser *Parser) GetEmbeddedMappingsList() map[string]map[string]any {
 }
 
 // GetMapping returns a specific embedded UAST mapping by name.
-func (parser *Parser) GetMapping(language string) (*UASTMap, error) {
+func (parser *Parser) GetMapping(language string) (*Map, error) {
 	// Construct the file path.
 	filePath := fmt.Sprintf("uastmaps/%s.uastmap", language)
 
@@ -249,7 +249,7 @@ func (parser *Parser) GetMapping(language string) (*UASTMap, error) {
 		return nil, fmt.Errorf("parsing DSL: %w", parseErr)
 	}
 
-	return &UASTMap{
+	return &Map{
 		UAST:       string(content),
 		Extensions: dslParser.Extensions(),
 	}, nil

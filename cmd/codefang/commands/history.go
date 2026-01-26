@@ -16,7 +16,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
+	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
@@ -185,30 +185,30 @@ func (hc *HistoryCommand) runPipeline(repository *git.Repository, commits []*obj
 
 	// Instantiate Leaves.
 	leaves := map[string]analyze.HistoryAnalyzer{
-		"burndown": &burndown.BurndownHistoryAnalyzer{
+		"burndown": &burndown.HistoryAnalyzer{
 			TreeDiff: treeDiff, FileDiff: fileDiff, BlobCache: blobCache,
 			Identity: identity, Ticks: ticks,
 		},
-		"couples": &couples.CouplesHistoryAnalyzer{
+		"couples": &couples.HistoryAnalyzer{
 			Identity: identity, TreeDiff: treeDiff,
 		},
-		"devs": &devs.DevsHistoryAnalyzer{
+		"devs": &devs.HistoryAnalyzer{
 			Identity: identity, TreeDiff: treeDiff, Ticks: ticks,
 			Languages: langs, LineStats: lineStats,
 		},
-		"file-history": &file_history.FileHistoryAnalyzer{
+		"file-history": &filehistory.Analyzer{
 			Identity: identity, TreeDiff: treeDiff, LineStats: lineStats,
 		},
-		"imports": &imports.ImportsHistoryAnalyzer{
+		"imports": &imports.HistoryAnalyzer{
 			TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
 		},
-		"sentiment": &sentiment.SentimentHistoryAnalyzer{
+		"sentiment": &sentiment.HistoryAnalyzer{
 			UASTChanges: uastChanges, Ticks: ticks,
 		},
-		"shotness": &shotness.ShotnessHistoryAnalyzer{
+		"shotness": &shotness.HistoryAnalyzer{
 			FileDiff: fileDiff, UASTChanges: uastChanges,
 		},
-		"typos": &typos.TyposHistoryAnalyzer{
+		"typos": &typos.HistoryAnalyzer{
 			UASTChanges: uastChanges, FileDiff: fileDiff, BlobCache: blobCache,
 		},
 	}

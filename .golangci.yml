@@ -266,7 +266,7 @@ linters:
     revive:
       rules:
         - name: exported
-          arguments: ["checkPrivateReceivers", "disableStutteringCheck"]
+          arguments: ["checkPrivateReceivers"]
         - name: var-naming
         - name: package-comments
         - name: error-return
@@ -445,11 +445,6 @@ linters:
       # The "common" package name is intentional for shared analyzer utilities.
       - path: pkg/analyzers/common/
         text: "avoid meaningless package names"
-        linters: [revive]
-
-      # The "file_history" package uses an underscore intentionally for readability.
-      - path: pkg/analyzers/file_history/
-        text: "don't use an underscore in package name"
         linters: [revive]
 
       # Package-comment style exclusions for nolint/TODO lines.

@@ -31,7 +31,7 @@ source_file <- (source_file) => uast(
 )`
 
 	// Load and validate mapping rules.
-	rules, langInfo, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	rules, langInfo, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -142,7 +142,7 @@ source_file <- (source_file) => uast(
     roles: "Module"
 )`
 
-	_, _, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, _, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -207,7 +207,7 @@ source_file <- (source_file) => uast(
     roles: "Module"
 )`
 
-	_, _, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, _, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -272,7 +272,7 @@ source_file <- (source_file) => uast(
     roles: "Module"
 )`
 
-	_, _, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, _, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -326,7 +326,7 @@ source_file <- (source_file) => uast(
     roles: "Module"
 )`
 
-	_, _, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, _, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -382,7 +382,7 @@ source_file <- (source_file) => uast(
     roles: "Module"
 )`
 
-	_, _, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, _, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 	dsl := mapping.GenerateMappingDSL(nodes, "go", []string{".go"})
 
 	// Parse the generated DSL.
-	_, langInfo, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dsl))
+	_, langInfo, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dsl))
 	if err != nil {
 		t.Fatalf("Failed to parse generated mapping DSL: %v\nDSL:\n%s", err, dsl)
 	}
@@ -496,7 +496,7 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 }
 
 //nolint:gocognit,gocyclo,cyclop // Complex real-world integration test.
-func TestDSLProvider_RealWorldGoUASTMap(t *testing.T) {
+func TestDSLProvider_RealWorldGoMap(t *testing.T) {
 	// Real-world go.uastmap DSL with advanced features.
 	dslContent := `[language "go", extensions: ".go"]
 
@@ -542,7 +542,7 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
 )
 `
 
-	_, langInfo, err := (&mapping.MappingParser{}).ParseMapping(strings.NewReader(dslContent))
+	_, langInfo, err := (&mapping.Parser{}).ParseMapping(strings.NewReader(dslContent))
 	if err != nil {
 		t.Fatalf("Failed to load DSL mappings: %v", err)
 	}

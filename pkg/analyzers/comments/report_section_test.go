@@ -30,7 +30,7 @@ func newTestCommentsReport() analyze.Report {
 func TestCommentsTitle(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -39,7 +39,7 @@ func TestCommentsTitle(t *testing.T) {
 func TestCommentsNilReport(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(nil)
+	section := NewReportSection(nil)
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
 	}
@@ -48,7 +48,7 @@ func TestCommentsNilReport(t *testing.T) {
 func TestCommentsScore(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	const expectedScore = 0.75
 	if section.Score() != expectedScore {
@@ -59,7 +59,7 @@ func TestCommentsScore(t *testing.T) {
 func TestCommentsScore_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.Score() != 0 {
 		t.Errorf("Score() = %v, want 0 for empty report", section.Score())
 	}
@@ -68,7 +68,7 @@ func TestCommentsScore_Empty(t *testing.T) {
 func TestCommentsStatusMessage(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	want := "Good comment quality with room for improvement"
 	if section.StatusMessage() != want {
@@ -79,7 +79,7 @@ func TestCommentsStatusMessage(t *testing.T) {
 func TestCommentsStatusMessage_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.StatusMessage() == "" {
 		t.Error("StatusMessage() should not be empty for empty report")
 	}
@@ -88,7 +88,7 @@ func TestCommentsStatusMessage_Empty(t *testing.T) {
 func TestCommentsKeyMetrics_Count(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	const expectedCount = 6
 
@@ -101,7 +101,7 @@ func TestCommentsKeyMetrics_Count(t *testing.T) {
 func TestCommentsKeyMetrics_Labels(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 	metrics := section.KeyMetrics()
 
 	expectedLabels := []string{
@@ -122,7 +122,7 @@ func TestCommentsKeyMetrics_Labels(t *testing.T) {
 func TestCommentsKeyMetrics_Values(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	metrics := section.KeyMetrics()
 	if metrics[0].Value != "20" {
@@ -137,7 +137,7 @@ func TestCommentsKeyMetrics_Values(t *testing.T) {
 func TestCommentsDistribution(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 	dist := section.Distribution()
 
 	const expectedCategories = 2
@@ -165,7 +165,7 @@ func TestCommentsDistribution(t *testing.T) {
 func TestCommentsDistribution_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 	if section.Distribution() != nil {
 		t.Error("Distribution() should be nil for empty report")
 	}
@@ -174,7 +174,7 @@ func TestCommentsDistribution_Empty(t *testing.T) {
 func TestCommentsTopIssues(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	const topN = 1
 
@@ -195,7 +195,7 @@ func TestCommentsTopIssues(t *testing.T) {
 func TestCommentsAllIssues(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(newTestCommentsReport())
+	section := NewReportSection(newTestCommentsReport())
 
 	const expectedUndocumented = 2
 
@@ -208,7 +208,7 @@ func TestCommentsAllIssues(t *testing.T) {
 func TestCommentsTopIssues_Empty(t *testing.T) {
 	t.Parallel()
 
-	section := NewCommentsReportSection(analyze.Report{})
+	section := NewReportSection(analyze.Report{})
 
 	const n = 5
 
@@ -221,5 +221,5 @@ func TestCommentsTopIssues_Empty(t *testing.T) {
 func TestCommentsImplementsInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ analyze.ReportSection = (*CommentsReportSection)(nil)
+	var _ analyze.ReportSection = (*ReportSection)(nil)
 }

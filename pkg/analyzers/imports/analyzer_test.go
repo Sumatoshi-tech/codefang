@@ -11,10 +11,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestImportsAnalyzer_Analyze(t *testing.T) {
+func TestAnalyzer_Analyze(t *testing.T) {
 	t.Parallel()
 
-	a := &ImportsAnalyzer{}
+	a := &Analyzer{}
 	if a.Name() == "" {
 		t.Error("Name empty")
 	}
@@ -50,10 +50,10 @@ func TestImportsAnalyzer_Analyze(t *testing.T) {
 	}
 }
 
-func TestImportsAnalyzer_Format(t *testing.T) {
+func TestAnalyzer_Format(t *testing.T) {
 	t.Parallel()
 
-	a := &ImportsAnalyzer{}
+	a := &Analyzer{}
 	report := analyze.Report{
 		"imports": []string{"os", "sys"},
 	}

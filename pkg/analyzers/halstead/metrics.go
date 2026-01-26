@@ -24,16 +24,16 @@ func NewMetricsCalculator() *MetricsCalculator {
 
 // CalculateHalsteadMetrics calculates all Halstead complexity measures.
 func (mc *MetricsCalculator) CalculateHalsteadMetrics(metrics any) {
-	var result *HalsteadMetrics
+	var result *Metrics
 
 	var fm *FunctionHalsteadMetrics
 
 	switch v := metrics.(type) {
-	case *HalsteadMetrics:
+	case *Metrics:
 		result = v
 	case *FunctionHalsteadMetrics:
 		fm = v
-		result = &HalsteadMetrics{
+		result = &Metrics{
 			DistinctOperators: fm.DistinctOperators,
 			DistinctOperands:  fm.DistinctOperands,
 			TotalOperators:    fm.TotalOperators,
@@ -54,13 +54,13 @@ func (mc *MetricsCalculator) CalculateHalsteadMetrics(metrics any) {
 }
 
 // calculateBasicMeasures calculates basic Halstead measures.
-func (mc *MetricsCalculator) calculateBasicMeasures(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateBasicMeasures(m *Metrics) {
 	m.Vocabulary = m.DistinctOperators + m.DistinctOperands
 	m.Length = m.TotalOperators + m.TotalOperands
 }
 
 // calculateEstimatedLength calculates the estimated length.
-func (mc *MetricsCalculator) calculateEstimatedLength(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateEstimatedLength(m *Metrics) {
 	if m.DistinctOperators > 0 {
 		m.EstimatedLength += float64(m.DistinctOperators) * math.Log2(float64(m.DistinctOperators))
 	}
@@ -71,32 +71,32 @@ func (mc *MetricsCalculator) calculateEstimatedLength(m *HalsteadMetrics) {
 }
 
 // calculateVolume calculates the volume.
-func (mc *MetricsCalculator) calculateVolume(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateVolume(m *Metrics) {
 	if m.Vocabulary > 0 {
 		m.Volume = float64(m.Length) * math.Log2(float64(m.Vocabulary))
 	}
 }
 
 // calculateDifficulty calculates the difficulty.
-func (mc *MetricsCalculator) calculateDifficulty(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateDifficulty(m *Metrics) {
 	if m.DistinctOperands > 0 {
 		m.Difficulty = (float64(m.DistinctOperators) / DifficultyValue) * (float64(m.TotalOperands) / float64(m.DistinctOperands))
 	}
 }
 
 // calculateEffort calculates the effort.
-func (mc *MetricsCalculator) calculateEffort(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateEffort(m *Metrics) {
 	m.Effort = m.Difficulty * m.Volume
 }
 
 // calculateTimeAndBugs calculates time to program and delivered bugs.
-func (mc *MetricsCalculator) calculateTimeAndBugs(m *HalsteadMetrics) {
+func (mc *MetricsCalculator) calculateTimeAndBugs(m *Metrics) {
 	m.TimeToProgram = m.Effort / TimeToProgramValue
 	m.DeliveredBugs = m.Volume / DeliveredBugsValue
 }
 
 // updateFunctionMetrics updates function metrics with calculated values.
-func (mc *MetricsCalculator) updateFunctionMetrics(fm *FunctionHalsteadMetrics, metrics *HalsteadMetrics) {
+func (mc *MetricsCalculator) updateFunctionMetrics(fm *FunctionHalsteadMetrics, metrics *Metrics) {
 	fm.Vocabulary = metrics.Vocabulary
 	fm.Length = metrics.Length
 	fm.EstimatedLength = metrics.EstimatedLength

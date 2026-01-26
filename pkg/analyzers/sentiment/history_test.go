@@ -16,10 +16,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestSentimentHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	facts := map[string]any{
 		ConfigCommentSentimentGap:       float32(0.8),
 		ConfigCommentSentimentMinLength: 30,
@@ -57,10 +57,10 @@ func TestSentimentHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 
 	err := s.Initialize(nil)
 	if err != nil {
@@ -72,10 +72,10 @@ func TestSentimentHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
@@ -127,10 +127,10 @@ func TestSentimentHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
+func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
@@ -164,10 +164,10 @@ func TestSentimentHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
+func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
@@ -200,10 +200,10 @@ func TestSentimentHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Finalize(t *testing.T) {
+func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 	s.commentsByTick[0] = []string{"Good"}
 
@@ -220,10 +220,10 @@ func TestSentimentHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 
 	report := analyze.Report{
 		"emotions_by_tick": map[int]float32{0: 0.5},
@@ -256,10 +256,10 @@ func TestSentimentHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 }
 
-func TestSentimentHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	s := &SentimentHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	if s.Name() == "" {
 		t.Error("Name empty")
 	}

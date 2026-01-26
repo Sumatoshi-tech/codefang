@@ -36,16 +36,16 @@ const (
 	mrowValue             = 2
 )
 
-// BurndownShard holds per-file burndown data within a partition.
-type BurndownShard struct {
+// Shard holds per-file burndown data within a partition.
+type Shard struct {
 	files         map[string]*burndown.File
 	fileHistories map[string]sparseHistory
 	allocator     *rbtree.Allocator
 	mu            sync.Mutex //nolint:unused // acknowledged.
 }
 
-// BurndownHistoryAnalyzer tracks line survival rates across commit history.
-type BurndownHistoryAnalyzer struct {
+// HistoryAnalyzer tracks line survival rates across commit history.
+type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 		Errorf(format string, args ...any)
@@ -65,7 +65,7 @@ type BurndownHistoryAnalyzer struct {
 	HibernationDirectory string
 	hibernatedFileName   string
 	peopleHistories      []sparseHistory
-	shards               []*BurndownShard
+	shards               []*Shard
 	reversedPeopleDict   []string
 	matrix               []map[int]int64
 	mergedAuthor         int
@@ -116,22 +116,22 @@ const (
 )
 
 // Name returns the name of the analyzer.
-func (b *BurndownHistoryAnalyzer) Name() string {
+func (b *HistoryAnalyzer) Name() string {
 	return "Burndown"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (b *BurndownHistoryAnalyzer) Flag() string {
+func (b *HistoryAnalyzer) Flag() string {
 	return "burndown"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (b *BurndownHistoryAnalyzer) Description() string {
+func (b *HistoryAnalyzer) Description() string {
 	return "Line burndown stats indicate the numbers of lines which were last edited within specific time intervals through time."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (b *BurndownHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (b *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
 			Name:        ConfigBurndownGranularity,
@@ -200,7 +200,7 @@ func (b *BurndownHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configur
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error {
+func (b *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigBurndownGranularity].(int); exists {
 		b.Granularity = val
 	}
@@ -246,7 +246,7 @@ func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // configurePeopleTracking sets up people tracking from the provided facts.
-func (b *BurndownHistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
+func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 	people, exists := facts[ConfigBurndownTrackPeople].(bool)
 	if !people || !exists {
 		return nil
@@ -274,7 +274,7 @@ func (b *BurndownHistoryAnalyzer) configurePeopleTracking(facts map[string]any) 
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (b *BurndownHistoryAnalyzer) Initialize(repository *git.Repository) error {
+func (b *HistoryAnalyzer) Initialize(repository *git.Repository) error {
 	if b.Granularity <= 0 {
 		b.Granularity = DefaultBurndownGranularity
 	}
@@ -305,11 +305,11 @@ func (b *BurndownHistoryAnalyzer) Initialize(repository *git.Repository) error {
 	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
 
 	b.shardedAllocator = rbtree.NewShardedAllocator(b.Goroutines, b.HibernationThreshold)
-	b.shards = make([]*BurndownShard, b.Goroutines)
+	b.shards = make([]*Shard, b.Goroutines)
 
 	allocators := b.shardedAllocator.Shards()
 	for i := range b.Goroutines {
-		b.shards[i] = &BurndownShard{
+		b.shards[i] = &Shard{
 			files:         map[string]*burndown.File{},
 			fileHistories: map[string]sparseHistory{},
 			allocator:     allocators[i],
@@ -328,11 +328,11 @@ func (b *BurndownHistoryAnalyzer) Initialize(repository *git.Repository) error {
 }
 
 // getShard returns the shard for a given file name.
-func (b *BurndownHistoryAnalyzer) getShard(name string) *BurndownShard {
+func (b *HistoryAnalyzer) getShard(name string) *Shard {
 	return b.shards[b.getShardIndex(name)]
 }
 
-func (b *BurndownHistoryAnalyzer) getShardIndex(name string) int {
+func (b *HistoryAnalyzer) getShardIndex(name string) int {
 	h := fnv.New32a()
 	h.Write([]byte(name))
 
@@ -345,7 +345,7 @@ func (b *BurndownHistoryAnalyzer) getShardIndex(name string) int {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	author := b.Identity.AuthorID
 	tick := b.Ticks.Tick
 	isMerge := ctx.IsMerge
@@ -381,7 +381,7 @@ func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 }
 
 // groupChangesByShard partitions tree changes into per-shard slices and collects renames separately.
-func (b *BurndownHistoryAnalyzer) groupChangesByShard(
+func (b *HistoryAnalyzer) groupChangesByShard(
 	treeDiffs []*object.Change,
 ) (shardChanges [][]*object.Change, renames []*object.Change) {
 	shardChanges = make([][]*object.Change, b.Goroutines)
@@ -414,7 +414,7 @@ func (b *BurndownHistoryAnalyzer) groupChangesByShard(
 // processShardChanges processes grouped changes across shards in parallel.
 //
 //nolint:gocognit // complexity is inherent to parallel shard coordination logic.
-func (b *BurndownHistoryAnalyzer) processShardChanges(
+func (b *HistoryAnalyzer) processShardChanges(
 	shardChanges [][]*object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
 	fileDiffs map[string]pkgplumbing.FileDiffData,
 ) error {
@@ -475,19 +475,19 @@ func (b *BurndownHistoryAnalyzer) processShardChanges(
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (b *BurndownHistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer {
+func (b *HistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer {
 	// Fork is used for branching logic.
 	// Since ShardedAllocator doesn't support cloning yet, we panic.
 	panic("Fork not implemented for ShardedAllocator yet")
 }
 
 // Merge combines results from forked analyzer branches.
-func (b *BurndownHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (b *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 	panic("Merge not implemented for ShardedAllocator yet")
 }
 
 // Hibernate releases resources between processing phases.
-func (b *BurndownHistoryAnalyzer) Hibernate() error {
+func (b *HistoryAnalyzer) Hibernate() error {
 	b.shardedAllocator.Hibernate()
 
 	if !b.HibernationToDisk {
@@ -498,7 +498,7 @@ func (b *BurndownHistoryAnalyzer) Hibernate() error {
 }
 
 // hibernateToDisk serializes the sharded allocator to a temporary file on disk.
-func (b *BurndownHistoryAnalyzer) hibernateToDisk() error {
+func (b *HistoryAnalyzer) hibernateToDisk() error {
 	file, err := os.CreateTemp(b.HibernationDirectory, "*-codefang.bin")
 	if err != nil {
 		return fmt.Errorf("hibernate: %w", err)
@@ -532,7 +532,7 @@ func (b *BurndownHistoryAnalyzer) hibernateToDisk() error {
 }
 
 // Boot performs early initialization before repository processing.
-func (b *BurndownHistoryAnalyzer) Boot() error {
+func (b *HistoryAnalyzer) Boot() error {
 	if b.hibernatedFileName != "" {
 		err := b.shardedAllocator.Deserialize(b.hibernatedFileName)
 		if err != nil {
@@ -555,7 +555,7 @@ func (b *BurndownHistoryAnalyzer) Boot() error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	globalHistory, lastTick := b.groupSparseHistory(b.globalHistory, -1)
 	fileHistories, fileOwnership := b.collectFileHistories(lastTick)
 
@@ -576,7 +576,7 @@ func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // collectFileHistories builds dense file histories and ownership maps from all shards.
-func (b *BurndownHistoryAnalyzer) collectFileHistories(lastTick int) (histories map[string]DenseHistory, owners map[string]map[int]int) {
+func (b *HistoryAnalyzer) collectFileHistories(lastTick int) (histories map[string]DenseHistory, owners map[string]map[int]int) {
 	fileHistories := map[string]DenseHistory{}
 	fileOwnership := map[string]map[int]int{}
 
@@ -613,7 +613,7 @@ func (b *BurndownHistoryAnalyzer) collectFileHistories(lastTick int) (histories 
 }
 
 // buildPeopleHistories constructs dense histories for each person.
-func (b *BurndownHistoryAnalyzer) buildPeopleHistories(globalHistory DenseHistory, lastTick int) []DenseHistory {
+func (b *HistoryAnalyzer) buildPeopleHistories(globalHistory DenseHistory, lastTick int) []DenseHistory {
 	peopleHistories := make([]DenseHistory, b.PeopleNumber)
 
 	for i, history := range b.peopleHistories {
@@ -631,7 +631,7 @@ func (b *BurndownHistoryAnalyzer) buildPeopleHistories(globalHistory DenseHistor
 }
 
 // buildPeopleMatrix constructs the people interaction matrix.
-func (b *BurndownHistoryAnalyzer) buildPeopleMatrix() DenseHistory {
+func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 	if len(b.matrix) == 0 {
 		return nil
 	}
@@ -657,7 +657,7 @@ func (b *BurndownHistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (b *BurndownHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (b *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	enc := json.NewEncoder(writer)
 	enc.SetIndent("", "  ")
 
@@ -670,13 +670,13 @@ func (b *BurndownHistoryAnalyzer) Serialize(result analyze.Report, _ bool, write
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (b *BurndownHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (b *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return b.Serialize(report, false, writer)
 }
 
 // Helpers.
 
-func (b *BurndownHistoryAnalyzer) packPersonWithTick(person, tick int) int {
+func (b *HistoryAnalyzer) packPersonWithTick(person, tick int) int {
 	if b.PeopleNumber == 0 {
 		return tick
 	}
@@ -687,7 +687,7 @@ func (b *BurndownHistoryAnalyzer) packPersonWithTick(person, tick int) int {
 	return result
 }
 
-func (b *BurndownHistoryAnalyzer) unpackPersonWithTick(value int) (person, tick int) {
+func (b *HistoryAnalyzer) unpackPersonWithTick(value int) (person, tick int) {
 	if b.PeopleNumber == 0 {
 		return identity.AuthorMissing, value
 	}
@@ -695,7 +695,7 @@ func (b *BurndownHistoryAnalyzer) unpackPersonWithTick(value int) (person, tick 
 	return value >> burndown.TreeMaxBinPower, value & burndown.TreeMergeMark
 }
 
-func (b *BurndownHistoryAnalyzer) onNewTick() {
+func (b *HistoryAnalyzer) onNewTick() {
 	if b.tick > b.previousTick {
 		b.previousTick = b.tick
 	}
@@ -703,7 +703,7 @@ func (b *BurndownHistoryAnalyzer) onNewTick() {
 	b.mergedAuthor = identity.AuthorMissing
 }
 
-func (b *BurndownHistoryAnalyzer) updateGlobal(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateGlobal(currentTime, previousTime, delta int) {
 	_, curTick := b.unpackPersonWithTick(currentTime)
 	_, prevTick := b.unpackPersonWithTick(previousTime)
 
@@ -716,7 +716,7 @@ func (b *BurndownHistoryAnalyzer) updateGlobal(currentTime, previousTime, delta 
 	currentHistory[prevTick] += int64(delta)
 }
 
-func (b *BurndownHistoryAnalyzer) updateFile(history sparseHistory, currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateFile(history sparseHistory, currentTime, previousTime, delta int) {
 	_, curTick := b.unpackPersonWithTick(currentTime)
 	_, prevTick := b.unpackPersonWithTick(previousTime)
 
@@ -729,7 +729,7 @@ func (b *BurndownHistoryAnalyzer) updateFile(history sparseHistory, currentTime,
 	currentHistory[prevTick] += int64(delta)
 }
 
-func (b *BurndownHistoryAnalyzer) updateAuthor(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateAuthor(currentTime, previousTime, delta int) {
 	previousAuthor, prevTick := b.unpackPersonWithTick(previousTime)
 	if previousAuthor == identity.AuthorMissing {
 		return
@@ -752,7 +752,7 @@ func (b *BurndownHistoryAnalyzer) updateAuthor(currentTime, previousTime, delta 
 	currentHistory[prevTick] += int64(delta)
 }
 
-func (b *BurndownHistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
 	newAuthor, _ := b.unpackPersonWithTick(currentTime)
 	oldAuthor, _ := b.unpackPersonWithTick(previousTime)
 
@@ -779,8 +779,8 @@ func (b *BurndownHistoryAnalyzer) updateMatrix(currentTime, previousTime, delta 
 	row[newAuthor] = cell + int64(delta)
 }
 
-func (b *BurndownHistoryAnalyzer) newFile(
-	shard *BurndownShard, _ gitplumbing.Hash, name string, author int, tick int, size int,
+func (b *HistoryAnalyzer) newFile(
+	shard *Shard, _ gitplumbing.Hash, name string, author int, tick int, size int,
 ) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
 	updaters := make([]burndown.Updater, 1)
 
@@ -822,8 +822,8 @@ func (b *BurndownHistoryAnalyzer) newFile(
 	return burndown.NewFile(tick, size, shard.allocator, updaters...), nil
 }
 
-func (b *BurndownHistoryAnalyzer) handleInsertion(
-	shard *BurndownShard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+func (b *HistoryAnalyzer) handleInsertion(
+	shard *Shard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
 ) error {
 	blob := cache[change.To.TreeEntry.Hash]
 
@@ -869,8 +869,8 @@ func (b *BurndownHistoryAnalyzer) handleInsertion(
 	return err
 }
 
-func (b *BurndownHistoryAnalyzer) handleDeletion(
-	shard *BurndownShard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+func (b *HistoryAnalyzer) handleDeletion(
+	shard *Shard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
 ) error {
 	var name string
 	if change.To.TreeEntry.Hash != gitplumbing.ZeroHash {
@@ -932,8 +932,8 @@ func (b *BurndownHistoryAnalyzer) handleDeletion(
 	return nil
 }
 
-func (b *BurndownHistoryAnalyzer) handleModification(
-	shard *BurndownShard, change *object.Change, author int,
+func (b *HistoryAnalyzer) handleModification(
+	shard *Shard, change *object.Change, author int,
 	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	// This method handles modification WITHOUT rename (checked in Consume).
@@ -977,7 +977,7 @@ func (b *BurndownHistoryAnalyzer) handleModification(
 	return nil
 }
 
-func (b *BurndownHistoryAnalyzer) handleModificationRename(
+func (b *HistoryAnalyzer) handleModificationRename(
 	change *object.Change, author int,
 	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
@@ -1047,7 +1047,7 @@ func (b *BurndownHistoryAnalyzer) handleModificationRename(
 
 // diffApplier holds state for applying a sequence of diffs to a burndown file.
 type diffApplier struct {
-	b        *BurndownHistoryAnalyzer
+	b        *HistoryAnalyzer
 	file     *burndown.File
 	author   int
 	position int
@@ -1096,7 +1096,7 @@ func (d *diffApplier) handleInsert(edit diffmatchpatch.Diff) {
 	}
 }
 
-func (b *BurndownHistoryAnalyzer) applyDiffs(
+func (b *HistoryAnalyzer) applyDiffs(
 	file *burndown.File, thisDiffs pkgplumbing.FileDiffData, author int,
 ) {
 	da := &diffApplier{b: b, file: file, author: author, pending: diffmatchpatch.Diff{Text: ""}}
@@ -1117,7 +1117,7 @@ func (b *BurndownHistoryAnalyzer) applyDiffs(
 }
 
 // migrateFileHistory moves a file's sparse history from one shard to another during a rename.
-func (b *BurndownHistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *BurndownShard, from, to string) {
+func (b *HistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *Shard, from, to string) {
 	history := shardFrom.fileHistories[from]
 	if history == nil {
 		history = sparseHistory{}
@@ -1127,7 +1127,7 @@ func (b *BurndownHistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *Burndow
 	shardTo.fileHistories[to] = history
 }
 
-func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
+func (b *HistoryAnalyzer) handleRename(from, to string) error {
 	if from == to {
 		return nil
 	}
@@ -1170,7 +1170,7 @@ func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
 	return nil
 }
 
-func (b *BurndownHistoryAnalyzer) groupSparseHistory(
+func (b *HistoryAnalyzer) groupSparseHistory(
 	history sparseHistory, lastTick int,
 ) (grouped DenseHistory, finalTick int) {
 	if len(history) == 0 {
@@ -1193,7 +1193,7 @@ func (b *BurndownHistoryAnalyzer) groupSparseHistory(
 }
 
 // normalizeTicks extracts sorted tick keys from a sparse history and resolves lastTick.
-func (b *BurndownHistoryAnalyzer) normalizeTicks(history sparseHistory, lastTick int) (ticks []int, resolvedLastTick int) {
+func (b *HistoryAnalyzer) normalizeTicks(history sparseHistory, lastTick int) (ticks []int, resolvedLastTick int) {
 	ticks = make([]int, 0, len(history))
 	for tick := range history {
 		ticks = append(ticks, tick)
@@ -1213,7 +1213,7 @@ func (b *BurndownHistoryAnalyzer) normalizeTicks(history sparseHistory, lastTick
 }
 
 // fillDenseHistory populates a pre-allocated dense history from sparse tick data.
-func (b *BurndownHistoryAnalyzer) fillDenseHistory(result DenseHistory, ticks []int, history sparseHistory) {
+func (b *HistoryAnalyzer) fillDenseHistory(result DenseHistory, ticks []int, history sparseHistory) {
 	prevsi := 0
 
 	for _, tick := range ticks {

@@ -479,9 +479,9 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 	}
 }
 
-func TestParserWithCustomUASTMap(t *testing.T) {
+func TestParserWithCustomMap(t *testing.T) {
 	// Create a simple custom UAST mapping for testing.
-	customMaps := map[string]UASTMap{
+	customMaps := map[string]Map{
 		"custom_json": {
 			Extensions: []string{".custom"},
 			UAST: `[language "json", extensions: ".custom"]
@@ -556,7 +556,7 @@ true <- (true) => uast(
 		t.Fatalf("Failed to create parser: %v", err)
 	}
 
-	parser = parser.WithUASTMap(customMaps)
+	parser = parser.WithMap(customMaps)
 
 	// Test that the custom parser is loaded.
 	if !parser.IsSupported("test_file.custom") {
@@ -590,9 +590,9 @@ true <- (true) => uast(
 	}
 }
 
-func TestParserWithMultipleCustomUASTMaps(t *testing.T) {
+func TestParserWithMultipleCustomMaps(t *testing.T) {
 	// Create multiple custom UAST mappings.
-	customMaps := map[string]UASTMap{
+	customMaps := map[string]Map{
 		"custom_json1": {
 			Extensions: []string{".json1"},
 			UAST: `[language "json", extensions: ".json1"]
@@ -667,7 +667,7 @@ string <- (string) => uast(
 		t.Fatalf("Failed to create parser: %v", err)
 	}
 
-	parser = parser.WithUASTMap(customMaps)
+	parser = parser.WithMap(customMaps)
 
 	// Test that both custom parsers are loaded.
 	testCases := []struct {
@@ -697,9 +697,9 @@ string <- (string) => uast(
 	}
 }
 
-func TestParserCustomUASTMapPriority(t *testing.T) {
+func TestParserCustomMapPriority(t *testing.T) {
 	// Create a custom UAST mapping that overrides the built-in JSON parser.
-	customMaps := map[string]UASTMap{
+	customMaps := map[string]Map{
 		"custom_json": {
 			Extensions: []string{".json"}, // Same extension as built-in JSON parser.
 			UAST: `[language "json", extensions: ".json"]
@@ -768,7 +768,7 @@ true <- (true) => uast(
 		t.Fatalf("Failed to create parser: %v", err)
 	}
 
-	parser = parser.WithUASTMap(customMaps)
+	parser = parser.WithMap(customMaps)
 
 	// Test that the custom parser is used instead of the built-in one.
 	filename := "test.json"
