@@ -1,6 +1,8 @@
 # Codefang
 
-![Codefang Logo](assets/uast.png)
+<p align="center">
+  <img src="assets/uast.png" alt="Codefang Logo" width="500">
+</p>
 
 [![CI](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Sumatoshi-tech/codefang.svg)](https://pkg.go.dev/github.com/Sumatoshi-tech/codefang)
