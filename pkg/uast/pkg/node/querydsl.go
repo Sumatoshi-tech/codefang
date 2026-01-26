@@ -279,8 +279,7 @@ func convertComparisonNode(n *node32, buffer string) DSLNode {
 	return &CallNode{Name: op, Args: []DSLNode{left, right}}
 }
 
-//nolint:gocritic // Unnamed results for multi-return.
-func extractComparisonParts(n *node32, buffer string) (DSLNode, DSLNode, string) {
+func extractComparisonParts(n *node32, buffer string) (left, right DSLNode, op string) {
 	parts := &comparisonParts{}
 
 	for c := n.up; c != nil; c = c.next {
@@ -422,10 +421,7 @@ func convertMembershipNode(n *node32, buffer string) DSLNode {
 	return &CallNode{Name: "has", Args: []DSLNode{left, right}}
 }
 
-//nolint:gocritic // Unnamed results for multi-return.
-func extractMembershipParts(n *node32, buffer string) (DSLNode, DSLNode) {
-	var left, right DSLNode
-
+func extractMembershipParts(n *node32, buffer string) (left, right DSLNode) {
 	for c := n.up; c != nil; c = c.next {
 		rule := rul3s[c.pegRule]
 

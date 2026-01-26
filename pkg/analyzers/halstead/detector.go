@@ -15,7 +15,7 @@ func NewOperatorOperandDetector() *OperatorOperandDetector {
 // CollectOperatorsAndOperands recursively collects operators and operands from a node.
 func (d *OperatorOperandDetector) CollectOperatorsAndOperands(
 	nd *node.Node, operators, operands map[string]int,
-) { //nolint:whitespace // multi-line signature.
+) {
 	if nd == nil {
 		return
 	}

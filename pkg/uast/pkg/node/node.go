@@ -1019,10 +1019,9 @@ func processRemainingNodesPostOrderIterative(targetNode *Node, fn func(*Node)) {
 	}
 }
 
-//nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter.
-func initializePostOrderIterative(targetNode *Node) ([]*Node, map[*Node]bool) {
-	stack := make([]*Node, 0, iterativeQueueInitCap)
-	visited := make(map[*Node]bool)
+func initializePostOrderIterative(targetNode *Node) (stack []*Node, visited map[*Node]bool) {
+	stack = make([]*Node, 0, iterativeQueueInitCap)
+	visited = make(map[*Node]bool)
 
 	stack = append(stack, targetNode)
 

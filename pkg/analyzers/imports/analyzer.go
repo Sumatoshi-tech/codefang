@@ -123,35 +123,38 @@ func extractImportsFromUAST(root *node.Node) []string {
 }
 
 // extractImportPath extracts the import path from an import node.
-func extractImportPath(importNode *node.Node) string { //nolint:gocognit // cognitive complexity is acceptable for this function.
-	// First try to get the import path from the token.
+func extractImportPath(importNode *node.Node) string {
 	if importNode.Token != "" {
 		return cleanImportPath(importNode.Token)
 	}
 
-	// For JavaScript imports, look for specific patterns in children.
-	if len(importNode.Children) > 0 {
-		// Look for string literals that contain import paths.
-		for _, child := range importNode.Children {
-			if child.Type == node.UASTLiteral && child.Token != "" {
-				// This is likely a string literal containing the import path.
-				return cleanImportPath(child.Token)
-			}
-		}
+	if len(importNode.Children) == 0 {
+		return ""
+	}
 
-		// Look for identifier nodes that might contain module names. //nolint:gocritic // gocritic suggestion acknowledged.
-		for _, child := range importNode.Children {
-			if child.Type == node.UASTIdentifier && child.Token != "" {
-				// This might be a module name.
-				return cleanImportPath(child.Token)
-			}
-		}
+	return extractImportPathFromChildren(importNode.Children)
+}
 
-		// Recursively check children for import paths.
-		for _, child := range importNode.Children {
-			if path := extractImportPath(child); path != "" {
-				return path
-			}
+// extractImportPathFromChildren searches children for import paths by type priority.
+func extractImportPathFromChildren(children []*node.Node) string {
+	// Look for string literals that contain import paths.
+	for _, child := range children {
+		if child.Type == node.UASTLiteral && child.Token != "" {
+			return cleanImportPath(child.Token)
+		}
+	}
+
+	// Look for identifier nodes that might contain module names.
+	for _, child := range children {
+		if child.Type == node.UASTIdentifier && child.Token != "" {
+			return cleanImportPath(child.Token)
+		}
+	}
+
+	// Recursively check children for import paths.
+	for _, child := range children {
+		if path := extractImportPath(child); path != "" {
+			return path
 		}
 	}
 
@@ -159,9 +162,7 @@ func extractImportPath(importNode *node.Node) string { //nolint:gocognit // cogn
 }
 
 // cleanImportPath cleans up an import path by removing quotes and extracting module names.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func cleanImportPath(path string) string { //nolint:gocognit // cognitive complexity is acceptable for this function.
+func cleanImportPath(path string) string {
 	// Remove surrounding quotes and trailing semicolons.
 	path = strings.Trim(path, `"';`)
 
@@ -170,38 +171,57 @@ func cleanImportPath(path string) string { //nolint:gocognit // cognitive comple
 		return ""
 	}
 
-	// Handle different import statement formats.
-	//nolint:nestif // nested logic is clear in context. //nolint:gocritic // gocritic suggestion acknowledged.
+	if parsed := parseImportFormat(path); parsed != "" {
+		return parsed
+	}
+
+	// For simple module names, just return as is.
+	return path
+}
+
+// parseImportFormat attempts to extract a module name from various import statement formats.
+func parseImportFormat(path string) string {
 	if strings.HasPrefix(path, "from ") {
 		// Python: "from typing import List, Dict" -> "typing".
 		parts := strings.Fields(path)
 		if len(parts) >= lenArg2 {
 			return parts[1]
 		}
-	} else if strings.Contains(path, " from ") {
+
+		return ""
+	}
+
+	if strings.Contains(path, " from ") {
 		// JavaScript: "React from 'react'" -> "react".
 		parts := strings.Split(path, " from ")
 		if len(parts) >= magic2 {
 			return strings.Trim(parts[1], `"'`)
 		}
-	} else if strings.HasPrefix(path, "import ") {
+
+		return ""
+	}
+
+	if strings.HasPrefix(path, "import ") {
 		// Python: "import os" -> "os"
 		// JavaScript: "import './styles.css'" -> "./styles.css".
 		parts := strings.Fields(path)
 		if len(parts) >= magic2_1 {
 			return strings.Trim(parts[1], `"'`)
 		}
-	} else if strings.Contains(path, "import ") {
+
+		return ""
+	}
+
+	if strings.Contains(path, "import ") {
 		// JavaScript: "import './styles.css'" -> "./styles.css" (fallback).
 		parts := strings.Split(path, "import ")
 		if len(parts) >= magic2_2 {
 			return strings.Trim(parts[1], `"'`)
 		}
-	} else if strings.HasPrefix(path, "{") && strings.Contains(path, "}") {
-		// JavaScript destructuring: "{ useState, useEffect }" -> skip this.
+
 		return ""
 	}
 
-	// For simple module names, just return as is.
-	return path
+	// JavaScript destructuring: "{ useState, useEffect }" -> skip this.
+	return ""
 }

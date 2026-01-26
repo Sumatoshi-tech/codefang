@@ -134,7 +134,7 @@ func (h *ImportsHistoryAnalyzer) Initialize(_ *git.Repository) error {
 
 func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
-		return nil, fmt.Errorf("parser not initialized") //nolint:err113,perfsprint // fmt.Sprintf is clearer than string concat.
+		return nil, errors.New("parser not initialized") //nolint:err113 // simple guard, no sentinel needed
 	}
 
 	// Check if supported.
@@ -163,21 +163,28 @@ func (h *ImportsHistoryAnalyzer) extractImports(name string, data []byte) (*impo
 	}, nil
 }
 
-// Consume processes a single commit with the provided dependency results.
+// extractImportsParallel spins up a worker pool to parse changed files in
+// parallel and returns per-blob import results.
 //
-//nolint:funlen,gocognit // complex commit processing logic.
-func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
-	changes := h.TreeDiff.Changes
-	cache := h.BlobCache.Cache
-
-	extractedImports := map[gitplumbing.Hash]importmodel.File{}
+//nolint:gocognit // complexity is inherent to parallel worker pool with mutex coordination.
+func (h *ImportsHistoryAnalyzer) extractImportsParallel(
+	changes object.Changes,
+	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) map[gitplumbing.Hash]importmodel.File {
+	extracted := map[gitplumbing.Hash]importmodel.File{}
 	jobs := make(chan *object.Change, h.Goroutines)
-	resultSync := sync.Mutex{}
-	wg := sync.WaitGroup{}
+
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
 	wg.Add(h.Goroutines)
 
 	for range h.Goroutines {
 		go func() {
+			defer wg.Done()
+
 			for change := range jobs {
 				blob := cache[change.To.TreeEntry.Hash]
 				if blob.Size > int64(h.MaxFileSize) {
@@ -186,15 +193,13 @@ func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
 
 				file, err := h.extractImports(change.To.TreeEntry.Name, blob.Data)
 				if err == nil {
-					resultSync.Lock()
+					mu.Lock()
 
-					extractedImports[change.To.TreeEntry.Hash] = *file
+					extracted[change.To.TreeEntry.Hash] = *file
 
-					resultSync.Unlock()
+					mu.Unlock()
 				}
 			}
-
-			wg.Done()
 		}()
 	}
 
@@ -215,9 +220,15 @@ func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
 	close(jobs)
 	wg.Wait()
 
-	author := h.Identity.AuthorID
-	tick := h.Ticks.Tick
+	return extracted
+}
 
+// aggregateImports folds the per-blob import data into the analyzer's
+// cumulative imports map, keyed by author and tick.
+func (h *ImportsHistoryAnalyzer) aggregateImports(
+	extractedImports map[gitplumbing.Hash]importmodel.File,
+	author, tick int,
+) {
 	aimps := h.imports[author]
 	if aimps == nil {
 		aimps = map[string]map[string]map[int]int64{}
@@ -241,6 +252,12 @@ func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
 			timps[tick]++
 		}
 	}
+}
+
+// Consume processes a single commit with the provided dependency results.
+func (h *ImportsHistoryAnalyzer) Consume(_ *analyze.Context) error {
+	extracted := h.extractImportsParallel(h.TreeDiff.Changes, h.BlobCache.Cache)
+	h.aggregateImports(extracted, h.Identity.AuthorID, h.Ticks.Tick)
 
 	return nil
 }

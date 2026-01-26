@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -80,10 +81,10 @@ func startServer(port, staticDir string) {
 		})
 	}
 
-	fmt.Printf("UAST Development Server starting on http://localhost:%s\n", port) //nolint:forbidigo // CLI user output
+	fmt.Fprintf(os.Stdout, "UAST Development Server starting on http://localhost:%s\n", port)
 
 	if staticDir != "" {
-		fmt.Printf("Serving static files from: %s\n", staticDir) //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "Serving static files from: %s\n", staticDir)
 	}
 
 	log.Fatal(http.ListenAndServe(":"+port, nil)) //nolint:gosec // dev server, timeouts not required

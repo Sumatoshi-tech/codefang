@@ -1,6 +1,7 @@
 package halstead
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -207,7 +208,7 @@ func (h *HalsteadAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs Halstead analysis on the UAST.
 func (h *HalsteadAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, fmt.Errorf("root node is nil") //nolint:err113,perfsprint // fmt.Sprintf is clearer than string concat.
+		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
 	}
 
 	functions := h.findFunctions(root)
@@ -313,7 +314,7 @@ func (h *HalsteadAnalyzer) calculateFileLevelMetrics(functionMetrics map[string]
 // aggregateOperatorsAndOperandsFromMetrics aggregates operators and operands from function metrics.
 func (h *HalsteadAnalyzer) aggregateOperatorsAndOperandsFromMetrics(
 	fn *FunctionHalsteadMetrics, operators, operands map[string]int,
-) { //nolint:whitespace // multi-line signature.
+) {
 	for operator, count := range fn.Operators {
 		operators[operator] += count
 	}
@@ -382,7 +383,7 @@ func (h *HalsteadAnalyzer) buildFunctionDetailEntry(fn *FunctionHalsteadMetrics)
 // buildResult constructs the final analysis result.
 func (h *HalsteadAnalyzer) buildResult(
 	fileMetrics *HalsteadMetrics, detailedFunctionsTable, functionDetails []map[string]any, message string,
-) analyze.Report { //nolint:whitespace // multi-line signature.
+) analyze.Report {
 	metrics := map[string]any{
 		"volume":             fileMetrics.Volume,
 		"difficulty":         fileMetrics.Difficulty,

@@ -124,21 +124,18 @@ func (f *FileDiffAnalyzer) Initialize(_ *git.Repository) error {
 	return nil
 }
 
+// parallelThreshold is the minimum number of changes to justify spawning worker goroutines.
+const parallelThreshold = 50
+
 // Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,gocognit,gocyclo // complex function.
 func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
-	result := map[string]pkgplumbing.FileDiffData{}
 	cache := f.BlobCache.Cache
 	treeDiff := f.TreeDiff.Changes
 
-	// If trivial number of changes, don't spin up workers
-	// 50 is heuristic.
-	if len(treeDiff) < 50 || f.Goroutines <= 1 {
-		for _, change := range treeDiff {
-			if err := f.processChange(change, cache, result, nil); err != nil { //nolint:noinlineerr // inline error return is clear.
-				return err
-			}
+	if len(treeDiff) < parallelThreshold || f.Goroutines <= 1 {
+		result, err := f.processChangesSequential(treeDiff, cache)
+		if err != nil {
+			return err
 		}
 
 		f.FileDiffs = result
@@ -146,12 +143,42 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 		return nil
 	}
 
+	result, err := f.processChangesParallel(treeDiff, cache)
+	if err != nil {
+		return err
+	}
+
+	f.FileDiffs = result
+
+	return nil
+}
+
+func (f *FileDiffAnalyzer) processChangesSequential(
+	treeDiff object.Changes, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) (map[string]pkgplumbing.FileDiffData, error) {
+	result := map[string]pkgplumbing.FileDiffData{}
+
+	for _, change := range treeDiff {
+		err := f.processChange(change, cache, result, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
+type fileDiffResult struct {
+	err  error
+	name string
+	data pkgplumbing.FileDiffData
+}
+
+func (f *FileDiffAnalyzer) processChangesParallel(
+	treeDiff object.Changes, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) (map[string]pkgplumbing.FileDiffData, error) {
 	jobs := make(chan *object.Change, len(treeDiff))
-	results := make(chan struct {
-		err  error
-		name string
-		data pkgplumbing.FileDiffData
-	}, len(treeDiff))
+	results := make(chan fileDiffResult, len(treeDiff))
 
 	wg := sync.WaitGroup{}
 	wg.Add(f.Goroutines)
@@ -161,25 +188,7 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 			defer wg.Done()
 
 			for change := range jobs {
-				res := struct {
-					err  error
-					name string
-					data pkgplumbing.FileDiffData
-				}{}
-
-				tempMap := map[string]pkgplumbing.FileDiffData{}
-				if err := f.processChange(change, cache, tempMap, nil); err != nil { //nolint:noinlineerr // inline error return is clear.
-					res.err = err
-				} else if len(tempMap) > 0 {
-					for k, v := range tempMap {
-						res.name = k
-						res.data = v
-
-						break
-					}
-				}
-
-				results <- res
+				results <- f.processOneChange(change, cache)
 			}
 		}()
 	}
@@ -187,7 +196,7 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 	for _, change := range treeDiff {
 		action, err := change.Action()
 		if err != nil {
-			return fmt.Errorf("consume: %w", err)
+			return nil, fmt.Errorf("consume: %w", err)
 		}
 
 		if action == merkletrie.Modify {
@@ -199,9 +208,32 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 	wg.Wait()
 	close(results)
 
+	return collectFileDiffResults(results)
+}
+
+func (f *FileDiffAnalyzer) processOneChange(
+	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) fileDiffResult {
+	tempMap := map[string]pkgplumbing.FileDiffData{}
+
+	err := f.processChange(change, cache, tempMap, nil)
+	if err != nil {
+		return fileDiffResult{err: err}
+	}
+
+	for k, v := range tempMap {
+		return fileDiffResult{name: k, data: v}
+	}
+
+	return fileDiffResult{}
+}
+
+func collectFileDiffResults(results chan fileDiffResult) (map[string]pkgplumbing.FileDiffData, error) {
+	result := map[string]pkgplumbing.FileDiffData{}
+
 	for res := range results {
 		if res.err != nil {
-			return res.err
+			return nil, res.err
 		}
 
 		if res.name != "" {
@@ -209,12 +241,15 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 		}
 	}
 
-	f.FileDiffs = result
-
-	return nil
+	return result, nil
 }
 
-func (f *FileDiffAnalyzer) processChange(change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob, result map[string]pkgplumbing.FileDiffData, mu *sync.Mutex) error { //nolint:lll // long line.
+func (f *FileDiffAnalyzer) processChange(
+	change *object.Change,
+	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	result map[string]pkgplumbing.FileDiffData,
+	mu *sync.Mutex,
+) error {
 	action, err := change.Action()
 	if err != nil {
 		return fmt.Errorf("processChange: %w", err)

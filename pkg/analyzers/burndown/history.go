@@ -200,7 +200,7 @@ func (b *BurndownHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configur
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error { //nolint:gocognit // complex function.
+func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigBurndownGranularity].(int); exists {
 		b.Granularity = val
 	}
@@ -213,23 +213,9 @@ func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error { //noli
 		b.TrackFiles = val
 	}
 
-	//nolint:nestif // acceptable nesting for config parsing.
-	if people, exists := facts[ConfigBurndownTrackPeople].(bool); people && exists {
-		if val, peopleCountExists := facts[identity.FactIdentityDetectorPeopleCount].(int); peopleCountExists {
-			if val < 0 {
-				return fmt.Errorf("PeopleNumber is negative: %d", val) //nolint:err113 // dynamic error is acceptable here.
-			}
-
-			b.PeopleNumber = val
-
-			rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
-			if !ok {
-				//nolint:err113 // type assertion error.
-				return errors.New("expected []string for reversedPeopleDict")
-			}
-
-			b.reversedPeopleDict = rpd
-		}
+	err := b.configurePeopleTracking(facts)
+	if err != nil {
+		return err
 	}
 
 	if val, exists := facts[ConfigBurndownHibernationThreshold].(int); exists {
@@ -255,6 +241,34 @@ func (b *BurndownHistoryAnalyzer) Configure(facts map[string]any) error { //noli
 	if val, exists := facts[pkgplumbing.FactTickSize].(time.Duration); exists {
 		b.TickSize = val
 	}
+
+	return nil
+}
+
+// configurePeopleTracking sets up people tracking from the provided facts.
+func (b *BurndownHistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
+	people, exists := facts[ConfigBurndownTrackPeople].(bool)
+	if !people || !exists {
+		return nil
+	}
+
+	val, peopleCountExists := facts[identity.FactIdentityDetectorPeopleCount].(int)
+	if !peopleCountExists {
+		return nil
+	}
+
+	if val < 0 {
+		return fmt.Errorf("PeopleNumber is negative: %d", val) //nolint:err113 // dynamic error is acceptable here.
+	}
+
+	b.PeopleNumber = val
+
+	rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
+	if !ok {
+		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // type assertion error.
+	}
+
+	b.reversedPeopleDict = rpd
 
 	return nil
 }
@@ -331,17 +345,7 @@ func (b *BurndownHistoryAnalyzer) getShardIndex(name string) int {
 }
 
 // Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
 func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	// Check if any shard is hibernated (checking first one as proxy or check all?)
-	// Hibernation state is managed by ShardedAllocator mostly.
-	// But b.shards[0].files is map.
-	// Original check: if b.fileAllocator.Size() == 0 && len(b.files) > 0.
-
-	// We can check one shard or ShardedAllocator //nolint:dupword // repeated word is intentional.
-	// ShardedAllocator doesn't expose total size easily. //nolint:dupword // repeated word is intentional.
-	// Assume consistent state.
 	author := b.Identity.AuthorID
 	tick := b.Ticks.Tick
 	isMerge := ctx.IsMerge
@@ -356,15 +360,38 @@ func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	}
 
 	cache := b.BlobCache.Cache
-	treeDiffs := b.TreeDiff.Changes
 	fileDiffs := b.FileDiff.FileDiffs
+	shardChanges, renames := b.groupChangesByShard(b.TreeDiff.Changes)
 
-	// Group changes by shard.
-	shardChanges := make([][]*object.Change, b.Goroutines)
-	renames := make([]*object.Change, 0)
+	err := b.processShardChanges(shardChanges, author, cache, fileDiffs)
+	if err != nil {
+		return err
+	}
+
+	for _, change := range renames {
+		renameErr := b.handleModificationRename(change, author, cache, fileDiffs)
+		if renameErr != nil {
+			return renameErr
+		}
+	}
+
+	b.tick = tick
+
+	return nil
+}
+
+// groupChangesByShard partitions tree changes into per-shard slices and collects renames separately.
+func (b *BurndownHistoryAnalyzer) groupChangesByShard(
+	treeDiffs []*object.Change,
+) (shardChanges [][]*object.Change, renames []*object.Change) {
+	shardChanges = make([][]*object.Change, b.Goroutines)
+	renames = make([]*object.Change, 0)
 
 	for _, change := range treeDiffs {
-		action, _ := change.Action() //nolint:errcheck // error return value is intentionally ignored.
+		action, actionErr := change.Action()
+		if actionErr != nil {
+			continue
+		}
 
 		if action == merkletrie.Modify && change.From.Name != change.To.Name {
 			renames = append(renames, change)
@@ -381,7 +408,16 @@ func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		shardChanges[idx] = append(shardChanges[idx], change)
 	}
 
-	// Process shards in parallel.
+	return shardChanges, renames
+}
+
+// processShardChanges processes grouped changes across shards in parallel.
+//
+//nolint:gocognit // complexity is inherent to parallel shard coordination logic.
+func (b *BurndownHistoryAnalyzer) processShardChanges(
+	shardChanges [][]*object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	fileDiffs map[string]pkgplumbing.FileDiffData,
+) error {
 	var wg sync.WaitGroup
 
 	errs := make([]error, b.Goroutines)
@@ -400,7 +436,12 @@ func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			shard := b.shards[idx]
 
 			for _, change := range changes {
-				action, _ := change.Action() //nolint:errcheck // error return value is intentionally ignored.
+				action, actionErr := change.Action()
+				if actionErr != nil {
+					errs[idx] = actionErr
+
+					return
+				}
 
 				var err error
 
@@ -430,17 +471,6 @@ func (b *BurndownHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		}
 	}
 
-	// Process renames sequentially.
-	for _, change := range renames {
-		// Renames involve modifications too.
-		err := b.handleModificationRename(change, author, cache, fileDiffs)
-		if err != nil {
-			return err
-		}
-	}
-
-	b.tick = tick
-
 	return nil
 }
 
@@ -460,34 +490,42 @@ func (b *BurndownHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 func (b *BurndownHistoryAnalyzer) Hibernate() error {
 	b.shardedAllocator.Hibernate()
 
-	if b.HibernationToDisk { //nolint:nestif // nested logic is clear in context.
-		file, err := os.CreateTemp(b.HibernationDirectory, "*-codefang.bin")
-		if err != nil {
-			return fmt.Errorf("hibernate: %w", err)
-		}
+	if !b.HibernationToDisk {
+		return nil
+	}
 
-		b.hibernatedFileName = file.Name()
+	return b.hibernateToDisk()
+}
 
-		err = file.Close()
-		if err != nil {
-			b.hibernatedFileName = ""
+// hibernateToDisk serializes the sharded allocator to a temporary file on disk.
+func (b *BurndownHistoryAnalyzer) hibernateToDisk() error {
+	file, err := os.CreateTemp(b.HibernationDirectory, "*-codefang.bin")
+	if err != nil {
+		return fmt.Errorf("hibernate: %w", err)
+	}
 
-			return fmt.Errorf("hibernate: %w", err)
-		}
-		// Clean up the temp file as Serialize will create its own files with suffix.
-		err = os.Remove(b.hibernatedFileName)
-		if err != nil {
-			b.hibernatedFileName = ""
+	b.hibernatedFileName = file.Name()
 
-			return fmt.Errorf("hibernate: %w", err)
-		}
+	err = file.Close()
+	if err != nil {
+		b.hibernatedFileName = ""
 
-		err = b.shardedAllocator.Serialize(b.hibernatedFileName)
-		if err != nil {
-			b.hibernatedFileName = ""
+		return fmt.Errorf("hibernate: %w", err)
+	}
 
-			return err
-		}
+	// Clean up the temp file as Serialize will create its own files with suffix.
+	err = os.Remove(b.hibernatedFileName)
+	if err != nil {
+		b.hibernatedFileName = ""
+
+		return fmt.Errorf("hibernate: %w", err)
+	}
+
+	err = b.shardedAllocator.Serialize(b.hibernatedFileName)
+	if err != nil {
+		b.hibernatedFileName = ""
+
+		return err
 	}
 
 	return nil
@@ -517,12 +555,31 @@ func (b *BurndownHistoryAnalyzer) Boot() error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) { //nolint:gocognit // complex function.
+func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	globalHistory, lastTick := b.groupSparseHistory(b.globalHistory, -1)
+	fileHistories, fileOwnership := b.collectFileHistories(lastTick)
+
+	peopleHistories := b.buildPeopleHistories(globalHistory, lastTick)
+	peopleMatrix := b.buildPeopleMatrix()
+
+	return analyze.Report{
+		"GlobalHistory":      globalHistory,
+		"FileHistories":      fileHistories,
+		"FileOwnership":      fileOwnership,
+		"PeopleHistories":    peopleHistories,
+		"PeopleMatrix":       peopleMatrix,
+		"TickSize":           b.TickSize,
+		"ReversedPeopleDict": b.reversedPeopleDict,
+		"Sampling":           b.Sampling,
+		"Granularity":        b.Granularity,
+	}, nil
+}
+
+// collectFileHistories builds dense file histories and ownership maps from all shards.
+func (b *BurndownHistoryAnalyzer) collectFileHistories(lastTick int) (histories map[string]DenseHistory, owners map[string]map[int]int) {
 	fileHistories := map[string]DenseHistory{}
 	fileOwnership := map[string]map[int]int{}
 
-	// Iterate over all shards to collect files.
 	for _, shard := range b.shards {
 		for key, history := range shard.fileHistories {
 			if len(history) == 0 {
@@ -552,7 +609,13 @@ func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) { //nolint:
 		}
 	}
 
+	return fileHistories, fileOwnership
+}
+
+// buildPeopleHistories constructs dense histories for each person.
+func (b *BurndownHistoryAnalyzer) buildPeopleHistories(globalHistory DenseHistory, lastTick int) []DenseHistory {
 	peopleHistories := make([]DenseHistory, b.PeopleNumber)
+
 	for i, history := range b.peopleHistories {
 		if len(history) > 0 {
 			peopleHistories[i], _ = b.groupSparseHistory(history, lastTick)
@@ -564,36 +627,33 @@ func (b *BurndownHistoryAnalyzer) Finalize() (analyze.Report, error) { //nolint:
 		}
 	}
 
-	var peopleMatrix DenseHistory
-	if len(b.matrix) > 0 {
-		peopleMatrix = make(DenseHistory, b.PeopleNumber)
-		for i, row := range b.matrix {
-			mrow := make([]int64, b.PeopleNumber+mrowValue)
-			peopleMatrix[i] = mrow
+	return peopleHistories
+}
 
-			for key, val := range row {
-				if key == identity.AuthorMissing { //nolint:staticcheck // QF1003 is acceptable.
-					key = -1
-				} else if key == authorSelf {
-					key = -keyValue
-				}
+// buildPeopleMatrix constructs the people interaction matrix.
+func (b *BurndownHistoryAnalyzer) buildPeopleMatrix() DenseHistory {
+	if len(b.matrix) == 0 {
+		return nil
+	}
 
-				mrow[key+2] = val
+	peopleMatrix := make(DenseHistory, b.PeopleNumber)
+
+	for i, row := range b.matrix {
+		mrow := make([]int64, b.PeopleNumber+mrowValue)
+		peopleMatrix[i] = mrow
+
+		for key, val := range row {
+			if key == identity.AuthorMissing { //nolint:staticcheck // QF1003 is acceptable.
+				key = -1
+			} else if key == authorSelf {
+				key = -keyValue
 			}
+
+			mrow[key+2] = val
 		}
 	}
 
-	return analyze.Report{
-		"GlobalHistory":      globalHistory,
-		"FileHistories":      fileHistories,
-		"FileOwnership":      fileOwnership,
-		"PeopleHistories":    peopleHistories,
-		"PeopleMatrix":       peopleMatrix,
-		"TickSize":           b.TickSize,
-		"ReversedPeopleDict": b.reversedPeopleDict,
-		"Sampling":           b.Sampling,
-		"Granularity":        b.Granularity,
-	}, nil
+	return peopleMatrix
 }
 
 // Serialize writes the analysis result to the given writer.
@@ -627,7 +687,7 @@ func (b *BurndownHistoryAnalyzer) packPersonWithTick(person, tick int) int {
 	return result
 }
 
-func (b *BurndownHistoryAnalyzer) unpackPersonWithTick(value int) (int, int) { //nolint:gocritic // unnamedResult acceptable.
+func (b *BurndownHistoryAnalyzer) unpackPersonWithTick(value int) (person, tick int) {
 	if b.PeopleNumber == 0 {
 		return identity.AuthorMissing, value
 	}
@@ -721,7 +781,7 @@ func (b *BurndownHistoryAnalyzer) updateMatrix(currentTime, previousTime, delta 
 
 func (b *BurndownHistoryAnalyzer) newFile(
 	shard *BurndownShard, _ gitplumbing.Hash, name string, author int, tick int, size int,
-) (*burndown.File, error) { //nolint:unparam,whitespace // short name is clear in context.
+) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
 	updaters := make([]burndown.Updater, 1)
 
 	updaters[0] = func(currentTime, previousTime, delta int) {
@@ -764,7 +824,7 @@ func (b *BurndownHistoryAnalyzer) newFile(
 
 func (b *BurndownHistoryAnalyzer) handleInsertion(
 	shard *BurndownShard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) error { //nolint:whitespace // multi-line signature.
+) error {
 	blob := cache[change.To.TreeEntry.Hash]
 
 	lines, err := blob.CountLines()
@@ -811,7 +871,7 @@ func (b *BurndownHistoryAnalyzer) handleInsertion(
 
 func (b *BurndownHistoryAnalyzer) handleDeletion(
 	shard *BurndownShard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) error { //nolint:whitespace // multi-line signature.
+) error {
 	var name string
 	if change.To.TreeEntry.Hash != gitplumbing.ZeroHash {
 		name = change.To.Name
@@ -895,7 +955,7 @@ func (b *BurndownHistoryAnalyzer) handleModification(
 	blobTo := cache[change.To.TreeEntry.Hash]
 
 	_, errTo := blobTo.CountLines()
-	if errFrom != errTo { //nolint:err113,errorlint // error comparison is intentional.
+	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.
 		if errFrom != nil {
 			return b.handleInsertion(shard, change, author, cache)
 		}
@@ -956,7 +1016,7 @@ func (b *BurndownHistoryAnalyzer) handleModificationRename(
 	blobTo := cache[change.To.TreeEntry.Hash]
 
 	_, errTo := blobTo.CountLines()
-	if errFrom != errTo { //nolint:err113,errorlint // error comparison is intentional.
+	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.
 		if errFrom != nil {
 			shardTo := b.getShard(change.To.Name)
 
@@ -985,60 +1045,86 @@ func (b *BurndownHistoryAnalyzer) handleModificationRename(
 	return nil
 }
 
-//nolint:gocognit // complex function.
+// diffApplier holds state for applying a sequence of diffs to a burndown file.
+type diffApplier struct {
+	b        *BurndownHistoryAnalyzer
+	file     *burndown.File
+	author   int
+	position int
+	pending  diffmatchpatch.Diff
+}
+
+func (d *diffApplier) packValue() int {
+	return d.b.packPersonWithTick(d.author, d.b.tick)
+}
+
+func (d *diffApplier) applySingle(edit diffmatchpatch.Diff) {
+	length := utf8.RuneCountInString(edit.Text)
+	if edit.Type == diffmatchpatch.DiffInsert {
+		d.file.Update(d.packValue(), d.position, length, 0)
+		d.position += length
+	} else {
+		d.file.Update(d.packValue(), d.position, 0, length)
+	}
+
+	if d.b.Debug {
+		d.file.Validate()
+	}
+}
+
+func (d *diffApplier) flushPending() {
+	if d.pending.Text != "" {
+		d.applySingle(d.pending)
+		d.pending.Text = ""
+	}
+}
+
+func (d *diffApplier) handleInsert(edit diffmatchpatch.Diff) {
+	length := utf8.RuneCountInString(edit.Text)
+
+	if d.pending.Text != "" {
+		d.file.Update(d.packValue(), d.position, length, utf8.RuneCountInString(d.pending.Text))
+
+		if d.b.Debug {
+			d.file.Validate()
+		}
+
+		d.position += length
+		d.pending.Text = ""
+	} else {
+		d.pending = edit
+	}
+}
+
 func (b *BurndownHistoryAnalyzer) applyDiffs(
 	file *burndown.File, thisDiffs pkgplumbing.FileDiffData, author int,
-) { //nolint:whitespace // multi-line signature.
-	position := 0
-	pending := diffmatchpatch.Diff{Text: ""}
-
-	apply := func(edit diffmatchpatch.Diff) {
-		length := utf8.RuneCountInString(edit.Text)
-		if edit.Type == diffmatchpatch.DiffInsert {
-			file.Update(b.packPersonWithTick(author, b.tick), position, length, 0)
-			position += length
-		} else {
-			file.Update(b.packPersonWithTick(author, b.tick), position, 0, length)
-		}
-
-		if b.Debug {
-			file.Validate()
-		}
-	}
+) {
+	da := &diffApplier{b: b, file: file, author: author, pending: diffmatchpatch.Diff{Text: ""}}
 
 	for _, edit := range thisDiffs.Diffs {
-		length := utf8.RuneCountInString(edit.Text)
 		switch edit.Type {
 		case diffmatchpatch.DiffEqual:
-			if pending.Text != "" {
-				apply(pending)
-				pending.Text = ""
-			}
-
-			position += length
+			da.flushPending()
+			da.position += utf8.RuneCountInString(edit.Text)
 		case diffmatchpatch.DiffInsert:
-			if pending.Text != "" {
-				file.Update(b.packPersonWithTick(author, b.tick), position, length,
-					utf8.RuneCountInString(pending.Text))
-
-				if b.Debug {
-					file.Validate()
-				}
-
-				position += length
-				pending.Text = ""
-			} else {
-				pending = edit
-			}
+			da.handleInsert(edit)
 		case diffmatchpatch.DiffDelete:
-			pending = edit
+			da.pending = edit
 		}
 	}
 
-	if pending.Text != "" {
-		apply(pending)
-		pending.Text = ""
+	da.flushPending()
+}
+
+// migrateFileHistory moves a file's sparse history from one shard to another during a rename.
+func (b *BurndownHistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *BurndownShard, from, to string) {
+	history := shardFrom.fileHistories[from]
+	if history == nil {
+		history = sparseHistory{}
 	}
+
+	delete(shardFrom.fileHistories, from)
+	shardTo.fileHistories[to] = history
 }
 
 func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
@@ -1055,19 +1141,9 @@ func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
 
 	shardTo := b.getShard(to)
 
-	if shardFrom == shardTo { //nolint:nestif // nested logic is clear in context.
+	if shardFrom == shardTo {
 		delete(shardFrom.files, from)
-
 		shardFrom.files[to] = file
-		if b.TrackFiles {
-			history := shardFrom.fileHistories[from]
-			if history == nil {
-				history = sparseHistory{}
-			}
-
-			delete(shardFrom.fileHistories, from)
-			shardFrom.fileHistories[to] = history
-		}
 	} else {
 		// Cross-shard move: deep clone to new allocator.
 		newFile := file.CloneDeep(shardTo.allocator)
@@ -1075,16 +1151,10 @@ func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
 
 		file.Delete()
 		delete(shardFrom.files, from)
+	}
 
-		if b.TrackFiles {
-			history := shardFrom.fileHistories[from]
-			if history == nil {
-				history = sparseHistory{}
-			}
-
-			delete(shardFrom.fileHistories, from)
-			shardTo.fileHistories[to] = history
-		}
+	if b.TrackFiles {
+		b.migrateFileHistory(shardFrom, shardTo, from, to)
 	}
 
 	b.GlobalMu.Lock()
@@ -1100,15 +1170,31 @@ func (b *BurndownHistoryAnalyzer) handleRename(from, to string) error {
 	return nil
 }
 
-//nolint:gocognit,gocritic // complex function with unnamed results.
 func (b *BurndownHistoryAnalyzer) groupSparseHistory(
 	history sparseHistory, lastTick int,
-) (DenseHistory, int) { //nolint:whitespace // multi-line signature.
+) (grouped DenseHistory, finalTick int) {
 	if len(history) == 0 {
 		return DenseHistory{}, lastTick
 	}
 
-	var ticks []int
+	ticks, lastTick := b.normalizeTicks(history, lastTick)
+
+	samples := lastTick/b.Sampling + 1
+	bands := lastTick/b.Granularity + 1
+
+	result := make(DenseHistory, samples)
+	for i := range samples {
+		result[i] = make([]int64, bands)
+	}
+
+	b.fillDenseHistory(result, ticks, history)
+
+	return result, lastTick
+}
+
+// normalizeTicks extracts sorted tick keys from a sparse history and resolves lastTick.
+func (b *BurndownHistoryAnalyzer) normalizeTicks(history sparseHistory, lastTick int) (ticks []int, resolvedLastTick int) {
+	ticks = make([]int, 0, len(history))
 	for tick := range history {
 		ticks = append(ticks, tick)
 	}
@@ -1123,14 +1209,11 @@ func (b *BurndownHistoryAnalyzer) groupSparseHistory(
 		lastTick = ticks[len(ticks)-1]
 	}
 
-	samples := lastTick/b.Sampling + 1
-	bands := lastTick/b.Granularity + 1
+	return ticks, lastTick
+}
 
-	result := make(DenseHistory, samples)
-	for i := range samples {
-		result[i] = make([]int64, bands)
-	}
-
+// fillDenseHistory populates a pre-allocated dense history from sparse tick data.
+func (b *BurndownHistoryAnalyzer) fillDenseHistory(result DenseHistory, ticks []int, history sparseHistory) {
 	prevsi := 0
 
 	for _, tick := range ticks {
@@ -1151,6 +1234,4 @@ func (b *BurndownHistoryAnalyzer) groupSparseHistory(
 			}
 		}
 	}
-
-	return result, lastTick
 }

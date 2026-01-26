@@ -3,6 +3,7 @@ package reportutil
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
@@ -125,7 +126,7 @@ func MapFloat64(m map[string]any, key string) float64 {
 
 // FormatInt formats an int as a string.
 func FormatInt(v int) string {
-	return fmt.Sprintf("%d", v) //nolint:perfsprint // fmt.Sprintf is clearer than string concat.
+	return strconv.Itoa(v)
 }
 
 // FormatFloat formats a float64 with 1 decimal place.

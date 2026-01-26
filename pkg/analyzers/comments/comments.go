@@ -2,6 +2,7 @@ package comments
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -84,7 +85,7 @@ func (c *CommentsAnalyzer) Thresholds() analyze.Thresholds {
 // Analyze performs comment analysis using default configuration.
 func (c *CommentsAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, fmt.Errorf("root node is nil") //nolint:err113,perfsprint // fmt.Sprintf is clearer than string concat.
+		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
 	}
 
 	comments := c.findComments(root)
@@ -149,9 +150,10 @@ func (c *CommentsAnalyzer) findFunctions(root *node.Node) []*node.Node {
 }
 
 // analyzeCommentPlacement analyzes the placement of comments relative to their targets.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func (c *CommentsAnalyzer) analyzeCommentPlacement(comments []*node.Node, functions []*node.Node, config CommentConfig) []CommentDetail { //nolint:lll // long line is acceptable here.
+func (c *CommentsAnalyzer) analyzeCommentPlacement(
+	comments, functions []*node.Node,
+	config CommentConfig,
+) []CommentDetail {
 	commentBlocks := c.groupCommentsIntoBlocks(comments)
 
 	return c.analyzeCommentBlocks(commentBlocks, functions, config)
@@ -243,7 +245,7 @@ func (c *CommentsAnalyzer) extendCurrentBlock(block CommentBlock, comment *node.
 
 // analyzeCommentBlocks analyzes multiple comment blocks.
 func (c *CommentsAnalyzer) analyzeCommentBlocks(blocks []CommentBlock, functions []*node.Node, config CommentConfig) []CommentDetail {
-	var details []CommentDetail //nolint:prealloc // preallocation is not needed here.
+	details := make([]CommentDetail, 0, len(blocks))
 
 	for _, block := range blocks {
 		blockDetails := c.analyzeCommentBlock(block, functions, config)
@@ -331,7 +333,7 @@ func (c *CommentsAnalyzer) createCommentDetail(comment *node.Node, lineNumber in
 // AnalyzeCommentWithTarget analyzes a comment that has a target.
 func (c *CommentsAnalyzer) analyzeCommentWithTarget(
 	comment, target *node.Node, config CommentConfig, detail *CommentDetail,
-) { //nolint:whitespace // multi-line signature.
+) {
 	detail.TargetType = string(target.Type)
 	detail.TargetName = c.extractTargetName(target)
 	detail.Position = c.determinePosition(comment, target)
@@ -379,9 +381,7 @@ func (c *CommentsAnalyzer) findClosestTarget(comment *node.Node, functions []*no
 }
 
 // calculateDistance calculates the line distance between comment and target.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func (c *CommentsAnalyzer) calculateDistance(comment *node.Node, target *node.Node) int {
+func (c *CommentsAnalyzer) calculateDistance(comment, target *node.Node) int {
 	if comment.Pos == nil || target.Pos == nil {
 		return magic999
 	}
@@ -425,9 +425,7 @@ func (c *CommentsAnalyzer) isGapAcceptable(commentStartLine, commentEndLine, gap
 }
 
 // determinePosition determines the relative position of comment to target.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func (c *CommentsAnalyzer) determinePosition(comment *node.Node, target *node.Node) string {
+func (c *CommentsAnalyzer) determinePosition(comment, target *node.Node) string {
 	if comment.Pos == nil || target.Pos == nil {
 		return "unknown"
 	}
@@ -690,9 +688,7 @@ func (c *CommentsAnalyzer) truncateCommentBody(commentBody string) string {
 }
 
 // getFunctionAssessment gets the assessment and comment type for a function.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func (c *CommentsAnalyzer) getFunctionAssessment(funcInfo FunctionInfo) (string, string) {
+func (c *CommentsAnalyzer) getFunctionAssessment(funcInfo FunctionInfo) (assessment, commentType string) {
 	if funcInfo.HasComment {
 		return "✅ Well Documented", funcInfo.CommentType
 	}

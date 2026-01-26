@@ -3,6 +3,7 @@ package complexity
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
@@ -310,7 +311,7 @@ func getIntFromMap(m map[string]any, key string) int {
 // --- Formatting helpers ---.
 
 func formatInt(v int) string {
-	return fmt.Sprintf("%d", v) //nolint:perfsprint // fmt.Sprintf is clearer than string concat.
+	return strconv.Itoa(v)
 }
 
 func formatFloat(v float64) string {

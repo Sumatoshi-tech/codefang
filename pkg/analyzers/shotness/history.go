@@ -10,11 +10,14 @@ import (
 
 	"github.com/go-git/go-git/v6"
 	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -45,8 +48,8 @@ type NodeSummary struct {
 	File string
 }
 
-func (node NodeSummary) String() string { //nolint:gocritic // gocritic suggestion acknowledged.
-	return node.Type + "_" + node.Name + "_" + node.File
+func (ns *NodeSummary) String() string {
+	return ns.Type + "_" + ns.Name + "_" + ns.File
 }
 
 const (
@@ -121,225 +124,185 @@ func (s *ShotnessHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
+// shouldConsumeCommit checks whether this commit should be processed,
+// implementing OneShotMergeProcessor logic for merge commits.
+func (s *ShotnessHistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) bool {
+	if commit.NumParents() <= 1 {
+		return true
+	}
+
+	if s.merges[commit.Hash] {
+		return false
+	}
+
+	s.merges[commit.Hash] = true
+
+	return true
+}
+
+// addNode registers or increments a node in the analyzer's tracking state.
+func (s *ShotnessHistoryAnalyzer) addNode(name string, n *node.Node, fileName string, allNodes map[string]bool) {
+	nodeSummary := NodeSummary{
+		Type: string(n.Type),
+		Name: name,
+		File: fileName,
+	}
+	key := nodeSummary.String()
+	exists := allNodes[key]
+	allNodes[key] = true
+
+	var count int
+	if ns := s.nodes[key]; ns != nil {
+		count = ns.Count
+	}
+
+	if count == 0 {
+		s.nodes[key] = &nodeShotness{
+			Summary: nodeSummary, Count: 1, Couples: map[string]int{}}
+
+		fmap := s.files[nodeSummary.File]
+		if fmap == nil {
+			fmap = map[string]*nodeShotness{}
+		}
+
+		fmap[key] = s.nodes[key]
+		s.files[nodeSummary.File] = fmap
+	} else if !exists {
+		s.nodes[key].Count = count + 1
+	}
+}
+
+// handleDeletion removes all nodes and file entries associated with a deleted file.
+func (s *ShotnessHistoryAnalyzer) handleDeletion(change uast.Change) {
+	for key, summary := range s.files[change.Change.From.Name] {
+		for subkey := range summary.Couples {
+			delete(s.nodes[subkey].Couples, key)
+		}
+	}
+
+	for key := range s.files[change.Change.From.Name] {
+		delete(s.nodes, key)
+	}
+
+	delete(s.files, change.Change.From.Name)
+}
+
+// handleInsertion extracts nodes from a newly inserted file and registers them.
+func (s *ShotnessHistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[string]bool) {
+	toName := change.Change.To.Name
+
+	nodes, err := s.extractNodes(change.After)
+	if err != nil {
+		return
+	}
+
+	for name, n := range nodes {
+		s.addNode(name, n, toName, allNodes)
+	}
+}
+
+// handleModification processes a file modification, including renames and diff-based node tracking.
 //
-//nolint:cyclop,funlen,gocognit,gocyclo,maintidx // complex function.
-func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	// OneShotMergeProcessor logic.
-	commit := ctx.Commit
-	shouldConsume := true
+//nolint:gocognit,cyclop,gocyclo // complexity is inherent to coordinating rename, diff, and node tracking logic.
+func (s *ShotnessHistoryAnalyzer) handleModification(
+	change uast.Change,
+	diffs map[string]pkgplumbing.FileDiffData,
+	allNodes map[string]bool,
+) {
+	toName := change.Change.To.Name
 
-	if commit.NumParents() > 1 {
-		if s.merges[commit.Hash] {
-			shouldConsume = false
-		} else {
-			s.merges[commit.Hash] = true
-		}
+	if change.Change.From.Name != toName {
+		s.applyRename(change.Change.From.Name, toName)
 	}
 
-	if !shouldConsume {
-		return nil
+	nodesBefore, err := s.extractNodes(change.Before)
+	if err != nil {
+		return
 	}
 
-	changesList := s.UASTChanges.Changes
-	diffs := s.FileDiff.FileDiffs
-	allNodes := map[string]bool{}
+	reversedNodesBefore := reverseNodeMap(nodesBefore)
 
-	addNode := func(name string, node *node.Node, fileName string) {
-		nodeSummary := NodeSummary{
-			Type: string(node.Type),
-			Name: name,
-			File: fileName,
-		}
-		key := nodeSummary.String()
-		exists := allNodes[key]
-		allNodes[key] = true
-
-		var count int
-		if ns := s.nodes[key]; ns != nil {
-			count = ns.Count
-		}
-
-		if count == 0 {
-			s.nodes[key] = &nodeShotness{
-				Summary: nodeSummary, Count: 1, Couples: map[string]int{}}
-
-			fmap := s.files[nodeSummary.File]
-			if fmap == nil {
-				fmap = map[string]*nodeShotness{}
-			}
-
-			fmap[key] = s.nodes[key]
-			s.files[nodeSummary.File] = fmap
-		} else if !exists {
-			s.nodes[key].Count = count + 1
-		}
+	nodesAfter, err := s.extractNodes(change.After)
+	if err != nil {
+		return
 	}
 
-	for _, change := range changesList {
-		if change.After == nil {
-			// Deletion.
-			for key, summary := range s.files[change.Change.From.Name] {
-				for subkey := range summary.Couples {
-					delete(s.nodes[subkey].Couples, key)
-				}
-			}
+	reversedNodesAfter := reverseNodeMap(nodesAfter)
 
-			for key := range s.files[change.Change.From.Name] {
-				delete(s.nodes, key)
-			}
+	diff, ok := diffs[toName]
+	if !ok {
+		return
+	}
 
-			delete(s.files, change.Change.From.Name)
+	line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
+	line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
 
-			continue
-		}
+	var lineNumBefore, lineNumAfter int
 
-		toName := change.Change.To.Name
-		if change.Before == nil {
-			// Insertion.
-			nodes, err := s.extractNodes(change.After)
-			if err != nil {
-				continue
-			}
-
-			for name, node := range nodes {
-				addNode(name, node, toName)
-			}
-
-			continue
-		}
-		// Modification.
-		if change.Change.From.Name != toName {
-			// Rename logic.
-			oldFile := s.files[change.Change.From.Name]
-			newFile := map[string]*nodeShotness{}
-
-			s.files[toName] = newFile
-			for oldKey, ns := range oldFile {
-				ns.Summary.File = toName
-				newKey := ns.Summary.String()
-				newFile[newKey] = ns
-
-				s.nodes[newKey] = ns
-				for coupleKey, count := range ns.Couples {
-					coupleCouples := s.nodes[coupleKey].Couples
-					delete(coupleCouples, oldKey)
-					coupleCouples[newKey] = count
-				}
-			}
-
-			for key := range oldFile {
-				delete(s.nodes, key)
-			}
-
-			delete(s.files, change.Change.From.Name)
-		}
-
-		nodesBefore, err := s.extractNodes(change.Before)
-		if err != nil {
-			continue
-		}
-
-		reversedNodesBefore := reverseNodeMap(nodesBefore)
-
-		nodesAfter, err := s.extractNodes(change.After)
-		if err != nil {
-			continue
-		}
-
-		reversedNodesAfter := reverseNodeMap(nodesAfter)
-
-		genLine2Node := func(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
-			res := make([][]*node.Node, linesNum)
-
-			for _, uastNode := range nodes {
-				pos := uastNode.Pos
-				if pos == nil {
-					continue
-				}
-
-				startLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
-
-				endLine := int(pos.StartLine)    //nolint:gosec // security concern is acceptable here.
-				if pos.EndLine > pos.StartLine { //nolint:nestif // nested logic is clear in context.
-					endLine = int(pos.EndLine) //nolint:gosec // security concern is acceptable here.
-				} else {
-					uastNode.VisitPreOrder(func(child *node.Node) {
-						if child.Pos != nil {
-							candidate := int(child.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
-							if child.Pos.EndLine > child.Pos.StartLine {
-								candidate = int(child.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
-							}
-
-							if candidate > endLine {
-								endLine = candidate
-							}
+	for _, edit := range diff.Diffs {
+		size := utf8.RuneCountInString(edit.Text)
+		switch edit.Type {
+		case diffmatchpatch.DiffDelete:
+			for l := lineNumBefore; l < lineNumBefore+size; l++ {
+				if l < len(line2nodeBefore) {
+					for _, n := range line2nodeBefore[l] {
+						if id, idOK := reversedNodesBefore[n.ID]; idOK {
+							s.addNode(id, n, toName, allNodes)
 						}
-					})
+					}
 				}
+			}
 
-				for line := startLine; line <= endLine; line++ {
-					if line > 0 && line <= len(res) {
-						lineNodes := res[line-1]
-						if lineNodes == nil {
-							lineNodes = []*node.Node{}
+			lineNumBefore += size
+		case diffmatchpatch.DiffInsert:
+			for l := lineNumAfter; l < lineNumAfter+size; l++ {
+				if l < len(line2nodeAfter) {
+					for _, n := range line2nodeAfter[l] {
+						if id, idOK := reversedNodesAfter[n.ID]; idOK {
+							s.addNode(id, n, toName, allNodes)
 						}
-
-						lineNodes = append(lineNodes, uastNode)
-						res[line-1] = lineNodes
 					}
 				}
 			}
 
-			return res
+			lineNumAfter += size
+		case diffmatchpatch.DiffEqual:
+			lineNumBefore += size
+			lineNumAfter += size
 		}
+	}
+}
 
-		diff, ok := diffs[toName]
-		if !ok {
-			continue
-		}
+// applyRename updates internal state when a file is renamed from oldName to newName.
+func (s *ShotnessHistoryAnalyzer) applyRename(oldName, newName string) {
+	oldFile := s.files[oldName]
+	newFile := map[string]*nodeShotness{}
 
-		line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
-		line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
+	s.files[newName] = newFile
 
-		var lineNumBefore, lineNumAfter int
+	for oldKey, ns := range oldFile {
+		ns.Summary.File = newName
+		newKey := ns.Summary.String()
+		newFile[newKey] = ns
 
-		for _, edit := range diff.Diffs {
-			size := utf8.RuneCountInString(edit.Text)
-			switch edit.Type {
-			case diffmatchpatch.DiffDelete:
-				for l := lineNumBefore; l < lineNumBefore+size; l++ {
-					if l < len(line2nodeBefore) {
-						nodes := line2nodeBefore[l]
-						for _, node := range nodes {
-							if id, idOK := reversedNodesBefore[node.ID]; idOK {
-								addNode(id, node, toName)
-							}
-						}
-					}
-				}
+		s.nodes[newKey] = ns
 
-				lineNumBefore += size
-			case diffmatchpatch.DiffInsert:
-				for l := lineNumAfter; l < lineNumAfter+size; l++ {
-					if l < len(line2nodeAfter) {
-						nodes := line2nodeAfter[l]
-						for _, node := range nodes {
-							if id, idOK := reversedNodesAfter[node.ID]; idOK {
-								addNode(id, node, toName)
-							}
-						}
-					}
-				}
-
-				lineNumAfter += size
-			case diffmatchpatch.DiffEqual:
-				lineNumBefore += size
-				lineNumAfter += size
-			}
+		for coupleKey, count := range ns.Couples {
+			coupleCouples := s.nodes[coupleKey].Couples
+			delete(coupleCouples, oldKey)
+			coupleCouples[newKey] = count
 		}
 	}
 
+	for key := range oldFile {
+		delete(s.nodes, key)
+	}
+
+	delete(s.files, oldName)
+}
+
+// updateCouplings increments the coupling counters between all co-changed nodes.
+func (s *ShotnessHistoryAnalyzer) updateCouplings(allNodes map[string]bool) {
 	for keyi := range allNodes {
 		for keyj := range allNodes {
 			if keyi == keyj {
@@ -351,6 +314,88 @@ func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			}
 		}
 	}
+}
+
+// genLine2Node builds a mapping from line numbers to UAST nodes that span each line.
+func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
+	res := make([][]*node.Node, linesNum)
+
+	for _, uastNode := range nodes {
+		pos := uastNode.Pos
+		if pos == nil {
+			continue
+		}
+
+		startLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+
+		endLine := resolveEndLine(uastNode, pos)
+
+		for line := startLine; line <= endLine; line++ {
+			if line > 0 && line <= len(res) {
+				lineNodes := res[line-1]
+				if lineNodes == nil {
+					lineNodes = []*node.Node{}
+				}
+
+				lineNodes = append(lineNodes, uastNode)
+				res[line-1] = lineNodes
+			}
+		}
+	}
+
+	return res
+}
+
+// resolveEndLine determines the effective end line of a UAST node. If the node
+// has an explicit end line greater than its start line, that value is used.
+// Otherwise, the function walks the node's children to find the maximum line.
+func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
+	if pos.EndLine > pos.StartLine {
+		return int(pos.EndLine) //nolint:gosec // security concern is acceptable here.
+	}
+
+	endLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+
+	uastNode.VisitPreOrder(func(child *node.Node) {
+		if child.Pos == nil {
+			return
+		}
+
+		candidate := int(child.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		if child.Pos.EndLine > child.Pos.StartLine {
+			candidate = int(child.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
+		}
+
+		if candidate > endLine {
+			endLine = candidate
+		}
+	})
+
+	return endLine
+}
+
+// Consume processes a single commit with the provided dependency results.
+func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+	if !s.shouldConsumeCommit(ctx.Commit) {
+		return nil
+	}
+
+	changesList := s.UASTChanges.Changes
+	diffs := s.FileDiff.FileDiffs
+	allNodes := map[string]bool{}
+
+	for _, change := range changesList {
+		switch {
+		case change.After == nil:
+			s.handleDeletion(change)
+		case change.Before == nil:
+			s.handleInsertion(change, allNodes)
+		default:
+			s.handleModification(change, diffs, allNodes)
+		}
+	}
+
+	s.updateCouplings(allNodes)
 
 	return nil
 }

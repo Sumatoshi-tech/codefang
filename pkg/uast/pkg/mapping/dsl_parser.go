@@ -132,66 +132,62 @@ func extractLanguageDeclaration(parseNode *node32) (*LanguageInfo, error) {
 	}, nil
 }
 
+// quotedListParser holds state for parsing a comma-separated list of quoted strings.
+type quotedListParser struct {
+	items    []string
+	current  strings.Builder
+	inQuotes bool
+}
+
+func (p *quotedListParser) processChar(ch byte) {
+	if ch == '"' || ch == '\'' {
+		p.handleQuote()
+
+		return
+	}
+
+	if ch == ',' && !p.inQuotes {
+		p.flushItem()
+
+		return
+	}
+
+	p.current.WriteByte(ch)
+}
+
+func (p *quotedListParser) handleQuote() {
+	if p.inQuotes {
+		p.inQuotes = false
+		p.flushItem()
+	} else {
+		p.inQuotes = true
+	}
+}
+
+func (p *quotedListParser) flushItem() {
+	if item := strings.TrimSpace(p.current.String()); item != "" {
+		p.items = append(p.items, item)
+	}
+
+	p.current.Reset()
+}
+
 // parseQuotedList parses a comma-separated list of quoted strings.
 // It handles both single and double quotes, and trims whitespace.
-//
-//nolint:gocognit,nestif // Quote-aware parsing requires tracking state across character boundaries.
 func parseQuotedList(text string) []string {
 	text = strings.TrimSpace(text)
 	text = strings.Trim(text, "[]")
-	// Also remove trailing comma if present.
 	text = strings.TrimRight(text, ",")
 
-	var items []string
-
-	var current strings.Builder
-
-	inQuotes := false
+	parser := &quotedListParser{}
 
 	for idx := range len(text) {
-		ch := text[idx]
-
-		if ch == '"' || ch == '\'' {
-			if inQuotes {
-				// End of quoted item.
-				inQuotes = false
-
-				if current.Len() > 0 {
-					item := strings.TrimSpace(current.String())
-					if item != "" {
-						items = append(items, item)
-					}
-
-					current.Reset()
-				}
-			} else {
-				// Start of quoted item.
-				inQuotes = true
-			}
-
-			continue
-		}
-
-		if ch == ',' && !inQuotes {
-			// End of unquoted item.
-			if item := strings.TrimSpace(current.String()); item != "" {
-				items = append(items, item)
-			}
-
-			current.Reset()
-
-			continue
-		}
-
-		current.WriteByte(ch)
+		parser.processChar(text[idx])
 	}
 
-	// Add last item.
-	if item := strings.TrimSpace(current.String()); item != "" {
-		items = append(items, item)
-	}
+	parser.flushItem()
 
-	return items
+	return parser.items
 }
 
 // MappingParser parses the mapping DSL and returns validated mapping rules.
@@ -231,7 +227,11 @@ func parseMappingDSL(input string) (any, error) {
 	nodeTextBuffer = input
 
 	parser := &MappingDSL{Buffer: input}
-	parser.Init() //nolint:errcheck // Init does not return an error in this PEG parser implementation.
+
+	initErr := parser.Init()
+	if initErr != nil {
+		return nil, fmt.Errorf("mapping DSL init error: %w", initErr)
+	}
 
 	parseErr := parser.Parse()
 	if parseErr != nil {
@@ -433,12 +433,7 @@ func extractPattern(patternNode *node32) string {
 	return extractText(patternNode)
 }
 
-//nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter.
-func extractUASTField(fieldNode *node32) (string, []string) {
-	var fname string
-
-	var fvals []string
-
+func extractUASTField(fieldNode *node32) (fname string, fvals []string) {
 	for child := fieldNode.up; child != nil; child = child.next {
 		switch child.pegRule { //nolint:exhaustive // Only UASTFieldName and UASTFieldValue are relevant.
 		case ruleUASTFieldName:

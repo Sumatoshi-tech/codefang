@@ -57,7 +57,7 @@ func (rb *ResultBuilder) BuildDetailedResult(analyzerName string, fields map[str
 // BuildCollectionResult creates a result with a collection of items.
 func (rb *ResultBuilder) BuildCollectionResult(
 	analyzerName, collectionKey string, items []map[string]any, metrics map[string]any, message string,
-) analyze.Report { //nolint:whitespace // multi-line signature.
+) analyze.Report {
 	result := analyze.Report{
 		"analyzer_name":          analyzerName,
 		"total_" + collectionKey: len(items),

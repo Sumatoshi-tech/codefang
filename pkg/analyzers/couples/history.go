@@ -59,7 +59,8 @@ func (c *CouplesHistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (c *CouplesHistoryAnalyzer) Description() string {
-	return "The result is a square matrix, the value in each cell corresponds to the number of times the pair of files appeared in the same commit or pair of developers committed to the same file." //nolint:lll // long line is acceptable here.
+	return "The result is a square matrix, the value in each cell corresponds to the number of times " +
+		"the pair of files appeared in the same commit or pair of developers committed to the same file."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -99,8 +100,6 @@ func (c *CouplesHistoryAnalyzer) Initialize(_ *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
 func (c *CouplesHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
 	shouldConsume := true
@@ -125,13 +124,28 @@ func (c *CouplesHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		c.peopleCommits[author]++
 	}
 
-	treeDiff := c.TreeDiff.Changes
+	context, err := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
+	if err != nil {
+		return err
+	}
 
+	c.updateFileCouplings(context)
+
+	return nil
+}
+
+// processTreeChanges processes the tree diff changes and returns the list of files that form the coupling context.
+//
+//nolint:gocognit // complexity is inherent to multi-action change processing with merge mode.
+func (c *CouplesHistoryAnalyzer) processTreeChanges(
+	treeDiff object.Changes, mergeMode bool, author int,
+) ([]string, error) {
 	context := make([]string, 0, len(treeDiff))
+
 	for _, change := range treeDiff {
 		action, err := change.Action()
 		if err != nil {
-			return fmt.Errorf("consume: %w", err)
+			return nil, fmt.Errorf("consume: %w", err)
 		}
 
 		toName := change.To.Name
@@ -159,79 +173,112 @@ func (c *CouplesHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		}
 	}
 
-	if len(context) <= CouplesMaximumMeaningfulContextSize {
-		for _, file := range context {
-			for _, otherFile := range context {
-				lane, exists := c.files[file]
-				if !exists {
-					lane = map[string]int{}
-					c.files[file] = lane
-				}
+	return context, nil
+}
 
-				lane[otherFile]++
-			}
-		}
+// updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
+func (c *CouplesHistoryAnalyzer) updateFileCouplings(context []string) {
+	if len(context) > CouplesMaximumMeaningfulContextSize {
+		return
 	}
 
-	return nil
+	for _, file := range context {
+		for _, otherFile := range context {
+			lane, exists := c.files[file]
+			if !exists {
+				lane = map[string]int{}
+				c.files[file] = lane
+			}
+
+			lane[otherFile]++
+		}
+	}
 }
 
 // Finalize completes the analysis and returns the result.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
 func (c *CouplesHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	files, people := c.propagateRenames(c.currentFiles())
-	filesSequence := make([]string, len(files))
+	filesSequence, filesIndex := buildFilesIndex(files)
+	filesLines := c.computeFilesLines(filesSequence)
+	peopleMatrix, peopleFiles := computePeopleMatrix(people, filesIndex, c.PeopleNumber)
+	filesMatrix := computeFilesMatrix(c.files, filesSequence, filesIndex)
 
-	i := 0
+	return analyze.Report{
+		"PeopleMatrix":       peopleMatrix,
+		"PeopleFiles":        peopleFiles,
+		"Files":              filesSequence,
+		"FilesLines":         filesLines,
+		"FilesMatrix":        filesMatrix,
+		"ReversedPeopleDict": c.reversedPeopleDict,
+	}, nil
+}
+
+// buildFilesIndex creates a sorted sequence of file names and a map from file name to index.
+func buildFilesIndex(files map[string]map[string]int) (sequence []string, index map[string]int) {
+	filesSequence := make([]string, 0, len(files))
 	for file := range files {
-		filesSequence[i] = file
-		i++
+		filesSequence = append(filesSequence, file)
 	}
 
 	sort.Strings(filesSequence)
 
-	filesIndex := map[string]int{}
+	filesIndex := make(map[string]int, len(filesSequence))
 	for i, file := range filesSequence {
 		filesIndex[file] = i
 	}
 
+	return filesSequence, filesIndex
+}
+
+// computeFilesLines counts the number of newlines in each file at the last commit.
+func (c *CouplesHistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
 	filesLines := make([]int, len(filesSequence))
-	if c.lastCommit != nil {
-		for i, name := range filesSequence {
-			file, err := c.lastCommit.File(name)
-			if err != nil {
-				continue
-			}
 
-			reader, err := file.Blob.Reader() //nolint:staticcheck // QF1008 is acceptable.
-			if err != nil {
-				continue
-			}
-
-			buf := make([]byte, readBufferSize)
-			count := 0
-
-			for {
-				n, readErr := reader.Read(buf)
-				count += countNewlines(buf[:n])
-
-				if readErr != nil {
-					break
-				}
-			}
-
-			reader.Close()
-
-			filesLines[i] = count
-		}
+	if c.lastCommit == nil {
+		return filesLines
 	}
 
-	peopleMatrix := make([]map[int]int64, c.PeopleNumber+1)
-	peopleFiles := make([][]int, c.PeopleNumber+1)
+	for i, name := range filesSequence {
+		file, err := c.lastCommit.File(name)
+		if err != nil {
+			continue
+		}
+
+		reader, err := file.Blob.Reader() //nolint:staticcheck // QF1008 is acceptable.
+		if err != nil {
+			continue
+		}
+
+		buf := make([]byte, readBufferSize)
+		count := 0
+
+		for {
+			n, readErr := reader.Read(buf)
+			count += countNewlines(buf[:n])
+
+			if readErr != nil {
+				break
+			}
+		}
+
+		reader.Close()
+
+		filesLines[i] = count
+	}
+
+	return filesLines
+}
+
+// computePeopleMatrix builds the people co-occurrence matrix and the per-person file lists.
+func computePeopleMatrix(
+	people []map[string]int, filesIndex map[string]int, peopleNumber int,
+) (matrix []map[int]int64, peopleFiles [][]int) {
+	peopleMatrix := make([]map[int]int64, peopleNumber+1)
+	peopleFiles = make([][]int, peopleNumber+1)
 
 	for i := range peopleMatrix {
 		peopleMatrix[i] = map[int]int64{}
+
 		for file, commits := range people[i] {
 			if fi, exists := filesIndex[file]; exists {
 				peopleFiles[i] = append(peopleFiles[i], fi)
@@ -251,22 +298,24 @@ func (c *CouplesHistoryAnalyzer) Finalize() (analyze.Report, error) {
 		sort.Ints(peopleFiles[i])
 	}
 
+	return peopleMatrix, peopleFiles
+}
+
+// computeFilesMatrix builds the file co-occurrence matrix from the raw coupling data.
+func computeFilesMatrix(
+	rawFiles map[string]map[string]int, filesSequence []string, filesIndex map[string]int,
+) []map[int]int64 {
 	filesMatrix := make([]map[int]int64, len(filesIndex))
+
 	for i := range filesMatrix {
 		filesMatrix[i] = map[int]int64{}
-		for otherFile, cooccs := range c.files[filesSequence[i]] {
+
+		for otherFile, cooccs := range rawFiles[filesSequence[i]] {
 			filesMatrix[i][filesIndex[otherFile]] = int64(cooccs)
 		}
 	}
 
-	return analyze.Report{
-		"PeopleMatrix":       peopleMatrix,
-		"PeopleFiles":        peopleFiles,
-		"Files":              filesSequence,
-		"FilesLines":         filesLines,
-		"FilesMatrix":        filesMatrix,
-		"ReversedPeopleDict": c.reversedPeopleDict,
-	}, nil
+	return filesMatrix
 }
 
 func countNewlines(p []byte) int {
@@ -297,8 +346,6 @@ func (c *CouplesHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-//
-//nolint:funlen,gocognit,cyclop,gocyclo // cognitive complexity is acceptable for this function.
 func (c *CouplesHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
 	if !ok {
@@ -338,28 +385,7 @@ func (c *CouplesHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer
 		fmt.Fprintf(writer, "      - %d\n", l)
 	}
 
-	fmt.Fprintln(writer, "    matrix:")
-
-	for _, row := range filesMatrix {
-		fmt.Fprint(writer, "      - {")
-
-		var indices []int
-		for k := range row {
-			indices = append(indices, k)
-		}
-
-		sort.Ints(indices)
-
-		for i, k := range indices {
-			fmt.Fprintf(writer, "%d: %d", k, row[k])
-
-			if i < len(indices)-1 {
-				fmt.Fprint(writer, ", ")
-			}
-		}
-
-		fmt.Fprintln(writer, "}")
-	}
+	writeMatrixSection(writer, filesMatrix)
 
 	fmt.Fprintln(writer, "  people_coocc:")
 	fmt.Fprintln(writer, "    index:")
@@ -368,12 +394,21 @@ func (c *CouplesHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer
 		fmt.Fprintf(writer, "      - %s\n", person)
 	}
 
+	writeMatrixSection(writer, peopleMatrix)
+
+	fmt.Fprintln(writer, "    author_files:")
+	// ... (author_files logic omitted).
+	return nil
+}
+
+// writeMatrixSection writes a YAML "matrix:" section with sorted sparse row data.
+func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
 	fmt.Fprintln(writer, "    matrix:")
 
-	for _, row := range peopleMatrix {
+	for _, row := range matrix {
 		fmt.Fprint(writer, "      - {")
 
-		var indices []int
+		indices := make([]int, 0, len(row))
 		for k := range row {
 			indices = append(indices, k)
 		}
@@ -390,10 +425,6 @@ func (c *CouplesHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer
 
 		fmt.Fprintln(writer, "}")
 	}
-
-	fmt.Fprintln(writer, "    author_files:")
-	// ... (author_files logic omitted).
-	return nil
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
@@ -403,28 +434,33 @@ func (c *CouplesHistoryAnalyzer) FormatReport(report analyze.Report, writer io.W
 
 func (c *CouplesHistoryAnalyzer) currentFiles() map[string]bool {
 	files := map[string]bool{}
-	if c.lastCommit == nil {
+	if c.lastCommit == nil { //nolint:nestif // complex tree traversal with nested iteration
 		for key := range c.files {
 			files[key] = true
 		}
 	} else {
-		tree, _ := c.lastCommit.Tree()                       //nolint:errcheck // error return value is intentionally ignored.
-		tree.Files().ForEach(func(fobj *object.File) error { //nolint:errcheck // error return value is intentionally ignored.
-			files[fobj.Name] = true
+		tree, treeErr := c.lastCommit.Tree()
+		if treeErr == nil {
+			iterErr := tree.Files().ForEach(func(fobj *object.File) error {
+				files[fobj.Name] = true
 
-			return nil
-		})
+				return nil
+			})
+			// Best-effort enumeration; callback never returns an error.
+			if iterErr != nil {
+				return files
+			}
+		}
 	}
 
 	return files
 }
 
-//nolint:gocritic // short name is clear in context; unnamed results for multi-return.
 func (c *CouplesHistoryAnalyzer) propagateRenames(
 	files map[string]bool,
-) (map[string]map[string]int, []map[string]int) {
+) (reducedFiles map[string]map[string]int, people []map[string]int) {
 	// Renames := *c.renames.
-	reducedFiles := map[string]map[string]int{}
+	reducedFiles = map[string]map[string]int{}
 
 	for file := range files {
 		fmap := map[string]int{}
@@ -442,7 +478,7 @@ func (c *CouplesHistoryAnalyzer) propagateRenames(
 		}
 	}
 
-	people := make([]map[string]int, len(c.people))
+	people = make([]map[string]int, len(c.people))
 	for i, counts := range c.people {
 		reducedCounts := map[string]int{}
 		people[i] = reducedCounts

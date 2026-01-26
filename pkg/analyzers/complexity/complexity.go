@@ -233,7 +233,10 @@ func (c *ComplexityAnalyzer) buildEmptyResult(message string) analyze.Report {
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table for display.
-func (c *ComplexityAnalyzer) buildDetailedFunctionsTable(functionMetrics map[string]FunctionMetrics, config ComplexityConfig) []map[string]any { //nolint:lll // long line is acceptable here.
+func (c *ComplexityAnalyzer) buildDetailedFunctionsTable(
+	functionMetrics map[string]FunctionMetrics,
+	config ComplexityConfig,
+) []map[string]any {
 	detailedFunctionsTable := make([]map[string]any, 0, len(functionMetrics))
 
 	for _, metrics := range functionMetrics {
@@ -266,7 +269,13 @@ func (c *ComplexityAnalyzer) calculateAverageComplexity(totals map[string]int, f
 }
 
 // buildResult constructs the final analysis result.
-func (c *ComplexityAnalyzer) buildResult(functionCount int, avgComplexity float64, totals map[string]int, detailedFunctionsTable []map[string]any, message string) analyze.Report { //nolint:lll // long line is acceptable here.
+func (c *ComplexityAnalyzer) buildResult(
+	functionCount int,
+	avgComplexity float64,
+	totals map[string]int,
+	detailedFunctionsTable []map[string]any,
+	message string,
+) analyze.Report {
 	return analyze.Report{
 		"analyzer_name":        "complexity",
 		"total_functions":      functionCount,
@@ -317,13 +326,11 @@ func (c *ComplexityAnalyzer) isFunctionNode(n *node.Node) bool {
 }
 
 // calculateAllFunctionMetrics calculates metrics for all functions.
-//
-//nolint:gocritic // short name is clear in context; unnamed results for multi-return.
 func (c *ComplexityAnalyzer) calculateAllFunctionMetrics(
 	functions []*node.Node, config ComplexityConfig,
-) (map[string]FunctionMetrics, map[string]int) { //nolint:whitespace // multi-line signature.
-	functionMetrics := make(map[string]FunctionMetrics)
-	totals := c.initializeTotals()
+) (functionMetrics map[string]FunctionMetrics, totals map[string]int) {
+	functionMetrics = make(map[string]FunctionMetrics)
+	totals = c.initializeTotals()
 	complexityDistribution := c.initializeComplexityDistribution()
 
 	for _, fn := range functions {
@@ -378,9 +385,7 @@ func (c *ComplexityAnalyzer) updateComplexityDistribution(distribution map[strin
 }
 
 // addDistributionToTotals adds distribution counts to totals.
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func (c *ComplexityAnalyzer) addDistributionToTotals(totals map[string]int, distribution map[string]int) {
+func (c *ComplexityAnalyzer) addDistributionToTotals(totals, distribution map[string]int) {
 	totals["distribution_green"] = distribution["green"]
 	totals["distribution_yellow"] = distribution["yellow"]
 	totals["distribution_red"] = distribution["red"]
@@ -540,7 +545,7 @@ func (c *ComplexityAnalyzer) hasDecisionRole(n *node.Node) bool {
 	for _, role := range n.Roles {
 		if string(role) == node.RoleCondition ||
 			string(role) == node.RoleBreak ||
-			string(role) == node.RoleContinue { //nolint:whitespace // whitespace is intentional for readability.
+			string(role) == node.RoleContinue {
 			return true
 		}
 	}

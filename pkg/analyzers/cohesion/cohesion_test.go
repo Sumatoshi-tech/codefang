@@ -355,7 +355,9 @@ func TestCohesionAnalyzer_FormatReportJSON(t *testing.T) {
 
 	// Verify it's valid JSON.
 	var jsonData map[string]any
-	if err := json.Unmarshal([]byte(output), &jsonData); err != nil { //nolint:govet,noinlineerr // inline error return is clear.
+
+	err = json.Unmarshal([]byte(output), &jsonData)
+	if err != nil {
 		t.Errorf("Generated output is not valid JSON: %v", err)
 	}
 

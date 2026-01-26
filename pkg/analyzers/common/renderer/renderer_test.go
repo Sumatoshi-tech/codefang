@@ -21,11 +21,11 @@ func TestNewSectionRenderer_Defaults(t *testing.T) {
 		t.Errorf("Width = %d, want %d", r.config.Width, testWidth)
 	}
 
-	if r.verbose != false { //nolint:revive // explicit bool comparison needed.
+	if r.verbose {
 		t.Errorf("verbose = %v, want false", r.verbose)
 	}
 
-	if r.config.NoColor != false { //nolint:revive // explicit bool comparison needed.
+	if r.config.NoColor {
 		t.Errorf("NoColor = %v, want false", r.config.NoColor)
 	}
 }
@@ -35,7 +35,7 @@ func TestNewSectionRenderer_Verbose(t *testing.T) {
 
 	r := NewSectionRenderer(testWidth, true, false)
 
-	if r.verbose != true { //nolint:revive // explicit bool comparison needed.
+	if !r.verbose {
 		t.Errorf("verbose = %v, want true", r.verbose)
 	}
 }
@@ -45,7 +45,7 @@ func TestNewSectionRenderer_NoColor(t *testing.T) {
 
 	r := NewSectionRenderer(testWidth, false, true)
 
-	if r.config.NoColor != true { //nolint:revive // explicit bool comparison needed.
+	if !r.config.NoColor {
 		t.Errorf("NoColor = %v, want true", r.config.NoColor)
 	}
 }

@@ -78,10 +78,7 @@ func (b *BlobCacheAnalyzer) Initialize(repository *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
 func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
-	// Need TreeDiff changes.
 	changes := b.TreeDiff.Changes
 	commit := ctx.Commit
 
@@ -94,78 +91,13 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 			return fmt.Errorf("consume: %w", err)
 		}
 
-		var exists bool
-
-		var blob *object.Blob
-
 		switch action {
 		case merkletrie.Insert:
-			cache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-			newCache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-
-			blob, err = b.getBlob(&change.To, commit.File)
-			if err != nil { //nolint:revive // empty block is intentional.
-				// Log error.
-			} else {
-				cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-				err = cb.Cache()
-				if err == nil {
-					cache[change.To.TreeEntry.Hash] = cb
-					newCache[change.To.TreeEntry.Hash] = cb
-				}
-			}
+			b.handleInsert(change, commit, cache, newCache)
 		case merkletrie.Delete:
-			cache[change.From.TreeEntry.Hash], exists = b.cache[change.From.TreeEntry.Hash]
-			if !exists { //nolint:nestif // nested logic is clear in context.
-				cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-
-				blob, err = b.getBlob(&change.From, commit.File)
-				if err != nil {
-					if err.Error() == gitplumbing.ErrObjectNotFound.Error() {
-						//nolint:errcheck // error return value is intentionally ignored.
-						blob, _ = pkgplumbing.CreateDummyBlob(change.From.TreeEntry.Hash)
-						cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{Blob: *blob}
-					}
-				} else {
-					cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-					err = cb.Cache()
-					if err == nil {
-						cache[change.From.TreeEntry.Hash] = cb
-					}
-				}
-			}
+			b.handleDelete(change, commit, cache)
 		case merkletrie.Modify:
-			// To.
-			blob, err = b.getBlob(&change.To, commit.File)
-			cache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-			newCache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-
-			if err == nil {
-				cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-				err = cb.Cache()
-				if err == nil {
-					cache[change.To.TreeEntry.Hash] = cb
-					newCache[change.To.TreeEntry.Hash] = cb
-				}
-			}
-			// From.
-			cache[change.From.TreeEntry.Hash], exists = b.cache[change.From.TreeEntry.Hash]
-			if !exists {
-				cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-
-				blob, err = b.getBlob(&change.From, commit.File)
-				if err == nil {
-					cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-					err = cb.Cache()
-					if err == nil {
-						cache[change.From.TreeEntry.Hash] = cb
-					}
-				}
-			}
+			b.handleModify(change, commit, cache, newCache)
 		}
 	}
 
@@ -173,6 +105,115 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 	b.Cache = cache
 
 	return nil
+}
+
+func (b *BlobCacheAnalyzer) handleInsert(
+	change *object.Change, commit *object.Commit,
+	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) {
+	cache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+	newCache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+
+	blob, err := b.getBlob(&change.To, commit.File)
+	if err != nil { //nolint:revive // empty block is intentional.
+		// Log error.
+	} else {
+		cb := &pkgplumbing.CachedBlob{Blob: *blob}
+
+		cacheErr := cb.Cache()
+		if cacheErr == nil {
+			cache[change.To.TreeEntry.Hash] = cb
+			newCache[change.To.TreeEntry.Hash] = cb
+		}
+	}
+}
+
+func (b *BlobCacheAnalyzer) handleDelete(
+	change *object.Change, commit *object.Commit,
+	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) {
+	existing, exists := b.cache[change.From.TreeEntry.Hash]
+	if exists {
+		cache[change.From.TreeEntry.Hash] = existing
+
+		return
+	}
+
+	cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+
+	blob, err := b.getBlob(&change.From, commit.File)
+	if err != nil {
+		if err.Error() == gitplumbing.ErrObjectNotFound.Error() {
+			dummyBlob, dummyErr := pkgplumbing.CreateDummyBlob(change.From.TreeEntry.Hash)
+			if dummyErr == nil {
+				cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{Blob: *dummyBlob}
+			}
+		}
+
+		return
+	}
+
+	cb := &pkgplumbing.CachedBlob{Blob: *blob}
+
+	cacheErr := cb.Cache()
+	if cacheErr == nil {
+		cache[change.From.TreeEntry.Hash] = cb
+	}
+}
+
+func (b *BlobCacheAnalyzer) handleModify(
+	change *object.Change, commit *object.Commit,
+	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) {
+	b.cacheBlob(&change.To, commit, cache, newCache)
+	b.loadFromBlob(&change.From, commit, cache)
+}
+
+func (b *BlobCacheAnalyzer) cacheBlob(
+	entry *object.ChangeEntry, commit *object.Commit,
+	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) {
+	cache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+	newCache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+
+	blob, err := b.getBlob(entry, commit.File)
+	if err != nil {
+		return
+	}
+
+	cb := &pkgplumbing.CachedBlob{Blob: *blob}
+
+	cacheErr := cb.Cache()
+	if cacheErr == nil {
+		cache[entry.TreeEntry.Hash] = cb
+		newCache[entry.TreeEntry.Hash] = cb
+	}
+}
+
+func (b *BlobCacheAnalyzer) loadFromBlob(
+	entry *object.ChangeEntry, commit *object.Commit,
+	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+) {
+	existing, exists := b.cache[entry.TreeEntry.Hash]
+	if exists {
+		cache[entry.TreeEntry.Hash] = existing
+
+		return
+	}
+
+	cache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+
+	blob, err := b.getBlob(entry, commit.File)
+	if err != nil {
+		return
+	}
+
+	cb := &pkgplumbing.CachedBlob{Blob: *blob}
+
+	cacheErr := cb.Cache()
+	if cacheErr == nil {
+		cache[entry.TreeEntry.Hash] = cb
+	}
 }
 
 // FileGetter provides access to file objects from a git tree.

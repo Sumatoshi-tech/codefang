@@ -35,86 +35,107 @@ func main() {
 	}
 }
 
-//nolint:gocognit // This function orchestrates file discovery, parsing, and collection which are tightly coupled steps.
 func runPrecompile(logger *slog.Logger, outputFile string, quiet bool) error {
 	uastmapsDir := "pkg/uast/uastmaps"
 	if !quiet {
 		logger.Info("Looking for .uastmap files", "dir", uastmapsDir)
 	}
 
-	entries, readErr := os.ReadDir(uastmapsDir)
-	if readErr != nil {
-		return fmt.Errorf("failed to read uastmaps directory: %w", readErr)
-	}
-
-	var uastmapFiles []string
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".uastmap") {
-			uastmapFiles = append(uastmapFiles, filepath.Join(uastmapsDir, entry.Name()))
-		}
-	}
-
-	if len(uastmapFiles) == 0 {
-		return fmt.Errorf("%w in %s/", errNoUASTMapFiles, uastmapsDir)
+	uastmapFiles, err := findUASTMapFiles(uastmapsDir)
+	if err != nil {
+		return err
 	}
 
 	if !quiet {
 		logger.Info("Found uastmap files to pre-compile", "count", len(uastmapFiles))
 	}
 
-	var allMappings []uast.PrecompiledMapping
-
-	successCount := 0
-
-	for _, filePath := range uastmapFiles {
-		if !quiet {
-			logger.Info("Processing file", "file", filepath.Base(filePath))
-		}
-
-		uastFile, openErr := os.Open(filePath)
-		if openErr != nil {
-			if !quiet {
-				logger.Warn("Failed to open file", "file", filepath.Base(filePath), "error", openErr)
-			}
-
-			continue
-		}
-
-		mappingParser := &mapping.MappingParser{}
-
-		rules, langInfo, parseErr := mappingParser.ParseMapping(uastFile)
-
-		uastFile.Close()
-
-		if parseErr != nil {
-			if !quiet {
-				logger.Warn("Failed to pre-compile", "file", filepath.Base(filePath), "error", parseErr)
-			}
-
-			continue
-		}
-
-		languageName := filepath.Base(filePath)
-		languageName = strings.TrimSuffix(languageName, ".uastmap")
-
-		precompiled := uast.PrecompiledMapping{
-			Language:   languageName,
-			Extensions: langInfo.Extensions,
-			Rules:      rules,
-			Patterns:   nil,
-			CompiledAt: "",
-		}
-
-		allMappings = append(allMappings, precompiled)
-		successCount++
-	}
+	allMappings, successCount := processUASTMapFiles(logger, uastmapFiles, quiet)
 
 	if !quiet {
 		logger.Info("Pre-compilation complete", "success", successCount, "total", len(uastmapFiles))
 	}
 
 	return runPrecompileGo(logger, allMappings, outputFile, quiet)
+}
+
+func findUASTMapFiles(dir string) ([]string, error) {
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read uastmaps directory: %w", readErr)
+	}
+
+	var files []string
+
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".uastmap") {
+			files = append(files, filepath.Join(dir, entry.Name()))
+		}
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%w in %s/", errNoUASTMapFiles, dir)
+	}
+
+	return files, nil
+}
+
+func processUASTMapFiles(logger *slog.Logger, files []string, quiet bool) (mappings []uast.PrecompiledMapping, totalRules int) {
+	var allMappings []uast.PrecompiledMapping
+
+	successCount := 0
+
+	for _, filePath := range files {
+		precompiled, err := processUASTMapFile(logger, filePath, quiet)
+		if err != nil {
+			continue
+		}
+
+		allMappings = append(allMappings, precompiled)
+		successCount++
+	}
+
+	return allMappings, successCount
+}
+
+func processUASTMapFile(logger *slog.Logger, filePath string, quiet bool) (uast.PrecompiledMapping, error) {
+	if !quiet {
+		logger.Info("Processing file", "file", filepath.Base(filePath))
+	}
+
+	uastFile, openErr := os.Open(filePath)
+	if openErr != nil {
+		if !quiet {
+			logger.Warn("Failed to open file", "file", filepath.Base(filePath), "error", openErr)
+		}
+
+		return uast.PrecompiledMapping{}, fmt.Errorf("open UAST map file: %w", openErr)
+	}
+
+	mappingParser := &mapping.MappingParser{}
+
+	rules, langInfo, parseErr := mappingParser.ParseMapping(uastFile)
+
+	uastFile.Close()
+
+	if parseErr != nil {
+		if !quiet {
+			logger.Warn("Failed to pre-compile", "file", filepath.Base(filePath), "error", parseErr)
+		}
+
+		return uast.PrecompiledMapping{}, parseErr
+	}
+
+	languageName := filepath.Base(filePath)
+	languageName = strings.TrimSuffix(languageName, ".uastmap")
+
+	return uast.PrecompiledMapping{
+		Language:   languageName,
+		Extensions: langInfo.Extensions,
+		Rules:      rules,
+		Patterns:   nil,
+		CompiledAt: "",
+	}, nil
 }
 
 func runPrecompileGo(logger *slog.Logger, mappings []uast.PrecompiledMapping, outputFile string, quiet bool) error {

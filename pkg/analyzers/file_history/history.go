@@ -55,7 +55,8 @@ func (h *FileHistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (h *FileHistoryAnalyzer) Description() string {
-	return "Each file path is mapped to the list of commits which touch that file and the mapping from involved developers to the corresponding line statistics." //nolint:lll // long line is acceptable here.
+	return "Each file path is mapped to the list of commits which touch that file " +
+		"and the mapping from involved developers to the corresponding line statistics."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -76,33 +77,26 @@ func (h *FileHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
-func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+// shouldConsumeCommit checks whether a commit should be processed.
+// It returns false for duplicate merge commits and non-merge context merges.
+func (h *FileHistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
-	shouldConsume := true
 
 	if commit.NumParents() > 1 {
 		if h.merges[commit.Hash] {
-			shouldConsume = false
-		} else {
-			h.merges[commit.Hash] = true
+			return false
 		}
+
+		h.merges[commit.Hash] = true
 	}
 
-	if !shouldConsume {
-		return nil
-	}
+	return !ctx.IsMerge
+}
 
-	isMerge := ctx.IsMerge
-	if isMerge {
-		return nil
-	}
-
-	h.lastCommit = commit
-	changes := h.TreeDiff.Changes
-
+// processFileChanges updates file histories based on the tree diff changes for the given commit.
+//
+//nolint:gocognit // complexity is inherent to multi-action file history tracking with renames.
+func (h *FileHistoryAnalyzer) processFileChanges(changes object.Changes, commit *object.Commit) error {
 	for _, change := range changes {
 		action, err := change.Action()
 		if err != nil {
@@ -143,9 +137,11 @@ func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		}
 	}
 
-	lineStats := h.LineStats.LineStats
-	author := h.Identity.AuthorID
+	return nil
+}
 
+// aggregateLineStats merges line statistics from the current commit into file histories.
+func (h *FileHistoryAnalyzer) aggregateLineStats(lineStats map[object.ChangeEntry]pkgplumbing.LineStats, author int) {
 	for changeEntry, stats := range lineStats {
 		file := h.files[changeEntry.Name]
 		if file == nil {
@@ -166,6 +162,22 @@ func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			Changed: oldStats.Changed + stats.Changed,
 		}
 	}
+}
+
+// Consume processes a single commit with the provided dependency results.
+func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+	if !h.shouldConsumeCommit(ctx) {
+		return nil
+	}
+
+	h.lastCommit = ctx.Commit
+
+	err := h.processFileChanges(h.TreeDiff.Changes, ctx.Commit)
+	if err != nil {
+		return err
+	}
+
+	h.aggregateLineStats(h.LineStats.LineStats, h.Identity.AuthorID)
 
 	return nil
 }
@@ -174,16 +186,19 @@ func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 func (h *FileHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	files := map[string]FileHistory{}
 
-	if h.lastCommit != nil {
+	if h.lastCommit != nil { //nolint:nestif // complex tree traversal with nested iteration
 		fileIter, err := h.lastCommit.Files()
 		if err == nil {
-			fileIter.ForEach(func(file *object.File) error { //nolint:errcheck // error return value is intentionally ignored.
+			iterErr := fileIter.ForEach(func(file *object.File) error {
 				if fh := h.files[file.Name]; fh != nil {
 					files[file.Name] = *fh
 				}
 
 				return nil
 			})
+			if iterErr != nil {
+				return nil, fmt.Errorf("iterating files: %w", iterErr)
+			}
 		}
 	}
 

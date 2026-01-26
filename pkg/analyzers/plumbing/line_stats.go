@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-git/go-git/v6"
+	gitplumbing "github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/utils/merkletrie"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -62,8 +63,6 @@ func (l *LinesStatsCalculator) Initialize(_ *git.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
 func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
 	result := map[object.ChangeEntry]pkgplumbing.LineStats{}
 
@@ -85,84 +84,106 @@ func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
 
 		switch action {
 		case merkletrie.Insert:
-			blob := cache[change.To.TreeEntry.Hash]
-			if blob == nil {
-				continue
-			}
-
-			lines, countErr := blob.CountLines()
-			if countErr != nil {
-				continue
-			}
-
-			result[change.To] = pkgplumbing.LineStats{
-				Added:   lines,
-				Removed: 0,
-				Changed: 0,
-			}
+			computeInsertStats(change, cache, result)
 		case merkletrie.Delete:
-			blob := cache[change.From.TreeEntry.Hash]
-			if blob == nil {
-				continue
-			}
-
-			lines, countErr := blob.CountLines()
-			if countErr != nil {
-				continue
-			}
-
-			result[change.From] = pkgplumbing.LineStats{
-				Added:   0,
-				Removed: lines,
-				Changed: 0,
-			}
+			computeDeleteStats(change, cache, result)
 		case merkletrie.Modify:
-			thisDiffs, ok := fileDiffs[change.To.Name]
-			if !ok {
-				continue
-			}
-
-			var added, removed, changed, removedPending int
-
-			for _, edit := range thisDiffs.Diffs {
-				switch edit.Type {
-				case diffmatchpatch.DiffEqual:
-					if removedPending > 0 {
-						removed += removedPending
-					}
-
-					removedPending = 0
-				case diffmatchpatch.DiffInsert:
-					delta := utf8.RuneCountInString(edit.Text)
-					if removedPending > delta {
-						changed += delta
-						removed += removedPending - delta
-					} else {
-						changed += removedPending
-						added += delta - removedPending
-					}
-
-					removedPending = 0
-				case diffmatchpatch.DiffDelete:
-					removedPending = utf8.RuneCountInString(edit.Text)
-				}
-			}
-
-			if removedPending > 0 {
-				removed += removedPending
-			}
-
-			result[change.To] = pkgplumbing.LineStats{
-				Added:   added,
-				Removed: removed,
-				Changed: changed,
-			}
+			computeModifyStats(change, fileDiffs, result)
 		}
 	}
 
 	l.LineStats = result
 
 	return nil
+}
+
+func computeInsertStats(
+	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	result map[object.ChangeEntry]pkgplumbing.LineStats,
+) {
+	blob := cache[change.To.TreeEntry.Hash]
+	if blob == nil {
+		return
+	}
+
+	lines, countErr := blob.CountLines()
+	if countErr != nil {
+		return
+	}
+
+	result[change.To] = pkgplumbing.LineStats{
+		Added:   lines,
+		Removed: 0,
+		Changed: 0,
+	}
+}
+
+func computeDeleteStats(
+	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	result map[object.ChangeEntry]pkgplumbing.LineStats,
+) {
+	blob := cache[change.From.TreeEntry.Hash]
+	if blob == nil {
+		return
+	}
+
+	lines, countErr := blob.CountLines()
+	if countErr != nil {
+		return
+	}
+
+	result[change.From] = pkgplumbing.LineStats{
+		Added:   0,
+		Removed: lines,
+		Changed: 0,
+	}
+}
+
+func computeModifyStats(
+	change *object.Change, fileDiffs map[string]pkgplumbing.FileDiffData,
+	result map[object.ChangeEntry]pkgplumbing.LineStats,
+) {
+	thisDiffs, ok := fileDiffs[change.To.Name]
+	if !ok {
+		return
+	}
+
+	added, removed, changed := computeDiffLineStats(thisDiffs.Diffs)
+
+	result[change.To] = pkgplumbing.LineStats{
+		Added:   added,
+		Removed: removed,
+		Changed: changed,
+	}
+}
+
+func computeDiffLineStats(diffs []diffmatchpatch.Diff) (added, removed, changed int) {
+	var removedPending int
+
+	for _, edit := range diffs {
+		switch edit.Type {
+		case diffmatchpatch.DiffEqual:
+			removed += removedPending
+			removedPending = 0
+		case diffmatchpatch.DiffInsert:
+			delta := utf8.RuneCountInString(edit.Text)
+			if removedPending > delta {
+				changed += delta
+				removed += removedPending - delta
+			} else {
+				changed += removedPending
+				added += delta - removedPending
+			}
+
+			removedPending = 0
+		case diffmatchpatch.DiffDelete:
+			removedPending = utf8.RuneCountInString(edit.Text)
+		}
+	}
+
+	removed += removedPending
+
+	return added, removed, changed
 }
 
 // Finalize completes the analysis and returns the result.

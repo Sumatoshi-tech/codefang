@@ -60,7 +60,7 @@ func (s *ExecutiveSummary) OverallScoreLabel() string {
 
 // RenderSummary produces the executive summary output.
 func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
-	var parts []string //nolint:prealloc // preallocation is not needed here.
+	parts := make([]string, 0, 4+len(summary.Sections)) //nolint:mnd // 4 fixed parts: header, blank, column headers, separator.
 
 	// Header with title and overall score.
 	title := r.config.Colorize(SummaryTitle, terminal.ColorBlue)
@@ -85,8 +85,7 @@ func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
 	)
 	headerRow = r.config.Colorize(headerRow, terminal.ColorGray)
 
-	parts = append(parts, "") //nolint:gocritic // gocritic suggestion acknowledged.
-	parts = append(parts, headerRow)
+	parts = append(parts, "", headerRow)
 
 	// Separator.
 	separatorWidth := r.config.Width - (IndentWidth * separatorWidthValue)

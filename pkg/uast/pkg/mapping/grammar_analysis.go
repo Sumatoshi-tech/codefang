@@ -153,8 +153,7 @@ var canonicalTypeRoleMap = []canonicalTypeRole{
 	{"match", "Match", []string{"Match"}},
 }
 
-//nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter.
-func guessUASTTypeAndRoles(name string) (string, []string) {
+func guessUASTTypeAndRoles(name string) (uastType string, roles []string) {
 	lname := strings.ToLower(name)
 
 	for _, entry := range canonicalTypeRoleMap {
@@ -178,8 +177,16 @@ func guessTokenField(nodeInfo NodeTypeInfo) string {
 
 // parseNodeTypeInfo parses a single node type entry from node-types.json.
 func parseNodeTypeInfo(entry map[string]any) NodeTypeInfo {
-	name, _ := entry["type"].(string)   //nolint:errcheck // Type assertion ok is intentionally discarded.
-	isNamed, _ := entry["named"].(bool) //nolint:errcheck // Type assertion ok is intentionally discarded.
+	name, nameOK := entry["type"].(string)
+	if !nameOK {
+		name = ""
+	}
+
+	isNamed, namedOK := entry["named"].(bool)
+	if !namedOK {
+		isNamed = false
+	}
+
 	fields := parseFields(entry["fields"])
 	children := parseChildren(entry["children"])
 
@@ -209,7 +216,10 @@ func parseFields(raw any) map[string]FieldInfo {
 			continue
 		}
 
-		info.Required, _ = fmap["required"].(bool) //nolint:errcheck // Type assertion ok is intentionally discarded.
+		if req, reqOK := fmap["required"].(bool); reqOK {
+			info.Required = req
+		}
+
 		info.Types = parseFieldTypes(fmap["types"])
 		info.Multiple = isFieldMultiple(fmap)
 		fields[fname] = info
@@ -233,8 +243,8 @@ func parseFieldTypes(raw any) []string {
 			continue
 		}
 
-		typeName, _ := typeMap["type"].(string) //nolint:errcheck // Type assertion ok is intentionally discarded.
-		if typeName != "" {
+		typeName, typeOK := typeMap["type"].(string)
+		if typeOK && typeName != "" {
 			types = append(types, typeName)
 		}
 	}
@@ -271,8 +281,16 @@ func parseChildren(raw any) []ChildInfo {
 			continue
 		}
 
-		typeName, _ := childMap["type"].(string) //nolint:errcheck // Type assertion ok is intentionally discarded.
-		named, _ := childMap["named"].(bool)     //nolint:errcheck // Type assertion ok is intentionally discarded.
+		typeName, typeNameOK := childMap["type"].(string)
+		if !typeNameOK {
+			typeName = ""
+		}
+
+		named, namedOK := childMap["named"].(bool)
+		if !namedOK {
+			named = false
+		}
+
 		children = append(children, ChildInfo{Type: typeName, Named: named})
 	}
 

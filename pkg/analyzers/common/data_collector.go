@@ -45,8 +45,15 @@ func (dc *DataCollector) GetSortedData() []map[string]any {
 
 	// Sort by identifier.
 	sort.Slice(data, func(i, j int) bool {
-		identifierI, _ := data[i][dc.identifierKey].(string) //nolint:errcheck // error return value is intentionally ignored.
-		identifierJ, _ := data[j][dc.identifierKey].(string) //nolint:errcheck // error return value is intentionally ignored.
+		identifierI, iOK := data[i][dc.identifierKey].(string)
+		if !iOK {
+			identifierI = ""
+		}
+
+		identifierJ, jOK := data[j][dc.identifierKey].(string)
+		if !jOK {
+			identifierJ = ""
+		}
 
 		return identifierI < identifierJ
 	})

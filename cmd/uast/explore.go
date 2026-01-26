@@ -49,25 +49,36 @@ Examples:
 	return cmd
 }
 
-func runExplore( //nolint:gocognit // complex but clear interactive loop
-	file, lang string,
-) error { //nolint:whitespace // multi-line function signature requires blank line after opening brace
+func runExplore(file, lang string) error {
 	if file == "" {
 		return ErrNoFileSpecified
 	}
 
+	parsedNode, err := parseExploreFile(file, lang)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stdout, "Exploring %s\n", file)
+	fmt.Fprintln(os.Stdout, "Type 'help' for commands, 'quit' to exit")
+	fmt.Fprintln(os.Stdout)
+
+	return runExploreLoop(parsedNode)
+}
+
+func parseExploreFile(file, lang string) (*node.Node, error) {
 	parser, err := uast.NewParser()
 	if err != nil {
-		return fmt.Errorf("failed to initialize parser: %w", err)
+		return nil, fmt.Errorf("failed to initialize parser: %w", err)
 	}
 
 	if !parser.IsSupported(file) {
-		return fmt.Errorf("%w: %s", ErrUnsupportedExploreFile, file)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedExploreFile, file)
 	}
 
 	code, err := os.ReadFile(file)
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", file, err)
+		return nil, fmt.Errorf("failed to read file %s: %w", file, err)
 	}
 
 	filename := file
@@ -78,17 +89,17 @@ func runExplore( //nolint:gocognit // complex but clear interactive loop
 
 	parsedNode, err := parser.Parse(filename, code)
 	if err != nil {
-		return fmt.Errorf("parse error in %s: %w", file, err)
+		return nil, fmt.Errorf("parse error in %s: %w", file, err)
 	}
 
-	fmt.Printf("Exploring %s\n", file)                      //nolint:forbidigo // CLI user output
-	fmt.Println("Type 'help' for commands, 'quit' to exit") //nolint:forbidigo // CLI user output
-	fmt.Println()                                           //nolint:forbidigo // CLI user output
+	return parsedNode, nil
+}
 
+func runExploreLoop(parsedNode *node.Node) error {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for {
-		fmt.Print("explore> ") //nolint:forbidigo // CLI user output
+		fmt.Fprint(os.Stdout, "explore> ")
 
 		if !scanner.Scan() {
 			break
@@ -116,7 +127,7 @@ func runExplore( //nolint:gocognit // complex but clear interactive loop
 
 		handleExploreParts(parts, parsedNode)
 
-		fmt.Println() //nolint:forbidigo // CLI user output
+		fmt.Fprintln(os.Stdout)
 	}
 
 	return nil
@@ -125,12 +136,12 @@ func runExplore( //nolint:gocognit // complex but clear interactive loop
 func handleExploreParts(parts []string, parsedNode *node.Node) {
 	switch parts[0] {
 	case "tree":
-		fmt.Println("Tree command is not available in this version.") //nolint:forbidigo // CLI user output
+		fmt.Fprintln(os.Stdout, "Tree command is not available in this version.")
 	case "stats":
 		printStats(parsedNode)
 	case "find":
 		if len(parts) < minExploreArgs {
-			fmt.Println("Usage: find <type>") //nolint:forbidigo // CLI user output
+			fmt.Fprintln(os.Stdout, "Usage: find <type>")
 
 			return
 		}
@@ -138,7 +149,7 @@ func handleExploreParts(parts []string, parsedNode *node.Node) {
 		findNodes(parsedNode, parts[1])
 	case "query":
 		if len(parts) < minExploreArgs {
-			fmt.Println("Usage: query <dsl-query>") //nolint:forbidigo // CLI user output
+			fmt.Fprintln(os.Stdout, "Usage: query <dsl-query>")
 
 			return
 		}
@@ -147,17 +158,17 @@ func handleExploreParts(parts []string, parsedNode *node.Node) {
 
 		results, err := parsedNode.FindDSL(query)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err) //nolint:forbidigo // CLI user output
+			fmt.Fprintf(os.Stdout, "Error: %v\n", err)
 		} else {
-			fmt.Printf("Found %d results\n", len(results)) //nolint:forbidigo // CLI user output
+			fmt.Fprintf(os.Stdout, "Found %d results\n", len(results))
 
 			for idx, result := range results {
-				fmt.Printf("[%d] %s: %s\n", idx+1, result.Type, result.Token) //nolint:forbidigo // CLI user output
+				fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, result.Type, result.Token)
 			}
 		}
 	default:
-		fmt.Printf("Unknown command: %s\n", parts[0])     //nolint:forbidigo // CLI user output
-		fmt.Println("Type 'help' for available commands") //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "Unknown command: %s\n", parts[0])
+		fmt.Fprintln(os.Stdout, "Type 'help' for available commands")
 	}
 }
 
@@ -171,11 +182,11 @@ func printStats(rootNode *node.Node) {
 		totalNodes++
 	}
 
-	fmt.Printf("Total nodes: %d\n", totalNodes) //nolint:forbidigo // CLI user output
-	fmt.Println("By type:")                     //nolint:forbidigo // CLI user output
+	fmt.Fprintf(os.Stdout, "Total nodes: %d\n", totalNodes)
+	fmt.Fprintln(os.Stdout, "By type:")
 
 	for nodeType, count := range stats {
-		fmt.Printf("  %s: %d\n", nodeType, count) //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "  %s: %d\n", nodeType, count)
 	}
 }
 
@@ -184,25 +195,25 @@ func findNodes(rootNode *node.Node, nodeType string) {
 
 	results, err := rootNode.FindDSL(query)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err) //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "Error: %v\n", err)
 
 		return
 	}
 
-	fmt.Printf("Found %d nodes of type '%s':\n", len(results), nodeType) //nolint:forbidigo // CLI user output
+	fmt.Fprintf(os.Stdout, "Found %d nodes of type '%s':\n", len(results), nodeType)
 
 	for idx, result := range results {
-		fmt.Printf("[%d] %s: %s\n", idx+1, result.Type, result.Token) //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, result.Type, result.Token)
 	}
 }
 
 func printExploreHelp() {
-	fmt.Println("Available commands:")                                 //nolint:forbidigo // CLI user output
-	fmt.Println("  tree                    - Show AST tree structure") //nolint:forbidigo // CLI user output
-	fmt.Println("  stats                   - Show node statistics")    //nolint:forbidigo // CLI user output
-	fmt.Println("  find <type>             - Find nodes by type")      //nolint:forbidigo // CLI user output
-	fmt.Println("  query <dsl-query>       - Execute DSL query")       //nolint:forbidigo // CLI user output
-	fmt.Println("  help                    - Show this help")          //nolint:forbidigo // CLI user output
-	fmt.Println("  quit                    - Exit exploration")        //nolint:forbidigo // CLI user output
-	fmt.Println()                                                      //nolint:forbidigo // CLI user output
+	fmt.Fprintln(os.Stdout, "Available commands:")
+	fmt.Fprintln(os.Stdout, "  tree                    - Show AST tree structure")
+	fmt.Fprintln(os.Stdout, "  stats                   - Show node statistics")
+	fmt.Fprintln(os.Stdout, "  find <type>             - Find nodes by type")
+	fmt.Fprintln(os.Stdout, "  query <dsl-query>       - Execute DSL query")
+	fmt.Fprintln(os.Stdout, "  help                    - Show this help")
+	fmt.Fprintln(os.Stdout, "  quit                    - Exit exploration")
+	fmt.Fprintln(os.Stdout)
 }

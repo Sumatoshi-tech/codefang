@@ -162,10 +162,9 @@ func extractComments(root *node.Node, result *[]*node.Node) {
 	}
 }
 
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
-func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
-	var mergedComments []string
-
+// groupCommentsByLine groups extracted comment nodes by their starting line number.
+// It returns a map from line number to comment nodes on that line, and a sorted slice of line numbers.
+func groupCommentsByLine(extracted []*node.Node) (grouped map[int][]*node.Node, sortedLines []int) {
 	lines := map[int][]*node.Node{}
 
 	for _, n := range extracted {
@@ -183,6 +182,14 @@ func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []strin
 	}
 
 	sort.Ints(lineNums)
+
+	return lines, lineNums
+}
+
+// mergeAdjacentComments merges comment tokens from adjacent lines into combined strings.
+// Comments on consecutive lines (or lines within the same multi-line comment span) are joined together.
+func mergeAdjacentComments(lines map[int][]*node.Node, lineNums []int) []string {
+	var mergedComments []string
 
 	var buffer []string
 
@@ -209,8 +216,15 @@ func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []strin
 		buffer = nil
 	}
 
-	filteredComments := make([]string, 0, len(mergedComments))
-	for _, comment := range mergedComments {
+	return mergedComments
+}
+
+// filterComments filters out comments that are too short, contain mostly non-letter characters,
+// start with non-alphanumeric characters, or match license patterns.
+func filterComments(comments []string, minLength int) []string {
+	filteredComments := make([]string, 0, len(comments))
+
+	for _, comment := range comments {
 		comment = strings.TrimSpace(comment)
 		if comment == "" || filteredFirstCharRE.MatchString(comment[:1]) {
 			continue
@@ -219,7 +233,7 @@ func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []strin
 		comment = functionNameRE.ReplaceAllString(comment, "")
 
 		comment = filteredCharsRE.ReplaceAllString(comment, "")
-		if len(comment) < s.MinCommentLength {
+		if len(comment) < minLength {
 			continue
 		}
 
@@ -242,6 +256,13 @@ func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []strin
 	}
 
 	return filteredComments
+}
+
+func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
+	lines, lineNums := groupCommentsByLine(extracted)
+	mergedComments := mergeAdjacentComments(lines, lineNums)
+
+	return filterComments(mergedComments, s.MinCommentLength)
 }
 
 // Finalize completes the analysis and returns the result.

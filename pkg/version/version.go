@@ -18,5 +18,9 @@ type versionProbe struct{}
 //nolint:gochecknoinits // init is required to extract the version from the package path at startup.
 func init() {
 	parts := strings.Split(reflect.TypeFor[versionProbe]().PkgPath(), ".")
-	Binary, _ = strconv.Atoi(parts[len(parts)-1][1:]) //nolint:errcheck // best-effort version parsing.
+
+	parsed, parseErr := strconv.Atoi(parts[len(parts)-1][1:])
+	if parseErr == nil {
+		Binary = parsed
+	}
 }

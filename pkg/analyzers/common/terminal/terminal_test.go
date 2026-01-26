@@ -1,7 +1,6 @@
 package terminal //nolint:testpackage // testing internal implementation.
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -12,18 +11,8 @@ const (
 )
 
 func TestDetectWidth_Default(t *testing.T) {
-	t.Parallel()
-
 	// Unset COLUMNS to test default behavior.
-	originalColumns := os.Getenv("COLUMNS")
-
-	os.Unsetenv("COLUMNS")
-
-	defer func() {
-		if originalColumns != "" {
-			os.Setenv("COLUMNS", originalColumns) //nolint:usetesting // test helper pattern is intentional.
-		}
-	}()
+	t.Setenv("COLUMNS", "")
 
 	width := DetectWidth()
 	if width != testDefaultWidth {
@@ -32,19 +21,7 @@ func TestDetectWidth_Default(t *testing.T) {
 }
 
 func TestDetectWidth_FromEnv(t *testing.T) {
-	t.Parallel()
-
-	originalColumns := os.Getenv("COLUMNS")
-
-	os.Setenv("COLUMNS", "120") //nolint:usetesting // test helper pattern is intentional.
-
-	defer func() {
-		if originalColumns != "" {
-			os.Setenv("COLUMNS", originalColumns) //nolint:usetesting // test helper pattern is intentional.
-		} else {
-			os.Unsetenv("COLUMNS")
-		}
-	}()
+	t.Setenv("COLUMNS", "120")
 
 	width := DetectWidth()
 	if width != testCustomWidth {
@@ -53,19 +30,7 @@ func TestDetectWidth_FromEnv(t *testing.T) {
 }
 
 func TestDetectWidth_InvalidEnv(t *testing.T) {
-	t.Parallel()
-
-	originalColumns := os.Getenv("COLUMNS")
-
-	os.Setenv("COLUMNS", "invalid") //nolint:usetesting // test helper pattern is intentional.
-
-	defer func() {
-		if originalColumns != "" {
-			os.Setenv("COLUMNS", originalColumns) //nolint:usetesting // test helper pattern is intentional.
-		} else {
-			os.Unsetenv("COLUMNS")
-		}
-	}()
+	t.Setenv("COLUMNS", "invalid")
 
 	width := DetectWidth()
 	if width != testDefaultWidth {
@@ -74,45 +39,23 @@ func TestDetectWidth_InvalidEnv(t *testing.T) {
 }
 
 func TestNewConfig_Defaults(t *testing.T) {
-	t.Parallel()
-
-	originalColumns := os.Getenv("COLUMNS")
-
-	os.Unsetenv("COLUMNS")
-
-	defer func() {
-		if originalColumns != "" {
-			os.Setenv("COLUMNS", originalColumns) //nolint:usetesting // test helper pattern is intentional.
-		}
-	}()
+	t.Setenv("COLUMNS", "")
 
 	cfg := NewConfig()
 	if cfg.Width != testDefaultWidth {
 		t.Errorf("NewConfig().Width = %d, want %d", cfg.Width, testDefaultWidth)
 	}
 
-	if cfg.NoColor != false { //nolint:revive // explicit bool comparison needed.
+	if cfg.NoColor {
 		t.Errorf("NewConfig().NoColor = %v, want false", cfg.NoColor)
 	}
 }
 
 func TestNewConfig_NoColorFromEnv(t *testing.T) {
-	t.Parallel()
-
-	originalNoColor := os.Getenv("NO_COLOR")
-
-	os.Setenv("NO_COLOR", "1") //nolint:usetesting // test helper pattern is intentional.
-
-	defer func() {
-		if originalNoColor != "" {
-			os.Setenv("NO_COLOR", originalNoColor) //nolint:usetesting // test helper pattern is intentional.
-		} else {
-			os.Unsetenv("NO_COLOR")
-		}
-	}()
+	t.Setenv("NO_COLOR", "1")
 
 	cfg := NewConfig()
-	if cfg.NoColor != true { //nolint:revive // explicit bool comparison needed.
+	if !cfg.NoColor {
 		t.Errorf("NewConfig().NoColor with NO_COLOR=1 = %v, want true", cfg.NoColor)
 	}
 }
