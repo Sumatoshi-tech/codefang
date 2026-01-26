@@ -9,10 +9,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestComplexityVisitor_Basic(t *testing.T) {
+func TestVisitor_Basic(t *testing.T) {
 	t.Parallel()
 
-	visitor := NewComplexityVisitor()
+	visitor := NewVisitor()
 	traverser := analyze.NewMultiAnalyzerTraverser()
 	traverser.RegisterVisitor(visitor)
 

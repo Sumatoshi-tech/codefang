@@ -33,32 +33,32 @@ const (
 )
 
 // Name returns the analyzer name.
-func (c *CohesionAnalyzer) Name() string {
+func (c *Analyzer) Name() string {
 	return "cohesion"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (c *CohesionAnalyzer) Flag() string {
+func (c *Analyzer) Flag() string {
 	return "cohesion-analysis"
 }
 
 // Description returns the analyzer description.
-func (c *CohesionAnalyzer) Description() string {
+func (c *Analyzer) Description() string {
 	return "Calculates LCOM and cohesion metrics."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (c *CohesionAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (c *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
 // Configure configures the analyzer.
-func (c *CohesionAnalyzer) Configure(_ map[string]any) error {
+func (c *Analyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
 // Thresholds returns the color-coded thresholds for cohesion metrics.
-func (c *CohesionAnalyzer) Thresholds() analyze.Thresholds {
+func (c *Analyzer) Thresholds() analyze.Thresholds {
 	return analyze.Thresholds{
 		"lcom": {
 			"red":    magic4p0,
@@ -79,12 +79,12 @@ func (c *CohesionAnalyzer) Thresholds() analyze.Thresholds {
 }
 
 // CreateVisitor creates a new visitor for cohesion analysis.
-func (c *CohesionAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
-	return NewCohesionVisitor()
+func (c *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
+	return NewVisitor()
 }
 
 // Analyze performs cohesion analysis on the UAST.
-func (c *CohesionAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
+func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
 		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
 	}
@@ -105,7 +105,7 @@ func (c *CohesionAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 }
 
 // buildEmptyResult creates an empty result when no functions are found.
-func (c *CohesionAnalyzer) buildEmptyResult() analyze.Report {
+func (c *Analyzer) buildEmptyResult() analyze.Report {
 	return common.NewResultBuilder().BuildCustomEmptyResult(map[string]any{
 		"total_functions":   0,
 		"lcom":              0.0,
@@ -116,7 +116,7 @@ func (c *CohesionAnalyzer) buildEmptyResult() analyze.Report {
 }
 
 // calculateMetrics calculates all cohesion metrics for the functions.
-func (c *CohesionAnalyzer) calculateMetrics(functions []Function) map[string]float64 {
+func (c *Analyzer) calculateMetrics(functions []Function) map[string]float64 {
 	lcom := c.calculateLCOM(functions)
 	cohesionScore := c.calculateCohesionScore(lcom, len(functions))
 	functionCohesion := c.calculateFunctionCohesion(functions)
@@ -129,7 +129,7 @@ func (c *CohesionAnalyzer) calculateMetrics(functions []Function) map[string]flo
 }
 
 // buildResult constructs the final analysis result.
-func (c *CohesionAnalyzer) buildResult(functions []Function, metrics map[string]float64) analyze.Report {
+func (c *Analyzer) buildResult(functions []Function, metrics map[string]float64) analyze.Report {
 	detailedFunctionsTable := c.buildDetailedFunctionsTable(functions)
 	message := c.getCohesionMessage(metrics["cohesion_score"])
 
@@ -145,7 +145,7 @@ func (c *CohesionAnalyzer) buildResult(functions []Function, metrics map[string]
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table with assessments.
-func (c *CohesionAnalyzer) buildDetailedFunctionsTable(functions []Function) []map[string]any {
+func (c *Analyzer) buildDetailedFunctionsTable(functions []Function) []map[string]any {
 	table := make([]map[string]any, 0, len(functions))
 
 	for _, fn := range functions {
@@ -165,8 +165,8 @@ func (c *CohesionAnalyzer) buildDetailedFunctionsTable(functions []Function) []m
 }
 
 // FormatReport formats the analysis report for display.
-func (c *CohesionAnalyzer) FormatReport(report analyze.Report, w io.Writer) error {
-	section := NewCohesionReportSection(report)
+func (c *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
+	section := NewReportSection(report)
 	config := terminal.NewConfig()
 	r := renderer.NewSectionRenderer(config.Width, false, config.NoColor)
 
@@ -179,7 +179,7 @@ func (c *CohesionAnalyzer) FormatReport(report analyze.Report, w io.Writer) erro
 }
 
 // FormatReportJSON formats the analysis report as JSON.
-func (c *CohesionAnalyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
+func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
@@ -194,7 +194,7 @@ func (c *CohesionAnalyzer) FormatReportJSON(report analyze.Report, w io.Writer) 
 }
 
 // getCohesionMessage returns a message based on the cohesion score.
-func (c *CohesionAnalyzer) getCohesionMessage(score float64) string {
+func (c *Analyzer) getCohesionMessage(score float64) string {
 	if score >= scoreThresholdHigh {
 		return "Excellent cohesion - functions are well-focused and cohesive"
 	}
@@ -211,7 +211,7 @@ func (c *CohesionAnalyzer) getCohesionMessage(score float64) string {
 }
 
 // getCohesionAssessment returns an assessment with emoji for cohesion.
-func (c *CohesionAnalyzer) getCohesionAssessment(cohesion float64) string {
+func (c *Analyzer) getCohesionAssessment(cohesion float64) string {
 	if cohesion >= cohesionThresholdHigh {
 		return "🟢 Excellent"
 	}
@@ -228,7 +228,7 @@ func (c *CohesionAnalyzer) getCohesionAssessment(cohesion float64) string {
 }
 
 // getVariableAssessment returns an assessment with emoji for variable count.
-func (c *CohesionAnalyzer) getVariableAssessment(count int) string {
+func (c *Analyzer) getVariableAssessment(count int) string {
 	if count <= countThresholdHigh {
 		return "🟢 Few"
 	}
@@ -241,7 +241,7 @@ func (c *CohesionAnalyzer) getVariableAssessment(count int) string {
 }
 
 // getSizeAssessment returns an assessment with emoji for function size.
-func (c *CohesionAnalyzer) getSizeAssessment(lineCount int) string {
+func (c *Analyzer) getSizeAssessment(lineCount int) string {
 	if lineCount <= lineCountThresholdHigh {
 		return "🟢 Small"
 	}
@@ -256,7 +256,7 @@ func (c *CohesionAnalyzer) getSizeAssessment(lineCount int) string {
 // findFunctions finds all functions using the generic traverser.
 //
 //nolint:unparam // parameter is needed for interface compliance.
-func (c *CohesionAnalyzer) findFunctions(root *node.Node) ([]Function, error) {
+func (c *Analyzer) findFunctions(root *node.Node) ([]Function, error) {
 	functionNodes := c.traverser.FindNodesByRoles(root, []string{"Function"})
 	typeNodes := c.traverser.FindNodesByType(root, []string{"Function", "Method"})
 
@@ -266,7 +266,7 @@ func (c *CohesionAnalyzer) findFunctions(root *node.Node) ([]Function, error) {
 }
 
 // deduplicateNodes combines and deduplicates function nodes.
-func (c *CohesionAnalyzer) deduplicateNodes(functionNodes, typeNodes []*node.Node) []*node.Node {
+func (c *Analyzer) deduplicateNodes(functionNodes, typeNodes []*node.Node) []*node.Node {
 	nodeMap := make(map[*node.Node]bool)
 
 	for _, node := range functionNodes {
@@ -286,7 +286,7 @@ func (c *CohesionAnalyzer) deduplicateNodes(functionNodes, typeNodes []*node.Nod
 }
 
 // extractFunctionsFromNodes extracts Function structs from UAST nodes.
-func (c *CohesionAnalyzer) extractFunctionsFromNodes(nodes []*node.Node) []Function {
+func (c *Analyzer) extractFunctionsFromNodes(nodes []*node.Node) []Function {
 	functions := make([]Function, 0, len(nodes))
 
 	for _, node := range nodes {
@@ -297,7 +297,7 @@ func (c *CohesionAnalyzer) extractFunctionsFromNodes(nodes []*node.Node) []Funct
 }
 
 // extractFunction extracts function data from a node.
-func (c *CohesionAnalyzer) extractFunction(n *node.Node) Function {
+func (c *Analyzer) extractFunction(n *node.Node) Function {
 	variables := c.extractVariables(n)
 	name := c.extractFunctionName(n)
 	lineCount := c.traverser.CountLines(n)
@@ -315,7 +315,7 @@ func (c *CohesionAnalyzer) extractFunction(n *node.Node) Function {
 }
 
 // extractFunctionName extracts the function name from a node.
-func (c *CohesionAnalyzer) extractFunctionName(n *node.Node) string {
+func (c *Analyzer) extractFunctionName(n *node.Node) string {
 	name, _ := c.extractor.ExtractName(n, "function_name")
 	if name == "" {
 		name, _ = common.ExtractFunctionName(n)
@@ -325,7 +325,7 @@ func (c *CohesionAnalyzer) extractFunctionName(n *node.Node) string {
 }
 
 // extractVariables extracts all variables from a function node.
-func (c *CohesionAnalyzer) extractVariables(n *node.Node) []string {
+func (c *Analyzer) extractVariables(n *node.Node) []string {
 	var variables []string
 	c.findVariables(n, &variables)
 
@@ -333,7 +333,7 @@ func (c *CohesionAnalyzer) extractVariables(n *node.Node) []string {
 }
 
 // findVariables finds all variables in a function.
-func (c *CohesionAnalyzer) findVariables(n *node.Node, variables *[]string) {
+func (c *Analyzer) findVariables(n *node.Node, variables *[]string) {
 	if n == nil {
 		return
 	}
@@ -343,7 +343,7 @@ func (c *CohesionAnalyzer) findVariables(n *node.Node, variables *[]string) {
 }
 
 // processVariableNode processes a single node for variable extraction.
-func (c *CohesionAnalyzer) processVariableNode(n *node.Node, variables *[]string) {
+func (c *Analyzer) processVariableNode(n *node.Node, variables *[]string) {
 	if c.isVariableDeclaration(n) {
 		c.addVariableIfValid(n, variables)
 	}
@@ -354,19 +354,19 @@ func (c *CohesionAnalyzer) processVariableNode(n *node.Node, variables *[]string
 }
 
 // isVariableDeclaration checks if a node represents a variable declaration.
-func (c *CohesionAnalyzer) isVariableDeclaration(n *node.Node) bool {
+func (c *Analyzer) isVariableDeclaration(n *node.Node) bool {
 	return n.HasAnyType(node.UASTVariable, node.UASTParameter) &&
 		n.HasAnyRole(node.RoleDeclaration)
 }
 
 // isVariableIdentifier checks if a node represents a variable identifier.
-func (c *CohesionAnalyzer) isVariableIdentifier(n *node.Node) bool {
+func (c *Analyzer) isVariableIdentifier(n *node.Node) bool {
 	return n.HasAnyType(node.UASTIdentifier) &&
 		n.HasAnyRole(node.RoleVariable, node.RoleName)
 }
 
 // addVariableIfValid adds a variable name to the list if it's valid.
-func (c *CohesionAnalyzer) addVariableIfValid(n *node.Node, variables *[]string) {
+func (c *Analyzer) addVariableIfValid(n *node.Node, variables *[]string) {
 	if name, ok := c.extractor.ExtractName(n, "variable_name"); ok && name != "" {
 		*variables = append(*variables, name)
 	} else if varName, varOK := common.ExtractVariableName(n); varOK && varName != "" {
@@ -375,7 +375,7 @@ func (c *CohesionAnalyzer) addVariableIfValid(n *node.Node, variables *[]string)
 }
 
 // processChildren recursively processes child nodes.
-func (c *CohesionAnalyzer) processChildren(n *node.Node, variables *[]string) {
+func (c *Analyzer) processChildren(n *node.Node, variables *[]string) {
 	for _, child := range n.Children {
 		c.findVariables(child, variables)
 	}

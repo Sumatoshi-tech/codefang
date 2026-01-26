@@ -7,10 +7,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-func TestNewHalsteadAggregator(t *testing.T) {
+func TestNewAggregator(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	if aggregator == nil {
 		t.Fatal("Expected non-nil aggregator")
@@ -25,10 +25,10 @@ func TestNewHalsteadAggregator(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
+func TestAggregator_Aggregate_SingleReport(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	report := analyze.Report{
 		"total_functions":    2,
@@ -69,10 +69,10 @@ func TestHalsteadAggregator_Aggregate_SingleReport(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
+func TestAggregator_Aggregate_MultipleReports(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	report1 := analyze.Report{
 		"total_functions":    2,
@@ -137,10 +137,10 @@ func TestHalsteadAggregator_Aggregate_MultipleReports(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_Aggregate_EmptyReport(t *testing.T) {
+func TestAggregator_Aggregate_EmptyReport(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	// Aggregate with nil report.
 	aggregator.Aggregate(map[string]analyze.Report{"halstead": nil})
@@ -157,10 +157,10 @@ func TestHalsteadAggregator_Aggregate_EmptyReport(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_GetResult_NoAggregation(t *testing.T) {
+func TestAggregator_GetResult_NoAggregation(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	result := aggregator.GetResult()
 
@@ -178,10 +178,10 @@ func TestHalsteadAggregator_GetResult_NoAggregation(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_DetailedFunctionsCollection(t *testing.T) {
+func TestAggregator_DetailedFunctionsCollection(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	report := analyze.Report{
 		"total_functions": 1,
@@ -317,10 +317,10 @@ func TestBuildEmptyHalsteadResult(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
+func TestAggregator_ExtractFunctionsFromReport(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	// Test with valid functions.
 	report := analyze.Report{
@@ -337,7 +337,7 @@ func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
 	}
 
 	// Test with no functions key.
-	aggregator2 := NewHalsteadAggregator()
+	aggregator2 := NewAggregator()
 	reportNoFunctions := analyze.Report{
 		"total_functions": 0,
 	}
@@ -349,10 +349,10 @@ func TestHalsteadAggregator_ExtractFunctionsFromReport(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_CollectDetailedFunctions(t *testing.T) {
+func TestAggregator_CollectDetailedFunctions(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 
 	results := map[string]analyze.Report{
 		"file1": {
@@ -376,10 +376,10 @@ func TestHalsteadAggregator_CollectDetailedFunctions(t *testing.T) {
 	}
 }
 
-func TestHalsteadAggregator_AddDetailedFunctionsToResult(t *testing.T) {
+func TestAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewHalsteadAggregator()
+	aggregator := NewAggregator()
 	aggregator.detailedFunctions = []map[string]any{
 		{"name": "func1"},
 		{"name": "func2"},
@@ -398,7 +398,7 @@ func TestHalsteadAggregator_AddDetailedFunctionsToResult(t *testing.T) {
 	}
 
 	// Test with empty detailed functions.
-	aggregator2 := NewHalsteadAggregator()
+	aggregator2 := NewAggregator()
 	result2 := analyze.Report{}
 	aggregator2.addDetailedFunctionsToResult(result2)
 

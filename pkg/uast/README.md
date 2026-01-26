@@ -279,7 +279,7 @@ The UAST parser supports custom UAST mappings that can be passed during initiali
 
 ```go
 // Define custom UAST mappings
-customMaps := map[string]UASTMap{
+customMaps := map[string]Map{
     "my_language": {
         Extensions: []string{".mylang", ".ml"},
         UAST: `[language "json", extensions: ".mylang", ".ml"]
@@ -321,7 +321,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-parser = parser.WithUASTMap(customMaps)
+parser = parser.WithMap(customMaps)
 
 // Now the parser supports .mylang and .ml files
 if parser.IsSupported("config.mylang") {
@@ -339,7 +339,7 @@ if parser.IsSupported("config.mylang") {
 You can add multiple custom mappings at once:
 
 ```go
-customMaps := map[string]UASTMap{
+customMaps := map[string]Map{
     "config_lang": {
         Extensions: []string{".config"},
         UAST: `[language "json", extensions: ".config"]
@@ -354,7 +354,7 @@ customMaps := map[string]UASTMap{
     },
 }
 
-parser = parser.WithUASTMap(customMaps)
+parser = parser.WithMap(customMaps)
 ```
 
 ### Overriding Built-in Parsers
@@ -363,7 +363,7 @@ You can override built-in parsers by using the same file extensions:
 
 ```go
 // Override the built-in JSON parser with custom mapping
-customMaps := map[string]UASTMap{
+customMaps := map[string]Map{
     "custom_json": {
         Extensions: []string{".json"}, // Same extension as built-in JSON parser
         UAST: `[language "json", extensions: ".json"]
@@ -386,7 +386,7 @@ object <- (object) => uast(
     },
 }
 
-parser = parser.WithUASTMap(customMaps)
+parser = parser.WithMap(customMaps)
 
 // Now .json files will use your custom parser instead of the built-in one
 node, err := parser.Parse("config.json", content)

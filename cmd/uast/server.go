@@ -20,9 +20,9 @@ const minMappingURLParts = 3
 
 // ParseRequest holds the request body for the parse API endpoint.
 type ParseRequest struct {
-	UASTMaps map[string]uast.UASTMap `json:"uastmaps,omitempty"`
-	Code     string                  `json:"code"`
-	Language string                  `json:"language"`
+	UASTMaps map[string]uast.Map `json:"uastmaps,omitempty"`
+	Code     string              `json:"code"`
+	Language string              `json:"language"`
 }
 
 // QueryRequest holds the request body for the query API endpoint.
@@ -129,7 +129,7 @@ func handleParse(responseWriter http.ResponseWriter, request *http.Request) {
 
 	// Add custom UAST maps if provided.
 	if len(req.UASTMaps) > 0 {
-		parser = parser.WithUASTMap(req.UASTMaps)
+		parser = parser.WithMap(req.UASTMaps)
 	}
 
 	// Create filename with proper extension.

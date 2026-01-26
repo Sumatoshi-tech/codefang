@@ -11,17 +11,17 @@ type halsteadContext struct {
 	metrics      *FunctionHalsteadMetrics
 }
 
-// HalsteadVisitor implements NodeVisitor for Halstead analysis.
-type HalsteadVisitor struct {
+// Visitor implements NodeVisitor for Halstead analysis.
+type Visitor struct {
 	metrics         *MetricsCalculator
 	detector        *OperatorOperandDetector
 	functionMetrics map[string]*FunctionHalsteadMetrics
 	contexts        []*halsteadContext
 }
 
-// NewHalsteadVisitor creates a new HalsteadVisitor.
-func NewHalsteadVisitor() *HalsteadVisitor {
-	return &HalsteadVisitor{
+// NewVisitor creates a new Visitor.
+func NewVisitor() *Visitor {
+	return &Visitor{
 		contexts:        make([]*halsteadContext, 0),
 		metrics:         NewMetricsCalculator(),
 		detector:        NewOperatorOperandDetector(),
@@ -30,7 +30,7 @@ func NewHalsteadVisitor() *HalsteadVisitor {
 }
 
 // OnEnter is called when entering a node during AST traversal.
-func (v *HalsteadVisitor) OnEnter(n *node.Node, _ int) {
+func (v *Visitor) OnEnter(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.pushContext(n)
 	}
@@ -41,16 +41,16 @@ func (v *HalsteadVisitor) OnEnter(n *node.Node, _ int) {
 }
 
 // OnExit is called when exiting a node during AST traversal.
-func (v *HalsteadVisitor) OnExit(n *node.Node, _ int) {
+func (v *Visitor) OnExit(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.popContext()
 	}
 }
 
 // GetReport returns the collected analysis report.
-func (v *HalsteadVisitor) GetReport() analyze.Report {
-	// Aggregate results similar to HalsteadAnalyzer.buildResult.
-	analyzer := &HalsteadAnalyzer{
+func (v *Visitor) GetReport() analyze.Report {
+	// Aggregate results similar to Analyzer.buildResult.
+	analyzer := &Analyzer{
 		metrics:   v.metrics,
 		formatter: NewReportFormatter(),
 	}
@@ -63,12 +63,12 @@ func (v *HalsteadVisitor) GetReport() analyze.Report {
 	return analyzer.buildResult(fileMetrics, detailedFunctionsTable, functionDetails, message)
 }
 
-func (v *HalsteadVisitor) isFunction(n *node.Node) bool {
+func (v *Visitor) isFunction(n *node.Node) bool {
 	return n.HasAnyType(node.UASTFunction, node.UASTMethod) ||
 		n.HasAllRoles(node.RoleFunction, node.RoleDeclaration)
 }
 
-func (v *HalsteadVisitor) pushContext(funcNode *node.Node) {
+func (v *Visitor) pushContext(funcNode *node.Node) {
 	name, _ := common.ExtractFunctionName(funcNode)
 	if name == "" {
 		name = "anonymous"
@@ -87,7 +87,7 @@ func (v *HalsteadVisitor) pushContext(funcNode *node.Node) {
 	v.contexts = append(v.contexts, ctx)
 }
 
-func (v *HalsteadVisitor) popContext() {
+func (v *Visitor) popContext() {
 	if len(v.contexts) == 0 {
 		return
 	}
@@ -108,7 +108,7 @@ func (v *HalsteadVisitor) popContext() {
 	v.functionMetrics[ctx.metrics.Name] = ctx.metrics
 }
 
-func (v *HalsteadVisitor) currentContext() *halsteadContext {
+func (v *Visitor) currentContext() *halsteadContext {
 	if len(v.contexts) == 0 {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (v *HalsteadVisitor) currentContext() *halsteadContext {
 	return v.contexts[len(v.contexts)-1]
 }
 
-func (v *HalsteadVisitor) sumMap(m map[string]int) int {
+func (v *Visitor) sumMap(m map[string]int) int {
 	sum := 0
 	for _, count := range m {
 		sum += count
@@ -125,7 +125,7 @@ func (v *HalsteadVisitor) sumMap(m map[string]int) int {
 	return sum
 }
 
-func (v *HalsteadVisitor) processNode(ctx *halsteadContext, n *node.Node) {
+func (v *Visitor) processNode(ctx *halsteadContext, n *node.Node) {
 	if v.detector.IsOperator(n) {
 		operator := v.detector.GetOperatorName(n)
 		ctx.metrics.Operators[string(operator)]++

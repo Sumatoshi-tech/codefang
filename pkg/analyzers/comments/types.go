@@ -14,8 +14,8 @@ const (
 
 const msgGoodCommentQuality = "Good comment quality with room for improvement"
 
-// CommentsAnalyzer provides comment placement analysis.
-type CommentsAnalyzer struct {
+// Analyzer provides comment placement analysis.
+type Analyzer struct {
 	traverser *common.UASTTraverser
 	extractor *common.DataExtractor
 }
@@ -77,12 +77,12 @@ type CommentBlock struct {
 	EndLine   int
 }
 
-// NewCommentsAnalyzer creates a new CommentsAnalyzer with generic components.
-func NewCommentsAnalyzer() *CommentsAnalyzer {
+// NewAnalyzer creates a new Analyzer with generic components.
+func NewAnalyzer() *Analyzer {
 	traversalConfig := createTraversalConfig()
 	extractionConfig := createExtractionConfig()
 
-	return &CommentsAnalyzer{
+	return &Analyzer{
 		traverser: common.NewUASTTraverser(traversalConfig),
 		extractor: common.NewDataExtractor(extractionConfig),
 	}
@@ -133,17 +133,17 @@ func createCommentTextExtractor() common.NameExtractor {
 }
 
 // CreateAggregator creates a new aggregator for comment analysis.
-func (c *CommentsAnalyzer) CreateAggregator() analyze.ResultAggregator {
-	return NewCommentsAggregator()
+func (c *Analyzer) CreateAggregator() analyze.ResultAggregator {
+	return NewAggregator()
 }
 
 // CreateVisitor creates a new visitor for comments analysis.
-func (c *CommentsAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
-	return NewCommentsVisitor()
+func (c *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
+	return NewVisitor()
 }
 
 // DefaultConfig returns the default configuration for comment analysis.
-func (c *CommentsAnalyzer) DefaultConfig() CommentConfig {
+func (c *Analyzer) DefaultConfig() CommentConfig {
 	return CommentConfig{
 		RewardScore:      getDefaultRewardScore(),
 		PenaltyScores:    getDefaultPenaltyScores(),

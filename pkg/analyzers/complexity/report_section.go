@@ -64,15 +64,15 @@ const (
 	KeyFuncCyclomatic      = "cyclomatic_complexity"
 )
 
-// ComplexityReportSection implements analyze.ReportSection for complexity analysis.
-type ComplexityReportSection struct {
+// ReportSection implements analyze.ReportSection for complexity analysis.
+type ReportSection struct {
 	analyze.BaseReportSection
 
 	report analyze.Report
 }
 
-// NewComplexityReportSection creates a ReportSection from a complexity report.
-func NewComplexityReportSection(report analyze.Report) *ComplexityReportSection {
+// NewReportSection creates a ReportSection from a complexity report.
+func NewReportSection(report analyze.Report) *ReportSection {
 	if report == nil {
 		report = analyze.Report{}
 	}
@@ -84,7 +84,7 @@ func NewComplexityReportSection(report analyze.Report) *ComplexityReportSection 
 		msg = DefaultStatusMessage
 	}
 
-	return &ComplexityReportSection{
+	return &ReportSection{
 		BaseReportSection: analyze.BaseReportSection{
 			Title:      SectionTitle,
 			Message:    msg,
@@ -95,7 +95,7 @@ func NewComplexityReportSection(report analyze.Report) *ComplexityReportSection 
 }
 
 // KeyMetrics returns the 6 key metrics for the complexity section.
-func (s *ComplexityReportSection) KeyMetrics() []analyze.Metric {
+func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
 		{Label: MetricTotalFunctions, Value: formatInt(getInt(s.report, KeyTotalFunctions))},
 		{Label: MetricAvgComplexity, Value: formatFloat(getFloat64(s.report, KeyAvgComplexity))},
@@ -107,7 +107,7 @@ func (s *ComplexityReportSection) KeyMetrics() []analyze.Metric {
 }
 
 // Distribution returns complexity distribution categories.
-func (s *ComplexityReportSection) Distribution() []analyze.DistributionItem {
+func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	functions := getFunctions(s.report)
 	if len(functions) == 0 {
 		return nil
@@ -120,7 +120,7 @@ func (s *ComplexityReportSection) Distribution() []analyze.DistributionItem {
 }
 
 // TopIssues returns the top N functions sorted by complexity descending.
-func (s *ComplexityReportSection) TopIssues(n int) []analyze.Issue {
+func (s *ReportSection) TopIssues(n int) []analyze.Issue {
 	issues := s.buildSortedIssues()
 	if n >= len(issues) {
 		return issues
@@ -130,12 +130,12 @@ func (s *ComplexityReportSection) TopIssues(n int) []analyze.Issue {
 }
 
 // AllIssues returns all functions as issues sorted by complexity descending.
-func (s *ComplexityReportSection) AllIssues() []analyze.Issue {
+func (s *ReportSection) AllIssues() []analyze.Issue {
 	return s.buildSortedIssues()
 }
 
 // buildSortedIssues extracts functions and sorts by complexity descending.
-func (s *ComplexityReportSection) buildSortedIssues() []analyze.Issue {
+func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 	functions := getFunctions(s.report)
 	if len(functions) == 0 {
 		return nil
@@ -319,6 +319,6 @@ func formatFloat(v float64) string {
 }
 
 // CreateReportSection creates a ReportSection from report data.
-func (c *ComplexityAnalyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
-	return NewComplexityReportSection(report)
+func (c *Analyzer) CreateReportSection(report analyze.Report) analyze.ReportSection {
+	return NewReportSection(report)
 }

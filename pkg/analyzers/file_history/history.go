@@ -1,5 +1,5 @@
-// Package file_history provides file_history functionality.
-package file_history //nolint:staticcheck // underscore in package name is acceptable.
+// Package filehistory provides file history functionality.
+package filehistory
 
 import (
 	"errors"
@@ -19,8 +19,8 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-// FileHistoryAnalyzer tracks file-level change history across commits.
-type FileHistoryAnalyzer struct {
+// Analyzer tracks file-level change history across commits.
+type Analyzer struct {
 	// Dependencies.
 	Identity  *plumbing.IdentityDetector
 	TreeDiff  *plumbing.TreeDiffAnalyzer
@@ -44,33 +44,33 @@ type FileHistory struct {
 }
 
 // Name returns the name of the analyzer.
-func (h *FileHistoryAnalyzer) Name() string {
+func (h *Analyzer) Name() string {
 	return "FileHistoryAnalysis"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (h *FileHistoryAnalyzer) Flag() string {
+func (h *Analyzer) Flag() string {
 	return "file-history"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (h *FileHistoryAnalyzer) Description() string {
+func (h *Analyzer) Description() string {
 	return "Each file path is mapped to the list of commits which touch that file " +
 		"and the mapping from involved developers to the corresponding line statistics."
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (h *FileHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (h *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (h *FileHistoryAnalyzer) Configure(_ map[string]any) error {
+func (h *Analyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (h *FileHistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (h *Analyzer) Initialize(_ *git.Repository) error {
 	h.files = map[string]*FileHistory{}
 	h.merges = map[gitplumbing.Hash]bool{}
 
@@ -79,7 +79,7 @@ func (h *FileHistoryAnalyzer) Initialize(_ *git.Repository) error {
 
 // shouldConsumeCommit checks whether a commit should be processed.
 // It returns false for duplicate merge commits and non-merge context merges.
-func (h *FileHistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
+func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
 
 	if commit.NumParents() > 1 {
@@ -96,7 +96,7 @@ func (h *FileHistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
 //
 //nolint:gocognit // complexity is inherent to multi-action file history tracking with renames.
-func (h *FileHistoryAnalyzer) processFileChanges(changes object.Changes, commit *object.Commit) error {
+func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Commit) error {
 	for _, change := range changes {
 		action, err := change.Action()
 		if err != nil {
@@ -141,7 +141,7 @@ func (h *FileHistoryAnalyzer) processFileChanges(changes object.Changes, commit 
 }
 
 // aggregateLineStats merges line statistics from the current commit into file histories.
-func (h *FileHistoryAnalyzer) aggregateLineStats(lineStats map[object.ChangeEntry]pkgplumbing.LineStats, author int) {
+func (h *Analyzer) aggregateLineStats(lineStats map[object.ChangeEntry]pkgplumbing.LineStats, author int) {
 	for changeEntry, stats := range lineStats {
 		file := h.files[changeEntry.Name]
 		if file == nil {
@@ -165,7 +165,7 @@ func (h *FileHistoryAnalyzer) aggregateLineStats(lineStats map[object.ChangeEntr
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (h *Analyzer) Consume(ctx *analyze.Context) error {
 	if !h.shouldConsumeCommit(ctx) {
 		return nil
 	}
@@ -183,7 +183,7 @@ func (h *FileHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 }
 
 // Finalize completes the analysis and returns the result.
-func (h *FileHistoryAnalyzer) Finalize() (analyze.Report, error) {
+func (h *Analyzer) Finalize() (analyze.Report, error) {
 	files := map[string]FileHistory{}
 
 	if h.lastCommit != nil { //nolint:nestif // complex tree traversal with nested iteration
@@ -206,7 +206,7 @@ func (h *FileHistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (h *FileHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *h
@@ -217,11 +217,11 @@ func (h *FileHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *FileHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (h *FileHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (h *Analyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	files, ok := result["Files"].(map[string]FileHistory)
 	if !ok {
 		return errors.New("expected map[string]FileHistory for files") //nolint:err113 // descriptive error for type assertion failure.
@@ -260,6 +260,6 @@ func (h *FileHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (h *FileHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (h *Analyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return h.Serialize(report, false, writer)
 }

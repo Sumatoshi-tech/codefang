@@ -17,10 +17,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestShotnessHistoryAnalyzer_Configure(t *testing.T) {
+func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	facts := map[string]any{
 		ConfigShotnessDSLStruct: "struct_dsl",
 		ConfigShotnessDSLName:   "name_dsl",
@@ -40,7 +40,7 @@ func TestShotnessHistoryAnalyzer_Configure(t *testing.T) {
 	}
 
 	// Defaults.
-	s = &ShotnessHistoryAnalyzer{}
+	s = &HistoryAnalyzer{}
 	require.NoError(t, s.Configure(map[string]any{}))
 
 	if s.DSLStruct != DefaultShotnessDSLStruct {
@@ -52,10 +52,10 @@ func TestShotnessHistoryAnalyzer_Configure(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Initialize(t *testing.T) {
+func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 
 	err := s.Initialize(nil)
 	if err != nil {
@@ -71,10 +71,10 @@ func TestShotnessHistoryAnalyzer_Initialize(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Misc(t *testing.T) {
+func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	if s.Name() == "" {
 		t.Error("Name empty")
 	}
@@ -92,10 +92,10 @@ func TestShotnessHistoryAnalyzer_Misc(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges: &plumbing.UASTChangesAnalyzer{},
 		FileDiff:    &plumbing.FileDiffAnalyzer{},
 		DSLStruct:   DefaultShotnessDSLStruct,
@@ -237,10 +237,10 @@ func TestShotnessHistoryAnalyzer_Consume(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
+func TestHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
 	// Manually populate state.
@@ -302,10 +302,10 @@ func TestShotnessHistoryAnalyzer_FinalizeAndSerialize(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Fork(t *testing.T) {
+func TestHistoryAnalyzer_Fork(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 
 	clones := s.Fork(2)
 	if len(clones) != 2 {
@@ -313,17 +313,17 @@ func TestShotnessHistoryAnalyzer_Fork(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Merge(t *testing.T) {
+func TestHistoryAnalyzer_Merge(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{}
+	s := &HistoryAnalyzer{}
 	s.Merge(nil)
 }
 
-func TestShotnessHistoryAnalyzer_Consume_Rename(t *testing.T) {
+func TestHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges: &plumbing.UASTChangesAnalyzer{},
 		FileDiff:    &plumbing.FileDiffAnalyzer{},
 		DSLStruct:   DefaultShotnessDSLStruct,
@@ -397,10 +397,10 @@ func TestShotnessHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	}
 }
 
-func TestShotnessHistoryAnalyzer_Consume_MergeCommit(t *testing.T) {
+func TestHistoryAnalyzer_Consume_MergeCommit(t *testing.T) {
 	t.Parallel()
 
-	s := &ShotnessHistoryAnalyzer{
+	s := &HistoryAnalyzer{
 		UASTChanges: &plumbing.UASTChangesAnalyzer{},
 		FileDiff:    &plumbing.FileDiffAnalyzer{},
 	}

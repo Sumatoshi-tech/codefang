@@ -7,10 +7,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-func TestNewCohesionAggregator(t *testing.T) {
+func TestNewAggregator(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	if aggregator == nil {
 		t.Fatal("Expected non-nil aggregator")
@@ -21,7 +21,7 @@ func TestNewCohesionAggregator(t *testing.T) {
 	}
 }
 
-func TestCohesionAggregatorConfig(t *testing.T) {
+func TestAggregatorConfig(t *testing.T) {
 	t.Parallel()
 
 	config := buildAggregatorConfig()
@@ -184,10 +184,10 @@ func TestCreateEmptyResult(t *testing.T) {
 	}
 }
 
-func TestCohesionAggregator_Aggregate_WithNilReport(t *testing.T) {
+func TestAggregator_Aggregate_WithNilReport(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	// Aggregate with nil report should not panic.
 	aggregator.Aggregate(map[string]analyze.Report{"cohesion": nil})
@@ -204,10 +204,10 @@ func TestCohesionAggregator_Aggregate_WithNilReport(t *testing.T) {
 	}
 }
 
-func TestCohesionAggregator_MultipleAggregations(t *testing.T) {
+func TestAggregator_MultipleAggregations(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCohesionAggregator()
+	aggregator := NewAggregator()
 
 	report1 := analyze.Report{
 		"total_functions":   2,

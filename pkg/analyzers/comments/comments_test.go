@@ -11,17 +11,17 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-func TestCommentsAnalyzer_Name(t *testing.T) {
+func TestAnalyzer_Name(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 	assert.Equal(t, "comments", analyzer.Name())
 }
 
-func TestCommentsAnalyzer_Thresholds(t *testing.T) {
+func TestAnalyzer_Thresholds(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 	thresholds := analyzer.Thresholds()
 
 	assert.NotNil(t, thresholds)
@@ -35,20 +35,20 @@ func TestCommentsAnalyzer_Thresholds(t *testing.T) {
 	assert.InDelta(t, 0.4, overallScore["red"], 0.001)
 }
 
-func TestCommentsAnalyzer_CreateAggregator(t *testing.T) {
+func TestAnalyzer_CreateAggregator(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 	aggregator := analyzer.CreateAggregator()
 
 	assert.NotNil(t, aggregator)
-	assert.IsType(t, &CommentsAggregator{}, aggregator)
+	assert.IsType(t, &Aggregator{}, aggregator)
 }
 
-func TestCommentsAnalyzer_DefaultConfig(t *testing.T) {
+func TestAnalyzer_DefaultConfig(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 	config := analyzer.DefaultConfig()
 
 	assert.InDelta(t, 1.0, config.RewardScore, 0.001)
@@ -62,10 +62,10 @@ func TestCommentsAnalyzer_DefaultConfig(t *testing.T) {
 	assert.InDelta(t, -0.1, config.PenaltyScores[node.UASTVariable], 0.001)
 }
 
-func TestCommentsAnalyzer_Analyze_EmptyTree(t *testing.T) {
+func TestAnalyzer_Analyze_EmptyTree(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 	root := &node.Node{Type: node.UASTFile}
 
 	result, err := analyzer.Analyze(root)
@@ -79,10 +79,10 @@ func TestCommentsAnalyzer_Analyze_EmptyTree(t *testing.T) {
 	assert.Equal(t, 0, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_Analyze_GoodCommentPlacement(t *testing.T) {
+func TestAnalyzer_Analyze_GoodCommentPlacement(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with a good comment above a function.
 	root := &node.Node{Type: node.UASTFile}
@@ -132,10 +132,10 @@ func TestCommentsAnalyzer_Analyze_GoodCommentPlacement(t *testing.T) {
 	assert.Equal(t, 1, lineNumber, "line_number should be 1")
 }
 
-func TestCommentsAnalyzer_Analyze_BadCommentPlacement(t *testing.T) {
+func TestAnalyzer_Analyze_BadCommentPlacement(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with a bad comment (inside function body).
 	root := &node.Node{Type: node.UASTFile}
@@ -183,10 +183,10 @@ func TestCommentsAnalyzer_Analyze_BadCommentPlacement(t *testing.T) {
 	assert.Equal(t, 0, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_Analyze_MixedCommentPlacement(t *testing.T) {
+func TestAnalyzer_Analyze_MixedCommentPlacement(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with both good and bad comments.
 	root := &node.Node{Type: node.UASTFile}
@@ -246,10 +246,10 @@ func TestCommentsAnalyzer_Analyze_MixedCommentPlacement(t *testing.T) {
 	assert.Equal(t, 1, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_Analyze_ClassWithMethod(t *testing.T) {
+func TestAnalyzer_Analyze_ClassWithMethod(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with a class and method.
 	root := &node.Node{Type: node.UASTFile}
@@ -310,10 +310,10 @@ func TestCommentsAnalyzer_Analyze_ClassWithMethod(t *testing.T) {
 	assert.Equal(t, 2, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_Analyze_UnassociatedComment(t *testing.T) {
+func TestAnalyzer_Analyze_UnassociatedComment(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with an unassociated comment.
 	root := &node.Node{Type: node.UASTFile}
@@ -338,10 +338,10 @@ func TestCommentsAnalyzer_Analyze_UnassociatedComment(t *testing.T) {
 	assert.Equal(t, 0, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_FindComments(t *testing.T) {
+func TestAnalyzer_FindComments(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with comments at different levels.
 	root := &node.Node{Type: node.UASTFile}
@@ -364,10 +364,10 @@ func TestCommentsAnalyzer_FindComments(t *testing.T) {
 	assert.Equal(t, "// Function comment", comments[1].Token)
 }
 
-func TestCommentsAnalyzer_FindFunctions(t *testing.T) {
+func TestAnalyzer_FindFunctions(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with different function types.
 	root := &node.Node{Type: node.UASTFile}
@@ -395,10 +395,10 @@ func TestCommentsAnalyzer_FindFunctions(t *testing.T) {
 	assert.Equal(t, string(node.UASTClass), string(functions[2].Type))
 }
 
-func TestCommentsAnalyzer_ExtractTargetName(t *testing.T) {
+func TestAnalyzer_ExtractTargetName(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test with Name role.
 	function := &node.Node{Type: node.UASTFunction}
@@ -432,10 +432,10 @@ func TestCommentsAnalyzer_ExtractTargetName(t *testing.T) {
 	assert.Equal(t, "unknown", result4)
 }
 
-func TestCommentsAnalyzer_IsCommentProperlyPlaced(t *testing.T) {
+func TestAnalyzer_IsCommentProperlyPlaced(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Test properly placed comment (directly above).
 	comment := &node.Node{Type: node.UASTComment}
@@ -489,10 +489,10 @@ func TestCommentsAnalyzer_IsCommentProperlyPlaced(t *testing.T) {
 	assert.False(t, analyzer.isCommentProperlyPlaced(comment4, target4))
 }
 
-func TestCommentsAggregator_Aggregate(t *testing.T) {
+func TestAggregator_Aggregate(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCommentsAggregator()
+	aggregator := NewAggregator()
 
 	// Test aggregation.
 	results := map[string]map[string]any{
@@ -525,10 +525,10 @@ func TestCommentsAggregator_Aggregate(t *testing.T) {
 	assert.InDelta(t, 0.75, result["overall_score"], 0.001) // Average of 0.5 and 1.0.
 }
 
-func TestCommentsAggregator_GetResult_Empty(t *testing.T) {
+func TestAggregator_GetResult_Empty(t *testing.T) {
 	t.Parallel()
 
-	aggregator := NewCommentsAggregator()
+	aggregator := NewAggregator()
 
 	result := aggregator.GetResult()
 	assert.Equal(t, 0, result["total_comments"])
@@ -539,10 +539,10 @@ func TestCommentsAggregator_GetResult_Empty(t *testing.T) {
 	assert.Equal(t, 0, result["documented_functions"])
 }
 
-func TestCommentsAnalyzer_DebugOutput(t *testing.T) {
+func TestAnalyzer_DebugOutput(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with a good comment above a function.
 	root := &node.Node{Type: node.UASTFile}
@@ -591,10 +591,10 @@ func TestCommentsAnalyzer_DebugOutput(t *testing.T) {
 	t.Logf("Full result: %s", string(resultJSON))
 }
 
-func TestCommentsAnalyzer_FormatReport(t *testing.T) {
+func TestAnalyzer_FormatReport(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with a good comment above a function.
 	root := &node.Node{Type: node.UASTFile}
@@ -644,10 +644,10 @@ func TestCommentsAnalyzer_FormatReport(t *testing.T) {
 	assert.Contains(t, formatted, "100.0%")
 }
 
-func TestCommentsAnalyzer_FormatReport_Complex(t *testing.T) {
+func TestAnalyzer_FormatReport_Complex(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Create a tree with multiple functions and comments.
 	root := &node.Node{Type: node.UASTFile}
@@ -736,10 +736,10 @@ func TestCommentsAnalyzer_FormatReport_Complex(t *testing.T) {
 	assert.Contains(t, formatted, "Top Issues")
 }
 
-func TestCommentsAnalyzer_RealFile(t *testing.T) {
+func TestAnalyzer_RealFile(t *testing.T) {
 	t.Parallel()
 
-	analyzer := NewCommentsAnalyzer()
+	analyzer := NewAnalyzer()
 
 	// Parse a real Go file.
 	root := &node.Node{Type: node.UASTFile}
