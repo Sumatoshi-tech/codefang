@@ -3,18 +3,27 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/spf13/cobra"
+)
+
+// Sentinel errors for the query command.
+var (
+	ErrQueryExprRequired = errors.New("query expression required")
+	ErrUnsupportedQFmt   = errors.New("unsupported format")
 )
 
 func queryCmd() *cobra.Command {
 	var input, output, format string
+
 	var interactive bool
 
 	cmd := &cobra.Command{
@@ -28,13 +37,15 @@ Examples:
   uast query "reduce(count)" main.go                   # Count all nodes
   uast query -i main.go                                # Interactive mode
   uast query "filter(.type == 'Call')" - < input.json  # Query from stdin`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("query expression required")
+				return ErrQueryExprRequired
 			}
+
 			query := args[0]
 			files := args[1:]
-			return runQuery(query, files, input, output, format, interactive, cmd.OutOrStdout())
+
+			return runQuery(query, files, input, output, format, interactive, cobraCmd.OutOrStdout())
 		},
 	}
 
@@ -52,14 +63,15 @@ func runQuery(query string, files []string, input, output, format string, intera
 	}
 
 	if len(files) == 0 && input == "" {
-		// Query from stdin
+		// Query from stdin.
 		return queryStdin(query, output, format, writer)
 	}
 
-	// Query from files
+	// Query from files.
 	for _, file := range files {
-		if err := queryFile(file, query, output, format, writer); err != nil {
-			return fmt.Errorf("failed to query %s: %w", file, err)
+		queryErr := queryFile(file, query, output, format, writer)
+		if queryErr != nil {
+			return fmt.Errorf("failed to query %s: %w", file, queryErr)
 		}
 	}
 
@@ -67,113 +79,91 @@ func runQuery(query string, files []string, input, output, format string, intera
 }
 
 func queryStdin(query, output, format string, writer io.Writer) error {
-	var n *node.Node
+	var parsedNode *node.Node
+
 	dec := json.NewDecoder(os.Stdin)
-	if err := dec.Decode(&n); err != nil {
-		return fmt.Errorf("failed to decode UAST from stdin: %w", err)
+
+	decodeErr := dec.Decode(&parsedNode)
+	if decodeErr != nil {
+		return fmt.Errorf("failed to decode UAST from stdin: %w", decodeErr)
 	}
-	results, err := n.FindDSL(query)
+
+	results, err := parsedNode.FindDSL(query)
 	if err != nil {
 		return fmt.Errorf("query error: %w", err)
 	}
+
 	return outputResults(results, output, format, writer)
 }
 
 func queryFile(file, query, output, format string, writer io.Writer) error {
-	var n *node.Node
-	if isJSONFile(file) {
-		// Treat .json files as serialized UAST trees
-		var err error
-		n, err = loadUASTFromJSON(file)
-		if err != nil {
-			return fmt.Errorf("failed to query %s: %w", file, err)
-		}
-	} else {
-		parser, err := uast.NewParser()
-		if err != nil {
-			return fmt.Errorf("failed to initialize parser: %w", err)
-		}
-		if parser.IsSupported(file) {
-			code, err := os.ReadFile(file)
-			if err != nil {
-				return fmt.Errorf("failed to read file %s: %w", file, err)
-			}
-			n, err = parser.Parse(file, code)
-			if err != nil {
-				return fmt.Errorf("parse error in %s: %w", file, err)
-			}
-		} else {
-			n, err = loadUASTFromJSON(file)
-			if err != nil {
-				return fmt.Errorf("failed to query %s: %w", file, err)
-			}
-		}
-	}
-	results, err := n.FindDSL(query)
+	parsedNode, err := parseFileForQuery(file)
 	if err != nil {
-		return fmt.Errorf("query error: %w", err)
+		return err
 	}
+
+	results, findErr := parsedNode.FindDSL(query)
+	if findErr != nil {
+		return fmt.Errorf("query error: %w", findErr)
+	}
+
 	return outputResults(results, output, format, writer)
 }
 
-func runInteractiveQuery(input string, writer io.Writer) error {
-	var node *node.Node
-
-	if input != "" {
-		// Load from file
-		parser, err := uast.NewParser()
+// parseFileForQuery loads a UAST node from a file, auto-detecting whether it is
+// a serialized JSON tree or a source file that needs parsing.
+func parseFileForQuery(file string) (*node.Node, error) {
+	if isJSONFile(file) {
+		parsedNode, err := loadUASTFromJSON(file)
 		if err != nil {
-			return fmt.Errorf("failed to initialize parser: %w", err)
+			return nil, fmt.Errorf("failed to query %s: %w", file, err)
 		}
 
-		if parser.IsSupported(input) {
-			code, err := os.ReadFile(input)
-			if err != nil {
-				return fmt.Errorf("failed to read file %s: %w", input, err)
-			}
-
-			node, err = parser.Parse(input, code)
-			if err != nil {
-				return fmt.Errorf("parse error in %s: %w", input, err)
-			}
-		} else {
-			// Try to read as UAST JSON
-			f, err := os.Open(input)
-			if err != nil {
-				return fmt.Errorf("failed to open file %s: %w", input, err)
-			}
-			defer f.Close()
-
-			dec := json.NewDecoder(f)
-			if err := dec.Decode(&node); err != nil {
-				return fmt.Errorf("failed to decode UAST from %s: %w", input, err)
-			}
-		}
-	} else {
-		// Read from stdin
-		code, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("failed to read stdin: %w", err)
-		}
-
-		parser, err := uast.NewParser()
-		if err != nil {
-			return fmt.Errorf("failed to initialize parser: %w", err)
-		}
-
-		node, err = parser.Parse("stdin.go", code)
-		if err != nil {
-			return fmt.Errorf("parse error: %w", err)
-		}
+		return parsedNode, nil
 	}
 
-	fmt.Println("Interactive UAST Query Mode")
-	fmt.Println("Type 'help' for DSL syntax, 'quit' to exit")
-	fmt.Println()
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize parser: %w", err)
+	}
+
+	if !parser.IsSupported(file) {
+		parsedNode, loadErr := loadUASTFromJSON(file)
+		if loadErr != nil {
+			return nil, fmt.Errorf("failed to query %s: %w", file, loadErr)
+		}
+
+		return parsedNode, nil
+	}
+
+	code, readErr := os.ReadFile(file)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", file, readErr)
+	}
+
+	parsedNode, parseErr := parser.Parse(file, code)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse error in %s: %w", file, parseErr)
+	}
+
+	return parsedNode, nil
+}
+
+func runInteractiveQuery(input string, _ io.Writer) error {
+	parsedNode, err := loadInteractiveInput(input)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(os.Stdout, "Interactive UAST Query Mode")
+	fmt.Fprintln(os.Stdout, "Type 'help' for DSL syntax, 'quit' to exit")
+	fmt.Fprintln(os.Stdout)
 
 	scanner := bufio.NewScanner(os.Stdin)
+
 	for {
-		fmt.Print("uast> ")
+		fmt.Fprint(os.Stdout, "uast> ")
+
 		if !scanner.Scan() {
 			break
 		}
@@ -189,67 +179,160 @@ func runInteractiveQuery(input string, writer io.Writer) error {
 
 		if query == "help" {
 			printDSLHelp()
+
 			continue
 		}
 
-		results, err := node.FindDSL(query)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
+		executeInteractiveQuery(parsedNode, query)
 
-		if len(results) == 0 {
-			fmt.Println("No results found")
-		} else {
-			fmt.Printf("Found %d results:\n", len(results))
-			for i, n := range results {
-				fmt.Printf("[%d] %s: %s\n", i+1, n.Type, n.Token)
-			}
-		}
-		fmt.Println()
+		fmt.Fprintln(os.Stdout)
 	}
 
 	return nil
 }
 
+func loadInteractiveInput(input string) (*node.Node, error) {
+	if input != "" {
+		return loadInteractiveInputFromFile(input)
+	}
+
+	return loadInteractiveInputFromStdin()
+}
+
+func loadInteractiveInputFromFile(input string) (*node.Node, error) {
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize parser: %w", err)
+	}
+
+	if parser.IsSupported(input) {
+		code, readErr := os.ReadFile(input)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read file %s: %w", input, readErr)
+		}
+
+		parsedNode, parseErr := parser.Parse(input, code)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse error in %s: %w", input, parseErr)
+		}
+
+		return parsedNode, nil
+	}
+
+	// Try to read as UAST JSON.
+	jsonFile, openErr := os.Open(input)
+	if openErr != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", input, openErr)
+	}
+	defer jsonFile.Close()
+
+	var parsedNode *node.Node
+
+	dec := json.NewDecoder(jsonFile)
+
+	decodeErr := dec.Decode(&parsedNode)
+	if decodeErr != nil {
+		return nil, fmt.Errorf("failed to decode UAST from %s: %w", input, decodeErr)
+	}
+
+	return parsedNode, nil
+}
+
+func loadInteractiveInputFromStdin() (*node.Node, error) {
+	code, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stdin: %w", err)
+	}
+
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize parser: %w", err)
+	}
+
+	parsedNode, err := parser.Parse("stdin.go", code)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %w", err)
+	}
+
+	return parsedNode, nil
+}
+
+func executeInteractiveQuery(parsedNode *node.Node, query string) {
+	results, err := parsedNode.FindDSL(query)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Error: %v\n", err)
+
+		return
+	}
+
+	if len(results) == 0 {
+		fmt.Fprintln(os.Stdout, "No results found")
+	} else {
+		fmt.Fprintf(os.Stdout, "Found %d results:\n", len(results))
+
+		for idx, resultNode := range results {
+			fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, resultNode.Type, resultNode.Token)
+		}
+	}
+}
+
 func outputResults(results []*node.Node, output, format string, writer io.Writer) error {
-	var w io.Writer = writer
+	outputWriter := writer
+
 	if output != "" {
-		f, err := os.Create(output)
+		outFile, err := os.Create(output)
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer f.Close()
-		w = f
+		defer outFile.Close()
+
+		outputWriter = outFile
 	}
+
 	mapped := nodesToMap(results)
+
 	switch format {
-	case "json":
-		enc := json.NewEncoder(w)
+	case formatJSON:
+		enc := json.NewEncoder(outputWriter)
 		enc.SetIndent("", "  ")
-		return enc.Encode(mapped)
+
+		encodeErr := enc.Encode(mapped)
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
+		}
+
+		return nil
 	case "compact":
-		enc := json.NewEncoder(w)
-		return enc.Encode(mapped)
+		enc := json.NewEncoder(outputWriter)
+
+		encodeErr := enc.Encode(mapped)
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode compact JSON: %w", encodeErr)
+		}
+
+		return nil
 	case "count":
 		count := 0
-		if arr, ok := mapped["results"].([]any); ok {
+
+		if arr, isArr := mapped["results"].([]any); isArr {
 			count = len(arr)
 		}
-		fmt.Fprintf(w, "%d\n", count)
+
+		fmt.Fprintf(outputWriter, "%d\n", count)
+
 		return nil
 	default:
-		return fmt.Errorf("unsupported format: %s", format)
+		return fmt.Errorf("%w: %s", ErrUnsupportedQFmt, format)
 	}
 }
 
 func printDSLHelp() {
-	fmt.Println("DSL Syntax:")
-	fmt.Println("  filter(.type == \"Function\")     - Filter by node type")
-	fmt.Println("  filter(.type == \"Call\")         - Find function calls")
-	fmt.Println("  filter(.type == \"Identifier\")   - Find identifiers")
-	fmt.Println("  filter(.type == \"Literal\")      - Find literals")
-	fmt.Println()
+	fmt.Fprintln(os.Stdout, "DSL Syntax:")
+	fmt.Fprintln(os.Stdout, "  filter(.type == \"Function\")     - Filter by node type")
+	fmt.Fprintln(os.Stdout, "  filter(.type == \"Call\")         - Find function calls")
+	fmt.Fprintln(os.Stdout, "  filter(.type == \"Identifier\")   - Find identifiers")
+	fmt.Fprintln(os.Stdout, "  filter(.type == \"Literal\")      - Find literals")
+	fmt.Fprintln(os.Stdout)
 }
 
 func isJSONFile(file string) bool {
@@ -257,44 +340,59 @@ func isJSONFile(file string) bool {
 }
 
 func loadUASTFromJSON(file string) (*node.Node, error) {
-	f, err := os.Open(file)
+	jsonFile, err := os.Open(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", file, err)
 	}
-	defer f.Close()
-	var n node.Node
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&n); err != nil {
-		return nil, fmt.Errorf("failed to decode UAST from %s: %w", file, err)
+	defer jsonFile.Close()
+
+	var parsedNode node.Node
+
+	dec := json.NewDecoder(jsonFile)
+
+	decodeErr := dec.Decode(&parsedNode)
+	if decodeErr != nil {
+		return nil, fmt.Errorf("failed to decode UAST from %s: %w", file, decodeErr)
 	}
-	return &n, nil
+
+	return &parsedNode, nil
 }
 
-// Copy nodesToMap from main.go to this file for now, to resolve undefined error.
+// nodesToMap converts a slice of nodes to a map for JSON output.
 func nodesToMap(nodes []*node.Node) map[string]any {
 	if len(nodes) == 0 {
 		return map[string]any{"results": []any{}}
 	}
+
 	allLiterals := true
-	for _, node := range nodes {
-		if node.Type != "Literal" {
+
+	for _, currentNode := range nodes {
+		if currentNode.Type != "Literal" {
 			allLiterals = false
+
 			break
 		}
 	}
+
 	if allLiterals {
 		results := make([]any, len(nodes))
-		for i, node := range nodes {
-			results[i] = node.Token
+
+		for idx, currentNode := range nodes {
+			results[idx] = currentNode.Token
 		}
+
 		return map[string]any{"results": results}
 	}
+
 	if len(nodes) == 1 {
 		return map[string]any{"results": []any{nodes[0].ToMap()}}
 	}
+
 	results := make([]any, len(nodes))
-	for i, node := range nodes {
-		results[i] = node.ToMap()
+
+	for idx, currentNode := range nodes {
+		results[idx] = currentNode.ToMap()
 	}
+
 	return map[string]any{"results": results}
 }

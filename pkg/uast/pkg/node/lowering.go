@@ -1,16 +1,22 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 )
 
-// LowerDSL lowers a DSLNode AST to a QueryFunc
+// errUnsupportedDSLNodeType is returned for unknown DSL node types.
+var errUnsupportedDSLNodeType = errors.New("unsupported DSL node type")
+
+// LowerDSL lowers a DSLNode AST to a QueryFunc.
 func LowerDSL(ast DSLNode) (QueryFunc, error) {
 	return globalLowererRegistry.Lower(ast)
 }
 
+//nolint:gochecknoglobals // Singleton lowerer registry.
 var globalLowererRegistry *DSLNodeLowererRegistry
 
+//nolint:gochecknoinits // Required to break initialization cycle with LowerDSL.
 func init() {
 	globalLowererRegistry = NewDSLNodeLowererRegistry()
 	globalLowererRegistry.Register(PipelineType, &PipelineLowerer{})
@@ -24,104 +30,174 @@ func init() {
 	globalLowererRegistry.Register(RFilterType, &RFilterLowerer{})
 }
 
-// DSLNodeLowererRegistry manages lowerers for different node types
+// NewDSLNodeLowererRegistry creates a new DSLNodeLowererRegistry.
 func NewDSLNodeLowererRegistry() *DSLNodeLowererRegistry {
 	return &DSLNodeLowererRegistry{
 		lowerers: make(map[DSLNodeType]DSLNodeLowerer),
 	}
 }
 
-func (r *DSLNodeLowererRegistry) Register(nodeType DSLNodeType, lowerer DSLNodeLowerer) {
-	r.lowerers[nodeType] = lowerer
+// Register adds a lowerer for the given node type.
+func (registry *DSLNodeLowererRegistry) Register(nodeType DSLNodeType, lowerer DSLNodeLowerer) {
+	registry.lowerers[nodeType] = lowerer
 }
 
-func (r *DSLNodeLowererRegistry) Lower(node DSLNode) (QueryFunc, error) {
-	nodeType := ClassifyDSLNode(node)
-	lowerer, exists := r.lowerers[nodeType]
+// Lower dispatches a DSLNode to the appropriate lowerer.
+func (registry *DSLNodeLowererRegistry) Lower(dslNode DSLNode) (QueryFunc, error) {
+	nodeType := ClassifyDSLNode(dslNode)
+
+	lowerer, exists := registry.lowerers[nodeType]
 	if !exists {
-		return nil, fmt.Errorf("unsupported DSL node type: %T", node)
+		return nil, fmt.Errorf("%w: %T", errUnsupportedDSLNodeType, dslNode)
 	}
-	return lowerer.Lower(node)
+
+	return lowerer.Lower(dslNode)
 }
 
-// Lowerer implementations
+// Lowerer implementations.
 // Note: Type assertions below are safe because the registry routes by node type.
 // Each lowerer is only called with nodes of the correct type.
 
+// PipelineLowerer lowers pipeline nodes.
 type PipelineLowerer struct{}
 
-func (l *PipelineLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerPipeline(node.(*PipelineNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a PipelineNode to a QueryFunc.
+func (lowerer *PipelineLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	pipelineNode, ok := dslNode.(*PipelineNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected PipelineNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerPipeline(pipelineNode)
 }
 
+// MapLowerer lowers map nodes.
 type MapLowerer struct{}
 
-func (l *MapLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerMap(node.(*MapNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a MapNode to a QueryFunc.
+func (lowerer *MapLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	mapNode, ok := dslNode.(*MapNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected MapNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerMap(mapNode)
 }
 
+// FilterLowerer lowers filter nodes.
 type FilterLowerer struct{}
 
-func (l *FilterLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerFilter(node.(*FilterNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a FilterNode to a QueryFunc.
+func (lowerer *FilterLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	filterNode, ok := dslNode.(*FilterNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected FilterNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerFilter(filterNode)
 }
 
+// ReduceLowerer lowers reduce nodes.
 type ReduceLowerer struct{}
 
-func (l *ReduceLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerReduce(node.(*ReduceNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a ReduceNode to a QueryFunc.
+func (lowerer *ReduceLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	reduceNode, ok := dslNode.(*ReduceNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected ReduceNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerReduce(reduceNode)
 }
 
+// FieldLowerer lowers field access nodes.
 type FieldLowerer struct{}
 
-func (l *FieldLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerField(node.(*FieldNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a FieldNode to a QueryFunc.
+func (lowerer *FieldLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	fieldNode, ok := dslNode.(*FieldNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected FieldNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerField(fieldNode)
 }
 
+// LiteralLowerer lowers literal nodes.
 type LiteralLowerer struct{}
 
-func (l *LiteralLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerLiteral(node.(*LiteralNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a LiteralNode to a QueryFunc.
+func (lowerer *LiteralLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	literalNode, ok := dslNode.(*LiteralNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected LiteralNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerLiteral(literalNode)
 }
 
+// CallLowerer lowers call nodes.
 type CallLowerer struct{}
 
-func (l *CallLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerCall(node.(*CallNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts a CallNode to a QueryFunc.
+func (lowerer *CallLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	callNode, ok := dslNode.(*CallNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected CallNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerCall(callNode)
 }
 
+// RMapLowerer lowers recursive map nodes.
 type RMapLowerer struct{}
 
-func (l *RMapLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerRMap(node.(*RMapNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts an RMapNode to a QueryFunc.
+func (lowerer *RMapLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	rmapNode, ok := dslNode.(*RMapNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected RMapNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerRMap(rmapNode)
 }
 
+// RFilterLowerer lowers recursive filter nodes.
 type RFilterLowerer struct{}
 
-func (l *RFilterLowerer) Lower(node DSLNode) (QueryFunc, error) {
-	return lowerRFilter(node.(*RFilterNode)) //nolint:errcheck // Type guaranteed by registry routing
+// Lower converts an RFilterNode to a QueryFunc.
+func (lowerer *RFilterLowerer) Lower(dslNode DSLNode) (QueryFunc, error) {
+	rfilterNode, ok := dslNode.(*RFilterNode)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected RFilterNode, got %T", errUnsupportedDSLNodeType, dslNode)
+	}
+
+	return lowerRFilter(rfilterNode)
 }
 
-func lowerCall(n *CallNode) (QueryFunc, error) {
-	return globalOperatorRegistry.Handle(n)
+func lowerCall(callNode *CallNode) (QueryFunc, error) {
+	return globalOperatorRegistry.Handle(callNode)
 }
 
-// Core lowering functions
-func lowerField(n *FieldNode) (QueryFunc, error) {
+// Core lowering functions.
+func lowerField(fieldNode *FieldNode) (QueryFunc, error) {
 	return func(nodes []*Node) []*Node {
 		var out []*Node
-		for _, node := range nodes {
-			result := processFieldAccess(n, node)
+
+		for _, targetNode := range nodes {
+			result := processFieldAccess(fieldNode, targetNode)
+
 			if result != nil {
 				out = append(out, result...)
 			}
 		}
+
 		return out
 	}, nil
 }
 
-func lowerLiteral(n *LiteralNode) (QueryFunc, error) {
-	return func(nodes []*Node) []*Node {
-		return []*Node{NewLiteralNode(fmt.Sprint(n.Value))}
+func lowerLiteral(literalNode *LiteralNode) (QueryFunc, error) {
+	return func(_ []*Node) []*Node {
+		return []*Node{NewLiteralNode(fmt.Sprint(literalNode.Value))}
 	}, nil
 }

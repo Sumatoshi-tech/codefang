@@ -1,19 +1,21 @@
 package common
 
 import (
+	"slices"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-// MetricsProcessor handles extraction and calculation of metrics from reports
+// MetricsProcessor handles extraction and calculation of metrics from reports.
 type MetricsProcessor struct {
-	numericKeys []string
-	countKeys   []string
 	metrics     map[string]float64
 	counts      map[string]int
+	numericKeys []string
+	countKeys   []string
 	reportCount int
 }
 
-// NewMetricsProcessor creates a new MetricsProcessor with configurable key types
+// NewMetricsProcessor creates a new MetricsProcessor with configurable key types.
 func NewMetricsProcessor(numericKeys, countKeys []string) *MetricsProcessor {
 	return &MetricsProcessor{
 		numericKeys: numericKeys,
@@ -23,7 +25,7 @@ func NewMetricsProcessor(numericKeys, countKeys []string) *MetricsProcessor {
 	}
 }
 
-// ProcessReport extracts metrics from a single report
+// ProcessReport extracts metrics from a single report.
 func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 	if report == nil {
 		return
@@ -31,7 +33,7 @@ func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 
 	mp.reportCount++
 
-	// Process numeric metrics
+	// Process numeric metrics.
 	for key, value := range report {
 		if mp.isNumericMetric(key) {
 			if floatVal, ok := mp.extractFloat(value); ok {
@@ -39,7 +41,7 @@ func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 			}
 		}
 
-		// Process count metrics
+		// Process count metrics.
 		if mp.isCountMetric(key) {
 			if intVal, ok := mp.extractInt(value); ok {
 				mp.counts[key] += intVal
@@ -48,7 +50,7 @@ func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 	}
 }
 
-// CalculateAverages returns the calculated average metrics
+// CalculateAverages returns the calculated average metrics.
 func (mp *MetricsProcessor) CalculateAverages() map[string]float64 {
 	averages := make(map[string]float64)
 
@@ -61,73 +63,63 @@ func (mp *MetricsProcessor) CalculateAverages() map[string]float64 {
 	return averages
 }
 
-// GetCounts returns the total counts
+// GetCounts returns the total counts.
 func (mp *MetricsProcessor) GetCounts() map[string]int {
 	return mp.counts
 }
 
-// GetReportCount returns the total report count
+// GetReportCount returns the total report count.
 func (mp *MetricsProcessor) GetReportCount() int {
 	return mp.reportCount
 }
 
-// GetMetric returns a specific metric total
+// GetMetric returns a specific metric total.
 func (mp *MetricsProcessor) GetMetric(key string) float64 {
 	return mp.metrics[key]
 }
 
-// GetCount returns a specific count total
+// GetCount returns a specific count total.
 func (mp *MetricsProcessor) GetCount(key string) int {
 	return mp.counts[key]
 }
 
-// isNumericMetric checks if a key represents a numeric metric
+// isNumericMetric checks if a key represents a numeric metric.
 func (mp *MetricsProcessor) isNumericMetric(key string) bool {
-	for _, numericKey := range mp.numericKeys {
-		if key == numericKey {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(mp.numericKeys, key)
 }
 
-// isCountMetric checks if a key represents a count metric
+// isCountMetric checks if a key represents a count metric.
 func (mp *MetricsProcessor) isCountMetric(key string) bool {
-	for _, countKey := range mp.countKeys {
-		if key == countKey {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(mp.countKeys, key)
 }
 
-// extractFloat safely extracts a float value
-func (mp *MetricsProcessor) extractFloat(value interface{}) (float64, bool) {
-	switch v := value.(type) {
+// extractFloat safely extracts a float value.
+func (mp *MetricsProcessor) extractFloat(value any) (float64, bool) {
+	switch typedVal := value.(type) {
 	case float64:
-		return v, true
+		return typedVal, true
 	case int:
-		return float64(v), true
+		return float64(typedVal), true
 	case int32:
-		return float64(v), true
+		return float64(typedVal), true
 	case int64:
-		return float64(v), true
+		return float64(typedVal), true
 	default:
 		return 0, false
 	}
 }
 
-// extractInt safely extracts an int value
-func (mp *MetricsProcessor) extractInt(value interface{}) (int, bool) {
-	switch v := value.(type) {
+// extractInt safely extracts an int value.
+func (mp *MetricsProcessor) extractInt(value any) (int, bool) {
+	switch typedVal := value.(type) {
 	case int:
-		return v, true
+		return typedVal, true
 	case int32:
-		return int(v), true
+		return int(typedVal), true
 	case int64:
-		return int(v), true
+		return int(typedVal), true
 	case float64:
-		return int(v), true
+		return int(typedVal), true
 	default:
 		return 0, false
 	}

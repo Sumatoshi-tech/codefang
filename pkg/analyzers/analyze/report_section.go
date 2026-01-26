@@ -4,15 +4,15 @@ import "github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 
 // Metric represents a key-value metric for display.
 type Metric struct {
-	Label string // Display label (e.g., "Total Functions")
-	Value string // Pre-formatted value (e.g., "156")
+	Label string // Display label (e.g., "Total Functions").
+	Value string // Pre-formatted value (e.g., "156").
 }
 
 // DistributionItem represents a category in a distribution chart.
 type DistributionItem struct {
-	Label   string  // Category label (e.g., "Simple (1-5)")
-	Percent float64 // Percentage as 0-1
-	Count   int     // Absolute count
+	Label   string  // Category label (e.g., "Simple (1-5)").
+	Percent float64 // Percentage as 0-1.
+	Count   int     // Absolute count.
 }
 
 // Severity constants for Issue classification.
@@ -25,10 +25,10 @@ const (
 
 // Issue represents a problem or item to highlight.
 type Issue struct {
-	Name     string // Item name (e.g., function name)
-	Location string // File location (e.g., "pkg/foo/bar.go:42")
-	Value    string // Metric value (e.g., "12")
-	Severity string // "good", "fair", "poor", or "info"
+	Name     string // Item name (e.g., function name).
+	Location string // File location (e.g., "pkg/foo/bar.go:42").
+	Value    string // Metric value (e.g., "12").
+	Severity string // "good", "fair", "poor", or "info".
 }
 
 // ScoreInfoOnly indicates a section has no score (info only).
@@ -39,29 +39,29 @@ const ScoreLabelInfo = "Info"
 
 // ReportSection provides a standardized structure for analyzer reports.
 // Analyzers implement this to enable unified rendering.
-type ReportSection interface {
-	// SectionTitle returns the display title (e.g., "COMPLEXITY")
+type ReportSection interface { //nolint:interfacebloat // interface methods are all needed.
+	// SectionTitle returns the display title (e.g., "COMPLEXITY").
 	SectionTitle() string
 
-	// Score returns a 0-1 score, or ScoreInfoOnly for info-only sections
+	// Score returns a 0-1 score, or ScoreInfoOnly for info-only sections.
 	Score() float64
 
-	// ScoreLabel returns formatted score (e.g., "8/10" or "Info")
+	// ScoreLabel returns formatted score (e.g., "8/10" or "Info").
 	ScoreLabel() string
 
-	// StatusMessage returns a summary message (e.g., "Good - reasonable complexity")
+	// StatusMessage returns a summary message (e.g., "Good - reasonable complexity").
 	StatusMessage() string
 
-	// KeyMetrics returns ordered key metrics for display
+	// KeyMetrics returns ordered key metrics for display.
 	KeyMetrics() []Metric
 
-	// Distribution returns distribution data for bar charts
+	// Distribution returns distribution data for bar charts.
 	Distribution() []DistributionItem
 
-	// TopIssues returns the top N issues/items to highlight
+	// TopIssues returns the top N issues/items to highlight.
 	TopIssues(n int) []Issue
 
-	// AllIssues returns all issues for verbose mode
+	// AllIssues returns all issues for verbose mode.
 	AllIssues() []Issue
 }
 
@@ -94,6 +94,7 @@ func (b *BaseReportSection) ScoreLabel() string {
 	if b.ScoreValue < 0 {
 		return ScoreLabelInfo
 	}
+
 	return terminal.FormatScore(b.ScoreValue)
 }
 

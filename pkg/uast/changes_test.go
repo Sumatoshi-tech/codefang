@@ -1,4 +1,4 @@
-package uast
+package uast //nolint:testpackage // Tests need access to internal DetectChanges function.
 
 import (
 	"testing"
@@ -23,12 +23,15 @@ func TestDetectChanges_NodeAdded(t *testing.T) {
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeAdded {
 		t.Errorf("Expected ChangeAdded, got %s", change.Type)
 	}
+
 	if change.Before != nil {
 		t.Error("Expected Before to be nil for added node")
 	}
+
 	if change.After != after {
 		t.Error("Expected After to be the added node")
 	}
@@ -51,12 +54,15 @@ func TestDetectChanges_NodeRemoved(t *testing.T) {
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeRemoved {
 		t.Errorf("Expected ChangeRemoved, got %s", change.Type)
 	}
+
 	if change.Before != before {
 		t.Error("Expected Before to be the removed node")
 	}
+
 	if change.After != nil {
 		t.Error("Expected After to be nil for removed node")
 	}
@@ -96,12 +102,15 @@ func TestDetectChanges_NodeModified(t *testing.T) {
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeModified {
 		t.Errorf("Expected ChangeModified, got %s", change.Type)
 	}
+
 	if change.Before != before {
 		t.Error("Expected Before to be the original node")
 	}
+
 	if change.After != after {
 		t.Error("Expected After to be the modified node")
 	}
@@ -125,6 +134,7 @@ func TestDetectChanges_TypeChanged(t *testing.T) {
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeModified {
 		t.Errorf("Expected ChangeModified, got %s", change.Type)
 	}
@@ -160,6 +170,7 @@ func TestDetectChanges_PositionChanged(t *testing.T) {
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeModified {
 		t.Errorf("Expected ChangeModified, got %s", change.Type)
 	}
@@ -190,13 +201,14 @@ func TestDetectChanges_PositionChangedMinor(t *testing.T) {
 
 	changes := DetectChanges(before, after)
 
-	// The current implementation considers any position change as a modification
-	// Let's check what type of change we get
+	// The current implementation considers any position change as a modification.
+	// Let's check what type of change we get.
 	if len(changes) != 1 {
 		t.Fatalf("Expected 1 change for position change, got %d", len(changes))
 	}
 
 	change := changes[0]
+
 	if change.Type != ChangeModified {
 		t.Errorf("Expected ChangeModified, got %s", change.Type)
 	}
@@ -225,17 +237,21 @@ func TestDetectChanges_ChildrenAdded(t *testing.T) {
 	}
 
 	var parentModified, childAdded bool
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
 			parentModified = true
 		}
+
 		if change.Type == ChangeAdded && change.After != nil && change.After.Token == "func subtract" {
 			childAdded = true
 		}
 	}
+
 	if !parentModified {
 		t.Error("Expected parent node to be marked as modified")
 	}
+
 	if !childAdded {
 		t.Error("Expected to find added child 'func subtract'")
 	}
@@ -264,17 +280,21 @@ func TestDetectChanges_ChildrenRemoved(t *testing.T) {
 	}
 
 	var parentModified, childRemoved bool
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
 			parentModified = true
 		}
+
 		if change.Type == ChangeRemoved && change.Before != nil && change.Before.Token == "func subtract" {
 			childRemoved = true
 		}
 	}
+
 	if !parentModified {
 		t.Error("Expected parent node to be marked as modified")
 	}
+
 	if !childRemoved {
 		t.Error("Expected to find removed child 'func subtract'")
 	}
@@ -302,23 +322,29 @@ func TestDetectChanges_ChildrenModified(t *testing.T) {
 	}
 
 	var parentModified, childRemoved, childAdded bool
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
 			parentModified = true
 		}
+
 		if change.Type == ChangeRemoved && change.Before != nil && change.Before.Token == "func add" {
 			childRemoved = true
 		}
+
 		if change.Type == ChangeAdded && change.After != nil && change.After.Token == "func subtract" {
 			childAdded = true
 		}
 	}
+
 	if !parentModified {
 		t.Error("Expected parent node to be marked as modified")
 	}
+
 	if !childRemoved {
 		t.Error("Expected to find removed child 'func add'")
 	}
+
 	if !childAdded {
 		t.Error("Expected to find added child 'func subtract'")
 	}
@@ -343,16 +369,18 @@ func TestDetectChanges_GoFunctionBodyChanged(t *testing.T) {
 
 	changes := DetectChanges(before, after)
 
-	// When function body changes, we get modifications for the function and its children
+	// When function body changes, we get modifications for the function and its children.
 	if len(changes) != 3 {
 		t.Fatalf("Expected 3 changes (function + 2 children), got %d", len(changes))
 	}
 
-	// Check that we have function modification
+	// Check that we have function modification.
 	hasFunctionModification := false
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:function" {
 			hasFunctionModification = true
+
 			break
 		}
 	}
@@ -381,16 +409,18 @@ func TestDetectChanges_JavaClassChanged(t *testing.T) {
 
 	changes := DetectChanges(before, after)
 
-	// When class content changes, we get modifications for the class and its children
+	// When class content changes, we get modifications for the class and its children.
 	if len(changes) != 3 {
 		t.Fatalf("Expected 3 changes (class + 2 children), got %d", len(changes))
 	}
 
-	// Check that we have class modification
+	// Check that we have class modification.
 	hasClassModification := false
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "java:class" {
 			hasClassModification = true
+
 			break
 		}
 	}
@@ -419,16 +449,18 @@ func TestDetectChanges_JavaMethodChanged(t *testing.T) {
 
 	changes := DetectChanges(before, after)
 
-	// When method body changes, we get modifications for the method and its children
+	// When method body changes, we get modifications for the method and its children.
 	if len(changes) != 3 {
 		t.Fatalf("Expected 3 changes (method + 2 children), got %d", len(changes))
 	}
 
-	// Check that we have method modification
+	// Check that we have method modification.
 	hasMethodModification := false
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "java:method" {
 			hasMethodModification = true
+
 			break
 		}
 	}
@@ -457,16 +489,18 @@ func TestDetectChanges_JavaConstructorChanged(t *testing.T) {
 
 	changes := DetectChanges(before, after)
 
-	// When constructor body changes, we get modifications for the constructor and its children
+	// When constructor body changes, we get modifications for the constructor and its children.
 	if len(changes) != 3 {
 		t.Fatalf("Expected 3 changes (constructor + 2 children), got %d", len(changes))
 	}
 
-	// Check that we have constructor modification
+	// Check that we have constructor modification.
 	hasConstructorModification := false
+
 	for _, change := range changes {
 		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "java:constructor" {
 			hasConstructorModification = true
+
 			break
 		}
 	}
@@ -476,8 +510,9 @@ func TestDetectChanges_JavaConstructorChanged(t *testing.T) {
 	}
 }
 
+//nolint:gocognit,gocyclo,cyclop // Complex test scenario with many assertions.
 func TestDetectChanges_ComplexScenario(t *testing.T) {
-	// Test a complex scenario with multiple types of changes
+	// Test a complex scenario with multiple types of changes.
 	before := &node.Node{
 		Type: "go:file",
 		Children: []*node.Node{
@@ -490,27 +525,29 @@ func TestDetectChanges_ComplexScenario(t *testing.T) {
 	after := &node.Node{
 		Type: "go:file",
 		Children: []*node.Node{
-			{Type: "go:function", Token: "func add"},      // unchanged
-			{Type: "go:function", Token: "func subtract"}, // modified (reported as removed+added)
-			{Type: "go:constant", Token: "const y"},       // added
-			// removed: func multiply, var x
+			{Type: "go:function", Token: "func add"},      // Unchanged.
+			{Type: "go:function", Token: "func subtract"}, // Modified (reported as removed+added).
+			{Type: "go:constant", Token: "const y"},       // Added.
+			// Removed: func multiply, var x.
 		},
 	}
 
 	changes := DetectChanges(before, after)
 
-	// Should have 5 changes: 2 removed, 2 added, 1 modified
+	// Should have 5 changes: 2 removed, 2 added, 1 modified.
 	if len(changes) != 5 {
 		t.Fatalf("Expected 5 changes, got %d", len(changes))
 	}
 
 	var addedConstY, addedFuncSubtract, removedFuncMultiply, removedVarX, modified bool
+
 	for _, change := range changes {
 		switch change.Type {
 		case ChangeAdded:
 			if change.After != nil && change.After.Token == "const y" {
 				addedConstY = true
 			}
+
 			if change.After != nil && change.After.Token == "func subtract" {
 				addedFuncSubtract = true
 			}
@@ -518,6 +555,7 @@ func TestDetectChanges_ComplexScenario(t *testing.T) {
 			if change.Before != nil && change.Before.Token == "func multiply" {
 				removedFuncMultiply = true
 			}
+
 			if change.Before != nil && change.Before.Token == "var x" {
 				removedVarX = true
 			}
@@ -529,15 +567,19 @@ func TestDetectChanges_ComplexScenario(t *testing.T) {
 	if !addedConstY {
 		t.Error("Expected to find added child 'const y'")
 	}
+
 	if !addedFuncSubtract {
 		t.Error("Expected to find added child 'func subtract'")
 	}
+
 	if !removedFuncMultiply {
 		t.Error("Expected to find removed child 'func multiply'")
 	}
+
 	if !removedVarX {
 		t.Error("Expected to find removed child 'var x'")
 	}
+
 	if !modified {
 		t.Error("Expected to find at least one modification")
 	}

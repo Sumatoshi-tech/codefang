@@ -1,75 +1,84 @@
+// Package shotness provides shotness functionality.
 package shotness
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"unicode/utf8"
 
+	"github.com/go-git/go-git/v6"
+	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/sergi/go-diff/diffmatchpatch"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
+// ShotnessHistoryAnalyzer measures co-change frequency of code entities across commit history.
 type ShotnessHistoryAnalyzer struct {
-	// Configuration
-	DSLStruct string
-	DSLName   string
-
-	// Dependencies
+	l interface { //nolint:unused // used via dependency injection.
+		Warnf(format string, args ...any)
+	}
 	FileDiff    *plumbing.FileDiffAnalyzer
 	UASTChanges *plumbing.UASTChangesAnalyzer
-
-	// State
-	nodes  map[string]*nodeShotness
-	files  map[string]map[string]*nodeShotness
-	merges map[gitplumbing.Hash]bool
-
-	// Internal
-	l interface {
-		Warnf(format string, args ...interface{})
-	}
+	nodes       map[string]*nodeShotness
+	files       map[string]map[string]*nodeShotness
+	merges      map[gitplumbing.Hash]bool
+	DSLStruct   string
+	DSLName     string
 }
 
 type nodeShotness struct {
-	Count   int
-	Summary NodeSummary
 	Couples map[string]int
+	Summary NodeSummary
+	Count   int
 }
 
+// NodeSummary holds identifying information for a code node.
 type NodeSummary struct {
 	Type string
 	Name string
 	File string
 }
 
-func (node NodeSummary) String() string {
-	return node.Type + "_" + node.Name + "_" + node.File
+func (ns *NodeSummary) String() string {
+	return ns.Type + "_" + ns.Name + "_" + ns.File
 }
 
 const (
-	ConfigShotnessDSLStruct  = "Shotness.DSLStruct"
-	ConfigShotnessDSLName    = "Shotness.DSLName"
+	// ConfigShotnessDSLStruct is the configuration key for the DSL structure expression.
+	ConfigShotnessDSLStruct = "Shotness.DSLStruct"
+	// ConfigShotnessDSLName is the configuration key for the DSL name expression.
+	ConfigShotnessDSLName = "Shotness.DSLName"
+	// DefaultShotnessDSLStruct is the default DSL expression for selecting code structures.
 	DefaultShotnessDSLStruct = "filter(.roles has \"Function\")"
-	DefaultShotnessDSLName   = ".token"
+	// DefaultShotnessDSLName is the default DSL expression for extracting names.
+	DefaultShotnessDSLName = ".token"
 )
 
+// Name returns the name of the analyzer.
 func (s *ShotnessHistoryAnalyzer) Name() string {
 	return "Shotness"
 }
 
+// Flag returns the CLI flag for the analyzer.
 func (s *ShotnessHistoryAnalyzer) Flag() string {
 	return "shotness"
 }
 
+// Description returns a human-readable description of the analyzer.
 func (s *ShotnessHistoryAnalyzer) Description() string {
 	return "Structural hotness - a fine-grained alternative to --couples."
 }
 
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (s *ShotnessHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
@@ -89,40 +98,285 @@ func (s *ShotnessHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configur
 	}
 }
 
-func (s *ShotnessHistoryAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure sets up the analyzer with the provided facts.
+func (s *ShotnessHistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigShotnessDSLStruct].(string); exists {
 		s.DSLStruct = val
 	} else {
 		s.DSLStruct = DefaultShotnessDSLStruct
 	}
+
 	if val, exists := facts[ConfigShotnessDSLName].(string); exists {
 		s.DSLName = val
 	} else {
 		s.DSLName = DefaultShotnessDSLName
 	}
+
 	return nil
 }
 
-func (s *ShotnessHistoryAnalyzer) Initialize(repository *git.Repository) error {
+// Initialize prepares the analyzer for processing commits.
+func (s *ShotnessHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	s.nodes = map[string]*nodeShotness{}
 	s.files = map[string]map[string]*nodeShotness{}
 	s.merges = map[gitplumbing.Hash]bool{}
+
 	return nil
 }
 
-func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	// OneShotMergeProcessor logic
-	commit := ctx.Commit
-	shouldConsume := true
-	if commit.NumParents() > 1 {
-		if s.merges[commit.Hash] {
-			shouldConsume = false
-		} else {
-			s.merges[commit.Hash] = true
+// shouldConsumeCommit checks whether this commit should be processed,
+// implementing OneShotMergeProcessor logic for merge commits.
+func (s *ShotnessHistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) bool {
+	if commit.NumParents() <= 1 {
+		return true
+	}
+
+	if s.merges[commit.Hash] {
+		return false
+	}
+
+	s.merges[commit.Hash] = true
+
+	return true
+}
+
+// addNode registers or increments a node in the analyzer's tracking state.
+func (s *ShotnessHistoryAnalyzer) addNode(name string, n *node.Node, fileName string, allNodes map[string]bool) {
+	nodeSummary := NodeSummary{
+		Type: string(n.Type),
+		Name: name,
+		File: fileName,
+	}
+	key := nodeSummary.String()
+	exists := allNodes[key]
+	allNodes[key] = true
+
+	var count int
+	if ns := s.nodes[key]; ns != nil {
+		count = ns.Count
+	}
+
+	if count == 0 {
+		s.nodes[key] = &nodeShotness{
+			Summary: nodeSummary, Count: 1, Couples: map[string]int{}}
+
+		fmap := s.files[nodeSummary.File]
+		if fmap == nil {
+			fmap = map[string]*nodeShotness{}
+		}
+
+		fmap[key] = s.nodes[key]
+		s.files[nodeSummary.File] = fmap
+	} else if !exists {
+		s.nodes[key].Count = count + 1
+	}
+}
+
+// handleDeletion removes all nodes and file entries associated with a deleted file.
+func (s *ShotnessHistoryAnalyzer) handleDeletion(change uast.Change) {
+	for key, summary := range s.files[change.Change.From.Name] {
+		for subkey := range summary.Couples {
+			delete(s.nodes[subkey].Couples, key)
 		}
 	}
 
-	if !shouldConsume {
+	for key := range s.files[change.Change.From.Name] {
+		delete(s.nodes, key)
+	}
+
+	delete(s.files, change.Change.From.Name)
+}
+
+// handleInsertion extracts nodes from a newly inserted file and registers them.
+func (s *ShotnessHistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[string]bool) {
+	toName := change.Change.To.Name
+
+	nodes, err := s.extractNodes(change.After)
+	if err != nil {
+		return
+	}
+
+	for name, n := range nodes {
+		s.addNode(name, n, toName, allNodes)
+	}
+}
+
+// handleModification processes a file modification, including renames and diff-based node tracking.
+//
+//nolint:gocognit,cyclop,gocyclo // complexity is inherent to coordinating rename, diff, and node tracking logic.
+func (s *ShotnessHistoryAnalyzer) handleModification(
+	change uast.Change,
+	diffs map[string]pkgplumbing.FileDiffData,
+	allNodes map[string]bool,
+) {
+	toName := change.Change.To.Name
+
+	if change.Change.From.Name != toName {
+		s.applyRename(change.Change.From.Name, toName)
+	}
+
+	nodesBefore, err := s.extractNodes(change.Before)
+	if err != nil {
+		return
+	}
+
+	reversedNodesBefore := reverseNodeMap(nodesBefore)
+
+	nodesAfter, err := s.extractNodes(change.After)
+	if err != nil {
+		return
+	}
+
+	reversedNodesAfter := reverseNodeMap(nodesAfter)
+
+	diff, ok := diffs[toName]
+	if !ok {
+		return
+	}
+
+	line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
+	line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
+
+	var lineNumBefore, lineNumAfter int
+
+	for _, edit := range diff.Diffs {
+		size := utf8.RuneCountInString(edit.Text)
+		switch edit.Type {
+		case diffmatchpatch.DiffDelete:
+			for l := lineNumBefore; l < lineNumBefore+size; l++ {
+				if l < len(line2nodeBefore) {
+					for _, n := range line2nodeBefore[l] {
+						if id, idOK := reversedNodesBefore[n.ID]; idOK {
+							s.addNode(id, n, toName, allNodes)
+						}
+					}
+				}
+			}
+
+			lineNumBefore += size
+		case diffmatchpatch.DiffInsert:
+			for l := lineNumAfter; l < lineNumAfter+size; l++ {
+				if l < len(line2nodeAfter) {
+					for _, n := range line2nodeAfter[l] {
+						if id, idOK := reversedNodesAfter[n.ID]; idOK {
+							s.addNode(id, n, toName, allNodes)
+						}
+					}
+				}
+			}
+
+			lineNumAfter += size
+		case diffmatchpatch.DiffEqual:
+			lineNumBefore += size
+			lineNumAfter += size
+		}
+	}
+}
+
+// applyRename updates internal state when a file is renamed from oldName to newName.
+func (s *ShotnessHistoryAnalyzer) applyRename(oldName, newName string) {
+	oldFile := s.files[oldName]
+	newFile := map[string]*nodeShotness{}
+
+	s.files[newName] = newFile
+
+	for oldKey, ns := range oldFile {
+		ns.Summary.File = newName
+		newKey := ns.Summary.String()
+		newFile[newKey] = ns
+
+		s.nodes[newKey] = ns
+
+		for coupleKey, count := range ns.Couples {
+			coupleCouples := s.nodes[coupleKey].Couples
+			delete(coupleCouples, oldKey)
+			coupleCouples[newKey] = count
+		}
+	}
+
+	for key := range oldFile {
+		delete(s.nodes, key)
+	}
+
+	delete(s.files, oldName)
+}
+
+// updateCouplings increments the coupling counters between all co-changed nodes.
+func (s *ShotnessHistoryAnalyzer) updateCouplings(allNodes map[string]bool) {
+	for keyi := range allNodes {
+		for keyj := range allNodes {
+			if keyi == keyj {
+				continue
+			}
+
+			if n, ok := s.nodes[keyi]; ok {
+				n.Couples[keyj]++
+			}
+		}
+	}
+}
+
+// genLine2Node builds a mapping from line numbers to UAST nodes that span each line.
+func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
+	res := make([][]*node.Node, linesNum)
+
+	for _, uastNode := range nodes {
+		pos := uastNode.Pos
+		if pos == nil {
+			continue
+		}
+
+		startLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+
+		endLine := resolveEndLine(uastNode, pos)
+
+		for line := startLine; line <= endLine; line++ {
+			if line > 0 && line <= len(res) {
+				lineNodes := res[line-1]
+				if lineNodes == nil {
+					lineNodes = []*node.Node{}
+				}
+
+				lineNodes = append(lineNodes, uastNode)
+				res[line-1] = lineNodes
+			}
+		}
+	}
+
+	return res
+}
+
+// resolveEndLine determines the effective end line of a UAST node. If the node
+// has an explicit end line greater than its start line, that value is used.
+// Otherwise, the function walks the node's children to find the maximum line.
+func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
+	if pos.EndLine > pos.StartLine {
+		return int(pos.EndLine) //nolint:gosec // security concern is acceptable here.
+	}
+
+	endLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+
+	uastNode.VisitPreOrder(func(child *node.Node) {
+		if child.Pos == nil {
+			return
+		}
+
+		candidate := int(child.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		if child.Pos.EndLine > child.Pos.StartLine {
+			candidate = int(child.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
+		}
+
+		if candidate > endLine {
+			endLine = candidate
+		}
+	})
+
+	return endLine
+}
+
+// Consume processes a single commit with the provided dependency results.
+func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+	if !s.shouldConsumeCommit(ctx.Commit) {
 		return nil
 	}
 
@@ -130,188 +384,25 @@ func (s *ShotnessHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 
-	addNode := func(name string, node *node.Node, fileName string) {
-		nodeSummary := NodeSummary{
-			Type: string(node.Type),
-			Name: name,
-			File: fileName,
-		}
-		key := nodeSummary.String()
-		exists := allNodes[key]
-		allNodes[key] = true
-		var count int
-		if ns := s.nodes[key]; ns != nil {
-			count = ns.Count
-		}
-		if count == 0 {
-			s.nodes[key] = &nodeShotness{
-				Summary: nodeSummary, Count: 1, Couples: map[string]int{}}
-			fmap := s.files[nodeSummary.File]
-			if fmap == nil {
-				fmap = map[string]*nodeShotness{}
-			}
-			fmap[key] = s.nodes[key]
-			s.files[nodeSummary.File] = fmap
-		} else if !exists {
-			s.nodes[key].Count = count + 1
-		}
-	}
-
 	for _, change := range changesList {
-		if change.After == nil {
-			// Deletion
-			for key, summary := range s.files[change.Change.From.Name] {
-				for subkey := range summary.Couples {
-					delete(s.nodes[subkey].Couples, key)
-				}
-			}
-			for key := range s.files[change.Change.From.Name] {
-				delete(s.nodes, key)
-			}
-			delete(s.files, change.Change.From.Name)
-			continue
-		}
-		toName := change.Change.To.Name
-		if change.Before == nil {
-			// Insertion
-			nodes, err := s.extractNodes(change.After)
-			if err != nil {
-				continue
-			}
-			for name, node := range nodes {
-				addNode(name, node, toName)
-			}
-			continue
-		}
-		// Modification
-		if change.Change.From.Name != toName {
-			// Rename logic
-			oldFile := s.files[change.Change.From.Name]
-			newFile := map[string]*nodeShotness{}
-			s.files[toName] = newFile
-			for oldKey, ns := range oldFile {
-				ns.Summary.File = toName
-				newKey := ns.Summary.String()
-				newFile[newKey] = ns
-				s.nodes[newKey] = ns
-				for coupleKey, count := range ns.Couples {
-					coupleCouples := s.nodes[coupleKey].Couples
-					delete(coupleCouples, oldKey)
-					coupleCouples[newKey] = count
-				}
-			}
-			for key := range oldFile {
-				delete(s.nodes, key)
-			}
-			delete(s.files, change.Change.From.Name)
-		}
-
-		nodesBefore, err := s.extractNodes(change.Before)
-		if err != nil {
-			continue
-		}
-		reversedNodesBefore := reverseNodeMap(nodesBefore)
-		nodesAfter, err := s.extractNodes(change.After)
-		if err != nil {
-			continue
-		}
-		reversedNodesAfter := reverseNodeMap(nodesAfter)
-
-		genLine2Node := func(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
-			res := make([][]*node.Node, linesNum)
-			for _, uastNode := range nodes {
-				pos := uastNode.Pos
-				if pos == nil {
-					continue
-				}
-				startLine := int(pos.StartLine)
-				endLine := int(pos.StartLine)
-				if pos.EndLine > pos.StartLine {
-					endLine = int(pos.EndLine)
-				} else {
-					uastNode.VisitPreOrder(func(child *node.Node) {
-						if child.Pos != nil {
-							candidate := int(child.Pos.StartLine)
-							if child.Pos.EndLine > child.Pos.StartLine {
-								candidate = int(child.Pos.EndLine)
-							}
-							if candidate > endLine {
-								endLine = candidate
-							}
-						}
-					})
-				}
-				for l := startLine; l <= endLine; l++ {
-					if l > 0 && l <= len(res) {
-						lineNodes := res[l-1]
-						if lineNodes == nil {
-							lineNodes = []*node.Node{}
-						}
-						lineNodes = append(lineNodes, uastNode)
-						res[l-1] = lineNodes
-					}
-				}
-			}
-			return res
-		}
-
-		diff, ok := diffs[toName]
-		if !ok {
-			continue
-		}
-		line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
-		line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
-
-		var lineNumBefore, lineNumAfter int
-		for _, edit := range diff.Diffs {
-			size := utf8.RuneCountInString(edit.Text)
-			switch edit.Type {
-			case diffmatchpatch.DiffDelete:
-				for l := lineNumBefore; l < lineNumBefore+size; l++ {
-					if l < len(line2nodeBefore) {
-						nodes := line2nodeBefore[l]
-						for _, node := range nodes {
-							if id, ok := reversedNodesBefore[node.ID]; ok {
-								addNode(id, node, toName)
-							}
-						}
-					}
-				}
-				lineNumBefore += size
-			case diffmatchpatch.DiffInsert:
-				for l := lineNumAfter; l < lineNumAfter+size; l++ {
-					if l < len(line2nodeAfter) {
-						nodes := line2nodeAfter[l]
-						for _, node := range nodes {
-							if id, ok := reversedNodesAfter[node.ID]; ok {
-								addNode(id, node, toName)
-							}
-						}
-					}
-				}
-				lineNumAfter += size
-			case diffmatchpatch.DiffEqual:
-				lineNumBefore += size
-				lineNumAfter += size
-			}
+		switch {
+		case change.After == nil:
+			s.handleDeletion(change)
+		case change.Before == nil:
+			s.handleInsertion(change, allNodes)
+		default:
+			s.handleModification(change, diffs, allNodes)
 		}
 	}
 
-	for keyi := range allNodes {
-		for keyj := range allNodes {
-			if keyi == keyj {
-				continue
-			}
-			if n, ok := s.nodes[keyi]; ok {
-				n.Couples[keyj]++
-			}
-		}
-	}
+	s.updateCouplings(allNodes)
+
 	return nil
 }
 
+// Finalize completes the analysis and returns the result.
 func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
-	// ... logic to build report
+	// Logic to build report.
 	nodes := make([]NodeSummary, len(s.nodes))
 	counters := make([]map[int]int, len(s.nodes))
 
@@ -319,6 +410,7 @@ func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	for key := range s.nodes {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	reverseKeys := map[string]int{}
@@ -327,12 +419,13 @@ func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}
 
 	for i, key := range keys {
-		node := s.nodes[key]
-		nodes[i] = node.Summary
+		nd := s.nodes[key]
+		nodes[i] = nd.Summary
 		counter := map[int]int{}
 		counters[i] = counter
-		counter[i] = node.Count
-		for ck, val := range node.Couples {
+
+		counter[i] = nd.Count
+		for ck, val := range nd.Couples {
 			if idx, ok := reverseKeys[ck]; ok {
 				counter[idx] = val
 			}
@@ -345,31 +438,45 @@ func (s *ShotnessHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}, nil
 }
 
+// Fork creates a copy of the analyzer for parallel processing.
 func (s *ShotnessHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		clone := *s
-		// Shallow copy for shared state (legacy behavior)
+		// Shallow copy for shared state (legacy behavior).
 		res[i] = &clone
 	}
+
 	return res
 }
 
-func (s *ShotnessHistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+// Merge combines results from forked analyzer branches.
+func (s *ShotnessHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
-func (s *ShotnessHistoryAnalyzer) Serialize(result analyze.Report, binary bool, writer io.Writer) error {
-	nodes := result["Nodes"].([]NodeSummary)
-	counters := result["Counters"].([]map[int]int)
+// Serialize writes the analysis result to the given writer.
+func (s *ShotnessHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+	nodes, ok := result["Nodes"].([]NodeSummary)
+	if !ok {
+		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
+	}
+
+	counters, ok := result["Counters"].([]map[int]int)
+	if !ok {
+		return errors.New("expected []map[int]int for counters") //nolint:err113 // descriptive error for type assertion failure.
+	}
 
 	for i, summary := range nodes {
 		fmt.Fprintf(writer, "  - name: %s\n    file: %s\n    internal_role: %s\n    counters: {",
 			summary.Name, summary.File, summary.Type)
+
 		keys := make([]int, 0, len(counters[i]))
 		for key := range counters[i] {
 			keys = append(keys, key)
 		}
+
 		sort.Ints(keys)
+
 		for j, key := range keys {
 			val := counters[i][key]
 			if j < len(keys)-1 {
@@ -378,11 +485,14 @@ func (s *ShotnessHistoryAnalyzer) Serialize(result analyze.Report, binary bool, 
 				fmt.Fprintf(writer, "\"%d\":%d", key, val)
 			}
 		}
+
 		fmt.Fprintln(writer, "}")
 	}
+
 	return nil
 }
 
+// FormatReport writes the formatted analysis report to the given writer.
 func (s *ShotnessHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return s.Serialize(report, false, writer)
 }
@@ -391,25 +501,28 @@ func (s *ShotnessHistoryAnalyzer) extractNodes(root *node.Node) (map[string]*nod
 	if root == nil {
 		return map[string]*node.Node{}, nil
 	}
+
 	structs, err := root.FindDSL(s.DSLStruct)
 	if err != nil {
 		return nil, err
 	}
 	// ... (simplified exclusion logic for brevity, ideally copy full logic)
-	// Assuming shallow structure or non-nested for now
+	// Assuming shallow structure or non-nested for now.
 	res := map[string]*node.Node{}
-	for _, n := range structs {
-		// Name extraction
-		nameNodes, err := n.FindDSL(s.DSLName)
-		if err == nil && len(nameNodes) > 0 {
+
+	for _, structNode := range structs {
+		// Name extraction.
+		nameNodes, nameErr := structNode.FindDSL(s.DSLName)
+		if nameErr == nil && len(nameNodes) > 0 {
 			name := nameNodes[0].Token
 			if name != "" {
-				res[name] = n
+				res[name] = structNode
 			}
-		} else if n.Token != "" {
-			res[n.Token] = n
+		} else if structNode.Token != "" {
+			res[structNode.Token] = structNode
 		}
 	}
+
 	return res, nil
 }
 
@@ -418,5 +531,6 @@ func reverseNodeMap(nodes map[string]*node.Node) map[string]string {
 	for key, node := range nodes {
 		res[node.ID] = key
 	}
+
 	return res
 }

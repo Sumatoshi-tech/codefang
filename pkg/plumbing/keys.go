@@ -1,3 +1,4 @@
+// Package plumbing defines shared types, constants, and test helpers for the analysis pipeline.
 package plumbing
 
 const (
@@ -8,13 +9,13 @@ const (
 	DependencyTreeChanges = "changes"
 
 	// DependencyTick is the name of the dependency which DaysSinceStart provides - the number
-	// of ticks since the first commit in the analysed sequence.
+	// of ticks since the first commit in the analyzed sequence.
 	DependencyTick = "tick"
 
 	// FactCommitsByTick contains the mapping between day indices and the corresponding commits.
 	FactCommitsByTick = "TicksSinceStart.Commits"
 
-	// FactTickSize contains the time.Duration of each tick.
+	// FactTickSize contains the [time.Duration] of each tick.
 	FactTickSize = "TicksSinceStart.TickSize"
 
 	// DependencyBlobCache identifies the dependency provided by BlobCache.

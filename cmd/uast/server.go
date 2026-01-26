@@ -5,30 +5,39 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/spf13/cobra"
 )
 
+// minMappingURLParts is the minimum URL path parts for a mapping request.
+const minMappingURLParts = 3
+
+// ParseRequest holds the request body for the parse API endpoint.
 type ParseRequest struct {
+	UASTMaps map[string]uast.UASTMap `json:"uastmaps,omitempty"`
 	Code     string                  `json:"code"`
 	Language string                  `json:"language"`
-	UASTMaps map[string]uast.UASTMap `json:"uastmaps,omitempty"`
 }
 
+// QueryRequest holds the request body for the query API endpoint.
 type QueryRequest struct {
 	UAST  string `json:"uast"`
 	Query string `json:"query"`
 }
 
+// ParseResponse holds the response body for the parse API endpoint.
 type ParseResponse struct {
 	UAST  string `json:"uast"`
 	Error string `json:"error,omitempty"`
 }
 
+// QueryResponse holds the response body for the query API endpoint.
 type QueryResponse struct {
 	Results string `json:"results"`
 	Error   string `json:"error,omitempty"`
@@ -36,13 +45,14 @@ type QueryResponse struct {
 
 func serverCmd() *cobra.Command {
 	var port string
+
 	var staticDir string
 
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "Start UAST development server",
 		Long:  `Start a web server that provides UAST parsing and querying via HTTP API`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			startServer(port, staticDir)
 		},
 	}
@@ -54,194 +64,235 @@ func serverCmd() *cobra.Command {
 }
 
 func startServer(port, staticDir string) {
-	// API endpoints
+	// API endpoints.
 	http.HandleFunc("/api/parse", handleParse)
 	http.HandleFunc("/api/query", handleQuery)
 	http.HandleFunc("/api/mappings", handleGetMappingsList)
 	http.HandleFunc("/api/mappings/", handleGetMapping)
 
-	// Serve static files if directory is provided
+	// Serve static files if directory is provided.
 	if staticDir != "" {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/" {
-				http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+		http.HandleFunc("/", func(responseWriter http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/" {
+				http.ServeFile(responseWriter, request, filepath.Join(staticDir, "index.html"))
 			} else {
-				http.ServeFile(w, r, filepath.Join(staticDir, r.URL.Path[1:]))
+				http.ServeFile(responseWriter, request, filepath.Join(staticDir, request.URL.Path[1:]))
 			}
 		})
 	}
 
-	fmt.Printf("UAST Development Server starting on http://localhost:%s\n", port)
+	fmt.Fprintf(os.Stdout, "UAST Development Server starting on http://localhost:%s\n", port)
+
 	if staticDir != "" {
-		fmt.Printf("Serving static files from: %s\n", staticDir)
+		fmt.Fprintf(os.Stdout, "Serving static files from: %s\n", staticDir)
 	}
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+
+	log.Fatal(http.ListenAndServe(":"+port, nil)) //nolint:gosec // dev server, timeouts not required
 }
 
-func handleParse(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// writeJSON encodes the given value as JSON and writes it to the response writer.
+func writeJSON(responseWriter http.ResponseWriter, value any) {
+	responseWriter.Header().Set("Content-Type", "application/json")
+
+	encodeErr := json.NewEncoder(responseWriter).Encode(value)
+	if encodeErr != nil {
+		log.Printf("failed to encode JSON response: %v", encodeErr)
+	}
+}
+
+func handleParse(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
 	var req ParseRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+
+	decodeErr := json.NewDecoder(request.Body).Decode(&req)
+	if decodeErr != nil {
+		http.Error(responseWriter, "Invalid request body", http.StatusBadRequest)
+
 		return
 	}
 
 	response := ParseResponse{}
 
-	// Initialize parser
+	// Initialize parser.
 	parser, err := uast.NewParser()
 	if err != nil {
 		response.Error = fmt.Sprintf("Failed to initialize parser: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
-	// Add custom UAST maps if provided
-	if req.UASTMaps != nil && len(req.UASTMaps) > 0 {
+	// Add custom UAST maps if provided.
+	if len(req.UASTMaps) > 0 {
 		parser = parser.WithUASTMap(req.UASTMaps)
 	}
 
-	// Create filename with proper extension
+	// Create filename with proper extension.
 	filename := fmt.Sprintf("input.%s", getFileExtension(req.Language))
 
-	// Parse the code
-	node, err := parser.Parse(filename, []byte(req.Code))
-	if err != nil {
-		response.Error = fmt.Sprintf("Parse error: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+	// Parse the code.
+	parsedNode, parseErr := parser.Parse(filename, []byte(req.Code))
+	if parseErr != nil {
+		response.Error = fmt.Sprintf("Parse error: %v", parseErr)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
-	// Assign stable IDs
-	node.AssignStableIDs()
+	// Assign stable IDs.
+	parsedNode.AssignStableIDs()
 
-	// Convert to JSON
-	nodeMap := node.ToMap()
-	jsonData, err := json.MarshalIndent(nodeMap, "", "  ")
-	if err != nil {
-		response.Error = fmt.Sprintf("Failed to marshal UAST: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+	// Convert to JSON.
+	nodeMap := parsedNode.ToMap()
+
+	jsonData, marshalErr := json.MarshalIndent(nodeMap, "", "  ")
+	if marshalErr != nil {
+		response.Error = fmt.Sprintf("Failed to marshal UAST: %v", marshalErr)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
 	response.UAST = string(jsonData)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(responseWriter, response)
 }
 
-func handleQuery(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func handleQuery(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
 	var req QueryRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+
+	decodeErr := json.NewDecoder(request.Body).Decode(&req)
+	if decodeErr != nil {
+		http.Error(responseWriter, "Invalid request body", http.StatusBadRequest)
+
 		return
 	}
 
 	response := QueryResponse{}
 
-	// Parse the UAST JSON
-	var n *node.Node
-	if err := json.Unmarshal([]byte(req.UAST), &n); err != nil {
-		response.Error = fmt.Sprintf("Failed to parse UAST JSON: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+	// Parse the UAST JSON.
+	var parsedNode *node.Node
+
+	unmarshalErr := json.Unmarshal([]byte(req.UAST), &parsedNode)
+	if unmarshalErr != nil {
+		response.Error = fmt.Sprintf("Failed to parse UAST JSON: %v", unmarshalErr)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
-	// Execute the query
-	results, err := n.FindDSL(req.Query)
+	// Execute the query.
+	results, err := parsedNode.FindDSL(req.Query)
 	if err != nil {
 		response.Error = fmt.Sprintf("Query error: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
-	// Convert results to JSON
+	// Convert results to JSON.
 	resultsMap := nodesToMap(results)
-	jsonData, err := json.MarshalIndent(resultsMap, "", "  ")
-	if err != nil {
-		response.Error = fmt.Sprintf("Failed to marshal results: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+
+	jsonData, marshalErr := json.MarshalIndent(resultsMap, "", "  ")
+	if marshalErr != nil {
+		response.Error = fmt.Sprintf("Failed to marshal results: %v", marshalErr)
+		writeJSON(responseWriter, response)
+
 		return
 	}
 
 	response.Results = string(jsonData)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(responseWriter, response)
 }
 
-func handleGetMappingsList(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func handleGetMappingsList(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
-	// Initialize parser to get embedded mappings list
+	// Initialize parser to get embedded mappings list.
 	parser, err := uast.NewParser()
 	if err != nil {
-		http.Error(w, "Failed to initialize parser", http.StatusInternalServerError)
+		http.Error(responseWriter, "Failed to initialize parser", http.StatusInternalServerError)
+
 		return
 	}
 
 	mappings := parser.GetEmbeddedMappingsList()
-	jsonData, err := json.MarshalIndent(mappings, "", "  ")
-	if err != nil {
-		http.Error(w, "Failed to marshal mappings", http.StatusInternalServerError)
+
+	jsonData, marshalErr := json.MarshalIndent(mappings, "", "  ")
+	if marshalErr != nil {
+		http.Error(responseWriter, "Failed to marshal mappings", http.StatusInternalServerError)
+
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonData)
+	responseWriter.Header().Set("Content-Type", "application/json")
+
+	_, writeErr := responseWriter.Write(jsonData)
+	if writeErr != nil {
+		log.Printf("failed to write response: %v", writeErr)
+	}
 }
 
-func handleGetMapping(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func handleGetMapping(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
-	// Extract mapping name from URL path
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 { // e.g., /api/mappings/
-		http.Error(w, "Invalid mapping path", http.StatusBadRequest)
+	// Extract mapping name from URL path.
+	parts := strings.Split(request.URL.Path, "/")
+
+	if len(parts) < minMappingURLParts { // E.g., /api/mappings/.
+		http.Error(responseWriter, "Invalid mapping path", http.StatusBadRequest)
+
 		return
 	}
+
 	mappingName := parts[len(parts)-1]
 
-	// Initialize parser to get the specific mapping
+	// Initialize parser to get the specific mapping.
 	parser, err := uast.NewParser()
 	if err != nil {
-		http.Error(w, "Failed to initialize parser", http.StatusInternalServerError)
+		http.Error(responseWriter, "Failed to initialize parser", http.StatusInternalServerError)
+
 		return
 	}
 
-	mapping, err := parser.GetMapping(mappingName)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Mapping not found: %v", err), http.StatusNotFound)
+	mappingData, mappingErr := parser.GetMapping(mappingName)
+	if mappingErr != nil {
+		http.Error(responseWriter, fmt.Sprintf("Mapping not found: %v", mappingErr), http.StatusNotFound)
+
 		return
 	}
 
-	jsonData, err := json.MarshalIndent(mapping, "", "  ")
-	if err != nil {
-		http.Error(w, "Failed to marshal mapping", http.StatusInternalServerError)
+	jsonData, marshalErr := json.MarshalIndent(mappingData, "", "  ")
+	if marshalErr != nil {
+		http.Error(responseWriter, "Failed to marshal mapping", http.StatusInternalServerError)
+
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonData)
+	responseWriter.Header().Set("Content-Type", "application/json")
+
+	_, writeErr := responseWriter.Write(jsonData)
+	if writeErr != nil {
+		log.Printf("failed to write response: %v", writeErr)
+	}
 }
 
 func getFileExtension(language string) string {
@@ -271,8 +322,9 @@ func getFileExtension(language string) string {
 		"sql":        "sql",
 	}
 
-	if ext, ok := extensions[strings.ToLower(language)]; ok {
+	if ext, found := extensions[strings.ToLower(language)]; found {
 		return ext
 	}
+
 	return "txt"
 }

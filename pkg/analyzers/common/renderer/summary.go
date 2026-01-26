@@ -8,7 +8,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 )
 
-// Summary constants
+// Summary constants.
 const (
 	MinSectionsForSummary = 2
 	SummaryTitle          = "CODE ANALYSIS REPORT"
@@ -30,7 +30,9 @@ type ExecutiveSummary struct {
 // Returns ScoreInfoOnly if no scored sections exist.
 func (s *ExecutiveSummary) OverallScore() float64 {
 	var total float64
+
 	var count int
+
 	for _, section := range s.Sections {
 		score := section.Score()
 		if score >= 0 {
@@ -38,9 +40,11 @@ func (s *ExecutiveSummary) OverallScore() float64 {
 			count++
 		}
 	}
+
 	if count == 0 {
 		return analyze.ScoreInfoOnly
 	}
+
 	return total / float64(count)
 }
 
@@ -50,25 +54,28 @@ func (s *ExecutiveSummary) OverallScoreLabel() string {
 	if score < 0 {
 		return analyze.ScoreLabelInfo
 	}
+
 	return terminal.FormatScore(score)
 }
 
 // RenderSummary produces the executive summary output.
 func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
-	var parts []string
+	parts := make([]string, 0, 4+len(summary.Sections)) //nolint:mnd // 4 fixed parts: header, blank, column headers, separator.
 
-	// Header with title and overall score
+	// Header with title and overall score.
 	title := r.config.Colorize(SummaryTitle, terminal.ColorBlue)
 	overallScore := summary.OverallScore()
+
 	overallLabel := summary.OverallScoreLabel()
 	if overallScore >= 0 {
 		overallLabel = r.config.Colorize(overallLabel, terminal.ColorForScore(overallScore))
 	}
+
 	rightText := SummaryOverallPrefix + overallLabel
 	header := terminal.DrawHeader(title, rightText, r.config.Width)
 	parts = append(parts, header)
 
-	// Column headers
+	// Column headers.
 	indent := strings.Repeat(" ", IndentWidth)
 	headerRow := fmt.Sprintf("%s%s%s%s",
 		indent,
@@ -77,21 +84,23 @@ func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
 		SummaryStatusCol,
 	)
 	headerRow = r.config.Colorize(headerRow, terminal.ColorGray)
-	parts = append(parts, "")
-	parts = append(parts, headerRow)
 
-	// Separator
-	separatorWidth := r.config.Width - (IndentWidth * 2)
+	parts = append(parts, "", headerRow)
+
+	// Separator.
+	separatorWidth := r.config.Width - (IndentWidth * separatorWidthValue)
 	parts = append(parts, fmt.Sprintf("%s%s", indent, terminal.DrawSeparator(separatorWidth)))
 
-	// Analyzer rows
+	// Analyzer rows.
 	for _, section := range summary.Sections {
 		name := terminal.PadRight(section.SectionTitle(), SummaryAnalyzerWidth)
 		score := section.ScoreLabel()
+
 		sectionScore := section.Score()
 		if sectionScore >= 0 {
 			score = r.config.Colorize(score, terminal.ColorForScore(sectionScore))
 		}
+
 		score = terminal.PadRight(score, SummaryScoreWidth)
 		message := section.StatusMessage()
 		parts = append(parts, fmt.Sprintf("%s%s%s%s", indent, name, score, message))
@@ -101,10 +110,11 @@ func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
 }
 
 // NewExecutiveSummary creates an ExecutiveSummary from report sections.
-func NewExecutiveSummary(sections []analyze.ReportSection) *ExecutiveSummary {
+func NewExecutiveSummary(sections []analyze.ReportSection) *ExecutiveSummary { //nolint:funcorder // function order is intentional.
 	if sections == nil {
 		sections = []analyze.ReportSection{}
 	}
+
 	return &ExecutiveSummary{
 		Sections: sections,
 	}

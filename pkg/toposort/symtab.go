@@ -14,50 +14,54 @@ func NewSymbolTable() *SymbolTable {
 	return &SymbolTable{
 		strToID: make(map[string]int),
 		idToStr: make([]string, 0),
+		lock:    sync.RWMutex{},
 	}
 }
 
 // Intern returns the unique ID for the given string.
 // If the string is already interned, it returns the existing ID.
 // Otherwise, it assigns a new ID and returns it.
-func (s *SymbolTable) Intern(name string) int {
-	s.lock.RLock()
-	id, exists := s.strToID[name]
-	s.lock.RUnlock()
+func (table *SymbolTable) Intern(name string) int {
+	table.lock.RLock()
+	symbolID, exists := table.strToID[name]
+	table.lock.RUnlock()
 
 	if exists {
-		return id
+		return symbolID
 	}
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	table.lock.Lock()
+	defer table.lock.Unlock()
 
-	// Double check
-	if id, exists := s.strToID[name]; exists {
-		return id
+	// Double check.
+	if existingID, found := table.strToID[name]; found {
+		return existingID
 	}
 
-	id = len(s.idToStr)
-	s.idToStr = append(s.idToStr, name)
-	s.strToID[name] = id
-	return id
+	symbolID = len(table.idToStr)
+	table.idToStr = append(table.idToStr, name)
+	table.strToID[name] = symbolID
+
+	return symbolID
 }
 
 // Resolve returns the string associated with the given ID.
 // Returns an empty string if the ID is invalid.
-func (s *SymbolTable) Resolve(id int) string {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+func (table *SymbolTable) Resolve(id int) string {
+	table.lock.RLock()
+	defer table.lock.RUnlock()
 
-	if id < 0 || id >= len(s.idToStr) {
+	if id < 0 || id >= len(table.idToStr) {
 		return ""
 	}
-	return s.idToStr[id]
+
+	return table.idToStr[id]
 }
 
 // Len returns the number of symbols in the table.
-func (s *SymbolTable) Len() int {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return len(s.idToStr)
+func (table *SymbolTable) Len() int {
+	table.lock.RLock()
+	defer table.lock.RUnlock()
+
+	return len(table.idToStr)
 }

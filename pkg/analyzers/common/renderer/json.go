@@ -4,20 +4,20 @@ import "github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 
 // JSONReport is the top-level structured JSON output.
 type JSONReport struct {
-	OverallScore      float64       `json:"overall_score"`
 	OverallScoreLabel string        `json:"overall_score_label"`
 	Sections          []JSONSection `json:"sections"`
+	OverallScore      float64       `json:"overall_score"`
 }
 
 // JSONSection represents one analyzer's output in JSON.
 type JSONSection struct {
 	Title        string             `json:"title"`
-	Score        float64            `json:"score"`
 	ScoreLabel   string             `json:"score_label"`
 	Status       string             `json:"status"`
 	Metrics      []JSONMetric       `json:"metrics"`
 	Distribution []JSONDistribution `json:"distribution,omitempty"`
 	Issues       []JSONIssue        `json:"issues"`
+	Score        float64            `json:"score"`
 }
 
 // JSONMetric is a key-value metric in JSON output.
@@ -43,13 +43,17 @@ type JSONIssue struct {
 
 // SectionToJSON converts a ReportSection to a JSONSection.
 func SectionToJSON(section analyze.ReportSection) JSONSection {
-	metrics := make([]JSONMetric, 0)
-	for _, m := range section.KeyMetrics() {
+	keyMetrics := section.KeyMetrics()
+
+	metrics := make([]JSONMetric, 0, len(keyMetrics))
+	for _, m := range keyMetrics {
 		metrics = append(metrics, JSONMetric{Label: m.Label, Value: m.Value})
 	}
 
-	var distribution []JSONDistribution
-	for _, d := range section.Distribution() {
+	dist := section.Distribution()
+
+	distribution := make([]JSONDistribution, 0, len(dist))
+	for _, d := range dist {
 		distribution = append(distribution, JSONDistribution{
 			Label:   d.Label,
 			Percent: d.Percent,
@@ -57,8 +61,10 @@ func SectionToJSON(section analyze.ReportSection) JSONSection {
 		})
 	}
 
-	issues := make([]JSONIssue, 0)
-	for _, i := range section.AllIssues() {
+	allIssues := section.AllIssues()
+
+	issues := make([]JSONIssue, 0, len(allIssues))
+	for _, i := range allIssues {
 		issues = append(issues, JSONIssue{
 			Name:     i.Name,
 			Location: i.Location,

@@ -2,12 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license.
 
-package levenshtein
+package levenshtein_test
 
 import (
 	"testing"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 )
 
+//nolint:gochecknoglobals // test table data.
 var distanceTests = []struct {
 	first  string
 	second string
@@ -27,8 +30,9 @@ var distanceTests = []struct {
 }
 
 func TestDistance(t *testing.T) {
+	t.Parallel()
 
-	lev := &Context{}
+	lev := &levenshtein.Context{}
 
 	for index, distanceTest := range distanceTests {
 		result := lev.Distance(distanceTest.first, distanceTest.second)
@@ -47,10 +51,10 @@ func BenchmarkDistance(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	c := &Context{}
+	ctx := &levenshtein.Context{}
 
-	for i := 0; i < b.N; i++ {
-		total += c.Distance(s1, s2)
+	for b.Loop() {
+		total += ctx.Distance(s1, s2)
 	}
 
 	if total == 0 {
@@ -66,8 +70,9 @@ func BenchmarkDistanceOriginal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	ctx := Context{}
-	for i := 0; i < b.N; i++ {
+	ctx := levenshtein.Context{}
+
+	for b.Loop() {
 		total += ctx.Distance(s1, s2)
 	}
 

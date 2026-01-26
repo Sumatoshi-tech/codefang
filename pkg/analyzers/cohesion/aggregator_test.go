@@ -1,12 +1,15 @@
-package cohesion
+package cohesion //nolint:testpackage // testing internal implementation.
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 func TestNewCohesionAggregator(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewCohesionAggregator()
 
 	if aggregator == nil {
@@ -19,45 +22,44 @@ func TestNewCohesionAggregator(t *testing.T) {
 }
 
 func TestCohesionAggregatorConfig(t *testing.T) {
+	t.Parallel()
+
 	config := buildAggregatorConfig()
 
-	// Verify numeric keys
+	// Verify numeric keys.
 	expectedNumericKeys := []string{"lcom", "cohesion_score", "function_cohesion"}
 	if len(config.numericKeys) != len(expectedNumericKeys) {
 		t.Errorf("Expected %d numeric keys, got %d", len(expectedNumericKeys), len(config.numericKeys))
 	}
 
 	for _, expected := range expectedNumericKeys {
-		found := false
-		for _, key := range config.numericKeys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(config.numericKeys, expected)
+
 		if !found {
 			t.Errorf("Expected numeric key '%s' not found", expected)
 		}
 	}
 
-	// Verify count keys
+	// Verify count keys.
 	expectedCountKeys := []string{"total_functions"}
 	if len(config.countKeys) != len(expectedCountKeys) {
 		t.Errorf("Expected %d count keys, got %d", len(expectedCountKeys), len(config.countKeys))
 	}
 
-	// Verify message builder exists
+	// Verify message builder exists.
 	if config.messageBuilder == nil {
 		t.Error("Expected messageBuilder to be non-nil")
 	}
 
-	// Verify empty result builder exists
+	// Verify empty result builder exists.
 	if config.emptyResultBuilder == nil {
 		t.Error("Expected emptyResultBuilder to be non-nil")
 	}
 }
 
 func TestCohesionGetNumericKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getNumericKeys()
 
 	expectedKeys := []string{"lcom", "cohesion_score", "function_cohesion"}
@@ -66,13 +68,8 @@ func TestCohesionGetNumericKeys(t *testing.T) {
 	}
 
 	for _, expected := range expectedKeys {
-		found := false
-		for _, key := range keys {
-			if key == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(keys, expected)
+
 		if !found {
 			t.Errorf("Expected numeric key '%s' not found", expected)
 		}
@@ -80,6 +77,8 @@ func TestCohesionGetNumericKeys(t *testing.T) {
 }
 
 func TestCohesionGetCountKeys(t *testing.T) {
+	t.Parallel()
+
 	keys := getCountKeys()
 
 	expectedKeys := []string{"total_functions"}
@@ -93,13 +92,15 @@ func TestCohesionGetCountKeys(t *testing.T) {
 }
 
 func TestBuildMessageBuilder(t *testing.T) {
+	t.Parallel()
+
 	messageBuilder := buildMessageBuilder()
 
 	if messageBuilder == nil {
 		t.Fatal("Expected non-nil messageBuilder")
 	}
 
-	// Test the message builder function
+	// Test the message builder function.
 	message := messageBuilder(0.9)
 	if message == "" {
 		t.Error("Expected non-empty message")
@@ -107,18 +108,20 @@ func TestBuildMessageBuilder(t *testing.T) {
 }
 
 func TestCohesionGetCohesionMessage(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		score    float64
 		contains string
+		score    float64
 	}{
-		{0.9, "Excellent"},
-		{0.8, "Excellent"},
-		{0.7, "Good"},
-		{0.6, "Good"},
-		{0.5, "Fair"},
-		{0.3, "Fair"},
-		{0.2, "Poor"},
-		{0.1, "Poor"},
+		{"Excellent", 0.9},
+		{"Excellent", 0.8},
+		{"Good", 0.7},
+		{"Good", 0.6},
+		{"Fair", 0.5},
+		{"Fair", 0.3},
+		{"Poor", 0.2},
+		{"Poor", 0.1},
 	}
 
 	for _, tt := range tests {
@@ -126,7 +129,7 @@ func TestCohesionGetCohesionMessage(t *testing.T) {
 		if message == "" {
 			t.Errorf("getCohesionMessage(%v) returned empty string", tt.score)
 		}
-		// Just verify the function returns a message
+		// Just verify the function returns a message.
 		if len(message) < 10 {
 			t.Errorf("getCohesionMessage(%v) returned too short message: %s", tt.score, message)
 		}
@@ -134,6 +137,8 @@ func TestCohesionGetCohesionMessage(t *testing.T) {
 }
 
 func TestBuildEmptyResultBuilder(t *testing.T) {
+	t.Parallel()
+
 	emptyResultBuilder := buildEmptyResultBuilder()
 
 	if emptyResultBuilder == nil {
@@ -147,6 +152,8 @@ func TestBuildEmptyResultBuilder(t *testing.T) {
 }
 
 func TestCreateEmptyResult(t *testing.T) {
+	t.Parallel()
+
 	result := createEmptyResult()
 
 	if result == nil {
@@ -178,9 +185,11 @@ func TestCreateEmptyResult(t *testing.T) {
 }
 
 func TestCohesionAggregator_Aggregate_WithNilReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewCohesionAggregator()
 
-	// Aggregate with nil report should not panic
+	// Aggregate with nil report should not panic.
 	aggregator.Aggregate(map[string]analyze.Report{"cohesion": nil})
 
 	result := aggregator.GetResult()
@@ -189,13 +198,15 @@ func TestCohesionAggregator_Aggregate_WithNilReport(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	// Should return empty result values
+	// Should return empty result values.
 	if total, ok := result["total_functions"]; !ok || total != 0 {
 		t.Errorf("Expected total_functions=0 for nil report, got %v", total)
 	}
 }
 
 func TestCohesionAggregator_MultipleAggregations(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewCohesionAggregator()
 
 	report1 := analyze.Report{
@@ -217,7 +228,7 @@ func TestCohesionAggregator_MultipleAggregations(t *testing.T) {
 
 	result := aggregator.GetResult()
 
-	// Check total functions are summed
+	// Check total functions are summed.
 	if total, ok := result["total_functions"]; !ok || total != 5 {
 		t.Errorf("Expected total_functions=5, got %v", total)
 	}

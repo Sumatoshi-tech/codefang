@@ -7,11 +7,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 )
 
-// Section rendering constants
+// Section rendering constants.
 const (
 	SectionTitle = "HALSTEAD"
 
-	// Score thresholds map difficulty to 0-1 score (inverted)
+	// ScoreExcellentMax is the maximum difficulty for an excellent Halstead score.
 	ScoreExcellentMax = 5.0
 	ScoreGoodMax      = 15.0
 	ScoreFairMax      = 30.0
@@ -21,7 +21,7 @@ const (
 	ScoreFair      = 0.6
 	ScorePoor      = 0.3
 
-	// Metric labels
+	// MetricTotalFunctions is the label for the total functions metric.
 	MetricTotalFunctions = "Total Functions"
 	MetricVocabulary     = "Vocabulary"
 	MetricVolume         = "Volume"
@@ -29,7 +29,7 @@ const (
 	MetricEffort         = "Effort"
 	MetricEstBugs        = "Est. Bugs"
 
-	// Distribution thresholds for volume
+	// DistLowMax is the maximum volume for the "low" distribution bucket.
 	DistLowMax     = 100
 	DistMedMax     = 1000
 	DistHighMax    = 5000
@@ -38,12 +38,12 @@ const (
 	DistLabelHigh  = "High (1001-5000)"
 	DistLabelVHigh = "Very High (>5000)"
 
-	// Issue severity thresholds for effort
+	// IssueSeverityFairMin is the minimum effort value for fair severity.
 	IssueSeverityFairMin = 10000.0
 	IssueSeverityPoorMin = 50000.0
 	IssueValuePrefix     = "effort="
 
-	// Report key names
+	// KeyTotalFunctions is the report key for the total number of functions.
 	KeyTotalFunctions = "total_functions"
 	KeyVocabulary     = "vocabulary"
 	KeyVolume         = "volume"
@@ -56,13 +56,14 @@ const (
 	KeyFuncEffort     = "effort"
 	KeyFuncVolume     = "volume"
 
-	// Default status message
+	// DefaultStatusMessage is the fallback message when no Halstead data is available.
 	DefaultStatusMessage = "No Halstead data available"
 )
 
 // HalsteadReportSection implements analyze.ReportSection for Halstead analysis.
 type HalsteadReportSection struct {
 	analyze.BaseReportSection
+
 	report analyze.Report
 }
 
@@ -73,6 +74,7 @@ func NewHalsteadReportSection(report analyze.Report) *HalsteadReportSection {
 	}
 
 	difficulty := reportutil.GetFloat64(report, KeyDifficulty)
+
 	msg := reportutil.GetString(report, KeyMessage)
 	if msg == "" {
 		msg = DefaultStatusMessage
@@ -124,6 +126,7 @@ func (s *HalsteadReportSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(issues) {
 		return issues
 	}
+
 	return issues[:n]
 }
 
@@ -139,7 +142,7 @@ func (s *HalsteadReportSection) buildSortedIssues() []analyze.Issue {
 		return nil
 	}
 
-	// Sort functions by effort descending before building issues
+	// Sort functions by effort descending before building issues.
 	sort.Slice(functions, func(i, j int) bool {
 		return reportutil.MapFloat64(functions[i], KeyFuncEffort) > reportutil.MapFloat64(functions[j], KeyFuncEffort)
 	})
@@ -158,7 +161,7 @@ func (s *HalsteadReportSection) buildSortedIssues() []analyze.Issue {
 	return issues
 }
 
-// --- Score calculation ---
+// --- Score calculation ---.
 
 func calculateScore(difficulty float64) float64 {
 	switch {
@@ -173,7 +176,7 @@ func calculateScore(difficulty float64) float64 {
 	}
 }
 
-// --- Distribution helpers ---
+// --- Distribution helpers ---.
 
 type volumeDistCounts struct {
 	low      int
@@ -182,8 +185,9 @@ type volumeDistCounts struct {
 	veryHigh int
 }
 
-func categorizeVolume(functions []map[string]interface{}) volumeDistCounts {
+func categorizeVolume(functions []map[string]any) volumeDistCounts {
 	var counts volumeDistCounts
+
 	for _, fn := range functions {
 		vol := reportutil.MapFloat64(fn, KeyFuncVolume)
 		switch {
@@ -197,10 +201,11 @@ func categorizeVolume(functions []map[string]interface{}) volumeDistCounts {
 			counts.veryHigh++
 		}
 	}
+
 	return counts
 }
 
-// --- Severity helpers ---
+// --- Severity helpers ---.
 
 func severityForEffort(effort float64) string {
 	switch {

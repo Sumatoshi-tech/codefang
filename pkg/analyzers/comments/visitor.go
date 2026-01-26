@@ -6,16 +6,14 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// CommentsVisitor implements NodeVisitor for comment analysis
+// CommentsVisitor implements NodeVisitor for comment analysis.
 type CommentsVisitor struct {
+	extractor *common.DataExtractor
 	comments  []*node.Node
 	functions []*node.Node
-	
-	// Helpers
-	extractor *common.DataExtractor
 }
 
-// NewCommentsVisitor creates a new CommentsVisitor
+// NewCommentsVisitor creates a new CommentsVisitor.
 func NewCommentsVisitor() *CommentsVisitor {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
@@ -31,7 +29,8 @@ func NewCommentsVisitor() *CommentsVisitor {
 	}
 }
 
-func (v *CommentsVisitor) OnEnter(n *node.Node, depth int) {
+// OnEnter is called when entering a node during AST traversal.
+func (v *CommentsVisitor) OnEnter(n *node.Node, _ int) {
 	if n.Type == node.UASTComment {
 		v.comments = append(v.comments, n)
 	}
@@ -41,10 +40,12 @@ func (v *CommentsVisitor) OnEnter(n *node.Node, depth int) {
 	}
 }
 
-func (v *CommentsVisitor) OnExit(n *node.Node, depth int) {
-	// Nothing to do on exit
+// OnExit is called when exiting a node during AST traversal.
+func (v *CommentsVisitor) OnExit(_ *node.Node, _ int) {
+	// Nothing to do on exit.
 }
 
+// GetReport returns the collected analysis report.
 func (v *CommentsVisitor) GetReport() analyze.Report {
 	analyzer := &CommentsAnalyzer{
 		traverser: common.NewUASTTraverser(common.TraversalConfig{}),
@@ -62,7 +63,7 @@ func (v *CommentsVisitor) GetReport() analyze.Report {
 	return analyzer.buildResult(commentDetails, v.functions, metrics)
 }
 
-func (v *CommentsVisitor) isFunction(n *node.Node) bool {
+func (v *CommentsVisitor) isFunction(target *node.Node) bool {
 	functionTypes := map[node.Type]bool{
 		node.UASTFunction:  true,
 		node.UASTMethod:    true,
@@ -70,5 +71,6 @@ func (v *CommentsVisitor) isFunction(n *node.Node) bool {
 		node.UASTInterface: true,
 		node.UASTStruct:    true,
 	}
-	return functionTypes[n.Type]
+
+	return functionTypes[target.Type]
 }

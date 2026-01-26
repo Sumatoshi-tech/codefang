@@ -6,70 +6,78 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// CommentsAnalyzer provides comment placement analysis
+// MaxDepthValue is the default maximum UAST traversal depth for comment analysis.
+const (
+	MaxDepthValue = 10
+	magic500      = 500
+)
+
+const msgGoodCommentQuality = "Good comment quality with room for improvement"
+
+// CommentsAnalyzer provides comment placement analysis.
 type CommentsAnalyzer struct {
 	traverser *common.UASTTraverser
 	extractor *common.DataExtractor
 }
 
-// CommentMetrics holds comment analysis results
+// CommentMetrics holds comment analysis results.
 type CommentMetrics struct {
+	FunctionSummary     map[string]FunctionInfo `json:"function_summary"`
+	CommentDetails      []CommentDetail         `json:"comment_details"`
 	TotalComments       int                     `json:"total_comments"`
 	GoodComments        int                     `json:"good_comments"`
 	BadComments         int                     `json:"bad_comments"`
 	OverallScore        float64                 `json:"overall_score"`
-	CommentDetails      []CommentDetail         `json:"comment_details"`
-	FunctionSummary     map[string]FunctionInfo `json:"function_summary"`
 	TotalFunctions      int                     `json:"total_functions"`
 	DocumentedFunctions int                     `json:"documented_functions"`
 }
 
-// CommentDetail holds information about a specific comment
+// CommentDetail holds information about a specific comment.
 type CommentDetail struct {
-	Type           string  `json:"type"`
+	Quality        string  `json:"quality"`
 	Token          string  `json:"token"`
 	Position       string  `json:"position"`
-	Score          float64 `json:"score"`
-	IsGood         bool    `json:"is_good"`
+	Type           string  `json:"type"`
+	Recommendation string  `json:"recommendation"`
 	TargetType     string  `json:"target_type"`
 	TargetName     string  `json:"target_name"`
-	LineNumber     int     `json:"line_number"`
+	Score          float64 `json:"score"`
 	StartLine      int     `json:"start_line"`
 	EndLine        int     `json:"end_line"`
 	Length         int     `json:"length"`
-	Quality        string  `json:"quality"`
-	Recommendation string  `json:"recommendation"`
+	LineNumber     int     `json:"line_number"`
+	IsGood         bool    `json:"is_good"`
 }
 
-// FunctionInfo holds information about a function
+// FunctionInfo holds information about a function.
 type FunctionInfo struct {
 	Name          string  `json:"name"`
 	Type          string  `json:"type"`
-	HasComment    bool    `json:"has_comment"`
 	CommentType   string  `json:"comment_type"`
+	Documentation string  `json:"documentation"`
 	StartLine     int     `json:"start_line"`
 	EndLine       int     `json:"end_line"`
 	CommentScore  float64 `json:"comment_score"`
-	Documentation string  `json:"documentation"`
+	HasComment    bool    `json:"has_comment"`
 	NeedsComment  bool    `json:"needs_comment"`
 }
 
-// CommentConfig holds configuration for comment analysis
+// CommentConfig holds configuration for comment analysis.
 type CommentConfig struct {
-	RewardScore      float64
 	PenaltyScores    map[string]float64
+	RewardScore      float64
 	MaxCommentLength int
 }
 
-// CommentBlock represents a group of consecutive comment lines
+// CommentBlock represents a group of consecutive comment lines.
 type CommentBlock struct {
+	FullText  string
 	Comments  []*node.Node
 	StartLine int
 	EndLine   int
-	FullText  string
 }
 
-// NewCommentsAnalyzer creates a new CommentsAnalyzer with generic components
+// NewCommentsAnalyzer creates a new CommentsAnalyzer with generic components.
 func NewCommentsAnalyzer() *CommentsAnalyzer {
 	traversalConfig := createTraversalConfig()
 	extractionConfig := createExtractionConfig()
@@ -80,7 +88,7 @@ func NewCommentsAnalyzer() *CommentsAnalyzer {
 	}
 }
 
-// createTraversalConfig creates the traversal configuration for UAST analysis
+// createTraversalConfig creates the traversal configuration for UAST analysis.
 func createTraversalConfig() common.TraversalConfig {
 	return common.TraversalConfig{
 		Filters: []common.NodeFilter{
@@ -93,11 +101,11 @@ func createTraversalConfig() common.TraversalConfig {
 				Roles: []string{node.RoleFunction, node.RoleDeclaration},
 			},
 		},
-		MaxDepth: 10,
+		MaxDepth: MaxDepthValue,
 	}
 }
 
-// createExtractionConfig creates the extraction configuration for data analysis
+// createExtractionConfig creates the extraction configuration for data analysis.
 func createExtractionConfig() common.ExtractionConfig {
 	return common.ExtractionConfig{
 		DefaultExtractors: true,
@@ -108,34 +116,33 @@ func createExtractionConfig() common.ExtractionConfig {
 	}
 }
 
-// createFunctionNameExtractor creates a function name extractor
+// createFunctionNameExtractor creates a function name extractor.
 func createFunctionNameExtractor() common.NameExtractor {
-	return func(n *node.Node) (string, bool) {
-		return common.ExtractFunctionName(n)
-	}
+	return common.ExtractFunctionName
 }
 
-// createCommentTextExtractor creates a comment text extractor
+// createCommentTextExtractor creates a comment text extractor.
 func createCommentTextExtractor() common.NameExtractor {
 	return func(n *node.Node) (string, bool) {
 		if n == nil || n.Token == "" {
 			return "", false
 		}
+
 		return n.Token, true
 	}
 }
 
-// CreateAggregator creates a new aggregator for comment analysis
+// CreateAggregator creates a new aggregator for comment analysis.
 func (c *CommentsAnalyzer) CreateAggregator() analyze.ResultAggregator {
 	return NewCommentsAggregator()
 }
 
-// CreateVisitor creates a new visitor for comments analysis
+// CreateVisitor creates a new visitor for comments analysis.
 func (c *CommentsAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
 	return NewCommentsVisitor()
 }
 
-// DefaultConfig returns the default configuration for comment analysis
+// DefaultConfig returns the default configuration for comment analysis.
 func (c *CommentsAnalyzer) DefaultConfig() CommentConfig {
 	return CommentConfig{
 		RewardScore:      getDefaultRewardScore(),
@@ -144,12 +151,12 @@ func (c *CommentsAnalyzer) DefaultConfig() CommentConfig {
 	}
 }
 
-// getDefaultRewardScore returns the default reward score for good comments
+// getDefaultRewardScore returns the default reward score for good comments.
 func getDefaultRewardScore() float64 {
 	return 1.0
 }
 
-// getDefaultPenaltyScores returns the default penalty scores for different node types
+// getDefaultPenaltyScores returns the default penalty scores for different node types.
 func getDefaultPenaltyScores() map[string]float64 {
 	return map[string]float64{
 		node.UASTFunction:   -0.5,
@@ -163,7 +170,7 @@ func getDefaultPenaltyScores() map[string]float64 {
 	}
 }
 
-// getDefaultMaxCommentLength returns the default maximum comment length
+// getDefaultMaxCommentLength returns the default maximum comment length.
 func getDefaultMaxCommentLength() int {
-	return 500
+	return magic500
 }

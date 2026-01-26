@@ -1,4 +1,4 @@
-package complexity
+package complexity //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-// --- Test helpers ---
+// --- Test helpers ---.
 
 func newTestReport() analyze.Report {
 	return analyze.Report{
@@ -18,7 +18,7 @@ func newTestReport() analyze.Report {
 		"nesting_depth":        3,
 		"decision_points":      15,
 		"message":              "Good complexity - functions have reasonable complexity",
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "ProcessData", "cyclomatic_complexity": 8, "cognitive_complexity": 6, "nesting_depth": 3, "lines_of_code": 42},
 			{"name": "HandleRequest", "cyclomatic_complexity": 5, "cognitive_complexity": 4, "nesting_depth": 2, "lines_of_code": 28},
 			{"name": "ParseConfig", "cyclomatic_complexity": 3, "cognitive_complexity": 2, "nesting_depth": 1, "lines_of_code": 15},
@@ -37,9 +37,11 @@ func newEmptyReport() analyze.Report {
 	return analyze.Report{}
 }
 
-// --- Title tests ---
+// --- Title tests ---.
 
 func TestNewComplexityReportSection_Title(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	if section.SectionTitle() != SectionTitle {
@@ -48,6 +50,8 @@ func TestNewComplexityReportSection_Title(t *testing.T) {
 }
 
 func TestNewComplexityReportSection_NilReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(nil)
 
 	if section.SectionTitle() != SectionTitle {
@@ -55,9 +59,11 @@ func TestNewComplexityReportSection_NilReport(t *testing.T) {
 	}
 }
 
-// --- Score tests ---
+// --- Score tests ---.
 
 func TestScore_Excellent(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 0.8}
 	section := NewComplexityReportSection(report)
 
@@ -68,6 +74,8 @@ func TestScore_Excellent(t *testing.T) {
 }
 
 func TestScore_Good(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 2.5}
 	section := NewComplexityReportSection(report)
 
@@ -78,6 +86,8 @@ func TestScore_Good(t *testing.T) {
 }
 
 func TestScore_Fair(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 4.5}
 	section := NewComplexityReportSection(report)
 
@@ -88,6 +98,8 @@ func TestScore_Fair(t *testing.T) {
 }
 
 func TestScore_Moderate(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 6.5}
 	section := NewComplexityReportSection(report)
 
@@ -98,6 +110,8 @@ func TestScore_Moderate(t *testing.T) {
 }
 
 func TestScore_Poor(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 9.0}
 	section := NewComplexityReportSection(report)
 
@@ -108,6 +122,8 @@ func TestScore_Poor(t *testing.T) {
 }
 
 func TestScore_Critical(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{"average_complexity": 15.0}
 	section := NewComplexityReportSection(report)
 
@@ -118,6 +134,8 @@ func TestScore_Critical(t *testing.T) {
 }
 
 func TestScore_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newEmptyReport())
 
 	got := section.Score()
@@ -126,12 +144,15 @@ func TestScore_EmptyReport(t *testing.T) {
 	}
 }
 
-// --- StatusMessage tests ---
+// --- StatusMessage tests ---.
 
 func TestStatusMessage_FromReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	got := section.StatusMessage()
+
 	want := "Good complexity - functions have reasonable complexity"
 	if got != want {
 		t.Errorf("StatusMessage() = %q, want %q", got, want)
@@ -139,6 +160,8 @@ func TestStatusMessage_FromReport(t *testing.T) {
 }
 
 func TestStatusMessage_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newEmptyReport())
 
 	got := section.StatusMessage()
@@ -147,12 +170,15 @@ func TestStatusMessage_EmptyReport(t *testing.T) {
 	}
 }
 
-// --- KeyMetrics tests ---
+// --- KeyMetrics tests ---.
 
 func TestKeyMetrics_Count(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	metrics := section.KeyMetrics()
+
 	const expectedMetricCount = 6
 	if len(metrics) != expectedMetricCount {
 		t.Errorf("KeyMetrics() count = %d, want %d", len(metrics), expectedMetricCount)
@@ -160,6 +186,8 @@ func TestKeyMetrics_Count(t *testing.T) {
 }
 
 func TestKeyMetrics_Labels(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	metrics := section.KeyMetrics()
@@ -176,6 +204,7 @@ func TestKeyMetrics_Labels(t *testing.T) {
 		if i >= len(metrics) {
 			t.Fatalf("Missing metric at index %d: want %q", i, expected)
 		}
+
 		if metrics[i].Label != expected {
 			t.Errorf("metrics[%d].Label = %q, want %q", i, metrics[i].Label, expected)
 		}
@@ -183,6 +212,8 @@ func TestKeyMetrics_Labels(t *testing.T) {
 }
 
 func TestKeyMetrics_Values(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	metrics := section.KeyMetrics()
@@ -190,17 +221,19 @@ func TestKeyMetrics_Values(t *testing.T) {
 		t.Fatal("KeyMetrics() returned empty")
 	}
 
-	// Total Functions = 10
+	// Total Functions = 10.
 	if metrics[0].Value != "10" {
 		t.Errorf("Total Functions value = %q, want %q", metrics[0].Value, "10")
 	}
-	// Avg Complexity = 2.5
+	// Avg Complexity = 2.5.
 	if metrics[1].Value != "2.5" {
 		t.Errorf("Avg Complexity value = %q, want %q", metrics[1].Value, "2.5")
 	}
 }
 
 func TestKeyMetrics_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newEmptyReport())
 
 	metrics := section.KeyMetrics()
@@ -209,12 +242,15 @@ func TestKeyMetrics_EmptyReport(t *testing.T) {
 	}
 }
 
-// --- Distribution tests ---
+// --- Distribution tests ---.
 
 func TestDistribution_Categories(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	dist := section.Distribution()
+
 	const expectedDistCategories = 4
 	if len(dist) != expectedDistCategories {
 		t.Fatalf("Distribution() count = %d, want %d", len(dist), expectedDistCategories)
@@ -235,6 +271,8 @@ func TestDistribution_Categories(t *testing.T) {
 }
 
 func TestDistribution_Counts(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	dist := section.Distribution()
@@ -244,18 +282,23 @@ func TestDistribution_Counts(t *testing.T) {
 
 	// From test report: CC values are 8,5,3,2,1,1,1,1,1,2
 	// Simple (1-5): 5+3+2+1+1+1+1+1+2 = 9 functions
-	// Moderate (6-10): 8 = 1 function
+	// Moderate (6-10): 8 = 1 function.
 	const expectedSimple = 9
+
 	const expectedModerate = 1
+
 	if dist[0].Count != expectedSimple {
 		t.Errorf("Simple count = %d, want %d", dist[0].Count, expectedSimple)
 	}
+
 	if dist[1].Count != expectedModerate {
 		t.Errorf("Moderate count = %d, want %d", dist[1].Count, expectedModerate)
 	}
 }
 
 func TestDistribution_Percentages(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	dist := section.Distribution()
@@ -274,6 +317,8 @@ func TestDistribution_Percentages(t *testing.T) {
 }
 
 func TestDistribution_EmptyFunctions(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newEmptyReport())
 
 	dist := section.Distribution()
@@ -282,30 +327,37 @@ func TestDistribution_EmptyFunctions(t *testing.T) {
 	}
 }
 
-// --- Issues tests ---
+// --- Issues tests ---.
 
 func TestTopIssues_SortedByComplexity(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	const topN = 3
+
 	issues := section.TopIssues(topN)
 	if len(issues) != topN {
 		t.Fatalf("TopIssues(%d) count = %d, want %d", topN, len(issues), topN)
 	}
 
-	// Highest complexity first: ProcessData(8), HandleRequest(5), ParseConfig(3)
+	// Highest complexity first: ProcessData(8), HandleRequest(5), ParseConfig(3).
 	if issues[0].Name != "ProcessData" {
 		t.Errorf("issues[0].Name = %q, want %q", issues[0].Name, "ProcessData")
 	}
+
 	if issues[1].Name != "HandleRequest" {
 		t.Errorf("issues[1].Name = %q, want %q", issues[1].Name, "HandleRequest")
 	}
+
 	if issues[2].Name != "ParseConfig" {
 		t.Errorf("issues[2].Name = %q, want %q", issues[2].Name, "ParseConfig")
 	}
 }
 
 func TestTopIssues_Value(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	issues := section.TopIssues(1)
@@ -319,6 +371,8 @@ func TestTopIssues_Value(t *testing.T) {
 }
 
 func TestTopIssues_Severity(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	issues := section.TopIssues(3)
@@ -326,21 +380,25 @@ func TestTopIssues_Severity(t *testing.T) {
 		t.Fatal("TopIssues(3) returned fewer than 3 issues")
 	}
 
-	// CC=8 is moderate (6-10) -> fair
+	// CC=8 is moderate (6-10) -> fair.
 	if issues[0].Severity != analyze.SeverityFair {
 		t.Errorf("issues[0].Severity = %q, want %q for CC=8", issues[0].Severity, analyze.SeverityFair)
 	}
-	// CC=5 is simple (1-5) -> good
+	// CC=5 is simple (1-5) -> good.
 	if issues[1].Severity != analyze.SeverityGood {
 		t.Errorf("issues[1].Severity = %q, want %q for CC=5", issues[1].Severity, analyze.SeverityGood)
 	}
 }
 
 func TestTopIssues_LimitExceedsCount(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	const limit = 50
+
 	const totalFunctions = 10
+
 	issues := section.TopIssues(limit)
 	if len(issues) != totalFunctions {
 		t.Errorf("TopIssues(%d) = %d items, want %d (total functions)", limit, len(issues), totalFunctions)
@@ -348,9 +406,12 @@ func TestTopIssues_LimitExceedsCount(t *testing.T) {
 }
 
 func TestAllIssues_ReturnsAll(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newTestReport())
 
 	const totalFunctions = 10
+
 	issues := section.AllIssues()
 	if len(issues) != totalFunctions {
 		t.Errorf("AllIssues() = %d items, want %d", len(issues), totalFunctions)
@@ -358,6 +419,8 @@ func TestAllIssues_ReturnsAll(t *testing.T) {
 }
 
 func TestTopIssues_EmptyReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewComplexityReportSection(newEmptyReport())
 
 	issues := section.TopIssues(5)
@@ -366,11 +429,13 @@ func TestTopIssues_EmptyReport(t *testing.T) {
 	}
 }
 
-// --- Edge case tests for full coverage ---
+// --- Edge case tests for full coverage ---.
 
 func TestDistribution_VeryComplexFunctions(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "Monster", "cyclomatic_complexity": 25},
 			{"name": "BigBeast", "cyclomatic_complexity": 15},
 			{"name": "Simple", "cyclomatic_complexity": 2},
@@ -379,20 +444,25 @@ func TestDistribution_VeryComplexFunctions(t *testing.T) {
 	section := NewComplexityReportSection(report)
 
 	dist := section.Distribution()
-	// Simple: 1, Moderate: 0, Complex: 1, Very Complex: 1
+	// Simple: 1, Moderate: 0, Complex: 1, Very Complex: 1.
 	const expectedVeryComplex = 1
+
 	const expectedComplex = 1
+
 	if dist[3].Count != expectedVeryComplex {
 		t.Errorf("Very Complex count = %d, want %d", dist[3].Count, expectedVeryComplex)
 	}
+
 	if dist[2].Count != expectedComplex {
 		t.Errorf("Complex count = %d, want %d", dist[2].Count, expectedComplex)
 	}
 }
 
 func TestTopIssues_SeverityPoor(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "VeryComplex", "cyclomatic_complexity": 15},
 		},
 	}
@@ -402,22 +472,27 @@ func TestTopIssues_SeverityPoor(t *testing.T) {
 	if len(issues) == 0 {
 		t.Fatal("TopIssues(1) returned empty")
 	}
+
 	if issues[0].Severity != analyze.SeverityPoor {
 		t.Errorf("Severity = %q, want %q for CC=15", issues[0].Severity, analyze.SeverityPoor)
 	}
 }
 
 func TestGetFloat64_IntValue(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{KeyAvgComplexity: 5}
 	section := NewComplexityReportSection(report)
 
-	// Score for avg=5.0 should be 0.6 (fair)
+	// Score for avg=5.0 should be 0.6 (fair).
 	if section.Score() != ScoreFair {
 		t.Errorf("Score() = %v, want %v for int avg=5", section.Score(), ScoreFair)
 	}
 }
 
 func TestGetInt_Float64Value(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		KeyTotalFunctions: 42.0,
 	}
@@ -430,8 +505,10 @@ func TestGetInt_Float64Value(t *testing.T) {
 }
 
 func TestGetIntFromMap_Float64Value(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
-		"functions": []map[string]interface{}{
+		"functions": []map[string]any{
 			{"name": "Func", "cyclomatic_complexity": 7.0},
 		},
 	}
@@ -441,13 +518,16 @@ func TestGetIntFromMap_Float64Value(t *testing.T) {
 	if len(issues) == 0 {
 		t.Fatal("TopIssues(1) returned empty")
 	}
+
 	if issues[0].Value != "CC=7" {
 		t.Errorf("Value = %q, want %q", issues[0].Value, "CC=7")
 	}
 }
 
-// --- Interface compliance ---
+// --- Interface compliance ---.
 
 func TestComplexityReportSection_ImplementsInterface(t *testing.T) {
+	t.Parallel()
+
 	var _ analyze.ReportSection = (*ComplexityReportSection)(nil)
 }

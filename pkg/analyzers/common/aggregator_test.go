@@ -1,4 +1,4 @@
-package common
+package common //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
@@ -7,7 +7,9 @@ import (
 )
 
 func TestNewAggregator(t *testing.T) {
-	messageBuilder := func(score float64) string {
+	t.Parallel()
+
+	messageBuilder := func(_ float64) string {
 		return "Test message"
 	}
 
@@ -55,14 +57,18 @@ func TestNewAggregator(t *testing.T) {
 		t.Error("expected emptyResultBuilder to be initialized")
 	}
 
-	// Verify empty result builder works
+	// Verify empty result builder works.
 	result := aggregator.GetResult()
-	if result["custom_empty"] != true {
+
+	v, ok := result["custom_empty"].(bool)
+	if !ok || !v {
 		t.Error("expected custom empty result")
 	}
 }
 
 func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -70,14 +76,14 @@ func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
 		"items",
 		"name",
 		nil,
-		nil, // nil emptyResultBuilder should use default
+		nil, // Nil emptyResultBuilder should use default.
 	)
 
 	if aggregator == nil {
 		t.Fatal("NewAggregator returned nil")
 	}
 
-	// With nil emptyResultBuilder, should use default empty result
+	// With nil emptyResultBuilder, should use default empty result.
 	result := aggregator.GetResult()
 	if result["analyzer_name"] != "test_analyzer" {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
@@ -85,6 +91,8 @@ func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
 }
 
 func TestAggregator_Aggregate_SingleReport(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -99,7 +107,7 @@ func TestAggregator_Aggregate_SingleReport(t *testing.T) {
 		"file1": {
 			"score": 0.85,
 			"count": 10,
-			"items": []map[string]interface{}{
+			"items": []map[string]any{
 				{"name": "item1", "value": 100},
 			},
 		},
@@ -113,6 +121,8 @@ func TestAggregator_Aggregate_SingleReport(t *testing.T) {
 }
 
 func TestAggregator_Aggregate_MultipleReports(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -142,6 +152,8 @@ func TestAggregator_Aggregate_MultipleReports(t *testing.T) {
 }
 
 func TestAggregator_Aggregate_NilReports(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -159,13 +171,15 @@ func TestAggregator_Aggregate_NilReports(t *testing.T) {
 
 	aggregator.Aggregate(reports)
 
-	// Only non-nil report should be processed
+	// Only non-nil report should be processed.
 	if aggregator.metricsProcessor.GetReportCount() != 1 {
 		t.Errorf("expected 1 report processed (nil skipped), got %d", aggregator.metricsProcessor.GetReportCount())
 	}
 }
 
 func TestAggregator_GetResult_Empty(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -182,13 +196,15 @@ func TestAggregator_GetResult_Empty(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 
-	// Should return empty result from resultBuilder
+	// Should return empty result from resultBuilder.
 	if result["analyzer_name"] != "test_analyzer" {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 }
 
 func TestAggregator_GetResult_WithCustomEmptyBuilder(t *testing.T) {
+	t.Parallel()
+
 	emptyResultBuilder := func() analyze.Report {
 		return analyze.Report{
 			"custom_field": "custom_value",
@@ -213,10 +229,13 @@ func TestAggregator_GetResult_WithCustomEmptyBuilder(t *testing.T) {
 }
 
 func TestAggregator_GetResult_WithData(t *testing.T) {
+	t.Parallel()
+
 	messageBuilder := func(score float64) string {
 		if score >= 0.8 {
 			return "Good score"
 		}
+
 		return "Needs improvement"
 	}
 
@@ -234,7 +253,7 @@ func TestAggregator_GetResult_WithData(t *testing.T) {
 		"file1": {
 			"score": 0.85,
 			"count": 10,
-			"items": []map[string]interface{}{
+			"items": []map[string]any{
 				{"name": "item1"},
 			},
 		},
@@ -251,20 +270,22 @@ func TestAggregator_GetResult_WithData(t *testing.T) {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
-	// Check message was built
+	// Check message was built.
 	if msg, ok := result["message"].(string); !ok || msg == "" {
 		t.Error("expected message to be set")
 	}
 }
 
 func TestAggregator_GetResult_WithoutMessageBuilder(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
 		[]string{"count"},
 		"items",
 		"name",
-		nil, // No message builder
+		nil, // No message builder.
 		nil,
 	)
 
@@ -275,13 +296,15 @@ func TestAggregator_GetResult_WithoutMessageBuilder(t *testing.T) {
 	aggregator.Aggregate(reports)
 	result := aggregator.GetResult()
 
-	// Should default to "Analysis completed"
+	// Should default to "Analysis completed".
 	if msg, ok := result["message"].(string); !ok || msg != "Analysis completed" {
 		t.Errorf("expected default message 'Analysis completed', got '%v'", result["message"])
 	}
 }
 
 func TestAggregator_GetMetricsProcessor(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -300,6 +323,8 @@ func TestAggregator_GetMetricsProcessor(t *testing.T) {
 }
 
 func TestAggregator_GetDataCollector(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -318,6 +343,8 @@ func TestAggregator_GetDataCollector(t *testing.T) {
 }
 
 func TestAggregator_GetResultBuilder(t *testing.T) {
+	t.Parallel()
+
 	aggregator := NewAggregator(
 		"test_analyzer",
 		[]string{"score"},
@@ -336,10 +363,13 @@ func TestAggregator_GetResultBuilder(t *testing.T) {
 }
 
 func TestAggregator_FullWorkflow(t *testing.T) {
+	t.Parallel()
+
 	messageBuilder := func(score float64) string {
 		if score >= 0.8 {
 			return "Excellent"
 		}
+
 		return "Good"
 	}
 
@@ -353,12 +383,12 @@ func TestAggregator_FullWorkflow(t *testing.T) {
 		nil,
 	)
 
-	// Simulate aggregating results from multiple files
+	// Simulate aggregating results from multiple files.
 	reports := map[string]analyze.Report{
 		"file1.go": {
 			"average_complexity": 5.0,
 			"total_functions":    10,
-			"functions": []map[string]interface{}{
+			"functions": []map[string]any{
 				{"function_name": "func1", "complexity": 3},
 				{"function_name": "func2", "complexity": 7},
 			},
@@ -366,7 +396,7 @@ func TestAggregator_FullWorkflow(t *testing.T) {
 		"file2.go": {
 			"average_complexity": 8.0,
 			"total_functions":    5,
-			"functions": []map[string]interface{}{
+			"functions": []map[string]any{
 				{"function_name": "func3", "complexity": 8},
 			},
 		},
@@ -383,7 +413,7 @@ func TestAggregator_FullWorkflow(t *testing.T) {
 		t.Errorf("expected analyzer_name 'complexity_analyzer', got '%v'", result["analyzer_name"])
 	}
 
-	// Verify report count
+	// Verify report count.
 	if aggregator.GetMetricsProcessor().GetReportCount() != 2 {
 		t.Errorf("expected 2 reports processed, got %d", aggregator.GetMetricsProcessor().GetReportCount())
 	}

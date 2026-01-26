@@ -7,21 +7,21 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 )
 
-// Section rendering constants
+// Section rendering constants.
 const (
 	SectionTitle = "IMPORTS"
 
-	// Metric labels
+	// MetricUniqueImports is the label for the unique imports metric.
 	MetricUniqueImports = "Unique Imports"
 	MetricTotalFiles    = "Total Files"
 
-	// Report key names
+	// KeyImports is the report key for the list of imports.
 	KeyImports      = "imports"
 	KeyCount        = "count"
 	KeyTotalFiles   = "total_files"
 	KeyImportCounts = "import_counts"
 
-	// Default status message
+	// DefaultStatusMessage is the fallback message when no import data is available.
 	DefaultStatusMessage = "No import data available"
 	StatusMessagePrefix  = "Found "
 	StatusMessageSuffix  = " unique imports"
@@ -31,6 +31,7 @@ const (
 // This is an info-only section (no score).
 type ImportsReportSection struct {
 	analyze.BaseReportSection
+
 	report analyze.Report
 }
 
@@ -72,6 +73,7 @@ func (s *ImportsReportSection) TopIssues(n int) []analyze.Issue {
 	if n >= len(issues) {
 		return issues
 	}
+
 	return issues[:n]
 }
 
@@ -87,7 +89,7 @@ func (s *ImportsReportSection) buildImportIssues() []analyze.Issue {
 		return buildIssuesFromCounts(counts)
 	}
 
-	// Fallback: use simple imports list
+	// Fallback: use simple imports list.
 	imports := reportutil.GetStringSlice(s.report, KeyImports)
 	if len(imports) == 0 {
 		return nil
@@ -109,7 +111,7 @@ func buildIssuesFromCounts(counts map[string]int) []analyze.Issue {
 		entries = append(entries, importEntry{name: name, count: count})
 	}
 
-	// Sort by count descending (numeric, not string)
+	// Sort by count descending (numeric, not string).
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].count > entries[j].count
 	})
@@ -149,6 +151,7 @@ func buildStatusMessage(count int) string {
 	if count == 0 {
 		return DefaultStatusMessage
 	}
+
 	return StatusMessagePrefix + reportutil.FormatInt(count) + StatusMessageSuffix
 }
 

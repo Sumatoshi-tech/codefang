@@ -1,65 +1,70 @@
+// Package typos provides typos functionality.
 package typos
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
+
+	"github.com/go-git/go-git/v6"
+	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
+// TyposHistoryAnalyzer detects typo-fix identifier pairs across commit history.
 type TyposHistoryAnalyzer struct {
-	// Configuration
-	MaximumAllowedDistance int
-
-	// Dependencies
-	UASTChanges *plumbing.UASTChangesAnalyzer
-	FileDiff    *plumbing.FileDiffAnalyzer
-	BlobCache   *plumbing.BlobCacheAnalyzer
-
-	// State
-	typos    []Typo
-	lcontext *levenshtein.Context
-
-	// Internal
-	l interface {
-		Warnf(format string, args ...interface{})
+	l interface { //nolint:unused // used via dependency injection.
+		Warnf(format string, args ...any)
 	}
+	UASTChanges            *plumbing.UASTChangesAnalyzer
+	FileDiff               *plumbing.FileDiffAnalyzer
+	BlobCache              *plumbing.BlobCacheAnalyzer
+	lcontext               *levenshtein.Context
+	typos                  []Typo
+	MaximumAllowedDistance int
 }
 
+// Typo represents a detected typo-fix pair in source code.
 type Typo struct {
 	Wrong   string
 	Correct string
-	Commit  gitplumbing.Hash
 	File    string
+	Commit  gitplumbing.Hash
 	Line    int
 }
 
 const (
-	DefaultMaximumAllowedTypoDistance        = 4
+	// DefaultMaximumAllowedTypoDistance is the default maximum Levenshtein distance for typo detection.
+	DefaultMaximumAllowedTypoDistance = 4
+	// ConfigTyposDatasetMaximumAllowedDistance is the configuration key for the maximum Levenshtein distance.
 	ConfigTyposDatasetMaximumAllowedDistance = "TyposDatasetBuilder.MaximumAllowedDistance"
 )
 
+// Name returns the name of the analyzer.
 func (t *TyposHistoryAnalyzer) Name() string {
 	return "TyposDataset"
 }
 
+// Flag returns the CLI flag for the analyzer.
 func (t *TyposHistoryAnalyzer) Flag() string {
 	return "typos-dataset"
 }
 
+// Description returns a human-readable description of the analyzer.
 func (t *TyposHistoryAnalyzer) Description() string {
 	return "Extracts typo-fix identifier pairs from source code in commit diffs."
 }
 
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (t *TyposHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
@@ -72,21 +77,26 @@ func (t *TyposHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configurati
 	}
 }
 
-func (t *TyposHistoryAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure sets up the analyzer with the provided facts.
+func (t *TyposHistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTyposDatasetMaximumAllowedDistance].(int); exists {
 		t.MaximumAllowedDistance = val
 	}
+
 	if t.MaximumAllowedDistance <= 0 {
 		t.MaximumAllowedDistance = DefaultMaximumAllowedTypoDistance
 	}
+
 	return nil
 }
 
-func (t *TyposHistoryAnalyzer) Initialize(repository *git.Repository) error {
+// Initialize prepares the analyzer for processing commits.
+func (t *TyposHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	t.lcontext = &levenshtein.Context{}
 	if t.MaximumAllowedDistance <= 0 {
 		t.MaximumAllowedDistance = DefaultMaximumAllowedTypoDistance
 	}
+
 	return nil
 }
 
@@ -95,6 +105,122 @@ type candidate struct {
 	After  int
 }
 
+// typoCandidateResult holds the output of findTypoCandidates.
+type typoCandidateResult struct {
+	candidates         []candidate
+	focusedLinesBefore map[int]bool
+	focusedLinesAfter  map[int]bool
+}
+
+// findTypoCandidates scans the diff edits and identifies line pairs where the before/after
+// lines are within the maximum allowed Levenshtein distance, indicating a potential typo fix.
+//
+//nolint:gocognit // complexity is inherent to diff-based line pair matching with distance calculation.
+func (t *TyposHistoryAnalyzer) findTypoCandidates(
+	diffs []diffmatchpatch.Diff,
+	linesBefore, linesAfter [][]byte,
+) typoCandidateResult {
+	var (
+		lineNumBefore int
+		lineNumAfter  int
+		removedSize   int
+		candidates    []candidate
+	)
+
+	focusedLinesBefore := map[int]bool{}
+	focusedLinesAfter := map[int]bool{}
+
+	for _, edit := range diffs {
+		size := utf8.RuneCountInString(edit.Text)
+
+		switch edit.Type {
+		case diffmatchpatch.DiffDelete:
+			lineNumBefore += size
+			removedSize = size
+		case diffmatchpatch.DiffInsert:
+			if size == removedSize {
+				for i := range size {
+					lb := lineNumBefore - size + i
+					la := lineNumAfter + i
+
+					if lb < len(linesBefore) && la < len(linesAfter) {
+						dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
+						if dist <= t.MaximumAllowedDistance {
+							candidates = append(candidates, candidate{lb, la})
+							focusedLinesBefore[lb] = true
+							focusedLinesAfter[la] = true
+						}
+					}
+				}
+			}
+
+			lineNumAfter += size
+			removedSize = 0
+		case diffmatchpatch.DiffEqual:
+			lineNumBefore += size
+			lineNumAfter += size
+			removedSize = 0
+		}
+	}
+
+	return typoCandidateResult{
+		candidates:         candidates,
+		focusedLinesBefore: focusedLinesBefore,
+		focusedLinesAfter:  focusedLinesAfter,
+	}
+}
+
+// matchTypoIdentifiers extracts identifiers from the before/after UAST nodes that fall on
+// the focused lines, and returns the matched typo pairs from the given candidates.
+func (t *TyposHistoryAnalyzer) matchTypoIdentifiers(
+	change uast.Change,
+	result typoCandidateResult,
+	commit gitplumbing.Hash,
+) []Typo {
+	removedIdentifiers := collectIdentifiersOnLines(change.Before, result.focusedLinesBefore)
+	addedIdentifiers := collectIdentifiersOnLines(change.After, result.focusedLinesAfter)
+
+	var typos []Typo
+
+	for _, cand := range result.candidates {
+		nodesBefore := removedIdentifiers[cand.Before]
+		nodesAfter := addedIdentifiers[cand.After]
+
+		if len(nodesBefore) == 1 && len(nodesAfter) == 1 {
+			typos = append(typos, Typo{
+				Wrong:   nodesBefore[0].Token,
+				Correct: nodesAfter[0].Token,
+				Commit:  commit,
+				File:    change.Change.To.Name,
+				Line:    cand.After,
+			})
+		}
+	}
+
+	return typos
+}
+
+// collectIdentifiersOnLines extracts identifiers from the UAST root whose start line
+// (converted to 0-based) is present in the focusedLines set.
+func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[int][]*node.Node {
+	result := map[int][]*node.Node{}
+
+	if root == nil {
+		return result
+	}
+
+	identifiers := extractIdentifiers(root)
+	for _, id := range identifiers {
+		if id.Pos != nil && focusedLines[int(id.Pos.StartLine)-1] { //nolint:gosec // security concern is acceptable here.
+			line := int(id.Pos.StartLine) - 1 //nolint:gosec // security concern is acceptable here.
+			result[line] = append(result[line], id)
+		}
+	}
+
+	return result
+}
+
+// Consume processes a single commit with the provided dependency results.
 func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit.Hash
 
@@ -110,7 +236,6 @@ func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		blobBefore := cache[change.Change.From.TreeEntry.Hash]
 		blobAfter := cache[change.Change.To.TreeEntry.Hash]
 
-		// Lines split
 		linesBefore := bytes.Split(blobBefore.Data, []byte{'\n'})
 		linesAfter := bytes.Split(blobAfter.Data, []byte{'\n'})
 
@@ -119,126 +244,69 @@ func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			continue
 		}
 
-		var lineNumBefore, lineNumAfter int
-		var candidates []candidate
-		focusedLinesBefore := map[int]bool{}
-		focusedLinesAfter := map[int]bool{}
-		removedSize := 0
-
-		for _, edit := range diff.Diffs {
-			size := utf8.RuneCountInString(edit.Text)
-			switch edit.Type {
-			case diffmatchpatch.DiffDelete:
-				lineNumBefore += size
-				removedSize = size
-			case diffmatchpatch.DiffInsert:
-				if size == removedSize {
-					for i := 0; i < size; i++ {
-						lb := lineNumBefore - size + i
-						la := lineNumAfter + i
-						if lb < len(linesBefore) && la < len(linesAfter) {
-							dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
-							if dist <= t.MaximumAllowedDistance {
-								candidates = append(candidates, candidate{lb, la})
-								focusedLinesBefore[lb] = true
-								focusedLinesAfter[la] = true
-							}
-						}
-					}
-				}
-				lineNumAfter += size
-				removedSize = 0
-			case diffmatchpatch.DiffEqual:
-				lineNumBefore += size
-				lineNumAfter += size
-				removedSize = 0
-			}
-		}
-		if len(candidates) == 0 {
+		result := t.findTypoCandidates(diff.Diffs, linesBefore, linesAfter)
+		if len(result.candidates) == 0 {
 			continue
 		}
 
-		addedIdentifiers := map[int][]*node.Node{}
-		removedIdentifiers := map[int][]*node.Node{}
-
-		if change.Before != nil {
-			identifiers := extractIdentifiers(change.Before)
-			for _, id := range identifiers {
-				if id.Pos != nil && focusedLinesBefore[int(id.Pos.StartLine)-1] {
-					line := int(id.Pos.StartLine) - 1
-					removedIdentifiers[line] = append(removedIdentifiers[line], id)
-				}
-			}
-		}
-
-		if change.After != nil {
-			identifiers := extractIdentifiers(change.After)
-			for _, id := range identifiers {
-				if id.Pos != nil && focusedLinesAfter[int(id.Pos.StartLine)-1] {
-					line := int(id.Pos.StartLine) - 1
-					addedIdentifiers[line] = append(addedIdentifiers[line], id)
-				}
-			}
-		}
-
-		for _, c := range candidates {
-			nodesBefore := removedIdentifiers[c.Before]
-			nodesAfter := addedIdentifiers[c.After]
-			if len(nodesBefore) == 1 && len(nodesAfter) == 1 {
-				idBefore := nodesBefore[0].Token
-				idAfter := nodesAfter[0].Token
-				t.typos = append(t.typos, Typo{
-					Wrong:   idBefore,
-					Correct: idAfter,
-					Commit:  commit,
-					File:    change.Change.To.Name,
-					Line:    c.After,
-				})
-			}
-		}
+		t.typos = append(t.typos, t.matchTypoIdentifiers(change, result, commit)...)
 	}
+
 	return nil
 }
 
 func extractIdentifiers(root *node.Node) []*node.Node {
 	var identifiers []*node.Node
+
 	root.VisitPreOrder(func(n *node.Node) {
 		if n.Type == node.UASTIdentifier {
 			identifiers = append(identifiers, n)
 		}
 	})
+
 	return identifiers
 }
 
+// Finalize completes the analysis and returns the result.
 func (t *TyposHistoryAnalyzer) Finalize() (analyze.Report, error) {
-	// Deduplicate
+	// Deduplicate.
 	typos := make([]Typo, 0, len(t.typos))
 	pairs := map[string]bool{}
+
 	for _, typo := range t.typos {
 		id := typo.Wrong + "|" + typo.Correct
 		if _, exists := pairs[id]; !exists {
 			pairs[id] = true
+
 			typos = append(typos, typo)
 		}
 	}
+
 	return analyze.Report{
 		"typos": typos,
 	}, nil
 }
 
+// Fork creates a copy of the analyzer for parallel processing.
 func (t *TyposHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
-	for i := 0; i < n; i++ {
-		res[i] = t // Shared state
+	for i := range n {
+		res[i] = t // Shared state.
 	}
+
 	return res
 }
 
-func (t *TyposHistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+// Merge combines results from forked analyzer branches.
+func (t *TyposHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
-func (t *TyposHistoryAnalyzer) Serialize(result analyze.Report, binary bool, writer io.Writer) error {
-	typos := result["typos"].([]Typo)
+// Serialize writes the analysis result to the given writer.
+func (t *TyposHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+	typos, ok := result["typos"].([]Typo)
+	if !ok {
+		return errors.New("expected []Typo for typos") //nolint:err113 // descriptive error for type assertion failure.
+	}
 
 	for _, ty := range typos {
 		fmt.Fprintf(writer, "  - wrong: %s\n", ty.Wrong)
@@ -247,9 +315,11 @@ func (t *TyposHistoryAnalyzer) Serialize(result analyze.Report, binary bool, wri
 		fmt.Fprintf(writer, "    file: %s\n", ty.File)
 		fmt.Fprintf(writer, "    line: %d\n", ty.Line)
 	}
+
 	return nil
 }
 
+// FormatReport writes the formatted analysis report to the given writer.
 func (t *TyposHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return t.Serialize(report, false, writer)
 }

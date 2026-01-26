@@ -3,26 +3,42 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	forest "github.com/alexaandru/go-sitter-forest"
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 	"github.com/spf13/cobra"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
+)
+
+// coveragePercent is the multiplier to convert a coverage ratio to a percentage.
+const coveragePercent = 100
+
+// Sentinel errors for the mapping command.
+var (
+	ErrNodeTypesRequired = errors.New("--node-types is required for non-treesitter operations")
+	ErrNoInputFiles      = errors.New("no input files provided")
+	ErrNoRootNode        = errors.New("no root node found")
 )
 
 func mappingCmd() *cobra.Command {
 	var nodeTypesPath, mappingPath, format, language, extensions string
+
 	var coverage, generate, showTreeSitter bool
 
 	cmd := &cobra.Command{
 		Use:   "mapping",
 		Short: "UAST mapping helpers: grammar analysis, classification, coverage",
 		Long:  `Analyze node-types.json, classify nodes, compute mapping coverage, and show tree-sitter JSON structure.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMappingHelper(nodeTypesPath, mappingPath, format, coverage, generate, showTreeSitter, language, extensions, args)
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runMappingHelper(
+				nodeTypesPath, mappingPath, format, coverage, generate,
+				showTreeSitter, language, extensions, args,
+			)
 		},
 	}
 
@@ -38,98 +54,150 @@ func mappingCmd() *cobra.Command {
 	return cmd
 }
 
-func runMappingHelper(nodeTypesPath, mappingPath, format string, coverage, generate, showTreeSitter bool, language, extensions string, args []string) error {
+func runMappingHelper(
+	nodeTypesPath, mappingPath, format string,
+	coverage, generate, showTreeSitter bool,
+	language, extensions string, args []string,
+) error {
 	if showTreeSitter {
 		return showTreeSitterJSON(args, language)
 	}
 
-	// Only require node-types when not showing tree-sitter JSON
+	nodes, err := loadNodeTypes(nodeTypesPath)
+	if err != nil {
+		return err
+	}
+
+	if generate {
+		return runMappingGenerate(nodes, language, extensions)
+	}
+
+	rules, err := loadMappingRules(mappingPath)
+	if err != nil {
+		return err
+	}
+
+	if format == formatJSON {
+		return outputMappingJSON(nodes, rules, coverage)
+	}
+
+	return outputMappingText(nodes, rules, coverage)
+}
+
+func loadNodeTypes(nodeTypesPath string) ([]mapping.NodeTypeInfo, error) {
 	if nodeTypesPath == "" {
-		return fmt.Errorf("--node-types is required for non-treesitter operations")
+		return nil, ErrNodeTypesRequired
 	}
 
 	jsonData, err := os.ReadFile(nodeTypesPath)
 	if err != nil {
-		return fmt.Errorf("failed to read node-types.json: %w", err)
+		return nil, fmt.Errorf("failed to read node-types.json: %w", err)
 	}
+
 	nodes, err := mapping.ParseNodeTypes(jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to parse node-types.json: %w", err)
+		return nil, fmt.Errorf("failed to parse node-types.json: %w", err)
 	}
-	nodes = mapping.ApplyHeuristicClassification(nodes)
 
-	if generate {
-		// Parse extensions string into slice
-		var extensionsSlice []string
-		if extensions != "" {
-			extensionsSlice = strings.Split(extensions, ",")
-			// Trim spaces from each extension
-			for i, ext := range extensionsSlice {
-				extensionsSlice[i] = strings.TrimSpace(ext)
-			}
+	return mapping.ApplyHeuristicClassification(nodes), nil
+}
+
+func runMappingGenerate(nodes []mapping.NodeTypeInfo, language, extensions string) error {
+	var extensionsSlice []string
+
+	if extensions != "" {
+		extensionsSlice = strings.Split(extensions, ",")
+
+		for idx, ext := range extensionsSlice {
+			extensionsSlice[idx] = strings.TrimSpace(ext)
 		}
-
-		dsl := mapping.GenerateMappingDSL(nodes, language, extensionsSlice)
-		fmt.Print(dsl)
-		return nil
 	}
 
+	dsl := mapping.GenerateMappingDSL(nodes, language, extensionsSlice)
+	fmt.Fprint(os.Stdout, dsl)
+
+	return nil
+}
+
+func loadMappingRules(mappingPath string) ([]mapping.MappingRule, error) {
 	var rules []mapping.MappingRule
+
 	if mappingPath != "" {
-		data, err := os.Open(mappingPath)
-		if err != nil {
-			return fmt.Errorf("failed to open mapping DSL: %w", err)
+		data, openErr := os.Open(mappingPath)
+		if openErr != nil {
+			return nil, fmt.Errorf("failed to open mapping DSL: %w", openErr)
 		}
 		defer data.Close()
-		_, _, err = (&mapping.MappingParser{}).ParseMapping(data)
-		if err != nil {
-			return fmt.Errorf("failed to load mapping DSL: %w", err)
+
+		_, _, parseErr := (&mapping.MappingParser{}).ParseMapping(data)
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to load mapping DSL: %w", parseErr)
 		}
 	}
 
-	if format == "json" {
-		out := map[string]interface{}{
-			"node_count": len(nodes),
-			"categories": summarizeCategories(nodes),
-			"nodes":      nodes,
-		}
-		if coverage && len(rules) > 0 {
-			cov, err := mapping.CoverageAnalysis(rules, nodes)
-			if err != nil {
-				return err
-			}
-			out["coverage"] = cov
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+	return rules, nil
+}
+
+func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+	out := map[string]any{
+		"node_count": len(nodes),
+		"categories": summarizeCategories(nodes),
+		"nodes":      nodes,
 	}
 
-	fmt.Printf("Node types: %d\n", len(nodes))
-	cats := summarizeCategories(nodes)
-	for cat, count := range cats {
-		fmt.Printf("  %s: %d\n", cat, count)
-	}
 	if coverage && len(rules) > 0 {
-		cov, err := mapping.CoverageAnalysis(rules, nodes)
-		if err != nil {
-			return err
+		covResult, covErr := mapping.CoverageAnalysis(rules, nodes)
+		if covErr != nil {
+			return covErr
 		}
-		fmt.Printf("Coverage: %.2f%%\n", cov*100)
+
+		out["coverage"] = covResult
 	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+
+	err := enc.Encode(out)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	return nil
+}
+
+func outputMappingText(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+	fmt.Fprintf(os.Stdout, "Node types: %d\n", len(nodes))
+
+	cats := summarizeCategories(nodes)
+
+	for cat, count := range cats {
+		fmt.Fprintf(os.Stdout, "  %s: %d\n", cat, count)
+	}
+
+	if coverage && len(rules) > 0 {
+		covResult, covErr := mapping.CoverageAnalysis(rules, nodes)
+		if covErr != nil {
+			return covErr
+		}
+
+		fmt.Fprintf(os.Stdout, "Coverage: %.2f%%\n", covResult*coveragePercent)
+	}
+
 	return nil
 }
 
 func showTreeSitterJSON(args []string, language string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("no input files provided")
+		return ErrNoInputFiles
 	}
 
 	for _, filename := range args {
-		if err := processFileForTreeSitterJSON(filename, language); err != nil {
-			return fmt.Errorf("failed to process %s: %w", filename, err)
+		processErr := processFileForTreeSitterJSON(filename, language)
+		if processErr != nil {
+			return fmt.Errorf("failed to process %s: %w", filename, processErr)
 		}
 	}
+
 	return nil
 }
 
@@ -139,79 +207,91 @@ func processFileForTreeSitterJSON(filename, language string) error {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Create a parser
+	// Create a parser.
 	parser := sitter.NewParser()
 
-	// Set language if provided
+	// Set language if provided.
 	if language != "" {
 		lang := forest.GetLanguage(language)
 		parser.SetLanguage(lang)
 	}
 
-	// Try to parse
-	tree, err := parser.ParseString(context.Background(), nil, content)
-	if err != nil {
+	// Try to parse.
+	tree, parseErr := parser.ParseString(context.Background(), nil, content)
+	if parseErr != nil {
 		if language == "" {
-			return fmt.Errorf("tree-sitter parsing requires a language to be set. Error: %w\n\nUse --language flag to specify a language name or grammar file path", err)
+			return fmt.Errorf(
+				"tree-sitter parsing requires a language to be set. Error: %w\n\n"+
+					"Use --language flag to specify a language name or grammar file path", parseErr,
+			)
 		}
-		return fmt.Errorf("failed to parse with tree-sitter: %w", err)
+
+		return fmt.Errorf("failed to parse with tree-sitter: %w", parseErr)
 	}
 
 	root := tree.RootNode()
 	if root.IsNull() {
-		return fmt.Errorf("no root node found")
+		return ErrNoRootNode
 	}
 
 	jsonTree := convertTreeSitterNodeToJSON(root, content)
 
-	fmt.Printf("=== Tree-sitter JSON for %s (language: %s) ===\n", filename, language)
+	fmt.Fprintf(os.Stdout, "=== Tree-sitter JSON for %s (language: %s) ===\n", filename, language)
+
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(jsonTree); err != nil {
-		return fmt.Errorf("failed to encode JSON: %w", err)
+
+	encodeErr := enc.Encode(jsonTree)
+	if encodeErr != nil {
+		return fmt.Errorf("failed to encode JSON: %w", encodeErr)
 	}
-	fmt.Println()
+
+	fmt.Fprintln(os.Stdout)
 
 	return nil
 }
 
-func convertTreeSitterNodeToJSON(node sitter.Node, source []byte) map[string]interface{} {
-	result := map[string]interface{}{
-		"type": node.Type(),
+func convertTreeSitterNodeToJSON(tsNode sitter.Node, source []byte) map[string]any {
+	result := map[string]any{
+		"type": tsNode.Type(),
 		"start_pos": map[string]int{
-			"row":    int(node.StartPoint().Row),
-			"column": int(node.StartPoint().Column),
+			"row":    int(tsNode.StartPoint().Row),    //nolint:gosec // tree-sitter coordinates fit in int
+			"column": int(tsNode.StartPoint().Column), //nolint:gosec // tree-sitter coordinates fit in int
 		},
 		"end_pos": map[string]int{
-			"row":    int(node.EndPoint().Row),
-			"column": int(node.EndPoint().Column),
+			"row":    int(tsNode.EndPoint().Row),    //nolint:gosec // tree-sitter coordinates fit in int
+			"column": int(tsNode.EndPoint().Column), //nolint:gosec // tree-sitter coordinates fit in int
 		},
-		"start_byte": int(node.StartByte()),
-		"end_byte":   int(node.EndByte()),
+		"start_byte": int(tsNode.StartByte()), //nolint:gosec // tree-sitter byte offsets fit in int
+		"end_byte":   int(tsNode.EndByte()),   //nolint:gosec // tree-sitter byte offsets fit in int
 	}
 
-	if node.IsNamed() {
+	if tsNode.IsNamed() {
 		result["named"] = true
 	} else {
 		result["named"] = false
 	}
 
-	// Extract text content
-	text := node.Content(source)
+	// Extract text content.
+	text := tsNode.Content(source)
 	if text != "" {
 		result["text"] = text
 	}
 
-	// Process children
-	childCount := node.NamedChildCount()
+	// Process children.
+	childCount := tsNode.NamedChildCount()
+
 	if childCount > 0 {
-		children := make([]map[string]interface{}, 0, childCount)
-		for i := uint32(0); i < childCount; i++ {
-			child := node.NamedChild(i)
+		children := make([]map[string]any, 0, childCount)
+
+		for idx := range childCount {
+			child := tsNode.NamedChild(idx)
+
 			if !child.IsNull() {
 				children = append(children, convertTreeSitterNodeToJSON(child, source))
 			}
 		}
+
 		if len(children) > 0 {
 			result["children"] = children
 		}
@@ -222,8 +302,10 @@ func convertTreeSitterNodeToJSON(node sitter.Node, source []byte) map[string]int
 
 func summarizeCategories(nodes []mapping.NodeTypeInfo) map[string]int {
 	cats := map[string]int{}
-	for _, n := range nodes {
-		cats[fmt.Sprintf("%v", n.Category)]++
+
+	for _, nodeInfo := range nodes {
+		cats[fmt.Sprintf("%v", nodeInfo.Category)]++
 	}
+
 	return cats
 }
