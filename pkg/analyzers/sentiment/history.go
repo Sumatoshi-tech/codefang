@@ -1,71 +1,82 @@
+// Package sentiment provides sentiment functionality.
 package sentiment
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/go-git/go-git/v6"
+	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
 )
 
+// MinCommentLengthThresholdHigh is the minimum character length for a comment to be included in sentiment analysis.
+const (
+	MinCommentLengthThresholdHigh = 10
+)
+
+// SentimentHistoryAnalyzer tracks comment sentiment across commit history.
 type SentimentHistoryAnalyzer struct {
-	// Configuration
+	l interface { //nolint:unused // used via dependency injection.
+		Warnf(format string, args ...any)
+	}
+	UASTChanges      *plumbing.UASTChangesAnalyzer
+	Ticks            *plumbing.TicksSinceStart
+	commentsByTick   map[int][]string
+	commitsByTick    map[int][]gitplumbing.Hash
 	MinCommentLength int
 	Gap              float32
-
-	// Dependencies
-	UASTChanges *plumbing.UASTChangesAnalyzer
-	Ticks       *plumbing.TicksSinceStart
-
-	// State
-	commentsByTick map[int][]string
-	commitsByTick  map[int][]gitplumbing.Hash
-	
-	// Internal
-	l interface {
-		Warnf(format string, args ...interface{})
-	}
 }
 
 const (
+	// ConfigCommentSentimentMinLength is the configuration key for the minimum comment length.
 	ConfigCommentSentimentMinLength = "CommentSentiment.MinLength"
-	ConfigCommentSentimentGap       = "CommentSentiment.Gap"
+	// ConfigCommentSentimentGap is the configuration key for the sentiment gap threshold.
+	ConfigCommentSentimentGap = "CommentSentiment.Gap"
 
+	// DefaultCommentSentimentCommentMinLength is the default minimum comment length for sentiment analysis.
 	DefaultCommentSentimentCommentMinLength = 20
-	DefaultCommentSentimentGap              = float32(0.5)
+	// DefaultCommentSentimentGap is the default gap threshold for sentiment analysis.
+	DefaultCommentSentimentGap = float32(0.5)
 
+	// CommentLettersRatio defines the minimum ratio of letters in a comment.
 	CommentLettersRatio = 0.6
 )
 
 var (
 	filteredFirstCharRE = regexp.MustCompile("[^a-zA-Z0-9]")
-	filteredCharsRE     = regexp.MustCompile("[^-a-zA-Z0-9_:;,./?!#&%+*=\\n \\t()]+")
+	filteredCharsRE     = regexp.MustCompile(`[^-a-zA-Z0-9_:;,./?!#&%+*=\n \t()]+`)
 	charsRE             = regexp.MustCompile("[a-zA-Z]+")
-	functionNameRE      = regexp.MustCompile("\\s*[a-zA-Z_][a-zA-Z_0-9]*\\(\\)")
-	whitespaceRE        = regexp.MustCompile("\\s+")
+	functionNameRE      = regexp.MustCompile(`\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)`)
+	whitespaceRE        = regexp.MustCompile(`\s+`)
 	licenseRE           = regexp.MustCompile("(?i)[li[cs]en[cs][ei]|copyright|©")
 )
 
+// Name returns the name of the analyzer.
 func (s *SentimentHistoryAnalyzer) Name() string {
 	return "Sentiment"
 }
 
+// Flag returns the CLI flag for the analyzer.
 func (s *SentimentHistoryAnalyzer) Flag() string {
 	return "sentiment"
 }
 
+// Description returns a human-readable description of the analyzer.
 func (s *SentimentHistoryAnalyzer) Description() string {
 	return "Classifies each new or changed comment per commit as containing positive or negative emotions."
 }
 
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (s *SentimentHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{
 		{
@@ -85,17 +96,22 @@ func (s *SentimentHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configu
 	}
 }
 
-func (s *SentimentHistoryAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure sets up the analyzer with the provided facts.
+func (s *SentimentHistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigCommentSentimentGap].(float32); exists {
 		s.Gap = val
 	}
+
 	if val, exists := facts[ConfigCommentSentimentMinLength].(int); exists {
 		s.MinCommentLength = val
 	}
+
 	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitplumbing.Hash); exists {
 		s.commitsByTick = val
 	}
+
 	s.validate()
+
 	return nil
 }
 
@@ -103,30 +119,36 @@ func (s *SentimentHistoryAnalyzer) validate() {
 	if s.Gap < 0 || s.Gap >= 1 {
 		s.Gap = DefaultCommentSentimentGap
 	}
-	if s.MinCommentLength < 10 {
+
+	if s.MinCommentLength < MinCommentLengthThresholdHigh {
 		s.MinCommentLength = DefaultCommentSentimentCommentMinLength
 	}
 }
 
-func (s *SentimentHistoryAnalyzer) Initialize(repository *git.Repository) error {
+// Initialize prepares the analyzer for processing commits.
+func (s *SentimentHistoryAnalyzer) Initialize(_ *git.Repository) error {
 	s.commentsByTick = map[int][]string{}
 	s.validate()
+
 	return nil
 }
 
-func (s *SentimentHistoryAnalyzer) Consume(ctx *analyze.Context) error {
+// Consume processes a single commit with the provided dependency results.
+func (s *SentimentHistoryAnalyzer) Consume(_ *analyze.Context) error {
 	changes := s.UASTChanges.Changes
 	tick := s.Ticks.Tick
-	
+
 	var commentNodes []*node.Node
+
 	for _, change := range changes {
 		if change.After != nil {
 			extractComments(change.After, &commentNodes)
 		}
 	}
-	
+
 	comments := s.mergeComments(commentNodes)
 	s.commentsByTick[tick] = append(s.commentsByTick[tick], comments...)
+
 	return nil
 }
 
@@ -134,85 +156,125 @@ func extractComments(root *node.Node, result *[]*node.Node) {
 	if root.Type == node.UASTComment {
 		*result = append(*result, root)
 	}
+
 	for _, child := range root.Children {
 		extractComments(child, result)
 	}
 }
 
-func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
-	var mergedComments []string
+// groupCommentsByLine groups extracted comment nodes by their starting line number.
+// It returns a map from line number to comment nodes on that line, and a sorted slice of line numbers.
+func groupCommentsByLine(extracted []*node.Node) (grouped map[int][]*node.Node, sortedLines []int) {
 	lines := map[int][]*node.Node{}
-	
+
 	for _, n := range extracted {
 		if n.Pos == nil {
 			continue
 		}
-		lineno := int(n.Pos.StartLine)
+
+		lineno := int(n.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
 		lines[lineno] = append(lines[lineno], n)
 	}
-	
+
 	lineNums := make([]int, 0, len(lines))
 	for line := range lines {
 		lineNums = append(lineNums, line)
 	}
+
 	sort.Ints(lineNums)
-	
+
+	return lines, lineNums
+}
+
+// mergeAdjacentComments merges comment tokens from adjacent lines into combined strings.
+// Comments on consecutive lines (or lines within the same multi-line comment span) are joined together.
+func mergeAdjacentComments(lines map[int][]*node.Node, lineNums []int) []string {
+	var mergedComments []string
+
 	var buffer []string
+
 	for i, line := range lineNums {
 		lineNodes := lines[line]
+
 		maxEnd := line
 		for _, n := range lineNodes {
-			if n.Pos != nil && maxEnd < int(n.Pos.EndLine) {
-				maxEnd = int(n.Pos.EndLine)
+			if n.Pos != nil && maxEnd < int(n.Pos.EndLine) { //nolint:gosec // security concern is acceptable here.
+				maxEnd = int(n.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
 			}
+
 			token := strings.TrimSpace(n.Token)
 			if token != "" {
 				buffer = append(buffer, token)
 			}
 		}
+
 		if i < len(lineNums)-1 && lineNums[i+1] <= maxEnd+1 {
 			continue
 		}
+
 		mergedComments = append(mergedComments, strings.Join(buffer, "\n"))
 		buffer = nil
 	}
-	
-	filteredComments := make([]string, 0, len(mergedComments))
-	for _, comment := range mergedComments {
+
+	return mergedComments
+}
+
+// filterComments filters out comments that are too short, contain mostly non-letter characters,
+// start with non-alphanumeric characters, or match license patterns.
+func filterComments(comments []string, minLength int) []string {
+	filteredComments := make([]string, 0, len(comments))
+
+	for _, comment := range comments {
 		comment = strings.TrimSpace(comment)
 		if comment == "" || filteredFirstCharRE.MatchString(comment[:1]) {
 			continue
 		}
+
 		comment = functionNameRE.ReplaceAllString(comment, "")
+
 		comment = filteredCharsRE.ReplaceAllString(comment, "")
-		if len(comment) < s.MinCommentLength {
+		if len(comment) < minLength {
 			continue
 		}
+
 		comment = whitespaceRE.ReplaceAllString(comment, " ")
+
 		charsCount := 0
 		for _, match := range charsRE.FindAllStringIndex(comment, -1) {
 			charsCount += match[1] - match[0]
 		}
+
 		if charsCount < int(float32(len(comment))*CommentLettersRatio) {
 			continue
 		}
+
 		if licenseRE.MatchString(comment) {
 			continue
 		}
+
 		filteredComments = append(filteredComments, comment)
 	}
+
 	return filteredComments
 }
 
+func (s *SentimentHistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
+	lines, lineNums := groupCommentsByLine(extracted)
+	mergedComments := mergeAdjacentComments(lines, lineNums)
+
+	return filterComments(mergedComments, s.MinCommentLength)
+}
+
+// Finalize completes the analysis and returns the result.
 func (s *SentimentHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	emotions := map[int]float32{}
-	// Sentiment analysis logic (placeholders)
+	// Sentiment analysis logic (placeholders).
 	for tick, comments := range s.commentsByTick {
 		if len(comments) > 0 {
-			emotions[tick] = 0.5 // Mock value
+			emotions[tick] = 0.5 // Mock value.
 		}
 	}
-	
+
 	return analyze.Report{
 		"emotions_by_tick": emotions,
 		"comments_by_tick": s.commentsByTick,
@@ -220,42 +282,63 @@ func (s *SentimentHistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}, nil
 }
 
+// Fork creates a copy of the analyzer for parallel processing.
 func (s *SentimentHistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
-	for i := 0; i < n; i++ {
-		res[i] = s // Shared state
+	for i := range n {
+		res[i] = s // Shared state.
 	}
+
 	return res
 }
 
-func (s *SentimentHistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+// Merge combines results from forked analyzer branches.
+func (s *SentimentHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
-func (s *SentimentHistoryAnalyzer) Serialize(result analyze.Report, binary bool, writer io.Writer) error {
-	emotions := result["emotions_by_tick"].(map[int]float32)
-	comments := result["comments_by_tick"].(map[int][]string)
-	commits := result["commits_by_tick"].(map[int][]gitplumbing.Hash)
-	
+// Serialize writes the analysis result to the given writer.
+func (s *SentimentHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+	emotions, ok := result["emotions_by_tick"].(map[int]float32)
+	if !ok {
+		return errors.New("expected map[int]float32 for emotions") //nolint:err113 // descriptive error for type assertion failure.
+	}
+
+	comments, ok := result["comments_by_tick"].(map[int][]string)
+	if !ok {
+		return errors.New("expected map[int][]string for comments") //nolint:err113 // descriptive error for type assertion failure.
+	}
+
+	commits, ok := result["commits_by_tick"].(map[int][]gitplumbing.Hash)
+	if !ok {
+		//nolint:err113 // type assertion error.
+		return errors.New("expected map[int][]gitplumbing.Hash for commits")
+	}
+
 	ticks := make([]int, 0, len(emotions))
 	for tick := range emotions {
 		ticks = append(ticks, tick)
 	}
+
 	sort.Ints(ticks)
-	
+
 	for _, tick := range ticks {
 		hashes := make([]string, 0)
-		if list, ok := commits[tick]; ok {
+
+		if list, hasCommits := commits[tick]; hasCommits {
 			for _, hash := range list {
 				hashes = append(hashes, hash.String())
 			}
 		}
+
 		fmt.Fprintf(writer, "  %d: [%.4f, [%s], \"%s\"]\n",
 			tick, emotions[tick], strings.Join(hashes, ","),
 			strings.Join(comments[tick], "|"))
 	}
+
 	return nil
 }
 
+// FormatReport writes the formatted analysis report to the given writer.
 func (s *SentimentHistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return s.Serialize(report, false, writer)
 }

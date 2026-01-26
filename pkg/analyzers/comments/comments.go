@@ -2,6 +2,7 @@ package comments
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -15,56 +16,76 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// Name returns the analyzer name
+// Configuration constants for comment analysis scoring.
+const (
+	// ScoreValue is the base penalty applied when a comment quality issue is detected.
+	ScoreValue       = 0.2
+	gapThresholdHigh = 2
+	lenArg50         = 50
+	magic0p4         = 0.4
+	magic0p4_1       = 0.4
+	magic0p4_2       = 0.4
+	magic0p6         = 0.6
+	magic0p6_1       = 0.6
+	magic0p6_2       = 0.6
+	magic0p8         = 0.8
+	magic0p8_1       = 0.8
+	magic0p8_2       = 0.8
+	magic1000        = 1000
+	magic3           = 3
+	magic999         = 999
+)
+
+// Name returns the analyzer name.
 func (c *CommentsAnalyzer) Name() string {
 	return "comments"
 }
 
-// Flag returns the CLI flag for the analyzer
+// Flag returns the CLI flag for the analyzer.
 func (c *CommentsAnalyzer) Flag() string {
 	return "comments-analysis"
 }
 
-// Description returns the analyzer description
+// Description returns the analyzer description.
 func (c *CommentsAnalyzer) Description() string {
 	return "Analyzes code comments and documentation coverage."
 }
 
-// ListConfigurationOptions returns the configuration options for the analyzer
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (c *CommentsAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
-// Configure configures the analyzer
-func (c *CommentsAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure configures the analyzer.
+func (c *CommentsAnalyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
-// Thresholds returns the quality thresholds for this analyzer
+// Thresholds returns the quality thresholds for this analyzer.
 func (c *CommentsAnalyzer) Thresholds() analyze.Thresholds {
 	return analyze.Thresholds{
 		"overall_score": {
-			"red":    0.4,
-			"yellow": 0.6,
-			"green":  0.8,
+			"red":    magic0p4,
+			"yellow": magic0p6,
+			"green":  magic0p8,
 		},
 		"good_comments_ratio": {
-			"red":    0.4,
-			"yellow": 0.6,
-			"green":  0.8,
+			"red":    magic0p4_1,
+			"yellow": magic0p6_1,
+			"green":  magic0p8_1,
 		},
 		"documentation_coverage": {
-			"red":    0.4,
-			"yellow": 0.6,
-			"green":  0.8,
+			"red":    magic0p4_2,
+			"yellow": magic0p6_2,
+			"green":  magic0p8_2,
 		},
 	}
 }
 
-// Analyze performs comment analysis using default configuration
+// Analyze performs comment analysis using default configuration.
 func (c *CommentsAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, fmt.Errorf("root node is nil")
+		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
 	}
 
 	comments := c.findComments(root)
@@ -81,31 +102,41 @@ func (c *CommentsAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	return c.buildResult(commentDetails, functions, metrics), nil
 }
 
-// FormatReport formats comment analysis results as human-readable text
+// FormatReport formats comment analysis results as human-readable text.
 func (c *CommentsAnalyzer) FormatReport(report analyze.Report, w io.Writer) error {
 	section := NewCommentsReportSection(report)
 	config := terminal.NewConfig()
 	r := renderer.NewSectionRenderer(config.Width, false, config.NoColor)
+
 	_, err := fmt.Fprint(w, r.Render(section))
-	return err
+	if err != nil {
+		return fmt.Errorf("formatreport: %w", err)
+	}
+
+	return nil
 }
 
-// FormatReportJSON formats comment analysis results as JSON
+// FormatReportJSON formats comment analysis results as JSON.
 func (c *CommentsAnalyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("formatreportjson: %w", err)
 	}
+
 	_, err = fmt.Fprint(w, string(jsonData))
-	return err
+	if err != nil {
+		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	return nil
 }
 
-// findComments finds all comment nodes using the generic traverser
+// findComments finds all comment nodes using the generic traverser.
 func (c *CommentsAnalyzer) findComments(root *node.Node) []*node.Node {
 	return c.traverser.FindNodesByType(root, []string{node.UASTComment})
 }
 
-// findFunctions finds all function/method/class nodes using the generic traverser
+// findFunctions finds all function/method/class nodes using the generic traverser.
 func (c *CommentsAnalyzer) findFunctions(root *node.Node) []*node.Node {
 	functionTypes := []string{
 		node.UASTFunction,
@@ -114,26 +145,32 @@ func (c *CommentsAnalyzer) findFunctions(root *node.Node) []*node.Node {
 		node.UASTInterface,
 		node.UASTStruct,
 	}
+
 	return c.traverser.FindNodesByType(root, functionTypes)
 }
 
-// analyzeCommentPlacement analyzes the placement of comments relative to their targets
-func (c *CommentsAnalyzer) analyzeCommentPlacement(comments []*node.Node, functions []*node.Node, config CommentConfig) []CommentDetail {
+// analyzeCommentPlacement analyzes the placement of comments relative to their targets.
+func (c *CommentsAnalyzer) analyzeCommentPlacement(
+	comments, functions []*node.Node,
+	config CommentConfig,
+) []CommentDetail {
 	commentBlocks := c.groupCommentsIntoBlocks(comments)
+
 	return c.analyzeCommentBlocks(commentBlocks, functions, config)
 }
 
-// groupCommentsIntoBlocks groups consecutive comment lines into blocks
+// groupCommentsIntoBlocks groups consecutive comment lines into blocks.
 func (c *CommentsAnalyzer) groupCommentsIntoBlocks(comments []*node.Node) []CommentBlock {
 	if len(comments) == 0 {
 		return []CommentBlock{}
 	}
 
 	sortedComments := c.sortCommentsByLine(comments)
+
 	return c.createCommentBlocks(sortedComments)
 }
 
-// sortCommentsByLine sorts comments by line number
+// sortCommentsByLine sorts comments by line number.
 func (c *CommentsAnalyzer) sortCommentsByLine(comments []*node.Node) []*node.Node {
 	sortedComments := make([]*node.Node, len(comments))
 	copy(sortedComments, comments)
@@ -141,14 +178,17 @@ func (c *CommentsAnalyzer) sortCommentsByLine(comments []*node.Node) []*node.Nod
 		if sortedComments[i].Pos == nil || sortedComments[j].Pos == nil {
 			return false
 		}
+
 		return sortedComments[i].Pos.StartLine < sortedComments[j].Pos.StartLine
 	})
+
 	return sortedComments
 }
 
-// createCommentBlocks creates comment blocks from sorted comments
+// createCommentBlocks creates comment blocks from sorted comments.
 func (c *CommentsAnalyzer) createCommentBlocks(sortedComments []*node.Node) []CommentBlock {
 	var blocks []CommentBlock
+
 	var currentBlock CommentBlock
 
 	for _, comment := range sortedComments {
@@ -170,20 +210,21 @@ func (c *CommentsAnalyzer) createCommentBlocks(sortedComments []*node.Node) []Co
 	return c.addBlockIfValid(blocks, currentBlock)
 }
 
-// shouldStartNewBlock determines if a new comment block should be started
+// shouldStartNewBlock determines if a new comment block should be started.
 func (c *CommentsAnalyzer) shouldStartNewBlock(currentBlock CommentBlock, commentStart int) bool {
 	return len(currentBlock.Comments) == 0 || commentStart > currentBlock.EndLine+1
 }
 
-// addBlockIfValid adds a block to the list if it contains comments
+// addBlockIfValid adds a block to the list if it contains comments.
 func (c *CommentsAnalyzer) addBlockIfValid(blocks []CommentBlock, block CommentBlock) []CommentBlock {
 	if len(block.Comments) > 0 {
 		blocks = append(blocks, block)
 	}
+
 	return blocks
 }
 
-// createNewBlock creates a new comment block
+// createNewBlock creates a new comment block.
 func (c *CommentsAnalyzer) createNewBlock(comment *node.Node, startLine, endLine int) CommentBlock {
 	return CommentBlock{
 		Comments:  []*node.Node{comment},
@@ -193,32 +234,36 @@ func (c *CommentsAnalyzer) createNewBlock(comment *node.Node, startLine, endLine
 	}
 }
 
-// extendCurrentBlock extends the current block with a new comment
+// extendCurrentBlock extends the current block with a new comment.
 func (c *CommentsAnalyzer) extendCurrentBlock(block CommentBlock, comment *node.Node, endLine int) CommentBlock {
 	block.Comments = append(block.Comments, comment)
 	block.EndLine = endLine
 	block.FullText += "\n" + comment.Token
+
 	return block
 }
 
-// analyzeCommentBlocks analyzes multiple comment blocks
+// analyzeCommentBlocks analyzes multiple comment blocks.
 func (c *CommentsAnalyzer) analyzeCommentBlocks(blocks []CommentBlock, functions []*node.Node, config CommentConfig) []CommentDetail {
-	var details []CommentDetail
+	details := make([]CommentDetail, 0, len(blocks))
+
 	for _, block := range blocks {
 		blockDetails := c.analyzeCommentBlock(block, functions, config)
 		details = append(details, blockDetails...)
 	}
+
 	return details
 }
 
-// analyzeCommentBlock analyzes a comment block as a single unit
+// analyzeCommentBlock analyzes a comment block as a single unit.
 func (c *CommentsAnalyzer) analyzeCommentBlock(block CommentBlock, functions []*node.Node, config CommentConfig) []CommentDetail {
 	blockNode := c.createBlockNode(block)
 	blockDetail := c.analyzeSingleComment(blockNode, functions, config)
+
 	return c.createCommentDetails(block, blockDetail)
 }
 
-// createBlockNode creates a virtual comment node representing the entire block
+// createBlockNode creates a virtual comment node representing the entire block.
 func (c *CommentsAnalyzer) createBlockNode(block CommentBlock) *node.Node {
 	return &node.Node{
 		Type:  node.UASTComment,
@@ -230,7 +275,7 @@ func (c *CommentsAnalyzer) createBlockNode(block CommentBlock) *node.Node {
 	}
 }
 
-// createCommentDetails creates comment details for all comments in a block
+// createCommentDetails creates comment details for all comments in a block.
 func (c *CommentsAnalyzer) createCommentDetails(block CommentBlock, blockDetail CommentDetail) []CommentDetail {
 	details := make([]CommentDetail, 0, len(block.Comments))
 	for _, comment := range block.Comments {
@@ -246,10 +291,11 @@ func (c *CommentsAnalyzer) createCommentDetails(block CommentBlock, blockDetail 
 		}
 		details = append(details, detail)
 	}
+
 	return details
 }
 
-// analyzeSingleComment analyzes a single comment's placement and quality
+// analyzeSingleComment analyzes a single comment's placement and quality.
 func (c *CommentsAnalyzer) analyzeSingleComment(comment *node.Node, functions []*node.Node, config CommentConfig) CommentDetail {
 	lineNumber := c.getCommentLineNumber(comment)
 	detail := c.createCommentDetail(comment, lineNumber)
@@ -264,15 +310,16 @@ func (c *CommentsAnalyzer) analyzeSingleComment(comment *node.Node, functions []
 	return detail
 }
 
-// getCommentLineNumber gets the line number of a comment
+// getCommentLineNumber gets the line number of a comment.
 func (c *CommentsAnalyzer) getCommentLineNumber(comment *node.Node) int {
 	if comment.Pos != nil {
 		return safeconv.MustUintToInt(comment.Pos.StartLine)
 	}
+
 	return 0
 }
 
-// createCommentDetail creates a basic comment detail
+// createCommentDetail creates a basic comment detail.
 func (c *CommentsAnalyzer) createCommentDetail(comment *node.Node, lineNumber int) CommentDetail {
 	return CommentDetail{
 		Type:       string(comment.Type),
@@ -283,8 +330,10 @@ func (c *CommentsAnalyzer) createCommentDetail(comment *node.Node, lineNumber in
 	}
 }
 
-// analyzeCommentWithTarget analyzes a comment that has a target
-func (c *CommentsAnalyzer) analyzeCommentWithTarget(comment *node.Node, target *node.Node, config CommentConfig, detail *CommentDetail) {
+// AnalyzeCommentWithTarget analyzes a comment that has a target.
+func (c *CommentsAnalyzer) analyzeCommentWithTarget(
+	comment, target *node.Node, config CommentConfig, detail *CommentDetail,
+) {
 	detail.TargetType = string(target.Type)
 	detail.TargetName = c.extractTargetName(target)
 	detail.Position = c.determinePosition(comment, target)
@@ -298,24 +347,26 @@ func (c *CommentsAnalyzer) analyzeCommentWithTarget(comment *node.Node, target *
 	}
 }
 
-// analyzeCommentWithoutTarget analyzes a comment without a target
+// analyzeCommentWithoutTarget analyzes a comment without a target.
 func (c *CommentsAnalyzer) analyzeCommentWithoutTarget(detail *CommentDetail) {
-	detail.Score = -0.2
+	detail.Score = -ScoreValue
 	detail.IsGood = false
 	detail.Position = "unassociated"
 }
 
-// getPenaltyScore gets the penalty score for a target type
+// getPenaltyScore gets the penalty score for a target type.
 func (c *CommentsAnalyzer) getPenaltyScore(target *node.Node, config CommentConfig) float64 {
 	if penalty, exists := config.PenaltyScores[string(target.Type)]; exists {
 		return penalty
 	}
+
 	return -0.1
 }
 
-// findClosestTarget finds the closest function/class to a comment
+// findClosestTarget finds the closest function/class to a comment.
 func (c *CommentsAnalyzer) findClosestTarget(comment *node.Node, functions []*node.Node) *node.Node {
 	var closest *node.Node
+
 	minDistance := -1
 
 	for _, function := range functions {
@@ -329,10 +380,10 @@ func (c *CommentsAnalyzer) findClosestTarget(comment *node.Node, functions []*no
 	return closest
 }
 
-// calculateDistance calculates the line distance between comment and target
-func (c *CommentsAnalyzer) calculateDistance(comment *node.Node, target *node.Node) int {
+// calculateDistance calculates the line distance between comment and target.
+func (c *CommentsAnalyzer) calculateDistance(comment, target *node.Node) int {
 	if comment.Pos == nil || target.Pos == nil {
-		return 999
+		return magic999
 	}
 
 	commentEndLine := safeconv.MustUintToInt(comment.Pos.EndLine)
@@ -342,11 +393,11 @@ func (c *CommentsAnalyzer) calculateDistance(comment *node.Node, target *node.No
 		return targetLine - commentEndLine
 	}
 
-	return 1000 + (commentEndLine - targetLine)
+	return magic1000 + (commentEndLine - targetLine)
 }
 
-// isCommentProperlyPlaced checks if a comment is properly placed above its target
-func (c *CommentsAnalyzer) isCommentProperlyPlaced(comment *node.Node, target *node.Node) bool {
+// IsCommentProperlyPlaced checks if a comment is properly placed above its target.
+func (c *CommentsAnalyzer) isCommentProperlyPlaced(comment, target *node.Node) bool {
 	if comment.Pos == nil || target.Pos == nil {
 		return false
 	}
@@ -360,19 +411,21 @@ func (c *CommentsAnalyzer) isCommentProperlyPlaced(comment *node.Node, target *n
 	}
 
 	gap := targetLine - commentEndLine
+
 	return c.isGapAcceptable(commentStartLine, commentEndLine, gap)
 }
 
-// isGapAcceptable checks if the gap between comment and target is acceptable
+// isGapAcceptable checks if the gap between comment and target is acceptable.
 func (c *CommentsAnalyzer) isGapAcceptable(commentStartLine, commentEndLine, gap int) bool {
 	if commentStartLine == commentEndLine {
-		return gap <= 2
+		return gap <= gapThresholdHigh
 	}
-	return gap <= 3
+
+	return gap <= magic3
 }
 
-// determinePosition determines the relative position of comment to target
-func (c *CommentsAnalyzer) determinePosition(comment *node.Node, target *node.Node) string {
+// determinePosition determines the relative position of comment to target.
+func (c *CommentsAnalyzer) determinePosition(comment, target *node.Node) string {
 	if comment.Pos == nil || target.Pos == nil {
 		return "unknown"
 	}
@@ -383,25 +436,29 @@ func (c *CommentsAnalyzer) determinePosition(comment *node.Node, target *node.No
 	if commentEndLine < targetLine {
 		return "above"
 	}
+
 	commentStartLine := safeconv.MustUintToInt(comment.Pos.StartLine)
 	if commentStartLine > targetLine {
 		return "below"
 	}
+
 	return "inline"
 }
 
-// extractTargetName extracts the name of a target node using generic extractor
+// extractTargetName extracts the name of a target node using generic extractor.
 func (c *CommentsAnalyzer) extractTargetName(target *node.Node) string {
 	if name, ok := c.extractor.ExtractName(target, "function_name"); ok && name != "" {
 		return name
 	}
+
 	if name, ok := common.ExtractFunctionName(target); ok && name != "" {
 		return name
 	}
+
 	return "unknown"
 }
 
-// calculateMetrics calculates overall metrics from comment details and functions
+// calculateMetrics calculates overall metrics from comment details and functions.
 func (c *CommentsAnalyzer) calculateMetrics(details []CommentDetail, functions []*node.Node) CommentMetrics {
 	metrics := CommentMetrics{
 		TotalComments:       len(details),
@@ -421,7 +478,7 @@ func (c *CommentsAnalyzer) calculateMetrics(details []CommentDetail, functions [
 	return metrics
 }
 
-// countCommentQuality counts good and bad comments
+// countCommentQuality counts good and bad comments.
 func (c *CommentsAnalyzer) countCommentQuality(details []CommentDetail, metrics *CommentMetrics) {
 	for _, detail := range details {
 		if detail.IsGood {
@@ -432,14 +489,14 @@ func (c *CommentsAnalyzer) countCommentQuality(details []CommentDetail, metrics 
 	}
 }
 
-// calculateOverallScore calculates the overall comment quality score
+// calculateOverallScore calculates the overall comment quality score.
 func (c *CommentsAnalyzer) calculateOverallScore(metrics *CommentMetrics) {
 	if metrics.TotalComments > 0 {
 		metrics.OverallScore = float64(metrics.GoodComments) / float64(metrics.TotalComments)
 	}
 }
 
-// buildFunctionSummary builds the function summary with documentation status
+// buildFunctionSummary builds the function summary with documentation status.
 func (c *CommentsAnalyzer) buildFunctionSummary(functions []*node.Node, details []CommentDetail, metrics *CommentMetrics) {
 	for _, function := range functions {
 		funcName := c.extractTargetName(function)
@@ -459,43 +516,48 @@ func (c *CommentsAnalyzer) buildFunctionSummary(functions []*node.Node, details 
 	}
 }
 
-// hasGoodComment checks if a function has a good comment
+// hasGoodComment checks if a function has a good comment.
 func (c *CommentsAnalyzer) hasGoodComment(funcName string, details []CommentDetail) bool {
 	for _, detail := range details {
 		if detail.TargetName == funcName && detail.IsGood {
 			return true
 		}
 	}
+
 	return false
 }
 
-// getCommentType gets the comment type for a function
+// getCommentType gets the comment type for a function.
 func (c *CommentsAnalyzer) getCommentType(funcName string, details []CommentDetail) string {
 	for _, detail := range details {
 		if detail.TargetName == funcName && detail.IsGood {
 			return detail.Type
 		}
 	}
+
 	return ""
 }
 
-// getCommentMessage returns a message based on the comment quality score
+// getCommentMessage returns a message based on the comment quality score.
 func (c *CommentsAnalyzer) getCommentMessage(score float64) string {
-	if score >= 0.8 {
+	if score >= scoreThresholdHigh {
 		return "Excellent comment quality and placement"
 	}
-	if score >= 0.6 {
-		return "Good comment quality with room for improvement"
+
+	if score >= scoreThresholdMedium {
+		return msgGoodCommentQuality
 	}
-	if score >= 0.4 {
+
+	if score >= scoreThresholdLow {
 		return "Fair comment quality - consider improving placement"
 	}
+
 	return "Poor comment quality - significant improvement needed"
 }
 
-// buildEmptyResult creates an empty result when no comments are found
+// buildEmptyResult creates an empty result when no comments are found.
 func (c *CommentsAnalyzer) buildEmptyResult() analyze.Report {
-	return common.NewResultBuilder().BuildCustomEmptyResult(map[string]interface{}{
+	return common.NewResultBuilder().BuildCustomEmptyResult(map[string]any{
 		"total_comments":       0,
 		"good_comments":        0,
 		"bad_comments":         0,
@@ -506,7 +568,7 @@ func (c *CommentsAnalyzer) buildEmptyResult() analyze.Report {
 	})
 }
 
-// buildResult builds the complete analysis result
+// buildResult builds the complete analysis result.
 func (c *CommentsAnalyzer) buildResult(commentDetails []CommentDetail, functions []*node.Node, metrics CommentMetrics) analyze.Report {
 	commentDetailsInterface := c.buildCommentDetailsInterface(commentDetails)
 	detailedCommentsTable := c.buildDetailedCommentsTable(commentDetails)
@@ -531,11 +593,11 @@ func (c *CommentsAnalyzer) buildResult(commentDetails []CommentDetail, functions
 	}
 }
 
-// buildCommentDetailsInterface builds the comment details interface
-func (c *CommentsAnalyzer) buildCommentDetailsInterface(commentDetails []CommentDetail) []map[string]interface{} {
-	commentDetailsInterface := make([]map[string]interface{}, 0, len(commentDetails))
+// buildCommentDetailsInterface builds the comment details interface.
+func (c *CommentsAnalyzer) buildCommentDetailsInterface(commentDetails []CommentDetail) []map[string]any {
+	commentDetailsInterface := make([]map[string]any, 0, len(commentDetails))
 	for _, detail := range commentDetails {
-		commentDetailsInterface = append(commentDetailsInterface, map[string]interface{}{
+		commentDetailsInterface = append(commentDetailsInterface, map[string]any{
 			"type":        detail.Type,
 			"token":       detail.Token,
 			"position":    detail.Position,
@@ -546,17 +608,18 @@ func (c *CommentsAnalyzer) buildCommentDetailsInterface(commentDetails []Comment
 			"line_number": detail.LineNumber,
 		})
 	}
+
 	return commentDetailsInterface
 }
 
-// buildDetailedCommentsTable builds the detailed comments table for display
-func (c *CommentsAnalyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []map[string]interface{} {
-	detailedCommentsTable := make([]map[string]interface{}, 0, len(commentDetails))
+// buildDetailedCommentsTable builds the detailed comments table for display.
+func (c *CommentsAnalyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []map[string]any {
+	detailedCommentsTable := make([]map[string]any, 0, len(commentDetails))
 	for _, detail := range commentDetails {
 		assessment := c.getCommentAssessment(detail.IsGood)
 		commentBody := c.truncateCommentBody(detail.Token)
 
-		detailedCommentsTable = append(detailedCommentsTable, map[string]interface{}{
+		detailedCommentsTable = append(detailedCommentsTable, map[string]any{
 			"line":       detail.LineNumber,
 			"comment":    commentBody,
 			"placement":  detail.Position,
@@ -564,12 +627,13 @@ func (c *CommentsAnalyzer) buildDetailedCommentsTable(commentDetails []CommentDe
 			"assessment": assessment,
 		})
 	}
+
 	return detailedCommentsTable
 }
 
-// buildDetailedFunctionsTable builds the detailed functions table for display
-func (c *CommentsAnalyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics CommentMetrics) []map[string]interface{} {
-	detailedFunctionsTable := make([]map[string]interface{}, 0, len(functions))
+// buildDetailedFunctionsTable builds the detailed functions table for display.
+func (c *CommentsAnalyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics CommentMetrics) []map[string]any {
+	detailedFunctionsTable := make([]map[string]any, 0, len(functions))
 	for _, function := range functions {
 		funcName := c.extractTargetName(function)
 		funcInfo := metrics.FunctionSummary[funcName]
@@ -578,7 +642,7 @@ func (c *CommentsAnalyzer) buildDetailedFunctionsTable(functions []*node.Node, m
 		funcType := c.getFunctionType(function)
 		lineCount := c.getFunctionLineCount(function)
 
-		detailedFunctionsTable = append(detailedFunctionsTable, map[string]interface{}{
+		detailedFunctionsTable = append(detailedFunctionsTable, map[string]any{
 			"function":   funcName,
 			"type":       funcType,
 			"lines":      lineCount,
@@ -586,10 +650,11 @@ func (c *CommentsAnalyzer) buildDetailedFunctionsTable(functions []*node.Node, m
 			"assessment": assessment,
 		})
 	}
+
 	return detailedFunctionsTable
 }
 
-// buildFunctionSummaryInterface builds the function summary interface
+// buildFunctionSummaryInterface builds the function summary interface.
 func (c *CommentsAnalyzer) buildFunctionSummaryInterface(metrics CommentMetrics) map[string]any {
 	functionSummaryInterface := make(map[string]any)
 	for name, info := range metrics.FunctionSummary {
@@ -600,54 +665,61 @@ func (c *CommentsAnalyzer) buildFunctionSummaryInterface(metrics CommentMetrics)
 			"comment_type": info.CommentType,
 		}
 	}
+
 	return functionSummaryInterface
 }
 
-// getCommentAssessment gets the assessment string for a comment
+// getCommentAssessment gets the assessment string for a comment.
 func (c *CommentsAnalyzer) getCommentAssessment(isGood bool) string {
 	if isGood {
 		return "✅ OK"
 	}
+
 	return "❌ Not OK"
 }
 
-// truncateCommentBody truncates comment body if too long for table display
+// truncateCommentBody truncates comment body if too long for table display.
 func (c *CommentsAnalyzer) truncateCommentBody(commentBody string) string {
-	if len(commentBody) > 50 {
+	if len(commentBody) > lenArg50 {
 		return commentBody[:47] + "..."
 	}
+
 	return commentBody
 }
 
-// getFunctionAssessment gets the assessment and comment type for a function
-func (c *CommentsAnalyzer) getFunctionAssessment(funcInfo FunctionInfo) (string, string) {
+// getFunctionAssessment gets the assessment and comment type for a function.
+func (c *CommentsAnalyzer) getFunctionAssessment(funcInfo FunctionInfo) (assessment, commentType string) {
 	if funcInfo.HasComment {
 		return "✅ Well Documented", funcInfo.CommentType
 	}
+
 	return "❌ No Comment", "None"
 }
 
-// getFunctionType gets the function type
+// getFunctionType gets the function type.
 func (c *CommentsAnalyzer) getFunctionType(function *node.Node) string {
 	funcType := string(function.Type)
 	if funcType == "" {
 		return "Unknown"
 	}
+
 	return funcType
 }
 
-// getFunctionLineCount gets the line count of a function
+// getFunctionLineCount gets the line count of a function.
 func (c *CommentsAnalyzer) getFunctionLineCount(function *node.Node) int {
 	if function.Pos != nil {
 		return safeconv.MustUintToInt(function.Pos.EndLine - function.Pos.StartLine + 1)
 	}
+
 	return 0
 }
 
-// safeDiv performs division, returning 0 when the divisor is 0
+// safeDiv performs division, returning 0 when the divisor is 0.
 func safeDiv(a, b float64) float64 {
 	if b == 0 {
 		return 0
 	}
+
 	return a / b
 }

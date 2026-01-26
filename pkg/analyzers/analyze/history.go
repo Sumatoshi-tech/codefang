@@ -10,29 +10,29 @@ import (
 
 // Context provides information about the current step in the analysis.
 type Context struct {
+	Time    time.Time
 	Commit  *object.Commit
 	Index   int
 	IsMerge bool
-	Time    time.Time
 }
 
 // HistoryAnalyzer interface defines the contract for history-based analyzers.
-type HistoryAnalyzer interface {
+type HistoryAnalyzer interface { //nolint:interfacebloat // interface methods are all needed.
 	Analyzer
 
-	// Core analysis methods
+	// Core analysis methods.
 	Initialize(repository *git.Repository) error
 
-	// Consumption
+	// Consumption.
 	Consume(ctx *Context) error
 
-	// Result handling
+	// Result handling.
 	Finalize() (Report, error)
 
-	// Branching support
+	// Branching support.
 	Fork(n int) []HistoryAnalyzer
 	Merge(branches []HistoryAnalyzer)
 
-	// Formatting/Serialization
+	// Formatting/Serialization.
 	Serialize(result Report, binary bool, writer io.Writer) error
 }

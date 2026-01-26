@@ -1,67 +1,73 @@
 package plumbing
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path"
 	"regexp"
 	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/src-d/enry/v2"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
+const (
+	bufferValue = 1024
+)
+
+// TreeDiffAnalyzer computes tree-level diffs between commits.
 type TreeDiffAnalyzer struct {
-	// Configuration
-	SkipFiles  []string
-	NameFilter *regexp.Regexp
-	Languages  map[string]bool
-
-	// State
+	l              interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
+	NameFilter     *regexp.Regexp
+	Languages      map[string]bool
 	previousTree   *object.Tree
-	previousCommit plumbing.Hash
 	repository     *git.Repository
-	
-	// Output
-	Changes object.Changes
-
-	// Internal
-	l interface {
-		Critical(args ...interface{})
-	}
+	SkipFiles      []string
+	Changes        object.Changes
+	previousCommit plumbing.Hash
 }
 
 const (
-	ConfigTreeDiffEnableBlacklist     = "TreeDiff.EnableBlacklist"
+	// ConfigTreeDiffEnableBlacklist is the configuration key for enabling path blacklisting.
+	ConfigTreeDiffEnableBlacklist = "TreeDiff.EnableBlacklist"
+	// ConfigTreeDiffBlacklistedPrefixes is the configuration key for path prefixes to exclude from diffs.
 	ConfigTreeDiffBlacklistedPrefixes = "TreeDiff.BlacklistedPrefixes"
-	ConfigTreeDiffLanguages           = "TreeDiff.LanguagesDetection"
-	ConfigTreeDiffFilterRegexp        = "TreeDiff.FilteredRegexes"
-	allLanguages                      = "all"
+	// ConfigTreeDiffLanguages is the configuration key for filtering by programming language.
+	ConfigTreeDiffLanguages = "TreeDiff.LanguagesDetection"
+	// ConfigTreeDiffFilterRegexp is the configuration key for the file path filter regular expression.
+	ConfigTreeDiffFilterRegexp = "TreeDiff.FilteredRegexes"
+	allLanguages               = "all"
 )
 
-var defaultBlacklistedPrefixes = []string{
+var defaultBlacklistedPrefixes = []string{ //nolint:gochecknoglobals // global is needed for registration.
 	"vendor/",
 	"vendors/",
 	"package-lock.json",
 	"Gopkg.lock",
 }
 
+// Name returns the name of the analyzer.
 func (t *TreeDiffAnalyzer) Name() string {
 	return "TreeDiff"
 }
 
+// Flag returns the CLI flag for the analyzer.
 func (t *TreeDiffAnalyzer) Flag() string {
 	return "tree-diff"
 }
 
+// Description returns a human-readable description of the analyzer.
 func (t *TreeDiffAnalyzer) Description() string {
 	return "Generates the list of changes for a commit."
 }
 
+// ListConfigurationOptions returns the configuration options for the analyzer.
 func (t *TreeDiffAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{{
 		Name: ConfigTreeDiffEnableBlacklist,
@@ -97,10 +103,17 @@ func (t *TreeDiffAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOp
 	}
 }
 
-func (t *TreeDiffAnalyzer) Configure(facts map[string]interface{}) error {
+// Configure sets up the analyzer with the provided facts.
+func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTreeDiffEnableBlacklist].(bool); exists && val {
-		t.SkipFiles = facts[ConfigTreeDiffBlacklistedPrefixes].([]string)
+		skipFiles, ok := facts[ConfigTreeDiffBlacklistedPrefixes].([]string)
+		if !ok {
+			return errors.New("expected []string for SkipFiles") //nolint:err113 // descriptive error for type assertion failure.
+		}
+
+		t.SkipFiles = skipFiles
 	}
+
 	if val, exists := facts[ConfigTreeDiffLanguages].([]string); exists {
 		t.Languages = map[string]bool{}
 		for _, lang := range val {
@@ -114,160 +127,182 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]interface{}) error {
 	if val, exists := facts[ConfigTreeDiffFilterRegexp].(string); exists {
 		t.NameFilter = regexp.MustCompile(val)
 	}
+
 	return nil
 }
 
+// Initialize prepares the analyzer for processing commits.
 func (t *TreeDiffAnalyzer) Initialize(repository *git.Repository) error {
 	t.previousTree = nil
+
 	t.repository = repository
 	if t.Languages == nil {
 		t.Languages = map[string]bool{}
 		t.Languages[allLanguages] = true
 	}
+
 	return nil
 }
 
+// Consume processes a single commit with the provided dependency results.
 func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
-	pass := false
-	for _, hash := range commit.ParentHashes {
-		if hash == t.previousCommit {
-			pass = true
-		}
-	}
-	if !pass && t.previousCommit != plumbing.ZeroHash {
-		// Reset state if discontinuous (e.g. merge parent switching)
-		// Or strictly validation?
-		// In explicit pipeline, we assume sequential feed.
-		// If disjoint, we might want to reset previousTree to parent's tree?
-		// But here we rely on sequential calls.
-		// Simplification: if not child of previous, full scan?
-		// Or just warn?
-		// We'll proceed.
-	}
-	
+
 	tree, err := commit.Tree()
 	if err != nil {
-		return err
+		return fmt.Errorf("consume: %w", err)
 	}
-	
+
 	var diffs object.Changes
+
 	if t.previousTree != nil {
 		diffs, err = object.DiffTree(t.previousTree, tree)
 		if err != nil {
-			return err
+			return fmt.Errorf("consume: %w", err)
 		}
 	} else {
-		diffs = []*object.Change{}
-		// First commit or reset
-		err = func() error {
-			fileIter := tree.Files()
-			defer fileIter.Close()
-			for {
-				file, err := fileIter.Next()
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					return err
-				}
-				pass, err := t.checkLanguage(file.Name, file.Hash)
-				if err != nil {
-					return err
-				}
-				if !pass {
-					continue
-				}
-				diffs = append(diffs, &object.Change{
-					To: object.ChangeEntry{Name: file.Name, Tree: tree, TreeEntry: object.TreeEntry{
-						Name: file.Name, Mode: file.Mode, Hash: file.Hash}}})
-			}
-			return nil
-		}()
+		diffs, err = t.initialTreeDiffs(tree)
 		if err != nil {
 			return err
 		}
 	}
+
 	t.previousTree = tree
 	t.previousCommit = commit.Hash
 	t.Changes = t.filterDiffs(diffs)
+
 	return nil
+}
+
+func (t *TreeDiffAnalyzer) initialTreeDiffs(tree *object.Tree) (object.Changes, error) {
+	var diffs object.Changes
+
+	fileIter := tree.Files()
+	defer fileIter.Close()
+
+	for {
+		file, iterErr := fileIter.Next()
+		if iterErr != nil {
+			if errors.Is(iterErr, io.EOF) {
+				break
+			}
+
+			return nil, fmt.Errorf("consume: %w", iterErr)
+		}
+
+		pass, langErr := t.checkLanguage(file.Name, file.Hash)
+		if langErr != nil {
+			return nil, langErr
+		}
+
+		if !pass {
+			continue
+		}
+
+		diffs = append(diffs, &object.Change{
+			To: object.ChangeEntry{Name: file.Name, Tree: tree, TreeEntry: object.TreeEntry{
+				Name: file.Name, Mode: file.Mode, Hash: file.Hash}}})
+	}
+
+	return diffs, nil
 }
 
 func (t *TreeDiffAnalyzer) filterDiffs(diffs object.Changes) object.Changes {
 	filteredDiffs := make(object.Changes, 0, len(diffs))
-OUTER:
-	for _, change := range diffs {
-		if len(t.SkipFiles) > 0 && (enry.IsVendor(change.To.Name) || enry.IsVendor(change.From.Name)) {
-			continue
-		}
-		for _, dir := range t.SkipFiles {
-			if strings.HasPrefix(change.To.Name, dir) || strings.HasPrefix(change.From.Name, dir) {
-				continue OUTER
-			}
-		}
-		if t.NameFilter != nil {
-			matchedTo := t.NameFilter.MatchString(change.To.Name)
-			matchedFrom := t.NameFilter.MatchString(change.From.Name)
 
-			if !matchedTo && !matchedFrom {
-				continue
-			}
+	for _, change := range diffs {
+		if t.shouldIncludeChange(change) {
+			filteredDiffs = append(filteredDiffs, change)
 		}
-		var changeEntry object.ChangeEntry
-		if change.To.Tree == nil {
-			changeEntry = change.From
-		} else {
-			changeEntry = change.To
-		}
-		if pass, _ := t.checkLanguage(changeEntry.Name, changeEntry.TreeEntry.Hash); !pass {
-			continue
-		}
-		filteredDiffs = append(filteredDiffs, change)
 	}
+
 	return filteredDiffs
+}
+
+func (t *TreeDiffAnalyzer) shouldIncludeChange(change *object.Change) bool {
+	if len(t.SkipFiles) > 0 && (enry.IsVendor(change.To.Name) || enry.IsVendor(change.From.Name)) {
+		return false
+	}
+
+	for _, dir := range t.SkipFiles {
+		if strings.HasPrefix(change.To.Name, dir) || strings.HasPrefix(change.From.Name, dir) {
+			return false
+		}
+	}
+
+	if t.NameFilter != nil {
+		if !t.NameFilter.MatchString(change.To.Name) && !t.NameFilter.MatchString(change.From.Name) {
+			return false
+		}
+	}
+
+	var changeEntry object.ChangeEntry
+	if change.To.Tree == nil {
+		changeEntry = change.From
+	} else {
+		changeEntry = change.To
+	}
+
+	pass, langErr := t.checkLanguage(changeEntry.Name, changeEntry.TreeEntry.Hash)
+	if langErr != nil {
+		return false
+	}
+
+	return pass
 }
 
 func (t *TreeDiffAnalyzer) checkLanguage(name string, blobHash plumbing.Hash) (bool, error) {
 	if t.Languages[allLanguages] {
 		return true, nil
 	}
+
 	blob, err := t.repository.BlobObject(blobHash)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("checkLanguage: %w", err)
 	}
+
 	reader, err := blob.Reader()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("checkLanguage: %w", err)
 	}
-	buffer := make([]byte, 1024)
+
+	buffer := make([]byte, bufferValue)
+
 	n, err := reader.Read(buffer)
-	if err != nil && (blob.Size != 0 || err != io.EOF) {
-		return false, err
+	if err != nil && (blob.Size != 0 || !errors.Is(err, io.EOF)) {
+		return false, fmt.Errorf("checkLanguage: %w", err)
 	}
+
 	if n < len(buffer) {
 		buffer = buffer[:n]
 	}
+
 	lang := strings.ToLower(enry.GetLanguage(path.Base(name), buffer))
+
 	return t.Languages[lang], nil
 }
 
+// Finalize completes the analysis and returns the result.
 func (t *TreeDiffAnalyzer) Finalize() (analyze.Report, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // nil,nil return is intentional.
 }
 
+// Fork creates a copy of the analyzer for parallel processing.
 func (t *TreeDiffAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		clone := *t
 		res[i] = &clone
 	}
+
 	return res
 }
 
-func (t *TreeDiffAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+// Merge combines results from forked analyzer branches.
+func (t *TreeDiffAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
-func (t *TreeDiffAnalyzer) Serialize(result analyze.Report, binary bool, writer io.Writer) error {
+// Serialize writes the analysis result to the given writer.
+func (t *TreeDiffAnalyzer) Serialize(_ analyze.Report, _ bool, _ io.Writer) error {
 	return nil
 }

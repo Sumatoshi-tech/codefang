@@ -1,3 +1,4 @@
+// Package main provides the UAST CLI entry point.
 package main
 
 import (
@@ -5,12 +6,17 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
+// formatJSON is the constant for the "json" output format string.
+const formatJSON = "json"
+
 var (
-	cfgFile string
-	verbose bool
-	quiet   bool
+	cfgFile string //nolint:gochecknoglobals // CLI flag variable
+	verbose bool   //nolint:gochecknoglobals // CLI flag variable
+	quiet   bool   //nolint:gochecknoglobals // CLI flag variable
 )
 
 func main() {
@@ -36,7 +42,8 @@ func main() {
 	rootCmd.AddCommand(lspCmd())
 	rootCmd.AddCommand(serverCmd())
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -46,9 +53,8 @@ func versionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("UAST CLI v0.1.0\n")
-			fmt.Printf("Go version: %s\n", "1.22")
+		Run: func(_ *cobra.Command, _ []string) {
+			fmt.Fprintf(os.Stdout, "uast %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date)
 		},
 	}
 

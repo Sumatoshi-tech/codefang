@@ -1,13 +1,17 @@
-package toposort
+package toposort_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/toposort"
 )
 
 func TestSymbolTable_Intern(t *testing.T) {
-	st := NewSymbolTable()
+	t.Parallel()
+
+	st := toposort.NewSymbolTable()
 
 	id1 := st.Intern("foo")
 	id2 := st.Intern("bar")
@@ -19,28 +23,34 @@ func TestSymbolTable_Intern(t *testing.T) {
 }
 
 func TestSymbolTable_Resolve(t *testing.T) {
-	st := NewSymbolTable()
+	t.Parallel()
+
+	st := toposort.NewSymbolTable()
 
 	id := st.Intern("hello")
 	val := st.Resolve(id)
 
 	assert.Equal(t, "hello", val)
-	assert.Equal(t, "", st.Resolve(999))
+	assert.Empty(t, st.Resolve(999))
 }
 
 func TestSymbolTable_Concurrent(t *testing.T) {
-	st := NewSymbolTable()
-	
-	// Just a simple concurrency smoke test
+	t.Parallel()
+
+	st := toposort.NewSymbolTable()
+
+	// Just a simple concurrency smoke test.
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+
+	for range 10 {
 		go func() {
 			st.Intern("concurrent")
+
 			done <- true
 		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

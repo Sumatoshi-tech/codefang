@@ -1,15 +1,18 @@
+// Package main demonstrates custom UAST mapping usage.
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
-// ExampleCustomMappings demonstrates how to use custom UAST mappings
-func ExampleCustomMappings() {
-	// Define a custom UAST mapping for a simple configuration language
+// ExampleCustomMappings demonstrates how to use custom UAST mappings.
+//
+//nolint:funlen // This example function is long due to the inline UAST mapping definition which cannot be shortened.
+func ExampleCustomMappings(logger *slog.Logger) {
+	// Define a custom UAST mapping for a simple configuration language.
 	customMaps := map[string]uast.UASTMap{
 		"simple_config": {
 			Extensions: []string{".scfg", ".simple"},
@@ -73,44 +76,47 @@ true <- (true) => uast(
 		},
 	}
 
-	// Create a new parser
+	// Create a new parser.
 	parser, err := uast.NewParser()
 	if err != nil {
-		log.Fatalf("Failed to create parser: %v", err)
+		logger.Error("Failed to create parser", "error", err)
+		os.Exit(1)
 	}
 
-	// Add custom mappings using the option pattern
+	// Add custom mappings using the option pattern.
 	parser = parser.WithUASTMap(customMaps)
 
-	// Test that the custom parser is loaded
+	// Test that the custom parser is loaded.
 	filename := "config.scfg"
 	if parser.IsSupported(filename) {
-		fmt.Printf("✅ Parser supports %s\n", filename)
+		logger.Info("Parser supports file", "file", filename)
 	} else {
-		fmt.Printf("❌ Parser does not support %s\n", filename)
+		logger.Info("Parser does not support file", "file", filename)
 	}
 
-	// Test with some sample content
+	// Test with some sample content.
 	content := []byte(`{
 		"app_name": "MyApp",
 		"version": "1.0.0",
 		"debug": true
 	}`)
 
-	// Parse the content
+	// Parse the content.
 	node, err := parser.Parse(filename, content)
 	if err != nil {
-		log.Fatalf("Failed to parse %s: %v", filename, err)
+		logger.Error("Failed to parse file", "file", filename, "error", err)
+		os.Exit(1)
 	}
 
-	fmt.Printf("✅ Successfully parsed %s\n", filename)
-	fmt.Printf("   Root node type: %s\n", node.Type)
-	fmt.Printf("   Number of children: %d\n", len(node.Children))
+	logger.Info("Successfully parsed file", "file", filename)
+	logger.Info("Root node info", "type", node.Type, "children", len(node.Children))
 }
 
-// ExampleMultipleCustomMappings demonstrates using multiple custom mappings
-func ExampleMultipleCustomMappings() {
-	// Define multiple custom UAST mappings
+// ExampleMultipleCustomMappings demonstrates using multiple custom mappings.
+//
+//nolint:funlen // This example function is long due to inline UAST mapping definitions which cannot be shortened.
+func ExampleMultipleCustomMappings(logger *slog.Logger) {
+	// Define multiple custom UAST mappings.
 	customMaps := map[string]uast.UASTMap{
 		"config_lang": {
 			Extensions: []string{".config"},
@@ -180,15 +186,16 @@ string <- (string) => uast(
 		},
 	}
 
-	// Create parser with multiple custom mappings
+	// Create parser with multiple custom mappings.
 	parser, err := uast.NewParser()
 	if err != nil {
-		log.Fatalf("Failed to create parser: %v", err)
+		logger.Error("Failed to create parser", "error", err)
+		os.Exit(1)
 	}
 
 	parser = parser.WithUASTMap(customMaps)
 
-	// Test multiple file extensions
+	// Test multiple file extensions.
 	testFiles := []string{
 		"app.config",
 		"template.tmpl",
@@ -197,19 +204,21 @@ string <- (string) => uast(
 
 	for _, filename := range testFiles {
 		if parser.IsSupported(filename) {
-			fmt.Printf("✅ Parser supports %s\n", filename)
+			logger.Info("Parser supports file", "file", filename)
 		} else {
-			fmt.Printf("❌ Parser does not support %s\n", filename)
+			logger.Info("Parser does not support file", "file", filename)
 		}
 	}
 }
 
 func main() {
-	fmt.Println("=== Custom UAST Mappings Example ===")
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	fmt.Println("1. Single Custom Mapping:")
-	ExampleCustomMappings()
+	logger.Info("=== Custom UAST Mappings Example ===")
 
-	fmt.Println("\n2. Multiple Custom Mappings:")
-	ExampleMultipleCustomMappings()
+	logger.Info("1. Single Custom Mapping:")
+	ExampleCustomMappings(logger)
+
+	logger.Info("2. Multiple Custom Mappings:")
+	ExampleMultipleCustomMappings(logger)
 }

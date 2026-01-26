@@ -1,3 +1,4 @@
+// Package safeconv provides safe integer type conversion functions that panic on overflow.
 package safeconv
 
 import "math"
@@ -14,13 +15,8 @@ func MustUintToInt(v uint) int {
 	if v > uint(MaxInt) {
 		panic("safeconv: uint to int overflow")
 	}
-	return int(v)
-}
 
-// MustUint32ToInt converts uint32 to int, panicking if the value overflows.
-// Added for backward compatibility.
-func MustUint32ToInt(u uint32) int {
-	return int(u)
+	return int(v)
 }
 
 // MustIntToUint converts int to uint, panics if negative.
@@ -29,6 +25,7 @@ func MustIntToUint(v int) uint {
 	if v < 0 {
 		panic("safeconv: negative int to uint conversion")
 	}
+
 	return uint(v)
 }
 
@@ -38,5 +35,6 @@ func MustIntToUint32(v int) uint32 {
 	if v < 0 || v > int(MaxUint32) {
 		panic("safeconv: int to uint32 out of bounds")
 	}
+
 	return uint32(v)
 }

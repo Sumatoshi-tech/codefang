@@ -28,6 +28,7 @@ func PadRight(s string, width int) string {
 	if len(s) >= width {
 		return s
 	}
+
 	return s + strings.Repeat(" ", width-len(s))
 }
 
@@ -37,5 +38,6 @@ func PadLeft(s string, width int) string {
 	if len(s) >= width {
 		return s
 	}
+
 	return strings.Repeat(" ", width-len(s)) + s
 }

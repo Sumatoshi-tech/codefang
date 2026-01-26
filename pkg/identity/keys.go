@@ -1,9 +1,13 @@
+// Package identity provides identity constants and types for author tracking.
 package identity
+
+// authorMissingShift is the bit shift used to compute the AuthorMissing constant.
+const authorMissingShift = 18
 
 const (
 	// AuthorMissing is the internal author index which denotes any unmatched identities
 	// (Detector.Consume()). It may *not* be (1 << 18) - 1, see BurndownAnalysis.packPersonWithDay().
-	AuthorMissing = (1 << 18) - 2
+	AuthorMissing = (1 << authorMissingShift) - 2
 	// AuthorMissingName is the string name which corresponds to AuthorMissing.
 	AuthorMissingName = "<unmatched>"
 

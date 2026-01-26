@@ -6,23 +6,28 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// CohesionAnalyzer performs cohesion analysis on UAST
+// MaxDepthValue is the default maximum UAST traversal depth for cohesion analysis.
+const (
+	MaxDepthValue = 10
+)
+
+// CohesionAnalyzer performs cohesion analysis on UAST.
 type CohesionAnalyzer struct {
 	traverser *common.UASTTraverser
 	extractor *common.DataExtractor
 }
 
-// Function represents a function with its cohesion metrics
+// Function represents a function with its cohesion metrics.
 type Function struct {
 	Name      string
-	LineCount int
 	Variables []string
+	LineCount int
 	Cohesion  float64
 }
 
-// NewCohesionAnalyzer creates a new CohesionAnalyzer with generic components
+// NewCohesionAnalyzer creates a new CohesionAnalyzer with generic components.
 func NewCohesionAnalyzer() *CohesionAnalyzer {
-	// Configure UAST traverser for functions
+	// Configure UAST traverser for functions.
 	traversalConfig := common.TraversalConfig{
 		Filters: []common.NodeFilter{
 			{
@@ -30,19 +35,15 @@ func NewCohesionAnalyzer() *CohesionAnalyzer {
 				Roles: []string{node.RoleFunction},
 			},
 		},
-		MaxDepth: 10,
+		MaxDepth: MaxDepthValue,
 	}
 
-	// Configure data extractor
+	// Configure data extractor.
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
-			"function_name": func(n *node.Node) (string, bool) {
-				return common.ExtractFunctionName(n)
-			},
-			"variable_name": func(n *node.Node) (string, bool) {
-				return common.ExtractVariableName(n)
-			},
+			"function_name": common.ExtractFunctionName,
+			"variable_name": common.ExtractVariableName,
 		},
 	}
 
@@ -52,7 +53,7 @@ func NewCohesionAnalyzer() *CohesionAnalyzer {
 	}
 }
 
-// CreateAggregator creates a new aggregator for cohesion analysis
+// CreateAggregator creates a new aggregator for cohesion analysis.
 func (c *CohesionAnalyzer) CreateAggregator() analyze.ResultAggregator {
 	return NewCohesionAggregator()
 }

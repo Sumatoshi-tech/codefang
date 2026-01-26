@@ -1,50 +1,44 @@
-package uast
+package uast //nolint:testpackage // Tests need access to internal parser methods.
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// Test helper functions for generating test content
+// Test helper functions for generating test content.
 func generateLargeGoFile() []byte {
 	var sb strings.Builder
 	sb.WriteString("package main\n\n")
-	for i := 0; i < 50; i++ {
+
+	for i := range 50 {
 		sb.WriteString(fmt.Sprintf("func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i))
 	}
+
 	return []byte(sb.String())
 }
 
 func generateVeryLargeGoFile() []byte {
 	var sb strings.Builder
 	sb.WriteString("package main\n\n")
-	for i := 0; i < 100; i++ {
+
+	for i := range 100 {
 		sb.WriteString(fmt.Sprintf("func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i))
 	}
+
 	return []byte(sb.String())
 }
 
-type mockProvider struct {
-	lang      string
-	parseErr  error
-	parseNode *node.Node
-}
-
-func (m *mockProvider) Parse(filename string, content []byte) (*node.Node, error) {
-	return m.parseNode, m.parseErr
-}
-func (m *mockProvider) Language() string     { return m.lang }
-func (m *mockProvider) Extensions() []string { return []string{".go"} }
-
 func TestNewParser_CreatesParser(t *testing.T) {
-	// Create a parser
+	// Create a parser.
 	p, err := NewParser()
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
+
 	if p == nil {
 		t.Fatal("expected non-nil parser")
 	}
@@ -56,74 +50,88 @@ func TestParser_Parse(t *testing.T) {
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	// Test with a supported file
+	// Test with a supported file.
 	_, err = p.Parse("foo.go", []byte("package main"))
 	if err != nil {
 		t.Logf("parse error (expected for mock): %v", err)
 	}
 
-	// Test with empty filename
+	// Test with empty filename.
 	_, err = p.Parse("", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for empty filename")
 	}
 
-	// Test with unsupported language
+	// Test with unsupported language.
 	_, err = p.Parse("foo.xyz", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for unsupported language")
 	}
 }
 
+//nolint:gocyclo,cyclop // Integration test with many assertions.
 func TestIntegration_GoFunctionUAST_SPEC(t *testing.T) {
 	src := []byte(`package main
 func add(a, b int) int { return a + b }`)
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
+
 	root, err := parser.Parse("main.go", src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
+
 	if root == nil {
 		t.Fatalf("Parse returned nil node")
 	}
 
-	// Debug: print the entire node structure
+	// Debug: print the entire node structure.
 	t.Logf("Root node: %+v", root)
+
 	for i, child := range root.Children {
 		t.Logf("Child %d: type=%s, props=%+v, roles=%+v", i, child.Type, child.Props, child.Roles)
 	}
 
-	// Find the function node
+	// Find the function node.
 	var fn *node.Node
+
 	for _, child := range root.Children {
 		if child.Type == "go:function" || child.Type == "Function" || child.Type == "FunctionDecl" {
 			fn = child
+
 			break
 		}
 	}
+
 	if fn == nil {
 		t.Fatalf("No function node found; got children: %+v", root.Children)
 	}
-	// Check canonical type
+
+	// Check canonical type.
 	if fn.Type != "go:function" && fn.Type != "Function" && fn.Type != "FunctionDecl" {
 		t.Errorf("Function node has wrong type: got %q", fn.Type)
 	}
-	// Check roles
+
+	// Check roles.
 	wantRoles := map[string]bool{"Function": true, "Declaration": true}
+
 	for _, r := range fn.Roles {
 		delete(wantRoles, string(r))
 	}
+
 	for missing := range wantRoles {
 		t.Errorf("Function node missing role: %s", missing)
 	}
-	// Check props
+
+	// Check props.
 	if fn.Props["name"] != "add" {
 		t.Errorf("Function node has wrong name prop: got %q, want 'add'", fn.Props["name"])
 	}
-	// Check children are present
+
+	// Check children are present.
 	if len(fn.Children) == 0 {
 		t.Errorf("Function node has no children")
 	}
@@ -133,39 +141,52 @@ func TestDSL_E2E_GoIntegration(t *testing.T) {
 	goCode := `package main
 func hello() {}
 func world() {}`
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
-	uast, err := parser.Parse("main.go", []byte(goCode))
+
+	uastRoot, err := parser.Parse("main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if uast == nil {
+
+	if uastRoot == nil {
 		t.Fatalf("UAST is nil")
 	}
-	// Collect all nodes in the tree
-	nodes := uast.Find(func(n *node.Node) bool { return true })
-	// Query: get all function nodes' types
+
+	// Collect all nodes in the tree.
+	nodes := uastRoot.Find(func(_ *node.Node) bool { return true })
+
+	// Query: get all function nodes' types.
 	dsl := "filter(.type == \"Function\") |> map(.type)"
-	ast, err := node.ParseDSL(dsl)
-	if err != nil {
-		t.Fatalf("DSL parse error: %v", err)
+
+	ast, parseErr := node.ParseDSL(dsl)
+	if parseErr != nil {
+		t.Fatalf("DSL parse error: %v", parseErr)
 	}
-	qf, err := node.LowerDSL(ast)
-	if err != nil {
-		t.Fatalf("DSL lowering error: %v", err)
+
+	qf, lowerErr := node.LowerDSL(ast)
+	if lowerErr != nil {
+		t.Fatalf("DSL lowering error: %v", lowerErr)
 	}
+
 	out := qf(nodes)
+
 	got := make([]string, 0, len(out))
 	for _, n := range out {
 		got = append(got, n.Token)
 	}
+
 	want := []string{"Function", "Function"}
+
 	if len(got) != len(want) {
 		t.Errorf("got %v, want %v", got, want)
+
 		return
 	}
+
 	for i := range got {
 		if got[i] != want[i] {
 			t.Errorf("got %v, want %v", got, want)
@@ -196,17 +217,17 @@ func main() {
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	uast, err := parser.Parse("main.go", []byte(goCode))
+	uastRoot, err := parser.Parse("main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
 
-	if uast == nil {
+	if uastRoot == nil {
 		t.Fatalf("UAST is nil")
 	}
 
-	// Find all function and method nodes
-	functionNodes := uast.Find(func(n *node.Node) bool {
+	// Find all function and method nodes.
+	functionNodes := uastRoot.Find(func(n *node.Node) bool {
 		return n.Type == "Function" || n.Type == "go:function" || n.Type == "FunctionDecl" || n.Type == "Method"
 	})
 
@@ -214,7 +235,7 @@ func main() {
 		t.Errorf("Expected at least 2 function nodes, got %d", len(functionNodes))
 	}
 
-	// Check for specific functions
+	// Check for specific functions.
 	foundMain := false
 	foundSayHello := false
 
@@ -222,6 +243,7 @@ func main() {
 		if fn.Props["name"] == "main" {
 			foundMain = true
 		}
+
 		if fn.Props["name"] == "SayHello" {
 			foundSayHello = true
 		}
@@ -230,13 +252,15 @@ func main() {
 	if !foundMain {
 		t.Error("Expected to find 'main' function")
 	}
+
 	if !foundSayHello {
 		t.Error("Expected to find 'SayHello' method")
 	}
 }
 
-// --- DSL Query Efficiency Instrumentation Helpers (migrated) ---
-
+// DSL Query Efficiency Instrumentation Helpers (migrated).
+//
+//nolint:gochecknoglobals // Test instrumentation counters.
 var (
 	filterCallCount    int
 	mapCallCount       int
@@ -251,23 +275,24 @@ func resetDSLCounters() {
 	dslAllocationCount = 0
 }
 
-func instrumentedFindDSL(node *node.Node, query string) ([]*node.Node, error) {
-	// Track filter and map operations
+func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
+	// Track filter and map operations.
 	filterCallCount++
 	evaluationCount++
 
-	// Simulate the query execution
-	results, err := node.FindDSL(query)
+	// Simulate the query execution.
+	results, err := nd.FindDSL(query)
 
-	// Count operations based on query type
-	if len(query) > 0 {
-		// Rough estimation of operations based on query complexity
-		evaluationCount += len(results) * 2 // Each result requires evaluation
+	// Count operations based on query type.
+	if query != "" {
+		// Rough estimation of operations based on query complexity.
+		evaluationCount += len(results) * 2 // Each result requires evaluation.
 	}
 
 	return results, err
 }
 
+//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -301,17 +326,17 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		node, err := parser.Parse(tc.name+".go", tc.content)
-		if err != nil {
-			t.Fatalf("Failed to parse test file: %v", err)
+		nd, parseErr := parser.Parse(tc.name+".go", tc.content)
+		if parseErr != nil {
+			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
 			resetDSLCounters()
 
-			results, err := instrumentedFindDSL(node, tc.query)
-			if err != nil {
-				t.Fatalf("DSL query failed: %v", err)
+			results, findErr := instrumentedFindDSL(nd, tc.query)
+			if findErr != nil {
+				t.Fatalf("DSL query failed: %v", findErr)
 			}
 
 			if filterCallCount > tc.maxFilterCalls {
@@ -332,6 +357,7 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	}
 }
 
+//nolint:gochecknoglobals // Test instrumentation counters.
 var (
 	iterationCount       int
 	maxStackDepthReached int
@@ -344,16 +370,19 @@ func resetOperationCounters() {
 	nodeAllocationCount = 0
 }
 
-func instrumentedPreOrder(n *node.Node) <-chan *node.Node {
+func instrumentedPreOrder(nd *node.Node) <-chan *node.Node {
 	iterationCount++
-	return n.PreOrder()
+
+	return nd.PreOrder()
 }
 
-func instrumentedPostOrder(n *node.Node, fn func(*node.Node)) {
+func instrumentedPostOrder(nd *node.Node, fn func(*node.Node)) {
 	iterationCount++
-	n.VisitPostOrder(fn)
+
+	nd.VisitPostOrder(fn)
 }
 
+//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -370,31 +399,32 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 		{
 			name:           "LargeGoFile",
 			content:        generateLargeGoFile(),
-			maxIterations:  6000, // relaxed
-			maxStackDepth:  135,  // relaxed from 30
-			maxAllocations: 1000, // relaxed
+			maxIterations:  6000, // Relaxed.
+			maxStackDepth:  135,  // Relaxed from 30.
+			maxAllocations: 1000, // Relaxed.
 		},
 		{
 			name:           "VeryLargeGoFile",
 			content:        generateVeryLargeGoFile(),
-			maxIterations:  7000, // relaxed
-			maxStackDepth:  135,  // relaxed from 30
-			maxAllocations: 6000, // relaxed from 1000
+			maxIterations:  7000, // Relaxed.
+			maxStackDepth:  135,  // Relaxed from 30.
+			maxAllocations: 6000, // Relaxed from 1000.
 		},
 	}
 
 	for _, tc := range testCases {
-		root, err := parser.Parse(tc.name+".go", tc.content)
-		if err != nil {
-			t.Fatalf("Failed to parse test file: %v", err)
+		root, parseErr := parser.Parse(tc.name+".go", tc.content)
+		if parseErr != nil {
+			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
 
 		t.Run(tc.name+"/PreOrderEfficiency", func(t *testing.T) {
 			resetOperationCounters()
 
 			count := 0
-			for n := range instrumentedPreOrder(root) {
-				_ = n
+
+			for nd := range instrumentedPreOrder(root) {
+				_ = nd
 				count++
 			}
 
@@ -422,8 +452,8 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 			resetOperationCounters()
 
 			count := 0
-			instrumentedPostOrder(root, func(n *node.Node) {
-				_ = n
+
+			instrumentedPostOrder(root, func(_ *node.Node) {
 				count++
 			})
 
@@ -450,7 +480,7 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 }
 
 func TestParserWithCustomUASTMap(t *testing.T) {
-	// Create a simple custom UAST mapping for testing
+	// Create a simple custom UAST mapping for testing.
 	customMaps := map[string]UASTMap{
 		"custom_json": {
 			Extensions: []string{".custom"},
@@ -520,7 +550,7 @@ true <- (true) => uast(
 		},
 	}
 
-	// Create parser with custom mappings
+	// Create parser with custom mappings.
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -528,13 +558,14 @@ true <- (true) => uast(
 
 	parser = parser.WithUASTMap(customMaps)
 
-	// Test that the custom parser is loaded
+	// Test that the custom parser is loaded.
 	if !parser.IsSupported("test_file.custom") {
 		t.Error("Custom parser should support .custom files")
 	}
 
-	// Test that the parser can be retrieved
+	// Test that the parser can be retrieved.
 	ext := strings.ToLower(".custom")
+
 	parserInstance, exists := parser.loader.LanguageParser(ext)
 	if !exists {
 		t.Error("Custom parser should be available for .custom extension")
@@ -544,22 +575,23 @@ true <- (true) => uast(
 		t.Errorf("Expected language 'json', got '%s'", parserInstance.Language())
 	}
 
-	// Test that extensions are correctly registered
+	// Test that extensions are correctly registered.
 	expectedExtensions := []string{".custom"}
 	actualExtensions := parserInstance.Extensions()
+
 	if len(actualExtensions) != len(expectedExtensions) {
 		t.Errorf("Expected %d extensions, got %d", len(expectedExtensions), len(actualExtensions))
 	}
 
-	for i, ext := range expectedExtensions {
-		if actualExtensions[i] != ext {
-			t.Errorf("Expected extension '%s', got '%s'", ext, actualExtensions[i])
+	for i, ex := range expectedExtensions {
+		if actualExtensions[i] != ex {
+			t.Errorf("Expected extension '%s', got '%s'", ex, actualExtensions[i])
 		}
 	}
 }
 
 func TestParserWithMultipleCustomUASTMaps(t *testing.T) {
-	// Create multiple custom UAST mappings
+	// Create multiple custom UAST mappings.
 	customMaps := map[string]UASTMap{
 		"custom_json1": {
 			Extensions: []string{".json1"},
@@ -629,7 +661,7 @@ string <- (string) => uast(
 		},
 	}
 
-	// Create parser with custom mappings
+	// Create parser with custom mappings.
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -637,7 +669,7 @@ string <- (string) => uast(
 
 	parser = parser.WithUASTMap(customMaps)
 
-	// Test that both custom parsers are loaded
+	// Test that both custom parsers are loaded.
 	testCases := []struct {
 		filename string
 		language string
@@ -653,6 +685,7 @@ string <- (string) => uast(
 		}
 
 		ext := strings.ToLower(getFileExtension(tc.filename))
+
 		parserInstance, exists := parser.loader.LanguageParser(ext)
 		if !exists {
 			t.Errorf("Parser should be available for %s", tc.filename)
@@ -665,10 +698,10 @@ string <- (string) => uast(
 }
 
 func TestParserCustomUASTMapPriority(t *testing.T) {
-	// Create a custom UAST mapping that overrides the built-in JSON parser
+	// Create a custom UAST mapping that overrides the built-in JSON parser.
 	customMaps := map[string]UASTMap{
 		"custom_json": {
-			Extensions: []string{".json"}, // Same extension as built-in JSON parser
+			Extensions: []string{".json"}, // Same extension as built-in JSON parser.
 			UAST: `[language "json", extensions: ".json"]
 
 _value <- (_value) => uast(
@@ -729,7 +762,7 @@ true <- (true) => uast(
 		},
 	}
 
-	// Create parser with custom mappings
+	// Create parser with custom mappings.
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -737,39 +770,42 @@ true <- (true) => uast(
 
 	parser = parser.WithUASTMap(customMaps)
 
-	// Test that the custom parser is used instead of the built-in one
+	// Test that the custom parser is used instead of the built-in one.
 	filename := "test.json"
+
 	if !parser.IsSupported(filename) {
 		t.Error("Parser should support .json files")
 	}
 
-	// Get the parser for .json extension
+	// Get the parser for .json extension.
 	ext := strings.ToLower(".json")
+
 	parserInstance, exists := parser.loader.LanguageParser(ext)
 	if !exists {
 		t.Error("Parser should be available for .json extension")
 	}
 
-	// Parse some JSON content
+	// Parse some JSON content.
 	content := []byte(`{"name": "test", "value": 42}`)
-	node, err := parserInstance.Parse(filename, content)
-	if err != nil {
-		t.Fatalf("Failed to parse JSON: %v", err)
+
+	nd, parseErr := parserInstance.Parse(filename, content)
+	if parseErr != nil {
+		t.Fatalf("Failed to parse JSON: %v", parseErr)
 	}
 
-	// Verify that the custom parser was used by checking for custom node types
-	// The custom parser should produce nodes with "Custom" prefix in their types
-	if node.Type != "CustomDocument" {
-		t.Errorf("Expected custom parser to be used, got node type: %s", node.Type)
+	// Verify that the custom parser was used by checking for custom node types.
+	// The custom parser should produce nodes with "Custom" prefix in their types.
+	if nd.Type != "CustomDocument" {
+		t.Errorf("Expected custom parser to be used, got node type: %s", nd.Type)
 	}
 
-	// Check that the parser language is still "json" (tree-sitter language)
+	// Check that the parser language is still "json" (tree-sitter language).
 	if parserInstance.Language() != "json" {
 		t.Errorf("Expected language 'json', got '%s'", parserInstance.Language())
 	}
 }
 
-// TestParser_GetEmbeddedMappings tests the GetEmbeddedMappings method
+// TestParser_GetEmbeddedMappings tests the GetEmbeddedMappings method.
 func TestParser_GetEmbeddedMappings(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -778,21 +814,23 @@ func TestParser_GetEmbeddedMappings(t *testing.T) {
 
 	mappings := parser.GetEmbeddedMappings()
 
-	// Should return a non-empty map
+	// Should return a non-empty map.
 	if len(mappings) == 0 {
 		t.Error("Expected non-empty mappings map")
 	}
 
-	// Check that known languages are present
+	// Check that known languages are present.
 	knownLanguages := []string{"go", "python", "java", "javascript"}
+
 	for _, lang := range knownLanguages {
 		mapping, exists := mappings[lang]
 		if !exists {
 			t.Errorf("Expected language '%s' to be present in mappings", lang)
+
 			continue
 		}
 
-		// Each mapping should have Extensions and UAST content
+		// Each mapping should have Extensions and UAST content.
 		if len(mapping.Extensions) == 0 {
 			t.Errorf("Expected language '%s' to have extensions", lang)
 		}
@@ -803,7 +841,7 @@ func TestParser_GetEmbeddedMappings(t *testing.T) {
 	}
 }
 
-// TestParser_GetEmbeddedMappingsList tests the GetEmbeddedMappingsList method
+// TestParser_GetEmbeddedMappingsList tests the GetEmbeddedMappingsList method.
 func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -812,23 +850,25 @@ func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 
 	mappingsList := parser.GetEmbeddedMappingsList()
 
-	// Should return a non-empty map
+	// Should return a non-empty map.
 	if len(mappingsList) == 0 {
 		t.Error("Expected non-empty mappings list")
 	}
 
-	// Check that each entry has a "size" field
+	// Check that each entry has a "size" field.
 	for lang, info := range mappingsList {
 		size, exists := info["size"]
 		if !exists {
 			t.Errorf("Expected language '%s' to have 'size' field", lang)
+
 			continue
 		}
 
-		// Size should be a positive integer
+		// Size should be a positive integer.
 		sizeInt, ok := size.(int)
 		if !ok {
 			t.Errorf("Expected 'size' to be an int for language '%s'", lang)
+
 			continue
 		}
 
@@ -838,18 +878,20 @@ func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 	}
 }
 
-// TestParser_GetMapping tests the GetMapping method
+// TestParser_GetMapping tests the GetMapping method.
+//
+//nolint:gocognit // Complex test with multiple subtests.
 func TestParser_GetMapping(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
 	}
 
-	// Test retrieving existing language mapping
+	// Test retrieving existing language mapping.
 	t.Run("existing language", func(t *testing.T) {
-		mapping, err := parser.GetMapping("go")
-		if err != nil {
-			t.Fatalf("Failed to get 'go' mapping: %v", err)
+		mapping, mapErr := parser.GetMapping("go")
+		if mapErr != nil {
+			t.Fatalf("Failed to get 'go' mapping: %v", mapErr)
 		}
 
 		if mapping == nil {
@@ -864,36 +906,29 @@ func TestParser_GetMapping(t *testing.T) {
 			t.Error("Expected 'go' mapping to have UAST content")
 		}
 
-		// Check that .go extension is present
-		hasGoExt := false
-		for _, ext := range mapping.Extensions {
-			if ext == ".go" {
-				hasGoExt = true
-				break
-			}
-		}
-		if !hasGoExt {
+		// Check that .go extension is present.
+		if !slices.Contains(mapping.Extensions, ".go") {
 			t.Errorf("Expected 'go' mapping to include .go extension, got: %v", mapping.Extensions)
 		}
 	})
 
-	// Test error case for non-existent language
+	// Test error case for non-existent language.
 	t.Run("non-existent language", func(t *testing.T) {
-		_, err := parser.GetMapping("nonexistent_language_xyz")
-		if err == nil {
+		_, mapErr := parser.GetMapping("nonexistent_language_xyz")
+		if mapErr == nil {
 			t.Error("Expected error for non-existent language")
 		}
 
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("Expected 'not found' error, got: %v", err)
+		if !strings.Contains(mapErr.Error(), "not found") {
+			t.Errorf("Expected 'not found' error, got: %v", mapErr)
 		}
 	})
 
-	// Test retrieving another language
+	// Test retrieving another language.
 	t.Run("python mapping", func(t *testing.T) {
-		mapping, err := parser.GetMapping("python")
-		if err != nil {
-			t.Fatalf("Failed to get 'python' mapping: %v", err)
+		mapping, mapErr := parser.GetMapping("python")
+		if mapErr != nil {
+			t.Fatalf("Failed to get 'python' mapping: %v", mapErr)
 		}
 
 		if mapping == nil {
@@ -904,15 +939,8 @@ func TestParser_GetMapping(t *testing.T) {
 			t.Error("Expected 'python' mapping to have extensions")
 		}
 
-		// Check that .py extension is present
-		hasPyExt := false
-		for _, ext := range mapping.Extensions {
-			if ext == ".py" {
-				hasPyExt = true
-				break
-			}
-		}
-		if !hasPyExt {
+		// Check that .py extension is present.
+		if !slices.Contains(mapping.Extensions, ".py") {
 			t.Errorf("Expected 'python' mapping to include .py extension, got: %v", mapping.Extensions)
 		}
 	})

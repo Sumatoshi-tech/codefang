@@ -1,4 +1,4 @@
-package imports
+package imports //nolint:testpackage // testing internal implementation.
 
 import (
 	"testing"
@@ -28,6 +28,8 @@ func newSimpleImportsReport() analyze.Report {
 }
 
 func TestImportsTitle(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
@@ -35,6 +37,8 @@ func TestImportsTitle(t *testing.T) {
 }
 
 func TestImportsNilReport(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(nil)
 	if section.SectionTitle() != SectionTitle {
 		t.Errorf("SectionTitle() = %q, want %q", section.SectionTitle(), SectionTitle)
@@ -42,6 +46,8 @@ func TestImportsNilReport(t *testing.T) {
 }
 
 func TestImportsScore_InfoOnly(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
 	if section.Score() != analyze.ScoreInfoOnly {
 		t.Errorf("Score() = %v, want %v", section.Score(), analyze.ScoreInfoOnly)
@@ -49,7 +55,10 @@ func TestImportsScore_InfoOnly(t *testing.T) {
 }
 
 func TestImportsStatusMessage(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	want := "Found 4 unique imports"
 	if section.StatusMessage() != want {
 		t.Errorf("StatusMessage() = %q, want %q", section.StatusMessage(), want)
@@ -57,6 +66,8 @@ func TestImportsStatusMessage(t *testing.T) {
 }
 
 func TestImportsStatusMessage_Empty(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(analyze.Report{})
 	if section.StatusMessage() != DefaultStatusMessage {
 		t.Errorf("StatusMessage() = %q, want %q", section.StatusMessage(), DefaultStatusMessage)
@@ -64,8 +75,12 @@ func TestImportsStatusMessage_Empty(t *testing.T) {
 }
 
 func TestImportsKeyMetrics_Count(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	const expectedCount = 2
+
 	metrics := section.KeyMetrics()
 	if len(metrics) != expectedCount {
 		t.Errorf("KeyMetrics() count = %d, want %d", len(metrics), expectedCount)
@@ -73,28 +88,38 @@ func TestImportsKeyMetrics_Count(t *testing.T) {
 }
 
 func TestImportsKeyMetrics_Labels(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	metrics := section.KeyMetrics()
 	if metrics[0].Label != MetricUniqueImports {
 		t.Errorf("metrics[0].Label = %q, want %q", metrics[0].Label, MetricUniqueImports)
 	}
+
 	if metrics[1].Label != MetricTotalFiles {
 		t.Errorf("metrics[1].Label = %q, want %q", metrics[1].Label, MetricTotalFiles)
 	}
 }
 
 func TestImportsKeyMetrics_Values(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	metrics := section.KeyMetrics()
 	if metrics[0].Value != "4" {
 		t.Errorf("Unique Imports = %q, want %q", metrics[0].Value, "4")
 	}
+
 	if metrics[1].Value != "10" {
 		t.Errorf("Total Files = %q, want %q", metrics[1].Value, "10")
 	}
 }
 
 func TestImportsDistribution_Nil(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
 	if section.Distribution() != nil {
 		t.Error("Distribution() should be nil for imports")
@@ -102,37 +127,50 @@ func TestImportsDistribution_Nil(t *testing.T) {
 }
 
 func TestImportsTopIssues_FromCounts(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	const topN = 2
+
 	issues := section.TopIssues(topN)
 	if len(issues) != topN {
 		t.Fatalf("TopIssues(%d) count = %d, want %d", topN, len(issues), topN)
 	}
-	// Sorted by count desc: fmt(12) first
+	// Sorted by count desc: fmt(12) first.
 	if issues[0].Name != "fmt" {
 		t.Errorf("issues[0].Name = %q, want %q", issues[0].Name, "fmt")
 	}
+
 	if issues[0].Severity != analyze.SeverityInfo {
 		t.Errorf("issues[0].Severity = %q, want %q", issues[0].Severity, analyze.SeverityInfo)
 	}
 }
 
 func TestImportsTopIssues_FromList(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newSimpleImportsReport())
+
 	const topN = 2
+
 	issues := section.TopIssues(topN)
 	if len(issues) != topN {
 		t.Fatalf("TopIssues(%d) count = %d, want %d", topN, len(issues), topN)
 	}
-	// Sorted alphabetically: fmt, os
+	// Sorted alphabetically: fmt, os.
 	if issues[0].Name != "fmt" {
 		t.Errorf("issues[0].Name = %q, want %q", issues[0].Name, "fmt")
 	}
 }
 
 func TestImportsAllIssues(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(newTestImportsReport())
+
 	const expectedImports = 4
+
 	issues := section.AllIssues()
 	if len(issues) != expectedImports {
 		t.Errorf("AllIssues() count = %d, want %d", len(issues), expectedImports)
@@ -140,7 +178,10 @@ func TestImportsAllIssues(t *testing.T) {
 }
 
 func TestImportsTopIssues_Empty(t *testing.T) {
+	t.Parallel()
+
 	section := NewImportsReportSection(analyze.Report{})
+
 	const n = 5
 	if len(section.TopIssues(n)) != 0 {
 		t.Error("TopIssues should be empty for empty report")
@@ -148,5 +189,7 @@ func TestImportsTopIssues_Empty(t *testing.T) {
 }
 
 func TestImportsImplementsInterface(t *testing.T) {
+	t.Parallel()
+
 	var _ analyze.ReportSection = (*ImportsReportSection)(nil)
 }

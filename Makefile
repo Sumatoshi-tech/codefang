@@ -8,6 +8,12 @@ endif
 PKG = $(shell go env GOOS)_$(shell go env GOARCH)
 TAGS ?=
 
+VERSION_PKG = github.com/Sumatoshi-tech/codefang/pkg/version
+GIT_COMMIT  = $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+GIT_VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_DATE  = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS     = -X $(VERSION_PKG).Version=$(GIT_VERSION) -X $(VERSION_PKG).Commit=$(GIT_COMMIT) -X $(VERSION_PKG).Date=$(BUILD_DATE)
+
 all: precompile ${GOBIN}/uast${EXE} ${GOBIN}/codefang${EXE}
 
 # Build all binaries (alias for all)
@@ -169,9 +175,10 @@ clean:
 	rm -f test/benchmarks/benchmark_results.txt
 	rm -rf benchmark_plots/
 
-# Linting tools
-GOLINT=golangci-lint
-DEADCODE=deadcode
+# Linting tools (resolve from GOPATH/bin if not on PATH)
+GOPATH_BIN=$(shell go env GOPATH)/bin
+GOLINT=$(or $(shell command -v golangci-lint 2>/dev/null),$(GOPATH_BIN)/golangci-lint)
+DEADCODE=$(or $(shell command -v deadcode 2>/dev/null),$(GOPATH_BIN)/deadcode)
 
 # Package paths for linting
 INTERNAL_PKGS=./cmd/... ./pkg/...
@@ -273,10 +280,10 @@ uast-test:
 	@cd web && npm test -- tests/simple.spec.js tests/basic.spec.js
 
 ${GOBIN}/uast${EXE}: cmd/uast/*.go pkg/uast/*.go pkg/uast/*/*.go pkg/uast/*/*/*.go
-	CGO_ENABLED=1 go build -tags "$(TAGS)" -o ${GOBIN}/uast${EXE} ./cmd/uast
+	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/uast${EXE} ./cmd/uast
 
 ${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go pkg/analyzers/*/*.go
-	CGO_ENABLED=1 go build -tags "$(TAGS)" -o ${GOBIN}/codefang${EXE} ./cmd/codefang
+	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/codefang${EXE} ./cmd/codefang
 
 # Build the development service
 .PHONY: build-dev-service

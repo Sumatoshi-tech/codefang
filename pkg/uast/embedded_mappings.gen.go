@@ -112032,7 +112032,7 @@ func newansiblePatternMatcher() *ansiblePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -114000,7 +114000,7 @@ func newbashPatternMatcher() *bashPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -117790,7 +117790,7 @@ func newcPatternMatcher() *cPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -123634,7 +123634,7 @@ func newc_sharpPatternMatcher() *c_sharpPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -125328,7 +125328,7 @@ func newclojurePatternMatcher() *clojurePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -126362,7 +126362,7 @@ func newcmakePatternMatcher() *cmakePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -127094,7 +127094,7 @@ func newcommonlispPatternMatcher() *commonlispPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -133354,7 +133354,7 @@ func newcppPatternMatcher() *cppPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -136328,7 +136328,7 @@ func newcrystalPatternMatcher() *crystalPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -137480,7 +137480,7 @@ func newcssPatternMatcher() *cssPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -137690,7 +137690,7 @@ func newcsvPatternMatcher() *csvPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -142212,7 +142212,7 @@ func newdartPatternMatcher() *dartPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -143456,7 +143456,7 @@ func newdockerfilePatternMatcher() *dockerfilePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -143792,7 +143792,7 @@ func newdotenvPatternMatcher() *dotenvPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -144840,7 +144840,7 @@ func newelixirPatternMatcher() *elixirPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -145752,7 +145752,7 @@ func newelmPatternMatcher() *elmPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -146652,7 +146652,7 @@ func newfishPatternMatcher() *fishPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -148074,7 +148074,7 @@ func newfortranPatternMatcher() *fortranPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -148372,7 +148372,7 @@ func newgit_configPatternMatcher() *git_configPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -149038,7 +149038,7 @@ func newgitattributesPatternMatcher() *gitattributesPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -149504,7 +149504,7 @@ func newgitignorePatternMatcher() *gitignorePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -152062,7 +152062,7 @@ func newgoPatternMatcher() *goPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -152366,7 +152366,7 @@ func newgosumPatternMatcher() *gosumPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -153138,7 +153138,7 @@ func newgotmplPatternMatcher() *gotmplPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -153456,7 +153456,7 @@ func newgoworkPatternMatcher() *goworkPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -154454,7 +154454,7 @@ func newgraphqlPatternMatcher() *graphqlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -155488,7 +155488,7 @@ func newgroovyPatternMatcher() *groovyPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -156506,7 +156506,7 @@ func newhaskellPatternMatcher() *haskellPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -157732,7 +157732,7 @@ func newhclPatternMatcher() *hclPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -158944,7 +158944,7 @@ func newhelmPatternMatcher() *helmPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -159398,7 +159398,7 @@ func newhtmlPatternMatcher() *htmlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -159592,7 +159592,7 @@ func newiniPatternMatcher() *iniPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -163500,7 +163500,7 @@ func newjavaPatternMatcher() *javaPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -166726,7 +166726,7 @@ func newjavascriptPatternMatcher() *javascriptPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -167018,7 +167018,7 @@ func newjsonPatternMatcher() *jsonPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -170430,7 +170430,7 @@ func newkotlinPatternMatcher() *kotlinPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -172332,7 +172332,7 @@ func newlatexPatternMatcher() *latexPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -173646,7 +173646,7 @@ func newluaPatternMatcher() *luaPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -175380,7 +175380,7 @@ func newmakePatternMatcher() *makePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -176270,7 +176270,7 @@ func newmarkdownPatternMatcher() *markdownPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -177092,7 +177092,7 @@ func newmarkdown_inlinePatternMatcher() *markdown_inlinePatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -178682,7 +178682,7 @@ func newnimPatternMatcher() *nimPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -179032,7 +179032,7 @@ func newnim_format_stringPatternMatcher() *nim_format_stringPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -179824,7 +179824,7 @@ func newperlPatternMatcher() *perlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -184426,7 +184426,7 @@ func newphpPatternMatcher() *phpPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -185600,7 +185600,7 @@ func newpowershellPatternMatcher() *powershellPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -185810,7 +185810,7 @@ func newpropertiesPatternMatcher() *propertiesPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -187182,7 +187182,7 @@ func newprotoPatternMatcher() *protoPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -187364,7 +187364,7 @@ func newproximaPatternMatcher() *proximaPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -188136,7 +188136,7 @@ func newprqlPatternMatcher() *prqlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -188346,7 +188346,7 @@ func newpsvPatternMatcher() *psvPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -191410,7 +191410,7 @@ func newpythonPatternMatcher() *pythonPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -192108,7 +192108,7 @@ func newrPatternMatcher() *rPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -193120,7 +193120,7 @@ func newregoPatternMatcher() *regoPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -196590,7 +196590,7 @@ func newrubyPatternMatcher() *rubyPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -200942,7 +200942,7 @@ func newrustPatternMatcher() *rustPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -202274,7 +202274,7 @@ func newscalaPatternMatcher() *scalaPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -203784,7 +203784,7 @@ func newsqlPatternMatcher() *sqlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -206602,7 +206602,7 @@ func newssh_configPatternMatcher() *ssh_configPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -211204,7 +211204,7 @@ func newswiftPatternMatcher() *swiftPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -211832,7 +211832,7 @@ func newtclPatternMatcher() *tclPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -212224,7 +212224,7 @@ func newtomlPatternMatcher() *tomlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -217398,7 +217398,7 @@ func newtsxPatternMatcher() *tsxPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -222354,7 +222354,7 @@ func newtypescriptPatternMatcher() *typescriptPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -223650,7 +223650,7 @@ func newxmlPatternMatcher() *xmlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -224408,7 +224408,7 @@ func newyamlPatternMatcher() *yamlPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -225536,7 +225536,7 @@ func newzigPatternMatcher() *zigPatternMatcher {
 
 	patterns := make(map[string]mapping.MappingRule)
 	ruleIndex := make(map[string]int)
-	
+
 	for i, rule := range rules {
 		patterns[rule.Name] = rule
 		ruleIndex[rule.Name] = i
@@ -225723,7 +225723,7 @@ func GetPatternMatcher(language string) interface{} {
 
 func validateansibleRules() error {
 	matcher := newansiblePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225731,19 +225731,19 @@ func validateansibleRules() error {
 				return fmt.Errorf("ansible: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("ansible: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatebashRules() error {
 	matcher := newbashPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225751,19 +225751,19 @@ func validatebashRules() error {
 				return fmt.Errorf("bash: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("bash: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecRules() error {
 	matcher := newcPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225771,19 +225771,19 @@ func validatecRules() error {
 				return fmt.Errorf("c: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("c: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatec_sharpRules() error {
 	matcher := newc_sharpPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225791,19 +225791,19 @@ func validatec_sharpRules() error {
 				return fmt.Errorf("c_sharp: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("c_sharp: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateclojureRules() error {
 	matcher := newclojurePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225811,19 +225811,19 @@ func validateclojureRules() error {
 				return fmt.Errorf("clojure: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("clojure: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecmakeRules() error {
 	matcher := newcmakePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225831,19 +225831,19 @@ func validatecmakeRules() error {
 				return fmt.Errorf("cmake: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("cmake: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecommonlispRules() error {
 	matcher := newcommonlispPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225851,19 +225851,19 @@ func validatecommonlispRules() error {
 				return fmt.Errorf("commonlisp: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("commonlisp: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecppRules() error {
 	matcher := newcppPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225871,19 +225871,19 @@ func validatecppRules() error {
 				return fmt.Errorf("cpp: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("cpp: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecrystalRules() error {
 	matcher := newcrystalPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225891,19 +225891,19 @@ func validatecrystalRules() error {
 				return fmt.Errorf("crystal: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("crystal: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecssRules() error {
 	matcher := newcssPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225911,19 +225911,19 @@ func validatecssRules() error {
 				return fmt.Errorf("css: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("css: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatecsvRules() error {
 	matcher := newcsvPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225931,19 +225931,19 @@ func validatecsvRules() error {
 				return fmt.Errorf("csv: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("csv: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatedartRules() error {
 	matcher := newdartPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225951,19 +225951,19 @@ func validatedartRules() error {
 				return fmt.Errorf("dart: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("dart: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatedockerfileRules() error {
 	matcher := newdockerfilePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225971,19 +225971,19 @@ func validatedockerfileRules() error {
 				return fmt.Errorf("dockerfile: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("dockerfile: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatedotenvRules() error {
 	matcher := newdotenvPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -225991,19 +225991,19 @@ func validatedotenvRules() error {
 				return fmt.Errorf("dotenv: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("dotenv: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateelixirRules() error {
 	matcher := newelixirPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226011,19 +226011,19 @@ func validateelixirRules() error {
 				return fmt.Errorf("elixir: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("elixir: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateelmRules() error {
 	matcher := newelmPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226031,19 +226031,19 @@ func validateelmRules() error {
 				return fmt.Errorf("elm: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("elm: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatefishRules() error {
 	matcher := newfishPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226051,19 +226051,19 @@ func validatefishRules() error {
 				return fmt.Errorf("fish: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("fish: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatefortranRules() error {
 	matcher := newfortranPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226071,19 +226071,19 @@ func validatefortranRules() error {
 				return fmt.Errorf("fortran: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("fortran: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategit_configRules() error {
 	matcher := newgit_configPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226091,19 +226091,19 @@ func validategit_configRules() error {
 				return fmt.Errorf("git_config: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("git_config: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategitattributesRules() error {
 	matcher := newgitattributesPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226111,19 +226111,19 @@ func validategitattributesRules() error {
 				return fmt.Errorf("gitattributes: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("gitattributes: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategitignoreRules() error {
 	matcher := newgitignorePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226131,19 +226131,19 @@ func validategitignoreRules() error {
 				return fmt.Errorf("gitignore: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("gitignore: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategoRules() error {
 	matcher := newgoPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226151,19 +226151,19 @@ func validategoRules() error {
 				return fmt.Errorf("go: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("go: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategosumRules() error {
 	matcher := newgosumPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226171,19 +226171,19 @@ func validategosumRules() error {
 				return fmt.Errorf("gosum: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("gosum: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategotmplRules() error {
 	matcher := newgotmplPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226191,19 +226191,19 @@ func validategotmplRules() error {
 				return fmt.Errorf("gotmpl: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("gotmpl: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategoworkRules() error {
 	matcher := newgoworkPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226211,19 +226211,19 @@ func validategoworkRules() error {
 				return fmt.Errorf("gowork: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("gowork: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategraphqlRules() error {
 	matcher := newgraphqlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226231,19 +226231,19 @@ func validategraphqlRules() error {
 				return fmt.Errorf("graphql: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("graphql: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validategroovyRules() error {
 	matcher := newgroovyPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226251,19 +226251,19 @@ func validategroovyRules() error {
 				return fmt.Errorf("groovy: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("groovy: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatehaskellRules() error {
 	matcher := newhaskellPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226271,19 +226271,19 @@ func validatehaskellRules() error {
 				return fmt.Errorf("haskell: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("haskell: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatehclRules() error {
 	matcher := newhclPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226291,19 +226291,19 @@ func validatehclRules() error {
 				return fmt.Errorf("hcl: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("hcl: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatehelmRules() error {
 	matcher := newhelmPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226311,19 +226311,19 @@ func validatehelmRules() error {
 				return fmt.Errorf("helm: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("helm: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatehtmlRules() error {
 	matcher := newhtmlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226331,19 +226331,19 @@ func validatehtmlRules() error {
 				return fmt.Errorf("html: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("html: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateiniRules() error {
 	matcher := newiniPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226351,19 +226351,19 @@ func validateiniRules() error {
 				return fmt.Errorf("ini: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("ini: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatejavaRules() error {
 	matcher := newjavaPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226371,19 +226371,19 @@ func validatejavaRules() error {
 				return fmt.Errorf("java: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("java: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatejavascriptRules() error {
 	matcher := newjavascriptPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226391,19 +226391,19 @@ func validatejavascriptRules() error {
 				return fmt.Errorf("javascript: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("javascript: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatejsonRules() error {
 	matcher := newjsonPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226411,19 +226411,19 @@ func validatejsonRules() error {
 				return fmt.Errorf("json: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("json: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatekotlinRules() error {
 	matcher := newkotlinPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226431,19 +226431,19 @@ func validatekotlinRules() error {
 				return fmt.Errorf("kotlin: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("kotlin: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatelatexRules() error {
 	matcher := newlatexPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226451,19 +226451,19 @@ func validatelatexRules() error {
 				return fmt.Errorf("latex: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("latex: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateluaRules() error {
 	matcher := newluaPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226471,19 +226471,19 @@ func validateluaRules() error {
 				return fmt.Errorf("lua: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("lua: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatemakeRules() error {
 	matcher := newmakePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226491,19 +226491,19 @@ func validatemakeRules() error {
 				return fmt.Errorf("make: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("make: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatemarkdownRules() error {
 	matcher := newmarkdownPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226511,19 +226511,19 @@ func validatemarkdownRules() error {
 				return fmt.Errorf("markdown: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("markdown: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatemarkdown_inlineRules() error {
 	matcher := newmarkdown_inlinePatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226531,19 +226531,19 @@ func validatemarkdown_inlineRules() error {
 				return fmt.Errorf("markdown_inline: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("markdown_inline: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatenimRules() error {
 	matcher := newnimPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226551,19 +226551,19 @@ func validatenimRules() error {
 				return fmt.Errorf("nim: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("nim: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatenim_format_stringRules() error {
 	matcher := newnim_format_stringPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226571,19 +226571,19 @@ func validatenim_format_stringRules() error {
 				return fmt.Errorf("nim_format_string: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("nim_format_string: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateperlRules() error {
 	matcher := newperlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226591,19 +226591,19 @@ func validateperlRules() error {
 				return fmt.Errorf("perl: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("perl: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatephpRules() error {
 	matcher := newphpPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226611,19 +226611,19 @@ func validatephpRules() error {
 				return fmt.Errorf("php: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("php: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatepowershellRules() error {
 	matcher := newpowershellPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226631,19 +226631,19 @@ func validatepowershellRules() error {
 				return fmt.Errorf("powershell: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("powershell: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatepropertiesRules() error {
 	matcher := newpropertiesPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226651,19 +226651,19 @@ func validatepropertiesRules() error {
 				return fmt.Errorf("properties: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("properties: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateprotoRules() error {
 	matcher := newprotoPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226671,19 +226671,19 @@ func validateprotoRules() error {
 				return fmt.Errorf("proto: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("proto: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateproximaRules() error {
 	matcher := newproximaPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226691,19 +226691,19 @@ func validateproximaRules() error {
 				return fmt.Errorf("proxima: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("proxima: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateprqlRules() error {
 	matcher := newprqlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226711,19 +226711,19 @@ func validateprqlRules() error {
 				return fmt.Errorf("prql: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("prql: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatepsvRules() error {
 	matcher := newpsvPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226731,19 +226731,19 @@ func validatepsvRules() error {
 				return fmt.Errorf("psv: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("psv: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatepythonRules() error {
 	matcher := newpythonPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226751,19 +226751,19 @@ func validatepythonRules() error {
 				return fmt.Errorf("python: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("python: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validaterRules() error {
 	matcher := newrPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226771,19 +226771,19 @@ func validaterRules() error {
 				return fmt.Errorf("r: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("r: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateregoRules() error {
 	matcher := newregoPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226791,19 +226791,19 @@ func validateregoRules() error {
 				return fmt.Errorf("rego: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("rego: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validaterubyRules() error {
 	matcher := newrubyPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226811,19 +226811,19 @@ func validaterubyRules() error {
 				return fmt.Errorf("ruby: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("ruby: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validaterustRules() error {
 	matcher := newrustPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226831,19 +226831,19 @@ func validaterustRules() error {
 				return fmt.Errorf("rust: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("rust: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatescalaRules() error {
 	matcher := newscalaPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226851,19 +226851,19 @@ func validatescalaRules() error {
 				return fmt.Errorf("scala: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("scala: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatesqlRules() error {
 	matcher := newsqlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226871,19 +226871,19 @@ func validatesqlRules() error {
 				return fmt.Errorf("sql: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("sql: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatessh_configRules() error {
 	matcher := newssh_configPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226891,19 +226891,19 @@ func validatessh_configRules() error {
 				return fmt.Errorf("ssh_config: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("ssh_config: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateswiftRules() error {
 	matcher := newswiftPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226911,19 +226911,19 @@ func validateswiftRules() error {
 				return fmt.Errorf("swift: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("swift: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatetclRules() error {
 	matcher := newtclPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226931,19 +226931,19 @@ func validatetclRules() error {
 				return fmt.Errorf("tcl: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("tcl: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatetomlRules() error {
 	matcher := newtomlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226951,19 +226951,19 @@ func validatetomlRules() error {
 				return fmt.Errorf("toml: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("toml: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatetsxRules() error {
 	matcher := newtsxPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226971,19 +226971,19 @@ func validatetsxRules() error {
 				return fmt.Errorf("tsx: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("tsx: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatetypescriptRules() error {
 	matcher := newtypescriptPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -226991,19 +226991,19 @@ func validatetypescriptRules() error {
 				return fmt.Errorf("typescript: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("typescript: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatexmlRules() error {
 	matcher := newxmlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -227011,19 +227011,19 @@ func validatexmlRules() error {
 				return fmt.Errorf("xml: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("xml: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validateyamlRules() error {
 	matcher := newyamlPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -227031,19 +227031,19 @@ func validateyamlRules() error {
 				return fmt.Errorf("yaml: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("yaml: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 
 func validatezigRules() error {
 	matcher := newzigPatternMatcher()
-	
+
 	// Validate rule inheritance
 	for _, rule := range matcher.rules {
 		if rule.Extends != "" {
@@ -227051,13 +227051,13 @@ func validatezigRules() error {
 				return fmt.Errorf("zig: rule '%s' extends non-existent rule '%s'", rule.Name, rule.Extends)
 			}
 		}
-		
+
 		// Validate UAST spec
 		if rule.UASTSpec.Type == "" {
 			return fmt.Errorf("zig: rule '%s' has empty UAST type", rule.Name)
 		}
 	}
-	
+
 	return nil
 }
 

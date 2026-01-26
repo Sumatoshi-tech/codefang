@@ -2,18 +2,28 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
-	"github.com/spf13/cobra"
+)
+
+// diffArgCount is the number of arguments expected by the diff command.
+const diffArgCount = 2
+
+// Sentinel errors for the diff command.
+var (
+	ErrUnsupportedFileType = errors.New("unsupported file type")
+	ErrUnsupportedDiffFmt  = errors.New("unsupported format")
 )
 
 func diffCmd() *cobra.Command {
 	var output, format string
-	var unified bool
 
 	cmd := &cobra.Command{
 		Use:   "diff file1 file2",
@@ -24,112 +34,125 @@ Examples:
   uast diff file1.go file2.go          # Compare two files
   uast diff -u file1.go file2.go       # Unified diff format
   uast diff -f summary file1.go file2.go # Summary format`,
-		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDiff(args[0], args[1], output, format, unified)
+		Args: cobra.ExactArgs(diffArgCount),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runDiff(args[0], args[1], output, format)
 		},
 	}
 
 	cmd.Flags().StringVarP(&output, "output", "o", "", "output file (default: stdout)")
 	cmd.Flags().StringVarP(&format, "format", "f", "unified", "output format (unified, summary, json)")
-	cmd.Flags().BoolVarP(&unified, "unified", "u", false, "unified diff format")
 
 	return cmd
 }
 
-func runDiff(file1, file2, output, format string, unified bool) error {
+func runDiff(file1, file2, output, format string) error {
 	parser, err := uast.NewParser()
 	if err != nil {
 		return fmt.Errorf("failed to initialize parser: %w", err)
 	}
 
-	// Parse first file
-	var node1 *node.Node
-	if parser.IsSupported(file1) {
-		code, err := os.ReadFile(file1)
-		if err != nil {
-			return fmt.Errorf("failed to read file %s: %w", file1, err)
-		}
-		node1, err = parser.Parse(file1, code)
-		if err != nil {
-			return fmt.Errorf("parse error in %s: %w", file1, err)
-		}
-	} else {
-		return fmt.Errorf("unsupported file type: %s", file1)
+	// Parse first file.
+	if !parser.IsSupported(file1) {
+		return fmt.Errorf("%w: %s", ErrUnsupportedFileType, file1)
 	}
 
-	// Parse second file
-	var node2 *node.Node
-	if parser.IsSupported(file2) {
-		code, err := os.ReadFile(file2)
-		if err != nil {
-			return fmt.Errorf("failed to read file %s: %w", file2, err)
-		}
-		node2, err = parser.Parse(file2, code)
-		if err != nil {
-			return fmt.Errorf("parse error in %s: %w", file2, err)
-		}
-	} else {
-		return fmt.Errorf("unsupported file type: %s", file2)
+	code1, err := os.ReadFile(file1)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", file1, err)
 	}
 
-	// Detect changes
-	changes := detectChanges(node1, node2, file1, file2)
+	node1, err := parser.Parse(file1, code1)
+	if err != nil {
+		return fmt.Errorf("parse error in %s: %w", file1, err)
+	}
 
-	return outputChanges(changes, output, format, unified)
+	// Parse second file.
+	if !parser.IsSupported(file2) {
+		return fmt.Errorf("%w: %s", ErrUnsupportedFileType, file2)
+	}
+
+	code2, err := os.ReadFile(file2)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", file2, err)
+	}
+
+	node2, err := parser.Parse(file2, code2)
+	if err != nil {
+		return fmt.Errorf("parse error in %s: %w", file2, err)
+	}
+
+	// Detect changes.
+	changes := detectChanges(node1, node2, file1)
+
+	return outputChanges(changes, output, format)
 }
 
+// Change represents a structural change between two UAST nodes.
 type Change struct {
 	Type   string `json:"type"`
-	File   string `json:"file"`
 	Before any    `json:"before,omitempty"`
 	After  any    `json:"after,omitempty"`
+	File   string `json:"file"`
 }
 
-func detectChanges(node1, node2 *node.Node, file1, file2 string) []Change {
-	// Use the uast package's optimized change detection
+func detectChanges(node1, node2 *node.Node, file1 string) []Change {
+	// Use the uast package's optimized change detection.
 	uastChanges := uast.DetectChanges(node1, node2)
 
-	// Convert uast.Change to local Change type
+	// Convert uast.Change to local Change type.
 	changes := make([]Change, 0, len(uastChanges))
-	for _, c := range uastChanges {
+
+	for _, changeItem := range uastChanges {
 		changes = append(changes, Change{
-			Type:   c.Type.String(),
+			Type:   changeItem.Type.String(),
 			File:   file1,
-			Before: c.Before,
-			After:  c.After,
+			Before: changeItem.Before,
+			After:  changeItem.After,
 		})
 	}
 
 	return changes
 }
 
-func outputChanges(changes []Change, output, format string, unified bool) error {
+func outputChanges(changes []Change, output, format string) error {
 	var writer io.Writer = os.Stdout
+
 	if output != "" {
-		f, err := os.Create(output)
+		outputFile, err := os.Create(output)
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer f.Close()
-		writer = f
+		defer outputFile.Close()
+
+		writer = outputFile
 	}
 
 	switch format {
-	case "json":
+	case formatJSON:
 		enc := json.NewEncoder(writer)
 		enc.SetIndent("", "  ")
-		return enc.Encode(changes)
+
+		encodeErr := enc.Encode(changes)
+		if encodeErr != nil {
+			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
+		}
+
+		return nil
 	case "unified":
-		return printUnifiedDiff(changes, writer)
+		printUnifiedDiff(changes, writer)
+
+		return nil
 	case "summary":
-		return printChangeSummary(changes, writer)
+		printChangeSummary(changes, writer)
+
+		return nil
 	default:
-		return fmt.Errorf("unsupported format: %s", format)
+		return fmt.Errorf("%w: %s", ErrUnsupportedDiffFmt, format)
 	}
 }
 
-func printUnifiedDiff(changes []Change, writer io.Writer) error {
+func printUnifiedDiff(changes []Change, writer io.Writer) {
 	for _, change := range changes {
 		fmt.Fprintf(writer, "--- %s\n", change.File)
 		fmt.Fprintf(writer, "+++ %s\n", change.File)
@@ -137,18 +160,18 @@ func printUnifiedDiff(changes []Change, writer io.Writer) error {
 		fmt.Fprintf(writer, "-%s\n", change.Type)
 		fmt.Fprintf(writer, "+%s\n", change.Type)
 	}
-	return nil
 }
 
-func printChangeSummary(changes []Change, writer io.Writer) error {
+func printChangeSummary(changes []Change, writer io.Writer) {
 	summary := make(map[string]int)
+
 	for _, change := range changes {
 		summary[change.Type]++
 	}
 
 	fmt.Fprintf(writer, "Change Summary:\n")
+
 	for changeType, count := range summary {
 		fmt.Fprintf(writer, "  %s: %d\n", changeType, count)
 	}
-	return nil
 }
