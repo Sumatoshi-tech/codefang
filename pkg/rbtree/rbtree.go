@@ -1028,8 +1028,6 @@ func (tree *RBTree) doDelete(nodeIdx uint32) {
 }
 
 // Move n to the pred's place, and vice versa.
-//
-//nolint:gocognit,nestif // RB-tree node swapping is inherently complex with many pointer adjustments.
 func (tree *RBTree) swapNodes(nodeIdx, pred uint32) {
 	doAssert(pred != nodeIdx)
 
@@ -1041,35 +1039,24 @@ func (tree *RBTree) swapNodes(nodeIdx, pred uint32) {
 	alloc[pred].color = alloc[nodeIdx].color
 
 	if tmp.parent == nodeIdx {
-		// Swap the positions of nodeIdx and pred.
-		if isLeft {
-			alloc[pred].left = nodeIdx
-			alloc[pred].right = alloc[nodeIdx].right
+		tree.swapDirectParent(nodeIdx, pred, isLeft, tmp)
+	} else {
+		tree.swapIndirectParent(nodeIdx, pred, isLeft, tmp)
+	}
 
-			if alloc[pred].right != 0 {
-				alloc[alloc[pred].right].parent = pred
-			}
-		} else {
-			alloc[pred].left = alloc[nodeIdx].left
+	alloc[nodeIdx].color = tmp.color
+}
 
-			if alloc[pred].left != 0 {
-				alloc[alloc[pred].left].parent = pred
-			}
+// swapDirectParent handles the case where pred is a direct child of nodeIdx.
+func (tree *RBTree) swapDirectParent(nodeIdx, pred uint32, isLeft bool, tmp node) {
+	alloc := tree.storage()
 
-			alloc[pred].right = nodeIdx
-		}
+	if isLeft {
+		alloc[pred].left = nodeIdx
+		alloc[pred].right = alloc[nodeIdx].right
 
-		alloc[nodeIdx].item = tmp.item
-		alloc[nodeIdx].parent = pred
-
-		alloc[nodeIdx].left = tmp.left
-		if alloc[nodeIdx].left != 0 {
-			alloc[alloc[nodeIdx].left].parent = nodeIdx
-		}
-
-		alloc[nodeIdx].right = tmp.right
-		if alloc[nodeIdx].right != 0 {
-			alloc[alloc[nodeIdx].right].parent = nodeIdx
+		if alloc[pred].right != 0 {
+			alloc[alloc[pred].right].parent = pred
 		}
 	} else {
 		alloc[pred].left = alloc[nodeIdx].left
@@ -1078,34 +1065,56 @@ func (tree *RBTree) swapNodes(nodeIdx, pred uint32) {
 			alloc[alloc[pred].left].parent = pred
 		}
 
-		alloc[pred].right = alloc[nodeIdx].right
-
-		if alloc[pred].right != 0 {
-			alloc[alloc[pred].right].parent = pred
-		}
-
-		if isLeft {
-			alloc[tmp.parent].left = nodeIdx
-		} else {
-			alloc[tmp.parent].right = nodeIdx
-		}
-
-		alloc[nodeIdx].item = tmp.item
-		alloc[nodeIdx].parent = tmp.parent
-		alloc[nodeIdx].left = tmp.left
-
-		if alloc[nodeIdx].left != 0 {
-			alloc[alloc[nodeIdx].left].parent = nodeIdx
-		}
-
-		alloc[nodeIdx].right = tmp.right
-
-		if alloc[nodeIdx].right != 0 {
-			alloc[alloc[nodeIdx].right].parent = nodeIdx
-		}
+		alloc[pred].right = nodeIdx
 	}
 
-	alloc[nodeIdx].color = tmp.color
+	alloc[nodeIdx].item = tmp.item
+	alloc[nodeIdx].parent = pred
+
+	tree.reparentChildren(nodeIdx, tmp)
+}
+
+// swapIndirectParent handles the case where pred is not a direct child of nodeIdx.
+func (tree *RBTree) swapIndirectParent(nodeIdx, pred uint32, isLeft bool, tmp node) {
+	alloc := tree.storage()
+
+	alloc[pred].left = alloc[nodeIdx].left
+
+	if alloc[pred].left != 0 {
+		alloc[alloc[pred].left].parent = pred
+	}
+
+	alloc[pred].right = alloc[nodeIdx].right
+
+	if alloc[pred].right != 0 {
+		alloc[alloc[pred].right].parent = pred
+	}
+
+	if isLeft {
+		alloc[tmp.parent].left = nodeIdx
+	} else {
+		alloc[tmp.parent].right = nodeIdx
+	}
+
+	alloc[nodeIdx].item = tmp.item
+	alloc[nodeIdx].parent = tmp.parent
+
+	tree.reparentChildren(nodeIdx, tmp)
+}
+
+// reparentChildren sets nodeIdx's children from tmp and updates parent pointers.
+func (tree *RBTree) reparentChildren(nodeIdx uint32, tmp node) {
+	alloc := tree.storage()
+
+	alloc[nodeIdx].left = tmp.left
+	if alloc[nodeIdx].left != 0 {
+		alloc[alloc[nodeIdx].left].parent = nodeIdx
+	}
+
+	alloc[nodeIdx].right = tmp.right
+	if alloc[nodeIdx].right != 0 {
+		alloc[alloc[nodeIdx].right].parent = nodeIdx
+	}
 }
 
 func (tree *RBTree) deleteCase1(nodeIdx uint32) {
@@ -1126,7 +1135,7 @@ func (tree *RBTree) deleteCase1(nodeIdx uint32) {
 		if getColor(alloc[nodeIdx].parent, alloc) &&
 			getColor(sibling(nodeIdx, alloc), alloc) &&
 			getColor(alloc[sibling(nodeIdx, alloc)].left, alloc) &&
-			getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) { //nolint:whitespace // conflicts with wsl_v5 leading-whitespace.
+			getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) {
 			alloc[sibling(nodeIdx, alloc)].color = red
 			nodeIdx = alloc[nodeIdx].parent
 
@@ -1137,7 +1146,7 @@ func (tree *RBTree) deleteCase1(nodeIdx uint32) {
 		if !getColor(alloc[nodeIdx].parent, alloc) &&
 			getColor(sibling(nodeIdx, alloc), alloc) &&
 			getColor(alloc[sibling(nodeIdx, alloc)].left, alloc) &&
-			getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) { //nolint:whitespace // conflicts with wsl_v5 leading-whitespace.
+			getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) {
 			alloc[sibling(nodeIdx, alloc)].color = red
 			alloc[alloc[nodeIdx].parent].color = black
 		} else {
@@ -1154,14 +1163,14 @@ func (tree *RBTree) deleteCase5(nodeIdx uint32) {
 	if nodeIdx == alloc[alloc[nodeIdx].parent].left &&
 		getColor(sibling(nodeIdx, alloc), alloc) &&
 		!getColor(alloc[sibling(nodeIdx, alloc)].left, alloc) &&
-		getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) { //nolint:whitespace // conflicts with wsl_v5 leading-whitespace.
+		getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) {
 		alloc[sibling(nodeIdx, alloc)].color = red
 		alloc[alloc[sibling(nodeIdx, alloc)].left].color = black
 		tree.rotateRight(sibling(nodeIdx, alloc))
 	} else if nodeIdx == alloc[alloc[nodeIdx].parent].right &&
 		getColor(sibling(nodeIdx, alloc), alloc) &&
 		!getColor(alloc[sibling(nodeIdx, alloc)].right, alloc) &&
-		getColor(alloc[sibling(nodeIdx, alloc)].left, alloc) { //nolint:whitespace // conflicts with wsl_v5 leading-whitespace.
+		getColor(alloc[sibling(nodeIdx, alloc)].left, alloc) {
 		alloc[sibling(nodeIdx, alloc)].color = red
 		alloc[alloc[sibling(nodeIdx, alloc)].right].color = black
 		tree.rotateLeft(sibling(nodeIdx, alloc))

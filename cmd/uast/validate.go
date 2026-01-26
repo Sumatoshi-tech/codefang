@@ -117,7 +117,6 @@ func runValidate(inputPath, schemaPath string, quiet, colorize, nocolor bool) er
 	return nil
 }
 
-//nolint:nonamedreturns // named returns needed for gocritic unnamedResult
 func loadInput(inputPath string) (inputReader io.Reader, inputLabel string) {
 	if inputPath == "-" {
 		return os.Stdin, "stdin"

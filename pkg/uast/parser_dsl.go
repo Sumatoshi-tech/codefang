@@ -80,7 +80,7 @@ func (parser *DSLParser) initializeLanguage() error {
 
 	func() {
 		defer func() {
-			_ = recover() //nolint:errcheck // recover() returns any, not error; value intentionally discarded.
+			_ = recover() //nolint:errcheck // recover() returns any, not error
 		}()
 
 		lang = forest.GetLanguage(parser.langInfo.Name)
@@ -495,8 +495,6 @@ func (dn *DSLNode) shouldSkipEmptyFile(nodeType string, children []*node.Node) b
 }
 
 // createMappedNode creates a UAST node from a mapped Tree-sitter node.
-//
-//nolint:whitespace // Multi-line signature conflicts with wsl_v5 leading-whitespace.
 func (dn *DSLNode) createMappedNode(
 	mappingRule *mapping.MappingRule, children []*node.Node,
 	props map[string]string, roles []node.Role,
@@ -804,8 +802,6 @@ func (dn *DSLNode) createUnmappedChildNode(child sitter.Node) *DSLNode {
 }
 
 // createIncludeUnmappedNode creates a node when IncludeUnmapped is true.
-//
-//nolint:whitespace // Multi-line signature conflicts with wsl_v5 leading-whitespace.
 func (dn *DSLNode) createIncludeUnmappedNode(
 	nodeType string, mappedChildren []*node.Node,
 	props map[string]string, roles []node.Role,
@@ -841,61 +837,75 @@ func (dn *DSLNode) createSyntheticNode(mappedChildren []*node.Node) *node.Node {
 	return synth
 }
 
-// computeChildrenSpan computes the bounding span across children positions.
-//
-//nolint:gocognit // Span computation over children inherently requires multiple comparisons.
-func computeChildrenSpan(children []*node.Node) *node.Positions {
-	// Initial values: max uint for "min", 0 for "max".
+// positionBounds tracks min/max position values while scanning children.
+type positionBounds struct {
+	minStartLine, minStartCol, minStartOffset uint
+	maxEndLine, maxEndCol, maxEndOffset       uint
+	found                                     bool
+}
+
+func newPositionBounds() positionBounds {
 	const maxUint = ^uint(0)
 
-	minStartLine, minStartCol, minStartOffset := maxUint, maxUint, maxUint
-	maxEndLine, maxEndCol, maxEndOffset := uint(0), uint(0), uint(0)
-	found := false
+	return positionBounds{
+		minStartLine: maxUint, minStartCol: maxUint, minStartOffset: maxUint,
+	}
+}
 
-	for _, child := range children {
-		if child.Pos == nil {
-			continue
-		}
+func (b *positionBounds) update(pos *node.Positions) {
+	b.found = true
 
-		found = true
-
-		if child.Pos.StartLine < minStartLine {
-			minStartLine = child.Pos.StartLine
-		}
-
-		if child.Pos.StartCol < minStartCol {
-			minStartCol = child.Pos.StartCol
-		}
-
-		if child.Pos.StartOffset < minStartOffset {
-			minStartOffset = child.Pos.StartOffset
-		}
-
-		if child.Pos.EndLine > maxEndLine {
-			maxEndLine = child.Pos.EndLine
-		}
-
-		if child.Pos.EndCol > maxEndCol {
-			maxEndCol = child.Pos.EndCol
-		}
-
-		if child.Pos.EndOffset > maxEndOffset {
-			maxEndOffset = child.Pos.EndOffset
-		}
+	if pos.StartLine < b.minStartLine {
+		b.minStartLine = pos.StartLine
 	}
 
-	if !found {
+	if pos.StartCol < b.minStartCol {
+		b.minStartCol = pos.StartCol
+	}
+
+	if pos.StartOffset < b.minStartOffset {
+		b.minStartOffset = pos.StartOffset
+	}
+
+	if pos.EndLine > b.maxEndLine {
+		b.maxEndLine = pos.EndLine
+	}
+
+	if pos.EndCol > b.maxEndCol {
+		b.maxEndCol = pos.EndCol
+	}
+
+	if pos.EndOffset > b.maxEndOffset {
+		b.maxEndOffset = pos.EndOffset
+	}
+}
+
+func (b *positionBounds) toPositions() *node.Positions {
+	if !b.found {
 		return nil
 	}
 
 	return &node.Positions{
-		StartLine:   minStartLine,
-		StartCol:    minStartCol,
-		StartOffset: minStartOffset,
-		EndLine:     maxEndLine,
-		EndCol:      maxEndCol,
-		EndOffset:   maxEndOffset,
+		StartLine:   b.minStartLine,
+		StartCol:    b.minStartCol,
+		StartOffset: b.minStartOffset,
+		EndLine:     b.maxEndLine,
+		EndCol:      b.maxEndCol,
+		EndOffset:   b.maxEndOffset,
 	}
+}
+
+// computeChildrenSpan computes the bounding span across children positions.
+func computeChildrenSpan(children []*node.Node) *node.Positions {
+	bounds := newPositionBounds()
+
+	for _, child := range children {
+		if child.Pos != nil {
+			bounds.update(child.Pos)
+		}
+	}
+
+	return bounds.toPositions()
 }
 
 // Token returns the string token for this node, if any.

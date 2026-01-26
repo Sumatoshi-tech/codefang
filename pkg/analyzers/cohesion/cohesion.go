@@ -2,6 +2,7 @@ package cohesion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -85,7 +86,7 @@ func (c *CohesionAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs cohesion analysis on the UAST.
 func (c *CohesionAnalyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, fmt.Errorf("root node is nil") //nolint:err113,perfsprint // fmt.Sprintf is clearer than string concat.
+		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
 	}
 
 	functions, err := c.findFunctions(root)

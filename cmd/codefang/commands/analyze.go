@@ -113,7 +113,7 @@ const (
 // AnalyzeAndFormat runs analysis and formats the results.
 func (svc *Service) AnalyzeAndFormat(
 	input io.Reader, analyzerList []string, format string, verbose, noColor bool, writer io.Writer,
-) error { //nolint:whitespace // multi-line function signature conflicts with wsl_v5
+) error {
 	results, err := svc.Analyze(input, analyzerList)
 	if err != nil {
 		return fmt.Errorf("analysis failed: %w", err)
@@ -130,32 +130,49 @@ func (svc *Service) AnalyzeAndFormat(
 }
 
 // Analyze runs analysis on UAST input and returns aggregated results.
-//
-//nolint:gocognit // sequential analysis pipeline
 func (svc *Service) Analyze(input io.Reader, analyzerList []string) (map[string]analyze.Report, error) {
-	// Read multiple JSON objects from input (one per file from uast parse).
-	decoder := json.NewDecoder(input)
-	allResults := make(map[string]analyze.Report)
+	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
+	aggregators := svc.initAggregators(analyzersToRun)
 
-	// Initialize aggregators for each analyzer.
-	aggregators := make(map[string]analyze.ResultAggregator)
-
-	// Determine which analyzers to run.
-	analyzersToRun := analyzerList
-	if len(analyzersToRun) == 0 {
-		// Run all available analyzers.
-		for _, analyzer := range svc.availableAnalyzers {
-			analyzersToRun = append(analyzersToRun, analyzer.Name())
-		}
+	err := svc.processInputNodes(input, analyzersToRun, aggregators)
+	if err != nil {
+		return nil, err
 	}
 
-	// Initialize aggregators for each analyzer.
+	return buildFinalResults(aggregators), nil
+}
+
+func (svc *Service) resolveAnalyzerList(analyzerList []string) []string {
+	if len(analyzerList) > 0 {
+		return analyzerList
+	}
+
+	names := make([]string, 0, len(svc.availableAnalyzers))
+
+	for _, analyzer := range svc.availableAnalyzers {
+		names = append(names, analyzer.Name())
+	}
+
+	return names
+}
+
+func (svc *Service) initAggregators(analyzersToRun []string) map[string]analyze.ResultAggregator {
+	aggregators := make(map[string]analyze.ResultAggregator)
+
 	for _, analyzerName := range analyzersToRun {
 		analyzer := svc.findAnalyzer(analyzerName)
 		if analyzer != nil {
 			aggregators[analyzerName] = analyzer.CreateAggregator()
 		}
 	}
+
+	return aggregators
+}
+
+func (svc *Service) processInputNodes(
+	input io.Reader, analyzersToRun []string, aggregators map[string]analyze.ResultAggregator,
+) error {
+	decoder := json.NewDecoder(input)
 
 	for {
 		var uastNode *node.Node
@@ -166,16 +183,14 @@ func (svc *Service) Analyze(input io.Reader, analyzerList []string) (map[string]
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse UAST input: %w", err)
+			return fmt.Errorf("failed to parse UAST input: %w", err)
 		}
 
-		// Run analyzers for this file.
 		results, err := svc.runAnalyzers(context.Background(), uastNode, analyzersToRun)
 		if err != nil {
-			return nil, fmt.Errorf("failed to run analyzers: %w", err)
+			return fmt.Errorf("failed to run analyzers: %w", err)
 		}
 
-		// Aggregate results for each analyzer.
 		for analyzerName, aggregator := range aggregators {
 			if report, isPresent := results[analyzerName]; isPresent {
 				aggregator.Aggregate(map[string]analyze.Report{analyzerName: report})
@@ -183,12 +198,17 @@ func (svc *Service) Analyze(input io.Reader, analyzerList []string) (map[string]
 		}
 	}
 
-	// Build final results from aggregators.
+	return nil
+}
+
+func buildFinalResults(aggregators map[string]analyze.ResultAggregator) map[string]analyze.Report {
+	allResults := make(map[string]analyze.Report)
+
 	for analyzerName, aggregator := range aggregators {
 		allResults[analyzerName] = aggregator.GetResult()
 	}
 
-	return allResults, nil
+	return allResults
 }
 
 // formatJSON formats all results as structured JSON using ReportSection data.

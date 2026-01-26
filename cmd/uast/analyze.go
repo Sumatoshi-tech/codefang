@@ -84,7 +84,6 @@ func analyzeNode(_ *node.Node, _ string) map[string]any {
 	return map[string]any{}
 }
 
-//nolint:gocognit // output dispatch with format-specific logic is inherently complex
 func outputAnalysis(results []map[string]any, output, format string) error {
 	var writer io.Writer = os.Stdout
 
@@ -100,36 +99,9 @@ func outputAnalysis(results []map[string]any, output, format string) error {
 
 	switch format {
 	case formatJSON:
-		enc := json.NewEncoder(writer)
-		enc.SetIndent("", "  ")
-
-		encodeErr := enc.Encode(results)
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
-		}
-
-		return nil
+		return outputAnalysisJSON(results, writer)
 	case "text":
-		for _, result := range results {
-			fmt.Fprintf(writer, "File: %s\n", result["file"])
-			fmt.Fprintf(writer, "  Functions: %d\n", result["functions"])
-			fmt.Fprintf(writer, "  Complexity: %.2f\n", result["complexity"])
-
-			types, ok := result["types"].(map[string]int)
-			if !ok {
-				continue
-			}
-
-			if len(types) > 0 {
-				fmt.Fprintf(writer, "  Node types:\n")
-
-				for nodeType, count := range types {
-					fmt.Fprintf(writer, "    %s: %d\n", nodeType, count)
-				}
-			}
-
-			fmt.Fprintf(writer, "\n")
-		}
+		outputAnalysisText(results, writer)
 
 		return nil
 	case "html":
@@ -138,6 +110,41 @@ func outputAnalysis(results []map[string]any, output, format string) error {
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedAnaFmt, format)
+	}
+}
+
+func outputAnalysisJSON(results []map[string]any, writer io.Writer) error {
+	enc := json.NewEncoder(writer)
+	enc.SetIndent("", "  ")
+
+	err := enc.Encode(results)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	return nil
+}
+
+func outputAnalysisText(results []map[string]any, writer io.Writer) {
+	for _, result := range results {
+		fmt.Fprintf(writer, "File: %s\n", result["file"])
+		fmt.Fprintf(writer, "  Functions: %d\n", result["functions"])
+		fmt.Fprintf(writer, "  Complexity: %.2f\n", result["complexity"])
+
+		types, ok := result["types"].(map[string]int)
+		if !ok {
+			continue
+		}
+
+		if len(types) > 0 {
+			fmt.Fprintf(writer, "  Node types:\n")
+
+			for nodeType, count := range types {
+				fmt.Fprintf(writer, "    %s: %d\n", nodeType, count)
+			}
+		}
+
+		fmt.Fprintf(writer, "\n")
 	}
 }
 

@@ -716,7 +716,7 @@ function_declaration <- (function_declaration name: (identifier) @name params: (
 
 // Tests for real-world Go language mapping examples.
 //
-//nolint:gocognit,cyclop,gocyclo,lll // Complex language mapping test with long DSL lines.
+//nolint:gocognit,cyclop,gocyclo // Complex language mapping test with long DSL lines.
 func TestParseMappingRule_GoLanguageMapping(t *testing.T) {
 	input := `[language "go", extensions: ".go"]
 
@@ -836,8 +836,6 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
 }
 
 // Tests for Python mapping examples.
-//
-//nolint:lll // Long DSL pattern lines in raw string test data.
 func TestParseMappingRule_PythonMapping(t *testing.T) {
 	input := `[language "python", extensions: ".py", ".pyw", ".pyi"]
 
@@ -1003,8 +1001,6 @@ js_function <- (function_declaration name: (identifier) @name params: (formal_pa
 }
 
 // Tests for conditional type mapping.
-//
-//nolint:lll // Long DSL pattern lines in raw string test data.
 func TestParseMappingRule_ConditionalTypeMapping(t *testing.T) {
 	input := `[language "go", extensions: ".go"]
 

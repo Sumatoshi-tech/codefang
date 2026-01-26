@@ -52,8 +52,8 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Show version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Printf("UAST CLI v0.1.0\n")        //nolint:forbidigo // CLI user output
-			fmt.Printf("Go version: %s\n", "1.22") //nolint:forbidigo // CLI user output
+			fmt.Fprintf(os.Stdout, "UAST CLI v0.1.0\n")
+			fmt.Fprintf(os.Stdout, "Go version: %s\n", "1.22")
 		},
 	}
 

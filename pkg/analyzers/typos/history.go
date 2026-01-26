@@ -16,6 +16,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -104,9 +105,122 @@ type candidate struct {
 	After  int
 }
 
-// Consume processes a single commit with the provided dependency results.
+// typoCandidateResult holds the output of findTypoCandidates.
+type typoCandidateResult struct {
+	candidates         []candidate
+	focusedLinesBefore map[int]bool
+	focusedLinesAfter  map[int]bool
+}
+
+// findTypoCandidates scans the diff edits and identifies line pairs where the before/after
+// lines are within the maximum allowed Levenshtein distance, indicating a potential typo fix.
 //
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
+//nolint:gocognit // complexity is inherent to diff-based line pair matching with distance calculation.
+func (t *TyposHistoryAnalyzer) findTypoCandidates(
+	diffs []diffmatchpatch.Diff,
+	linesBefore, linesAfter [][]byte,
+) typoCandidateResult {
+	var (
+		lineNumBefore int
+		lineNumAfter  int
+		removedSize   int
+		candidates    []candidate
+	)
+
+	focusedLinesBefore := map[int]bool{}
+	focusedLinesAfter := map[int]bool{}
+
+	for _, edit := range diffs {
+		size := utf8.RuneCountInString(edit.Text)
+
+		switch edit.Type {
+		case diffmatchpatch.DiffDelete:
+			lineNumBefore += size
+			removedSize = size
+		case diffmatchpatch.DiffInsert:
+			if size == removedSize {
+				for i := range size {
+					lb := lineNumBefore - size + i
+					la := lineNumAfter + i
+
+					if lb < len(linesBefore) && la < len(linesAfter) {
+						dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
+						if dist <= t.MaximumAllowedDistance {
+							candidates = append(candidates, candidate{lb, la})
+							focusedLinesBefore[lb] = true
+							focusedLinesAfter[la] = true
+						}
+					}
+				}
+			}
+
+			lineNumAfter += size
+			removedSize = 0
+		case diffmatchpatch.DiffEqual:
+			lineNumBefore += size
+			lineNumAfter += size
+			removedSize = 0
+		}
+	}
+
+	return typoCandidateResult{
+		candidates:         candidates,
+		focusedLinesBefore: focusedLinesBefore,
+		focusedLinesAfter:  focusedLinesAfter,
+	}
+}
+
+// matchTypoIdentifiers extracts identifiers from the before/after UAST nodes that fall on
+// the focused lines, and returns the matched typo pairs from the given candidates.
+func (t *TyposHistoryAnalyzer) matchTypoIdentifiers(
+	change uast.Change,
+	result typoCandidateResult,
+	commit gitplumbing.Hash,
+) []Typo {
+	removedIdentifiers := collectIdentifiersOnLines(change.Before, result.focusedLinesBefore)
+	addedIdentifiers := collectIdentifiersOnLines(change.After, result.focusedLinesAfter)
+
+	var typos []Typo
+
+	for _, cand := range result.candidates {
+		nodesBefore := removedIdentifiers[cand.Before]
+		nodesAfter := addedIdentifiers[cand.After]
+
+		if len(nodesBefore) == 1 && len(nodesAfter) == 1 {
+			typos = append(typos, Typo{
+				Wrong:   nodesBefore[0].Token,
+				Correct: nodesAfter[0].Token,
+				Commit:  commit,
+				File:    change.Change.To.Name,
+				Line:    cand.After,
+			})
+		}
+	}
+
+	return typos
+}
+
+// collectIdentifiersOnLines extracts identifiers from the UAST root whose start line
+// (converted to 0-based) is present in the focusedLines set.
+func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[int][]*node.Node {
+	result := map[int][]*node.Node{}
+
+	if root == nil {
+		return result
+	}
+
+	identifiers := extractIdentifiers(root)
+	for _, id := range identifiers {
+		if id.Pos != nil && focusedLines[int(id.Pos.StartLine)-1] { //nolint:gosec // security concern is acceptable here.
+			line := int(id.Pos.StartLine) - 1 //nolint:gosec // security concern is acceptable here.
+			result[line] = append(result[line], id)
+		}
+	}
+
+	return result
+}
+
+// Consume processes a single commit with the provided dependency results.
 func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit.Hash
 
@@ -122,7 +236,6 @@ func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		blobBefore := cache[change.Change.From.TreeEntry.Hash]
 		blobAfter := cache[change.Change.To.TreeEntry.Hash]
 
-		// Lines split.
 		linesBefore := bytes.Split(blobBefore.Data, []byte{'\n'})
 		linesAfter := bytes.Split(blobAfter.Data, []byte{'\n'})
 
@@ -131,89 +244,12 @@ func (t *TyposHistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			continue
 		}
 
-		var lineNumBefore, lineNumAfter int
-
-		var candidates []candidate
-
-		focusedLinesBefore := map[int]bool{}
-		focusedLinesAfter := map[int]bool{}
-		removedSize := 0
-
-		for _, edit := range diff.Diffs {
-			size := utf8.RuneCountInString(edit.Text)
-			switch edit.Type {
-			case diffmatchpatch.DiffDelete:
-				lineNumBefore += size
-				removedSize = size
-			case diffmatchpatch.DiffInsert:
-				if size == removedSize {
-					for i := range size {
-						lb := lineNumBefore - size + i
-
-						la := lineNumAfter + i
-						if lb < len(linesBefore) && la < len(linesAfter) {
-							dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
-							if dist <= t.MaximumAllowedDistance {
-								candidates = append(candidates, candidate{lb, la})
-								focusedLinesBefore[lb] = true
-								focusedLinesAfter[la] = true
-							}
-						}
-					}
-				}
-
-				lineNumAfter += size
-				removedSize = 0
-			case diffmatchpatch.DiffEqual:
-				lineNumBefore += size
-				lineNumAfter += size
-				removedSize = 0
-			}
-		}
-
-		if len(candidates) == 0 {
+		result := t.findTypoCandidates(diff.Diffs, linesBefore, linesAfter)
+		if len(result.candidates) == 0 {
 			continue
 		}
 
-		addedIdentifiers := map[int][]*node.Node{}
-		removedIdentifiers := map[int][]*node.Node{}
-
-		if change.Before != nil {
-			identifiers := extractIdentifiers(change.Before)
-			for _, id := range identifiers {
-				if id.Pos != nil && focusedLinesBefore[int(id.Pos.StartLine)-1] { //nolint:gosec // security concern is acceptable here.
-					line := int(id.Pos.StartLine) - 1 //nolint:gosec // security concern is acceptable here.
-					removedIdentifiers[line] = append(removedIdentifiers[line], id)
-				}
-			}
-		}
-
-		if change.After != nil {
-			identifiers := extractIdentifiers(change.After)
-			for _, id := range identifiers {
-				if id.Pos != nil && focusedLinesAfter[int(id.Pos.StartLine)-1] { //nolint:gosec // security concern is acceptable here.
-					line := int(id.Pos.StartLine) - 1 //nolint:gosec // security concern is acceptable here.
-					addedIdentifiers[line] = append(addedIdentifiers[line], id)
-				}
-			}
-		}
-
-		for _, candidate := range candidates {
-			nodesBefore := removedIdentifiers[candidate.Before]
-
-			nodesAfter := addedIdentifiers[candidate.After]
-			if len(nodesBefore) == 1 && len(nodesAfter) == 1 {
-				idBefore := nodesBefore[0].Token
-				idAfter := nodesAfter[0].Token
-				t.typos = append(t.typos, Typo{
-					Wrong:   idBefore,
-					Correct: idAfter,
-					Commit:  commit,
-					File:    change.Change.To.Name,
-					Line:    candidate.After,
-				})
-			}
-		}
+		t.typos = append(t.typos, t.matchTypoIdentifiers(change, result, commit)...)
 	}
 
 	return nil

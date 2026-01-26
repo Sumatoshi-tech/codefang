@@ -90,7 +90,9 @@ func TestReporter_GenerateReport_JSON(t *testing.T) {
 
 	// Verify it's valid JSON.
 	var parsed map[string]any
-	if err := json.Unmarshal([]byte(result), &parsed); err != nil { //nolint:govet,noinlineerr // inline error return is clear.
+
+	err = json.Unmarshal([]byte(result), &parsed)
+	if err != nil {
 		t.Errorf("result is not valid JSON: %v", err)
 	}
 
@@ -263,7 +265,9 @@ func TestReporter_GenerateComparisonReport_JSON(t *testing.T) {
 
 	// Verify it's valid JSON.
 	var parsed map[string]any
-	if err := json.Unmarshal([]byte(result), &parsed); err != nil { //nolint:govet,noinlineerr // inline error return is clear.
+
+	err = json.Unmarshal([]byte(result), &parsed)
+	if err != nil {
 		t.Errorf("result is not valid JSON: %v", err)
 	}
 

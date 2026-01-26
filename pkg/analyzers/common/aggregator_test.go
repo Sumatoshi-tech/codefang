@@ -59,7 +59,9 @@ func TestNewAggregator(t *testing.T) {
 
 	// Verify empty result builder works.
 	result := aggregator.GetResult()
-	if result["custom_empty"] != true { //nolint:revive // explicit bool comparison needed.
+
+	v, ok := result["custom_empty"].(bool)
+	if !ok || !v {
 		t.Error("expected custom empty result")
 	}
 }

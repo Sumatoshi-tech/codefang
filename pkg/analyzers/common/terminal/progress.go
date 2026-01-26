@@ -83,10 +83,8 @@ func FormatStatus(status string) string {
 const PercentMultiplier = 100
 
 // DrawPercentBar draws a labeled percentage bar.
-// Example: "Simple (1-5)    ████████████████░░░░  68%  (106)"
-//
-//nolint:gocritic // gocritic suggestion acknowledged.
-func DrawPercentBar(label string, percent float64, count int, labelWidth, barWidth int) string {
+// Example: "Simple (1-5)    ████████████████░░░░  68%  (106)".
+func DrawPercentBar(label string, percent float64, count, labelWidth, barWidth int) string {
 	paddedLabel := PadRight(label, labelWidth)
 	bar := DrawProgressBar(percent, barWidth)
 	pctValue := int(percent * PercentMultiplier)

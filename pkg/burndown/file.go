@@ -211,12 +211,20 @@ func (file *File) updateInsertOnly(
 	}
 }
 
-//nolint:gocognit,cyclop,gocyclo,nestif // Core deletion + insertion logic is inherently complex.
 func (file *File) updateWithDeletions(
 	tree *rbtree.RBTree, iter *rbtree.Iterator, origin, prevOrigin *rbtree.Item,
 	time, pos, insLength, delLength int,
 ) {
-	// Delete nodes.
+	file.deleteOverlappingNodes(tree, iter, origin, prevOrigin, time, pos, insLength, delLength)
+	previous := file.prepareInsertion(tree, iter, origin, time, pos, insLength, delLength)
+	file.updateSubsequentKeys(iter, origin, pos, insLength, delLength)
+	file.finalizeInterval(tree, origin, prevOrigin, previous, time, pos, insLength)
+}
+
+func (file *File) deleteOverlappingNodes(
+	tree *rbtree.RBTree, iter *rbtree.Iterator, origin, prevOrigin *rbtree.Item,
+	time, pos, insLength, delLength int,
+) {
 	for {
 		node := iter.Item()
 		nextIter := iter.Next()
@@ -253,12 +261,14 @@ func (file *File) updateWithDeletions(
 
 		*iter = nextIter
 	}
+}
 
-	// Prepare for the keys update.
-	var previous *rbtree.Item
-
+//nolint:nestif // insertion preparation has intertwined conditions.
+func (file *File) prepareInsertion(
+	tree *rbtree.RBTree, iter *rbtree.Iterator, origin *rbtree.Item,
+	time, pos, insLength, delLength int,
+) *rbtree.Item {
 	if insLength > 0 && (origin.Value != uint32(time) || origin.Key == uint32(pos)) { //nolint:gosec // guarded by caller.
-		// Insert our new interval.
 		if iter.Item().Value == uint32(time) && int(iter.Item().Key)-delLength == pos { //nolint:gosec // guarded by caller.
 			prev := iter.Prev()
 
@@ -273,48 +283,68 @@ func (file *File) updateWithDeletions(
 		} else {
 			_, *iter = tree.Insert(rbtree.Item{Key: uint32(pos), Value: uint32(time)}) //nolint:gosec // guarded by caller.
 		}
-	} else {
-		// Rollback 1 position back, see deletion cycle above.
-		*iter = iter.Prev()
-		previous = iter.Item()
+
+		return nil
 	}
 
-	// Update the keys of all subsequent nodes.
+	// Rollback 1 position back, see deletion cycle above.
+	*iter = iter.Prev()
+
+	return iter.Item()
+}
+
+func (file *File) updateSubsequentKeys(
+	iter *rbtree.Iterator, origin *rbtree.Item, pos, insLength, delLength int,
+) {
 	delta := insLength - delLength
-
-	if delta != 0 {
-		for *iter = iter.Next(); !iter.Limit(); *iter = iter.Next() {
-			// We do not need to re-balance the tree.
-			iter.Item().Key = uint32(int(iter.Item().Key) + delta) //nolint:gosec // delta is bounded.
-		}
-
-		// Have to adjust origin in case insLength == 0.
-		if origin.Key > uint32(pos) { //nolint:gosec // guarded by caller.
-			origin.Key = uint32(int(origin.Key) + delta) //nolint:gosec // delta is bounded.
-		}
+	if delta == 0 {
+		return
 	}
 
+	for *iter = iter.Next(); !iter.Limit(); *iter = iter.Next() {
+		iter.Item().Key = uint32(int(iter.Item().Key) + delta) //nolint:gosec // delta is bounded.
+	}
+
+	if origin.Key > uint32(pos) { //nolint:gosec // guarded by caller.
+		origin.Key = uint32(int(origin.Key) + delta) //nolint:gosec // delta is bounded.
+	}
+}
+
+func (file *File) finalizeInterval(
+	tree *rbtree.RBTree, origin, prevOrigin *rbtree.Item, previous *rbtree.Item,
+	time, pos, insLength int,
+) {
 	if insLength > 0 {
 		if origin.Value != uint32(time) { //nolint:gosec // guarded by caller.
 			tree.Insert(rbtree.Item{Key: uint32(pos + insLength), Value: origin.Value}) //nolint:gosec // guarded by caller.
 		} else if pos == 0 {
-			// Recover the beginning.
 			tree.Insert(rbtree.Item{Key: uint32(pos), Value: uint32(time)}) //nolint:gosec // guarded by caller.
 		}
-	} else if (uint32(pos) > origin.Key && previous != nil && previous.Value != origin.Value) || //nolint:gosec // guarded by caller.
+
+		return
+	}
+
+	if (uint32(pos) > origin.Key && previous != nil && previous.Value != origin.Value) || //nolint:gosec // guarded by caller.
 		(uint32(pos) == origin.Key && origin.Value != prevOrigin.Value) || //nolint:gosec // guarded by caller.
 		pos == 0 {
-		// Continue the original interval.
 		tree.Insert(rbtree.Item{Key: uint32(pos), Value: origin.Value})
 	}
 }
 
+// isMergeMarked checks if a line value has the merge mark bit set.
+func isMergeMarked(value int) bool {
+	return value&TreeMergeMark == TreeMergeMark
+}
+
 // Merge combines several prepared File-s together.
-//
-//nolint:gocognit // Merge algorithm requires nested conditions.
 func (file *File) Merge(day int, others ...*File) {
 	myself := file.flatten()
+	mergeOtherFiles(myself, others)
+	file.resolveMergeConflicts(myself, day)
+	file.reconstructTree(myself)
+}
 
+func mergeOtherFiles(myself []int, others []*File) {
 	for _, other := range others {
 		if other == nil {
 			panic("merging with a nil file")
@@ -330,40 +360,37 @@ func (file *File) Merge(day int, others ...*File) {
 		for i, myLine := range myself {
 			otherLine := lines[i]
 
-			if otherLine&TreeMergeMark == TreeMergeMark {
+			if isMergeMarked(otherLine) {
 				continue
 			}
 
-			if myLine&TreeMergeMark == TreeMergeMark || myLine&TreeMergeMark > otherLine&TreeMergeMark {
-				// The line is merged in myself and exists in other.
-				// OR the same line introduced in different branches.
-				// Consider the oldest version as the ground truth in that case.
+			if isMergeMarked(myLine) || myLine&TreeMergeMark > otherLine&TreeMergeMark {
 				myself[i] = otherLine
-
-				continue
 			}
 		}
 	}
+}
 
-	for i, l := range myself {
-		if l&TreeMergeMark == TreeMergeMark {
-			// Original merge conflict resolution.
-			myself[i] = day
+func (file *File) resolveMergeConflicts(lines []int, day int) {
+	for i, l := range lines {
+		if isMergeMarked(l) {
+			lines[i] = day
 			file.updateTime(day, day, 1)
 		}
 	}
+}
 
-	// Now we need to reconstruct the tree from the discrete values.
+func (file *File) reconstructTree(lines []int) {
 	file.tree.Erase()
 	tree := rbtree.NewRBTree(file.tree.Allocator())
 
-	for i, v := range myself {
-		if i == 0 || v != myself[i-1] {
+	for i, v := range lines {
+		if i == 0 || v != lines[i-1] {
 			tree.Insert(rbtree.Item{Key: uint32(i), Value: uint32(v)}) //nolint:gosec // values are bounded by tree structure.
 		}
 	}
 
-	tree.Insert(rbtree.Item{Key: uint32(len(myself)), Value: TreeEnd}) //nolint:gosec // len is bounded.
+	tree.Insert(rbtree.Item{Key: uint32(len(lines)), Value: TreeEnd}) //nolint:gosec // len is bounded.
 	file.tree = tree
 }
 

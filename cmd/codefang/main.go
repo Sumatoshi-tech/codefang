@@ -58,7 +58,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Show version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Println("codefang version 1.0.0") //nolint:forbidigo // CLI user output
+			fmt.Fprintln(os.Stdout, "codefang version 1.0.0")
 		},
 	}
 }

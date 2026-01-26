@@ -57,6 +57,10 @@ linters:
     # --- Too noisy for this codebase ---
     - exhaustruct # Go idiom is zero-value initialization; this linter fights the language
 
+    # --- Conflicting linters ---
+    - whitespace # Conflicts with wsl_v5: multi-func requires blank lines that wsl_v5 forbids
+    - nonamedreturns # Conflicts with gocritic(unnamedResult): forbids named returns that gocritic requires for clarity
+
   settings:
     cyclop:
       max-complexity: 15
@@ -450,6 +454,11 @@ linters:
         text: "avoid meaningless package names"
         linters: [revive]
 
+      # The "file_history" package uses an underscore intentionally for readability.
+      - path: pkg/analyzers/file_history/
+        text: "don't use an underscore in package name"
+        linters: [revive]
+
       # Package-comment style exclusions for nolint/TODO lines.
       - text: 'package comment should be of the form ".+"'
         source: "// ?(nolint|TODO)"
@@ -457,3 +466,7 @@ linters:
       - text: 'comment on exported \S+ \S+ should be of the form ".+"'
         source: "// ?(nolint|TODO)"
         linters: [revive, staticcheck]
+
+      # DSL parser test contains long raw string literals (mapping DSL grammar) that cannot be broken.
+      - path: pkg/uast/pkg/mapping/dsl_parser_test\.go
+        linters: [lll]

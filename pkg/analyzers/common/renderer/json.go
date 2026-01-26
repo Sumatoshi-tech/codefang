@@ -43,13 +43,17 @@ type JSONIssue struct {
 
 // SectionToJSON converts a ReportSection to a JSONSection.
 func SectionToJSON(section analyze.ReportSection) JSONSection {
-	metrics := make([]JSONMetric, 0) //nolint:prealloc // preallocation is not needed here.
-	for _, m := range section.KeyMetrics() {
+	keyMetrics := section.KeyMetrics()
+
+	metrics := make([]JSONMetric, 0, len(keyMetrics))
+	for _, m := range keyMetrics {
 		metrics = append(metrics, JSONMetric{Label: m.Label, Value: m.Value})
 	}
 
-	var distribution []JSONDistribution //nolint:prealloc // preallocation is not needed here.
-	for _, d := range section.Distribution() {
+	dist := section.Distribution()
+
+	distribution := make([]JSONDistribution, 0, len(dist))
+	for _, d := range dist {
 		distribution = append(distribution, JSONDistribution{
 			Label:   d.Label,
 			Percent: d.Percent,
@@ -57,8 +61,10 @@ func SectionToJSON(section analyze.ReportSection) JSONSection {
 		})
 	}
 
-	issues := make([]JSONIssue, 0) //nolint:prealloc // preallocation is not needed here.
-	for _, i := range section.AllIssues() {
+	allIssues := section.AllIssues()
+
+	issues := make([]JSONIssue, 0, len(allIssues))
+	for _, i := range allIssues {
 		issues = append(issues, JSONIssue{
 			Name:     i.Name,
 			Location: i.Location,

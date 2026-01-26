@@ -80,19 +80,21 @@ func (f *Factory) RunAnalyzer(name string, root *node.Node) (Report, error) {
 	return analyzer.Analyze(root)
 }
 
-// RunAnalyzers runs the specified analyzers on the given UAST root node.
-//
-//nolint:cyclop,funlen,gocognit,gocyclo // complex function.
-func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers []string) (map[string]Report, error) {
-	// Initialize containers.
-	combinedReport := make(map[string]Report)
-	reportMu := sync.Mutex{}
+// analyzerCategories holds categorized analyzers for dispatch.
+type analyzerCategories struct {
+	visitors         []NodeVisitor
+	visitorAnalyzers map[string]AnalysisVisitor
+	legacyAnalyzers  []string
+}
 
-	visitors := make([]NodeVisitor, 0)
-	visitorAnalyzers := make(map[string]AnalysisVisitor)
-	legacyAnalyzers := make([]string, 0)
+// categorizeAnalyzers splits analyzers into visitor-based and legacy categories.
+func (f *Factory) categorizeAnalyzers(analyzers []string) (*analyzerCategories, error) {
+	cats := &analyzerCategories{
+		visitors:         make([]NodeVisitor, 0),
+		visitorAnalyzers: make(map[string]AnalysisVisitor),
+		legacyAnalyzers:  make([]string, 0),
+	}
 
-	// Pre-check and categorization.
 	for _, name := range analyzers {
 		analyzer, ok := f.analyzers[name]
 		if !ok {
@@ -101,38 +103,59 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 
 		if vp, isVP := analyzer.(VisitorProvider); isVP {
 			v := vp.CreateVisitor()
-			visitors = append(visitors, v)
-			visitorAnalyzers[name] = v
+			cats.visitors = append(cats.visitors, v)
+			cats.visitorAnalyzers[name] = v
 		} else {
-			legacyAnalyzers = append(legacyAnalyzers, name)
+			cats.legacyAnalyzers = append(cats.legacyAnalyzers, name)
 		}
 	}
 
-	totalTasks := 0
-	if len(visitors) > 0 {
-		totalTasks++
+	return cats, nil
+}
+
+func (c *analyzerCategories) totalTasks() int {
+	total := len(c.legacyAnalyzers)
+	if len(c.visitors) > 0 {
+		total++
 	}
 
-	totalTasks += len(legacyAnalyzers)
+	return total
+}
 
-	if totalTasks == 0 {
-		return combinedReport, nil
+// RunAnalyzers runs the specified analyzers on the given UAST root node.
+func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers []string) (map[string]Report, error) {
+	cats, err := f.categorizeAnalyzers(analyzers)
+	if err != nil {
+		return nil, err
+	}
+
+	if cats.totalTasks() == 0 {
+		return make(map[string]Report), nil
 	}
 
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("runanalyzers: %w", ctx.Err())
 	}
 
-	if totalTasks == 1 || f.maxParallel <= 1 {
-		return f.runSequentially(ctx, root, visitors, visitorAnalyzers, legacyAnalyzers)
+	if cats.totalTasks() == 1 || f.maxParallel <= 1 {
+		return f.runSequentially(ctx, root, cats.visitors, cats.visitorAnalyzers, cats.legacyAnalyzers)
 	}
 
+	return f.runParallel(ctx, root, cats)
+}
+
+// runParallel executes visitor-based and legacy analyzers concurrently.
+//
+//nolint:funlen,gocognit // long but straightforward parallel dispatch.
+func (f *Factory) runParallel(ctx context.Context, root *node.Node, cats *analyzerCategories) (map[string]Report, error) {
+	combinedReport := make(map[string]Report)
+	reportMu := sync.Mutex{}
 	errs := make([]string, 0)
 	errMu := sync.Mutex{}
 	wg := sync.WaitGroup{}
 	sem := make(chan struct{}, f.maxParallel)
 
-	if len(visitors) > 0 {
+	if len(cats.visitors) > 0 {
 		wg.Add(1)
 
 		go func() {
@@ -145,7 +168,8 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 				return
 			}
 
-			if err := f.runVisitors(root, visitors); err != nil { //nolint:noinlineerr // inline error return is clear.
+			err := f.runVisitors(root, cats.visitors)
+			if err != nil {
 				errMu.Lock()
 
 				errs = append(errs, fmt.Sprintf("visitors error: %v", err))
@@ -157,7 +181,7 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 
 			reportMu.Lock()
 
-			for name, v := range visitorAnalyzers {
+			for name, v := range cats.visitorAnalyzers {
 				combinedReport[name] = v.GetReport()
 			}
 
@@ -165,7 +189,7 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 		}()
 	}
 
-	for _, name := range legacyAnalyzers {
+	for _, name := range cats.legacyAnalyzers {
 		wg.Add(1)
 
 		go func() {
@@ -178,7 +202,6 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 				return
 			}
 
-			// Check context before work.
 			if ctx.Err() != nil {
 				return
 			}
@@ -215,7 +238,13 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 	return combinedReport, nil
 }
 
-func (f *Factory) runSequentially(ctx context.Context, root *node.Node, visitors []NodeVisitor, visitorAnalyzers map[string]AnalysisVisitor, legacyAnalyzers []string) (map[string]Report, error) { //nolint:lll // long line.
+func (f *Factory) runSequentially(
+	ctx context.Context,
+	root *node.Node,
+	visitors []NodeVisitor,
+	visitorAnalyzers map[string]AnalysisVisitor,
+	legacyAnalyzers []string,
+) (map[string]Report, error) {
 	combinedReport := make(map[string]Report)
 
 	if ctx.Err() != nil {
@@ -223,7 +252,8 @@ func (f *Factory) runSequentially(ctx context.Context, root *node.Node, visitors
 	}
 
 	if len(visitors) > 0 {
-		if err := f.runVisitors(root, visitors); err != nil { //nolint:noinlineerr // inline error return is clear.
+		err := f.runVisitors(root, visitors)
+		if err != nil {
 			return nil, err
 		}
 

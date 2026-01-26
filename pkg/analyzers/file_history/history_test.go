@@ -1,4 +1,4 @@
-package file_history //nolint:revive,staticcheck,testpackage // testing internal implementation.
+package file_history //nolint:staticcheck,testpackage // testing internal implementation.
 
 import (
 	"bytes"

@@ -38,8 +38,16 @@ func TestHalsteadAnalyzer_SimpleFunction(t *testing.T) {
 	analyzer := NewHalsteadAnalyzer()
 
 	// Create a simple function node.
-	functionNode := node.New("func1", "Function", "", []node.Role{node.RoleFunction, node.RoleDeclaration}, nil, map[string]string{"name": "simpleFunction"}) //nolint:lll // long line is acceptable here.
-	nameNode := node.New("name1", "Identifier", "simpleFunction", []node.Role{node.RoleName}, nil, map[string]string{"name": "simpleFunction"})               //nolint:lll // long line is acceptable here.
+	functionNode := node.New(
+		"func1", "Function", "",
+		[]node.Role{node.RoleFunction, node.RoleDeclaration},
+		nil, map[string]string{"name": "simpleFunction"},
+	)
+	nameNode := node.New(
+		"name1", "Identifier", "simpleFunction",
+		[]node.Role{node.RoleName},
+		nil, map[string]string{"name": "simpleFunction"},
+	)
 
 	// Add some basic operators and operands.
 	assignmentNode := node.New("assign1", "Assignment", "=", []node.Role{node.RoleAssignment}, nil, map[string]string{"operator": "="})
@@ -245,7 +253,11 @@ func TestHalsteadAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // c
 	analyzer := NewHalsteadAnalyzer()
 
 	// Create a function with specific operators and operands.
-	functionNode := node.New("func1", "Function", "", []node.Role{node.RoleFunction, node.RoleDeclaration}, nil, map[string]string{"name": "testFunction"}) //nolint:lll // long line is acceptable here.
+	functionNode := node.New(
+		"func1", "Function", "",
+		[]node.Role{node.RoleFunction, node.RoleDeclaration},
+		nil, map[string]string{"name": "testFunction"},
+	)
 
 	// Add assignment operator.
 	assignmentNode := node.New("assign1", "Assignment", "=", []node.Role{node.RoleAssignment}, nil, map[string]string{"operator": "="})
@@ -338,7 +350,11 @@ func TestHalsteadAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	rootNode := node.New("root", "File", "", nil, nil, nil)
 
 	// Create first function with operators: =, + and operands: x, y, 5.
-	function1 := node.New("func1", "Function", "", []node.Role{node.RoleFunction, node.RoleDeclaration}, nil, map[string]string{"name": "function1"}) //nolint:lll // long line is acceptable here.
+	function1 := node.New(
+		"func1", "Function", "",
+		[]node.Role{node.RoleFunction, node.RoleDeclaration},
+		nil, map[string]string{"name": "function1"},
+	)
 	assignment1 := node.New("assign1", "Assignment", "=", []node.Role{node.RoleAssignment}, nil, map[string]string{"operator": "="})
 	binaryOp1 := node.New("binary1", "BinaryOp", "+", []node.Role{node.RoleOperator}, nil, map[string]string{"operator": "+"})
 	identifier1 := node.New("id1", "Identifier", "x", []node.Role{node.RoleVariable}, nil, map[string]string{"name": "x"})
@@ -352,11 +368,18 @@ func TestHalsteadAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	binaryOp1.AddChild(literal1)
 
 	// Create second function with operators: =, * and operands: x, z, 10.
-	function2 := node.New("func2", "Function", "", []node.Role{node.RoleFunction, node.RoleDeclaration}, nil, map[string]string{"name": "function2"}) //nolint:lll // long line is acceptable here.
+	function2 := node.New(
+		"func2", "Function", "",
+		[]node.Role{node.RoleFunction, node.RoleDeclaration},
+		nil, map[string]string{"name": "function2"},
+	)
 	assignment2 := node.New("assign2", "Assignment", "=", []node.Role{node.RoleAssignment}, nil, map[string]string{"operator": "="})
 	binaryOp2 := node.New("binary2", "BinaryOp", "*", []node.Role{node.RoleOperator}, nil, map[string]string{"operator": "*"})
-	//nolint:lll // long line is acceptable here.
-	identifier3 := node.New("id3", "Identifier", "x", []node.Role{node.RoleVariable}, nil, map[string]string{"name": "x"}) // Same as function1.
+	identifier3 := node.New(
+		"id3", "Identifier", "x",
+		[]node.Role{node.RoleVariable},
+		nil, map[string]string{"name": "x"},
+	) // Same as function1.
 	identifier4 := node.New("id4", "Identifier", "z", []node.Role{node.RoleVariable}, nil, map[string]string{"name": "z"})
 	literal2 := node.New("lit2", "Literal", "10", []node.Role{node.RoleLiteral}, nil, map[string]string{"value": "10"})
 

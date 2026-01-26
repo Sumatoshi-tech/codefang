@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -103,7 +104,7 @@ func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *pkgplumbi
 	}
 
 	_, err := blob.CountLines()
-	if err == pkgplumbing.ErrBinary { //nolint:err113,errorlint // error comparison is intentional.
+	if errors.Is(err, pkgplumbing.ErrBinary) {
 		return ""
 	}
 

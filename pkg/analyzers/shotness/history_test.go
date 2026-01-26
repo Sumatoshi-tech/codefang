@@ -334,7 +334,11 @@ func TestShotnessHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	ctx := &analyze.Context{Commit: &object.Commit{}}
 
 	// Seed state.
-	funcNode := &node.Node{ID: "1", Type: "Function", Token: "Func", Roles: []node.Role{node.RoleFunction}, Pos: &node.Positions{StartLine: 1, EndLine: 1}} //nolint:lll // long line is acceptable here.
+	funcNode := &node.Node{
+		ID: "1", Type: "Function", Token: "Func",
+		Roles: []node.Role{node.RoleFunction},
+		Pos:   &node.Positions{StartLine: 1, EndLine: 1},
+	}
 	root := &node.Node{Type: "File", Children: []*node.Node{funcNode}}
 
 	// Add initial node.
@@ -352,7 +356,11 @@ func TestShotnessHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	}
 
 	// Rename.
-	funcNode2 := &node.Node{ID: "2", Type: "Function", Token: "Func", Roles: []node.Role{node.RoleFunction}, Pos: &node.Positions{StartLine: 1, EndLine: 1}} //nolint:lll // long line is acceptable here.
+	funcNode2 := &node.Node{
+		ID: "2", Type: "Function", Token: "Func",
+		Roles: []node.Role{node.RoleFunction},
+		Pos:   &node.Positions{StartLine: 1, EndLine: 1},
+	}
 	root2 := &node.Node{Type: "File", Children: []*node.Node{funcNode2}}
 
 	s.UASTChanges.Changes = []uast.Change{{

@@ -260,9 +260,9 @@ func (hc *HistoryCommand) runPipeline(repository *git.Repository, commits []*obj
 	}
 
 	// Output.
-	fmt.Println("codefang (v2):")                 //nolint:forbidigo // CLI user output
-	fmt.Printf("  version: %d\n", version.Binary) //nolint:forbidigo // CLI user output
-	fmt.Println("  hash:", version.BinaryGitHash) //nolint:forbidigo // CLI user output
+	fmt.Fprintln(os.Stdout, "codefang (v2):")
+	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
+	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
 
 	for _, leaf := range selectedLeaves {
 		res := results[leaf]
@@ -270,7 +270,7 @@ func (hc *HistoryCommand) runPipeline(repository *git.Repository, commits []*obj
 			continue
 		}
 
-		fmt.Printf("%s:\n", leaf.Name()) //nolint:forbidigo // CLI user output
+		fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
 
 		serializeErr := leaf.Serialize(res, false, os.Stdout)
 		if serializeErr != nil {

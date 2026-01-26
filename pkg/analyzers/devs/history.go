@@ -197,8 +197,6 @@ func (d *DevsHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-//
-//nolint:gocognit // cognitive complexity is acceptable for this function.
 func (d *DevsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
@@ -216,50 +214,7 @@ func (d *DevsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io
 	}
 
 	fmt.Fprintln(writer, "  ticks:")
-
-	tickKeys := make([]int, 0, len(ticks))
-	for tick := range ticks {
-		tickKeys = append(tickKeys, tick)
-	}
-
-	sort.Ints(tickKeys)
-
-	for _, tick := range tickKeys {
-		fmt.Fprintf(writer, "    %d:\n", tick)
-		rtick := ticks[tick]
-
-		devseq := make([]int, 0, len(rtick))
-		for dev := range rtick {
-			devseq = append(devseq, dev)
-		}
-
-		sort.Ints(devseq)
-
-		for _, dev := range devseq {
-			stats := rtick[dev]
-
-			devID := dev
-			if dev == identity.AuthorMissing {
-				devID = -1
-			}
-
-			var langs []string
-
-			for lang, ls := range stats.Languages {
-				if lang == "" {
-					lang = "none"
-				}
-
-				langs = append(langs,
-					fmt.Sprintf("%s: [%d, %d, %d]", lang, ls.Added, ls.Removed, ls.Changed))
-			}
-
-			sort.Strings(langs)
-			fmt.Fprintf(writer, "      %d: [%d, %d, %d, %d, {%s}]\n",
-				devID, stats.Commits, stats.Added, stats.Removed, stats.Changed,
-				strings.Join(langs, ", "))
-		}
-	}
+	serializeDevTicks(writer, ticks)
 
 	fmt.Fprintln(writer, "  people:")
 
@@ -270,6 +225,56 @@ func (d *DevsHistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io
 	fmt.Fprintln(writer, "  tick_size:", int(tickSize.Seconds()))
 
 	return nil
+}
+
+// serializeDevTicks writes sorted tick data to the writer.
+func serializeDevTicks(writer io.Writer, ticks map[int]map[int]*DevTick) {
+	tickKeys := make([]int, 0, len(ticks))
+	for tick := range ticks {
+		tickKeys = append(tickKeys, tick)
+	}
+
+	sort.Ints(tickKeys)
+
+	for _, tick := range tickKeys {
+		fmt.Fprintf(writer, "    %d:\n", tick)
+		serializeDevTickEntries(writer, ticks[tick])
+	}
+}
+
+// serializeDevTickEntries writes sorted developer entries for a single tick.
+func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
+	devseq := make([]int, 0, len(rtick))
+	for dev := range rtick {
+		devseq = append(devseq, dev)
+	}
+
+	sort.Ints(devseq)
+
+	for _, dev := range devseq {
+		stats := rtick[dev]
+
+		devID := dev
+		if dev == identity.AuthorMissing {
+			devID = -1
+		}
+
+		langs := make([]string, 0, len(stats.Languages))
+
+		for lang, ls := range stats.Languages {
+			if lang == "" {
+				lang = "none"
+			}
+
+			langs = append(langs,
+				fmt.Sprintf("%s: [%d, %d, %d]", lang, ls.Added, ls.Removed, ls.Changed))
+		}
+
+		sort.Strings(langs)
+		fmt.Fprintf(writer, "      %d: [%d, %d, %d, %d, {%s}]\n",
+			devID, stats.Commits, stats.Added, stats.Removed, stats.Changed,
+			strings.Join(langs, ", "))
+	}
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

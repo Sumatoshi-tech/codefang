@@ -22,7 +22,7 @@ func NewAggregator(
 	collectionKey, identifierKey string,
 	messageBuilder func(float64) string,
 	emptyResultBuilder func() analyze.Report,
-) *Aggregator { //nolint:whitespace // whitespace is intentional for readability.
+) *Aggregator {
 	return &Aggregator{
 		metricsProcessor:   NewMetricsProcessor(numericKeys, countKeys),
 		dataCollector:      NewDataCollector(collectionKey, identifierKey),

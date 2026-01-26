@@ -22,7 +22,10 @@ type CommentsAggregator struct {
 // NewCommentsAggregator creates a new CommentsAggregator.
 func NewCommentsAggregator() *CommentsAggregator {
 	numericKeys := []string{"overall_score", "good_comments_ratio", "documentation_coverage"}
-	countKeys := []string{"total_comments", "good_comments", "bad_comments", "total_functions", "documented_functions", "total_comment_details"} //nolint:lll // long line is acceptable here.
+	countKeys := []string{
+		"total_comments", "good_comments", "bad_comments",
+		"total_functions", "documented_functions", "total_comment_details",
+	}
 
 	messageBuilder := buildMessage
 	emptyResultBuilder := buildEmptyResult

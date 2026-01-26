@@ -129,21 +129,25 @@ func (r *Reporter) generateSummaryReport(report analyze.Report) string {
 func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
 	metrics := make(map[string]float64)
 
-	// Use configured metric keys if provided, otherwise extract all numeric values.
-	if len(r.config.MetricKeys) > 0 { //nolint:nestif // nested logic is clear in context.
-		for _, key := range r.config.MetricKeys {
-			if value, exists := report[key]; exists {
-				if score, ok := r.toFloat(value); ok {
-					metrics[key] = score
-				}
-			}
-		}
-	} else {
+	if len(r.config.MetricKeys) == 0 {
 		// Extract all numeric values as metrics.
 		for key, value := range report {
 			if score, ok := r.toFloat(value); ok {
 				metrics[key] = score
 			}
+		}
+
+		return metrics
+	}
+
+	for _, key := range r.config.MetricKeys {
+		value, exists := report[key]
+		if !exists {
+			continue
+		}
+
+		if score, ok := r.toFloat(value); ok {
+			metrics[key] = score
 		}
 	}
 
@@ -154,21 +158,25 @@ func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
 func (r *Reporter) extractCounts(report analyze.Report) map[string]int {
 	counts := make(map[string]int)
 
-	// Use configured count keys if provided, otherwise extract all integer values.
-	if len(r.config.CountKeys) > 0 { //nolint:nestif // nested logic is clear in context.
-		for _, key := range r.config.CountKeys {
-			if value, exists := report[key]; exists {
-				if count, ok := r.toInt(value); ok {
-					counts[key] = count
-				}
-			}
-		}
-	} else {
+	if len(r.config.CountKeys) == 0 {
 		// Extract all integer values as counts.
 		for key, value := range report {
 			if count, ok := r.toInt(value); ok {
 				counts[key] = count
 			}
+		}
+
+		return counts
+	}
+
+	for _, key := range r.config.CountKeys {
+		value, exists := report[key]
+		if !exists {
+			continue
+		}
+
+		if count, ok := r.toInt(value); ok {
+			counts[key] = count
 		}
 	}
 
@@ -238,8 +246,7 @@ func (r *Reporter) generateTextComparisonReport(reports map[string]analyze.Repor
 
 	// Show individual reports.
 	for name, report := range reports {
-		parts = append(parts, fmt.Sprintf("\n--- %s ---", name)) //nolint:gocritic // gocritic suggestion acknowledged.
-		parts = append(parts, r.formatter.FormatReport(report))
+		parts = append(parts, fmt.Sprintf("\n--- %s ---", name), r.formatter.FormatReport(report))
 	}
 
 	return strings.Join(parts, "\n")
@@ -280,9 +287,50 @@ func (r *Reporter) generateSummaryComparisonReport(reports map[string]analyze.Re
 	return strings.Join(parts, "\n")
 }
 
+// resolveMetricKeys returns the metric keys to compare, either from config or extracted from reports.
+func (r *Reporter) resolveMetricKeys(reports map[string]analyze.Report) []string {
+	if len(r.config.MetricKeys) > 0 {
+		return r.config.MetricKeys
+	}
+
+	keySet := make(map[string]bool)
+
+	for _, report := range reports {
+		for key, value := range report {
+			if _, ok := r.toFloat(value); ok {
+				keySet[key] = true
+			}
+		}
+	}
+
+	keys := make([]string, 0, len(keySet))
+	for key := range keySet {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	return keys
+}
+
+// collectMetricValues collects float values for a metric key across named reports.
+func (r *Reporter) collectMetricValues(metricKey string, reports map[string]analyze.Report) (map[string]float64, bool) {
+	values := make(map[string]float64)
+	hasValues := false
+
+	for name, report := range reports {
+		if value, exists := report[metricKey]; exists {
+			if score, ok := r.toFloat(value); ok {
+				values[name] = score
+				hasValues = true
+			}
+		}
+	}
+
+	return values, hasValues
+}
+
 // compareMetrics compares metrics across multiple reports.
-//
-//nolint:gocognit // complex function.
 func (r *Reporter) compareMetrics(reports map[string]analyze.Report) string {
 	if len(reports) < lenArg2 {
 		return ""
@@ -290,40 +338,10 @@ func (r *Reporter) compareMetrics(reports map[string]analyze.Report) string {
 
 	var parts []string
 
-	// Use configured metric keys if provided, otherwise compare all numeric values.
-	metricKeys := r.config.MetricKeys
-	if len(metricKeys) == 0 {
-		// Extract all unique metric keys from all reports.
-		keySet := make(map[string]bool)
-
-		for _, report := range reports {
-			for key, value := range report {
-				if _, ok := r.toFloat(value); ok {
-					keySet[key] = true
-				}
-			}
-		}
-
-		for key := range keySet {
-			metricKeys = append(metricKeys, key)
-		}
-
-		sort.Strings(metricKeys)
-	}
+	metricKeys := r.resolveMetricKeys(reports)
 
 	for _, metricKey := range metricKeys {
-		values := make(map[string]float64)
-		hasValues := false
-
-		for name, report := range reports {
-			if value, exists := report[metricKey]; exists {
-				if score, ok := r.toFloat(value); ok {
-					values[name] = score
-					hasValues = true
-				}
-			}
-		}
-
+		values, hasValues := r.collectMetricValues(metricKey, reports)
 		if hasValues {
 			comparison := r.formatMetricComparison(metricKey, values)
 			if comparison != "" {
@@ -336,45 +354,12 @@ func (r *Reporter) compareMetrics(reports map[string]analyze.Report) string {
 }
 
 // compareMetricsData returns comparison data for JSON output.
-//
-//nolint:gocognit // complex function.
 func (r *Reporter) compareMetricsData(reports map[string]analyze.Report) map[string]any {
 	comparison := make(map[string]any)
-
-	// Use configured metric keys if provided, otherwise compare all numeric values.
-	metricKeys := r.config.MetricKeys
-	if len(metricKeys) == 0 {
-		// Extract all unique metric keys from all reports.
-		keySet := make(map[string]bool)
-
-		for _, report := range reports {
-			for key, value := range report {
-				if _, ok := r.toFloat(value); ok {
-					keySet[key] = true
-				}
-			}
-		}
-
-		for key := range keySet {
-			metricKeys = append(metricKeys, key)
-		}
-
-		sort.Strings(metricKeys)
-	}
+	metricKeys := r.resolveMetricKeys(reports)
 
 	for _, metricKey := range metricKeys {
-		values := make(map[string]float64)
-		hasValues := false
-
-		for name, report := range reports {
-			if value, exists := report[metricKey]; exists {
-				if score, ok := r.toFloat(value); ok {
-					values[name] = score
-					hasValues = true
-				}
-			}
-		}
-
+		values, hasValues := r.collectMetricValues(metricKey, reports)
 		if hasValues {
 			comparison[metricKey] = values
 		}

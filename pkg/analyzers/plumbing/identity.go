@@ -82,26 +82,23 @@ func (d *IdentityDetector) Configure(facts map[string]any) error {
 		d.ExactSignatures = val
 	}
 
-	if d.PeopleDict == nil || d.ReversedPeopleDict == nil { //nolint:nestif // nested logic is clear in context.
-		//nolint:errcheck // error return value is intentionally ignored.
-		peopleDictPath, _ := facts[ConfigIdentityDetectorPeopleDictPath].(string)
-		if peopleDictPath != "" {
-			err := d.LoadPeopleDict(peopleDictPath)
-			if err != nil {
-				return err
-			}
-		} else {
-			// In explicit mode, we expect initialization to handle this if commits are available
-			// Or we panic if commits are not provided via facts?
-			// The original logic uses ConfigPipelineCommits.
-			// Here we assume facts["commits"] or similar might be populated by the runner.
-			// Let's rely on explicit LoadPeopleDict or Generate if needed.
-			if commits, commitsOK := facts["commits"].([]*object.Commit); commitsOK {
-				d.GeneratePeopleDict(commits)
-			} else if pipelineCommits, pipelineOK := facts["Pipeline.Commits"].([]*object.Commit); pipelineOK {
-				d.GeneratePeopleDict(pipelineCommits)
-			}
-		}
+	if d.PeopleDict != nil && d.ReversedPeopleDict != nil {
+		return nil
+	}
+
+	peopleDictPath, pathOK := facts[ConfigIdentityDetectorPeopleDictPath].(string)
+	if pathOK && peopleDictPath != "" {
+		return d.LoadPeopleDict(peopleDictPath)
+	}
+
+	// In explicit mode, we expect initialization to handle this if commits are available.
+	// The original logic uses ConfigPipelineCommits.
+	// Here we assume facts["commits"] or similar might be populated by the runner.
+	// Let's rely on explicit LoadPeopleDict or Generate if needed.
+	if commits, commitsOK := facts["commits"].([]*object.Commit); commitsOK {
+		d.GeneratePeopleDict(commits)
+	} else if pipelineCommits, pipelineOK := facts["Pipeline.Commits"].([]*object.Commit); pipelineOK {
+		d.GeneratePeopleDict(pipelineCommits)
 	}
 
 	return nil
@@ -172,70 +169,86 @@ func (d *IdentityDetector) LoadPeopleDict(path string) error {
 }
 
 // GeneratePeopleDict builds the author identity mapping.
-func (d *IdentityDetector) GeneratePeopleDict(commits []*object.Commit) { //nolint:gocognit // complex function.
+func (d *IdentityDetector) GeneratePeopleDict(commits []*object.Commit) {
+	if d.ExactSignatures {
+		d.generateExactDict(commits)
+	} else {
+		d.generateLooseDict(commits)
+	}
+}
+
+func (d *IdentityDetector) generateExactDict(commits []*object.Commit) {
 	dict := map[string]int{}
-	emails := map[int][]string{}
-	names := map[int][]string{}
 	size := 0
 
-	// Simplified mailmap handling: check last commit for .mailmap
-	// ... (omitting complex mailmap parsing for brevity in this step,
-	// Assuming it can be added later or copied if critical).
-
 	for _, commit := range commits {
-		if !d.ExactSignatures { //nolint:nestif // nested logic is clear in context.
-			email := strings.ToLower(commit.Author.Email)
-			name := strings.ToLower(commit.Author.Name)
-
-			id, exists := dict[email]
-			if exists {
-				_, nameExists := dict[name]
-				if !nameExists {
-					dict[name] = id
-					names[id] = append(names[id], name)
-				}
-
-				continue
-			}
-
-			id, exists = dict[name]
-			if exists {
-				dict[email] = id
-				emails[id] = append(emails[id], email)
-
-				continue
-			}
-
-			dict[email] = size
-			dict[name] = size
-			emails[size] = append(emails[size], email)
-			names[size] = append(names[size], name)
+		sig := strings.ToLower(commit.Author.String())
+		if _, exists := dict[sig]; !exists {
+			dict[sig] = size
 			size++
-		} else {
-			sig := strings.ToLower(commit.Author.String())
-			if _, exists := dict[sig]; !exists {
-				dict[sig] = size
-				size++
-			}
 		}
 	}
 
 	reverseDict := make([]string, size)
 
-	if !d.ExactSignatures {
-		for _, val := range dict {
-			sort.Strings(names[val])
-			sort.Strings(emails[val])
-			reverseDict[val] = strings.Join(names[val], "|") + "|" + strings.Join(emails[val], "|")
-		}
-	} else {
-		for key, val := range dict {
-			reverseDict[val] = key
-		}
+	for key, val := range dict {
+		reverseDict[val] = key
 	}
 
 	d.PeopleDict = dict
 	d.ReversedPeopleDict = reverseDict
+}
+
+func (d *IdentityDetector) generateLooseDict(commits []*object.Commit) {
+	dict := map[string]int{}
+	emails := map[int][]string{}
+	names := map[int][]string{}
+	size := 0
+
+	for _, commit := range commits {
+		email := strings.ToLower(commit.Author.Email)
+		name := strings.ToLower(commit.Author.Name)
+
+		size = registerLooseIdentity(dict, emails, names, email, name, size)
+	}
+
+	reverseDict := make([]string, size)
+
+	for _, val := range dict {
+		sort.Strings(names[val])
+		sort.Strings(emails[val])
+		reverseDict[val] = strings.Join(names[val], "|") + "|" + strings.Join(emails[val], "|")
+	}
+
+	d.PeopleDict = dict
+	d.ReversedPeopleDict = reverseDict
+}
+
+func registerLooseIdentity(dict map[string]int, emails, names map[int][]string, email, name string, size int) int {
+	id, exists := dict[email]
+	if exists {
+		if _, nameExists := dict[name]; !nameExists {
+			dict[name] = id
+			names[id] = append(names[id], name)
+		}
+
+		return size
+	}
+
+	id, exists = dict[name]
+	if exists {
+		dict[email] = id
+		emails[id] = append(emails[id], email)
+
+		return size
+	}
+
+	dict[email] = size
+	dict[name] = size
+	emails[size] = append(emails[size], email)
+	names[size] = append(names[size], name)
+
+	return size + 1
 }
 
 // Finalize completes the analysis and returns the result.

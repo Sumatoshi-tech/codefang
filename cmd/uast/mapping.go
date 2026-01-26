@@ -54,100 +54,95 @@ func mappingCmd() *cobra.Command {
 	return cmd
 }
 
-//nolint:cyclop,gocognit,gocyclo,funlen // mapping helper dispatches multiple operation modes
 func runMappingHelper(
 	nodeTypesPath, mappingPath, format string,
 	coverage, generate, showTreeSitter bool,
 	language, extensions string, args []string,
-) error { //nolint:whitespace // multi-line function signature requires blank line after opening brace
+) error {
 	if showTreeSitter {
 		return showTreeSitterJSON(args, language)
 	}
 
-	// Only require node-types when not showing tree-sitter JSON.
+	nodes, err := loadNodeTypes(nodeTypesPath)
+	if err != nil {
+		return err
+	}
+
+	if generate {
+		return runMappingGenerate(nodes, language, extensions)
+	}
+
+	rules, err := loadMappingRules(mappingPath)
+	if err != nil {
+		return err
+	}
+
+	if format == formatJSON {
+		return outputMappingJSON(nodes, rules, coverage)
+	}
+
+	return outputMappingText(nodes, rules, coverage)
+}
+
+func loadNodeTypes(nodeTypesPath string) ([]mapping.NodeTypeInfo, error) {
 	if nodeTypesPath == "" {
-		return ErrNodeTypesRequired
+		return nil, ErrNodeTypesRequired
 	}
 
 	jsonData, err := os.ReadFile(nodeTypesPath)
 	if err != nil {
-		return fmt.Errorf("failed to read node-types.json: %w", err)
+		return nil, fmt.Errorf("failed to read node-types.json: %w", err)
 	}
 
 	nodes, err := mapping.ParseNodeTypes(jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to parse node-types.json: %w", err)
+		return nil, fmt.Errorf("failed to parse node-types.json: %w", err)
 	}
 
-	nodes = mapping.ApplyHeuristicClassification(nodes)
+	return mapping.ApplyHeuristicClassification(nodes), nil
+}
 
-	if generate {
-		// Parse extensions string into slice.
-		var extensionsSlice []string
+func runMappingGenerate(nodes []mapping.NodeTypeInfo, language, extensions string) error {
+	var extensionsSlice []string
 
-		if extensions != "" {
-			extensionsSlice = strings.Split(extensions, ",")
+	if extensions != "" {
+		extensionsSlice = strings.Split(extensions, ",")
 
-			// Trim spaces from each extension.
-			for idx, ext := range extensionsSlice {
-				extensionsSlice[idx] = strings.TrimSpace(ext)
-			}
+		for idx, ext := range extensionsSlice {
+			extensionsSlice[idx] = strings.TrimSpace(ext)
 		}
-
-		dsl := mapping.GenerateMappingDSL(nodes, language, extensionsSlice)
-		fmt.Print(dsl) //nolint:forbidigo // CLI user output
-
-		return nil
 	}
 
+	dsl := mapping.GenerateMappingDSL(nodes, language, extensionsSlice)
+	fmt.Fprint(os.Stdout, dsl)
+
+	return nil
+}
+
+func loadMappingRules(mappingPath string) ([]mapping.MappingRule, error) {
 	var rules []mapping.MappingRule
 
 	if mappingPath != "" {
 		data, openErr := os.Open(mappingPath)
 		if openErr != nil {
-			return fmt.Errorf("failed to open mapping DSL: %w", openErr)
+			return nil, fmt.Errorf("failed to open mapping DSL: %w", openErr)
 		}
 		defer data.Close()
 
 		_, _, parseErr := (&mapping.MappingParser{}).ParseMapping(data)
 		if parseErr != nil {
-			return fmt.Errorf("failed to load mapping DSL: %w", parseErr)
+			return nil, fmt.Errorf("failed to load mapping DSL: %w", parseErr)
 		}
 	}
 
-	if format == formatJSON { //nolint:nestif // JSON output with optional coverage requires nested conditionals
-		out := map[string]any{
-			"node_count": len(nodes),
-			"categories": summarizeCategories(nodes),
-			"nodes":      nodes,
-		}
+	return rules, nil
+}
 
-		if coverage && len(rules) > 0 {
-			covResult, covErr := mapping.CoverageAnalysis(rules, nodes)
-			if covErr != nil {
-				return covErr
-			}
-
-			out["coverage"] = covResult
-		}
-
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-
-		encodeErr := enc.Encode(out)
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
-		}
-
-		return nil
-	}
-
-	fmt.Printf("Node types: %d\n", len(nodes)) //nolint:forbidigo // CLI user output
-
-	cats := summarizeCategories(nodes)
-
-	for cat, count := range cats {
-		fmt.Printf("  %s: %d\n", cat, count) //nolint:forbidigo // CLI user output
+func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+	out := map[string]any{
+		"node_count": len(nodes),
+		"categories": summarizeCategories(nodes),
+		"nodes":      nodes,
 	}
 
 	if coverage && len(rules) > 0 {
@@ -156,7 +151,36 @@ func runMappingHelper(
 			return covErr
 		}
 
-		fmt.Printf("Coverage: %.2f%%\n", covResult*coveragePercent) //nolint:forbidigo // CLI user output
+		out["coverage"] = covResult
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+
+	err := enc.Encode(out)
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	return nil
+}
+
+func outputMappingText(nodes []mapping.NodeTypeInfo, rules []mapping.MappingRule, coverage bool) error {
+	fmt.Fprintf(os.Stdout, "Node types: %d\n", len(nodes))
+
+	cats := summarizeCategories(nodes)
+
+	for cat, count := range cats {
+		fmt.Fprintf(os.Stdout, "  %s: %d\n", cat, count)
+	}
+
+	if coverage && len(rules) > 0 {
+		covResult, covErr := mapping.CoverageAnalysis(rules, nodes)
+		if covErr != nil {
+			return covErr
+		}
+
+		fmt.Fprintf(os.Stdout, "Coverage: %.2f%%\n", covResult*coveragePercent)
 	}
 
 	return nil
@@ -212,7 +236,7 @@ func processFileForTreeSitterJSON(filename, language string) error {
 
 	jsonTree := convertTreeSitterNodeToJSON(root, content)
 
-	fmt.Printf("=== Tree-sitter JSON for %s (language: %s) ===\n", filename, language) //nolint:forbidigo // CLI user output
+	fmt.Fprintf(os.Stdout, "=== Tree-sitter JSON for %s (language: %s) ===\n", filename, language)
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -222,7 +246,7 @@ func processFileForTreeSitterJSON(filename, language string) error {
 		return fmt.Errorf("failed to encode JSON: %w", encodeErr)
 	}
 
-	fmt.Println() //nolint:forbidigo // CLI user output
+	fmt.Fprintln(os.Stdout)
 
 	return nil
 }

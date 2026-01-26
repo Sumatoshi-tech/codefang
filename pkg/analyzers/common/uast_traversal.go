@@ -134,7 +134,7 @@ func (ut *UASTTraverser) CountLines(root *node.Node) int {
 }
 
 // GetNodePosition returns the position information for a node.
-func (ut *UASTTraverser) GetNodePosition(n *node.Node) (startLine, endLine int) { //nolint:nonamedreturns // named returns not needed.
+func (ut *UASTTraverser) GetNodePosition(n *node.Node) (startLine, endLine int) {
 	if n == nil || n.Pos == nil {
 		return 0, 0
 	}

@@ -154,16 +154,12 @@ func (graph *IntGraph) TopoSort() ([]int, bool) {
 
 // FindCycle returns a cycle in the graph containing the start node.
 // Returns empty slice if no cycle found.
-//
-//nolint:gocognit // BFS cycle detection with path reconstruction is inherently complex.
 func (graph *IntGraph) FindCycle(start int) []int {
 	if start >= len(graph.nodes) {
 		return []int{}
 	}
 
 	pathMap := make(map[int]int) // Node to parent mapping.
-
-	// BFS traversal.
 	bfsQueue := []int{start}
 	pathMap[start] = -1 // Root sentinel.
 
@@ -173,23 +169,7 @@ func (graph *IntGraph) FindCycle(start int) []int {
 
 		for _, neighbor := range graph.nodes[cur] {
 			if neighbor == start {
-				// Found cycle: cur -> start.
-				cycle := []int{start}
-				curr := cur
-
-				for curr != start && curr != -1 {
-					cycle = append(cycle, curr)
-					curr = pathMap[curr]
-				}
-
-				cycle = append(cycle, start)
-
-				// Reverse to get start -> ... -> cur -> start.
-				for left, right := 0, len(cycle)-1; left < right; left, right = left+1, right-1 {
-					cycle[left], cycle[right] = cycle[right], cycle[left]
-				}
-
-				return cycle
+				return reconstructCyclePath(start, cur, pathMap)
 			}
 
 			if _, visited := pathMap[neighbor]; !visited {
@@ -200,6 +180,26 @@ func (graph *IntGraph) FindCycle(start int) []int {
 	}
 
 	return []int{}
+}
+
+// reconstructCyclePath builds the cycle path from BFS parent map.
+func reconstructCyclePath(start, lastNode int, pathMap map[int]int) []int {
+	cycle := []int{start}
+	curr := lastNode
+
+	for curr != start && curr != -1 {
+		cycle = append(cycle, curr)
+		curr = pathMap[curr]
+	}
+
+	cycle = append(cycle, start)
+
+	// Reverse to get start -> ... -> lastNode -> start.
+	for left, right := 0, len(cycle)-1; left < right; left, right = left+1, right-1 {
+		cycle[left], cycle[right] = cycle[right], cycle[left]
+	}
+
+	return cycle
 }
 
 // activeNodeCount returns counts of nodes involved in the graph.
