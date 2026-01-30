@@ -249,6 +249,45 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	if pbuf.Len() == 0 {
 		t.Error("expected binary output")
 	}
+
+	// Plot (HTML).
+	var plotBuf bytes.Buffer
+
+	err = d.Serialize(report, analyze.FormatPlot, &plotBuf)
+	if err != nil {
+		t.Fatalf("Serialize Plot failed: %v", err)
+	}
+
+	plotOut := plotBuf.String()
+	if !strings.Contains(plotOut, "Developer Activity History") {
+		t.Error("expected chart title in plot output")
+	}
+
+	if !strings.Contains(plotOut, "echarts") {
+		t.Error("expected echarts in plot output")
+	}
+
+	if !strings.Contains(plotOut, "dev0") {
+		t.Error("expected developer name in plot output")
+	}
+
+	// Plot with empty ticks (empty chart).
+	emptyReport := analyze.Report{
+		"Ticks":              map[int]map[int]*DevTick{},
+		"ReversedPeopleDict": []string{},
+		"TickSize":           24 * time.Hour,
+	}
+
+	var emptyPlotBuf bytes.Buffer
+
+	err = d.Serialize(emptyReport, analyze.FormatPlot, &emptyPlotBuf)
+	if err != nil {
+		t.Fatalf("Serialize Plot empty failed: %v", err)
+	}
+
+	if !strings.Contains(emptyPlotBuf.String(), "Developer Activity History") {
+		t.Error("expected chart title in empty plot output")
+	}
 }
 
 func TestHistoryAnalyzer_Misc(t *testing.T) {

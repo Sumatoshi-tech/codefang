@@ -141,6 +141,14 @@ func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
+	// Check if the runtime pipeline has already computed changes
+	if ctx != nil && ctx.Changes != nil {
+		// Use the pre-computed changes from the runtime pipeline
+		t.Changes = t.filterChanges(ctx.Changes)
+		return nil
+	}
+
+	// Fall back to traditional tree diff computation
 	commit := ctx.Commit
 
 	tree, err := commit.Tree()
@@ -312,4 +320,13 @@ func (t *TreeDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// InjectPreparedData sets pre-computed changes from parallel preparation.
+func (t *TreeDiffAnalyzer) InjectPreparedData(
+	changes []*gitlib.Change,
+	_ map[gitlib.Hash]*gitlib.CachedBlob,
+	_ any,
+) {
+	t.Changes = changes
 }

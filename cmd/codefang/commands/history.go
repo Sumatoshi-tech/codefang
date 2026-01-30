@@ -6,9 +6,11 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime/pprof"
 	"strings"
 	"time"
 
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -23,6 +25,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
@@ -43,6 +46,7 @@ type HistoryCommand struct {
 	analyzers   []string
 	head        bool
 	firstParent bool
+	cpuprofile  string
 }
 
 // NewHistoryCommand creates and configures the history command.
@@ -66,18 +70,65 @@ Available analyzers:
 		RunE: hc.run,
 	}
 
-	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format (yaml, json)")
+	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format (yaml, json, plot; plot is HTML for devs only)")
 	cobraCmd.Flags().StringSliceVarP(&hc.analyzers, "analyzers", "a", nil, "Analyzers to run (comma-separated)")
 	cobraCmd.Flags().BoolVar(&hc.head, "head", false, "Analyze only HEAD commit")
 	cobraCmd.Flags().BoolVar(&hc.firstParent, "first-parent", false, "Follow only first parent of merge commits")
 	cobraCmd.Flags().Int("limit", 0, "Limit number of commits to analyze (0 = no limit)")
 	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
+	cobraCmd.Flags().StringVar(&hc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
+
+	// Dynamic flag registration from analyzers
+	dummyPipeline := newAnalyzerPipeline(nil)
+	var allAnalyzers []analyze.HistoryAnalyzer
+	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+	for _, leaf := range dummyPipeline.leaves {
+		allAnalyzers = append(allAnalyzers, leaf)
+	}
+
+	registeredFlags := make(map[string]bool)
+
+	for _, analyzer := range allAnalyzers {
+		for _, opt := range analyzer.ListConfigurationOptions() {
+			if registeredFlags[opt.Flag] {
+				continue
+			}
+			registeredFlags[opt.Flag] = true
+
+			switch opt.Type {
+			case pipeline.BoolConfigurationOption:
+				cobraCmd.Flags().Bool(opt.Flag, opt.Default.(bool), opt.Description)
+			case pipeline.IntConfigurationOption:
+				cobraCmd.Flags().Int(opt.Flag, opt.Default.(int), opt.Description)
+			case pipeline.StringConfigurationOption:
+				cobraCmd.Flags().String(opt.Flag, opt.Default.(string), opt.Description)
+			case pipeline.StringsConfigurationOption:
+				cobraCmd.Flags().StringSlice(opt.Flag, opt.Default.([]string), opt.Description)
+			case pipeline.PathConfigurationOption:
+				cobraCmd.Flags().String(opt.Flag, opt.Default.(string), opt.Description)
+			}
+		}
+	}
 
 	return cobraCmd
 }
 
 // run executes the history analysis pipeline.
 func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
+	// Start CPU profiling if requested.
+	if hc.cpuprofile != "" {
+		f, err := os.Create(hc.cpuprofile)
+		if err != nil {
+			return fmt.Errorf("could not create CPU profile: %w", err)
+		}
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("could not start CPU profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	if len(hc.analyzers) == 0 {
 		return ErrNoAnalyzersSelected
 	}
@@ -103,7 +154,38 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return hc.runPipeline(repository, uri, commits, hc.format)
+	// Load configuration facts from flags
+	facts := map[string]any{}
+	dummyPipeline := newAnalyzerPipeline(nil)
+	var allAnalyzers []analyze.HistoryAnalyzer
+	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+	for _, leaf := range dummyPipeline.leaves {
+		allAnalyzers = append(allAnalyzers, leaf)
+	}
+
+	for _, analyzer := range allAnalyzers {
+		for _, opt := range analyzer.ListConfigurationOptions() {
+			switch opt.Type {
+			case pipeline.BoolConfigurationOption:
+				val, _ := cmd.Flags().GetBool(opt.Flag)
+				facts[opt.Name] = val
+			case pipeline.IntConfigurationOption:
+				val, _ := cmd.Flags().GetInt(opt.Flag)
+				facts[opt.Name] = val
+			case pipeline.StringConfigurationOption:
+				val, _ := cmd.Flags().GetString(opt.Flag)
+				facts[opt.Name] = val
+			case pipeline.StringsConfigurationOption:
+				val, _ := cmd.Flags().GetStringSlice(opt.Flag)
+				facts[opt.Name] = val
+			case pipeline.PathConfigurationOption:
+				val, _ := cmd.Flags().GetString(opt.Flag)
+				facts[opt.Name] = val
+			}
+		}
+	}
+
+	return hc.runPipeline(repository, uri, commits, hc.format, facts)
 }
 
 // isFastDevsMode returns true if only the fast devs analyzer is selected.
@@ -150,7 +232,7 @@ func (hc *HistoryCommand) runFastDevsAnalyzer(cmd *cobra.Command, uri string) er
 		return fmt.Errorf("fast devs analysis failed: %w", err)
 	}
 
-	if hc.format != FormatJSON {
+	if hc.format != FormatJSON && hc.format != analyze.FormatPlot {
 		printHeader()
 		fmt.Fprintln(os.Stdout, "Devs:")
 	}
@@ -305,9 +387,9 @@ func parseTime(s string) (time.Time, error) {
 
 func (hc *HistoryCommand) runPipeline(
 	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
+	facts map[string]any,
 ) error {
 	pipeline := newAnalyzerPipeline(repository)
-	facts := map[string]any{}
 
 	configureErr := configureAnalyzers(pipeline.core, facts)
 	if configureErr != nil {
@@ -413,10 +495,20 @@ func (hc *HistoryCommand) selectLeaves(
 	return selected, nil
 }
 
+// PlotGenerator interface for analyzers that can generate plots.
+type PlotGenerator interface {
+	GenerateChart(report analyze.Report) (components.Charter, error)
+}
+
 // outputResults outputs the results for all selected leaves.
 func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report, format string) error {
-	if format != FormatJSON {
+	rawOutput := format == FormatJSON || format == analyze.FormatPlot
+	if !rawOutput {
 		printHeader()
+	}
+
+	if format == analyze.FormatPlot && len(leaves) > 1 {
+		return outputCombinedPlot(leaves, results)
 	}
 
 	for _, leaf := range leaves {
@@ -425,7 +517,7 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 			continue
 		}
 
-		if format != FormatJSON {
+		if !rawOutput {
 			fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
 		}
 
@@ -433,6 +525,33 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 		if serializeErr != nil {
 			return fmt.Errorf("serialization error for %s: %w", leaf.Name(), serializeErr)
 		}
+	}
+
+	return nil
+}
+
+func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report) error {
+	page := components.NewPage()
+	page.PageTitle = "Codefang Analysis Report"
+
+	for _, leaf := range leaves {
+		res := results[leaf]
+		if res == nil {
+			continue
+		}
+
+		if plotter, ok := leaf.(PlotGenerator); ok {
+			chart, err := plotter.GenerateChart(res)
+			if err != nil {
+				return fmt.Errorf("failed to generate chart for %s: %w", leaf.Name(), err)
+			}
+
+			page.AddCharts(chart)
+		}
+	}
+
+	if err := page.Render(os.Stdout); err != nil {
+		return fmt.Errorf("render page: %w", err)
 	}
 
 	return nil

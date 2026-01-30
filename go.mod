@@ -21,6 +21,7 @@ require (
 )
 
 require (
+	github.com/adrg/strutil v0.3.1 // indirect
 	github.com/alexaandru/go-sitter-forest/abap v1.9.0 // indirect
 	github.com/alexaandru/go-sitter-forest/abl v1.9.7 // indirect
 	github.com/alexaandru/go-sitter-forest/ada v1.9.0 // indirect
@@ -533,6 +534,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/go-echarts/go-echarts/v2 v2.6.7 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect

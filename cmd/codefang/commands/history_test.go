@@ -194,4 +194,5 @@ func TestFormatConstants(t *testing.T) {
 	assert.Equal(t, "yaml", analyze.FormatYAML)
 	assert.Equal(t, "json", analyze.FormatJSON)
 	assert.Equal(t, "binary", analyze.FormatBinary)
+	assert.Equal(t, "plot", analyze.FormatPlot)
 }

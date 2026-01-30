@@ -176,3 +176,8 @@ func (t *TicksSinceStart) Serialize(report analyze.Report, format string, writer
 
 	return nil
 }
+
+// CurrentTick returns the tick value of the last processed commit.
+func (t *TicksSinceStart) CurrentTick() int {
+	return t.Tick
+}

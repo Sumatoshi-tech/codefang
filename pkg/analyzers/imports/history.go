@@ -280,6 +280,10 @@ func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
+		return h.generatePlot(result, writer)
+	}
+
 	if format == analyze.FormatJSON {
 		err := json.NewEncoder(writer).Encode(result)
 		if err != nil {

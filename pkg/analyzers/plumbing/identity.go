@@ -283,3 +283,8 @@ func (d *IdentityDetector) Serialize(report analyze.Report, format string, write
 
 	return nil
 }
+
+// GetAuthorID returns the author ID of the last processed commit.
+func (d *IdentityDetector) GetAuthorID() int {
+	return d.AuthorID
+}
