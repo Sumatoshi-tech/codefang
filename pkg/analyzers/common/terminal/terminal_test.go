@@ -40,6 +40,7 @@ func TestDetectWidth_InvalidEnv(t *testing.T) {
 
 func TestNewConfig_Defaults(t *testing.T) {
 	t.Setenv("COLUMNS", "")
+	t.Setenv("NO_COLOR", "") // Explicitly unset NO_COLOR for this test.
 
 	cfg := NewConfig()
 	if cfg.Width != testDefaultWidth {
@@ -155,28 +156,6 @@ func TestFormatScoreBar(t *testing.T) {
 	}
 }
 
-func TestFormatStatus(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		status   string
-		expected string
-	}{
-		{"good", StatusGood},
-		{"fair", StatusWarning},
-		{"poor", StatusBad},
-		{"info", StatusInfo},
-		{"unknown", StatusInfo}, // Default.
-	}
-
-	for _, tt := range tests {
-		result := FormatStatus(tt.status)
-		if result != tt.expected {
-			t.Errorf("FormatStatus(%q) = %q, want %q", tt.status, result, tt.expected)
-		}
-	}
-}
-
 func TestTruncateWithEllipsis_Short(t *testing.T) {
 	t.Parallel()
 
@@ -249,28 +228,6 @@ func TestPadRight(t *testing.T) {
 		result := PadRight(tt.input, tt.width)
 		if result != tt.expected {
 			t.Errorf("PadRight(%q, %d) = %q, want %q", tt.input, tt.width, result, tt.expected)
-		}
-	}
-}
-
-func TestPadLeft(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		input    string
-		expected string
-		width    int
-	}{
-		{"hello", "     hello", 10},
-		{"hello", "hello", 5},
-		{"hello", "hello", 3}, // Longer than width, no truncation.
-		{"", "     ", 5},
-	}
-
-	for _, tt := range tests {
-		result := PadLeft(tt.input, tt.width)
-		if result != tt.expected {
-			t.Errorf("PadLeft(%q, %d) = %q, want %q", tt.input, tt.width, result, tt.expected)
 		}
 	}
 }

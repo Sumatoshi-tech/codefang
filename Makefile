@@ -14,6 +14,12 @@ GIT_VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "
 BUILD_DATE  = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     = -X $(VERSION_PKG).Version=$(GIT_VERSION) -X $(VERSION_PKG).Commit=$(GIT_COMMIT) -X $(VERSION_PKG).Date=$(BUILD_DATE)
 
+# libgit2 vendored build configuration
+LIBGIT2_DIR := third_party/libgit2
+LIBGIT2_BUILD := $(LIBGIT2_DIR)/build
+LIBGIT2_INSTALL := $(LIBGIT2_DIR)/install
+LIBGIT2_PKG_CONFIG := $(CURDIR)/$(LIBGIT2_INSTALL)/lib64/pkgconfig:$(CURDIR)/$(LIBGIT2_INSTALL)/lib/pkgconfig
+
 all: precompile ${GOBIN}/uast${EXE} ${GOBIN}/codefang${EXE}
 
 # Build all binaries (alias for all)
@@ -24,8 +30,9 @@ build: all
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  all              - Build all binaries"
+	@echo "  all              - Build all binaries (includes libgit2)"
 	@echo "  build            - Build all binaries (alias for all)"
+	@echo "  libgit2          - Build vendored libgit2 statically (auto-built by 'all')"
 	@echo "  install          - Install binaries to system PATH"
 	@echo "  test             - Run all tests"
 	@echo "  lint             - Run linters and deadcode analysis"
@@ -42,10 +49,13 @@ help:
 	@echo "  clean            - Clean build artifacts"
 
 # Pre-compile UAST mappings for faster startup
-precompile:
+precompile: libgit2
 	@echo "Pre-compiling UAST mappings..."
 	@mkdir -p ${GOBIN}
-	@go run ./build/scripts/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_ENABLED=1 go run ./build/scripts/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
 
 # Generate UAST mappings for all languages
 uastmaps-gen:
@@ -66,12 +76,18 @@ install: all
 		echo "Or add the above line to your ~/.bashrc or ~/.zshrc"; \
 	fi
 
-# Run all tests with CGO disabled (for cross-platform compatibility)
+# Run all tests
 test: all
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
 	CGO_ENABLED=1 go test ./...
 
-# Run all tests with CGO disabled and verbose output
+# Run all tests with verbose output
 testv: all
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
 	CGO_ENABLED=1 go test ./... -v
 
 # Run UAST performance benchmarks (comprehensive suite with organized results)
@@ -174,6 +190,9 @@ clean:
 	rm -f *.prof
 	rm -f test/benchmarks/benchmark_results.txt
 	rm -rf benchmark_plots/
+	rm -rf $(LIBGIT2_BUILD)
+	rm -rf $(LIBGIT2_INSTALL)
+	rm -rf bin/
 
 # Linting tools (resolve from GOPATH/bin if not on PATH)
 GOPATH_BIN=$(shell go env GOPATH)/bin
@@ -187,19 +206,19 @@ INTERNAL_PKGS=./cmd/... ./pkg/...
 .PHONY: lint
 lint:
 	@echo "Running linters..."
-	@$(GOLINT) run $(INTERNAL_PKGS)
+	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_ENABLED=1 $(GOLINT) run $(INTERNAL_PKGS)
 	@echo "Running deadcode analysis..."
 	@./scripts/deadcode-filter.sh -test github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
 	@echo "✓ Linting complete"
 
-## deadcode: Run deadcode analysis with detailed output (requires: go install golang.org/x/tools/cmd/deadcode@latest)
+## deadcode: Run deadcode analysis with whitelist filter (fails if dead code found)
 .PHONY: deadcode
 deadcode:
-	@echo "Running deadcode analysis..."
-	@echo "================================================================"
-	@$(DEADCODE) -test github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/... || echo "Note: Review any unreachable functions listed above"
-	@echo "================================================================"
-	@echo "Tip: Use 'deadcode -whylive <function>' to understand why a function is considered reachable"
+	@echo "Running deadcode analysis with whitelist..."
+	@./scripts/deadcode-filter.sh -test github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
 
 ## deadcode-prod: Run deadcode analysis excluding tests (production-only dead code)
 .PHONY: deadcode-prod
@@ -280,9 +299,15 @@ uast-test:
 	@cd web && npm test -- tests/simple.spec.js tests/basic.spec.js
 
 ${GOBIN}/uast${EXE}: cmd/uast/*.go pkg/uast/*.go pkg/uast/*/*.go pkg/uast/*/*/*.go
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
 	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/uast${EXE} ./cmd/uast
 
-${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go pkg/analyzers/*/*.go
+${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go pkg/analyzers/*/*.go libgit2
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
 	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/codefang${EXE} ./cmd/codefang
 
 # Build the development service
@@ -295,3 +320,27 @@ build-dev-service:
 .PHONY: uast-dev
 uast-dev: install
 	@cd web && ./start-dev.sh
+
+# =============================================================================
+# libgit2 targets for fast history analysis
+# =============================================================================
+
+# Build libgit2 as a static library (vendored in third_party/libgit2)
+.PHONY: libgit2
+libgit2: $(LIBGIT2_INSTALL)/lib64/libgit2.a
+
+$(LIBGIT2_INSTALL)/lib64/libgit2.a:
+	@echo "Building libgit2 statically from third_party/libgit2..."
+	@mkdir -p $(LIBGIT2_BUILD)
+	cd $(LIBGIT2_BUILD) && cmake .. \
+		-DCMAKE_INSTALL_PREFIX=$(CURDIR)/$(LIBGIT2_INSTALL) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DBUILD_TESTS=OFF \
+		-DBUILD_CLI=OFF \
+		-DUSE_SSH=OFF \
+		-DUSE_HTTPS=OpenSSL
+	cd $(LIBGIT2_BUILD) && cmake --build . --parallel
+	cd $(LIBGIT2_BUILD) && cmake --install .
+	@echo "✓ libgit2 built and installed to $(LIBGIT2_INSTALL)"
+

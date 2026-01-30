@@ -7,9 +7,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -23,6 +22,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
@@ -32,7 +32,9 @@ var (
 		"no analyzers selected. Use -a flag, e.g.: -a burndown,couples\n" +
 			"Available: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
 	)
-	ErrUnknownAnalyzer = errors.New("unknown analyzer")
+	ErrUnknownAnalyzer   = errors.New("unknown analyzer")
+	ErrRepositoryLoad    = errors.New("failed to load repository")
+	ErrInvalidTimeFormat = errors.New("cannot parse time")
 )
 
 // HistoryCommand holds the configuration for the history command.
@@ -57,51 +59,106 @@ Available analyzers:
   couples       File/developer coupling matrix
   devs          Developer statistics (commits, lines added/removed)
   file-history  File change history with contributors
-  imports       Import usage per developer over time
-  sentiment     Comment sentiment classification
-  shotness      Structural hotspots (fine-grained couples)
-  typos         Typo-fix pairs extracted from diffs
-
-Examples:
-  codefang history -a burndown .
-  codefang history -a burndown,couples,devs .
-  codefang history -a burndown --head .
-  codefang history -a devs -f json .`,
-		Args: cobra.ExactArgs(1),
-		RunE: hc.Run,
+  imports       Import/dependency analysis
+  sentiment     Commit message sentiment analysis
+  shotness      Code hotspot detection
+  typos         Potential typo detection in identifiers`,
+		RunE: hc.run,
 	}
 
-	cobraCmd.Flags().StringSliceVarP(&hc.analyzers, "analyzers", "a", []string{},
-		"Analyzers to run (comma-separated)")
-	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format: yaml or json")
-	cobraCmd.Flags().BoolVar(&hc.head, "head", false, "Analyze only the latest commit")
-	cobraCmd.Flags().BoolVar(&hc.firstParent, "first-parent", false, "Follow only the first parent")
+	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format (yaml, json)")
+	cobraCmd.Flags().StringSliceVarP(&hc.analyzers, "analyzers", "a", nil, "Analyzers to run (comma-separated)")
+	cobraCmd.Flags().BoolVar(&hc.head, "head", false, "Analyze only HEAD commit")
+	cobraCmd.Flags().BoolVar(&hc.firstParent, "first-parent", false, "Follow only first parent of merge commits")
+	cobraCmd.Flags().Int("limit", 0, "Limit number of commits to analyze (0 = no limit)")
+	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
 
 	return cobraCmd
 }
 
-// Run executes the history command.
-func (hc *HistoryCommand) Run(_ *cobra.Command, args []string) error {
+// run executes the history analysis pipeline.
+func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 	if len(hc.analyzers) == 0 {
 		return ErrNoAnalyzersSelected
 	}
 
-	uri := args[0]
-	repository := loadRepository(uri)
-
-	commits, err := hc.loadCommits(repository)
+	uri, err := resolveRepoURI(args)
 	if err != nil {
 		return err
 	}
 
-	return hc.runPipeline(repository, commits)
+	// Special case: fast devs analyzer.
+	if hc.isFastDevsMode() {
+		return hc.runFastDevsAnalyzer(cmd, uri)
+	}
+
+	repository := loadRepository(uri)
+	if repository == nil {
+		return fmt.Errorf("%w: %s", ErrRepositoryLoad, uri)
+	}
+	defer repository.Free()
+
+	commits, err := hc.loadCommits(repository, cmd)
+	if err != nil {
+		return err
+	}
+
+	return hc.runPipeline(repository, uri, commits, hc.format)
 }
 
-func loadRepository(uri string) *git.Repository {
-	var repository *git.Repository
+// isFastDevsMode returns true if only the fast devs analyzer is selected.
+func (hc *HistoryCommand) isFastDevsMode() bool {
+	return len(hc.analyzers) == 1 && hc.analyzers[0] == "devs"
+}
 
-	var err error
+// resolveRepoURI resolves the repository URI from command args.
+func resolveRepoURI(args []string) (string, error) {
+	uri := "."
+	if len(args) > 0 {
+		uri = args[0]
+	}
 
+	// Expand ~ to home directory.
+	if strings.HasPrefix(uri, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		uri = strings.Replace(uri, "~", home, 1)
+	}
+
+	return uri, nil
+}
+
+// runFastDevsAnalyzer runs the fast devs analyzer.
+func (hc *HistoryCommand) runFastDevsAnalyzer(cmd *cobra.Command, uri string) error {
+	fa := devs.NewFastAnalyzer()
+
+	sinceStr, err := cmd.Flags().GetString("since")
+	if err != nil {
+		return fmt.Errorf("failed to get since flag: %w", err)
+	}
+
+	limit, err := cmd.Flags().GetInt("limit")
+	if err != nil {
+		return fmt.Errorf("failed to get limit flag: %w", err)
+	}
+
+	report, err := fa.Analyze(uri, sinceStr, limit)
+	if err != nil {
+		return fmt.Errorf("fast devs analysis failed: %w", err)
+	}
+
+	if hc.format != FormatJSON {
+		printHeader()
+		fmt.Fprintln(os.Stdout, "Devs:")
+	}
+
+	return fa.Serialize(report, hc.format, os.Stdout)
+}
+
+func loadRepository(uri string) *gitlib.Repository {
 	if strings.Contains(uri, "://") || regexp.MustCompile(`^[A-Za-z]\w*@[A-Za-z0-9][\w.]*:`).MatchString(uri) {
 		return nil // Remote repos not supported in codefang yet.
 	}
@@ -110,7 +167,7 @@ func loadRepository(uri string) *git.Repository {
 		uri = uri[:len(uri)-1]
 	}
 
-	repository, err = git.PlainOpen(uri)
+	repository, err := gitlib.OpenRepository(uri)
 	if err != nil {
 		log.Fatalf("failed to open %s: %v", uri, err)
 	}
@@ -118,165 +175,272 @@ func loadRepository(uri string) *git.Repository {
 	return repository
 }
 
-func (hc *HistoryCommand) loadCommits(repository *git.Repository) ([]*object.Commit, error) {
-	var commits []*object.Commit
-
+func (hc *HistoryCommand) loadCommits(repository *gitlib.Repository, cmd *cobra.Command) ([]*gitlib.Commit, error) {
 	if hc.head {
-		ref, err := repository.Head()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get HEAD: %w", err)
-		}
-
-		commit, err := repository.CommitObject(ref.Hash())
-		if err != nil {
-			return nil, fmt.Errorf("failed to get commit: %w", err)
-		}
-
-		return []*object.Commit{commit}, nil
+		return hc.loadHeadCommit(repository)
 	}
 
-	iter, err := repository.Log(&git.LogOptions{})
+	return hc.loadHistoryCommits(repository, cmd)
+}
+
+// loadHeadCommit loads just the HEAD commit.
+func (hc *HistoryCommand) loadHeadCommit(repository *gitlib.Repository) ([]*gitlib.Commit, error) {
+	headHash, err := repository.Head()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get HEAD: %w", err)
+	}
+
+	commit, err := repository.LookupCommit(headHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	return []*gitlib.Commit{commit}, nil
+}
+
+// loadHistoryCommits loads commits from the log based on command flags.
+func (hc *HistoryCommand) loadHistoryCommits(repository *gitlib.Repository, cmd *cobra.Command) ([]*gitlib.Commit, error) {
+	logOpts, err := hc.buildLogOptions(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	iter, err := repository.Log(logOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list commits: %w", err)
 	}
+	defer iter.Close()
 
-	err = iter.ForEach(func(commit *object.Commit) error {
-		if hc.firstParent && commit.NumParents() > 1 {
-			return nil
-		}
-
-		commits = append(commits, commit)
-
-		return nil
-	})
+	limit, err := cmd.Flags().GetInt("limit")
 	if err != nil {
-		return nil, fmt.Errorf("failed to iterate commits: %w", err)
+		return nil, fmt.Errorf("failed to get limit flag: %w", err)
 	}
 
-	// Reverse to oldest first.
-	for i, j := 0, len(commits)-1; i < j; i, j = i+1, j-1 {
-		commits[i], commits[j] = commits[j], commits[i]
-	}
+	commits := hc.collectCommits(iter, limit)
+	reverseCommits(commits)
 
 	return commits, nil
 }
 
-//nolint:funlen // pipeline setup requires many struct initializations
-func (hc *HistoryCommand) runPipeline(repository *git.Repository, commits []*object.Commit) error {
-	// Instantiate Plumbing.
-	treeDiff := &plumbing.TreeDiffAnalyzer{}
-	blobCache := &plumbing.BlobCacheAnalyzer{
-		TreeDiff: treeDiff,
-	}
-	fileDiff := &plumbing.FileDiffAnalyzer{
-		TreeDiff: treeDiff, BlobCache: blobCache,
-	}
-	identity := &plumbing.IdentityDetector{}
-	ticks := &plumbing.TicksSinceStart{}
-	langs := &plumbing.LanguagesDetectionAnalyzer{
-		TreeDiff: treeDiff, BlobCache: blobCache,
-	}
-	lineStats := &plumbing.LinesStatsCalculator{
-		TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff,
-	}
-	uastChanges := &plumbing.UASTChangesAnalyzer{
-		FileDiff: fileDiff, BlobCache: blobCache,
+// buildLogOptions constructs LogOptions from command flags.
+func (hc *HistoryCommand) buildLogOptions(cmd *cobra.Command) (*gitlib.LogOptions, error) {
+	logOpts := &gitlib.LogOptions{}
+
+	sinceStr, err := cmd.Flags().GetString("since")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get since flag: %w", err)
 	}
 
-	// Instantiate Leaves.
-	leaves := map[string]analyze.HistoryAnalyzer{
-		"burndown": &burndown.HistoryAnalyzer{
-			TreeDiff: treeDiff, FileDiff: fileDiff, BlobCache: blobCache,
-			Identity: identity, Ticks: ticks,
-		},
-		"couples": &couples.HistoryAnalyzer{
-			Identity: identity, TreeDiff: treeDiff,
-		},
-		"devs": &devs.HistoryAnalyzer{
-			Identity: identity, TreeDiff: treeDiff, Ticks: ticks,
-			Languages: langs, LineStats: lineStats,
-		},
-		"file-history": &filehistory.Analyzer{
-			Identity: identity, TreeDiff: treeDiff, LineStats: lineStats,
-		},
-		"imports": &imports.HistoryAnalyzer{
-			TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
-		},
-		"sentiment": &sentiment.HistoryAnalyzer{
-			UASTChanges: uastChanges, Ticks: ticks,
-		},
-		"shotness": &shotness.HistoryAnalyzer{
-			FileDiff: fileDiff, UASTChanges: uastChanges,
-		},
-		"typos": &typos.HistoryAnalyzer{
-			UASTChanges: uastChanges, FileDiff: fileDiff, BlobCache: blobCache,
-		},
-	}
-
-	// Plumbing analyzers.
-	plumbingAnalyzers := []analyze.HistoryAnalyzer{
-		treeDiff, blobCache, fileDiff, identity, ticks, langs, lineStats, uastChanges,
-	}
-
-	var activeAnalyzers []analyze.HistoryAnalyzer
-
-	var selectedLeaves []analyze.HistoryAnalyzer
-
-	facts := map[string]any{}
-
-	// Configure plumbing.
-	for _, currentAnalyzer := range plumbingAnalyzers {
-		configErr := currentAnalyzer.Configure(facts)
-		if configErr != nil {
-			return fmt.Errorf("failed to configure %s: %w", currentAnalyzer.Name(), configErr)
+	if sinceStr != "" {
+		sinceTime, parseErr := parseTime(sinceStr)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid time format for --since: %w", parseErr)
 		}
 
-		activeAnalyzers = append(activeAnalyzers, currentAnalyzer)
+		logOpts.Since = &sinceTime
 	}
 
-	// Select and configure leaves.
+	return logOpts, nil
+}
+
+// collectCommits iterates through commits and collects them up to the limit.
+func (hc *HistoryCommand) collectCommits(iter *gitlib.CommitIter, limit int) []*gitlib.Commit {
+	var commits []*gitlib.Commit
+
+	count := 0
+
+	for {
+		commit, err := iter.Next()
+		if err != nil {
+			break // EOF or error.
+		}
+
+		if limit > 0 && count >= limit {
+			commit.Free()
+
+			break
+		}
+
+		if hc.firstParent && commit.NumParents() > 1 {
+			commit.Free()
+
+			continue
+		}
+
+		commits = append(commits, commit)
+		count++
+	}
+
+	return commits
+}
+
+// reverseCommits reverses the order of commits (to oldest first).
+func reverseCommits(commits []*gitlib.Commit) {
+	for i, j := 0, len(commits)-1; i < j; i, j = i+1, j-1 {
+		commits[i], commits[j] = commits[j], commits[i]
+	}
+}
+
+func parseTime(s string) (time.Time, error) {
+	// Try parsing as duration (e.g., "24h") relative to now.
+	d, durationErr := time.ParseDuration(s)
+	if durationErr == nil {
+		return time.Now().Add(-d), nil
+	}
+
+	// Try RFC3339.
+	parsedTime, rfc3339Err := time.Parse(time.RFC3339, s)
+	if rfc3339Err == nil {
+		return parsedTime, nil
+	}
+
+	// Try YYYY-MM-DD.
+	parsedTime, dateOnlyErr := time.Parse(time.DateOnly, s)
+	if dateOnlyErr == nil {
+		return parsedTime, nil
+	}
+
+	return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
+}
+
+func (hc *HistoryCommand) runPipeline(
+	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
+) error {
+	pipeline := newAnalyzerPipeline(repository)
+	facts := map[string]any{}
+
+	configureErr := configureAnalyzers(pipeline.core, facts)
+	if configureErr != nil {
+		return configureErr
+	}
+
+	selectedLeaves, selectErr := hc.selectLeaves(pipeline.leaves, facts)
+	if selectErr != nil {
+		return selectErr
+	}
+
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pipeline.core)+len(selectedLeaves))
+	allAnalyzers = append(allAnalyzers, pipeline.core...)
+	allAnalyzers = append(allAnalyzers, selectedLeaves...)
+
+	runner := framework.NewRunner(repository, repoPath, allAnalyzers...)
+
+	results, runErr := runner.Run(commits)
+	if runErr != nil {
+		return fmt.Errorf("pipeline execution failed: %w", runErr)
+	}
+
+	return outputResults(selectedLeaves, results, format)
+}
+
+// analyzerPipeline holds the core and leaf analyzers for the pipeline.
+type analyzerPipeline struct {
+	core   []analyze.HistoryAnalyzer
+	leaves map[string]analyze.HistoryAnalyzer
+}
+
+// newAnalyzerPipeline creates and configures all analyzers with their dependencies.
+func newAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
+	treeDiff := &plumbing.TreeDiffAnalyzer{Repository: repository}
+	identity := &plumbing.IdentityDetector{}
+	ticks := &plumbing.TicksSinceStart{}
+	blobCache := &plumbing.BlobCacheAnalyzer{TreeDiff: treeDiff, Repository: repository}
+	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
+	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
+	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
+	uastChanges := &plumbing.UASTChangesAnalyzer{FileDiff: fileDiff, BlobCache: blobCache}
+
+	return &analyzerPipeline{
+		core: []analyze.HistoryAnalyzer{
+			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, uastChanges,
+		},
+		leaves: map[string]analyze.HistoryAnalyzer{
+			"burndown": &burndown.HistoryAnalyzer{
+				BlobCache: blobCache, Ticks: ticks, Identity: identity, FileDiff: fileDiff, TreeDiff: treeDiff,
+			},
+			"couples": &couples.HistoryAnalyzer{Identity: identity, TreeDiff: treeDiff},
+			"devs": &devs.HistoryAnalyzer{
+				Identity: identity, TreeDiff: treeDiff, Ticks: ticks, Languages: langDetect, LineStats: lineStats,
+			},
+			"file-history": &filehistory.Analyzer{Identity: identity, TreeDiff: treeDiff, LineStats: lineStats},
+			"imports": &imports.HistoryAnalyzer{
+				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
+			},
+			"sentiment": &sentiment.HistoryAnalyzer{UASTChanges: uastChanges, Ticks: ticks},
+			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UASTChanges: uastChanges},
+			"typos": &typos.HistoryAnalyzer{
+				UASTChanges: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
+			},
+		},
+	}
+}
+
+// configureAnalyzers configures all analyzers with the given facts.
+func configureAnalyzers(analyzers []analyze.HistoryAnalyzer, facts map[string]any) error {
+	for _, analyzer := range analyzers {
+		configErr := analyzer.Configure(facts)
+		if configErr != nil {
+			return fmt.Errorf("failed to configure %s: %w", analyzer.Name(), configErr)
+		}
+	}
+
+	return nil
+}
+
+// selectLeaves selects and configures the requested leaf analyzers.
+func (hc *HistoryCommand) selectLeaves(
+	leaves map[string]analyze.HistoryAnalyzer, facts map[string]any,
+) ([]analyze.HistoryAnalyzer, error) {
+	var selected []analyze.HistoryAnalyzer
+
 	for _, name := range hc.analyzers {
 		leaf, found := leaves[name]
 		if !found {
-			return fmt.Errorf("%w: %s\nAvailable: burndown, couples, devs, "+
-				"file-history, imports, sentiment, shotness, typos", ErrUnknownAnalyzer, name)
+			return nil, fmt.Errorf(
+				"%w: %s\nAvailable: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
+				ErrUnknownAnalyzer, name,
+			)
 		}
 
 		configErr := leaf.Configure(facts)
 		if configErr != nil {
-			return fmt.Errorf("failed to configure %s: %w", name, configErr)
+			return nil, fmt.Errorf("failed to configure %s: %w", name, configErr)
 		}
 
-		activeAnalyzers = append(activeAnalyzers, leaf)
-		selectedLeaves = append(selectedLeaves, leaf)
+		selected = append(selected, leaf)
 	}
 
-	// Run.
-	runner := framework.NewRunner(repository, activeAnalyzers...)
+	return selected, nil
+}
 
-	results, err := runner.Run(commits)
-	if err != nil {
-		return fmt.Errorf("pipeline execution failed: %w", err)
+// outputResults outputs the results for all selected leaves.
+func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report, format string) error {
+	if format != FormatJSON {
+		printHeader()
 	}
 
-	// Output.
-	fmt.Fprintln(os.Stdout, "codefang (v2):")
-	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
-	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
-
-	for _, leaf := range selectedLeaves {
+	for _, leaf := range leaves {
 		res := results[leaf]
 		if res == nil {
 			continue
 		}
 
-		fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
+		if format != FormatJSON {
+			fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
+		}
 
-		serializeErr := leaf.Serialize(res, false, os.Stdout)
+		serializeErr := leaf.Serialize(res, format, os.Stdout)
 		if serializeErr != nil {
 			return fmt.Errorf("serialization error for %s: %w", leaf.Name(), serializeErr)
 		}
 	}
 
 	return nil
+}
+
+// printHeader prints the codefang version header.
+func printHeader() {
+	fmt.Fprintln(os.Stdout, "codefang (v2):")
+	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
+	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
 }

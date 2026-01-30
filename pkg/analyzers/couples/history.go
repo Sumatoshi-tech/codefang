@@ -2,15 +2,13 @@
 package couples
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -29,8 +27,8 @@ type HistoryAnalyzer struct {
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	files              map[string]map[string]int
 	renames            *[]rename
-	lastCommit         *object.Commit
-	merges             map[gitplumbing.Hash]bool
+	lastCommit         analyze.CommitLike
+	merges             map[gitlib.Hash]bool
 	people             []map[string]int
 	peopleCommits      []int
 	reversedPeopleDict []string
@@ -85,7 +83,7 @@ func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (c *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	c.people = make([]map[string]int, c.PeopleNumber+1)
 	for i := range c.people {
 		c.people[i] = map[string]int{}
@@ -94,7 +92,7 @@ func (c *HistoryAnalyzer) Initialize(_ *git.Repository) error {
 	c.peopleCommits = make([]int, c.PeopleNumber+1)
 	c.files = map[string]map[string]int{}
 	c.renames = &[]rename{}
-	c.merges = map[gitplumbing.Hash]bool{}
+	c.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
@@ -105,10 +103,10 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	shouldConsume := true
 
 	if commit.NumParents() > 1 {
-		if c.merges[commit.Hash] {
+		if c.merges[commit.Hash()] {
 			shouldConsume = false
 		} else {
-			c.merges[commit.Hash] = true
+			c.merges[commit.Hash()] = true
 		}
 	}
 
@@ -124,11 +122,7 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		c.peopleCommits[author]++
 	}
 
-	context, err := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
-	if err != nil {
-		return err
-	}
-
+	context := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
 	c.updateFileCouplings(context)
 
 	return nil
@@ -138,30 +132,27 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 //
 //nolint:gocognit // complexity is inherent to multi-action change processing with merge mode.
 func (c *HistoryAnalyzer) processTreeChanges(
-	treeDiff object.Changes, mergeMode bool, author int,
-) ([]string, error) {
+	treeDiff gitlib.Changes, mergeMode bool, author int,
+) []string {
 	context := make([]string, 0, len(treeDiff))
 
 	for _, change := range treeDiff {
-		action, err := change.Action()
-		if err != nil {
-			return nil, fmt.Errorf("consume: %w", err)
-		}
+		action := change.Action
 
 		toName := change.To.Name
 		fromName := change.From.Name
 
 		switch action {
-		case merkletrie.Insert:
+		case gitlib.Insert:
 			if !mergeMode || c.files[toName] == nil {
 				context = append(context, toName)
 				c.people[author][toName]++
 			}
-		case merkletrie.Delete:
+		case gitlib.Delete:
 			if !mergeMode {
 				c.people[author][fromName]++
 			}
-		case merkletrie.Modify:
+		case gitlib.Modify:
 			if fromName != toName {
 				*c.renames = append(*c.renames, rename{ToName: toName, FromName: fromName})
 			}
@@ -173,7 +164,7 @@ func (c *HistoryAnalyzer) processTreeChanges(
 		}
 	}
 
-	return context, nil
+	return context
 }
 
 // updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
@@ -244,10 +235,12 @@ func (c *HistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
 			continue
 		}
 
-		reader, err := file.Blob.Reader() //nolint:staticcheck // QF1008 is acceptable.
+		blob, err := file.Blob()
 		if err != nil {
 			continue
 		}
+
+		reader := blob.Reader()
 
 		buf := make([]byte, readBufferSize)
 		count := 0
@@ -261,9 +254,9 @@ func (c *HistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
 			}
 		}
 
-		reader.Close()
-
 		filesLines[i] = count
+
+		blob.Free()
 	}
 
 	return filesLines
@@ -346,7 +339,16 @@ func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (c *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
 	if !ok {
 		return errors.New("expected []map[int]int64 for peopleMatrix") //nolint:err113 // descriptive error for type assertion failure.
@@ -429,7 +431,7 @@ func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (c *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return c.Serialize(report, false, writer)
+	return c.Serialize(report, analyze.FormatYAML, writer)
 }
 
 func (c *HistoryAnalyzer) currentFiles() map[string]bool {
@@ -441,7 +443,7 @@ func (c *HistoryAnalyzer) currentFiles() map[string]bool {
 	} else {
 		tree, treeErr := c.lastCommit.Tree()
 		if treeErr == nil {
-			iterErr := tree.Files().ForEach(func(fobj *object.File) error {
+			iterErr := tree.Files().ForEach(func(fobj *gitlib.File) error {
 				files[fobj.Name] = true
 
 				return nil

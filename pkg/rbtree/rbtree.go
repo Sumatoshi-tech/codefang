@@ -1,17 +1,58 @@
 package rbtree
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"os"
 	"sync"
 
-	gitbinary "github.com/go-git/go-git/v6/utils/binary"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
+
+// writeVariableWidthInt writes a variable width integer to the writer.
+// Compatible with go-git's binary package varint encoding.
+func writeVariableWidthInt(writer io.Writer, val int64) error {
+	buf := make([]byte, binary.MaxVarintLen64)
+	length := binary.PutVarint(buf, val)
+
+	_, writeErr := writer.Write(buf[:length])
+	if writeErr != nil {
+		return fmt.Errorf("write varint: %w", writeErr)
+	}
+
+	return nil
+}
+
+// byteReader wraps an [io.Reader] to provide ReadByte.
+type byteReader struct {
+	reader io.Reader
+	buf    [1]byte
+}
+
+// ReadByte implements [io.ByteReader] for use with [binary.ReadVarint].
+func (br *byteReader) ReadByte() (byte, error) {
+	_, err := io.ReadFull(br.reader, br.buf[:])
+	if err != nil {
+		return 0, fmt.Errorf("read byte: %w", err)
+	}
+
+	return br.buf[0], nil
+}
+
+// readVariableWidthInt reads a variable width integer from the reader.
+// Compatible with go-git's binary package varint encoding.
+func readVariableWidthInt(reader io.Reader) (int64, error) {
+	val, err := binary.ReadVarint(&byteReader{reader: reader})
+	if err != nil {
+		return 0, fmt.Errorf("read varint: %w", err)
+	}
+
+	return val, nil
+}
 
 // ErrIncompleteRead is returned when a read does not return the expected number of bytes.
 var ErrIncompleteRead = errors.New("incomplete read")
@@ -242,18 +283,18 @@ func (allocator *Allocator) Serialize(path string) error {
 
 	defer file.Close()
 
-	err = gitbinary.WriteVariableWidthInt(file, int64(allocator.hibernatedStorageLen))
+	err = writeVariableWidthInt(file, int64(allocator.hibernatedStorageLen))
 	if err != nil {
 		return fmt.Errorf("write storage len: %w", err)
 	}
 
-	err = gitbinary.WriteVariableWidthInt(file, int64(allocator.hibernatedGapsLen))
+	err = writeVariableWidthInt(file, int64(allocator.hibernatedGapsLen))
 	if err != nil {
 		return fmt.Errorf("write gaps len: %w", err)
 	}
 
 	for idx, hse := range allocator.hibernatedData {
-		err = gitbinary.WriteVariableWidthInt(file, int64(len(hse)))
+		err = writeVariableWidthInt(file, int64(len(hse)))
 		if err != nil {
 			return fmt.Errorf("write data len %d: %w", idx, err)
 		}
@@ -282,14 +323,14 @@ func (allocator *Allocator) Deserialize(path string) error {
 
 	defer file.Close()
 
-	storageLen, err := gitbinary.ReadVariableWidthInt(file)
+	storageLen, err := readVariableWidthInt(file)
 	if err != nil {
 		return fmt.Errorf("read storage len: %w", err)
 	}
 
 	allocator.hibernatedStorageLen = int(storageLen)
 
-	gapsLen, err := gitbinary.ReadVariableWidthInt(file)
+	gapsLen, err := readVariableWidthInt(file)
 	if err != nil {
 		return fmt.Errorf("read gaps len: %w", err)
 	}
@@ -297,7 +338,7 @@ func (allocator *Allocator) Deserialize(path string) error {
 	allocator.hibernatedGapsLen = int(gapsLen)
 
 	for idx := range allocator.hibernatedData {
-		dataLen, readErr := gitbinary.ReadVariableWidthInt(file)
+		dataLen, readErr := readVariableWidthInt(file)
 		if readErr != nil {
 			return fmt.Errorf("read data len %d: %w", idx, readErr)
 		}

@@ -1,0 +1,44 @@
+@startuml
+!theme plain
+
+title Analyzer Execution Pipeline
+
+participant "Factory" as F
+participant "MultiAnalyzerTraverser" as MAT
+participant "Visitor Analyzers" as VA
+participant "Legacy Analyzers" as LA
+database "UAST Root" as UAST
+
+== Categorization Phase ==
+F -> F: Categorize(Analyzers)
+note right: Splits into Single-Pass Visitors\nand Standalone Analyzers
+
+== Execution Phase (Parallel) ==
+par Visitor Group
+    F -> MAT: RegisterVisitor(v)
+    loop for each visitor
+        F -> MAT: Add(v)
+    end
+    F -> MAT: Traverse(UAST)
+    activate MAT
+    MAT -> UAST: Walk Tree
+    MAT -> VA: VisitNode()
+    MAT -> VA: VisitNode()
+    MAT -> F: Done
+    deactivate MAT
+else Legacy Group 1
+    F -> LA: Analyze(UAST)
+    activate LA
+    LA -> UAST: Traverse Independently
+    LA -> F: Report
+    deactivate LA
+else Legacy Group N
+    F -> LA: Analyze(UAST)
+end
+
+== Aggregation Phase ==
+F -> F: Collect Reports
+F -> F: Merge Results
+F --> User: Final Report
+
+@enduml

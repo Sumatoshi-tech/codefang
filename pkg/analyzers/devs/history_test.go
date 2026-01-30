@@ -4,16 +4,13 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -82,19 +79,24 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	require.NoError(t, d.Initialize(nil))
 
 	// 1. Standard commit.
-	hash1 := gitplumbing.NewHash("1111111111111111111111111111111111111111")
-	change1 := &object.Change{
-		To: object.ChangeEntry{Name: "test.go", TreeEntry: object.TreeEntry{Hash: hash1}},
+	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
+	change1 := &gitlib.Change{
+		Action: gitlib.Insert,
+		To:     gitlib.ChangeEntry{Name: "test.go", Hash: hash1},
 	}
-	d.TreeDiff.Changes = object.Changes{change1}
+	d.TreeDiff.Changes = gitlib.Changes{change1}
 	d.Ticks.Tick = 0
 	d.Identity.AuthorID = 0
-	d.Languages.Languages = map[gitplumbing.Hash]string{hash1: "Go"}
-	d.LineStats.LineStats = map[object.ChangeEntry]pkgplumbing.LineStats{
+	d.Languages.Languages = map[gitlib.Hash]string{hash1: "Go"}
+	d.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change1.To: {Added: 10, Removed: 0, Changed: 0},
 	}
 
-	commit1 := &object.Commit{Hash: gitplumbing.NewHash("c1")}
+	commit1 := gitlib.NewTestCommit(
+		gitlib.NewHash("c100000000000000000000000000000000000001"),
+		gitlib.TestSignature("dev", "dev@test.com"),
+		"test",
+	)
 	require.NoError(t, d.Consume(&analyze.Context{Commit: commit1}))
 
 	tick := d.ticks[0]
@@ -120,8 +122,13 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	}
 
 	// 2. Empty commit (ignored by default).
-	d.TreeDiff.Changes = object.Changes{}
-	require.NoError(t, d.Consume(&analyze.Context{Commit: &object.Commit{Hash: gitplumbing.NewHash("c2")}}))
+	d.TreeDiff.Changes = gitlib.Changes{}
+	commit2 := gitlib.NewTestCommit(
+		gitlib.NewHash("c200000000000000000000000000000000000002"),
+		gitlib.TestSignature("dev", "dev@test.com"),
+		"empty",
+	)
+	require.NoError(t, d.Consume(&analyze.Context{Commit: commit2}))
 
 	if dev.Commits != 1 {
 		t.Errorf("expected still 1 commit, got %d", dev.Commits)
@@ -129,20 +136,28 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 
 	// 3. Empty commit (considered).
 	d.ConsiderEmptyCommits = true
-	require.NoError(t, d.Consume(&analyze.Context{Commit: &object.Commit{Hash: gitplumbing.NewHash("c3")}}))
+	commit3 := gitlib.NewTestCommit(
+		gitlib.NewHash("c300000000000000000000000000000000000003"),
+		gitlib.TestSignature("dev", "dev@test.com"),
+		"empty considered",
+	)
+	require.NoError(t, d.Consume(&analyze.Context{Commit: commit3}))
 
 	if dev.Commits != 2 {
 		t.Errorf("expected 2 commits, got %d", dev.Commits)
 	}
 
 	// 4. Merge commit (processed once).
-	commitMerge := &object.Commit{
-		Hash:         gitplumbing.NewHash("m1"),
-		ParentHashes: []gitplumbing.Hash{gitplumbing.NewHash("p1"), gitplumbing.NewHash("p2")},
-	}
+	commitMerge := gitlib.NewTestCommit(
+		gitlib.NewHash("m100000000000000000000000000000000000001"),
+		gitlib.TestSignature("dev", "dev@test.com"),
+		"merge",
+		gitlib.NewHash("p100000000000000000000000000000000000001"),
+		gitlib.NewHash("p200000000000000000000000000000000000002"),
+	)
 	require.NoError(t, d.Consume(&analyze.Context{Commit: commitMerge}))
 
-	if !d.merges[commitMerge.Hash] {
+	if !d.merges[commitMerge.Hash()] {
 		t.Error("expected merge marked")
 	}
 
@@ -207,12 +222,12 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"TickSize":           24 * time.Hour,
 	}
 
-	// JSON.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := d.Serialize(report, false, &buf)
+	err := d.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize JSON failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "ticks:") {
@@ -226,7 +241,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = d.Serialize(report, true, &pbuf)
+	err = d.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

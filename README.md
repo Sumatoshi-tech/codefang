@@ -15,6 +15,8 @@ Codefang is a comprehensive code analysis platform that understands your code de
 
 ## 1. Preface
 
+For detailed technical documentation, architectural decisions, and algorithm deep-dives, please visit our **[Documentation Hub](docs/)**.
+
 So, you've stumbled upon Codefang. You might be thinking, *"Wait, didn't `src-d` build something like this years ago?"*
 
 Yes, they did. And it was glorious. But like many great empires, `src-d` faded into the annals of history, and the original `hercules` was left gathering dust in the digital attic.

@@ -325,7 +325,6 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 	}
 
 	factory := NewFactory([]StaticAnalyzer{analyzer1, analyzer2})
-	factory.WithMaxParallelism(2)
 
 	start := time.Now()
 	reports, err := factory.RunAnalyzers(context.Background(), nil, []string{"parallel1", "parallel2"})
