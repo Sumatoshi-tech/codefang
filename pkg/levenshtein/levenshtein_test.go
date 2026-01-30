@@ -5,6 +5,7 @@
 package levenshtein_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
@@ -62,15 +63,34 @@ func BenchmarkDistance(b *testing.B) {
 	}
 }
 
-func BenchmarkDistanceOriginal(b *testing.B) {
-	s1 := "frederick"
-	s2 := "fredelstick"
+func BenchmarkDistanceLarge(b *testing.B) {
+	s1 := strings.Repeat("a", 1000)
+	s2 := strings.Repeat("b", 1000)
 	total := 0
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	ctx := levenshtein.Context{}
+	ctx := &levenshtein.Context{}
+
+	for b.Loop() {
+		total += ctx.Distance(s1, s2)
+	}
+
+	if total == 0 {
+		b.Logf("total is %d", total)
+	}
+}
+
+func BenchmarkDistanceMedium(b *testing.B) {
+	s1 := strings.Repeat("a", 50)
+	s2 := strings.Repeat("a", 49) + "b"
+	total := 0
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	ctx := &levenshtein.Context{}
 
 	for b.Loop() {
 		total += ctx.Distance(s1, s2)
