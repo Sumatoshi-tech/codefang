@@ -222,12 +222,12 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"TickSize":           24 * time.Hour,
 	}
 
-	// JSON.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := d.Serialize(report, false, &buf)
+	err := d.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize JSON failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "ticks:") {
@@ -241,7 +241,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = d.Serialize(report, true, &pbuf)
+	err = d.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

@@ -103,7 +103,7 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return hc.runPipeline(repository, uri, commits)
+	return hc.runPipeline(repository, uri, commits, hc.format)
 }
 
 // isFastDevsMode returns true if only the fast devs analyzer is selected.
@@ -150,12 +150,12 @@ func (hc *HistoryCommand) runFastDevsAnalyzer(cmd *cobra.Command, uri string) er
 		return fmt.Errorf("fast devs analysis failed: %w", err)
 	}
 
-	fmt.Fprintln(os.Stdout, "codefang (v2):")
-	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
-	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
-	fmt.Fprintln(os.Stdout, "Devs:")
+	if hc.format != FormatJSON {
+		printHeader()
+		fmt.Fprintln(os.Stdout, "Devs:")
+	}
 
-	return fa.Serialize(report, false, os.Stdout)
+	return fa.Serialize(report, hc.format, os.Stdout)
 }
 
 func loadRepository(uri string) *gitlib.Repository {
@@ -216,11 +216,7 @@ func (hc *HistoryCommand) loadHistoryCommits(repository *gitlib.Repository, cmd 
 		return nil, fmt.Errorf("failed to get limit flag: %w", err)
 	}
 
-	commits, collectErr := hc.collectCommits(iter, limit)
-	if collectErr != nil {
-		return nil, collectErr
-	}
-
+	commits := hc.collectCommits(iter, limit)
 	reverseCommits(commits)
 
 	return commits, nil
@@ -248,30 +244,34 @@ func (hc *HistoryCommand) buildLogOptions(cmd *cobra.Command) (*gitlib.LogOption
 }
 
 // collectCommits iterates through commits and collects them up to the limit.
-func (hc *HistoryCommand) collectCommits(iter *gitlib.CommitIter, limit int) ([]*gitlib.Commit, error) {
+func (hc *HistoryCommand) collectCommits(iter *gitlib.CommitIter, limit int) []*gitlib.Commit {
 	var commits []*gitlib.Commit
 
 	count := 0
 
-	forEachErr := iter.ForEach(func(commit *gitlib.Commit) error {
+	for {
+		commit, err := iter.Next()
+		if err != nil {
+			break // EOF or error.
+		}
+
 		if limit > 0 && count >= limit {
-			return nil
+			commit.Free()
+
+			break
 		}
 
 		if hc.firstParent && commit.NumParents() > 1 {
-			return nil
+			commit.Free()
+
+			continue
 		}
 
 		commits = append(commits, commit)
 		count++
-
-		return nil
-	})
-	if forEachErr != nil {
-		return nil, fmt.Errorf("failed to iterate commits: %w", forEachErr)
 	}
 
-	return commits, nil
+	return commits
 }
 
 // reverseCommits reverses the order of commits (to oldest first).
@@ -304,7 +304,7 @@ func parseTime(s string) (time.Time, error) {
 }
 
 func (hc *HistoryCommand) runPipeline(
-	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit,
+	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
 ) error {
 	pipeline := newAnalyzerPipeline(repository)
 	facts := map[string]any{}
@@ -330,7 +330,7 @@ func (hc *HistoryCommand) runPipeline(
 		return fmt.Errorf("pipeline execution failed: %w", runErr)
 	}
 
-	return outputResults(selectedLeaves, results)
+	return outputResults(selectedLeaves, results, format)
 }
 
 // analyzerPipeline holds the core and leaf analyzers for the pipeline.
@@ -346,9 +346,9 @@ func newAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 	ticks := &plumbing.TicksSinceStart{}
 	blobCache := &plumbing.BlobCacheAnalyzer{TreeDiff: treeDiff, Repository: repository}
 	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
-	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache}
-	langDetect := &plumbing.LanguagesDetectionAnalyzer{BlobCache: blobCache}
-	uastChanges := &plumbing.UASTChangesAnalyzer{BlobCache: blobCache}
+	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
+	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
+	uastChanges := &plumbing.UASTChangesAnalyzer{FileDiff: fileDiff, BlobCache: blobCache}
 
 	return &analyzerPipeline{
 		core: []analyze.HistoryAnalyzer{
@@ -363,9 +363,11 @@ func newAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 				Identity: identity, TreeDiff: treeDiff, Ticks: ticks, Languages: langDetect, LineStats: lineStats,
 			},
 			"file-history": &filehistory.Analyzer{Identity: identity, TreeDiff: treeDiff, LineStats: lineStats},
-			"imports":      &imports.HistoryAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache},
-			"sentiment":    &sentiment.HistoryAnalyzer{},
-			"shotness":     &shotness.HistoryAnalyzer{UASTChanges: uastChanges},
+			"imports": &imports.HistoryAnalyzer{
+				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
+			},
+			"sentiment": &sentiment.HistoryAnalyzer{UASTChanges: uastChanges, Ticks: ticks},
+			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UASTChanges: uastChanges},
 			"typos": &typos.HistoryAnalyzer{
 				UASTChanges: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
 			},
@@ -412,10 +414,10 @@ func (hc *HistoryCommand) selectLeaves(
 }
 
 // outputResults outputs the results for all selected leaves.
-func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report) error {
-	fmt.Fprintln(os.Stdout, "codefang (v2):")
-	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
-	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
+func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report, format string) error {
+	if format != FormatJSON {
+		printHeader()
+	}
 
 	for _, leaf := range leaves {
 		res := results[leaf]
@@ -423,13 +425,22 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 			continue
 		}
 
-		fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
+		if format != FormatJSON {
+			fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
+		}
 
-		serializeErr := leaf.Serialize(res, false, os.Stdout)
+		serializeErr := leaf.Serialize(res, format, os.Stdout)
 		if serializeErr != nil {
 			return fmt.Errorf("serialization error for %s: %w", leaf.Name(), serializeErr)
 		}
 	}
 
 	return nil
+}
+
+// printHeader prints the codefang version header.
+func printHeader() {
+	fmt.Fprintln(os.Stdout, "codefang (v2):")
+	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
+	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
 }

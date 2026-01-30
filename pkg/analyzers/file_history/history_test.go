@@ -198,26 +198,26 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		},
 	}
 
-	// JSON.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := h.Serialize(report, false, &buf)
+	err := h.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize JSON failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "test.txt") {
-		t.Error("expected test.txt in JSON output")
+		t.Error("expected test.txt in YAML output")
 	}
 
 	if !strings.Contains(buf.String(), "10,0,5") {
-		t.Error("expected stats in JSON output")
+		t.Error("expected stats in YAML output")
 	}
 
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = h.Serialize(report, true, &pbuf)
+	err = h.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

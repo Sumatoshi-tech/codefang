@@ -3,6 +3,7 @@ package typos
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -301,7 +302,16 @@ func (t *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (t *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (t *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	typos, ok := result["typos"].([]Typo)
 	if !ok {
 		return errors.New("expected []Typo for typos") //nolint:err113 // descriptive error for type assertion failure.
@@ -320,5 +330,5 @@ func (t *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (t *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return t.Serialize(report, false, writer)
+	return t.Serialize(report, analyze.FormatYAML, writer)
 }

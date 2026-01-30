@@ -1,7 +1,9 @@
 package plumbing
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path"
 
@@ -125,6 +127,13 @@ func (l *LanguagesDetectionAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (l *LanguagesDetectionAnalyzer) Serialize(_ analyze.Report, _ bool, _ io.Writer) error {
+func (l *LanguagesDetectionAnalyzer) Serialize(report analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(report)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+	}
+
 	return nil
 }

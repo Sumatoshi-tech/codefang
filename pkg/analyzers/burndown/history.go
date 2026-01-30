@@ -646,9 +646,13 @@ func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (b *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
 	enc := json.NewEncoder(writer)
-	enc.SetIndent("", "  ")
+
+	// For YAML format, use indentation for readability (burndown default is JSON-like).
+	if format == analyze.FormatYAML {
+		enc.SetIndent("", "  ")
+	}
 
 	err := enc.Encode(result)
 	if err != nil {
@@ -660,7 +664,7 @@ func (b *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (b *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return b.Serialize(report, false, writer)
+	return b.Serialize(report, analyze.FormatYAML, writer)
 }
 
 // Helpers.

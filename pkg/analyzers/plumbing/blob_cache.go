@@ -2,6 +2,8 @@
 package plumbing
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 
@@ -195,6 +197,13 @@ func (b *BlobCacheAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (b *BlobCacheAnalyzer) Serialize(_ analyze.Report, _ bool, _ io.Writer) error {
+func (b *BlobCacheAnalyzer) Serialize(report analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(report)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+	}
+
 	return nil
 }

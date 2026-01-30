@@ -2,6 +2,7 @@
 package filehistory
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -215,7 +216,16 @@ func (h *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (h *Analyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (h *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	files, ok := result["Files"].(map[string]FileHistory)
 	if !ok {
 		return errors.New("expected map[string]FileHistory for files") //nolint:err113 // descriptive error for type assertion failure.
@@ -255,5 +265,5 @@ func (h *Analyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) er
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (h *Analyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return h.Serialize(report, false, writer)
+	return h.Serialize(report, analyze.FormatYAML, writer)
 }

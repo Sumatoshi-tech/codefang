@@ -1,6 +1,7 @@
 package devs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -513,7 +514,16 @@ func (fa *Libgit2Analyzer) mergeResults(results chan libgit2WorkerResult) (analy
 }
 
 // Serialize writes the analysis result to the given writer.
-func (fa *Libgit2Analyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (fa *Libgit2Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return ErrInvalidTicks

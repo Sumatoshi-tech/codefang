@@ -231,12 +231,12 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
 	}
 
-	// Text.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := s.Serialize(report, false, &buf)
+	err := s.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize Text failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "0: [0.5000, [c1") {
@@ -250,7 +250,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = s.Serialize(report, true, &pbuf)
+	err = s.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

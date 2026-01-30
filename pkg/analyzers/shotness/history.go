@@ -2,6 +2,7 @@
 package shotness
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -453,7 +454,16 @@ func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (s *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	nodes, ok := result["Nodes"].([]NodeSummary)
 	if !ok {
 		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
@@ -492,7 +502,7 @@ func (s *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (s *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return s.Serialize(report, false, writer)
+	return s.Serialize(report, analyze.FormatYAML, writer)
 }
 
 func (s *HistoryAnalyzer) extractNodes(root *node.Node) (map[string]*node.Node, error) {
