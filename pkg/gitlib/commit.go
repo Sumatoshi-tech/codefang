@@ -143,12 +143,17 @@ type CommitIter struct {
 
 // Next returns the next commit in the iteration.
 func (ci *CommitIter) Next() (*Commit, error) {
+	if ci.walk == nil {
+		return nil, io.EOF
+	}
+
 	for {
 		oid := new(git2go.Oid)
 
 		err := ci.walk.Next(oid)
 		if err != nil {
 			ci.walk.Free()
+			ci.walk = nil
 
 			return nil, io.EOF
 		}
@@ -162,6 +167,7 @@ func (ci *CommitIter) Next() (*Commit, error) {
 		if ci.since != nil && commit.Author().When.Before(*ci.since) {
 			commit.Free()
 			ci.walk.Free()
+			ci.walk = nil
 
 			return nil, io.EOF
 		}

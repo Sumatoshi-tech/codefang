@@ -7,6 +7,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+// Serialization format constants.
+const (
+	FormatYAML   = "yaml"
+	FormatJSON   = "json"
+	FormatBinary = "binary"
+)
+
 // CommitIdentity provides commit identification methods.
 type CommitIdentity interface {
 	Hash() gitlib.Hash
@@ -57,5 +64,6 @@ type HistoryAnalyzer interface { //nolint:interfacebloat // interface methods ar
 	Merge(branches []HistoryAnalyzer)
 
 	// Formatting/Serialization.
-	Serialize(result Report, binary bool, writer io.Writer) error
+	// Format can be: "yaml", "json", or "binary" (protobuf).
+	Serialize(result Report, format string, writer io.Writer) error
 }

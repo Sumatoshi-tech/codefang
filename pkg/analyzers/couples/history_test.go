@@ -227,12 +227,12 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"PeopleCommits":      []int{5, 3},
 	}
 
-	// JSON.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := c.Serialize(report, false, &buf)
+	err := c.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize JSON failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "f1") {
@@ -242,7 +242,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = c.Serialize(report, true, &pbuf)
+	err = c.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

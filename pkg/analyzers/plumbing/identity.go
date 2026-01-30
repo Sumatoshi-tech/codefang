@@ -2,6 +2,7 @@ package plumbing
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -272,6 +273,13 @@ func (d *IdentityDetector) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (d *IdentityDetector) Serialize(_ analyze.Report, _ bool, _ io.Writer) error {
+func (d *IdentityDetector) Serialize(report analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(report)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+	}
+
 	return nil
 }

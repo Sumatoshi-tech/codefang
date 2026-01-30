@@ -2,6 +2,7 @@
 package couples
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -338,7 +339,16 @@ func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (c *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
 	if !ok {
 		return errors.New("expected []map[int]int64 for peopleMatrix") //nolint:err113 // descriptive error for type assertion failure.
@@ -421,7 +431,7 @@ func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (c *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return c.Serialize(report, false, writer)
+	return c.Serialize(report, analyze.FormatYAML, writer)
 }
 
 func (c *HistoryAnalyzer) currentFiles() map[string]bool {

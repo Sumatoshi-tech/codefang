@@ -2,6 +2,7 @@
 package devs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -249,7 +250,16 @@ func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (d *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.
@@ -331,5 +341,5 @@ func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (d *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return d.Serialize(report, false, writer)
+	return d.Serialize(report, analyze.FormatYAML, writer)
 }
