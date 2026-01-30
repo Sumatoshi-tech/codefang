@@ -8,10 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -28,8 +25,8 @@ type Analyzer struct {
 
 	// State.
 	files      map[string]*FileHistory
-	lastCommit *object.Commit
-	merges     map[gitplumbing.Hash]bool
+	lastCommit analyze.CommitLike
+	merges     map[gitlib.Hash]bool
 	//nolint:unused // used via reflection or external caller.
 	// Internal.
 	l interface {
@@ -40,7 +37,7 @@ type Analyzer struct {
 // FileHistory holds the change history for a single file.
 type FileHistory struct {
 	People map[int]pkgplumbing.LineStats
-	Hashes []gitplumbing.Hash
+	Hashes []gitlib.Hash
 }
 
 // Name returns the name of the analyzer.
@@ -70,9 +67,9 @@ func (h *Analyzer) Configure(_ map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (h *Analyzer) Initialize(_ *git.Repository) error {
+func (h *Analyzer) Initialize(_ *gitlib.Repository) error {
 	h.files = map[string]*FileHistory{}
-	h.merges = map[gitplumbing.Hash]bool{}
+	h.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
@@ -83,11 +80,11 @@ func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
 
 	if commit.NumParents() > 1 {
-		if h.merges[commit.Hash] {
+		if h.merges[commit.Hash()] {
 			return false
 		}
 
-		h.merges[commit.Hash] = true
+		h.merges[commit.Hash()] = true
 	}
 
 	return !ctx.IsMerge
@@ -96,15 +93,12 @@ func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
 //
 //nolint:gocognit // complexity is inherent to multi-action file history tracking with renames.
-func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Commit) error {
+func (h *Analyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) error {
 	for _, change := range changes {
-		action, err := change.Action()
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
+		action := change.Action
 
 		var fh *FileHistory
-		if action != merkletrie.Delete {
+		if action != gitlib.Delete {
 			fh = h.files[change.To.Name]
 		} else {
 			fh = h.files[change.From.Name]
@@ -112,7 +106,7 @@ func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Com
 
 		if fh == nil {
 			fh = &FileHistory{}
-			if action != merkletrie.Delete {
+			if action != gitlib.Delete {
 				h.files[change.To.Name] = fh
 			} else {
 				h.files[change.From.Name] = fh
@@ -120,11 +114,11 @@ func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Com
 		}
 
 		switch action {
-		case merkletrie.Insert:
-			fh.Hashes = []gitplumbing.Hash{commit.Hash}
-		case merkletrie.Delete:
-			fh.Hashes = append(fh.Hashes, commit.Hash)
-		case merkletrie.Modify:
+		case gitlib.Insert:
+			fh.Hashes = []gitlib.Hash{commit.Hash()}
+		case gitlib.Delete:
+			fh.Hashes = append(fh.Hashes, commit.Hash())
+		case gitlib.Modify:
 			if change.From.Name != change.To.Name {
 				if oldFH, ok := h.files[change.From.Name]; ok {
 					delete(h.files, change.From.Name)
@@ -133,7 +127,7 @@ func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Com
 				}
 			}
 
-			fh.Hashes = append(fh.Hashes, commit.Hash)
+			fh.Hashes = append(fh.Hashes, commit.Hash())
 		}
 	}
 
@@ -141,7 +135,7 @@ func (h *Analyzer) processFileChanges(changes object.Changes, commit *object.Com
 }
 
 // aggregateLineStats merges line statistics from the current commit into file histories.
-func (h *Analyzer) aggregateLineStats(lineStats map[object.ChangeEntry]pkgplumbing.LineStats, author int) {
+func (h *Analyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats, author int) {
 	for changeEntry, stats := range lineStats {
 		file := h.files[changeEntry.Name]
 		if file == nil {
@@ -189,7 +183,7 @@ func (h *Analyzer) Finalize() (analyze.Report, error) {
 	if h.lastCommit != nil { //nolint:nestif // complex tree traversal with nested iteration
 		fileIter, err := h.lastCommit.Files()
 		if err == nil {
-			iterErr := fileIter.ForEach(func(file *object.File) error {
+			iterErr := fileIter.ForEach(func(file *gitlib.File) error {
 				if fh := h.files[file.Name]; fh != nil {
 					files[file.Name] = *fh
 				}

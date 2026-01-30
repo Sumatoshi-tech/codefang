@@ -8,10 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing/object"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
@@ -92,12 +90,9 @@ func (d *IdentityDetector) Configure(facts map[string]any) error {
 	}
 
 	// In explicit mode, we expect initialization to handle this if commits are available.
-	// The original logic uses ConfigPipelineCommits.
-	// Here we assume facts["commits"] or similar might be populated by the runner.
-	// Let's rely on explicit LoadPeopleDict or Generate if needed.
-	if commits, commitsOK := facts["commits"].([]*object.Commit); commitsOK {
+	if commits, commitsOK := facts["commits"].([]*gitlib.Commit); commitsOK {
 		d.GeneratePeopleDict(commits)
-	} else if pipelineCommits, pipelineOK := facts["Pipeline.Commits"].([]*object.Commit); pipelineOK {
+	} else if pipelineCommits, pipelineOK := facts["Pipeline.Commits"].([]*gitlib.Commit); pipelineOK {
 		d.GeneratePeopleDict(pipelineCommits)
 	}
 
@@ -105,7 +100,7 @@ func (d *IdentityDetector) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (d *IdentityDetector) Initialize(_ *git.Repository) error {
+func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
@@ -117,14 +112,16 @@ func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
 
 	var exists bool
 
-	signature := commit.Author
+	signature := commit.Author()
 	if !d.ExactSignatures {
 		authorID, exists = d.PeopleDict[strings.ToLower(signature.Email)]
 		if !exists {
 			authorID, exists = d.PeopleDict[strings.ToLower(signature.Name)]
 		}
 	} else {
-		authorID, exists = d.PeopleDict[strings.ToLower(signature.String())]
+		// For exact signatures, combine name and email.
+		sigStr := fmt.Sprintf("%s <%s>", signature.Name, signature.Email)
+		authorID, exists = d.PeopleDict[strings.ToLower(sigStr)]
 	}
 
 	if !exists {
@@ -169,7 +166,7 @@ func (d *IdentityDetector) LoadPeopleDict(path string) error {
 }
 
 // GeneratePeopleDict builds the author identity mapping.
-func (d *IdentityDetector) GeneratePeopleDict(commits []*object.Commit) {
+func (d *IdentityDetector) GeneratePeopleDict(commits []*gitlib.Commit) {
 	if d.ExactSignatures {
 		d.generateExactDict(commits)
 	} else {
@@ -177,12 +174,14 @@ func (d *IdentityDetector) GeneratePeopleDict(commits []*object.Commit) {
 	}
 }
 
-func (d *IdentityDetector) generateExactDict(commits []*object.Commit) {
+func (d *IdentityDetector) generateExactDict(commits []*gitlib.Commit) {
 	dict := map[string]int{}
 	size := 0
 
 	for _, commit := range commits {
-		sig := strings.ToLower(commit.Author.String())
+		author := commit.Author()
+
+		sig := strings.ToLower(fmt.Sprintf("%s <%s>", author.Name, author.Email))
 		if _, exists := dict[sig]; !exists {
 			dict[sig] = size
 			size++
@@ -199,15 +198,16 @@ func (d *IdentityDetector) generateExactDict(commits []*object.Commit) {
 	d.ReversedPeopleDict = reverseDict
 }
 
-func (d *IdentityDetector) generateLooseDict(commits []*object.Commit) {
+func (d *IdentityDetector) generateLooseDict(commits []*gitlib.Commit) {
 	dict := map[string]int{}
 	emails := map[int][]string{}
 	names := map[int][]string{}
 	size := 0
 
 	for _, commit := range commits {
-		email := strings.ToLower(commit.Author.Email)
-		name := strings.ToLower(commit.Author.Name)
+		author := commit.Author()
+		email := strings.ToLower(author.Email)
+		name := strings.ToLower(author.Name)
 
 		size = registerLooseIdentity(dict, emails, names, email, name, size)
 	}

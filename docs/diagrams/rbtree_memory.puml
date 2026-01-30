@@ -1,0 +1,39 @@
+@startuml
+!theme plain
+
+title RBTree Memory Optimization (Array-Based Allocation)
+
+class Allocator {
+    - storage: []node
+    - gaps: map[uint32]bool
+    - hibernatedData: [][]byte
+}
+
+class Node {
+    + item: Item
+    + parent: uint32
+    + left: uint32
+    + right: uint32
+    + color: bool
+}
+
+note right of Node
+  Pointers are 32-bit integers (indices),
+  not 64-bit pointers.
+  Saves 50% memory on pointers.
+  Eliminates GC overhead for millions of nodes.
+end note
+
+Allocator *-- "many" Node : Contains >
+
+object "Storage Array" as Array {
+    [0] Reserved
+    [1] Node {Key: A, Left: 2, Right: 3}
+    [2] Node {Key: B, Parent: 1}
+    [3] Node {Key: C, Parent: 1}
+    [4] ...
+}
+
+Allocator ..> Array : Manages
+
+@enduml

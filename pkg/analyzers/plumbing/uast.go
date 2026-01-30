@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing/object"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -55,7 +53,7 @@ func (c *UASTChangesAnalyzer) Configure(_ map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (c *UASTChangesAnalyzer) Initialize(_ *git.Repository) error {
+func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 	parser, err := uast.NewParser()
 	if err != nil {
 		return fmt.Errorf("failed to initialize UAST parser: %w", err)
@@ -81,9 +79,10 @@ func (c *UASTChangesAnalyzer) Consume(_ *analyze.Context) error {
 		}
 		// NOTE: Actual UAST diffing is not yet implemented.
 		// For now, minimal placeholder to satisfy dependencies.
-		change := &object.Change{
-			From: object.ChangeEntry{Name: filename},
-			To:   object.ChangeEntry{Name: filename},
+		change := &gitlib.Change{
+			Action: gitlib.Modify,
+			From:   gitlib.ChangeEntry{Name: filename},
+			To:     gitlib.ChangeEntry{Name: filename},
 		}
 		result = append(result, uast.Change{
 			Before: nil, // Would need full file content parsing.

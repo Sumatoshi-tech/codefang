@@ -3,7 +3,14 @@
 
 set -e
 
-WHITELIST_FILE=".deadcode-whitelist"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+WHITELIST_FILE="$ROOT_DIR/.deadcode-whitelist"
+
+# Set up CGO environment for libgit2
+export PKG_CONFIG_PATH="$ROOT_DIR/third_party/libgit2/install/lib64/pkgconfig:$ROOT_DIR/third_party/libgit2/install/lib/pkgconfig:$PKG_CONFIG_PATH"
+export CGO_CFLAGS="-I$ROOT_DIR/third_party/libgit2/install/include"
+export CGO_LDFLAGS="-L$ROOT_DIR/third_party/libgit2/install/lib64 -L$ROOT_DIR/third_party/libgit2/install/lib -lgit2 -lz -lssl -lcrypto -lpthread"
 
 # Run deadcode analysis and capture output
 # Try to find deadcode in common locations

@@ -51,27 +51,3 @@ func TestMultiAnalyzerTraverser_Traverse(t *testing.T) {
 	assert.Equal(t, 3, visitor.enterCalls)
 	assert.Equal(t, 3, visitor.exitCalls)
 }
-
-func TestMultiAnalyzerTraverser_RegisterHook(t *testing.T) {
-	t.Parallel()
-
-	traverser := NewMultiAnalyzerTraverser()
-	visitor := &mockVisitor{}
-
-	// Register hook for type "Function".
-	traverser.RegisterHook("Function", visitor)
-
-	root := &node.Node{
-		Type: "Class",
-		Children: []*node.Node{
-			{Type: "Function"},
-			{Type: "Method"},
-		},
-	}
-
-	traverser.Traverse(root)
-
-	// Should only visit the "Function" node.
-	assert.Equal(t, 1, visitor.enterCalls)
-	assert.Equal(t, 1, visitor.exitCalls)
-}

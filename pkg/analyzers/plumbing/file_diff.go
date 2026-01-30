@@ -1,20 +1,16 @@
 package plumbing
 
 import (
-	"fmt"
 	"io"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -116,7 +112,7 @@ func (f *FileDiffAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (f *FileDiffAnalyzer) Initialize(_ *git.Repository) error {
+func (f *FileDiffAnalyzer) Initialize(_ *gitlib.Repository) error {
 	if f.Goroutines <= 0 {
 		f.Goroutines = runtime.NumCPU()
 	}
@@ -133,51 +129,39 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 	treeDiff := f.TreeDiff.Changes
 
 	if len(treeDiff) < parallelThreshold || f.Goroutines <= 1 {
-		result, err := f.processChangesSequential(treeDiff, cache)
-		if err != nil {
-			return err
-		}
-
+		result := f.processChangesSequential(treeDiff, cache)
 		f.FileDiffs = result
 
 		return nil
 	}
 
-	result, err := f.processChangesParallel(treeDiff, cache)
-	if err != nil {
-		return err
-	}
-
+	result := f.processChangesParallel(treeDiff, cache)
 	f.FileDiffs = result
 
 	return nil
 }
 
 func (f *FileDiffAnalyzer) processChangesSequential(
-	treeDiff object.Changes, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) (map[string]pkgplumbing.FileDiffData, error) {
+	treeDiff gitlib.Changes, cache map[gitlib.Hash]*gitlib.CachedBlob,
+) map[string]pkgplumbing.FileDiffData {
 	result := map[string]pkgplumbing.FileDiffData{}
 
 	for _, change := range treeDiff {
-		err := f.processChange(change, cache, result, nil)
-		if err != nil {
-			return nil, err
-		}
+		f.processChange(change, cache, result, nil)
 	}
 
-	return result, nil
+	return result
 }
 
 type fileDiffResult struct {
-	err  error
 	name string
 	data pkgplumbing.FileDiffData
 }
 
 func (f *FileDiffAnalyzer) processChangesParallel(
-	treeDiff object.Changes, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) (map[string]pkgplumbing.FileDiffData, error) {
-	jobs := make(chan *object.Change, len(treeDiff))
+	treeDiff gitlib.Changes, cache map[gitlib.Hash]*gitlib.CachedBlob,
+) map[string]pkgplumbing.FileDiffData {
+	jobs := make(chan *gitlib.Change, len(treeDiff))
 	results := make(chan fileDiffResult, len(treeDiff))
 
 	wg := sync.WaitGroup{}
@@ -188,18 +172,16 @@ func (f *FileDiffAnalyzer) processChangesParallel(
 			defer wg.Done()
 
 			for change := range jobs {
-				results <- f.processOneChange(change, cache)
+				res := f.processOneChange(change, cache)
+				if res.name != "" {
+					results <- res
+				}
 			}
 		}()
 	}
 
 	for _, change := range treeDiff {
-		action, err := change.Action()
-		if err != nil {
-			return nil, fmt.Errorf("consume: %w", err)
-		}
-
-		if action == merkletrie.Modify {
+		if change.Action == gitlib.Modify {
 			jobs <- change
 		}
 	}
@@ -212,14 +194,11 @@ func (f *FileDiffAnalyzer) processChangesParallel(
 }
 
 func (f *FileDiffAnalyzer) processOneChange(
-	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	change *gitlib.Change, cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) fileDiffResult {
 	tempMap := map[string]pkgplumbing.FileDiffData{}
 
-	err := f.processChange(change, cache, tempMap, nil)
-	if err != nil {
-		return fileDiffResult{err: err}
-	}
+	f.processChange(change, cache, tempMap, nil)
 
 	for k, v := range tempMap {
 		return fileDiffResult{name: k, data: v}
@@ -228,39 +207,35 @@ func (f *FileDiffAnalyzer) processOneChange(
 	return fileDiffResult{}
 }
 
-func collectFileDiffResults(results chan fileDiffResult) (map[string]pkgplumbing.FileDiffData, error) {
+func collectFileDiffResults(results chan fileDiffResult) map[string]pkgplumbing.FileDiffData {
 	result := map[string]pkgplumbing.FileDiffData{}
 
 	for res := range results {
-		if res.err != nil {
-			return nil, res.err
-		}
-
 		if res.name != "" {
 			result[res.name] = res.data
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 func (f *FileDiffAnalyzer) processChange(
-	change *object.Change,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
 	result map[string]pkgplumbing.FileDiffData,
 	mu *sync.Mutex,
-) error {
-	action, err := change.Action()
-	if err != nil {
-		return fmt.Errorf("processChange: %w", err)
+) {
+	if change.Action != gitlib.Modify {
+		return
 	}
 
-	if action != merkletrie.Modify {
-		return nil
+	blobFrom := cache[change.From.Hash]
+	blobTo := cache[change.To.Hash]
+
+	if blobFrom == nil || blobTo == nil {
+		return
 	}
 
-	blobFrom := cache[change.From.TreeEntry.Hash]
-	blobTo := cache[change.To.TreeEntry.Hash]
 	strFrom, strTo := string(blobFrom.Data), string(blobTo.Data)
 	dmp := diffmatchpatch.New()
 	dmp.DiffTimeout = f.Timeout
@@ -286,8 +261,6 @@ func (f *FileDiffAnalyzer) processChange(
 	} else {
 		result[change.To.Name] = data
 	}
-
-	return nil
 }
 
 func stripWhitespace(str string, ignoreWhitespace bool) string {

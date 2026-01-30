@@ -8,13 +8,11 @@ import (
 	"sort"
 	"unicode/utf8"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
@@ -30,7 +28,7 @@ type HistoryAnalyzer struct {
 	UASTChanges *plumbing.UASTChangesAnalyzer
 	nodes       map[string]*nodeShotness
 	files       map[string]map[string]*nodeShotness
-	merges      map[gitplumbing.Hash]bool
+	merges      map[gitlib.Hash]bool
 	DSLStruct   string
 	DSLName     string
 }
@@ -116,26 +114,26 @@ func (s *HistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (s *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (s *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	s.nodes = map[string]*nodeShotness{}
 	s.files = map[string]map[string]*nodeShotness{}
-	s.merges = map[gitplumbing.Hash]bool{}
+	s.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
 
 // shouldConsumeCommit checks whether this commit should be processed,
 // implementing OneShotMergeProcessor logic for merge commits.
-func (s *HistoryAnalyzer) shouldConsumeCommit(commit *object.Commit) bool {
+func (s *HistoryAnalyzer) shouldConsumeCommit(commit analyze.CommitLike) bool {
 	if commit.NumParents() <= 1 {
 		return true
 	}
 
-	if s.merges[commit.Hash] {
+	if s.merges[commit.Hash()] {
 		return false
 	}
 
-	s.merges[commit.Hash] = true
+	s.merges[commit.Hash()] = true
 
 	return true
 }

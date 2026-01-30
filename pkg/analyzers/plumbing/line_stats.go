@@ -1,17 +1,13 @@
 package plumbing
 
 import (
-	"fmt"
 	"io"
 	"unicode/utf8"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -24,7 +20,7 @@ type LinesStatsCalculator struct {
 	FileDiff  *FileDiffAnalyzer
 
 	// Output.
-	LineStats map[object.ChangeEntry]pkgplumbing.LineStats
+	LineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats
 
 	// Internal. //nolint:unused // used via reflection or external caller.
 	l interface { //nolint:unused // acknowledged.
@@ -58,13 +54,13 @@ func (l *LinesStatsCalculator) Configure(_ map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (l *LinesStatsCalculator) Initialize(_ *git.Repository) error {
+func (l *LinesStatsCalculator) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
 func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
-	result := map[object.ChangeEntry]pkgplumbing.LineStats{}
+	result := map[gitlib.ChangeEntry]pkgplumbing.LineStats{}
 
 	if ctx.IsMerge {
 		l.LineStats = result
@@ -77,17 +73,12 @@ func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
 	fileDiffs := l.FileDiff.FileDiffs
 
 	for _, change := range treeDiff {
-		action, err := change.Action()
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
-
-		switch action {
-		case merkletrie.Insert:
+		switch change.Action {
+		case gitlib.Insert:
 			computeInsertStats(change, cache, result)
-		case merkletrie.Delete:
+		case gitlib.Delete:
 			computeDeleteStats(change, cache, result)
-		case merkletrie.Modify:
+		case gitlib.Modify:
 			computeModifyStats(change, fileDiffs, result)
 		}
 	}
@@ -98,10 +89,10 @@ func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
 }
 
 func computeInsertStats(
-	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-	result map[object.ChangeEntry]pkgplumbing.LineStats,
+	change *gitlib.Change, cache map[gitlib.Hash]*gitlib.CachedBlob,
+	result map[gitlib.ChangeEntry]pkgplumbing.LineStats,
 ) {
-	blob := cache[change.To.TreeEntry.Hash]
+	blob := cache[change.To.Hash]
 	if blob == nil {
 		return
 	}
@@ -119,10 +110,10 @@ func computeInsertStats(
 }
 
 func computeDeleteStats(
-	change *object.Change, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-	result map[object.ChangeEntry]pkgplumbing.LineStats,
+	change *gitlib.Change, cache map[gitlib.Hash]*gitlib.CachedBlob,
+	result map[gitlib.ChangeEntry]pkgplumbing.LineStats,
 ) {
-	blob := cache[change.From.TreeEntry.Hash]
+	blob := cache[change.From.Hash]
 	if blob == nil {
 		return
 	}
@@ -140,8 +131,8 @@ func computeDeleteStats(
 }
 
 func computeModifyStats(
-	change *object.Change, fileDiffs map[string]pkgplumbing.FileDiffData,
-	result map[object.ChangeEntry]pkgplumbing.LineStats,
+	change *gitlib.Change, fileDiffs map[string]pkgplumbing.FileDiffData,
+	result map[gitlib.ChangeEntry]pkgplumbing.LineStats,
 ) {
 	thisDiffs, ok := fileDiffs[change.To.Name]
 	if !ok {

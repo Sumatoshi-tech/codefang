@@ -8,12 +8,11 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
@@ -38,7 +37,7 @@ type Typo struct {
 	Wrong   string
 	Correct string
 	File    string
-	Commit  gitplumbing.Hash
+	Commit  gitlib.Hash
 	Line    int
 }
 
@@ -91,7 +90,7 @@ func (t *HistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (t *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (t *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	t.lcontext = &levenshtein.Context{}
 	if t.MaximumAllowedDistance <= 0 {
 		t.MaximumAllowedDistance = DefaultMaximumAllowedTypoDistance
@@ -175,7 +174,7 @@ func (t *HistoryAnalyzer) findTypoCandidates(
 func (t *HistoryAnalyzer) matchTypoIdentifiers(
 	change uast.Change,
 	result typoCandidateResult,
-	commit gitplumbing.Hash,
+	commit gitlib.Hash,
 ) []Typo {
 	removedIdentifiers := collectIdentifiersOnLines(change.Before, result.focusedLinesBefore)
 	addedIdentifiers := collectIdentifiersOnLines(change.After, result.focusedLinesAfter)
@@ -222,7 +221,7 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 
 // Consume processes a single commit with the provided dependency results.
 func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit.Hash
+	commit := ctx.Commit.Hash()
 
 	changes := t.UASTChanges.Changes
 	cache := t.BlobCache.Cache
@@ -233,8 +232,8 @@ func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 			continue
 		}
 
-		blobBefore := cache[change.Change.From.TreeEntry.Hash]
-		blobAfter := cache[change.Change.To.TreeEntry.Hash]
+		blobBefore := cache[change.Change.From.Hash]
+		blobAfter := cache[change.Change.To.Hash]
 
 		linesBefore := bytes.Split(blobBefore.Data, []byte{'\n'})
 		linesAfter := bytes.Split(blobAfter.Data, []byte{'\n'})

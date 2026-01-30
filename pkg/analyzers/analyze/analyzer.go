@@ -303,14 +303,3 @@ func NewFactory(analyzers []StaticAnalyzer) *Factory { //nolint:funcorder // fun
 
 	return factory
 }
-
-// WithMaxParallelism sets the maximum number of parallel analyzers.
-func (f *Factory) WithMaxParallelism(n int) *Factory {
-	if n < 1 {
-		n = 1
-	}
-
-	f.maxParallel = n
-
-	return f
-}
