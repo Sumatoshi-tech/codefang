@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -35,10 +36,15 @@ const (
 
 // Shard holds per-file burndown data within a partition.
 type Shard struct {
-	files         map[string]*burndown.File
-	fileHistories map[string]sparseHistory
-	allocator     *rbtree.Allocator
-	mu            sync.Mutex //nolint:unused // acknowledged.
+	files           map[string]*burndown.File
+	fileHistories   map[string]sparseHistory
+	allocator       *rbtree.Allocator
+	globalHistory   sparseHistory
+	peopleHistories []sparseHistory
+	matrix          []map[int]int64
+	mergedFiles     map[string]bool
+	deletions       map[string]bool
+	mu              sync.Mutex //nolint:unused // acknowledged.
 }
 
 // HistoryAnalyzer tracks line survival rates across commit history.
@@ -72,6 +78,7 @@ type HistoryAnalyzer struct {
 	TickSize             time.Duration
 	Goroutines           int
 	tick                 int
+	isMerge              bool
 	previousTick         int
 	Sampling             int
 	GlobalMu             sync.Mutex
@@ -106,8 +113,10 @@ const (
 	ConfigBurndownGoroutines = "Burndown.Goroutines"
 	// DefaultBurndownGranularity defines the default granularity in days.
 	DefaultBurndownGranularity = 30
-	// DefaultBurndownGoroutines defines the default number of goroutines.
-	DefaultBurndownGoroutines = 4
+	// DefaultBurndownSampling defines the default sampling in ticks.
+	DefaultBurndownSampling = 1
+	// DefaultBurndownHibernationThreshold defines the default node count threshold for hibernation.
+	DefaultBurndownHibernationThreshold = 1000
 	// Sentinel value representing the current author.
 	authorSelf = identity.AuthorMissing - 1
 )
@@ -142,7 +151,7 @@ func (b *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 			Description: "How frequently to record the state in time ticks.",
 			Flag:        "sampling",
 			Type:        pipeline.IntConfigurationOption,
-			Default:     DefaultBurndownGranularity,
+			Default:     DefaultBurndownSampling,
 		},
 		{
 			Name:        ConfigBurndownTrackFiles,
@@ -163,14 +172,14 @@ func (b *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 			Description: "The minimum size for the allocated memory in each branch to be compressed.",
 			Flag:        "burndown-hibernation-threshold",
 			Type:        pipeline.IntConfigurationOption,
-			Default:     0,
+			Default:     DefaultBurndownHibernationThreshold,
 		},
 		{
 			Name:        ConfigBurndownHibernationToDisk,
 			Description: "Save hibernated RBTree allocators to disk rather than keep it in memory.",
 			Flag:        "burndown-hibernation-disk",
 			Type:        pipeline.BoolConfigurationOption,
-			Default:     false,
+			Default:     true,
 		},
 		{
 			Name:        ConfigBurndownHibernationDirectory,
@@ -191,7 +200,7 @@ func (b *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 			Description: "Number of goroutines to use for parallel processing.",
 			Flag:        "burndown-goroutines",
 			Type:        pipeline.IntConfigurationOption,
-			Default:     DefaultBurndownGoroutines,
+			Default:     runtime.NumCPU(),
 		},
 	}
 }
@@ -221,6 +230,8 @@ func (b *HistoryAnalyzer) Configure(facts map[string]any) error {
 
 	if val, exists := facts[ConfigBurndownHibernationToDisk].(bool); exists {
 		b.HibernationToDisk = val
+	} else {
+		b.HibernationToDisk = true
 	}
 
 	if val, exists := facts[ConfigBurndownHibernationDirectory].(string); exists {
@@ -277,7 +288,7 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	}
 
 	if b.Sampling <= 0 {
-		b.Sampling = DefaultBurndownGranularity
+		b.Sampling = DefaultBurndownSampling
 	}
 
 	if b.Sampling > b.Granularity {
@@ -289,7 +300,7 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	}
 
 	if b.Goroutines <= 0 {
-		b.Goroutines = DefaultBurndownGoroutines
+		b.Goroutines = runtime.NumCPU()
 	}
 
 	b.repository = repository
@@ -301,23 +312,33 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 
 	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
 
-	b.shardedAllocator = rbtree.NewShardedAllocator(b.Goroutines, b.HibernationThreshold)
+	if b.HibernationThreshold == 0 {
+		b.HibernationThreshold = DefaultBurndownHibernationThreshold
+	}
+
+	if b.shardedAllocator == nil {
+		b.shardedAllocator = rbtree.NewShardedAllocator(b.Goroutines, b.HibernationThreshold)
+	}
 	b.shards = make([]*Shard, b.Goroutines)
 
 	allocators := b.shardedAllocator.Shards()
 	for i := range b.Goroutines {
 		b.shards[i] = &Shard{
-			files:         map[string]*burndown.File{},
-			fileHistories: map[string]sparseHistory{},
-			allocator:     allocators[i],
+			files:           map[string]*burndown.File{},
+			fileHistories:   map[string]sparseHistory{},
+			allocator:       allocators[i],
+			globalHistory:   sparseHistory{},
+			peopleHistories: make([]sparseHistory, b.PeopleNumber),
+			matrix:          make([]map[int]int64, b.PeopleNumber),
+			mergedFiles:     map[string]bool{},
+			deletions:       map[string]bool{},
 		}
 	}
 
-	b.mergedFiles = map[string]bool{}
-	b.mergedAuthor = identity.AuthorMissing
 	b.renames = map[string]string{}
-	b.deletions = map[string]bool{}
-	b.matrix = make([]map[int]int64, b.PeopleNumber)
+	b.matrix = nil          // Aggregated in Finalize
+	b.peopleHistories = nil // Aggregated in Finalize
+	b.globalHistory = nil   // Aggregated in Finalize
 	b.tick = 0
 	b.previousTick = 0
 
@@ -346,14 +367,17 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	author := b.Identity.AuthorID
 	tick := b.Ticks.Tick
 	isMerge := ctx.IsMerge
+	b.isMerge = isMerge
 
 	if !isMerge {
 		b.tick = tick
 		b.onNewTick()
 	} else {
-		b.tick = burndown.TreeMergeMark
-		b.mergedFiles = map[string]bool{}
+		b.tick = tick
 		b.mergedAuthor = author
+		for _, shard := range b.shards {
+			shard.mergedFiles = map[string]bool{}
+		}
 	}
 
 	cache := b.BlobCache.Cache
@@ -367,6 +391,50 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 	for _, change := range renames {
 		renameErr := b.handleModificationRename(change, author, cache, fileDiffs)
+		if renameErr != nil {
+			return renameErr
+		}
+	}
+
+	b.tick = tick
+
+	return nil
+}
+
+// ConsumePrepared processes a pre-prepared commit.
+// This is used by the pipelined runner for parallel commit preparation.
+func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) error {
+	author := prepared.AuthorID
+	tick := prepared.Tick
+	isMerge := prepared.Ctx.IsMerge
+	b.isMerge = isMerge
+
+	if !isMerge {
+		b.tick = tick
+		b.onNewTick()
+	} else {
+		b.tick = tick
+		b.mergedAuthor = author
+		for _, shard := range b.shards {
+			shard.mergedFiles = map[string]bool{}
+		}
+	}
+
+	// Convert cache type (gitlib.CachedBlob to pkgplumbing.CachedBlob - they're aliased).
+	cache := make(map[gitlib.Hash]*pkgplumbing.CachedBlob, len(prepared.Cache))
+	for k, v := range prepared.Cache {
+		cache[k] = v
+	}
+
+	shardChanges, renames := b.groupChangesByShard(prepared.Changes)
+
+	err := b.processShardChanges(shardChanges, author, cache, prepared.FileDiffs)
+	if err != nil {
+		return err
+	}
+
+	for _, change := range renames {
+		renameErr := b.handleModificationRename(change, author, cache, prepared.FileDiffs)
 		if renameErr != nil {
 			return renameErr
 		}
@@ -545,6 +613,60 @@ func (b *HistoryAnalyzer) Boot() error {
 
 // Finalize completes the analysis and returns the result.
 func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
+	// Aggregate stats from shards.
+	b.globalHistory = sparseHistory{}
+	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
+	b.matrix = make([]map[int]int64, b.PeopleNumber)
+
+	for _, shard := range b.shards {
+		// Merge globalHistory.
+		for tick, counts := range shard.globalHistory {
+			if b.globalHistory[tick] == nil {
+				b.globalHistory[tick] = map[int]int64{}
+			}
+
+			for prevTick, count := range counts {
+				b.globalHistory[tick][prevTick] += count
+			}
+		}
+
+		// Merge peopleHistories.
+		for person, history := range shard.peopleHistories {
+			if len(history) == 0 {
+				continue
+			}
+
+			if b.peopleHistories[person] == nil {
+				b.peopleHistories[person] = sparseHistory{}
+			}
+
+			for tick, counts := range history {
+				if b.peopleHistories[person][tick] == nil {
+					b.peopleHistories[person][tick] = map[int]int64{}
+				}
+
+				for prevTick, count := range counts {
+					b.peopleHistories[person][tick][prevTick] += count
+				}
+			}
+		}
+
+		// Merge matrix.
+		for author, row := range shard.matrix {
+			if len(row) == 0 {
+				continue
+			}
+
+			if b.matrix[author] == nil {
+				b.matrix[author] = map[int]int64{}
+			}
+
+			for otherAuthor, count := range row {
+				b.matrix[author][otherAuthor] += count
+			}
+		}
+	}
+
 	globalHistory, lastTick := b.groupSparseHistory(b.globalHistory, -1)
 	fileHistories, fileOwnership := b.collectFileHistories(lastTick)
 
@@ -647,6 +769,10 @@ func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 
 // Serialize writes the analysis result to the given writer.
 func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
+		return b.generatePlot(result, writer)
+	}
+
 	enc := json.NewEncoder(writer)
 
 	// For YAML format, use indentation for readability (burndown default is JSON-like).
@@ -696,14 +822,14 @@ func (b *HistoryAnalyzer) onNewTick() {
 	b.mergedAuthor = identity.AuthorMissing
 }
 
-func (b *HistoryAnalyzer) updateGlobal(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateGlobal(shard *Shard, currentTime, previousTime, delta int) {
 	_, curTick := b.unpackPersonWithTick(currentTime)
 	_, prevTick := b.unpackPersonWithTick(previousTime)
 
-	currentHistory := b.globalHistory[curTick]
+	currentHistory := shard.globalHistory[curTick]
 	if currentHistory == nil {
 		currentHistory = map[int]int64{}
-		b.globalHistory[curTick] = currentHistory
+		shard.globalHistory[curTick] = currentHistory
 	}
 
 	currentHistory[prevTick] += int64(delta)
@@ -722,7 +848,7 @@ func (b *HistoryAnalyzer) updateFile(history sparseHistory, currentTime, previou
 	currentHistory[prevTick] += int64(delta)
 }
 
-func (b *HistoryAnalyzer) updateAuthor(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateAuthor(shard *Shard, currentTime, previousTime, delta int) {
 	previousAuthor, prevTick := b.unpackPersonWithTick(previousTime)
 	if previousAuthor == identity.AuthorMissing {
 		return
@@ -730,10 +856,10 @@ func (b *HistoryAnalyzer) updateAuthor(currentTime, previousTime, delta int) {
 
 	_, curTick := b.unpackPersonWithTick(currentTime)
 
-	history := b.peopleHistories[previousAuthor]
+	history := shard.peopleHistories[previousAuthor]
 	if history == nil {
 		history = sparseHistory{}
-		b.peopleHistories[previousAuthor] = history
+		shard.peopleHistories[previousAuthor] = history
 	}
 
 	currentHistory := history[curTick]
@@ -745,7 +871,7 @@ func (b *HistoryAnalyzer) updateAuthor(currentTime, previousTime, delta int) {
 	currentHistory[prevTick] += int64(delta)
 }
 
-func (b *HistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
+func (b *HistoryAnalyzer) updateMatrix(shard *Shard, currentTime, previousTime, delta int) {
 	newAuthor, _ := b.unpackPersonWithTick(currentTime)
 	oldAuthor, _ := b.unpackPersonWithTick(previousTime)
 
@@ -757,10 +883,10 @@ func (b *HistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
 		newAuthor = authorSelf
 	}
 
-	row := b.matrix[oldAuthor]
+	row := shard.matrix[oldAuthor]
 	if row == nil {
 		row = map[int]int64{}
-		b.matrix[oldAuthor] = row
+		shard.matrix[oldAuthor] = row
 	}
 
 	cell, exists := row[newAuthor]
@@ -772,25 +898,19 @@ func (b *HistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
 	row[newAuthor] = cell + int64(delta)
 }
 
-func (b *HistoryAnalyzer) newFile(
-	shard *Shard, _ gitlib.Hash, name string, author int, tick int, size int,
-) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
+func (b *HistoryAnalyzer) createUpdaters(shard *Shard, name string) []burndown.Updater {
 	updaters := make([]burndown.Updater, 1)
 
 	updaters[0] = func(currentTime, previousTime, delta int) {
-		b.GlobalMu.Lock()
-		defer b.GlobalMu.Unlock()
-
-		b.updateGlobal(currentTime, previousTime, delta)
+		b.updateGlobal(shard, currentTime, previousTime, delta)
 	}
 
 	if b.TrackFiles {
 		history := shard.fileHistories[name]
 		if history == nil {
 			history = sparseHistory{}
+			shard.fileHistories[name] = history
 		}
-
-		shard.fileHistories[name] = history
 
 		updaters = append(updaters, func(currentTime, previousTime, delta int) { //nolint:makezero // zero-length init is intentional.
 			b.updateFile(history, currentTime, previousTime, delta)
@@ -799,16 +919,21 @@ func (b *HistoryAnalyzer) newFile(
 
 	if b.PeopleNumber > 0 {
 		updaters = append(updaters, func(currentTime, previousTime, delta int) { //nolint:makezero // zero-length init is intentional.
-			b.GlobalMu.Lock()
-			defer b.GlobalMu.Unlock()
-
-			b.updateAuthor(currentTime, previousTime, delta)
+			b.updateAuthor(shard, currentTime, previousTime, delta)
 		}, func(currentTime, previousTime, delta int) {
-			b.GlobalMu.Lock()
-			defer b.GlobalMu.Unlock()
-
-			b.updateMatrix(currentTime, previousTime, delta)
+			b.updateMatrix(shard, currentTime, previousTime, delta)
 		})
+	}
+
+	return updaters
+}
+
+func (b *HistoryAnalyzer) newFile(
+	shard *Shard, _ gitlib.Hash, name string, author int, tick int, size int,
+) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
+	updaters := b.createUpdaters(shard, name)
+
+	if b.PeopleNumber > 0 {
 		tick = b.packPersonWithTick(author, tick)
 	}
 
@@ -833,7 +958,7 @@ func (b *HistoryAnalyzer) handleInsertion(
 	}
 
 	var hash gitlib.Hash
-	if b.tick != burndown.TreeMergeMark {
+	if !b.isMerge {
 		hash = blob.Hash()
 	}
 
@@ -850,14 +975,11 @@ func (b *HistoryAnalyzer) handleInsertion(
 	// So if we shard deletions map...
 	// For now, lock GlobalMu.
 
-	b.GlobalMu.Lock()
-	delete(b.deletions, name)
+	delete(shard.deletions, name)
 
-	if b.tick == burndown.TreeMergeMark {
-		b.mergedFiles[name] = true
+	if b.isMerge {
+		shard.mergedFiles[name] = true
 	}
-
-	b.GlobalMu.Unlock()
 
 	return err
 }
@@ -886,12 +1008,10 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	tick := b.tick
 
-	b.GlobalMu.Lock()
-	isDeletion := b.deletions[name]
-	b.deletions[name] = true
-	b.GlobalMu.Unlock()
+	isDeletion := shard.deletions[name]
+	shard.deletions[name] = true
 
-	if b.tick == burndown.TreeMergeMark && !isDeletion {
+	if b.isMerge && !isDeletion {
 		tick = 0
 	}
 
@@ -916,11 +1036,11 @@ func (b *HistoryAnalyzer) handleDeletion(
 		}
 	}
 
-	if b.tick == burndown.TreeMergeMark {
-		b.mergedFiles[name] = false
-	}
-
 	b.GlobalMu.Unlock()
+
+	if b.isMerge {
+		shard.mergedFiles[name] = false
+	}
 
 	return nil
 }
@@ -930,13 +1050,9 @@ func (b *HistoryAnalyzer) handleModification(
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	// This method handles modification WITHOUT rename (checked in Consume).
-	b.GlobalMu.Lock()
-
-	if b.tick == burndown.TreeMergeMark {
-		b.mergedFiles[change.To.Name] = true
+	if b.isMerge {
+		shard.mergedFiles[change.To.Name] = true
 	}
-
-	b.GlobalMu.Unlock()
 
 	file, exists := shard.files[change.From.Name]
 	if !exists {
@@ -976,13 +1092,6 @@ func (b *HistoryAnalyzer) handleModificationRename(
 ) error {
 	// Handles modification WITH rename (From != To).
 	// This runs sequentially, so we can access shards safely if we look them up.
-	b.GlobalMu.Lock()
-
-	if b.tick == burndown.TreeMergeMark {
-		b.mergedFiles[change.To.Name] = true
-	}
-
-	b.GlobalMu.Unlock()
 
 	shardFrom := b.getShard(change.From.Name)
 
@@ -1140,6 +1249,9 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 	} else {
 		// Cross-shard move: deep clone to new allocator.
 		newFile := file.CloneDeep(shardTo.allocator)
+		// Rebind updaters to the new shard.
+		newFile.ReplaceUpdaters(b.createUpdaters(shardTo, to))
+
 		shardTo.files[to] = newFile
 
 		file.Delete()
@@ -1150,13 +1262,9 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 		b.migrateFileHistory(shardFrom, shardTo, from, to)
 	}
 
+	delete(shardTo.deletions, to)
+
 	b.GlobalMu.Lock()
-	delete(b.deletions, to)
-
-	if b.tick == burndown.TreeMergeMark {
-		b.mergedFiles[from] = false
-	}
-
 	b.renames[from] = to
 	b.GlobalMu.Unlock()
 

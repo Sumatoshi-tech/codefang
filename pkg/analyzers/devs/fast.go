@@ -524,6 +524,10 @@ func (fa *Libgit2Analyzer) Serialize(result analyze.Report, format string, write
 		return nil
 	}
 
+	if format == analyze.FormatPlot {
+		return GeneratePlot(result, writer)
+	}
+
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return ErrInvalidTicks

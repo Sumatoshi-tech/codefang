@@ -260,6 +260,10 @@ func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return nil
 	}
 
+	if format == analyze.FormatPlot {
+		return d.generatePlot(result, writer)
+	}
+
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.

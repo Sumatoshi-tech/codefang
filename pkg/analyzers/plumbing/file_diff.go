@@ -34,6 +34,7 @@ type FileDiffAnalyzer struct {
 	Goroutines       int
 	CleanupDisabled  bool
 	WhitespaceIgnore bool
+	repo             *gitlib.Repository
 }
 
 const (
@@ -114,7 +115,9 @@ func (f *FileDiffAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (f *FileDiffAnalyzer) Initialize(_ *gitlib.Repository) error {
+func (f *FileDiffAnalyzer) Initialize(repo *gitlib.Repository) error {
+	f.repo = repo
+
 	if f.Goroutines <= 0 {
 		f.Goroutines = runtime.NumCPU()
 	}
@@ -123,10 +126,18 @@ func (f *FileDiffAnalyzer) Initialize(_ *gitlib.Repository) error {
 }
 
 // parallelThreshold is the minimum number of changes to justify spawning worker goroutines.
-const parallelThreshold = 50
+const parallelThreshold = 1
 
 // Consume processes a single commit with the provided dependency results.
-func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
+func (f *FileDiffAnalyzer) Consume(ctx *analyze.Context) error {
+	// Check if the runtime pipeline has already computed diffs
+	if ctx != nil && ctx.FileDiffs != nil {
+		// Use the pre-computed diffs from the runtime pipeline
+		f.FileDiffs = ctx.FileDiffs
+		return nil
+	}
+
+	// Fall back to traditional diff computation
 	cache := f.BlobCache.Cache
 	treeDiff := f.TreeDiff.Changes
 
@@ -143,6 +154,7 @@ func (f *FileDiffAnalyzer) Consume(_ *analyze.Context) error {
 	return nil
 }
 
+// processChangesNative uses libgit2's native blob diff for maximum performance.
 func (f *FileDiffAnalyzer) processChangesSequential(
 	treeDiff gitlib.Changes, cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) map[string]pkgplumbing.FileDiffData {
@@ -238,7 +250,36 @@ func (f *FileDiffAnalyzer) processChange(
 		return
 	}
 
+	// Fast path: if content is identical (same hash or same bytes), no diff needed
+	if change.From.Hash == change.To.Hash {
+		return
+	}
+
+	// Skip binary files - they can't be meaningfully diffed
+	if blobFrom.IsBinary() || blobTo.IsBinary() {
+		return
+	}
+
 	strFrom, strTo := string(blobFrom.Data), string(blobTo.Data)
+
+	// Another fast path: if strings are identical, no diff needed
+	if strFrom == strTo {
+		lineCount := strings.Count(strFrom, "\n")
+		if len(strFrom) > 0 && strFrom[len(strFrom)-1] != '\n' {
+			lineCount++
+		}
+
+		data := pkgplumbing.FileDiffData{
+			OldLinesOfCode: lineCount,
+			NewLinesOfCode: lineCount,
+			Diffs:          []diffmatchpatch.Diff{{Type: diffmatchpatch.DiffEqual, Text: strings.Repeat("L", lineCount)}},
+		}
+
+		storeResult(result, change.To.Name, data, mu)
+
+		return
+	}
+
 	dmp := diffmatchpatch.New()
 	dmp.DiffTimeout = f.Timeout
 	src, dst, _ := dmp.DiffLinesToRunes(stripWhitespace(strFrom, f.WhitespaceIgnore), stripWhitespace(strTo, f.WhitespaceIgnore))
@@ -254,14 +295,16 @@ func (f *FileDiffAnalyzer) processChange(
 		Diffs:          diffs,
 	}
 
+	storeResult(result, change.To.Name, data, mu)
+}
+
+func storeResult(result map[string]pkgplumbing.FileDiffData, name string, data pkgplumbing.FileDiffData, mu *sync.Mutex) {
 	if mu != nil {
 		mu.Lock()
-
-		result[change.To.Name] = data
-
+		result[name] = data
 		mu.Unlock()
 	} else {
-		result[change.To.Name] = data
+		result[name] = data
 	}
 }
 
@@ -303,4 +346,15 @@ func (f *FileDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// InjectPreparedData sets pre-computed file diffs from parallel preparation.
+func (f *FileDiffAnalyzer) InjectPreparedData(
+	_ []*gitlib.Change,
+	_ map[gitlib.Hash]*gitlib.CachedBlob,
+	fileDiffs any,
+) {
+	if diffs, ok := fileDiffs.(map[string]pkgplumbing.FileDiffData); ok {
+		f.FileDiffs = diffs
+	}
 }

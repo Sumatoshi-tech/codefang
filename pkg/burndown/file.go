@@ -102,8 +102,11 @@ func (file *File) Delete() {
 	file.tree.Erase()
 }
 
-// Len returns the File's size - that is, the maximum key in the tree of line
-// intervals.
+// ReplaceUpdaters replaces the file's updaters with a new set.
+func (file *File) ReplaceUpdaters(updaters []Updater) {
+	file.updaters = updaters
+}
+
 func (file *File) Len() int {
 	return int(file.tree.Max().Item().Key)
 }
