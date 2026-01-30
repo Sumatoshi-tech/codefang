@@ -81,3 +81,4 @@ specs/
 # Editor/IDE configs
 .cursor/
 .vscode/
+coverage.out

@@ -96,20 +96,6 @@ func MapString(m map[string]any, key string) string {
 	return ""
 }
 
-// MapInt returns an int from a map[string]any, handling float64 conversion.
-func MapInt(m map[string]any, key string) int {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case float64:
-			return int(val)
-		}
-	}
-
-	return 0
-}
-
 // MapFloat64 returns a float64 from a map[string]any, handling int conversion.
 func MapFloat64(m map[string]any, key string) float64 {
 	if v, ok := m[key]; ok {

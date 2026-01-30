@@ -9,10 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -107,7 +104,7 @@ func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (h *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	h.imports = Map{}
 	if h.TickSize == 0 {
 		h.TickSize = time.Hour * defaultTickHours
@@ -165,14 +162,12 @@ func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel
 
 // extractImportsParallel spins up a worker pool to parse changed files in
 // parallel and returns per-blob import results.
-//
-//nolint:gocognit // complexity is inherent to parallel worker pool with mutex coordination.
 func (h *HistoryAnalyzer) extractImportsParallel(
-	changes object.Changes,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) map[gitplumbing.Hash]importmodel.File {
-	extracted := map[gitplumbing.Hash]importmodel.File{}
-	jobs := make(chan *object.Change, h.Goroutines)
+	changes gitlib.Changes,
+	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
+) map[gitlib.Hash]importmodel.File {
+	extracted := map[gitlib.Hash]importmodel.File{}
+	jobs := make(chan *gitlib.Change, h.Goroutines)
 
 	var (
 		mu sync.Mutex
@@ -186,16 +181,16 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 			defer wg.Done()
 
 			for change := range jobs {
-				blob := cache[change.To.TreeEntry.Hash]
-				if blob.Size > int64(h.MaxFileSize) {
+				blob := cache[change.To.Hash]
+				if blob.Size() > int64(h.MaxFileSize) {
 					continue
 				}
 
-				file, err := h.extractImports(change.To.TreeEntry.Name, blob.Data)
+				file, err := h.extractImports(change.To.Name, blob.Data)
 				if err == nil {
 					mu.Lock()
 
-					extracted[change.To.TreeEntry.Hash] = *file
+					extracted[change.To.Hash] = *file
 
 					mu.Unlock()
 				}
@@ -204,15 +199,12 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 	}
 
 	for _, change := range changes {
-		action, err := change.Action()
-		if err != nil {
-			continue
-		}
+		action := change.Action
 
 		switch action {
-		case merkletrie.Modify, merkletrie.Insert:
+		case gitlib.Modify, gitlib.Insert:
 			jobs <- change
-		case merkletrie.Delete:
+		case gitlib.Delete:
 			continue
 		}
 	}
@@ -226,7 +218,7 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 // aggregateImports folds the per-blob import data into the analyzer's
 // cumulative imports map, keyed by author and tick.
 func (h *HistoryAnalyzer) aggregateImports(
-	extractedImports map[gitplumbing.Hash]importmodel.File,
+	extractedImports map[gitlib.Hash]importmodel.File,
 	author, tick int,
 ) {
 	aimps := h.imports[author]
@@ -287,7 +279,16 @@ func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (h *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	imports, ok := result["imports"].(Map)
 	if !ok {
 		return errors.New("expected Map for imports") //nolint:err113 // descriptive error for type assertion failure.
@@ -333,5 +334,5 @@ func (h *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (h *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return h.Serialize(report, false, writer)
+	return h.Serialize(report, analyze.FormatYAML, writer)
 }

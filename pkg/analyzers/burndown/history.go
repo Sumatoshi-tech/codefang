@@ -13,15 +13,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/burndown"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
@@ -57,7 +54,7 @@ type HistoryAnalyzer struct {
 	mergedFiles          map[string]bool
 	shardedAllocator     *rbtree.ShardedAllocator
 	globalHistory        sparseHistory
-	repository           *git.Repository
+	repository           *gitlib.Repository
 	Ticks                *plumbing.TicksSinceStart
 	Identity             *plumbing.IdentityDetector
 	FileDiff             *plumbing.FileDiffAnalyzer
@@ -274,7 +271,7 @@ func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (b *HistoryAnalyzer) Initialize(repository *git.Repository) error {
+func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	if b.Granularity <= 0 {
 		b.Granularity = DefaultBurndownGranularity
 	}
@@ -382,25 +379,22 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 // groupChangesByShard partitions tree changes into per-shard slices and collects renames separately.
 func (b *HistoryAnalyzer) groupChangesByShard(
-	treeDiffs []*object.Change,
-) (shardChanges [][]*object.Change, renames []*object.Change) {
-	shardChanges = make([][]*object.Change, b.Goroutines)
-	renames = make([]*object.Change, 0)
+	treeDiffs []*gitlib.Change,
+) (shardChanges [][]*gitlib.Change, renames []*gitlib.Change) {
+	shardChanges = make([][]*gitlib.Change, b.Goroutines)
+	renames = make([]*gitlib.Change, 0)
 
 	for _, change := range treeDiffs {
-		action, actionErr := change.Action()
-		if actionErr != nil {
-			continue
-		}
+		action := change.Action
 
-		if action == merkletrie.Modify && change.From.Name != change.To.Name {
+		if action == gitlib.Modify && change.From.Name != change.To.Name {
 			renames = append(renames, change)
 
 			continue
 		}
 
 		name := change.To.Name
-		if action == merkletrie.Delete {
+		if action == gitlib.Delete {
 			name = change.From.Name
 		}
 
@@ -415,7 +409,7 @@ func (b *HistoryAnalyzer) groupChangesByShard(
 //
 //nolint:gocognit // complexity is inherent to parallel shard coordination logic.
 func (b *HistoryAnalyzer) processShardChanges(
-	shardChanges [][]*object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	shardChanges [][]*gitlib.Change, author int, cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 	fileDiffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	var wg sync.WaitGroup
@@ -430,27 +424,22 @@ func (b *HistoryAnalyzer) processShardChanges(
 
 		wg.Add(1)
 
-		go func(idx int, changes []*object.Change) {
+		go func(idx int, changes []*gitlib.Change) {
 			defer wg.Done()
 
 			shard := b.shards[idx]
 
 			for _, change := range changes {
-				action, actionErr := change.Action()
-				if actionErr != nil {
-					errs[idx] = actionErr
-
-					return
-				}
+				action := change.Action
 
 				var err error
 
 				switch action {
-				case merkletrie.Insert:
+				case gitlib.Insert:
 					err = b.handleInsertion(shard, change, author, cache)
-				case merkletrie.Delete:
+				case gitlib.Delete:
 					err = b.handleDeletion(shard, change, author, cache)
-				case merkletrie.Modify:
+				case gitlib.Modify:
 					err = b.handleModification(shard, change, author, cache, fileDiffs)
 				}
 
@@ -657,9 +646,13 @@ func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (b *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
 	enc := json.NewEncoder(writer)
-	enc.SetIndent("", "  ")
+
+	// For YAML format, use indentation for readability (burndown default is JSON-like).
+	if format == analyze.FormatYAML {
+		enc.SetIndent("", "  ")
+	}
 
 	err := enc.Encode(result)
 	if err != nil {
@@ -671,7 +664,7 @@ func (b *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (b *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return b.Serialize(report, false, writer)
+	return b.Serialize(report, analyze.FormatYAML, writer)
 }
 
 // Helpers.
@@ -780,7 +773,7 @@ func (b *HistoryAnalyzer) updateMatrix(currentTime, previousTime, delta int) {
 }
 
 func (b *HistoryAnalyzer) newFile(
-	shard *Shard, _ gitplumbing.Hash, name string, author int, tick int, size int,
+	shard *Shard, _ gitlib.Hash, name string, author int, tick int, size int,
 ) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
 	updaters := make([]burndown.Updater, 1)
 
@@ -823,9 +816,9 @@ func (b *HistoryAnalyzer) newFile(
 }
 
 func (b *HistoryAnalyzer) handleInsertion(
-	shard *Shard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	shard *Shard, change *gitlib.Change, author int, cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) error {
-	blob := cache[change.To.TreeEntry.Hash]
+	blob := cache[change.To.Hash]
 
 	lines, err := blob.CountLines()
 	if err != nil {
@@ -839,9 +832,9 @@ func (b *HistoryAnalyzer) handleInsertion(
 		return fmt.Errorf("file %s already exists", name) //nolint:err113 // dynamic error is acceptable here.
 	}
 
-	var hash gitplumbing.Hash
+	var hash gitlib.Hash
 	if b.tick != burndown.TreeMergeMark {
-		hash = blob.Hash
+		hash = blob.Hash()
 	}
 
 	file, err = b.newFile(shard, hash, name, author, b.tick, lines)
@@ -870,10 +863,10 @@ func (b *HistoryAnalyzer) handleInsertion(
 }
 
 func (b *HistoryAnalyzer) handleDeletion(
-	shard *Shard, change *object.Change, author int, cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	shard *Shard, change *gitlib.Change, author int, cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) error {
 	var name string
-	if change.To.TreeEntry.Hash != gitplumbing.ZeroHash {
+	if change.To.Hash != gitlib.ZeroHash() {
 		name = change.To.Name
 	} else {
 		name = change.From.Name
@@ -884,7 +877,7 @@ func (b *HistoryAnalyzer) handleDeletion(
 		return nil
 	}
 
-	blob := cache[change.From.TreeEntry.Hash]
+	blob := cache[change.From.Hash]
 
 	lines, err := blob.CountLines()
 	if err != nil {
@@ -933,8 +926,8 @@ func (b *HistoryAnalyzer) handleDeletion(
 }
 
 func (b *HistoryAnalyzer) handleModification(
-	shard *Shard, change *object.Change, author int,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
+	shard *Shard, change *gitlib.Change, author int,
+	cache map[gitlib.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	// This method handles modification WITHOUT rename (checked in Consume).
 	b.GlobalMu.Lock()
@@ -950,9 +943,9 @@ func (b *HistoryAnalyzer) handleModification(
 		return b.handleInsertion(shard, change, author, cache)
 	}
 
-	blobFrom := cache[change.From.TreeEntry.Hash]
+	blobFrom := cache[change.From.Hash]
 	_, errFrom := blobFrom.CountLines()
-	blobTo := cache[change.To.TreeEntry.Hash]
+	blobTo := cache[change.To.Hash]
 
 	_, errTo := blobTo.CountLines()
 	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.
@@ -978,8 +971,8 @@ func (b *HistoryAnalyzer) handleModification(
 }
 
 func (b *HistoryAnalyzer) handleModificationRename(
-	change *object.Change, author int,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
+	change *gitlib.Change, author int,
+	cache map[gitlib.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	// Handles modification WITH rename (From != To).
 	// This runs sequentially, so we can access shards safely if we look them up.
@@ -1011,9 +1004,9 @@ func (b *HistoryAnalyzer) handleModificationRename(
 		file = shardTo.files[change.To.Name]
 	}
 
-	blobFrom := cache[change.From.TreeEntry.Hash]
+	blobFrom := cache[change.From.Hash]
 	_, errFrom := blobFrom.CountLines()
-	blobTo := cache[change.To.TreeEntry.Hash]
+	blobTo := cache[change.To.Hash]
 
 	_, errTo := blobTo.CountLines()
 	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -23,7 +23,7 @@ func TestHistoryAnalyzer_Configure(t *testing.T) {
 	facts := map[string]any{
 		ConfigCommentSentimentGap:       float32(0.8),
 		ConfigCommentSentimentMinLength: 30,
-		pkgplumbing.FactCommitsByTick:   map[int][]gitplumbing.Hash{},
+		pkgplumbing.FactCommitsByTick:   map[int][]gitlib.Hash{},
 	}
 
 	err := s.Configure(facts)
@@ -228,15 +228,15 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	report := analyze.Report{
 		"emotions_by_tick": map[int]float32{0: 0.5},
 		"comments_by_tick": map[int][]string{0: {"Comment"}},
-		"commits_by_tick":  map[int][]gitplumbing.Hash{0: {gitplumbing.NewHash("c1")}},
+		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
 	}
 
-	// Text.
+	// YAML.
 	var buf bytes.Buffer
 
-	err := s.Serialize(report, false, &buf)
+	err := s.Serialize(report, analyze.FormatYAML, &buf)
 	if err != nil {
-		t.Fatalf("Serialize Text failed: %v", err)
+		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "0: [0.5000, [c1") {
@@ -250,7 +250,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	// Binary.
 	var pbuf bytes.Buffer
 
-	err = s.Serialize(report, true, &pbuf)
+	err = s.Serialize(report, analyze.FormatBinary, &pbuf)
 	if err != nil {
 		t.Fatalf("Serialize Binary failed: %v", err)
 	}

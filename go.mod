@@ -7,8 +7,8 @@ require (
 	github.com/alexaandru/go-sitter-forest/go v1.9.4
 	github.com/alexaandru/go-tree-sitter-bare v1.11.0
 	github.com/fatih/color v1.18.0
-	github.com/go-git/go-git/v6 v6.0.0-20250727062252-2f0d9e98c8e0
 	github.com/jedib0t/go-pretty/v6 v6.6.7
+	github.com/libgit2/git2go/v34 v34.0.0
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.9.1
@@ -21,9 +21,6 @@ require (
 )
 
 require (
-	dario.cat/mergo v1.0.1 // indirect
-	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/alexaandru/go-sitter-forest/abap v1.9.0 // indirect
 	github.com/alexaandru/go-sitter-forest/abl v1.9.7 // indirect
 	github.com/alexaandru/go-sitter-forest/ada v1.9.0 // indirect
@@ -534,20 +531,13 @@ require (
 	github.com/alexaandru/go-sitter-forest/ziggy_schema v1.9.1 // indirect
 	github.com/alexaandru/go-sitter-forest/zoomba v1.9.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
-	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/go-git/gcfg/v2 v2.0.2 // indirect
-	github.com/go-git/go-billy/v6 v6.0.0-20250627091229-31e2a16eef30 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -555,10 +545,10 @@ require (
 	github.com/muesli/termenv v0.15.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
-	github.com/pjbgf/sha1cd v0.4.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
@@ -582,5 +572,6 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/toqueteos/substring.v1 v1.0.2 // indirect
 )

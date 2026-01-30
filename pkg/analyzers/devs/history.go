@@ -2,6 +2,7 @@
 package devs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,11 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
@@ -30,7 +29,7 @@ type HistoryAnalyzer struct {
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
 	ticks                map[int]map[int]*DevTick //nolint:revive // intentional naming matches exported Ticks field.
-	merges               map[gitplumbing.Hash]bool
+	merges               map[gitlib.Hash]bool
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
@@ -96,13 +95,13 @@ func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (d *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (d *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	if d.tickSize == 0 {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
 
 	d.ticks = map[int]map[int]*DevTick{}
-	d.merges = map[gitplumbing.Hash]bool{}
+	d.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
@@ -112,12 +111,13 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	// OneShotMergeProcessor logic.
 	commit := ctx.Commit
 	shouldConsume := true
+	commitHash := commit.Hash()
 
 	if commit.NumParents() > 1 {
-		if d.merges[commit.Hash] {
+		if d.merges[commitHash] {
 			shouldConsume = false
 		} else {
-			d.merges[commit.Hash] = true
+			d.merges[commitHash] = true
 		}
 	}
 
@@ -160,7 +160,7 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		dd.Added += stats.Added
 		dd.Removed += stats.Removed
 		dd.Changed += stats.Changed
-		lang := langs[changeEntry.TreeEntry.Hash]
+		lang := langs[changeEntry.Hash]
 		langStats := dd.Languages[lang]
 		dd.Languages[lang] = pkgplumbing.LineStats{
 			Added:   langStats.Added + stats.Added,
@@ -193,11 +193,73 @@ func (d *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 }
 
 // Merge combines results from forked analyzer branches.
-func (d *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (d *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		d.mergeBranch(other)
+	}
+}
+
+// mergeBranch merges a single branch's ticks into this analyzer.
+func (d *HistoryAnalyzer) mergeBranch(other *HistoryAnalyzer) {
+	for tick, otherDevTick := range other.ticks {
+		d.ensureTickExists(tick)
+
+		for devID, otherStats := range otherDevTick {
+			d.mergeDevStats(tick, devID, otherStats)
+		}
+	}
+}
+
+// ensureTickExists ensures the tick map exists.
+func (d *HistoryAnalyzer) ensureTickExists(tick int) {
+	if d.ticks[tick] == nil {
+		d.ticks[tick] = make(map[int]*DevTick)
+	}
+}
+
+// mergeDevStats merges stats for a single developer in a tick.
+func (d *HistoryAnalyzer) mergeDevStats(tick, devID int, otherStats *DevTick) {
+	if d.ticks[tick][devID] == nil {
+		d.ticks[tick][devID] = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
+	}
+
+	currentStats := d.ticks[tick][devID]
+	currentStats.Commits += otherStats.Commits
+	currentStats.Added += otherStats.Added
+	currentStats.Removed += otherStats.Removed
+	currentStats.Changed += otherStats.Changed
+
+	mergeDevLanguageStats(currentStats.Languages, otherStats.Languages)
+}
+
+// mergeDevLanguageStats merges language-specific stats.
+func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
+	for lang, langStats := range source {
+		currentLangStats := target[lang]
+		target[lang] = pkgplumbing.LineStats{
+			Added:   currentLangStats.Added + langStats.Added,
+			Removed: currentLangStats.Removed + langStats.Removed,
+			Changed: currentLangStats.Changed + langStats.Changed,
+		}
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
-func (d *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Writer) error {
+func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(result)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+
+		return nil
+	}
+
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.
@@ -279,5 +341,5 @@ func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
 
 // FormatReport writes the formatted analysis report to the given writer.
 func (d *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return d.Serialize(report, false, writer)
+	return d.Serialize(report, analyze.FormatYAML, writer)
 }

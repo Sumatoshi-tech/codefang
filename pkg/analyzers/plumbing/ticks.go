@@ -1,13 +1,13 @@
 package plumbing
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -18,7 +18,7 @@ type TicksSinceStart struct {
 		Warnf(format string, args ...any)
 	}
 	tick0        *time.Time
-	commits      map[int][]gitplumbing.Hash
+	commits      map[int][]gitlib.Hash
 	remote       string
 	TickSize     time.Duration
 	previousTick int
@@ -67,7 +67,7 @@ func (t *TicksSinceStart) Configure(facts map[string]any) error {
 	}
 
 	if t.commits == nil {
-		t.commits = map[int][]gitplumbing.Hash{}
+		t.commits = map[int][]gitlib.Hash{}
 	}
 
 	facts[pkgplumbing.FactCommitsByTick] = t.commits
@@ -77,7 +77,7 @@ func (t *TicksSinceStart) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (t *TicksSinceStart) Initialize(_ *git.Repository) error {
+func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 	if t.TickSize == 0 {
 		t.TickSize = DefaultTicksSinceStartTickSize * time.Hour
 	}
@@ -86,7 +86,7 @@ func (t *TicksSinceStart) Initialize(_ *git.Repository) error {
 
 	t.previousTick = 0
 	if t.commits == nil || len(t.commits) > 0 {
-		t.commits = map[int][]gitplumbing.Hash{}
+		t.commits = map[int][]gitlib.Hash{}
 	}
 
 	t.remote = "<no remote>" // Simplified.
@@ -100,24 +100,25 @@ func (t *TicksSinceStart) Consume(ctx *analyze.Context) error {
 	index := ctx.Index
 
 	if index == 0 {
-		tick0 := commit.Committer.When
+		tick0 := commit.Committer().When
 		*t.tick0 = FloorTime(tick0, t.TickSize)
 	}
 
-	tick := max(int(commit.Committer.When.Sub(*t.tick0)/t.TickSize), t.previousTick)
+	tick := max(int(commit.Committer().When.Sub(*t.tick0)/t.TickSize), t.previousTick)
 
 	t.previousTick = tick
 
 	tickCommits := t.commits[tick]
 	if tickCommits == nil {
-		tickCommits = []gitplumbing.Hash{}
+		tickCommits = []gitlib.Hash{}
 	}
 
 	exists := false
+	commitHash := commit.Hash()
 
 	if commit.NumParents() > 0 {
 		for i := range tickCommits {
-			if tickCommits[len(tickCommits)-i-1] == commit.Hash {
+			if tickCommits[len(tickCommits)-i-1] == commitHash {
 				exists = true
 
 				break
@@ -126,7 +127,7 @@ func (t *TicksSinceStart) Consume(ctx *analyze.Context) error {
 	}
 
 	if !exists {
-		t.commits[tick] = append(tickCommits, commit.Hash)
+		t.commits[tick] = append(tickCommits, commitHash)
 	}
 
 	t.Tick = tick
@@ -165,6 +166,13 @@ func (t *TicksSinceStart) Merge(_ []analyze.HistoryAnalyzer) {
 }
 
 // Serialize writes the analysis result to the given writer.
-func (t *TicksSinceStart) Serialize(_ analyze.Report, _ bool, _ io.Writer) error {
+func (t *TicksSinceStart) Serialize(report analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatJSON {
+		err := json.NewEncoder(writer).Encode(report)
+		if err != nil {
+			return fmt.Errorf("json encode: %w", err)
+		}
+	}
+
 	return nil
 }

@@ -31,13 +31,3 @@ func PadRight(s string, width int) string {
 
 	return s + strings.Repeat(" ", width-len(s))
 }
-
-// PadLeft pads s with spaces on the left to reach width.
-// If s is already longer than width, returns s unchanged.
-func PadLeft(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-
-	return strings.Repeat(" ", width-len(s)) + s
-}

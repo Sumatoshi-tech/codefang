@@ -172,33 +172,6 @@ func TestMapString_Missing(t *testing.T) {
 	}
 }
 
-func TestMapInt_Int(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{"val": 10}
-	if got := MapInt(m, "val"); got != 10 {
-		t.Errorf("MapInt() = %d, want 10", got)
-	}
-}
-
-func TestMapInt_Float(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{"val": 10.0}
-	if got := MapInt(m, "val"); got != 10 {
-		t.Errorf("MapInt() = %d, want 10", got)
-	}
-}
-
-func TestMapInt_Missing(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{}
-	if got := MapInt(m, "val"); got != 0 {
-		t.Errorf("MapInt() = %d, want 0", got)
-	}
-}
-
 func TestMapFloat64_Float(t *testing.T) {
 	t.Parallel()
 
