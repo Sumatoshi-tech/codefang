@@ -4,16 +4,13 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
@@ -28,18 +25,23 @@ func TestAnalyzer_Consume(t *testing.T) {
 	require.NoError(t, h.Initialize(nil))
 
 	// 1. Insert.
-	hash1 := gitplumbing.NewHash("1111111111111111111111111111111111111111")
-	change1 := &object.Change{
-		To: object.ChangeEntry{Name: "test.txt", TreeEntry: object.TreeEntry{Hash: hash1}},
+	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
+	change1 := &gitlib.Change{
+		Action: gitlib.Insert,
+		To:     gitlib.ChangeEntry{Name: "test.txt", Hash: hash1},
 	}
-	h.TreeDiff.Changes = object.Changes{change1}
+	h.TreeDiff.Changes = gitlib.Changes{change1}
 
 	h.Identity.AuthorID = 0
-	h.LineStats.LineStats = map[object.ChangeEntry]pkgplumbing.LineStats{
+	h.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change1.To: {Added: 10, Removed: 0, Changed: 0},
 	}
 
-	commit1 := &object.Commit{Hash: gitplumbing.NewHash("c1"), Author: object.Signature{When: time.Now()}}
+	commit1 := gitlib.NewTestCommit(
+		gitlib.NewHash("c100000000000000000000000000000000000001"),
+		gitlib.Signature{When: time.Now()},
+		"insert",
+	)
 	require.NoError(t, h.Consume(&analyze.Context{Commit: commit1}))
 
 	if len(h.files) != 1 {
@@ -56,18 +58,23 @@ func TestAnalyzer_Consume(t *testing.T) {
 	}
 
 	// 2. Modify.
-	hash2 := gitplumbing.NewHash("2222222222222222222222222222222222222222")
-	change2 := &object.Change{
-		From: object.ChangeEntry{Name: "test.txt", TreeEntry: object.TreeEntry{Hash: hash1}},
-		To:   object.ChangeEntry{Name: "test.txt", TreeEntry: object.TreeEntry{Hash: hash2}},
+	hash2 := gitlib.NewHash("2222222222222222222222222222222222222222")
+	change2 := &gitlib.Change{
+		Action: gitlib.Modify,
+		From:   gitlib.ChangeEntry{Name: "test.txt", Hash: hash1},
+		To:     gitlib.ChangeEntry{Name: "test.txt", Hash: hash2},
 	}
-	h.TreeDiff.Changes = object.Changes{change2}
+	h.TreeDiff.Changes = gitlib.Changes{change2}
 	h.Identity.AuthorID = 1
-	h.LineStats.LineStats = map[object.ChangeEntry]pkgplumbing.LineStats{
+	h.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change2.To: {Added: 5, Removed: 2, Changed: 3},
 	}
 
-	commit2 := &object.Commit{Hash: gitplumbing.NewHash("c2"), Author: object.Signature{When: time.Now()}}
+	commit2 := gitlib.NewTestCommit(
+		gitlib.NewHash("c200000000000000000000000000000000000002"),
+		gitlib.Signature{When: time.Now()},
+		"modify",
+	)
 	require.NoError(t, h.Consume(&analyze.Context{Commit: commit2}))
 
 	if len(fh.Hashes) != 2 {
@@ -79,17 +86,22 @@ func TestAnalyzer_Consume(t *testing.T) {
 	}
 
 	// 3. Rename.
-	change3 := &object.Change{
-		From: object.ChangeEntry{Name: "test.txt", TreeEntry: object.TreeEntry{Hash: hash2}},
-		To:   object.ChangeEntry{Name: "renamed.txt", TreeEntry: object.TreeEntry{Hash: hash2}},
+	change3 := &gitlib.Change{
+		Action: gitlib.Modify,
+		From:   gitlib.ChangeEntry{Name: "test.txt", Hash: hash2},
+		To:     gitlib.ChangeEntry{Name: "renamed.txt", Hash: hash2},
 	}
-	h.TreeDiff.Changes = object.Changes{change3}
+	h.TreeDiff.Changes = gitlib.Changes{change3}
 	h.Identity.AuthorID = 0
-	h.LineStats.LineStats = map[object.ChangeEntry]pkgplumbing.LineStats{
+	h.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change3.To: {Added: 0, Removed: 0, Changed: 0},
 	}
 
-	commit3 := &object.Commit{Hash: gitplumbing.NewHash("c3"), Author: object.Signature{When: time.Now()}}
+	commit3 := gitlib.NewTestCommit(
+		gitlib.NewHash("c300000000000000000000000000000000000003"),
+		gitlib.Signature{When: time.Now()},
+		"rename",
+	)
 	require.NoError(t, h.Consume(&analyze.Context{Commit: commit3}))
 
 	if _, ok := h.files["test.txt"]; ok {
@@ -100,30 +112,29 @@ func TestAnalyzer_Consume(t *testing.T) {
 		t.Error("renamed.txt should exist")
 	}
 
-	fh = h.files["renamed.txt"] // Should be same object (or new one with copied stats?)
-	// Implementation: h.files[change.To.Name] = oldFH
-	// So same object.
+	fh = h.files["renamed.txt"]
 	if len(fh.Hashes) != 3 {
 		t.Errorf("expected 3 commits, got %d", len(fh.Hashes))
 	}
 
 	// 4. Delete.
-	change4 := &object.Change{
-		From: object.ChangeEntry{Name: "renamed.txt", TreeEntry: object.TreeEntry{Hash: hash2}},
+	change4 := &gitlib.Change{
+		Action: gitlib.Delete,
+		From:   gitlib.ChangeEntry{Name: "renamed.txt", Hash: hash2},
 	}
-	h.TreeDiff.Changes = object.Changes{change4}
+	h.TreeDiff.Changes = gitlib.Changes{change4}
 	h.Identity.AuthorID = 0
-	h.LineStats.LineStats = map[object.ChangeEntry]pkgplumbing.LineStats{
+	h.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change4.From: {Added: 0, Removed: 13, Changed: 0},
 	}
 
-	commit4 := &object.Commit{Hash: gitplumbing.NewHash("c4"), Author: object.Signature{When: time.Now()}}
+	commit4 := gitlib.NewTestCommit(
+		gitlib.NewHash("c400000000000000000000000000000000000004"),
+		gitlib.Signature{When: time.Now()},
+		"delete",
+	)
 	require.NoError(t, h.Consume(&analyze.Context{Commit: commit4}))
 
-	// Deleted file remains in history?
-	// Implementation:
-	// case merkletrie.Delete: fh.Hashes = append(fh.Hashes, commit.Hash)
-	// It doesn't delete from h.files.
 	if _, ok := h.files["renamed.txt"]; !ok {
 		t.Error("renamed.txt should still exist in history")
 	}
@@ -144,33 +155,29 @@ func TestAnalyzer_Merge(t *testing.T) {
 	require.NoError(t, h.Initialize(nil))
 
 	// Simulate merge commit.
-	commit := &object.Commit{
-		Hash:         gitplumbing.NewHash("m1"),
-		Author:       object.Signature{When: time.Now()},
-		ParentHashes: []gitplumbing.Hash{gitplumbing.NewHash("p1"), gitplumbing.NewHash("p2")},
-	}
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("m100000000000000000000000000000000000001"),
+		gitlib.Signature{When: time.Now()},
+		"merge",
+		gitlib.NewHash("p100000000000000000000000000000000000001"),
+		gitlib.NewHash("p200000000000000000000000000000000000002"),
+	)
 
-	// First call should consume (NumParents > 1 -> merges[hash] = true)
-	// shouldConsume = true (not in merges yet).
+	// First call should consume.
 	err := h.Consume(&analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume failed: %v", err)
 	}
 
-	if !h.merges[commit.Hash] {
+	if !h.merges[commit.Hash()] {
 		t.Error("expected merge to be recorded")
 	}
 
-	// Second call for same commit (diamond merge or similar logic? Or re-entry?)
-	// If Consume called again with same commit?
-	// If h.merges[commit.Hash] { shouldConsume = false }.
-
+	// Second call for same commit should not process again.
 	err = h.Consume(&analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume 2 failed: %v", err)
 	}
-	// Changes shouldn't be processed 2nd time.
-	// We can check by side effects.
 }
 
 func TestAnalyzer_Serialize(t *testing.T) {
@@ -179,11 +186,11 @@ func TestAnalyzer_Serialize(t *testing.T) {
 	h := &Analyzer{}
 	require.NoError(t, h.Initialize(nil))
 
-	// Manually construct report to avoid Finalize logic dependencies.
+	// Manually construct report.
 	report := analyze.Report{
 		"Files": map[string]FileHistory{
 			"test.txt": {
-				Hashes: []gitplumbing.Hash{gitplumbing.NewHash("c1")},
+				Hashes: []gitlib.Hash{gitlib.NewHash("c100000000000000000000000000000000000001")},
 				People: map[int]pkgplumbing.LineStats{
 					0: {Added: 10, Removed: 0, Changed: 5},
 				},

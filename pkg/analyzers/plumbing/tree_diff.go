@@ -8,17 +8,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/src-d/enry/v2"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
-)
-
-const (
-	bufferValue = 1024
 )
 
 // TreeDiffAnalyzer computes tree-level diffs between commits.
@@ -26,11 +20,11 @@ type TreeDiffAnalyzer struct {
 	l              interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
 	NameFilter     *regexp.Regexp
 	Languages      map[string]bool
-	previousTree   *object.Tree
-	repository     *git.Repository
+	previousTree   *gitlib.Tree
+	Repository     *gitlib.Repository
 	SkipFiles      []string
-	Changes        object.Changes
-	previousCommit plumbing.Hash
+	Changes        gitlib.Changes
+	previousCommit gitlib.Hash
 }
 
 const (
@@ -132,10 +126,10 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (t *TreeDiffAnalyzer) Initialize(repository *git.Repository) error {
+func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 	t.previousTree = nil
+	t.Repository = repository
 
-	t.repository = repository
 	if t.Languages == nil {
 		t.Languages = map[string]bool{}
 		t.Languages[allLanguages] = true
@@ -153,137 +147,141 @@ func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
 		return fmt.Errorf("consume: %w", err)
 	}
 
-	var diffs object.Changes
+	var changes gitlib.Changes
+
+	if t.previousTree == nil && commit.NumParents() > 0 {
+		// If previousTree is nil but we have parents, it means we jumped into the history (parallel processing).
+		// We need to fetch the parent tree to diff against.
+		parent, parentErr := commit.Parent(0)
+		if parentErr == nil && parent != nil {
+			var treeErr error
+
+			t.previousTree, treeErr = parent.Tree()
+			parent.Free()
+
+			if treeErr != nil {
+				// Parent tree unavailable, will diff against empty tree.
+				t.previousTree = nil
+			}
+		}
+	}
 
 	if t.previousTree != nil {
-		diffs, err = object.DiffTree(t.previousTree, tree)
+		changes, err = gitlib.TreeDiff(t.Repository, t.previousTree, tree)
 		if err != nil {
 			return fmt.Errorf("consume: %w", err)
 		}
 	} else {
-		diffs, err = t.initialTreeDiffs(tree)
+		changes, err = gitlib.InitialTreeChanges(t.Repository, tree)
 		if err != nil {
 			return err
 		}
 	}
 
+	// Free previous tree before reassigning.
+	if t.previousTree != nil {
+		t.previousTree.Free()
+	}
+
 	t.previousTree = tree
-	t.previousCommit = commit.Hash
-	t.Changes = t.filterDiffs(diffs)
+	t.previousCommit = commit.Hash()
+	t.Changes = t.filterChanges(changes)
 
 	return nil
 }
 
-func (t *TreeDiffAnalyzer) initialTreeDiffs(tree *object.Tree) (object.Changes, error) {
-	var diffs object.Changes
+func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes {
+	filtered := make(gitlib.Changes, 0, len(changes))
 
-	fileIter := tree.Files()
-	defer fileIter.Close()
-
-	for {
-		file, iterErr := fileIter.Next()
-		if iterErr != nil {
-			if errors.Is(iterErr, io.EOF) {
-				break
-			}
-
-			return nil, fmt.Errorf("consume: %w", iterErr)
-		}
-
-		pass, langErr := t.checkLanguage(file.Name, file.Hash)
-		if langErr != nil {
-			return nil, langErr
-		}
-
-		if !pass {
-			continue
-		}
-
-		diffs = append(diffs, &object.Change{
-			To: object.ChangeEntry{Name: file.Name, Tree: tree, TreeEntry: object.TreeEntry{
-				Name: file.Name, Mode: file.Mode, Hash: file.Hash}}})
-	}
-
-	return diffs, nil
-}
-
-func (t *TreeDiffAnalyzer) filterDiffs(diffs object.Changes) object.Changes {
-	filteredDiffs := make(object.Changes, 0, len(diffs))
-
-	for _, change := range diffs {
+	for _, change := range changes {
 		if t.shouldIncludeChange(change) {
-			filteredDiffs = append(filteredDiffs, change)
+			filtered = append(filtered, change)
 		}
 	}
 
-	return filteredDiffs
+	return filtered
 }
 
-func (t *TreeDiffAnalyzer) shouldIncludeChange(change *object.Change) bool {
-	if len(t.SkipFiles) > 0 && (enry.IsVendor(change.To.Name) || enry.IsVendor(change.From.Name)) {
-		return false
+func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
+	var name string
+
+	var hash gitlib.Hash
+
+	switch change.Action {
+	case gitlib.Insert:
+		name = change.To.Name
+		hash = change.To.Hash
+	case gitlib.Delete:
+		name = change.From.Name
+		hash = change.From.Hash
+	case gitlib.Modify:
+		name = change.To.Name
+		hash = change.To.Hash
 	}
 
-	for _, dir := range t.SkipFiles {
-		if strings.HasPrefix(change.To.Name, dir) || strings.HasPrefix(change.From.Name, dir) {
+	// Check blacklist.
+	if len(t.SkipFiles) > 0 {
+		for _, prefix := range t.SkipFiles {
+			if strings.HasPrefix(name, prefix) {
+				return false
+			}
+		}
+
+		if enry.IsVendor(name) {
 			return false
 		}
 	}
 
-	if t.NameFilter != nil {
-		if !t.NameFilter.MatchString(change.To.Name) && !t.NameFilter.MatchString(change.From.Name) {
+	// Check whitelist regex.
+	if t.NameFilter != nil && !t.NameFilter.MatchString(name) {
+		return false
+	}
+
+	// Check language filter.
+	if !t.Languages[allLanguages] {
+		pass, err := t.checkLanguage(name, hash)
+		if err != nil || !pass {
 			return false
 		}
 	}
 
-	var changeEntry object.ChangeEntry
-	if change.To.Tree == nil {
-		changeEntry = change.From
-	} else {
-		changeEntry = change.To
-	}
-
-	pass, langErr := t.checkLanguage(changeEntry.Name, changeEntry.TreeEntry.Hash)
-	if langErr != nil {
-		return false
-	}
-
-	return pass
+	return true
 }
 
-func (t *TreeDiffAnalyzer) checkLanguage(name string, blobHash plumbing.Hash) (bool, error) {
+func (t *TreeDiffAnalyzer) checkLanguage(fileName string, hash gitlib.Hash) (bool, error) {
 	if t.Languages[allLanguages] {
 		return true, nil
 	}
 
-	blob, err := t.repository.BlobObject(blobHash)
-	if err != nil {
-		return false, fmt.Errorf("checkLanguage: %w", err)
+	lang := enry.GetLanguage(path.Base(fileName), nil)
+	if lang == "" {
+		// Try to detect from content.
+		blob, err := t.Repository.LookupBlob(hash)
+		if err == nil {
+			defer blob.Free()
+
+			contents := blob.Contents()
+			if len(contents) > 0 {
+				lang = enry.GetLanguage(path.Base(fileName), contents)
+			}
+		}
 	}
 
-	reader, err := blob.Reader()
-	if err != nil {
-		return false, fmt.Errorf("checkLanguage: %w", err)
+	if lang == "" {
+		return false, nil
 	}
 
-	buffer := make([]byte, bufferValue)
-
-	n, err := reader.Read(buffer)
-	if err != nil && (blob.Size != 0 || !errors.Is(err, io.EOF)) {
-		return false, fmt.Errorf("checkLanguage: %w", err)
-	}
-
-	if n < len(buffer) {
-		buffer = buffer[:n]
-	}
-
-	lang := strings.ToLower(enry.GetLanguage(path.Base(name), buffer))
-
-	return t.Languages[lang], nil
+	return t.Languages[strings.ToLower(lang)], nil
 }
 
 // Finalize completes the analysis and returns the result.
 func (t *TreeDiffAnalyzer) Finalize() (analyze.Report, error) {
+	// Clean up.
+	if t.previousTree != nil {
+		t.previousTree.Free()
+		t.previousTree = nil
+	}
+
 	return nil, nil //nolint:nilnil // nil,nil return is intentional.
 }
 
@@ -292,6 +290,7 @@ func (t *TreeDiffAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *t
+		clone.previousTree = nil // Each fork starts fresh.
 		res[i] = &clone
 	}
 

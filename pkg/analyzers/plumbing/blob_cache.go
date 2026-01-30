@@ -2,18 +2,12 @@
 package plumbing
 
 import (
-	"fmt"
 	"io"
 	"maps"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
-	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
 // BlobCacheAnalyzer loads and caches file blobs for each commit.
@@ -22,9 +16,9 @@ type BlobCacheAnalyzer struct {
 		Errorf(format string, args ...any)
 	}
 	TreeDiff                *TreeDiffAnalyzer
-	repository              *git.Repository
-	cache                   map[gitplumbing.Hash]*pkgplumbing.CachedBlob
-	Cache                   map[gitplumbing.Hash]*pkgplumbing.CachedBlob //nolint:revive // intentional naming matches internal cache field.
+	Repository              *gitlib.Repository
+	cache                   map[gitlib.Hash]*gitlib.CachedBlob
+	Cache                   map[gitlib.Hash]*gitlib.CachedBlob //nolint:revive // intentional naming matches internal cache field.
 	FailOnMissingSubmodules bool
 }
 
@@ -70,34 +64,28 @@ func (b *BlobCacheAnalyzer) Configure(facts map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (b *BlobCacheAnalyzer) Initialize(repository *git.Repository) error {
-	b.repository = repository
-	b.cache = map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}
+func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
+	b.Repository = repo
+	b.cache = map[gitlib.Hash]*gitlib.CachedBlob{}
 
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
+func (b *BlobCacheAnalyzer) Consume(_ *analyze.Context) error {
 	changes := b.TreeDiff.Changes
-	commit := ctx.Commit
 
-	cache := map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}
-	newCache := map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}
+	cache := map[gitlib.Hash]*gitlib.CachedBlob{}
+	newCache := map[gitlib.Hash]*gitlib.CachedBlob{}
 
 	for _, change := range changes {
-		action, err := change.Action()
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
-
-		switch action {
-		case merkletrie.Insert:
-			b.handleInsert(change, commit, cache, newCache)
-		case merkletrie.Delete:
-			b.handleDelete(change, commit, cache)
-		case merkletrie.Modify:
-			b.handleModify(change, commit, cache, newCache)
+		switch change.Action {
+		case gitlib.Insert:
+			b.handleInsert(change, cache, newCache)
+		case gitlib.Delete:
+			b.handleDelete(change, cache)
+		case gitlib.Modify:
+			b.handleModify(change, cache, newCache)
 		}
 	}
 
@@ -108,125 +96,78 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 }
 
 func (b *BlobCacheAnalyzer) handleInsert(
-	change *object.Change, commit *object.Commit,
-	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	change *gitlib.Change,
+	cache, newCache map[gitlib.Hash]*gitlib.CachedBlob,
 ) {
-	cache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-	newCache[change.To.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+	hash := change.To.Hash
 
-	blob, err := b.getBlob(&change.To, commit.File)
-	if err != nil { //nolint:revive // empty block is intentional.
-		// Log error.
-	} else {
-		cb := &pkgplumbing.CachedBlob{Blob: *blob}
+	// Initialize with empty blob.
+	cache[hash] = &gitlib.CachedBlob{}
+	newCache[hash] = &gitlib.CachedBlob{}
 
-		cacheErr := cb.Cache()
-		if cacheErr == nil {
-			cache[change.To.TreeEntry.Hash] = cb
-			newCache[change.To.TreeEntry.Hash] = cb
-		}
+	// Try to load the blob.
+	blob, err := gitlib.NewCachedBlobFromRepo(b.Repository, hash)
+	if err == nil {
+		cache[hash] = blob
+		newCache[hash] = blob
 	}
 }
 
 func (b *BlobCacheAnalyzer) handleDelete(
-	change *object.Change, commit *object.Commit,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) {
-	existing, exists := b.cache[change.From.TreeEntry.Hash]
+	hash := change.From.Hash
+
+	// Check if we have it cached.
+	existing, exists := b.cache[hash]
 	if exists {
-		cache[change.From.TreeEntry.Hash] = existing
+		cache[hash] = existing
 
 		return
 	}
 
-	cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+	// Initialize with empty blob.
+	cache[hash] = &gitlib.CachedBlob{}
 
-	blob, err := b.getBlob(&change.From, commit.File)
-	if err != nil {
-		if err.Error() == gitplumbing.ErrObjectNotFound.Error() {
-			dummyBlob, dummyErr := pkgplumbing.CreateDummyBlob(change.From.TreeEntry.Hash)
-			if dummyErr == nil {
-				cache[change.From.TreeEntry.Hash] = &pkgplumbing.CachedBlob{Blob: *dummyBlob}
-			}
-		}
-
-		return
-	}
-
-	cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-	cacheErr := cb.Cache()
-	if cacheErr == nil {
-		cache[change.From.TreeEntry.Hash] = cb
+	// Try to load the blob.
+	blob, err := gitlib.NewCachedBlobFromRepo(b.Repository, hash)
+	if err == nil {
+		cache[hash] = blob
 	}
 }
 
 func (b *BlobCacheAnalyzer) handleModify(
-	change *object.Change, commit *object.Commit,
-	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
+	change *gitlib.Change,
+	cache, newCache map[gitlib.Hash]*gitlib.CachedBlob,
 ) {
-	b.cacheBlob(&change.To, commit, cache, newCache)
-	b.loadFromBlob(&change.From, commit, cache)
-}
+	// Handle "to" side (new version).
+	toHash := change.To.Hash
+	cache[toHash] = &gitlib.CachedBlob{}
+	newCache[toHash] = &gitlib.CachedBlob{}
 
-func (b *BlobCacheAnalyzer) cacheBlob(
-	entry *object.ChangeEntry, commit *object.Commit,
-	cache, newCache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) {
-	cache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-	newCache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
-
-	blob, err := b.getBlob(entry, commit.File)
-	if err != nil {
-		return
+	blob, err := gitlib.NewCachedBlobFromRepo(b.Repository, toHash)
+	if err == nil {
+		cache[toHash] = blob
+		newCache[toHash] = blob
 	}
 
-	cb := &pkgplumbing.CachedBlob{Blob: *blob}
+	// Handle "from" side (old version).
+	fromHash := change.From.Hash
 
-	cacheErr := cb.Cache()
-	if cacheErr == nil {
-		cache[entry.TreeEntry.Hash] = cb
-		newCache[entry.TreeEntry.Hash] = cb
-	}
-}
-
-func (b *BlobCacheAnalyzer) loadFromBlob(
-	entry *object.ChangeEntry, commit *object.Commit,
-	cache map[gitplumbing.Hash]*pkgplumbing.CachedBlob,
-) {
-	existing, exists := b.cache[entry.TreeEntry.Hash]
+	existing, exists := b.cache[fromHash]
 	if exists {
-		cache[entry.TreeEntry.Hash] = existing
+		cache[fromHash] = existing
 
 		return
 	}
 
-	cache[entry.TreeEntry.Hash] = &pkgplumbing.CachedBlob{}
+	cache[fromHash] = &gitlib.CachedBlob{}
 
-	blob, err := b.getBlob(entry, commit.File)
-	if err != nil {
-		return
+	blob, err = gitlib.NewCachedBlobFromRepo(b.Repository, fromHash)
+	if err == nil {
+		cache[fromHash] = blob
 	}
-
-	cb := &pkgplumbing.CachedBlob{Blob: *blob}
-
-	cacheErr := cb.Cache()
-	if cacheErr == nil {
-		cache[entry.TreeEntry.Hash] = cb
-	}
-}
-
-// FileGetter provides access to file objects from a git tree.
-type FileGetter func(path string) (*object.File, error)
-
-func (b *BlobCacheAnalyzer) getBlob(entry *object.ChangeEntry, _ FileGetter) (*object.Blob, error) {
-	blob, err := b.repository.BlobObject(entry.TreeEntry.Hash)
-	if err != nil {
-		// Simplified submodule handling for now.
-		return nil, fmt.Errorf("getBlob: %w", err)
-	}
-
-	return blob, nil
 }
 
 // Finalize completes the analysis and returns the result.
@@ -239,8 +180,8 @@ func (b *BlobCacheAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *b
-		// Deep copy cache?
-		clone.cache = map[gitplumbing.Hash]*pkgplumbing.CachedBlob{}
+		// Deep copy cache.
+		clone.cache = map[gitlib.Hash]*gitlib.CachedBlob{}
 		maps.Copy(clone.cache, b.cache)
 
 		res[i] = &clone

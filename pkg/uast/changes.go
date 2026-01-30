@@ -4,8 +4,7 @@
 package uast
 
 import (
-	"github.com/go-git/go-git/v6/plumbing/object"
-
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -16,5 +15,5 @@ const DependencyUastChanges = "uast_changes"
 type Change struct {
 	Before *node.Node
 	After  *node.Node
-	Change *object.Change
+	Change *gitlib.Change
 }

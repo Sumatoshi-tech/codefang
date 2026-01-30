@@ -9,8 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -32,7 +31,7 @@ type HistoryAnalyzer struct {
 	UASTChanges      *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
 	commentsByTick   map[int][]string
-	commitsByTick    map[int][]gitplumbing.Hash
+	commitsByTick    map[int][]gitlib.Hash
 	MinCommentLength int
 	Gap              float32
 }
@@ -106,7 +105,7 @@ func (s *HistoryAnalyzer) Configure(facts map[string]any) error {
 		s.MinCommentLength = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitplumbing.Hash); exists {
+	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); exists {
 		s.commitsByTick = val
 	}
 
@@ -126,7 +125,7 @@ func (s *HistoryAnalyzer) validate() {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (s *HistoryAnalyzer) Initialize(_ *git.Repository) error {
+func (s *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	s.commentsByTick = map[int][]string{}
 	s.validate()
 
@@ -308,10 +307,10 @@ func (s *HistoryAnalyzer) Serialize(result analyze.Report, _ bool, writer io.Wri
 		return errors.New("expected map[int][]string for comments") //nolint:err113 // descriptive error for type assertion failure.
 	}
 
-	commits, ok := result["commits_by_tick"].(map[int][]gitplumbing.Hash)
+	commits, ok := result["commits_by_tick"].(map[int][]gitlib.Hash)
 	if !ok {
 		//nolint:err113 // type assertion error.
-		return errors.New("expected map[int][]gitplumbing.Hash for commits")
+		return errors.New("expected map[int][]gitlib.Hash for commits")
 	}
 
 	ticks := make([]int, 0, len(emotions))

@@ -1,26 +1,21 @@
-# Deadcode Whitelist
-# Functions that appear as "dead" but are actually required for interface compliance
-# or other legitimate reasons that the deadcode analyzer doesn't recognize.
-#
-# Format: file_path:line:col: function_name
-# The filtering script matches on function names (the part after the last colon)
+# Deadcode whitelist - functions intentionally kept
+# Format: file:function_name (function_name must match exactly)
 
-# Add whitelisted functions below as needed:
-# Example:
-# internal/pkg/errors.go:35:22: CustomError.Error
+# Interface implementation methods in test files
+# These satisfy interfaces at compile-time via: var _ Interface = (*Type)(nil)
+# mockReportSection implements ReportSection interface
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.SectionTitle
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.Score
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.ScoreLabel
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.StatusMessage
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.KeyMetrics
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.Distribution
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.TopIssues
+pkg/analyzers/analyze/report_section_test.go:mockReportSection.AllIssues
 
-# Auto-generated PEG
-pkg/uast/pkg/mapping/mapping.peg.go:306:6: Pretty
-pkg/uast/pkg/mapping/mapping.peg.go:313:6: Size
-pkg/uast/pkg/node/dsl_parser.peg.go:292:6: Pretty
-pkg/uast/pkg/node/dsl_parser.peg.go:299:6: Size
-
-# Test mock methods (interface compliance)
-pkg/analyzers/analyze/report_section_test.go:78:29: mockReportSection.SectionTitle
-pkg/analyzers/analyze/report_section_test.go:79:29: mockReportSection.Score
-pkg/analyzers/analyze/report_section_test.go:80:29: mockReportSection.ScoreLabel
-pkg/analyzers/analyze/report_section_test.go:81:29: mockReportSection.StatusMessage
-pkg/analyzers/analyze/report_section_test.go:82:29: mockReportSection.KeyMetrics
-pkg/analyzers/analyze/report_section_test.go:83:29: mockReportSection.Distribution
-pkg/analyzers/analyze/report_section_test.go:84:29: mockReportSection.TopIssues
-pkg/analyzers/analyze/report_section_test.go:85:29: mockReportSection.AllIssues
+# Auto-generated parser code (pigeon PEG parser)
+# These functions are generated and cannot be modified
+pkg/uast/pkg/mapping/mapping.peg.go:Pretty
+pkg/uast/pkg/mapping/mapping.peg.go:Size
+pkg/uast/pkg/node/dsl_parser.peg.go:Pretty
+pkg/uast/pkg/node/dsl_parser.peg.go:Size

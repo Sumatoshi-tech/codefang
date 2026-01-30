@@ -2,18 +2,14 @@ package plumbing
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"path"
 
-	"github.com/go-git/go-git/v6"
-	gitplumbing "github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/utils/merkletrie"
 	"github.com/src-d/enry/v2"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
-	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
 // LanguagesDetectionAnalyzer detects programming languages of changed files.
@@ -23,7 +19,7 @@ type LanguagesDetectionAnalyzer struct {
 	BlobCache *BlobCacheAnalyzer
 
 	// Output.
-	Languages map[gitplumbing.Hash]string
+	Languages map[gitlib.Hash]string
 
 	// Internal. //nolint:unused // used via reflection or external caller.
 	l interface { //nolint:unused // acknowledged.
@@ -62,7 +58,7 @@ func (l *LanguagesDetectionAnalyzer) Configure(_ map[string]any) error {
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (l *LanguagesDetectionAnalyzer) Initialize(_ *git.Repository) error {
+func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
@@ -70,26 +66,21 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *git.Repository) error {
 func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
 	changes := l.TreeDiff.Changes
 	cache := l.BlobCache.Cache
-	result := map[gitplumbing.Hash]string{}
+	result := map[gitlib.Hash]string{}
 
 	for _, change := range changes {
-		action, err := change.Action()
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
-
-		switch action {
-		case merkletrie.Insert:
-			result[change.To.TreeEntry.Hash] = l.detectLanguage(
-				change.To.Name, cache[change.To.TreeEntry.Hash])
-		case merkletrie.Delete:
-			result[change.From.TreeEntry.Hash] = l.detectLanguage(
-				change.From.Name, cache[change.From.TreeEntry.Hash])
-		case merkletrie.Modify:
-			result[change.To.TreeEntry.Hash] = l.detectLanguage(
-				change.To.Name, cache[change.To.TreeEntry.Hash])
-			result[change.From.TreeEntry.Hash] = l.detectLanguage(
-				change.From.Name, cache[change.From.TreeEntry.Hash])
+		switch change.Action {
+		case gitlib.Insert:
+			result[change.To.Hash] = l.detectLanguage(
+				change.To.Name, cache[change.To.Hash])
+		case gitlib.Delete:
+			result[change.From.Hash] = l.detectLanguage(
+				change.From.Name, cache[change.From.Hash])
+		case gitlib.Modify:
+			result[change.To.Hash] = l.detectLanguage(
+				change.To.Name, cache[change.To.Hash])
+			result[change.From.Hash] = l.detectLanguage(
+				change.From.Name, cache[change.From.Hash])
 		}
 	}
 
@@ -98,13 +89,13 @@ func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
 	return nil
 }
 
-func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *pkgplumbing.CachedBlob) string {
+func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.CachedBlob) string {
 	if blob == nil {
 		return ""
 	}
 
 	_, err := blob.CountLines()
-	if errors.Is(err, pkgplumbing.ErrBinary) {
+	if errors.Is(err, gitlib.ErrBinary) {
 		return ""
 	}
 

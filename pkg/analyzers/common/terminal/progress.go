@@ -12,22 +12,6 @@ const (
 	ProgressEmpty  = "░"
 )
 
-// Status symbols.
-const (
-	StatusGood    = "✓"
-	StatusWarning = "⚠"
-	StatusBad     = "✗"
-	StatusInfo    = "●"
-)
-
-// Status string constants.
-const (
-	StatusNameGood = "good"
-	StatusNameFair = "fair"
-	StatusNamePoor = "poor"
-	StatusNameInfo = "info"
-)
-
 // DrawProgressBar draws a progress bar of the given width.
 // Value is clamped to [0, 1] range.
 // Example: DrawProgressBar(0.7, 10) returns "███████░░░".
@@ -63,20 +47,6 @@ func FormatScoreBar(score float64, barWidth int) string {
 	label := FormatScore(score)
 
 	return fmt.Sprintf("[%s] %s", bar, label)
-}
-
-// FormatStatus returns the symbol for a status string.
-func FormatStatus(status string) string {
-	switch status {
-	case StatusNameGood:
-		return StatusGood
-	case StatusNameFair:
-		return StatusWarning
-	case StatusNamePoor:
-		return StatusBad
-	default:
-		return StatusInfo
-	}
 }
 
 // PercentMultiplier converts 0-1 to 0-100.
