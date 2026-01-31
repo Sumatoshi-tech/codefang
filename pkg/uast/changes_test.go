@@ -510,7 +510,6 @@ func TestDetectChanges_JavaConstructorChanged(t *testing.T) {
 	}
 }
 
-//nolint:gocognit,gocyclo,cyclop // Complex test scenario with many assertions.
 func TestDetectChanges_ComplexScenario(t *testing.T) {
 	// Test a complex scenario with multiple types of changes.
 	before := &node.Node{

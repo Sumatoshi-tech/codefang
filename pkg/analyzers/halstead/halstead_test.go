@@ -136,7 +136,7 @@ func TestAnalyzer_CalculateMetrics(t *testing.T) {
 	}
 }
 
-func TestAnalyzer_Thresholds(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
+func TestAnalyzer_Thresholds(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
@@ -247,7 +247,7 @@ func TestAnalyzer_FunctionNameExtraction(t *testing.T) {
 	}
 }
 
-func TestAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // cognitive complexity is acceptable for this function.
+func TestAnalyzer_RealAggregation(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
@@ -324,7 +324,7 @@ func TestAnalyzer_RealAggregation(t *testing.T) { //nolint:gocognit // cognitive
 		t.Error("Expected operators map in function data")
 	}
 
-	if operands, opdsOK := funcData["operands"].(map[string]int); opdsOK { //nolint:nestif // nested logic is clear in context.
+	if operands, opdsOK := funcData["operands"].(map[string]int); opdsOK {
 		if operands["x"] != 1 {
 			t.Errorf("Expected 1 occurrence of 'x', got %d", operands["x"])
 		}

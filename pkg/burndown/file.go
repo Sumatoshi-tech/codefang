@@ -107,6 +107,7 @@ func (file *File) ReplaceUpdaters(updaters []Updater) {
 	file.updaters = updaters
 }
 
+// Len returns the number of lines in the file.
 func (file *File) Len() int {
 	return int(file.tree.Max().Item().Key)
 }

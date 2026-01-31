@@ -42,7 +42,7 @@ func (b *CGOBridge) getRepoPtr() unsafe.Pointer {
 		return nil
 	}
 
-	return unsafe.Pointer(ptrField.UnsafePointer())
+	return ptrField.UnsafePointer()
 }
 
 // BlobResult represents the result of loading a single blob.
@@ -58,6 +58,7 @@ type BlobResult struct {
 // DiffOpType represents the type of diff operation.
 type DiffOpType int
 
+// Diff operation types.
 const (
 	DiffOpEqual  DiffOpType = 0
 	DiffOpInsert DiffOpType = 1
@@ -101,13 +102,14 @@ func (b *CGOBridge) BatchLoadBlobs(hashes []Hash) []BlobResult {
 			results[i].Hash = hashes[i]
 			results[i].Error = ErrRepositoryPointer
 		}
+
 		return results
 	}
 
 	// Prepare C requests
 	cRequests := make([]C.cf_blob_request, len(hashes))
 	for i, h := range hashes {
-		for j := 0; j < 20; j++ {
+		for j := range 20 {
 			cRequests[i].oid.id[j] = C.uchar(h[j])
 		}
 	}
@@ -137,6 +139,7 @@ func (b *CGOBridge) BatchLoadBlobs(hashes []Hash) []BlobResult {
 
 		if cRes.error != C.CF_OK {
 			results[i].Error = cgoBlobError(int(cRes.error))
+
 			continue
 		}
 
@@ -172,6 +175,7 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 		for i := range results {
 			results[i].Error = ErrRepositoryPointer
 		}
+
 		return results
 	}
 
@@ -179,13 +183,13 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 	cRequests := make([]C.cf_diff_request, len(requests))
 	for i, req := range requests {
 		if req.HasOld {
-			for j := 0; j < 20; j++ {
+			for j := range 20 {
 				cRequests[i].old_oid.id[j] = C.uchar(req.OldHash[j])
 			}
 			cRequests[i].has_old = 1
 		}
 		if req.HasNew {
-			for j := 0; j < 20; j++ {
+			for j := range 20 {
 				cRequests[i].new_oid.id[j] = C.uchar(req.NewHash[j])
 			}
 			cRequests[i].has_new = 1
@@ -215,6 +219,7 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 	for i, cRes := range cResults {
 		if cRes.error != C.CF_OK {
 			results[i].Error = cgoDiffError(int(cRes.error))
+
 			continue
 		}
 
@@ -225,7 +230,7 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 		if cRes.op_count > 0 && cRes.ops != nil {
 			results[i].Ops = make([]DiffOp, cRes.op_count)
 			cOps := (*[1 << 20]C.cf_diff_op)(unsafe.Pointer(cRes.ops))[:cRes.op_count:cRes.op_count]
-			for j := 0; j < int(cRes.op_count); j++ {
+			for j := range int(cRes.op_count) {
 				results[i].Ops[j].Type = DiffOpType(cOps[j].type_)
 				results[i].Ops[j].LineCount = int(cOps[j].line_count)
 			}
@@ -243,6 +248,7 @@ type cgoError string
 
 func (e cgoError) Error() string { return string(e) }
 
+// CGO operation errors.
 var (
 	ErrRepositoryPointer = cgoError("failed to get repository pointer")
 	ErrBlobLookup        = cgoError("blob lookup failed")

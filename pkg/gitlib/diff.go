@@ -7,6 +7,9 @@ import (
 	git2go "github.com/libgit2/git2go/v34"
 )
 
+// initialDiffCapacity is the initial capacity for diff result slices.
+const initialDiffCapacity = 16
+
 // LineDiff represents a single diff operation at the line level.
 type LineDiff struct {
 	Type      LineDiffType
@@ -32,96 +35,119 @@ type BlobDiffResult struct {
 	Diffs    []LineDiff
 }
 
+// diffState tracks state during blob diff processing.
+type diffState struct {
+	result       *BlobDiffResult
+	currentType  LineDiffType
+	currentCount int
+	oldLinePos   int
+}
+
+// flush writes the current accumulated diff to the result.
+func (s *diffState) flush() {
+	if s.currentCount > 0 {
+		s.result.Diffs = append(s.result.Diffs, LineDiff{
+			Type:      s.currentType,
+			LineCount: s.currentCount,
+		})
+		s.currentCount = 0
+	}
+}
+
+// processLine handles a single diff line.
+func (s *diffState) processLine(line git2go.DiffLine) {
+	var lineType LineDiffType
+
+	switch line.Origin {
+	case git2go.DiffLineContext:
+		lineType = LineDiffEqual
+		s.oldLinePos++
+	case git2go.DiffLineAddition:
+		lineType = LineDiffInsert
+	case git2go.DiffLineDeletion:
+		lineType = LineDiffDelete
+		s.oldLinePos++
+	case git2go.DiffLineContextEOFNL,
+		git2go.DiffLineAddEOFNL,
+		git2go.DiffLineDelEOFNL,
+		git2go.DiffLineFileHdr,
+		git2go.DiffLineHunkHdr,
+		git2go.DiffLineBinary:
+		return
+	}
+
+	if lineType == s.currentType {
+		s.currentCount++
+	} else {
+		s.flush()
+		s.currentType = lineType
+		s.currentCount = 1
+	}
+}
+
+// processHunk handles a diff hunk, inserting implicit equal blocks.
+func (s *diffState) processHunk(hunk git2go.DiffHunk) {
+	if hunk.OldStart > 0 && hunk.OldStart-1 > s.oldLinePos {
+		skippedLines := hunk.OldStart - 1 - s.oldLinePos
+		if skippedLines > 0 {
+			s.flush()
+			s.result.Diffs = append(s.result.Diffs, LineDiff{
+				Type:      LineDiffEqual,
+				LineCount: skippedLines,
+			})
+			s.oldLinePos = hunk.OldStart - 1
+		}
+	}
+}
+
+// finalize adds any trailing equal block for unchanged lines.
+func (s *diffState) finalize() {
+	s.flush()
+
+	if s.result.OldLines > s.oldLinePos {
+		s.result.Diffs = append(s.result.Diffs, LineDiff{
+			Type:      LineDiffEqual,
+			LineCount: s.result.OldLines - s.oldLinePos,
+		})
+	}
+}
+
 // DiffBlobs computes a line-level diff between two blobs using libgit2's native diff.
 // This is much faster than loading blob contents and diffing in Go.
 func DiffBlobs(oldBlob, newBlob *Blob, oldPath, newPath string) (*BlobDiffResult, error) {
-	result := &BlobDiffResult{
-		Diffs: make([]LineDiff, 0, 16),
+	state := &diffState{
+		result:      &BlobDiffResult{Diffs: make([]LineDiff, 0, initialDiffCapacity)},
+		currentType: -1,
 	}
 
-	// Get total line counts from blob contents directly
-	// This is needed for burndown's integrity checks
 	if oldBlob != nil {
-		result.OldLines = countLines(oldBlob.Contents())
+		state.result.OldLines = countLines(oldBlob.Contents())
 	}
+
 	if newBlob != nil {
-		result.NewLines = countLines(newBlob.Contents())
-	}
-
-	var currentType LineDiffType = -1
-	var currentCount int
-
-	// Track position in old file to insert implicit equal blocks
-	var oldLinePos int
-
-	flushCurrent := func() {
-		if currentCount > 0 {
-			result.Diffs = append(result.Diffs, LineDiff{
-				Type:      currentType,
-				LineCount: currentCount,
-			})
-			currentCount = 0
-		}
-	}
-
-	// Create the nested callback structure that git2go expects
-	lineCallback := func(line git2go.DiffLine) error {
-		var lineType LineDiffType
-
-		switch line.Origin {
-		case git2go.DiffLineContext:
-			lineType = LineDiffEqual
-			oldLinePos++
-		case git2go.DiffLineAddition:
-			lineType = LineDiffInsert
-		case git2go.DiffLineDeletion:
-			lineType = LineDiffDelete
-			oldLinePos++
-		default:
-			// Skip file headers, hunk headers, etc.
-			return nil
-		}
-
-		// Coalesce consecutive same-type lines
-		if lineType == currentType {
-			currentCount++
-		} else {
-			flushCurrent()
-			currentType = lineType
-			currentCount = 1
-		}
-
-		return nil
-	}
-
-	hunkCallback := func(hunk git2go.DiffHunk) (git2go.DiffForEachLineCallback, error) {
-		// Insert implicit equal block for lines before this hunk
-		// OldStart is 1-based, oldLinePos is 0-based
-		if hunk.OldStart > 0 && hunk.OldStart-1 > oldLinePos {
-			skippedLines := hunk.OldStart - 1 - oldLinePos
-			if skippedLines > 0 {
-				flushCurrent()
-				result.Diffs = append(result.Diffs, LineDiff{
-					Type:      LineDiffEqual,
-					LineCount: skippedLines,
-				})
-				oldLinePos = hunk.OldStart - 1
-			}
-		}
-
-		return lineCallback, nil
-	}
-
-	fileCallback := func(delta git2go.DiffDelta, progress float64) (git2go.DiffForEachHunkCallback, error) {
-		return hunkCallback, nil
+		state.result.NewLines = countLines(newBlob.Contents())
 	}
 
 	var oldNative, newNative *git2go.Blob
+
 	if oldBlob != nil {
 		oldNative = oldBlob.Native()
 	}
+
 	if newBlob != nil {
 		newNative = newBlob.Native()
+	}
+
+	fileCallback := func(_ git2go.DiffDelta, _ float64) (git2go.DiffForEachHunkCallback, error) {
+		return func(hunk git2go.DiffHunk) (git2go.DiffForEachLineCallback, error) {
+			state.processHunk(hunk)
+
+			return func(line git2go.DiffLine) error {
+				state.processLine(line)
+
+				return nil
+			}, nil
+		}, nil
 	}
 
 	err := git2go.DiffBlobs(oldNative, oldPath, newNative, newPath, nil, fileCallback, git2go.DiffDetailLines)
@@ -129,17 +155,9 @@ func DiffBlobs(oldBlob, newBlob *Blob, oldPath, newPath string) (*BlobDiffResult
 		return nil, fmt.Errorf("diff blobs: %w", err)
 	}
 
-	flushCurrent()
+	state.finalize()
 
-	// Add trailing equal block for remaining unchanged lines
-	if result.OldLines > oldLinePos {
-		result.Diffs = append(result.Diffs, LineDiff{
-			Type:      LineDiffEqual,
-			LineCount: result.OldLines - oldLinePos,
-		})
-	}
-
-	return result, nil
+	return state.result, nil
 }
 
 // DiffBlobsFromCache computes a line-level diff using cached blob data.
@@ -168,6 +186,7 @@ func countLines(data []byte) int {
 	}
 
 	count := strings.Count(string(data), "\n")
+
 	// If file doesn't end with newline, add 1
 	if len(data) > 0 && data[len(data)-1] != '\n' {
 		count++

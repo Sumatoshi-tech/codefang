@@ -134,6 +134,7 @@ func (f *FileDiffAnalyzer) Consume(ctx *analyze.Context) error {
 	if ctx != nil && ctx.FileDiffs != nil {
 		// Use the pre-computed diffs from the runtime pipeline
 		f.FileDiffs = ctx.FileDiffs
+
 		return nil
 	}
 
@@ -265,7 +266,7 @@ func (f *FileDiffAnalyzer) processChange(
 	// Another fast path: if strings are identical, no diff needed
 	if strFrom == strTo {
 		lineCount := strings.Count(strFrom, "\n")
-		if len(strFrom) > 0 && strFrom[len(strFrom)-1] != '\n' {
+		if strFrom != "" && strFrom[len(strFrom)-1] != '\n' {
 			lineCount++
 		}
 
@@ -301,7 +302,9 @@ func (f *FileDiffAnalyzer) processChange(
 func storeResult(result map[string]pkgplumbing.FileDiffData, name string, data pkgplumbing.FileDiffData, mu *sync.Mutex) {
 	if mu != nil {
 		mu.Lock()
+
 		result[name] = data
+
 		mu.Unlock()
 	} else {
 		result[name] = data
@@ -324,6 +327,7 @@ func (f *FileDiffAnalyzer) Finalize() (analyze.Report, error) {
 // Fork creates a copy of the analyzer for parallel processing.
 func (f *FileDiffAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
+
 	for i := range n {
 		clone := *f
 		res[i] = &clone

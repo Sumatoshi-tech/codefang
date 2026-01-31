@@ -22,12 +22,6 @@ type PreparedCommit struct {
 	Tick int
 }
 
-// PreparedConsumer is implemented by analyzers that can consume PreparedCommit.
-// This enables pipelined execution where commit preparation runs in parallel.
-type PreparedConsumer interface {
-	ConsumePrepared(prepared *PreparedCommit) error
-}
-
 // PreparationConfig holds configuration for commit preparation.
 type PreparationConfig struct {
 	// Tick0 is the time of the first commit (for tick calculation).
@@ -36,32 +30,4 @@ type PreparationConfig struct {
 	TickSize time.Duration
 	// PeopleDict maps author keys to author IDs.
 	PeopleDict map[string]int
-}
-
-// ComputeTick calculates the tick value for a given commit time.
-func (pc *PreparationConfig) ComputeTick(commitTime time.Time) int {
-	if pc.Tick0.IsZero() {
-		return 0
-	}
-
-	elapsed := commitTime.Sub(pc.Tick0)
-	if elapsed < 0 {
-		return 0
-	}
-
-	return int(elapsed / pc.TickSize)
-}
-
-// ComputeAuthorID resolves the author ID from a commit signature.
-func (pc *PreparationConfig) ComputeAuthorID(sig gitlib.Signature) int {
-	if pc.PeopleDict == nil {
-		return 0
-	}
-
-	key := sig.Email
-	if id, ok := pc.PeopleDict[key]; ok {
-		return id
-	}
-
-	return 0
 }

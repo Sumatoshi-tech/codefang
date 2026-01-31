@@ -21,7 +21,8 @@ func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	}
 
 	if r, ok := chart.(interface{ Render(io.Writer) error }); ok {
-		if err := r.Render(writer); err != nil {
+		err = r.Render(writer)
+		if err != nil {
 			return fmt.Errorf("render chart: %w", err)
 		}
 
@@ -32,8 +33,6 @@ func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 }
 
 // GenerateChart creates the chart object from the report.
-//
-//nolint:ireturn // interface needed for generic plotting
 func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	files, ok := report["Files"].(map[string]FileHistory)
 	if !ok {

@@ -216,8 +216,6 @@ func convertTreeSitterNodeToRawAST(nd sitter.Node) RawAST {
 }
 
 // ValidateUAST validates a UAST node against the schema.
-//
-//nolint:gocognit,gocyclo,cyclop // Complex validation logic with multiple error categories.
 func (tr *TestRunner) ValidateUAST(nd *node.Node, testName string) error {
 	if nd == nil {
 		return errors.New("node is nil")
@@ -823,8 +821,6 @@ func formatFieldPath(fieldPath string, nodeMap map[string]any) string {
 }
 
 // buildTreeStructure recursively builds a visual representation of the UAST tree.
-//
-//nolint:gocognit,gocyclo,cyclop // Recursive tree building with multiple node types.
 func buildTreeStructure(data any, depth int, prefix string) []string {
 	var lines []string
 
@@ -873,7 +869,7 @@ func buildTreeStructure(data any, depth int, prefix string) []string {
 		lines = append(lines, line)
 
 		// Add children.
-		if children, ok := v["children"].([]any); ok && len(children) > 0 { //nolint:nestif // Tree traversal.
+		if children, ok := v["children"].([]any); ok && len(children) > 0 {
 			for i, child := range children {
 				isLast := i == len(children)-1
 				childPrefix := prefix
@@ -1017,8 +1013,6 @@ func printUASTWithHighlight(data any, errorPath []string) string {
 }
 
 // printUASTTreeRec prints the tree with improved structure.
-//
-//nolint:gocognit,gocyclo,cyclop // Recursive tree printer with multiple node types.
 func printUASTTreeRec(data any, errorPath, curPath []string, lines *[]string, prefix string, isLast bool) {
 	highlight := len(curPath) == len(errorPath)
 	if highlight {
@@ -1098,7 +1092,7 @@ func printUASTTreeRec(data any, errorPath, curPath []string, lines *[]string, pr
 
 		childIdx := 0
 
-		if childrenRaw, ok := v["children"]; ok { //nolint:nestif // Tree traversal requires nested type switches.
+		if childrenRaw, ok := v["children"]; ok {
 			switch children := childrenRaw.(type) {
 			case []any:
 				for i, child := range children {

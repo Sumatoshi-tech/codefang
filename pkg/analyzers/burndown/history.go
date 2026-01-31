@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"maps"
 	"os"
 	"runtime"
 	"sort"
@@ -55,9 +56,7 @@ type HistoryAnalyzer struct {
 		Infof(format string, args ...any)
 	}
 	BlobCache            *plumbing.BlobCacheAnalyzer
-	deletions            map[string]bool
 	renames              map[string]string
-	mergedFiles          map[string]bool
 	shardedAllocator     *rbtree.ShardedAllocator
 	globalHistory        sparseHistory
 	repository           *gitlib.Repository
@@ -319,6 +318,7 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	if b.shardedAllocator == nil {
 		b.shardedAllocator = rbtree.NewShardedAllocator(b.Goroutines, b.HibernationThreshold)
 	}
+
 	b.shards = make([]*Shard, b.Goroutines)
 
 	allocators := b.shardedAllocator.Shards()
@@ -375,6 +375,7 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	} else {
 		b.tick = tick
 		b.mergedAuthor = author
+
 		for _, shard := range b.shards {
 			shard.mergedFiles = map[string]bool{}
 		}
@@ -415,6 +416,7 @@ func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) erro
 	} else {
 		b.tick = tick
 		b.mergedAuthor = author
+
 		for _, shard := range b.shards {
 			shard.mergedFiles = map[string]bool{}
 		}
@@ -422,9 +424,7 @@ func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) erro
 
 	// Convert cache type (gitlib.CachedBlob to pkgplumbing.CachedBlob - they're aliased).
 	cache := make(map[gitlib.Hash]*pkgplumbing.CachedBlob, len(prepared.Cache))
-	for k, v := range prepared.Cache {
-		cache[k] = v
-	}
+	maps.Copy(cache, prepared.Cache)
 
 	shardChanges, renames := b.groupChangesByShard(prepared.Changes)
 
@@ -613,63 +613,11 @@ func (b *HistoryAnalyzer) Boot() error {
 
 // Finalize completes the analysis and returns the result.
 func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
-	// Aggregate stats from shards.
-	b.globalHistory = sparseHistory{}
-	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
-	b.matrix = make([]map[int]int64, b.PeopleNumber)
-
-	for _, shard := range b.shards {
-		// Merge globalHistory.
-		for tick, counts := range shard.globalHistory {
-			if b.globalHistory[tick] == nil {
-				b.globalHistory[tick] = map[int]int64{}
-			}
-
-			for prevTick, count := range counts {
-				b.globalHistory[tick][prevTick] += count
-			}
-		}
-
-		// Merge peopleHistories.
-		for person, history := range shard.peopleHistories {
-			if len(history) == 0 {
-				continue
-			}
-
-			if b.peopleHistories[person] == nil {
-				b.peopleHistories[person] = sparseHistory{}
-			}
-
-			for tick, counts := range history {
-				if b.peopleHistories[person][tick] == nil {
-					b.peopleHistories[person][tick] = map[int]int64{}
-				}
-
-				for prevTick, count := range counts {
-					b.peopleHistories[person][tick][prevTick] += count
-				}
-			}
-		}
-
-		// Merge matrix.
-		for author, row := range shard.matrix {
-			if len(row) == 0 {
-				continue
-			}
-
-			if b.matrix[author] == nil {
-				b.matrix[author] = map[int]int64{}
-			}
-
-			for otherAuthor, count := range row {
-				b.matrix[author][otherAuthor] += count
-			}
-		}
-	}
+	b.initAggregationState()
+	b.aggregateShards()
 
 	globalHistory, lastTick := b.groupSparseHistory(b.globalHistory, -1)
 	fileHistories, fileOwnership := b.collectFileHistories(lastTick)
-
 	peopleHistories := b.buildPeopleHistories(globalHistory, lastTick)
 	peopleMatrix := b.buildPeopleMatrix()
 
@@ -684,6 +632,75 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 		"Sampling":           b.Sampling,
 		"Granularity":        b.Granularity,
 	}, nil
+}
+
+// initAggregationState initializes the aggregation state for Finalize.
+func (b *HistoryAnalyzer) initAggregationState() {
+	b.globalHistory = sparseHistory{}
+	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
+	b.matrix = make([]map[int]int64, b.PeopleNumber)
+}
+
+// aggregateShards merges all shard data into the main analyzer state.
+func (b *HistoryAnalyzer) aggregateShards() {
+	for _, shard := range b.shards {
+		b.mergeGlobalHistory(shard)
+		b.mergePeopleHistories(shard)
+		b.mergeMatrix(shard)
+	}
+}
+
+// mergeGlobalHistory merges a shard's global history into the main state.
+func (b *HistoryAnalyzer) mergeGlobalHistory(shard *Shard) {
+	for tick, counts := range shard.globalHistory {
+		if b.globalHistory[tick] == nil {
+			b.globalHistory[tick] = map[int]int64{}
+		}
+
+		for prevTick, count := range counts {
+			b.globalHistory[tick][prevTick] += count
+		}
+	}
+}
+
+// mergePeopleHistories merges a shard's people histories into the main state.
+func (b *HistoryAnalyzer) mergePeopleHistories(shard *Shard) {
+	for person, history := range shard.peopleHistories {
+		if len(history) == 0 {
+			continue
+		}
+
+		if b.peopleHistories[person] == nil {
+			b.peopleHistories[person] = sparseHistory{}
+		}
+
+		for tick, counts := range history {
+			if b.peopleHistories[person][tick] == nil {
+				b.peopleHistories[person][tick] = map[int]int64{}
+			}
+
+			for prevTick, count := range counts {
+				b.peopleHistories[person][tick][prevTick] += count
+			}
+		}
+	}
+}
+
+// mergeMatrix merges a shard's matrix into the main state.
+func (b *HistoryAnalyzer) mergeMatrix(shard *Shard) {
+	for author, row := range shard.matrix {
+		if len(row) == 0 {
+			continue
+		}
+
+		if b.matrix[author] == nil {
+			b.matrix[author] = map[int]int64{}
+		}
+
+		for otherAuthor, count := range row {
+			b.matrix[author][otherAuthor] += count
+		}
+	}
 }
 
 // collectFileHistories builds dense file histories and ownership maps from all shards.
@@ -964,6 +981,7 @@ func (b *HistoryAnalyzer) handleInsertion(
 
 	file, err = b.newFile(shard, hash, name, author, b.tick, lines)
 	shard.files[name] = file
+
 	// Renames and deletions maps also need protection or sharding?
 	// Deletions is map[string]bool. Used for special logic in handleDeletion.
 	// We can shard it too or use sync map.
@@ -974,7 +992,6 @@ func (b *HistoryAnalyzer) handleInsertion(
 	// But deletions[name] is only accessed when processing 'name'.
 	// So if we shard deletions map...
 	// For now, lock GlobalMu.
-
 	delete(shard.deletions, name)
 
 	if b.isMerge {
@@ -1092,7 +1109,6 @@ func (b *HistoryAnalyzer) handleModificationRename(
 ) error {
 	// Handles modification WITH rename (From != To).
 	// This runs sequentially, so we can access shards safely if we look them up.
-
 	shardFrom := b.getShard(change.From.Name)
 
 	file, exists := shardFrom.files[change.From.Name]

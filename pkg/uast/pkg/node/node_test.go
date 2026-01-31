@@ -304,7 +304,6 @@ func TestPreOrder_Stream(t *testing.T) {
 	}
 }
 
-//nolint:gocognit,gocyclo,cyclop // Comprehensive test with many subtests.
 func TestPreOrder_Comprehensive(t *testing.T) {
 	t.Parallel()
 
@@ -472,7 +471,6 @@ func TestTransform_Mutation(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestTransform_Comprehensive(t *testing.T) {
 	t.Parallel()
 
@@ -640,7 +638,6 @@ func TestTransform_Comprehensive(t *testing.T) {
 	})
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestNode_FindDSL(t *testing.T) {
 	t.Parallel()
 
@@ -771,7 +768,6 @@ func TestNode_FindDSL(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestNode_FindDSL_ComplexRFilterMap(t *testing.T) {
 	t.Parallel()
 
@@ -885,7 +881,6 @@ func TestNode_FindDSL_ComplexRFilterMap(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestHasRole_Comprehensive(t *testing.T) {
 	t.Parallel()
 

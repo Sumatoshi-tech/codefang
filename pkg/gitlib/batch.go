@@ -5,6 +5,14 @@ import (
 	"sync"
 )
 
+// Default batch processing configuration values.
+const (
+	// defaultBlobBatchSize is the default number of blobs to load per batch.
+	defaultBlobBatchSize = 100
+	// defaultDiffBatchSize is the default number of diffs to compute per batch.
+	defaultDiffBatchSize = 50
+)
+
 // BatchConfig configures batch processing parameters.
 type BatchConfig struct {
 	// BlobBatchSize is the number of blobs to load per batch.
@@ -23,8 +31,8 @@ type BatchConfig struct {
 // DefaultBatchConfig returns the default batch configuration.
 func DefaultBatchConfig() BatchConfig {
 	return BatchConfig{
-		BlobBatchSize: 100,
-		DiffBatchSize: 50,
+		BlobBatchSize: defaultBlobBatchSize,
+		DiffBatchSize: defaultDiffBatchSize,
 		Workers:       1,
 	}
 }
@@ -68,12 +76,65 @@ type BlobStreamer struct {
 // NewBlobStreamer creates a new blob streamer for the repository.
 func NewBlobStreamer(repo *Repository, config BatchConfig) *BlobStreamer {
 	if config.BlobBatchSize <= 0 {
-		config.BlobBatchSize = 100
+		config.BlobBatchSize = defaultBlobBatchSize
 	}
+
 	return &BlobStreamer{
 		bridge: NewCGOBridge(repo),
 		config: config,
 	}
+}
+
+// blobStreamState holds the state for blob streaming.
+type blobStreamState struct {
+	streamer *BlobStreamer
+	out      chan<- BlobBatch
+	batchID  int
+	buffer   []Hash
+}
+
+// flush sends the current buffer as a batch.
+func (st *blobStreamState) flush(ctx context.Context) bool {
+	if len(st.buffer) == 0 {
+		return true
+	}
+
+	results := st.streamer.bridge.BatchLoadBlobs(st.buffer)
+	blobs := make([]*CachedBlob, len(results))
+
+	for i, r := range results {
+		if r.Error == nil {
+			blobs[i] = &CachedBlob{hash: r.Hash, size: r.Size, Data: r.Data}
+		}
+	}
+
+	batch := BlobBatch{Blobs: blobs, Results: results, BatchID: st.batchID}
+
+	select {
+	case st.out <- batch:
+		st.batchID++
+	case <-ctx.Done():
+		return false
+	}
+
+	st.buffer = st.buffer[:0]
+
+	return true
+}
+
+// processHashes adds hashes to the buffer, flushing when full.
+func (st *blobStreamState) processHashes(ctx context.Context, hashBatch []Hash) bool {
+	for _, h := range hashBatch {
+		st.buffer = append(st.buffer, h)
+
+		if len(st.buffer) >= st.streamer.config.BlobBatchSize {
+			if !st.flush(ctx) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // Stream reads hashes from the input channel, loads them in batches,
@@ -84,43 +145,10 @@ func (s *BlobStreamer) Stream(ctx context.Context, hashes <-chan []Hash) <-chan 
 	go func() {
 		defer close(out)
 
-		batchID := 0
-		buffer := make([]Hash, 0, s.config.BlobBatchSize)
-
-		flush := func() {
-			if len(buffer) == 0 {
-				return
-			}
-
-			// Load blobs via CGO bridge
-			results := s.bridge.BatchLoadBlobs(buffer)
-
-			// Convert to CachedBlobs
-			blobs := make([]*CachedBlob, len(results))
-			for i, r := range results {
-				if r.Error == nil {
-					blobs[i] = &CachedBlob{
-						hash: r.Hash,
-						size: r.Size,
-						Data: r.Data,
-					}
-				}
-			}
-
-			batch := BlobBatch{
-				Blobs:   blobs,
-				Results: results,
-				BatchID: batchID,
-			}
-
-			select {
-			case out <- batch:
-				batchID++
-			case <-ctx.Done():
-				return
-			}
-
-			buffer = buffer[:0]
+		st := &blobStreamState{
+			streamer: s,
+			out:      out,
+			buffer:   make([]Hash, 0, s.config.BlobBatchSize),
 		}
 
 		for {
@@ -129,16 +157,13 @@ func (s *BlobStreamer) Stream(ctx context.Context, hashes <-chan []Hash) <-chan 
 				return
 			case hashBatch, ok := <-hashes:
 				if !ok {
-					// Channel closed, flush remaining
-					flush()
+					st.flush(ctx)
+
 					return
 				}
 
-				for _, h := range hashBatch {
-					buffer = append(buffer, h)
-					if len(buffer) >= s.config.BlobBatchSize {
-						flush()
-					}
+				if !st.processHashes(ctx, hashBatch) {
+					return
 				}
 			}
 		}
@@ -156,12 +181,61 @@ type DiffStreamer struct {
 // NewDiffStreamer creates a new diff streamer for the repository.
 func NewDiffStreamer(repo *Repository, config BatchConfig) *DiffStreamer {
 	if config.DiffBatchSize <= 0 {
-		config.DiffBatchSize = 50
+		config.DiffBatchSize = defaultDiffBatchSize
 	}
+
 	return &DiffStreamer{
 		bridge: NewCGOBridge(repo),
 		config: config,
 	}
+}
+
+// diffStreamState holds the state for diff streaming.
+type diffStreamState struct {
+	streamer *DiffStreamer
+	out      chan<- DiffBatch
+	batchID  int
+	buffer   []DiffRequest
+}
+
+// flush sends the current buffer as a batch.
+func (st *diffStreamState) flush(ctx context.Context) bool {
+	if len(st.buffer) == 0 {
+		return true
+	}
+
+	results := st.streamer.bridge.BatchDiffBlobs(st.buffer)
+	batch := DiffBatch{
+		Diffs:    results,
+		Requests: append([]DiffRequest{}, st.buffer...),
+		BatchID:  st.batchID,
+	}
+
+	select {
+	case st.out <- batch:
+		st.batchID++
+	case <-ctx.Done():
+		return false
+	}
+
+	st.buffer = st.buffer[:0]
+
+	return true
+}
+
+// processRequests adds requests to the buffer, flushing when full.
+func (st *diffStreamState) processRequests(ctx context.Context, reqBatch []DiffRequest) bool {
+	for _, req := range reqBatch {
+		st.buffer = append(st.buffer, req)
+
+		if len(st.buffer) >= st.streamer.config.DiffBatchSize {
+			if !st.flush(ctx) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // Stream reads diff requests from the input channel, computes them in batches,
@@ -169,58 +243,37 @@ func NewDiffStreamer(repo *Repository, config BatchConfig) *DiffStreamer {
 func (s *DiffStreamer) Stream(ctx context.Context, requests <-chan []DiffRequest) <-chan DiffBatch {
 	out := make(chan DiffBatch)
 
-	go func() {
-		defer close(out)
-
-		batchID := 0
-		buffer := make([]DiffRequest, 0, s.config.DiffBatchSize)
-
-		flush := func() {
-			if len(buffer) == 0 {
-				return
-			}
-
-			// Compute diffs via CGO bridge
-			results := s.bridge.BatchDiffBlobs(buffer)
-
-			batch := DiffBatch{
-				Diffs:    results,
-				Requests: append([]DiffRequest{}, buffer...),
-				BatchID:  batchID,
-			}
-
-			select {
-			case out <- batch:
-				batchID++
-			case <-ctx.Done():
-				return
-			}
-
-			buffer = buffer[:0]
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case reqBatch, ok := <-requests:
-				if !ok {
-					// Channel closed, flush remaining
-					flush()
-					return
-				}
-
-				for _, req := range reqBatch {
-					buffer = append(buffer, req)
-					if len(buffer) >= s.config.DiffBatchSize {
-						flush()
-					}
-				}
-			}
-		}
-	}()
+	go s.runDiffStream(ctx, requests, out)
 
 	return out
+}
+
+// runDiffStream is the main goroutine for processing diff requests.
+func (s *DiffStreamer) runDiffStream(ctx context.Context, requests <-chan []DiffRequest, out chan<- DiffBatch) {
+	defer close(out)
+
+	st := &diffStreamState{
+		streamer: s,
+		out:      out,
+		buffer:   make([]DiffRequest, 0, s.config.DiffBatchSize),
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case reqBatch, ok := <-requests:
+			if !ok {
+				st.flush(ctx)
+
+				return
+			}
+
+			if !st.processRequests(ctx, reqBatch) {
+				return
+			}
+		}
+	}
 }
 
 // BatchProcessor provides a unified interface for batch processing
@@ -246,6 +299,7 @@ func NewBatchProcessor(repo *Repository, config BatchConfig) *BatchProcessor {
 func (p *BatchProcessor) LoadBlobs(hashes []Hash) []BlobResult {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.bridge.BatchLoadBlobs(hashes)
 }
 
@@ -254,6 +308,7 @@ func (p *BatchProcessor) LoadBlobs(hashes []Hash) []BlobResult {
 func (p *BatchProcessor) ComputeDiffs(requests []DiffRequest) []DiffResult {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.bridge.BatchDiffBlobs(requests)
 }
 
@@ -261,6 +316,7 @@ func (p *BatchProcessor) ComputeDiffs(requests []DiffRequest) []DiffResult {
 // Failed loads return nil in the corresponding position.
 func (p *BatchProcessor) LoadBlobsAsCached(hashes []Hash) []*CachedBlob {
 	results := p.LoadBlobs(hashes)
+
 	cached := make([]*CachedBlob, len(results))
 
 	for i, r := range results {
@@ -281,6 +337,7 @@ func (p *BatchProcessor) LoadBlobsAsCached(hashes []Hash) []*CachedBlob {
 func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlob {
 	// Collect unique hashes
 	hashSet := make(map[Hash]bool)
+
 	for _, change := range changes {
 		switch change.Action {
 		case Insert:
@@ -295,6 +352,7 @@ func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlo
 
 	// Convert to slice
 	hashes := make([]Hash, 0, len(hashSet))
+
 	for h := range hashSet {
 		hashes = append(hashes, h)
 	}
@@ -304,6 +362,7 @@ func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlo
 
 	// Build result map
 	result := make(map[Hash]*CachedBlob, len(hashes))
+
 	for i, h := range hashes {
 		if cached[i] != nil {
 			result[h] = cached[i]
@@ -318,6 +377,7 @@ func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlo
 func (p *BatchProcessor) ProcessCommitDiffs(changes Changes) map[string]DiffResult {
 	// Collect diff requests for Modify actions
 	var requests []DiffRequest
+
 	var paths []string
 
 	for _, change := range changes {
@@ -341,6 +401,7 @@ func (p *BatchProcessor) ProcessCommitDiffs(changes Changes) map[string]DiffResu
 
 	// Build result map
 	resultMap := make(map[string]DiffResult, len(paths))
+
 	for i, path := range paths {
 		resultMap[path] = results[i]
 	}

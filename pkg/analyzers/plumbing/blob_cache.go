@@ -98,15 +98,17 @@ func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
 	b.repos[0] = repo
 
 	for i := 1; i < b.Goroutines; i++ {
-		r, err := gitlib.OpenRepository(repo.Path())
+		clonedRepo, err := gitlib.OpenRepository(repo.Path())
 		if err != nil {
 			// Cleanup already opened repos.
 			for j := 1; j < i; j++ {
 				b.repos[j].Free()
 			}
+
 			return fmt.Errorf("failed to open repository clone for worker %d: %w", i, err)
 		}
-		b.repos[i] = r
+
+		b.repos[i] = clonedRepo
 	}
 
 	return nil
@@ -119,6 +121,7 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 		// Use the pre-populated cache from the runtime pipeline
 		b.cache = ctx.BlobCache
 		b.Cache = ctx.BlobCache
+
 		return nil
 	}
 
@@ -132,6 +135,7 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 	cache := map[gitlib.Hash]*gitlib.CachedBlob{}
 	newCache := map[gitlib.Hash]*gitlib.CachedBlob{}
+
 	var mu sync.Mutex
 
 	// Helper to process a batch of changes.
@@ -151,12 +155,8 @@ func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 		}
 
 		mu.Lock()
-		for k, v := range localCache {
-			cache[k] = v
-		}
-		for k, v := range localNewCache {
-			newCache[k] = v
-		}
+		maps.Copy(cache, localCache)
+		maps.Copy(newCache, localNewCache)
 		mu.Unlock()
 	}
 
@@ -164,24 +164,26 @@ func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 		process(b.Repository, changes)
 	} else {
 		var wg sync.WaitGroup
+
 		batchSize := (len(changes) + b.Goroutines - 1) / b.Goroutines
 
-		for i := 0; i < b.Goroutines; i++ {
+		for i := range b.Goroutines {
 			start := i * batchSize
 			if start >= len(changes) {
 				break
 			}
-			end := start + batchSize
-			if end > len(changes) {
-				end = len(changes)
-			}
+
+			end := min(start+batchSize, len(changes))
 
 			wg.Add(1)
+
 			go func(idx int, batch []*gitlib.Change) {
 				defer wg.Done()
+
 				process(b.repos[idx], batch)
 			}(i, changes[start:end])
 		}
+
 		wg.Wait()
 	}
 
@@ -201,7 +203,6 @@ func (b *BlobCacheAnalyzer) handleInsert(
 	// Initialize with empty blob.
 	cache[hash] = &gitlib.CachedBlob{}
 	newCache[hash] = &gitlib.CachedBlob{}
-
 	// Try to load the blob.
 	blob, err := gitlib.NewCachedBlobFromRepo(repo, hash)
 	if err == nil {
@@ -209,7 +210,6 @@ func (b *BlobCacheAnalyzer) handleInsert(
 		newCache[hash] = blob
 	}
 }
-
 func (b *BlobCacheAnalyzer) handleDelete(
 	repo *gitlib.Repository,
 	change *gitlib.Change,
@@ -221,6 +221,7 @@ func (b *BlobCacheAnalyzer) handleDelete(
 	// NOTE: b.cache read is safe here because it's read-only during Consume phase
 	// and updated only at the end.
 	existing, exists := b.cache[hash]
+
 	if exists {
 		cache[hash] = existing
 
@@ -229,14 +230,12 @@ func (b *BlobCacheAnalyzer) handleDelete(
 
 	// Initialize with empty blob.
 	cache[hash] = &gitlib.CachedBlob{}
-
 	// Try to load the blob.
 	blob, err := gitlib.NewCachedBlobFromRepo(repo, hash)
 	if err == nil {
 		cache[hash] = blob
 	}
 }
-
 func (b *BlobCacheAnalyzer) handleModify(
 	repo *gitlib.Repository,
 	change *gitlib.Change,
@@ -257,6 +256,7 @@ func (b *BlobCacheAnalyzer) handleModify(
 	fromHash := change.From.Hash
 
 	existing, exists := b.cache[fromHash]
+
 	if exists {
 		cache[fromHash] = existing
 
@@ -281,12 +281,14 @@ func (b *BlobCacheAnalyzer) Finalize() (analyze.Report, error) {
 			b.repos[i] = nil
 		}
 	}
+
 	return nil, nil //nolint:nilnil // nil,nil return is intentional.
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
 func (b *BlobCacheAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
+
 	for i := range n {
 		clone := *b
 		// Deep copy cache.

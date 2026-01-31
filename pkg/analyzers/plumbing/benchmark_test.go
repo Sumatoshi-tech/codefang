@@ -1,4 +1,4 @@
-package plumbing
+package plumbing_test
 
 import (
 	"fmt"
@@ -8,12 +8,14 @@ import (
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 func runCmdWithDir(dir string, args ...string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
+
 	return cmd.Run()
 }
 
@@ -22,48 +24,54 @@ func runCmd(args ...string) error {
 }
 
 // setupBenchmarkRepo creates a temporary git repo with a large commit.
-func setupBenchmarkRepo(t testing.TB, fileCount int) (*gitlib.Repository, *gitlib.Commit, string) {
-	dir, err := os.MkdirTemp("", "codefang-bench-*")
-	if err != nil {
-		t.Fatal(err)
-	}
+func setupBenchmarkRepo(tb testing.TB, fileCount int) (*gitlib.Repository, *gitlib.Commit, string) {
+	tb.Helper()
+
+	dir := tb.TempDir()
 
 	initCmd := []string{"git", "init", dir}
-	if err := runCmd(initCmd...); err != nil {
-		t.Fatal(err)
+
+	err := runCmd(initCmd...)
+	if err != nil {
+		tb.Fatal(err)
 	}
 
 	// Create files
-	for i := 0; i < fileCount; i++ {
+	for i := range fileCount {
 		name := filepath.Join(dir, fmt.Sprintf("file_%d.txt", i))
 		// Write some content to force blob creation
 		content := fmt.Sprintf("content for file %d\nline 2\nline 3", i)
-		if err := os.WriteFile(name, []byte(content), 0644); err != nil {
-			t.Fatal(err)
+
+		err = os.WriteFile(name, []byte(content), 0o644)
+		if err != nil {
+			tb.Fatal(err)
 		}
 	}
 
 	// Add and commit
-	if err := runCmdWithDir(dir, "git", "add", "."); err != nil {
-		t.Fatal(err)
+	err = runCmdWithDir(dir, "git", "add", ".")
+	if err != nil {
+		tb.Fatal(err)
 	}
-	if err := runCmdWithDir(dir, "git", "commit", "-m", "Initial commit"); err != nil {
-		t.Fatal(err)
+
+	err = runCmdWithDir(dir, "git", "commit", "-m", "Initial commit")
+	if err != nil {
+		tb.Fatal(err)
 	}
 
 	repo, err := gitlib.OpenRepository(dir)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	head, err := repo.Head()
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	commit, err := repo.LookupCommit(head)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	return repo, commit, dir
@@ -73,6 +81,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 	// Setup a repo with 1000 files modified in HEAD.
 	fileCount := 1000
 	repo, commit, repoPath := setupBenchmarkRepo(b, fileCount)
+
 	defer os.RemoveAll(repoPath)
 	defer repo.Free()
 	defer commit.Free()
@@ -82,11 +91,11 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	
+
 	changes := make([]*gitlib.Change, 0, fileCount)
-	
-	count := uint64(tree.EntryCount())
-	for i := uint64(0); i < count; i++ {
+
+	count := tree.EntryCount()
+	for i := range count {
 		entry := tree.EntryByIndex(i)
 		changes = append(changes, &gitlib.Change{
 			Action: gitlib.Insert,
@@ -104,29 +113,32 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 
 	for _, n := range concurrencyLevels {
 		b.Run(fmt.Sprintf("Goroutines-%d", n), func(b *testing.B) {
-			bc := &BlobCacheAnalyzer{
+			bc := &plumbing.BlobCacheAnalyzer{
 				Goroutines: n,
 			}
 
 			// Initialize opens `n` repos.
-			if err := bc.Initialize(repo); err != nil {
-				b.Fatal(err)
+			initErr := bc.Initialize(repo)
+			if initErr != nil {
+				b.Fatal(initErr)
 			}
-			
+
 			// We inject the prepared changes.
-			bc.TreeDiff = &TreeDiffAnalyzer{Changes: changes}
+			bc.TreeDiff = &plumbing.TreeDiffAnalyzer{Changes: changes}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if err := bc.Consume(ctx); err != nil {
-					b.Fatal(err)
+
+			for b.Loop() {
+				consumeErr := bc.Consume(ctx)
+				if consumeErr != nil {
+					b.Fatal(consumeErr)
 				}
 			}
-			
+
 			// Cleanup extra repos (skip 0 as it is the main repo managed by defer)
-			for i := 1; i < len(bc.repos); i++ {
-				if bc.repos[i] != nil {
-					bc.repos[i].Free()
+			for i := 1; i < len(bc.Repos()); i++ {
+				if bc.Repos()[i] != nil {
+					bc.Repos()[i].Free()
 				}
 			}
 		})

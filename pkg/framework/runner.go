@@ -28,28 +28,32 @@ func NewRunner(repo *gitlib.Repository, repoPath string, analyzers ...analyze.Hi
 // Run executes all analyzers over the given commits: initialize, consume each commit via pipeline, then finalize.
 func (runner *Runner) Run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
 	for _, a := range runner.Analyzers {
-		if err := a.Initialize(runner.Repo); err != nil {
+		err := a.Initialize(runner.Repo)
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	if len(commits) == 0 {
 		reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
+
 		for _, a := range runner.Analyzers {
 			rep, err := a.Finalize()
 			if err != nil {
 				return nil, err
 			}
+
 			reports[a] = rep
 		}
+
 		return reports, nil
 	}
 
-	return runner.run(commits)
+	return runner.runInternal(commits)
 }
 
-// run uses the Coordinator to process commits (batch blob + batch diff in C), then feeds analyzers.
-func (runner *Runner) run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+// runInternal uses the Coordinator to process commits (batch blob + batch diff in C), then feeds analyzers.
+func (runner *Runner) runInternal(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
 	ctx := context.Background()
 	coordinator := NewCoordinator(runner.Repo, DefaultCoordinatorConfig())
 	dataChan := coordinator.Process(ctx, commits)
@@ -71,19 +75,23 @@ func (runner *Runner) run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer
 		}
 
 		for _, a := range runner.Analyzers {
-			if err := a.Consume(analyzeCtx); err != nil {
+			err := a.Consume(analyzeCtx)
+			if err != nil {
 				return nil, err
 			}
 		}
 	}
 
 	reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
+
 	for _, a := range runner.Analyzers {
 		rep, err := a.Finalize()
 		if err != nil {
 			return nil, err
 		}
+
 		reports[a] = rep
 	}
+
 	return reports, nil
 }
