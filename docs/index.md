@@ -22,6 +22,7 @@ By combining these dimensions, Codefang enables questions like: *"Show me the mo
 This documentation is written for architects, contributors, and curious engineers who want to understand the internal machinery of Codefang.
 
 *   **[Architecture](architecture.md)**: High-level system design, binary separation, and data flow.
+*   **[Pipeline Architecture](pipeline-architecture.md)**: Detailed 3-layer pipeline design with caching optimizations for history analysis.
 *   **[Core Algorithms](algorithms.md)**: Deep dive into the memory-optimized data structures (Red-Black Trees, Interned Graphs) that allow Codefang to scale.
 *   **[Analysis Engine](analyzers.md)**: How the pluggable analyzer system works, with **concrete examples** and case studies.
 *   **[Usage Guide & Scenarios](usage.md)**: Real-world stories of using Codefang for refactoring and team management.

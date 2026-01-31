@@ -25,6 +25,14 @@ type CoordinatorConfig struct {
 
 	// BufferSize is the size of internal channels.
 	BufferSize int
+
+	// BlobCacheSize is the maximum size of the global blob cache in bytes.
+	// Set to 0 to disable caching.
+	BlobCacheSize int64
+
+	// DiffCacheSize is the maximum number of diff results to cache.
+	// Set to 0 to disable caching.
+	DiffCacheSize int
 }
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
@@ -36,6 +44,8 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		CommitBatchSize: 1,
 		Workers:         workers,
 		BufferSize:      workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed
+		BlobCacheSize:   DefaultGlobalCacheSize,
+		DiffCacheSize:   DefaultDiffCacheSize,
 	}
 }
 
@@ -47,6 +57,8 @@ type Coordinator struct {
 	commitStreamer *CommitStreamer
 	blobPipeline   *BlobPipeline
 	diffPipeline   *DiffPipeline
+	blobCache      *GlobalBlobCache
+	diffCache      *DiffCache
 
 	// Workers
 	seqWorker   *gitlib.Worker
@@ -93,6 +105,18 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		poolWorkers[i] = gitlib.NewWorker(newRepo, poolChan)
 	}
 
+	// Create blob cache if configured
+	var blobCache *GlobalBlobCache
+	if config.BlobCacheSize > 0 {
+		blobCache = NewGlobalBlobCache(config.BlobCacheSize)
+	}
+
+	// Create diff cache if configured
+	var diffCache *DiffCache
+	if config.DiffCacheSize > 0 {
+		diffCache = NewDiffCache(config.DiffCacheSize)
+	}
+
 	return &Coordinator{
 		repo:   repo,
 		config: config,
@@ -100,8 +124,10 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 			BatchSize: config.CommitBatchSize,
 			Lookahead: config.BufferSize,
 		},
-		blobPipeline: NewBlobPipeline(seqChan, poolChan, config.BufferSize),
-		diffPipeline: NewDiffPipeline(poolChan, config.BufferSize),
+		blobPipeline: NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, blobCache),
+		diffPipeline: NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache),
+		blobCache:    blobCache,
+		diffCache:    diffCache,
 
 		seqWorker:    seqWorker,
 		poolWorkers:  poolWorkers,
@@ -171,4 +197,26 @@ func (c *Coordinator) ProcessSingle(ctx context.Context, commit *gitlib.Commit, 
 // Config returns the coordinator configuration.
 func (c *Coordinator) Config() CoordinatorConfig {
 	return c.config
+}
+
+// BlobCacheStats returns statistics about the blob cache, or nil if caching is disabled.
+func (c *Coordinator) BlobCacheStats() *CacheStats {
+	if c.blobCache == nil {
+		return nil
+	}
+
+	stats := c.blobCache.Stats()
+
+	return &stats
+}
+
+// DiffCacheStats returns statistics about the diff cache, or nil if caching is disabled.
+func (c *Coordinator) DiffCacheStats() *DiffCacheStats {
+	if c.diffCache == nil {
+		return nil
+	}
+
+	stats := c.diffCache.Stats()
+
+	return &stats
 }
