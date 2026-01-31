@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // ErrBinary is raised in CachedBlob.CountLines() if the file is binary.
@@ -13,12 +14,27 @@ var ErrBinary = errors.New("binary")
 // binarySniffLength is the number of bytes to scan for null bytes when detecting binary content.
 const binarySniffLength = 8000
 
+// lineCountBinary is the sentinel value indicating the blob is binary.
+const lineCountBinary = -1
+
 // CachedBlob caches blob data for efficient repeated access.
 type CachedBlob struct {
 	hash Hash
 	size int64
 	// Data is the read contents of the blob object.
 	Data []byte
+	// lineCount caches the result of CountLines (-1 = binary).
+	lineCount     int
+	lineCountOnce sync.Once
+}
+
+// NewCachedBlobForTest creates a CachedBlob with the given data for testing purposes.
+func NewCachedBlobForTest(data []byte) *CachedBlob {
+	return &CachedBlob{
+		hash: Hash{},
+		size: int64(len(data)),
+		Data: data,
+	}
 }
 
 // NewCachedBlobFromRepo loads and caches a blob from the repository.
@@ -52,9 +68,23 @@ func (b *CachedBlob) Reader() io.ReadCloser {
 }
 
 // CountLines returns the number of lines in the blob or (0, ErrBinary) if it is binary.
+// The result is cached after the first call for efficiency.
 func (b *CachedBlob) CountLines() (int, error) {
+	b.lineCountOnce.Do(func() {
+		b.lineCount = b.computeLineCount()
+	})
+
+	if b.lineCount == lineCountBinary {
+		return 0, ErrBinary
+	}
+
+	return b.lineCount, nil
+}
+
+// computeLineCount calculates the line count or returns lineCountBinary for binary files.
+func (b *CachedBlob) computeLineCount() int {
 	if len(b.Data) == 0 {
-		return 0, nil
+		return 0
 	}
 
 	sniff := b.Data
@@ -63,7 +93,7 @@ func (b *CachedBlob) CountLines() (int, error) {
 	}
 
 	if bytes.IndexByte(sniff, 0) >= 0 {
-		return 0, ErrBinary
+		return lineCountBinary
 	}
 
 	lines := bytes.Count(b.Data, []byte{'\n'})
@@ -72,7 +102,7 @@ func (b *CachedBlob) CountLines() (int, error) {
 		lines++
 	}
 
-	return lines, nil
+	return lines
 }
 
 // IsBinary returns true if the blob appears to be binary.

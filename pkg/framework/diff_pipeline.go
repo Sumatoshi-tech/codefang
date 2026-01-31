@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -24,10 +25,16 @@ type CommitData struct {
 type DiffPipeline struct {
 	PoolWorkerChan chan<- gitlib.WorkerRequest
 	BufferSize     int
+	DiffCache      *DiffCache
 }
 
 // NewDiffPipeline creates a new diff pipeline.
 func NewDiffPipeline(workerChan chan<- gitlib.WorkerRequest, bufferSize int) *DiffPipeline {
+	return NewDiffPipelineWithCache(workerChan, bufferSize, nil)
+}
+
+// NewDiffPipelineWithCache creates a new diff pipeline with an optional diff cache.
+func NewDiffPipelineWithCache(workerChan chan<- gitlib.WorkerRequest, bufferSize int, cache *DiffCache) *DiffPipeline {
 	if bufferSize <= 0 {
 		bufferSize = 1
 	}
@@ -35,14 +42,16 @@ func NewDiffPipeline(workerChan chan<- gitlib.WorkerRequest, bufferSize int) *Di
 	return &DiffPipeline{
 		PoolWorkerChan: workerChan,
 		BufferSize:     bufferSize,
+		DiffCache:      cache,
 	}
 }
 
 type diffJob struct {
-	data     CommitData
-	respChan chan gitlib.DiffBatchResponse
-	paths    []string
-	changes  []*gitlib.Change
+	data      CommitData
+	respChan  chan gitlib.DiffBatchResponse
+	paths     []string                         // paths for diffs requested from C
+	changes   []*gitlib.Change                 // changes for diffs requested from C
+	cacheHits map[string]plumbing.FileDiffData // path -> cached diff
 }
 
 // Process receives blob data and outputs commit data with computed diffs.
@@ -96,9 +105,10 @@ func (p *DiffPipeline) createDiffJob(ctx context.Context, blobData BlobData) *di
 		return job
 	}
 
-	req, paths, changes := p.prepareDiffRequest(blobData)
+	req, paths, changes, cacheHits := p.prepareDiffRequest(blobData)
 	job.paths = paths
 	job.changes = changes
+	job.cacheHits = cacheHits
 
 	if len(req.Requests) == 0 {
 		return job
@@ -134,6 +144,9 @@ func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob,
 
 		job.data.FileDiffs = make(map[string]plumbing.FileDiffData)
 
+		// Add cache hits first
+		maps.Copy(job.data.FileDiffs, job.cacheHits)
+
 		if job.respChan != nil {
 			select {
 			case resp := <-job.respChan:
@@ -151,12 +164,13 @@ func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob,
 	}
 }
 
-func (p *DiffPipeline) prepareDiffRequest(blobData BlobData) (gitlib.DiffBatchRequest, []string, []*gitlib.Change) {
+func (p *DiffPipeline) prepareDiffRequest(blobData BlobData) (
+	req gitlib.DiffBatchRequest,
+	paths []string,
+	changes []*gitlib.Change,
+	cacheHits map[string]plumbing.FileDiffData,
+) {
 	var requests []gitlib.DiffRequest
-
-	var paths []string
-
-	var changesForIndex []*gitlib.Change
 
 	for _, change := range blobData.Changes {
 		if change.Action != gitlib.Modify {
@@ -174,6 +188,20 @@ func (p *DiffPipeline) prepareDiffRequest(blobData BlobData) (gitlib.DiffBatchRe
 			continue
 		}
 
+		// Check cache for this diff
+		if p.DiffCache != nil {
+			key := DiffKey{OldHash: change.From.Hash, NewHash: change.To.Hash}
+			if cached, found := p.DiffCache.Get(key); found {
+				if cacheHits == nil {
+					cacheHits = make(map[string]plumbing.FileDiffData)
+				}
+
+				cacheHits[change.To.Name] = cached
+
+				continue
+			}
+		}
+
 		requests = append(requests, gitlib.DiffRequest{
 			OldHash: change.From.Hash,
 			NewHash: change.To.Hash,
@@ -181,10 +209,12 @@ func (p *DiffPipeline) prepareDiffRequest(blobData BlobData) (gitlib.DiffBatchRe
 			HasNew:  true,
 		})
 		paths = append(paths, change.To.Name)
-		changesForIndex = append(changesForIndex, change)
+		changes = append(changes, change)
 	}
 
-	return gitlib.DiffBatchRequest{Requests: requests}, paths, changesForIndex
+	req = gitlib.DiffBatchRequest{Requests: requests}
+
+	return req, paths, changes, cacheHits
 }
 
 func (p *DiffPipeline) processDiffResponse(
@@ -209,18 +239,25 @@ func (p *DiffPipeline) processDiffResponse(
 
 		diffRes := diffResults[i]
 
-		if diffRes.Error != nil {
-			data.FileDiffs[path] = p.fileDiffFromGoDiff(oldBlob, newBlob, oldLines, newLines)
+		var fileDiff plumbing.FileDiffData
 
-			continue
+		if diffRes.Error != nil {
+			fileDiff = p.fileDiffFromGoDiff(oldBlob, newBlob, oldLines, newLines)
+		} else {
+			diffs := convertDiffOpsToDMP(diffRes.Ops)
+			fileDiff = plumbing.FileDiffData{
+				OldLinesOfCode: oldLines,
+				NewLinesOfCode: newLines,
+				Diffs:          diffs,
+			}
 		}
 
-		diffs := convertDiffOpsToDMP(diffRes.Ops)
+		data.FileDiffs[path] = fileDiff
 
-		data.FileDiffs[path] = plumbing.FileDiffData{
-			OldLinesOfCode: oldLines,
-			NewLinesOfCode: newLines,
-			Diffs:          diffs,
+		// Store in cache
+		if p.DiffCache != nil {
+			key := DiffKey{OldHash: changes[i].From.Hash, NewHash: changes[i].To.Hash}
+			p.DiffCache.Put(key, fileDiff)
 		}
 	}
 }
