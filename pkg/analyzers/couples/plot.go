@@ -20,7 +20,8 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 	}
 
 	if r, ok := chart.(interface{ Render(io.Writer) error }); ok {
-		if err := r.Render(writer); err != nil {
+		err = r.Render(writer)
+		if err != nil {
 			return fmt.Errorf("render chart: %w", err)
 		}
 
@@ -31,8 +32,6 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 }
 
 // GenerateChart creates the chart object from the report.
-//
-//nolint:ireturn // interface needed for generic plotting
 func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	const fullZoomPct = 100
 

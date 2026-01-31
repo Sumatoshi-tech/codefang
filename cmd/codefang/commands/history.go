@@ -78,10 +78,18 @@ Available analyzers:
 	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
 	cobraCmd.Flags().StringVar(&hc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
 
-	// Dynamic flag registration from analyzers
+	registerAnalyzerFlags(cobraCmd)
+
+	return cobraCmd
+}
+
+// registerAnalyzerFlags registers dynamic flags from all analyzers.
+func registerAnalyzerFlags(cobraCmd *cobra.Command) {
 	dummyPipeline := newAnalyzerPipeline(nil)
-	var allAnalyzers []analyze.HistoryAnalyzer
+
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(dummyPipeline.core)+len(dummyPipeline.leaves))
 	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+
 	for _, leaf := range dummyPipeline.leaves {
 		allAnalyzers = append(allAnalyzers, leaf)
 	}
@@ -93,24 +101,41 @@ Available analyzers:
 			if registeredFlags[opt.Flag] {
 				continue
 			}
-			registeredFlags[opt.Flag] = true
 
-			switch opt.Type {
-			case pipeline.BoolConfigurationOption:
-				cobraCmd.Flags().Bool(opt.Flag, opt.Default.(bool), opt.Description)
-			case pipeline.IntConfigurationOption:
-				cobraCmd.Flags().Int(opt.Flag, opt.Default.(int), opt.Description)
-			case pipeline.StringConfigurationOption:
-				cobraCmd.Flags().String(opt.Flag, opt.Default.(string), opt.Description)
-			case pipeline.StringsConfigurationOption:
-				cobraCmd.Flags().StringSlice(opt.Flag, opt.Default.([]string), opt.Description)
-			case pipeline.PathConfigurationOption:
-				cobraCmd.Flags().String(opt.Flag, opt.Default.(string), opt.Description)
-			}
+			registeredFlags[opt.Flag] = true
+			registerConfigFlag(cobraCmd, opt)
 		}
 	}
+}
 
-	return cobraCmd
+// registerConfigFlag registers a single configuration option as a cobra flag.
+func registerConfigFlag(cobraCmd *cobra.Command, opt pipeline.ConfigurationOption) {
+	switch opt.Type {
+	case pipeline.BoolConfigurationOption:
+		if v, ok := opt.Default.(bool); ok {
+			cobraCmd.Flags().Bool(opt.Flag, v, opt.Description)
+		}
+	case pipeline.IntConfigurationOption:
+		if v, ok := opt.Default.(int); ok {
+			cobraCmd.Flags().Int(opt.Flag, v, opt.Description)
+		}
+	case pipeline.StringConfigurationOption:
+		if v, ok := opt.Default.(string); ok {
+			cobraCmd.Flags().String(opt.Flag, v, opt.Description)
+		}
+	case pipeline.StringsConfigurationOption:
+		if v, ok := opt.Default.([]string); ok {
+			cobraCmd.Flags().StringSlice(opt.Flag, v, opt.Description)
+		}
+	case pipeline.PathConfigurationOption:
+		if v, ok := opt.Default.(string); ok {
+			cobraCmd.Flags().String(opt.Flag, v, opt.Description)
+		}
+	case pipeline.FloatConfigurationOption:
+		if v, ok := opt.Default.(float64); ok {
+			cobraCmd.Flags().Float64(opt.Flag, v, opt.Description)
+		}
+	}
 }
 
 // run executes the history analysis pipeline.
@@ -123,9 +148,11 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		}
 		defer f.Close()
 
-		if err := pprof.StartCPUProfile(f); err != nil {
+		err = pprof.StartCPUProfile(f)
+		if err != nil {
 			return fmt.Errorf("could not start CPU profile: %w", err)
 		}
+
 		defer pprof.StopCPUProfile()
 	}
 
@@ -157,31 +184,18 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 	// Load configuration facts from flags
 	facts := map[string]any{}
 	dummyPipeline := newAnalyzerPipeline(nil)
+
 	var allAnalyzers []analyze.HistoryAnalyzer
+
 	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+
 	for _, leaf := range dummyPipeline.leaves {
 		allAnalyzers = append(allAnalyzers, leaf)
 	}
 
 	for _, analyzer := range allAnalyzers {
 		for _, opt := range analyzer.ListConfigurationOptions() {
-			switch opt.Type {
-			case pipeline.BoolConfigurationOption:
-				val, _ := cmd.Flags().GetBool(opt.Flag)
-				facts[opt.Name] = val
-			case pipeline.IntConfigurationOption:
-				val, _ := cmd.Flags().GetInt(opt.Flag)
-				facts[opt.Name] = val
-			case pipeline.StringConfigurationOption:
-				val, _ := cmd.Flags().GetString(opt.Flag)
-				facts[opt.Name] = val
-			case pipeline.StringsConfigurationOption:
-				val, _ := cmd.Flags().GetStringSlice(opt.Flag)
-				facts[opt.Name] = val
-			case pipeline.PathConfigurationOption:
-				val, _ := cmd.Flags().GetString(opt.Flag)
-				facts[opt.Name] = val
-			}
+			loadFlagValue(cmd, opt, facts)
 		}
 	}
 
@@ -389,20 +403,20 @@ func (hc *HistoryCommand) runPipeline(
 	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
 	facts map[string]any,
 ) error {
-	pipeline := newAnalyzerPipeline(repository)
+	pl := newAnalyzerPipeline(repository)
 
-	configureErr := configureAnalyzers(pipeline.core, facts)
+	configureErr := configureAnalyzers(pl.core, facts)
 	if configureErr != nil {
 		return configureErr
 	}
 
-	selectedLeaves, selectErr := hc.selectLeaves(pipeline.leaves, facts)
+	selectedLeaves, selectErr := hc.selectLeaves(pl.leaves, facts)
 	if selectErr != nil {
 		return selectErr
 	}
 
-	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pipeline.core)+len(selectedLeaves))
-	allAnalyzers = append(allAnalyzers, pipeline.core...)
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pl.core)+len(selectedLeaves))
+	allAnalyzers = append(allAnalyzers, pl.core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
 	runner := framework.NewRunner(repository, repoPath, allAnalyzers...)
@@ -550,7 +564,8 @@ func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.Hi
 		}
 	}
 
-	if err := page.Render(os.Stdout); err != nil {
+	err := page.Render(os.Stdout)
+	if err != nil {
 		return fmt.Errorf("render page: %w", err)
 	}
 
@@ -562,4 +577,40 @@ func printHeader() {
 	fmt.Fprintln(os.Stdout, "codefang (v2):")
 	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
 	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
+}
+
+// loadFlagValue loads a configuration option's value from command flags into facts.
+func loadFlagValue(cmd *cobra.Command, opt pipeline.ConfigurationOption, facts map[string]any) {
+	switch opt.Type {
+	case pipeline.BoolConfigurationOption:
+		val, flagErr := cmd.Flags().GetBool(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.IntConfigurationOption:
+		val, flagErr := cmd.Flags().GetInt(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.StringConfigurationOption:
+		val, flagErr := cmd.Flags().GetString(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.StringsConfigurationOption:
+		val, flagErr := cmd.Flags().GetStringSlice(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.PathConfigurationOption:
+		val, flagErr := cmd.Flags().GetString(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.FloatConfigurationOption:
+		val, flagErr := cmd.Flags().GetFloat64(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	}
 }

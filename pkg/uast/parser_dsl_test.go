@@ -495,7 +495,6 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 	}
 }
 
-//nolint:gocognit,gocyclo,cyclop // Complex real-world integration test.
 func TestDSLProvider_RealWorldGoMap(t *testing.T) {
 	// Real-world go.uastmap DSL with advanced features.
 	dslContent := `[language "go", extensions: ".go"]
@@ -586,7 +585,7 @@ var x int = 42
 	var foundFunc bool
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" { //nolint:nestif // Test validation block.
+		if c.Type == "Function" {
 			foundFunc = true
 
 			if c.Props["name"] != "Add" {

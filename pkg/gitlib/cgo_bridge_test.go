@@ -1,19 +1,23 @@
-package gitlib
+package gitlib_test
 
 import (
 	"testing"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 func TestDiffOpType(t *testing.T) {
 	// Test that DiffOpType constants have expected values
-	if DiffOpEqual != 0 {
-		t.Errorf("DiffOpEqual = %d, want 0", DiffOpEqual)
+	if gitlib.DiffOpEqual != 0 {
+		t.Errorf("DiffOpEqual = %d, want 0", gitlib.DiffOpEqual)
 	}
-	if DiffOpInsert != 1 {
-		t.Errorf("DiffOpInsert = %d, want 1", DiffOpInsert)
+
+	if gitlib.DiffOpInsert != 1 {
+		t.Errorf("DiffOpInsert = %d, want 1", gitlib.DiffOpInsert)
 	}
-	if DiffOpDelete != 2 {
-		t.Errorf("DiffOpDelete = %d, want 2", DiffOpDelete)
+
+	if gitlib.DiffOpDelete != 2 {
+		t.Errorf("DiffOpDelete = %d, want 2", gitlib.DiffOpDelete)
 	}
 }
 
@@ -23,14 +27,14 @@ func TestBlobResultError(t *testing.T) {
 		err      error
 		expected string
 	}{
-		{ErrRepositoryPointer, "failed to get repository pointer"},
-		{ErrBlobLookup, "blob lookup failed"},
-		{ErrBlobMemory, "memory allocation failed for blob"},
-		{ErrBlobBinary, "blob is binary"},
-		{ErrDiffLookup, "diff blob lookup failed"},
-		{ErrDiffMemory, "memory allocation failed for diff"},
-		{ErrDiffBinary, "diff blob is binary"},
-		{ErrDiffCompute, "diff computation failed"},
+		{gitlib.ErrRepositoryPointer, "failed to get repository pointer"},
+		{gitlib.ErrBlobLookup, "blob lookup failed"},
+		{gitlib.ErrBlobMemory, "memory allocation failed for blob"},
+		{gitlib.ErrBlobBinary, "blob is binary"},
+		{gitlib.ErrDiffLookup, "diff blob lookup failed"},
+		{gitlib.ErrDiffMemory, "memory allocation failed for diff"},
+		{gitlib.ErrDiffBinary, "diff blob is binary"},
+		{gitlib.ErrDiffCompute, "diff computation failed"},
 	}
 
 	for _, tt := range tests {

@@ -4,7 +4,7 @@ import (
 	"runtime"
 )
 
-// Request types for the Gitlib Worker
+// WorkerRequest is the interface for requests handled by the Gitlib Worker.
 type WorkerRequest interface {
 	isWorkerRequest()
 }
@@ -16,6 +16,7 @@ type TreeDiffRequest struct {
 	Response     chan<- TreeDiffResponse
 }
 
+// TreeDiffResponse is the response for a TreeDiffRequest.
 type TreeDiffResponse struct {
 	Changes     Changes
 	CurrentTree *Tree // The tree of the processed commit. Caller must Free this or pass it back.
@@ -28,6 +29,7 @@ type BlobBatchRequest struct {
 	Response chan<- BlobBatchResponse
 }
 
+// BlobBatchResponse is the response for a BlobBatchRequest.
 type BlobBatchResponse struct {
 	Blobs   []*CachedBlob
 	Results []BlobResult
@@ -39,6 +41,7 @@ type DiffBatchRequest struct {
 	Response chan<- DiffBatchResponse
 }
 
+// DiffBatchResponse is the response for a DiffBatchRequest.
 type DiffBatchResponse struct {
 	Results []DiffResult
 }
@@ -71,6 +74,7 @@ func NewWorker(repo *Repository, requests <-chan WorkerRequest) *Worker {
 func (w *Worker) Start() {
 	go func() {
 		runtime.LockOSThread()
+
 		defer runtime.UnlockOSThread()
 		defer close(w.done)
 
@@ -87,11 +91,12 @@ func (w *Worker) Stop() {
 }
 
 func (w *Worker) handle(req WorkerRequest) {
-	switch r := req.(type) {
+	switch typedReq := req.(type) {
 	case TreeDiffRequest:
-		commit, err := w.repo.LookupCommit(r.CommitHash)
+		commit, err := w.repo.LookupCommit(typedReq.CommitHash)
 		if err != nil {
-			r.Response <- TreeDiffResponse{Error: err}
+			typedReq.Response <- TreeDiffResponse{Error: err}
+
 			return
 		}
 		// We don't need to keep the commit, just the tree.
@@ -108,34 +113,36 @@ func (w *Worker) handle(req WorkerRequest) {
 		// Snippet line 57: &Commit{commit: commit, repo: r}.
 		// Check pkg/gitlib/commit.go for Free().
 		// Assuming it has one or relies on git2go.
-		
+
 		commitTree, err := commit.Tree()
 		// Safe to free commit now as tree is independent object in libgit2
-		commit.Free() 
-		
+		commit.Free()
+
 		if err != nil {
-			r.Response <- TreeDiffResponse{Error: err}
+			typedReq.Response <- TreeDiffResponse{Error: err}
+
 			return
 		}
 
 		var changes Changes
-		if r.PreviousTree != nil {
-			changes, err = TreeDiff(w.repo, r.PreviousTree, commitTree)
+		if typedReq.PreviousTree != nil {
+			changes, err = TreeDiff(w.repo, typedReq.PreviousTree, commitTree)
 		} else {
 			changes, err = InitialTreeChanges(w.repo, commitTree)
 		}
 
 		// We return commitTree so the caller can use it as PreviousTree next time.
 		// The caller is responsible for ensuring it's freed eventually (e.g. when dropping it as PreviousTree).
-		r.Response <- TreeDiffResponse{
+		typedReq.Response <- TreeDiffResponse{
 			Changes:     changes,
 			CurrentTree: commitTree,
 			Error:       err,
 		}
 
 	case BlobBatchRequest:
-		results := w.bridge.BatchLoadBlobs(r.Hashes)
+		results := w.bridge.BatchLoadBlobs(typedReq.Hashes)
 		blobs := make([]*CachedBlob, len(results))
+
 		for i, res := range results {
 			if res.Error == nil {
 				blobs[i] = &CachedBlob{
@@ -145,10 +152,11 @@ func (w *Worker) handle(req WorkerRequest) {
 				}
 			}
 		}
-		r.Response <- BlobBatchResponse{Blobs: blobs, Results: results}
+
+		typedReq.Response <- BlobBatchResponse{Blobs: blobs, Results: results}
 
 	case DiffBatchRequest:
-		results := w.bridge.BatchDiffBlobs(r.Requests)
-		r.Response <- DiffBatchResponse{Results: results}
+		results := w.bridge.BatchDiffBlobs(typedReq.Requests)
+		typedReq.Response <- DiffBatchResponse{Results: results}
 	}
 }

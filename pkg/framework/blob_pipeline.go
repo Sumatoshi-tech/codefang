@@ -31,6 +31,7 @@ func NewBlobPipeline(
 	if bufferSize <= 0 {
 		bufferSize = 1
 	}
+
 	return &BlobPipeline{
 		SeqWorkerChan:  seqChan,
 		PoolWorkerChan: poolChan,
@@ -47,119 +48,151 @@ type blobJob struct {
 // Process receives commit batches and outputs blob data.
 func (p *BlobPipeline) Process(ctx context.Context, commits <-chan CommitBatch) <-chan BlobData {
 	out := make(chan BlobData)
-
-	// Job channel for ordered results
 	jobs := make(chan blobJob, p.BufferSize)
 
-	// Producer: Sequential TreeDiff -> Parallel Blob Request
-	go func() {
-		defer close(jobs)
-
-		var previousTree *gitlib.Tree
-		defer func() {
-			if previousTree != nil {
-				previousTree.Free()
-			}
-		}()
-
-		for batch := range commits {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			for i, commit := range batch.Commits {
-				// 1. Sequential Tree Diff
-				// Must block here to maintain order of trees
-				changes, currentTree, err := p.doTreeDiff(commit, previousTree)
-				
-				// Update tree state for next iteration
-				if previousTree != nil {
-					previousTree.Free()
-				}
-				previousTree = currentTree // Transferred ownership
-
-				job := blobJob{
-					data: BlobData{
-						Commit:  commit,
-						Index:   batch.StartIndex + i,
-						Changes: changes,
-						Error:   err,
-					},
-				}
-
-				if err == nil {
-					// 2. Fire Parallel Blob Load
-					req, hashes := p.prepareBlobRequest(changes)
-					job.hashes = hashes
-					
-					if len(hashes) > 0 {
-						job.respChan = make(chan gitlib.BlobBatchResponse, 1)
-						req.Response = job.respChan
-						
-						select {
-						case p.PoolWorkerChan <- req:
-						case <-ctx.Done():
-							return
-						}
-					}
-				}
-
-				// Push to job queue (blocks if buffer full, throttling producer)
-				select {
-				case jobs <- job:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-
-	// Consumer: Wait for Blobs -> Output
-	go func() {
-		defer close(out)
-
-		for job := range jobs {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			if job.data.Error != nil {
-				out <- job.data
-				continue
-			}
-
-			if job.respChan != nil {
-				// Wait for pool worker result
-				select {
-				case resp := <-job.respChan:
-					// Build cache
-					cache := make(map[gitlib.Hash]*gitlib.CachedBlob, len(resp.Blobs))
-					for i, blob := range resp.Blobs {
-						if blob != nil {
-							cache[job.hashes[i]] = blob
-						}
-					}
-					job.data.BlobCache = cache
-				case <-ctx.Done():
-					return
-				}
-			} else {
-				job.data.BlobCache = make(map[gitlib.Hash]*gitlib.CachedBlob)
-			}
-
-			select {
-			case out <- job.data:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	go p.runProducer(ctx, commits, jobs)
+	go p.runConsumer(ctx, jobs, out)
 
 	return out
+}
+
+// runProducer processes commit batches and creates blob load jobs.
+func (p *BlobPipeline) runProducer(ctx context.Context, commits <-chan CommitBatch, jobs chan<- blobJob) {
+	defer close(jobs)
+
+	var previousTree *gitlib.Tree
+
+	defer func() {
+		if previousTree != nil {
+			previousTree.Free()
+		}
+	}()
+
+	for batch := range commits {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		previousTree = p.processBatch(ctx, batch, previousTree, jobs)
+		if previousTree == nil && ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+// processBatch processes a single commit batch and returns the updated previous tree.
+func (p *BlobPipeline) processBatch(
+	ctx context.Context, batch CommitBatch, previousTree *gitlib.Tree, jobs chan<- blobJob,
+) *gitlib.Tree {
+	for i, commit := range batch.Commits {
+		changes, currentTree, err := p.doTreeDiff(commit, previousTree)
+
+		if previousTree != nil {
+			previousTree.Free()
+		}
+
+		previousTree = currentTree
+
+		job := blobJob{
+			data: BlobData{
+				Commit:  commit,
+				Index:   batch.StartIndex + i,
+				Changes: changes,
+				Error:   err,
+			},
+		}
+
+		if err == nil {
+			if !p.fireBlobRequest(ctx, &job, changes) {
+				return previousTree
+			}
+		}
+
+		select {
+		case jobs <- job:
+		case <-ctx.Done():
+			return previousTree
+		}
+	}
+
+	return previousTree
+}
+
+// fireBlobRequest initiates a parallel blob load request.
+func (p *BlobPipeline) fireBlobRequest(ctx context.Context, job *blobJob, changes gitlib.Changes) bool {
+	req, hashes := p.prepareBlobRequest(changes)
+	job.hashes = hashes
+
+	if len(hashes) == 0 {
+		return true
+	}
+
+	job.respChan = make(chan gitlib.BlobBatchResponse, 1)
+	req.Response = job.respChan
+
+	select {
+	case p.PoolWorkerChan <- req:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// runConsumer waits for blob responses and outputs blob data.
+func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out chan<- BlobData) {
+	defer close(out)
+
+	for job := range jobs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if job.data.Error != nil {
+			out <- job.data
+
+			continue
+		}
+
+		if !p.collectBlobResponse(ctx, &job) {
+			return
+		}
+
+		select {
+		case out <- job.data:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// collectBlobResponse waits for and collects the blob response.
+func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bool {
+	if job.respChan == nil {
+		job.data.BlobCache = make(map[gitlib.Hash]*gitlib.CachedBlob)
+
+		return true
+	}
+
+	select {
+	case resp := <-job.respChan:
+		cache := make(map[gitlib.Hash]*gitlib.CachedBlob, len(resp.Blobs))
+
+		for i, blob := range resp.Blobs {
+			if blob != nil {
+				cache[job.hashes[i]] = blob
+			}
+		}
+
+		job.data.BlobCache = cache
+
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (p *BlobPipeline) doTreeDiff(commit *gitlib.Commit, previousTree *gitlib.Tree) (gitlib.Changes, *gitlib.Tree, error) {
@@ -169,12 +202,15 @@ func (p *BlobPipeline) doTreeDiff(commit *gitlib.Commit, previousTree *gitlib.Tr
 		CommitHash:   commit.Hash(),
 		Response:     respChan,
 	}
+
 	resp := <-respChan
+
 	return resp.Changes, resp.CurrentTree, resp.Error
 }
 
 func (p *BlobPipeline) prepareBlobRequest(changes gitlib.Changes) (gitlib.BlobBatchRequest, []gitlib.Hash) {
 	hashSet := make(map[gitlib.Hash]bool)
+
 	for _, change := range changes {
 		switch change.Action {
 		case gitlib.Insert:
@@ -188,9 +224,10 @@ func (p *BlobPipeline) prepareBlobRequest(changes gitlib.Changes) (gitlib.BlobBa
 	}
 
 	hashes := make([]gitlib.Hash, 0, len(hashSet))
+
 	for h := range hashSet {
 		hashes = append(hashes, h)
 	}
-	
+
 	return gitlib.BlobBatchRequest{Hashes: hashes}, hashes
 }
