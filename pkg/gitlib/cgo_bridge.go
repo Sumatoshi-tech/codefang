@@ -1,7 +1,8 @@
 package gitlib
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/clib
+#cgo CFLAGS: -I${SRCDIR}/clib -fopenmp
+#cgo LDFLAGS: -fopenmp
 #include "codefang_git.h"
 #include <stdlib.h>
 
@@ -83,6 +84,8 @@ type DiffResult struct {
 type DiffRequest struct {
 	OldHash Hash
 	NewHash Hash
+	OldData []byte
+	NewData []byte
 	HasOld  bool
 	HasNew  bool
 }
@@ -179,6 +182,11 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 		return results
 	}
 
+	// Pin memory to prevent GC movement during CGO call.
+	// CRITICAL: We must pin blob data slices BEFORE setting pointers in cRequests,
+	// as the GC could move Go-allocated memory during the CGO call.
+	var pinner runtime.Pinner
+
 	// Prepare C requests
 	cRequests := make([]C.cf_diff_request, len(requests))
 	for i, req := range requests {
@@ -187,20 +195,31 @@ func (b *CGOBridge) BatchDiffBlobs(requests []DiffRequest) []DiffResult {
 				cRequests[i].old_oid.id[j] = C.uchar(req.OldHash[j])
 			}
 			cRequests[i].has_old = 1
+			if len(req.OldData) > 0 {
+				// Pin the underlying byte slice to prevent GC movement
+				pinner.Pin(&req.OldData[0])
+				cRequests[i].old_data = unsafe.Pointer(&req.OldData[0])
+				cRequests[i].old_size = C.size_t(len(req.OldData))
+			}
 		}
 		if req.HasNew {
 			for j := range 20 {
 				cRequests[i].new_oid.id[j] = C.uchar(req.NewHash[j])
 			}
 			cRequests[i].has_new = 1
+			if len(req.NewData) > 0 {
+				// Pin the underlying byte slice to prevent GC movement
+				pinner.Pin(&req.NewData[0])
+				cRequests[i].new_data = unsafe.Pointer(&req.NewData[0])
+				cRequests[i].new_size = C.size_t(len(req.NewData))
+			}
 		}
 	}
 
 	// Prepare C results
 	cResults := make([]C.cf_diff_result, len(requests))
 
-	// Pin memory to prevent GC movement during CGO call
-	var pinner runtime.Pinner
+	// Pin the request and result arrays
 	pinner.Pin(&cRequests[0])
 	pinner.Pin(&cResults[0])
 

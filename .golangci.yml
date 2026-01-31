@@ -61,9 +61,6 @@ linters:
     - whitespace # Conflicts with wsl_v5: multi-func requires blank lines that wsl_v5 forbids
     - nonamedreturns # Conflicts with gocritic(unnamedResult): forbids named returns that gocritic requires for clarity
 
-    # --- Temporarily disabled ---
-    - godot # Crashes on certain comment patterns in gitlib package (godot v1.5.4 bug)
-
   settings:
     cyclop:
       max-complexity: 15
@@ -175,7 +172,8 @@ linters:
 
     godot:
       scope: all
-      capital: true
+      # capital: true triggers index-out-of-range panic in godot on some comments (e.g. in gitlib).
+      capital: false
 
     gomoddirectives:
       replace-local: true
@@ -210,6 +208,7 @@ linters:
         - empty
         - stdlib
         - generic
+        - github\.com/go-echarts/go-echarts/v2/components\.Charter
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ResultAggregator
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
@@ -217,7 +216,6 @@ linters:
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.ValueExtractor
         - github\.com/xeipuuv/gojsonschema\.JSONLoader
-        - github\.com/go-echarts/go-echarts/v2/components\.Charter
 
     lll:
       line-length: 140
@@ -445,15 +443,25 @@ linters:
           - err113
           - mnd
           - paralleltest
-          - gocognit
-          - gocyclo
-          - cyclop
-          - nestif
 
       # The "common" package name is intentional for shared analyzer utilities.
       - path: pkg/analyzers/common/
         text: "avoid meaningless package names"
         linters: [revive]
+
+      # godot panics on gitlib (index out of range in checkCapital); exclude until godot is fixed.
+      - path: pkg/gitlib/
+        linters: [godot]
+
+      # CGO file: "C" is pseudo-package; gocritic dupImport false positive.
+      - path: pkg/gitlib/cgo_bridge\.go
+        text: "dupImport"
+        linters: [gocritic]
+
+      # libgit2 callback signatures require error return; unparam reports always-nil.
+      - path: pkg/gitlib/diff\.go
+        text: "result 0 \\(error\\) is always nil|result 1 \\(error\\) is always nil"
+        linters: [unparam]
 
       # Package-comment style exclusions for nolint/TODO lines.
       - text: 'package comment should be of the form ".+"'
@@ -466,8 +474,3 @@ linters:
       # DSL parser test contains long raw string literals (mapping DSL grammar) that cannot be broken.
       - path: pkg/uast/pkg/mapping/dsl_parser_test\.go
         linters: [lll]
-
-      # CGO bridge file has necessary import pattern for CGO (import "C" must be separate).
-      # Also exclude complexity checks - CGO code is inherently complex due to C/Go conversion.
-      - path: pkg/gitlib/cgo_bridge\.go
-        linters: [gocritic, nlreturn, gocognit]

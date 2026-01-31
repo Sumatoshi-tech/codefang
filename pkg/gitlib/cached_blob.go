@@ -37,6 +37,15 @@ func NewCachedBlobForTest(data []byte) *CachedBlob {
 	}
 }
 
+// NewCachedBlobWithHashForTest creates a CachedBlob with the given hash and data for testing.
+func NewCachedBlobWithHashForTest(hash Hash, data []byte) *CachedBlob {
+	return &CachedBlob{
+		hash: hash,
+		size: int64(len(data)),
+		Data: data,
+	}
+}
+
 // NewCachedBlobFromRepo loads and caches a blob from the repository.
 func NewCachedBlobFromRepo(repo *Repository, blobHash Hash) (*CachedBlob, error) {
 	blob, err := repo.LookupBlob(blobHash)

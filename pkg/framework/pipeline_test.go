@@ -41,8 +41,8 @@ func TestCommitStreamerStreamEmpty(t *testing.T) {
 func TestDefaultCoordinatorConfig(t *testing.T) {
 	config := framework.DefaultCoordinatorConfig()
 
-	if config.CommitBatchSize != 1 {
-		t.Errorf("CommitBatchSize = %d, want 1", config.CommitBatchSize)
+	if config.CommitBatchSize != 100 {
+		t.Errorf("CommitBatchSize = %d, want 100", config.CommitBatchSize)
 	}
 
 	if config.Workers < 1 {

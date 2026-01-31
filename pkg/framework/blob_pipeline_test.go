@@ -11,7 +11,7 @@ func TestBlobPipeline_NewBlobPipeline(t *testing.T) {
 	seqCh := make(chan gitlib.WorkerRequest, 1)
 	poolCh := make(chan gitlib.WorkerRequest, 1)
 
-	p := framework.NewBlobPipeline(seqCh, poolCh, 5)
+	p := framework.NewBlobPipeline(seqCh, poolCh, 5, 1)
 	if p == nil {
 		t.Fatal("NewBlobPipeline returned nil")
 	}
@@ -33,7 +33,7 @@ func TestBlobPipeline_NewBlobPipelineZeroBufferSize(t *testing.T) {
 	seqCh := make(chan gitlib.WorkerRequest, 1)
 	poolCh := make(chan gitlib.WorkerRequest, 1)
 
-	p := framework.NewBlobPipeline(seqCh, poolCh, 0)
+	p := framework.NewBlobPipeline(seqCh, poolCh, 0, 1)
 	if p == nil {
 		t.Fatal("NewBlobPipeline returned nil")
 	}

@@ -41,7 +41,7 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 
 	return CoordinatorConfig{
 		BatchConfig:     gitlib.DefaultBatchConfig(),
-		CommitBatchSize: 1,
+		CommitBatchSize: 100,
 		Workers:         workers,
 		BufferSize:      workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed
 		BlobCacheSize:   DefaultGlobalCacheSize,
@@ -124,7 +124,7 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 			BatchSize: config.CommitBatchSize,
 			Lookahead: config.BufferSize,
 		},
-		blobPipeline: NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, blobCache),
+		blobPipeline: NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, config.Workers, blobCache),
 		diffPipeline: NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache),
 		blobCache:    blobCache,
 		diffCache:    diffCache,

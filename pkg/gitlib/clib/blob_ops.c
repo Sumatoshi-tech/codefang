@@ -5,11 +5,16 @@
  * 1. Uses ODB API directly for faster raw object access
  * 2. Pre-validates OIDs in batch to reduce redundant lookups
  * 3. Sorts OIDs for better pack cache locality
+ * 4. OpenMP parallel loading (git_odb is thread-safe for reading)
  */
 
 #include "codefang_git.h"
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 /* Structure for sorting OIDs while tracking original indices */
 typedef struct {
@@ -160,11 +165,26 @@ int cf_batch_load_blobs(
     /* Sort OIDs for better pack cache locality */
     qsort(sorted, count, sizeof(cf_oid_with_index), compare_oids);
 
-    /* Load blobs in sorted order */
-    for (int i = 0; i < count; i++) {
-        int orig_idx = sorted[i].original_index;
-        if (load_single_blob_odb(odb, &sorted[i].oid, &results[orig_idx]) == CF_OK) {
-            success_count++;
+    /* Load blobs in sorted order - parallelized with OpenMP.
+     * git_odb is thread-safe for reading, each thread writes to its own results slot.
+     */
+#ifdef _OPENMP
+    if (count >= 8) {
+        #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 4)
+        for (int i = 0; i < count; i++) {
+            int orig_idx = sorted[i].original_index;
+            if (load_single_blob_odb(odb, &sorted[i].oid, &results[orig_idx]) == CF_OK) {
+                success_count++;
+            }
+        }
+    } else
+#endif
+    {
+        for (int i = 0; i < count; i++) {
+            int orig_idx = sorted[i].original_index;
+            if (load_single_blob_odb(odb, &sorted[i].oid, &results[orig_idx]) == CF_OK) {
+                success_count++;
+            }
         }
     }
 
