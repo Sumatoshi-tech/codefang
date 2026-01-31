@@ -16,12 +16,28 @@ var ErrParentNotFound = errors.New("parent commit not found")
 
 // Commit wraps a libgit2 commit.
 type Commit struct {
-	commit *git2go.Commit
-	repo   *Repository
+	commit   *git2go.Commit
+	repo     *Repository
+	testHash *Hash // used for testing when commit is nil
+}
+
+// NewCommitForTest creates a Commit with the given hash for testing.
+func NewCommitForTest(h Hash) *Commit {
+	return &Commit{
+		testHash: &h,
+	}
 }
 
 // Hash returns the commit hash.
 func (c *Commit) Hash() Hash {
+	if c.commit == nil {
+		if c.testHash != nil {
+			return *c.testHash
+		}
+
+		return Hash{}
+	}
+
 	return HashFromOid(c.commit.Id())
 }
 

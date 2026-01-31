@@ -81,6 +81,10 @@ typedef struct {
 typedef struct {
     git_oid old_oid;        /* OID of old blob (zero OID if new file) */
     git_oid new_oid;        /* OID of new blob (zero OID if deleted) */
+    const void* old_data;   /* Optional: pointer to old blob data (if already loaded) */
+    size_t old_size;        /* Size of old data */
+    const void* new_data;   /* Optional: pointer to new blob data (if already loaded) */
+    size_t new_size;        /* Size of new data */
     int has_old;            /* 1 if old_oid is valid */
     int has_new;            /* 1 if new_oid is valid */
 } cf_diff_request;

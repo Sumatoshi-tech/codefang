@@ -5,11 +5,16 @@
  * 1. ODB-based blob preloading for better cache efficiency
  * 2. Sorted OID processing for pack locality
  * 3. Single ODB refresh per batch
+ * 4. OpenMP parallel diff computation (pure buffer operations)
  */
 
 #include "codefang_git.h"
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 /* Context for diff callbacks */
 typedef struct {
@@ -236,10 +241,10 @@ static int preload_blobs_for_diff(
 
     int oid_count = 0;
     for (int i = 0; i < count; i++) {
-        if (requests[i].has_old) {
+        if (requests[i].has_old && requests[i].old_data == NULL) {
             memcpy(&all_oids[oid_count++], &requests[i].old_oid, sizeof(git_oid));
         }
-        if (requests[i].has_new) {
+        if (requests[i].has_new && requests[i].new_data == NULL) {
             memcpy(&all_oids[oid_count++], &requests[i].new_oid, sizeof(git_oid));
         }
     }
@@ -340,10 +345,10 @@ static void free_preloaded_blobs(cf_preloaded_blob* blobs, int count) {
     free(blobs);
 }
 
-/* Compute diff using preloaded blobs */
-static int compute_diff_with_preloaded(
-    cf_preloaded_blob* old_blob,
-    cf_preloaded_blob* new_blob,
+/* Compute diff using buffers */
+static int compute_diff_generic(
+    const char* old_data, size_t old_size,
+    const char* new_data, size_t new_size,
     cf_diff_result* result
 ) {
     /* Initialize result */
@@ -353,29 +358,21 @@ static int compute_diff_with_preloaded(
     }
 
     /* Check old blob */
-    if (old_blob != NULL) {
-        if (!old_blob->valid) {
-            result->error = CF_ERR_LOOKUP;
-            return CF_ERR_LOOKUP;
-        }
-        if (old_blob->is_binary) {
+    if (old_data != NULL || old_size > 0) {
+        if (old_size > 0 && cf_is_binary(old_data, old_size)) {
             result->error = CF_ERR_BINARY;
             return CF_ERR_BINARY;
         }
-        result->old_lines = old_blob->line_count;
+        result->old_lines = cf_count_lines(old_data, old_size);
     }
 
     /* Check new blob */
-    if (new_blob != NULL) {
-        if (!new_blob->valid) {
-            result->error = CF_ERR_LOOKUP;
-            return CF_ERR_LOOKUP;
-        }
-        if (new_blob->is_binary) {
+    if (new_data != NULL || new_size > 0) {
+        if (new_size > 0 && cf_is_binary(new_data, new_size)) {
             result->error = CF_ERR_BINARY;
             return CF_ERR_BINARY;
         }
-        result->new_lines = new_blob->line_count;
+        result->new_lines = cf_count_lines(new_data, new_size);
     }
 
     /* Setup diff context */
@@ -387,20 +384,12 @@ static int compute_diff_with_preloaded(
         .new_line_pos = 0
     };
 
-    /* Create temporary blobs for git_diff_blobs (it needs git_blob pointers) */
-    /* Unfortunately git_diff_blobs requires git_blob*, not raw data */
-    /* We'll use git_blob_create_from_buffer to create in-memory blobs */
-    
-    /* For now, use the raw diff approach with buffers */
     git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
     
-    /* git_diff_buffers is more efficient when we already have the data */
     int err = git_diff_buffers(
-        old_blob ? old_blob->data : NULL,
-        old_blob ? old_blob->size : 0,
+        old_data, old_size,
         NULL,  /* old_as_path */
-        new_blob ? new_blob->data : NULL,
-        new_blob ? new_blob->size : 0,
+        new_data, new_size,
         NULL,  /* new_as_path */
         &opts,
         NULL,           /* file_cb */
@@ -479,21 +468,100 @@ int cf_batch_diff_blobs(
         return success_count;
     }
 
-    /* Compute diffs using preloaded blobs */
+    /* Compute diffs - parallelized with OpenMP for large batches.
+     * compute_diff_generic is pure computation on buffers, no shared state.
+     * Each thread writes to its own results[i] slot.
+     */
     int success_count = 0;
-    for (int i = 0; i < count; i++) {
-        cf_preloaded_blob* old_blob = NULL;
-        cf_preloaded_blob* new_blob = NULL;
 
-        if (requests[i].has_old) {
-            old_blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].old_oid);
-        }
-        if (requests[i].has_new) {
-            new_blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].new_oid);
-        }
+#ifdef _OPENMP
+    /* Only parallelize for sufficiently large batches to amortize thread overhead */
+    if (count >= 8) {
+        #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 4)
+        for (int i = 0; i < count; i++) {
+            const char *old_data = NULL, *new_data = NULL;
+            size_t old_size = 0, new_size = 0;
+            int skip = 0;
 
-        if (compute_diff_with_preloaded(old_blob, new_blob, &results[i]) == CF_OK) {
-            success_count++;
+            if (requests[i].has_old) {
+                if (requests[i].old_data) {
+                    old_data = (const char*)requests[i].old_data;
+                    old_size = requests[i].old_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].old_oid);
+                    if (blob && blob->valid) {
+                        old_data = blob->data;
+                        old_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        skip = 1;
+                    }
+                }
+            }
+
+            if (!skip && requests[i].has_new) {
+                if (requests[i].new_data) {
+                    new_data = (const char*)requests[i].new_data;
+                    new_size = requests[i].new_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].new_oid);
+                    if (blob && blob->valid) {
+                        new_data = blob->data;
+                        new_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        skip = 1;
+                    }
+                }
+            }
+
+            if (!skip && compute_diff_generic(old_data, old_size, new_data, new_size, &results[i]) == CF_OK) {
+                success_count++;
+            }
+        }
+    } else
+#endif
+    {
+        /* Sequential fallback for small batches or non-OpenMP builds */
+        for (int i = 0; i < count; i++) {
+            const char *old_data = NULL, *new_data = NULL;
+            size_t old_size = 0, new_size = 0;
+
+            if (requests[i].has_old) {
+                if (requests[i].old_data) {
+                    old_data = (const char*)requests[i].old_data;
+                    old_size = requests[i].old_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].old_oid);
+                    if (blob && blob->valid) {
+                        old_data = blob->data;
+                        old_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        continue;
+                    }
+                }
+            }
+
+            if (requests[i].has_new) {
+                if (requests[i].new_data) {
+                    new_data = (const char*)requests[i].new_data;
+                    new_size = requests[i].new_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].new_oid);
+                    if (blob && blob->valid) {
+                        new_data = blob->data;
+                        new_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        continue;
+                    }
+                }
+            }
+
+            if (compute_diff_generic(old_data, old_size, new_data, new_size, &results[i]) == CF_OK) {
+                success_count++;
+            }
         }
     }
 
