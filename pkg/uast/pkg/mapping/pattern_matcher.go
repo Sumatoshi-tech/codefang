@@ -17,9 +17,11 @@ var (
 
 // PatternMatcher compiles and matches S-expression patterns to Tree-sitter queries.
 type PatternMatcher struct {
-	cache map[string]*sitter.Query
-	lang  *sitter.Language
-	mu    sync.RWMutex
+	cache  map[string]*sitter.Query
+	lang   *sitter.Language
+	mu     sync.RWMutex
+	hits   int64
+	misses int64
 }
 
 // NewPatternMatcher creates a new PatternMatcher with an empty cache and language.
@@ -35,6 +37,7 @@ func (pm *PatternMatcher) CompileAndCache(pattern string) (*sitter.Query, error)
 	pm.mu.RLock()
 
 	if cachedQuery, ok := pm.cache[pattern]; ok {
+		pm.hits++
 		pm.mu.RUnlock()
 
 		return cachedQuery, nil
@@ -49,9 +52,18 @@ func (pm *PatternMatcher) CompileAndCache(pattern string) (*sitter.Query, error)
 
 	pm.mu.Lock()
 	pm.cache[pattern] = compiled
+	pm.misses++
 	pm.mu.Unlock()
 
 	return compiled, nil
+}
+
+// CacheStats returns the number of cache hits and misses.
+func (pm *PatternMatcher) CacheStats() (hits, misses int64) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return pm.hits, pm.misses
 }
 
 // MatchPattern matches a compiled query against a Tree-sitter node and returns captures.
