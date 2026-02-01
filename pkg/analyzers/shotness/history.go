@@ -59,7 +59,7 @@ const (
 	// DefaultShotnessDSLStruct is the default DSL expression for selecting code structures.
 	DefaultShotnessDSLStruct = "filter(.roles has \"Function\")"
 	// DefaultShotnessDSLName is the default DSL expression for extracting names.
-	DefaultShotnessDSLName = ".token"
+	DefaultShotnessDSLName = ".props.name"
 )
 
 // Name returns the name of the analyzer.
