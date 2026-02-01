@@ -37,6 +37,7 @@ extern "C" {
 #define CF_ERR_BINARY  -2
 #define CF_ERR_LOOKUP  -3
 #define CF_ERR_DIFF    -4
+#define CF_ERR_ARENA_FULL -5
 
 /* ============================================================================
  * Blob Operations Types
@@ -51,6 +52,16 @@ typedef struct {
     int is_binary;          /* 1 if binary content detected */
     int line_count;         /* Number of lines (0 if binary) */
 } cf_blob_result;
+
+/* Result of loading a blob into an arena (provided or allocated) */
+typedef struct {
+    unsigned char oid[20];  /* The blob's OID */
+    uint64_t offset;        /* Offset in the arena */
+    size_t size;            /* Size of the blob data */
+    int error;              /* 0 on success, negative on error, CF_ERR_ARENA_FULL if didn't fit */
+    int is_binary;          /* 1 if binary content detected */
+    int line_count;         /* Number of lines (0 if binary) */
+} cf_blob_arena_result;
 
 /* Request for batch blob loading */
 typedef struct {
@@ -90,20 +101,53 @@ typedef struct {
 } cf_diff_request;
 
 /* ============================================================================
+ * Tree Diff Operations Types
+ * ============================================================================ */
+
+/* Single file change (equivalent to git_diff_delta) */
+typedef struct {
+    int status;             /* GIT_DELTA_ADDED, DELETED, MODIFIED, etc. */
+    char* old_path;         /* Path of old file (malloc'd) */
+    unsigned char old_oid[20];
+    size_t old_size;
+    uint16_t old_mode;
+    
+    char* new_path;         /* Path of new file (malloc'd) */
+    unsigned char new_oid[20];
+    size_t new_size;
+    uint16_t new_mode;
+} cf_change;
+
+/* Result of tree diff */
+typedef struct {
+    cf_change* changes;     /* Array of changes (malloc'd) */
+    int count;              /* Number of changes */
+    int capacity;           /* Capacity of changes array */
+    int error;              /* 0 on success */
+} cf_tree_diff_result;
+
+/*
+ * Compute diff between two trees.
+ * Returns a compact array of changes.
+ */
+int cf_tree_diff(
+    git_repository* repo,
+    git_oid* old_tree_oid,
+    git_oid* new_tree_oid,
+    cf_tree_diff_result* result
+);
+
+/*
+ * Free tree diff result.
+ */
+void cf_free_tree_diff_result(cf_tree_diff_result* result);
+
+/* ============================================================================
  * Batch Operations - Core API
  * ============================================================================ */
 
 /*
  * Load multiple blobs in a single call.
- *
- * This function loads multiple blobs from the repository, minimizing CGO
- * overhead by processing all requests in a single call.
- *
- * @param repo     The git repository
- * @param requests Array of blob requests (OIDs to load)
- * @param count    Number of requests
- * @param results  Pre-allocated array to store results (must have 'count' elements)
- * @return         Number of successfully loaded blobs, or negative on fatal error
  */
 int cf_batch_load_blobs(
     git_repository* repo,
@@ -113,16 +157,42 @@ int cf_batch_load_blobs(
 );
 
 /*
+ * Load multiple blobs into a provided memory arena.
+ */
+int cf_batch_load_blobs_arena(
+    git_repository* repo,
+    const cf_blob_request* requests,
+    int count,
+    void* arena_start,
+    size_t arena_capacity,
+    cf_blob_arena_result* results
+);
+
+/*
+ * Load multiple blobs into a single C-allocated buffer (flat).
+ * 
+ * This function calculates total size, allocates ONE buffer, copies all blobs,
+ * and returns the buffer pointer. The caller is responsible for freeing out_arena.
+ *
+ * @param repo           The git repository
+ * @param requests       Array of blob requests
+ * @param count          Number of requests
+ * @param out_arena      Output: Pointer to the allocated buffer
+ * @param out_arena_size Output: Size of the allocated buffer
+ * @param results        Pre-allocated array to store results
+ * @return               Number of successfully loaded blobs
+ */
+int cf_batch_load_blobs_flat(
+    git_repository* repo,
+    const cf_blob_request* requests,
+    int count,
+    void** out_arena,
+    size_t* out_arena_size,
+    cf_blob_arena_result* results
+);
+
+/*
  * Compute diffs for multiple blob pairs in a single call.
- *
- * This function computes line-level diffs for multiple blob pairs,
- * minimizing CGO overhead by processing all requests in a single call.
- *
- * @param repo     The git repository
- * @param requests Array of diff requests (blob pairs)
- * @param count    Number of requests
- * @param results  Pre-allocated array to store results (must have 'count' elements)
- * @return         Number of successfully computed diffs, or negative on fatal error
  */
 int cf_batch_diff_blobs(
     git_repository* repo,
@@ -132,65 +202,28 @@ int cf_batch_diff_blobs(
 );
 
 /* ============================================================================
- * Utility Functions
+ * Initialization
  * ============================================================================ */
 
 /*
- * Count lines in a buffer.
- *
- * Matches Go's strings.Split behavior:
- * - "a\nb\n" -> 2 lines
- * - "a\nb" -> 2 lines
- * - "" -> 0 lines
- *
- * @param data  The data buffer
- * @param size  Size of the buffer
- * @return      Number of lines
+ * Initialize global library settings.
+ * Should be called once at startup.
  */
-int cf_count_lines(const char* data, size_t size);
+void cf_init();
 
-/*
- * Check if data appears to be binary.
- *
- * Checks for null bytes in the first CF_BINARY_CHECK_LEN bytes.
- *
- * @param data  The data buffer
- * @param size  Size of the buffer
- * @return      1 if binary, 0 if text
- */
+/* ============================================================================
+ * Utility Functions
+ * ============================================================================ */
+
+int cf_count_lines(const char* data, size_t size);
 int cf_is_binary(const char* data, size_t size);
 
 /* ============================================================================
  * Memory Management
  * ============================================================================ */
 
-/*
- * Free blob result data.
- *
- * Frees the data pointer in each result.
- *
- * @param results  Array of blob results
- * @param count    Number of results
- */
 void cf_free_blob_results(cf_blob_result* results, int count);
-
-/*
- * Free diff result data.
- *
- * Frees the ops array in each result.
- *
- * @param results  Array of diff results
- * @param count    Number of results
- */
 void cf_free_diff_results(cf_diff_result* results, int count);
-
-/*
- * Initialize a diff result with pre-allocated ops array.
- *
- * @param result    The result to initialize
- * @param capacity  Initial capacity for ops array
- * @return          0 on success, CF_ERR_NOMEM on allocation failure
- */
 int cf_init_diff_result(cf_diff_result* result, int capacity);
 
 #ifdef __cplusplus

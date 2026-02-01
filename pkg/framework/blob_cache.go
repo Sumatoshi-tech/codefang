@@ -93,9 +93,12 @@ func (c *GlobalBlobCache) Put(hash gitlib.Hash, blob *gitlib.CachedBlob) {
 	}
 
 	// Add new entry
+	// Clone the blob to ensure data is detached from any large arena
+	safeBlob := blob.Clone()
+	
 	entry := &cacheEntry{
 		hash: hash,
-		blob: blob,
+		blob: safeBlob,
 		size: blobSize,
 	}
 
@@ -103,6 +106,7 @@ func (c *GlobalBlobCache) Put(hash gitlib.Hash, blob *gitlib.CachedBlob) {
 	c.currentSize += blobSize
 	c.addToFront(entry)
 }
+
 
 // GetMulti retrieves multiple blobs from the cache.
 // Returns a map of found blobs and a slice of missing hashes.
@@ -158,9 +162,11 @@ func (c *GlobalBlobCache) PutMulti(blobs map[gitlib.Hash]*gitlib.CachedBlob) {
 		}
 
 		// Add new entry
+		safeBlob := blob.Clone()
+		
 		entry := &cacheEntry{
 			hash: hash,
-			blob: blob,
+			blob: safeBlob,
 			size: blobSize,
 		}
 

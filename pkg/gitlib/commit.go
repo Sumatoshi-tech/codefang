@@ -88,6 +88,11 @@ func (c *Commit) ParentHash(n int) Hash {
 	return HashFromOid(c.commit.ParentId(safeconv.MustIntToUint(n)))
 }
 
+// TreeHash returns the hash of the tree associated with this commit.
+func (c *Commit) TreeHash() Hash {
+	return HashFromOid(c.commit.TreeId())
+}
+
 // Tree returns the tree associated with this commit.
 func (c *Commit) Tree() (*Tree, error) {
 	tree, err := c.commit.Tree()

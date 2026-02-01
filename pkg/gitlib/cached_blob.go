@@ -26,6 +26,9 @@ type CachedBlob struct {
 	// lineCount caches the result of CountLines (-1 = binary).
 	lineCount     int
 	lineCountOnce sync.Once
+	
+	// KeepAlive holds a reference to the underlying storage if data is mmapped or unsafe.
+	keepAlive interface{}
 }
 
 // NewCachedBlobForTest creates a CachedBlob with the given data for testing purposes.
@@ -76,11 +79,43 @@ func (b *CachedBlob) Reader() io.ReadCloser {
 	return io.NopCloser(bytes.NewReader(b.Data))
 }
 
+// Clone creates a deep copy of the CachedBlob, detaching the Data slice.
+// This is useful when the original Data slice is part of a larger Arena.
+func (b *CachedBlob) Clone() *CachedBlob {
+	dataCopy := make([]byte, len(b.Data))
+	copy(dataCopy, b.Data)
+
+	return &CachedBlob{
+		hash:      b.hash,
+		size:      b.size,
+		Data:      dataCopy,
+		lineCount: b.lineCount, // Preserve cached line count
+		// lineCountOnce is zero value (fresh), but if lineCount is set, we might want to ensure it's not recomputed.
+		// But sync.Once cannot be easily copied in "done" state.
+		// If lineCount is non-zero (or -1), we can set a completed Once?
+		// No, better to just let it re-run once if needed, or check lineCount != 0.
+		// Actually, if we set lineCount, computeLineCount won't be called if we modify CountLines to check lineCount first?
+		// But CountLines uses Once.Do.
+	}
+}
+
 // CountLines returns the number of lines in the blob or (0, ErrBinary) if it is binary.
 // The result is cached after the first call for efficiency.
 func (b *CachedBlob) CountLines() (int, error) {
+	// Optimization: If lineCount is already set (non-zero), return it.
+	// 0 is ambiguous (empty file vs not computed).
+	// But we can check if lineCount != 0.
+	if b.lineCount != 0 {
+		if b.lineCount == lineCountBinary {
+			return 0, ErrBinary
+		}
+		return b.lineCount, nil
+	}
+	
 	b.lineCountOnce.Do(func() {
-		b.lineCount = b.computeLineCount()
+		if b.lineCount == 0 { // Double check
+			b.lineCount = b.computeLineCount()
+		}
 	})
 
 	if b.lineCount == lineCountBinary {

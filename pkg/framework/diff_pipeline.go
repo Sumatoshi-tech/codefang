@@ -76,12 +76,12 @@ func (p *DiffPipeline) Process(ctx context.Context, blobs <-chan BlobData) <-cha
 func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobData, jobs chan<- diffJob) {
 	defer close(jobs)
 
-	// We accumulate diff requests until we have a decent batch size (e.g. 100 diffs)
+	// We accumulate diff requests until we have a decent batch size (e.g. 200 diffs)
 	// or until input channel is dry.
 	// Since BlobPipeline emits BlobData which already contains multiple diffs per commit,
 	// we are effectively re-batching across commits.
 	
-	const maxBatchSize = 100
+	const maxBatchSize = 1000
 
 	var currentBatchReqs []gitlib.DiffRequest
 	var currentBatchJobs []*diffJob

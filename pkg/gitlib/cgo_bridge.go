@@ -19,10 +19,18 @@ import (
 	"unsafe"
 )
 
+func init() {
+	// Initialize C library settings
+	// This sets OMP_NUM_THREADS=1 to prevent thread oversubscription
+	C.cf_init()
+}
+
 // CGOBridge provides optimized batch operations using the C library.
 // It minimizes CGO overhead by processing multiple items per call.
 type CGOBridge struct {
-	repo *Repository
+	repo       *Repository
+	requestBuf []C.cf_blob_request
+	resultBuf  []C.cf_blob_arena_result
 }
 
 // NewCGOBridge creates a new CGO bridge for the given repository.
@@ -54,6 +62,7 @@ type BlobResult struct {
 	IsBinary  bool
 	LineCount int
 	Error     error
+	KeepAlive interface{}
 }
 
 // DiffOpType represents the type of diff operation.
@@ -88,6 +97,94 @@ type DiffRequest struct {
 	NewData []byte
 	HasOld  bool
 	HasNew  bool
+}
+
+// BatchLoadBlobsArena loads multiple blobs into a provided arena.
+// It uses internal recycled buffers for C requests/results to avoid allocation.
+func (b *CGOBridge) BatchLoadBlobsArena(hashes []Hash, arena []byte) []BlobResult {
+	count := len(hashes)
+	if count == 0 {
+		return nil
+	}
+
+	repoPtr := b.getRepoPtr()
+	if repoPtr == nil {
+		results := make([]BlobResult, count)
+		for i := range results {
+			results[i].Error = ErrRepositoryPointer
+		}
+		return results
+	}
+
+	// Ensure internal buffers are sufficient
+	if cap(b.requestBuf) < count {
+		b.requestBuf = make([]C.cf_blob_request, count, count*2) // Grow with some headroom
+	} else {
+		b.requestBuf = b.requestBuf[:count]
+	}
+	
+	if cap(b.resultBuf) < count {
+		b.resultBuf = make([]C.cf_blob_arena_result, count, count*2)
+	} else {
+		b.resultBuf = b.resultBuf[:count]
+	}
+
+	// Prepare C requests
+	for i, h := range hashes {
+		for j := range 20 {
+			b.requestBuf[i].oid.id[j] = C.uchar(h[j])
+		}
+	}
+
+	// Pin memory
+	var pinner runtime.Pinner
+	pinner.Pin(&b.requestBuf[0])
+	pinner.Pin(&b.resultBuf[0])
+	if len(arena) > 0 {
+		pinner.Pin(&arena[0])
+	}
+	defer pinner.Unpin()
+
+	var arenaPtr unsafe.Pointer
+	if len(arena) > 0 {
+		arenaPtr = unsafe.Pointer(&arena[0])
+	}
+
+	C.cf_batch_load_blobs_arena(
+		(*C.git_repository)(repoPtr),
+		&b.requestBuf[0],
+		C.int(count),
+		arenaPtr,
+		C.size_t(len(arena)),
+		&b.resultBuf[0],
+	)
+
+	// Convert results
+	results := make([]BlobResult, count)
+	for i, cRes := range b.resultBuf {
+		results[i].Hash = hashes[i]
+
+		if cRes.error == C.CF_ERR_ARENA_FULL {
+			results[i].Error = ErrArenaFull
+		} else if cRes.error != C.CF_OK {
+			results[i].Error = cgoBlobError(int(cRes.error))
+		} else {
+			results[i].Size = int64(cRes.size)
+			results[i].IsBinary = cRes.is_binary != 0
+			results[i].LineCount = int(cRes.line_count)
+
+			// Slice from arena
+			offset := int(cRes.offset)
+			size := int(cRes.size)
+			if offset+size <= len(arena) {
+				results[i].Data = arena[offset : offset+size]
+			} else {
+				results[i].Error = ErrArenaFull
+			}
+		}
+	}
+
+	return results
 }
 
 // BatchLoadBlobs loads multiple blobs in a single CGO call.
@@ -162,6 +259,125 @@ func (b *CGOBridge) BatchLoadBlobs(hashes []Hash) []BlobResult {
 	C.cf_free_blob_results(&cResults[0], C.int(len(cResults)))
 
 	return results
+}
+
+// TreeDiff computes the difference between two trees in a single batch CGO call.
+func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
+	var cOldOid, cNewOid C.git_oid
+	var pOldOid, pNewOid *C.git_oid
+
+	if !oldTreeHash.IsZero() {
+		for i := range 20 {
+			cOldOid.id[i] = C.uchar(oldTreeHash[i])
+		}
+		pOldOid = &cOldOid
+	}
+
+	if !newTreeHash.IsZero() {
+		for i := range 20 {
+			cNewOid.id[i] = C.uchar(newTreeHash[i])
+		}
+		pNewOid = &cNewOid
+	}
+
+	repoPtr := b.getRepoPtr()
+	if repoPtr == nil {
+		return nil, ErrRepositoryPointer
+	}
+
+	var cResult C.cf_tree_diff_result
+	
+	// Ensure result is clean
+	cResult.changes = nil
+	cResult.count = 0
+	
+	// Call C function
+	ret := C.cf_tree_diff(
+		(*C.git_repository)(repoPtr),
+		pOldOid,
+		pNewOid,
+		&cResult,
+	)
+
+	if ret != C.CF_OK {
+		return nil, cgoDiffError(int(ret))
+	}
+	defer C.cf_free_tree_diff_result(&cResult)
+
+	if cResult.count == 0 {
+		return make(Changes, 0), nil
+	}
+
+	changes := make(Changes, 0, cResult.count)
+	
+	// Iterate C array
+	// Unsafe pointer arithmetic
+	cChanges := (*[1 << 30]C.cf_change)(unsafe.Pointer(cResult.changes))[:cResult.count:cResult.count]
+
+	const (
+		FileModeCommit = 0160000
+		FileModeTree   = 0040000
+	)
+
+	for i := range int(cResult.count) {
+		cChange := cChanges[i]
+		
+		// Filter out non-blob changes (submodules, trees) early
+		// We only want to surface changes to files that we can process content for.
+		// If either side is a Commit or Tree, skip it.
+		// Exception: If one side is blob and other is not (TypeChange), we might want it?
+		// But status is usually TYPECHANGE for that.
+		// If status is MODIFIED, modes usually match or compatible (exec vs non-exec).
+		if cChange.old_mode == FileModeCommit || cChange.old_mode == FileModeTree ||
+		   cChange.new_mode == FileModeCommit || cChange.new_mode == FileModeTree {
+			continue
+		}
+
+		change := &Change{}
+		
+		// Map status
+		switch cChange.status {
+		case C.GIT_DELTA_ADDED:
+			change.Action = Insert
+			change.To = ChangeEntry{
+				Name: C.GoString(cChange.new_path),
+				Size: int64(cChange.new_size),
+				Mode: uint16(cChange.new_mode),
+			}
+			copy(change.To.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.new_oid[0]), 20))
+			
+		case C.GIT_DELTA_DELETED:
+			change.Action = Delete
+			change.From = ChangeEntry{
+				Name: C.GoString(cChange.old_path),
+				Size: int64(cChange.old_size),
+				Mode: uint16(cChange.old_mode),
+			}
+			copy(change.From.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.old_oid[0]), 20))
+
+		case C.GIT_DELTA_MODIFIED, C.GIT_DELTA_RENAMED, C.GIT_DELTA_COPIED:
+			change.Action = Modify
+			change.From = ChangeEntry{
+				Name: C.GoString(cChange.old_path),
+				Size: int64(cChange.old_size),
+				Mode: uint16(cChange.old_mode),
+			}
+			copy(change.From.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.old_oid[0]), 20))
+			
+			change.To = ChangeEntry{
+				Name: C.GoString(cChange.new_path),
+				Size: int64(cChange.new_size),
+				Mode: uint16(cChange.new_mode),
+			}
+			copy(change.To.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.new_oid[0]), 20))
+		default:
+			continue
+		}
+		
+		changes = append(changes, change)
+	}
+
+	return changes, nil
 }
 
 // BatchDiffBlobs computes diffs for multiple blob pairs in a single CGO call.
@@ -277,6 +493,7 @@ var (
 	ErrDiffMemory        = cgoError("memory allocation failed for diff")
 	ErrDiffBinary        = cgoError("diff blob is binary")
 	ErrDiffCompute       = cgoError("diff computation failed")
+	ErrArenaFull         = cgoError("arena full")
 )
 
 func cgoBlobError(code int) error {
@@ -287,6 +504,8 @@ func cgoBlobError(code int) error {
 		return ErrBlobMemory
 	case C.CF_ERR_BINARY:
 		return ErrBlobBinary
+	case C.CF_ERR_ARENA_FULL:
+		return ErrArenaFull
 	default:
 		return cgoError("unknown blob error")
 	}

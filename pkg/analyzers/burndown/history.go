@@ -961,6 +961,9 @@ func (b *HistoryAnalyzer) handleInsertion(
 	shard *Shard, change *gitlib.Change, author int, cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) error {
 	blob := cache[change.To.Hash]
+	if blob == nil {
+		return fmt.Errorf("missing blob for insertion %s (%s)", change.To.Name, change.To.Hash)
+	}
 
 	lines, err := blob.CountLines()
 	if err != nil {
@@ -1017,6 +1020,9 @@ func (b *HistoryAnalyzer) handleDeletion(
 	}
 
 	blob := cache[change.From.Hash]
+	if blob == nil {
+		return fmt.Errorf("missing blob for deletion %s (%s)", name, change.From.Hash)
+	}
 
 	lines, err := blob.CountLines()
 	if err != nil {
@@ -1077,8 +1083,14 @@ func (b *HistoryAnalyzer) handleModification(
 	}
 
 	blobFrom := cache[change.From.Hash]
+	if blobFrom == nil {
+		return fmt.Errorf("missing blobFrom for modification %s (%s)", change.From.Name, change.From.Hash)
+	}
 	_, errFrom := blobFrom.CountLines()
 	blobTo := cache[change.To.Hash]
+	if blobTo == nil {
+		return fmt.Errorf("missing blobTo for modification %s (%s)", change.To.Name, change.To.Hash)
+	}
 
 	_, errTo := blobTo.CountLines()
 	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.
@@ -1130,8 +1142,14 @@ func (b *HistoryAnalyzer) handleModificationRename(
 	}
 
 	blobFrom := cache[change.From.Hash]
+	if blobFrom == nil {
+		return fmt.Errorf("missing blobFrom for rename %s (%s)", change.From.Name, change.From.Hash)
+	}
 	_, errFrom := blobFrom.CountLines()
 	blobTo := cache[change.To.Hash]
+	if blobTo == nil {
+		return fmt.Errorf("missing blobTo for rename %s (%s)", change.To.Name, change.To.Hash)
+	}
 
 	_, errTo := blobTo.CountLines()
 	if !errors.Is(errFrom, errTo) { // Error comparison is intentional.
