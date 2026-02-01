@@ -64,6 +64,34 @@ func TestRunner_RunEmptyCommits(t *testing.T) {
 	}
 }
 
+// TestRunner_BurndownWithMergeRegression verifies burndown runs on a repo with a merge
+// when using first-parent walk. Without SimplifyFirstParent, topological+filter produced
+// interleaved order causing "internal integrity error src X != Y".
+func TestRunner_BurndownWithMergeRegression(t *testing.T) {
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("a.go", "a")
+	hashA := repo.Commit("first")
+	repo.CreateFile("b.go", "b")
+	hashB := repo.CommitToRef("refs/heads/side", "branch", hashA)
+	_ = repo.CreateMergeCommit("merge", hashA, hashB)
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	commits := framework.CollectCommitsFirstParent(t, libRepo, 0)
+	if len(commits) < 2 {
+		t.Fatalf("first-parent should yield at least 2 commits (merge + parent), got %d", len(commits))
+	}
+	for _, c := range commits {
+		c.Free()
+	}
+}
+
 func TestRunner_RunSingleCommit(t *testing.T) {
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()

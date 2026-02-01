@@ -117,6 +117,65 @@ func (tr *testRepo) deleteFile(name string) {
 	require.NoError(tr.t, err)
 }
 
+// createMergeCommit creates a merge commit with two parents (first parent = main line).
+func (tr *testRepo) createMergeCommit(message string, firstParent, secondParent gitlib.Hash) gitlib.Hash {
+	tr.t.Helper()
+
+	parent1, err := tr.native.LookupCommit(firstParent.ToOid())
+	require.NoError(tr.t, err)
+	defer parent1.Free()
+
+	parent2, err := tr.native.LookupCommit(secondParent.ToOid())
+	require.NoError(tr.t, err)
+	defer parent2.Free()
+
+	tree, err := parent1.Tree()
+	require.NoError(tr.t, err)
+	defer tree.Free()
+
+	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
+	oid, err := tr.native.CreateCommit("HEAD", sig, sig, message, tree, parent1, parent2)
+	require.NoError(tr.t, err)
+
+	return gitlib.HashFromOid(oid)
+}
+
+// commitToRef creates a commit on a branch ref without moving HEAD.
+func (tr *testRepo) commitToRef(refName, message string, parent gitlib.Hash) gitlib.Hash {
+	tr.t.Helper()
+
+	index, err := tr.native.Index()
+	require.NoError(tr.t, err)
+	defer index.Free()
+
+	err = index.AddAll([]string{"*"}, git2go.IndexAddDefault, nil)
+	require.NoError(tr.t, err)
+	err = index.Write()
+	require.NoError(tr.t, err)
+
+	treeID, err := index.WriteTree()
+	require.NoError(tr.t, err)
+	tree, err := tr.native.LookupTree(treeID)
+	require.NoError(tr.t, err)
+	defer tree.Free()
+
+	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
+	var parents []*git2go.Commit
+	if !parent.IsZero() {
+		p, lookupErr := tr.native.LookupCommit(parent.ToOid())
+		require.NoError(tr.t, lookupErr)
+		parents = append(parents, p)
+	}
+
+	oid, err := tr.native.CreateCommit(refName, sig, sig, message, tree, parents...)
+	require.NoError(tr.t, err)
+	for _, p := range parents {
+		p.Free()
+	}
+
+	return gitlib.HashFromOid(oid)
+}
+
 // Repository Tests.
 
 func TestOpenRepository(t *testing.T) {
@@ -1093,6 +1152,67 @@ func TestRepositoryLog(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, count)
+}
+
+// TestLogFirstParent verifies that FirstParent produces a linear chain where each
+// commit's predecessor is its first parent. Regression test for burndown integrity:
+// without SimplifyFirstParent, topological+filter gave interleaved order causing
+// "internal integrity error src X != Y".
+func TestLogFirstParent(t *testing.T) {
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.go", "a")
+	hashA := tr.commit("first")
+	tr.createFile("b.go", "b")
+	hashB := tr.commitToRef("refs/heads/side", "branch", hashA)
+	hashM := tr.createMergeCommit("merge", hashA, hashB)
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+	defer repo.Free()
+
+	// Without FirstParent: we may see M, B, A (branch commits interleaved).
+	iterFull, err := repo.Log(&gitlib.LogOptions{})
+	require.NoError(t, err)
+	fullHashes := collectIterHashes(t, iterFull)
+
+	// With FirstParent: must see M, A only (linear first-parent chain).
+	iterFP, err := repo.Log(&gitlib.LogOptions{FirstParent: true})
+	require.NoError(t, err)
+	fpHashes := collectIterHashes(t, iterFP)
+
+	assert.Contains(t, fullHashes, hashM, "full log should contain merge")
+	assert.Contains(t, fullHashes, hashB, "full log should contain branch commit")
+	assert.Contains(t, fpHashes, hashM, "first-parent log should contain merge")
+	assert.Contains(t, fpHashes, hashA, "first-parent log should contain first parent")
+	assert.NotContains(t, fpHashes, hashB, "first-parent must exclude branch commit")
+	assert.Less(t, len(fpHashes), len(fullHashes), "first-parent should have fewer commits")
+	// Verify order: each commit's predecessor must be its first parent.
+	for i := 0; i < len(fpHashes)-1; i++ {
+		currCommit, lookupErr := repo.LookupCommit(fpHashes[i])
+		require.NoError(t, lookupErr)
+		prevHash := fpHashes[i+1]
+		require.NotZero(t, currCommit.NumParents(), "commit must have parent")
+		require.Equal(t, prevHash, currCommit.ParentHash(0), "predecessor must be first parent")
+		currCommit.Free()
+	}
+}
+
+func collectIterHashes(t *testing.T, iter *gitlib.CommitIter) []gitlib.Hash {
+	t.Helper()
+	var hashes []gitlib.Hash
+	for {
+		commit, err := iter.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		hashes = append(hashes, commit.Hash())
+		commit.Free()
+	}
+
+	return hashes
 }
 
 // FileIter ForEach Tests.
