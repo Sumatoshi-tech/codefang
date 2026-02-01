@@ -570,3 +570,108 @@ int cf_batch_diff_blobs(
 
     return success_count;
 }
+
+/*
+ * Free tree diff result.
+ */
+void cf_free_tree_diff_result(cf_tree_diff_result* result) {
+    if (result == NULL) return;
+    if (result->changes != NULL) {
+        for (int i = 0; i < result->count; i++) {
+            free(result->changes[i].old_path);
+            free(result->changes[i].new_path);
+        }
+        free(result->changes);
+        result->changes = NULL;
+    }
+}
+
+/*
+ * Compute diff between two trees.
+ * Returns a compact array of changes.
+ */
+int cf_tree_diff(
+    git_repository* repo,
+    git_oid* old_tree_oid,
+    git_oid* new_tree_oid,
+    cf_tree_diff_result* result
+) {
+    git_tree* old_tree = NULL;
+    git_tree* new_tree = NULL;
+    git_diff* diff = NULL;
+    int ret = CF_OK;
+
+    result->changes = NULL;
+    result->count = 0;
+    result->capacity = 0;
+    result->error = CF_OK;
+
+    /* Lookup trees */
+    if (old_tree_oid != NULL && !git_oid_iszero(old_tree_oid)) {
+        if (git_tree_lookup(&old_tree, repo, old_tree_oid) != 0) {
+            ret = CF_ERR_LOOKUP;
+            goto cleanup;
+        }
+    }
+
+    if (new_tree_oid != NULL && !git_oid_iszero(new_tree_oid)) {
+        if (git_tree_lookup(&new_tree, repo, new_tree_oid) != 0) {
+            ret = CF_ERR_LOOKUP;
+            goto cleanup;
+        }
+    }
+
+    /* Compute diff */
+    git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+    if (git_diff_tree_to_tree(&diff, repo, old_tree, new_tree, &opts) != 0) {
+        ret = CF_ERR_DIFF;
+        goto cleanup;
+    }
+
+    /* Allocate result array */
+    size_t num_deltas = git_diff_num_deltas(diff);
+    if (num_deltas > 0) {
+        result->changes = (cf_change*)malloc(num_deltas * sizeof(cf_change));
+        if (result->changes == NULL) {
+            ret = CF_ERR_NOMEM;
+            goto cleanup;
+        }
+        result->capacity = num_deltas;
+    }
+
+    /* Iterate deltas and populate result */
+    for (size_t i = 0; i < num_deltas; i++) {
+        const git_diff_delta* delta = git_diff_get_delta(diff, i);
+        cf_change* change = &result->changes[result->count];
+
+        change->status = delta->status;
+        
+        change->old_path = strdup(delta->old_file.path);
+        memcpy(change->old_oid, delta->old_file.id.id, 20);
+        change->old_size = delta->old_file.size;
+        change->old_mode = delta->old_file.mode;
+
+        change->new_path = strdup(delta->new_file.path);
+        memcpy(change->new_oid, delta->new_file.id.id, 20);
+        change->new_size = delta->new_file.size;
+        change->new_mode = delta->new_file.mode;
+
+        if (change->old_path == NULL || change->new_path == NULL) {
+            ret = CF_ERR_NOMEM;
+            goto cleanup;
+        }
+
+        result->count++;
+    }
+
+cleanup:
+    if (diff) git_diff_free(diff);
+    if (old_tree) git_tree_free(old_tree);
+    if (new_tree) git_tree_free(new_tree);
+
+    result->error = ret;
+    if (ret != CF_OK) {
+        cf_free_tree_diff_result(result);
+    }
+    return ret;
+}

@@ -8,6 +8,9 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+// BlobBatchArenaSize is the default size of the memory arena for blob loading (4MB).
+const DefaultBlobBatchArenaSize = 4 * 1024 * 1024
+
 // BlobData holds loaded blob data for a commit.
 type BlobData struct {
 	Commit    *gitlib.Commit
@@ -24,6 +27,7 @@ type BlobPipeline struct {
 	BufferSize     int
 	WorkerCount    int
 	BlobCache      *GlobalBlobCache
+	ArenaSize      int
 }
 
 // NewBlobPipeline creates a new blob pipeline.
@@ -57,6 +61,7 @@ func NewBlobPipelineWithCache(
 		BufferSize:     bufferSize,
 		WorkerCount:    workerCount,
 		BlobCache:      cache,
+		ArenaSize:      DefaultBlobBatchArenaSize,
 	}
 }
 
@@ -88,13 +93,7 @@ func (p *BlobPipeline) Process(ctx context.Context, commits <-chan CommitBatch) 
 func (p *BlobPipeline) runProducer(ctx context.Context, commits <-chan CommitBatch, jobs chan<- blobJob) {
 	defer close(jobs)
 
-	var previousTree *gitlib.Tree
-
-	defer func() {
-		if previousTree != nil {
-			previousTree.Free()
-		}
-	}()
+	var previousCommitHash gitlib.Hash
 
 	for batch := range commits {
 		select {
@@ -103,48 +102,116 @@ func (p *BlobPipeline) runProducer(ctx context.Context, commits <-chan CommitBat
 		default:
 		}
 
-		previousTree = p.processBatch(ctx, batch, previousTree, jobs)
-		if previousTree == nil && ctx.Err() != nil {
+		previousCommitHash = p.processBatch(ctx, batch, previousCommitHash, jobs)
+		if ctx.Err() != nil {
 			return
 		}
 	}
 }
 
-// processBatch processes a single commit batch and returns the updated previous tree.
+// processBatch processes a single commit batch and returns the last commit hash.
 func (p *BlobPipeline) processBatch(
-	ctx context.Context, batch CommitBatch, previousTree *gitlib.Tree, jobs chan<- blobJob,
-) *gitlib.Tree {
-	// First pass: Compute all tree diffs and collect necessary blob hashes
-	batchJobs := make([]blobJob, len(batch.Commits))
-	allNeededHashes := make(map[gitlib.Hash]bool)
-
+	ctx context.Context, batch CommitBatch, previousHash gitlib.Hash, jobs chan<- blobJob,
+) gitlib.Hash {
+	// First pass: Dispatch all tree diffs in parallel to the worker pool
+	type treeDiffJob struct {
+		index    int
+		commit   *gitlib.Commit
+		respChan chan gitlib.TreeDiffResponse
+	}
+	
+	diffJobs := make([]treeDiffJob, len(batch.Commits))
+	
 	for i, commit := range batch.Commits {
-		changes, currentTree, err := p.doTreeDiff(commit, previousTree)
-
-		if previousTree != nil {
-			previousTree.Free()
+		respChan := make(chan gitlib.TreeDiffResponse, 1)
+		
+		var prevHash gitlib.Hash
+		if i == 0 {
+			prevHash = previousHash
+		} else {
+			// For subsequent commits in batch, parent is usually at i-1
+			// But careful: we need the hash.
+			prevHash = batch.Commits[i-1].Hash()
 		}
 
-		previousTree = currentTree
+		// If prevHash is zero, check if commit has parents.
+		// If commit has parents, we SHOULD use the first parent as previous.
+		// If i=0 and previousHash is zero, it might mean we are at start of stream
+		// OR we just don't have context.
+		// If we are at start of stream, we should trust the commit's parent logic?
+		// But usually `processBatch` implies a linear sequence provided by `CommitStreamer`.
+		// Let's rely on explicit previousHash for continuity, but fallback to parent(0) if needed?
+		// Actually, `TreeDiffRequest` with `PreviousCommitHash` logic in worker handles the lookup.
+		
+		// Wait: if `prevHash` is zero, worker treats it as "Initial Commit" (no parent).
+		// But if `commit` actually HAS a parent, we want to diff against it.
+		// We should only pass Zero hash if we explicitly want "Initial vs Commit" diff.
+		// For the very first commit of the repo, parent is null -> Zero Hash -> Initial Diff. Correct.
+		// For the first commit of a batch (but not repo), `previousHash` should be set.
+		// If `previousHash` is Zero (start of stream), AND commit has parents, we might have a gap?
+		// `CommitStreamer` usually emits linear history.
+		// But `runProducer` starts with `previousCommitHash` zero.
+		// If the first commit we process HAS a parent, we should use it!
+		// But `previousCommitHash` is zero.
+		
+		// Fix: If prevHash is zero, we should verify if commit has parents.
+		// If yes, use Parent(0) hash.
+		if prevHash.IsZero() && commit.NumParents() > 0 {
+			prevHash = commit.ParentHash(0)
+		}
 
-		job := blobJob{
+		req := gitlib.TreeDiffRequest{
+			PreviousCommitHash: prevHash,
+			CommitHash:         commit.Hash(),
+			Response:           respChan,
+		}
+		
+		// Send to POOL workers for parallelism
+		select {
+		case p.PoolWorkerChan <- req:
+		case <-ctx.Done():
+			return gitlib.Hash{}
+		}
+		
+		diffJobs[i] = treeDiffJob{
+			index:    i,
+			commit:   commit,
+			respChan: respChan,
+		}
+	}
+
+	// Collect Tree Diffs
+	batchJobs := make([]blobJob, len(batch.Commits))
+	allNeededHashes := make(map[gitlib.Hash]bool)
+	var lastCommitHash gitlib.Hash
+
+	for i, job := range diffJobs {
+		resp := <-job.respChan
+		
+		// Helper to free tree if we don't need it (we don't pass it forward anymore)
+		if resp.CurrentTree != nil {
+			resp.CurrentTree.Free()
+		}
+
+		bJob := blobJob{
 			data: BlobData{
-				Commit:  commit,
-				Index:   batch.StartIndex + i,
-				Changes: changes,
-				Error:   err,
+				Commit:  job.commit,
+				Index:   batch.StartIndex + job.index,
+				Changes: resp.Changes,
+				Error:   resp.Error,
 			},
 		}
 
-		if err == nil {
-			hashes := p.collectBlobHashes(changes)
-			job.neededHash = hashes
+		if resp.Error == nil {
+			hashes := p.collectBlobHashes(resp.Changes)
+			bJob.neededHash = hashes
 			for _, h := range hashes {
 				allNeededHashes[h] = true
 			}
 		}
 
-		batchJobs[i] = job
+		batchJobs[i] = bJob
+		lastCommitHash = job.commit.Hash()
 	}
 
 	// Identify missing blobs across the entire batch
@@ -186,7 +253,14 @@ func (p *BlobPipeline) processBatch(
 			continue
 		}
 		
-		req := gitlib.BlobBatchRequest{Hashes: chunk}
+		// Allocate arena for this batch
+		// We allocate one arena per request. It will be passed to CGO to fill.
+		arena := make([]byte, p.ArenaSize)
+
+		req := gitlib.BlobBatchRequest{
+			Hashes: chunk,
+			Arena:  arena,
+		}
 		respChan := make(chan gitlib.BlobBatchResponse, 1)
 		req.Response = respChan
 		batchState.respChans = append(batchState.respChans, respChan)
@@ -194,7 +268,7 @@ func (p *BlobPipeline) processBatch(
 		select {
 		case p.PoolWorkerChan <- req:
 		case <-ctx.Done():
-			return previousTree
+			return lastCommitHash
 		}
 	}
 
@@ -215,11 +289,11 @@ func (p *BlobPipeline) processBatch(
 		select {
 		case jobs <- job:
 		case <-ctx.Done():
-			return previousTree
+			return lastCommitHash
 		}
 	}
 
-	return previousTree
+	return lastCommitHash
 }
 
 // runConsumer waits for blob responses and outputs blob data.
@@ -322,6 +396,14 @@ func (p *BlobPipeline) doTreeDiff(commit *gitlib.Commit, previousTree *gitlib.Tr
 
 	return resp.Changes, resp.CurrentTree, resp.Error
 }
+
+const (
+	FileModeCommit = 0160000
+	FileModeTree   = 0040000
+	FileModeBlob   = 0100644
+	FileModeExec   = 0100755
+	FileModeLink   = 0120000
+)
 
 func (p *BlobPipeline) collectBlobHashes(changes gitlib.Changes) []gitlib.Hash {
 	hashSet := make(map[gitlib.Hash]bool)

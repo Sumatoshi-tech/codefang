@@ -82,3 +82,4 @@ specs/
 .cursor/
 .vscode/
 coverage.out
+profiles/

@@ -11,9 +11,10 @@ type WorkerRequest interface {
 
 // TreeDiffRequest asks for a tree diff for a specific commit hash.
 type TreeDiffRequest struct {
-	PreviousTree *Tree // Can be nil for initial. Belongs to Worker's repo.
-	CommitHash   Hash  // Hash of the commit to process.
-	Response     chan<- TreeDiffResponse
+	PreviousTree       *Tree // Optimization: Use existing tree if on same worker/repo.
+	PreviousCommitHash Hash  // Fallback: Lookup previous tree by hash (safe for pool workers).
+	CommitHash         Hash  // Hash of the commit to process.
+	Response           chan<- TreeDiffResponse
 }
 
 // TreeDiffResponse is the response for a TreeDiffRequest.
@@ -27,6 +28,7 @@ type TreeDiffResponse struct {
 type BlobBatchRequest struct {
 	Hashes   []Hash
 	Response chan<- BlobBatchResponse
+	Arena    []byte
 }
 
 // BlobBatchResponse is the response for a BlobBatchRequest.
@@ -127,6 +129,39 @@ func (w *Worker) handle(req WorkerRequest) {
 		var changes Changes
 		if typedReq.PreviousTree != nil {
 			changes, err = TreeDiff(w.repo, typedReq.PreviousTree, commitTree)
+		} else if !typedReq.PreviousCommitHash.IsZero() {
+			// Fast path: Use CGO bridge to get diff directly from ODB
+			// This avoids loading Tree objects into Go memory and iterating Deltas
+			prevHash := typedReq.PreviousCommitHash
+			currHash := typedReq.CommitHash
+			
+			// We need the TREE hashes, not Commit hashes.
+			// Currently we only have Commit hashes.
+			// The Bridge.TreeDiff expects Tree Hashes?
+			// Wait, cf_tree_diff takes OIDs and does git_tree_lookup.
+			// If we pass Commit OID to git_tree_lookup, it fails.
+			// So we MUST lookup the commit to get the tree OID.
+			// But we can do this lookup in C?
+			// No, let's stick to the current plan: Lookup commit in Go (fast), get Tree Hash, pass Tree Hash to C.
+			// LookupCommit is fast (ODB read).
+			
+			commit, err := w.repo.LookupCommit(currHash)
+			if err != nil {
+				typedReq.Response <- TreeDiffResponse{Error: err}
+				return
+			}
+			currTreeHash := commit.TreeHash()
+			commit.Free()
+			
+			prevCommit, err := w.repo.LookupCommit(prevHash)
+			if err != nil {
+				typedReq.Response <- TreeDiffResponse{Error: err}
+				return
+			}
+			prevTreeHash := prevCommit.TreeHash()
+			prevCommit.Free()
+			
+			changes, err = w.bridge.TreeDiff(prevTreeHash, currTreeHash)
 		} else {
 			changes, err = InitialTreeChanges(w.repo, commitTree)
 		}
@@ -140,15 +175,36 @@ func (w *Worker) handle(req WorkerRequest) {
 		}
 
 	case BlobBatchRequest:
-		results := w.bridge.BatchLoadBlobs(typedReq.Hashes)
+		var results []BlobResult
+
+		// Use Arena loading if provided (zero-copy efficiency)
+		if typedReq.Arena != nil {
+			results = w.bridge.BatchLoadBlobsArena(typedReq.Hashes, typedReq.Arena)
+			
+			// Handle arena overflow by falling back to standard load
+			for i := range results {
+				if results[i].Error == ErrArenaFull {
+					// Fallback to standard allocation for this single blob
+					fallbackRes := w.bridge.BatchLoadBlobs([]Hash{results[i].Hash})
+					if len(fallbackRes) == 1 {
+						results[i] = fallbackRes[0]
+					}
+				}
+			}
+		} else {
+			results = w.bridge.BatchLoadBlobs(typedReq.Hashes)
+		}
+
 		blobs := make([]*CachedBlob, len(results))
 
 		for i, res := range results {
 			if res.Error == nil {
 				blobs[i] = &CachedBlob{
-					hash: res.Hash,
-					size: res.Size,
-					Data: res.Data,
+					hash:      res.Hash,
+					size:      res.Size,
+					Data:      res.Data,
+					lineCount: res.LineCount,
+					keepAlive: res.KeepAlive,
 				}
 			}
 		}

@@ -6,6 +6,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+/*
+ * Initialize global settings.
+ * Should be called once at startup.
+ */
+void cf_init() {
+#ifdef _OPENMP
+    // Disable nested parallelism by default to avoid thread oversubscription
+    // when running inside Go goroutines.
+    omp_set_num_threads(1);
+#endif
+}
+
 /*
  * Count lines in a buffer.
  *

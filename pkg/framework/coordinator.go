@@ -33,10 +33,15 @@ type CoordinatorConfig struct {
 	// DiffCacheSize is the maximum number of diff results to cache.
 	// Set to 0 to disable caching.
 	DiffCacheSize int
+
+	// BlobArenaSize is the size of the memory arena for blob loading.
+	// Defaults to 16MB if 0.
+	BlobArenaSize int
 }
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
 func DefaultCoordinatorConfig() CoordinatorConfig {
+	// Revert to full CPU usage as we now have parallelized TreeDiff.
 	workers := max(runtime.NumCPU(), 1)
 
 	return CoordinatorConfig{
@@ -46,6 +51,9 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		BufferSize:      workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed
 		BlobCacheSize:   DefaultGlobalCacheSize,
 		DiffCacheSize:   DefaultDiffCacheSize,
+		// 4MB arena size balances performance and memory usage.
+		// Smaller arenas reduce GC pressure and improve cache locality.
+		BlobArenaSize:   4 * 1024 * 1024,
 	}
 }
 
@@ -117,6 +125,11 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		diffCache = NewDiffCache(config.DiffCacheSize)
 	}
 
+	blobPipeline := NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, config.Workers, blobCache)
+	if config.BlobArenaSize > 0 {
+		blobPipeline.ArenaSize = config.BlobArenaSize
+	}
+
 	return &Coordinator{
 		repo:   repo,
 		config: config,
@@ -124,7 +137,7 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 			BatchSize: config.CommitBatchSize,
 			Lookahead: config.BufferSize,
 		},
-		blobPipeline: NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, config.Workers, blobCache),
+		blobPipeline: blobPipeline,
 		diffPipeline: NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache),
 		blobCache:    blobCache,
 		diffCache:    diffCache,
