@@ -17,7 +17,7 @@ type UASTChangesAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	FileDiff  *FileDiffAnalyzer
+	TreeDiff  *TreeDiffAnalyzer
 	BlobCache *BlobCacheAnalyzer
 	parser    *uast.Parser
 	Changes   []uast.Change
@@ -67,34 +67,74 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (c *UASTChangesAnalyzer) Consume(_ *analyze.Context) error {
-	// Simple implementation.
-	fileDiffs := c.FileDiff.FileDiffs
-	// Cache := c.BlobCache.Cache.
-	// Need to parse before/after if changed.
+	changes := c.TreeDiff.Changes
+	cache := c.BlobCache.Cache
 
 	var result []uast.Change
 
-	for filename, fileDiff := range fileDiffs {
-		if len(fileDiff.Diffs) == 0 {
-			continue
+	for _, change := range changes {
+		before := c.parseBeforeVersion(change, cache)
+		after := c.parseAfterVersion(change, cache)
+
+		if before != nil || after != nil {
+			result = append(result, uast.Change{
+				Before: before,
+				After:  after,
+				Change: change,
+			})
 		}
-		// NOTE: Actual UAST diffing is not yet implemented.
-		// For now, minimal placeholder to satisfy dependencies.
-		change := &gitlib.Change{
-			Action: gitlib.Modify,
-			From:   gitlib.ChangeEntry{Name: filename},
-			To:     gitlib.ChangeEntry{Name: filename},
-		}
-		result = append(result, uast.Change{
-			Before: nil, // Would need full file content parsing.
-			After:  nil,
-			Change: change,
-		})
 	}
 
 	c.Changes = result
 
 	return nil
+}
+
+// parseBeforeVersion parses the "before" version for modifications and deletions.
+func (c *UASTChangesAnalyzer) parseBeforeVersion(
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	if change.Action != gitlib.Modify && change.Action != gitlib.Delete {
+		return nil
+	}
+
+	return c.parseBlob(change.From.Hash, change.From.Name, cache)
+}
+
+// parseAfterVersion parses the "after" version for modifications and insertions.
+func (c *UASTChangesAnalyzer) parseAfterVersion(
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	if change.Action != gitlib.Modify && change.Action != gitlib.Insert {
+		return nil
+	}
+
+	return c.parseBlob(change.To.Hash, change.To.Name, cache)
+}
+
+// parseBlob parses a blob into a UAST node if the file is supported.
+func (c *UASTChangesAnalyzer) parseBlob(
+	hash gitlib.Hash,
+	filename string,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	blob, ok := cache[hash]
+	if !ok {
+		return nil
+	}
+
+	if !c.parser.IsSupported(filename) {
+		return nil
+	}
+
+	parsed, err := c.parser.Parse(filename, blob.Data)
+	if err != nil {
+		return nil
+	}
+
+	return parsed
 }
 
 // Finalize completes the analysis and returns the result.
@@ -129,17 +169,3 @@ func (c *UASTChangesAnalyzer) Serialize(report analyze.Report, format string, wr
 
 	return nil
 }
-
-// UASTExtractor extracts UAST nodes from source code blobs.
-type UASTExtractor struct {
-	// Dependencies.
-	BlobCache *BlobCacheAnalyzer
-
-	// Output.
-	UASTs map[string]*node.Node
-
-	parser *uast.Parser //nolint:unused // acknowledged.
-}
-
-// ... Implement rest of UASTExtractor similar to above if needed ...
-// For now UASTChanges is the primary dependency for Sentiment/Typos/Shotness.

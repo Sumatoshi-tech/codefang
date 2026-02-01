@@ -37,7 +37,7 @@ func newTestAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
-	uastChanges := &plumbing.UASTChangesAnalyzer{FileDiff: fileDiff, BlobCache: blobCache}
+	uastChanges := &plumbing.UASTChangesAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
 	return &analyzerPipeline{
 		core: []analyze.HistoryAnalyzer{
