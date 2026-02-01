@@ -47,52 +47,42 @@ func TestBlobPipeline_CrossCommitBatching(t *testing.T) {
 	// Start pipeline.
 	outCh := pipeline.Process(ctx, inputCh)
 
-	// Mock Sequential Worker (Tree Diff).
-	go func() {
-		for {
-			select {
-			case req := <-seqCh:
-				treeReq, ok := req.(gitlib.TreeDiffRequest)
-				if !ok {
-					continue
-				}
-
-				// Determine changes based on commit (mock logic).
-				var changes gitlib.Changes
-
-				if treeReq.CommitHash == commitHash1 {
-					changes = gitlib.Changes{
-						{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashA}},
-						{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashB}},
-						{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashD}},
-					}
-				} else {
-					changes = gitlib.Changes{
-						{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashC}},
-						{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashE}},
-						{Action: gitlib.Modify, From: gitlib.ChangeEntry{Hash: hashA}, To: gitlib.ChangeEntry{Hash: hashA}},
-					}
-				}
-
-				treeReq.Response <- gitlib.TreeDiffResponse{
-					Changes:     changes,
-					CurrentTree: nil,
-					Error:       nil,
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	// Mock Pool Worker (Blob Batch) and verify batching.
+	// Mock Pool Worker: handle both TreeDiffRequest and BlobBatchRequest (pipeline sends both to poolCh).
 	go func() {
 		seenHashes := make(map[gitlib.Hash]bool)
 		requestCount := 0
 
-		for len(seenHashes) < 5 {
+		for {
 			select {
 			case req := <-poolCh:
+				if treeReq, ok := req.(gitlib.TreeDiffRequest); ok {
+					// Tree diff mock: determine changes based on commit.
+					var changes gitlib.Changes
+
+					if treeReq.CommitHash == commitHash1 {
+						changes = gitlib.Changes{
+							{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashA}},
+							{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashB}},
+							{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashD}},
+						}
+					} else {
+						changes = gitlib.Changes{
+							{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashC}},
+							{Action: gitlib.Insert, To: gitlib.ChangeEntry{Hash: hashE}},
+							{Action: gitlib.Modify, From: gitlib.ChangeEntry{Hash: hashA}, To: gitlib.ChangeEntry{Hash: hashA}},
+						}
+					}
+
+					treeReq.Response <- gitlib.TreeDiffResponse{
+						Changes:     changes,
+						CurrentTree: nil,
+						Error:       nil,
+					}
+
+					continue
+				}
+
+				// Blob batch request.
 				batchReq, ok := req.(gitlib.BlobBatchRequest)
 				if !ok {
 					continue
@@ -119,13 +109,13 @@ func TestBlobPipeline_CrossCommitBatching(t *testing.T) {
 					Results: nil,
 				}
 
+				if len(seenHashes) >= 5 && requestCount < 2 {
+					t.Errorf("Expected at least 2 sharded requests, got %d", requestCount)
+				}
+
 			case <-ctx.Done():
 				return
 			}
-		}
-
-		if requestCount < 2 {
-			t.Errorf("Expected at least 2 sharded requests, got %d", requestCount)
 		}
 	}()
 

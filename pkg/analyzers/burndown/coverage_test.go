@@ -21,8 +21,8 @@ func TestShard(t *testing.T) {
 	// Shard type basic test - verify zero value is usable.
 	s := &Shard{}
 
-	// Verify the shard is initialized with zero values.
-	if s.files != nil {
-		t.Error("expected nil files in zero value Shard")
+	// Verify the shard is initialized with zero values (Track B: slice-backed state).
+	if s.filesByID != nil {
+		t.Error("expected nil filesByID in zero value Shard")
 	}
 }

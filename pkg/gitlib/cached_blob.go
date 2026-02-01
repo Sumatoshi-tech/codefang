@@ -26,7 +26,7 @@ type CachedBlob struct {
 	// lineCount caches the result of CountLines (-1 = binary).
 	lineCount     int
 	lineCountOnce sync.Once
-	
+
 	// KeepAlive holds a reference to the underlying storage if data is mmapped or unsafe.
 	keepAlive interface{}
 }
@@ -111,7 +111,7 @@ func (b *CachedBlob) CountLines() (int, error) {
 		}
 		return b.lineCount, nil
 	}
-	
+
 	b.lineCountOnce.Do(func() {
 		if b.lineCount == 0 { // Double check
 			b.lineCount = b.computeLineCount()

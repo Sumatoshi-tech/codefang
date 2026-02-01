@@ -41,6 +41,7 @@ help:
 	@echo "  deadcode-prod    - Run deadcode analysis excluding tests"
 	@echo "  deadcode-why     - Show why a function is not dead (FUNC=name)"
 	@echo "  bench            - Run UAST performance benchmarks"
+	@echo "  perf             - Run history burndown perf baseline (1k + 15k, CPU profiles). REPO=path (default: .)"
 	@echo "  uast-dev         - Start UAST development environment (frontend + backend)"
 	@echo "  uast-dev-stop    - Stop UAST development servers"
 	@echo "  uast-dev-status  - Check status of UAST development servers"
@@ -93,6 +94,31 @@ testv: all
 # Run UAST performance benchmarks (comprehensive suite with organized results)
 bench: all
 	python3 build/scripts/benchmark/benchmark_runner.py
+
+# History burndown perf baseline: 1k + 15k commits with CPU profiles. REPO=path (default: .)
+# Produces cpu_1k.prof, cpu_15k.prof; run from repo root.
+perf: all
+	@REPO=$${REPO:-.}; \
+	echo "Perf repo: $$REPO"; \
+	echo "Running 1k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k.prof $$REPO > /tmp/out_1k.yaml 2>&1; \
+	echo "Running 15k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k.prof $$REPO > /tmp/out_15k.yaml 2>&1; \
+	echo "Profiles: cpu_1k.prof, cpu_15k.prof"; \
+	go tool pprof -text -diff_base=cpu_1k.prof cpu_15k.prof > pprof_diff.txt 2>/dev/null || true; \
+	echo "Diff: pprof_diff.txt"
+
+# Same as perf; writes to cpu_*_treap.prof for backward compatibility (treap is default).
+perf-treap: all
+	@REPO=$${REPO:-.}; \
+	echo "Perf repo: $$REPO"; \
+	echo "Running 1k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k_treap.prof $$REPO > /tmp/out_1k_treap.yaml 2>&1; \
+	echo "Running 15k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k_treap.prof $$REPO > /tmp/out_15k_treap.yaml 2>&1; \
+	echo "Profiles: cpu_1k_treap.prof, cpu_15k_treap.prof"; \
+	go tool pprof -text -diff_base=cpu_1k_treap.prof cpu_15k_treap.prof > pprof_diff_treap.txt 2>/dev/null || true; \
+	echo "Diff: pprof_diff_treap.txt"
 
 # Run basic Go benchmarks directly (no organization)
 bench-basic: all

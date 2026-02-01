@@ -8,7 +8,6 @@ import (
 	"hash/fnv"
 	"io"
 	"maps"
-	"os"
 	"runtime"
 	"sort"
 	"sync"
@@ -24,7 +23,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/rbtree"
 )
 
 // Configuration constants for burndown analysis.
@@ -36,28 +34,30 @@ const (
 )
 
 // Shard holds per-file burndown data within a partition.
+// Uses PathID-indexed slices and activeIDs so iteration is over a slice (touched list), not map iteration (Track B).
 type Shard struct {
-	files           map[string]*burndown.File
-	fileHistories   map[string]sparseHistory
-	allocator       *rbtree.Allocator
-	globalHistory   sparseHistory
-	peopleHistories []sparseHistory
-	matrix          []map[int]int64
-	mergedFiles     map[string]bool
-	deletions       map[string]bool
-	mu              sync.Mutex //nolint:unused // acknowledged.
+	filesByID         []*burndown.File
+	fileHistoriesByID []sparseHistory
+	activeIDs         []PathID
+	globalHistory     sparseHistory
+	peopleHistories   []sparseHistory
+	matrix            []map[int]int64
+	mergedByID        map[PathID]bool
+	deletionsByID     map[PathID]bool
+	mu                sync.Mutex
 }
 
 // HistoryAnalyzer tracks line survival rates across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
+	l interface {
 		Warnf(format string, args ...any)
 		Errorf(format string, args ...any)
 		Infof(format string, args ...any)
 	}
 	BlobCache            *plumbing.BlobCacheAnalyzer
-	renames              map[string]string
-	shardedAllocator     *rbtree.ShardedAllocator
+	pathInterner         *PathInterner
+	renames              map[string]string          // from → to.
+	renamesReverse       map[string]map[string]bool // to → set of from (avoids range renames in handleDeletion).
 	globalHistory        sparseHistory
 	repository           *gitlib.Repository
 	Ticks                *plumbing.TicksSinceStart
@@ -65,7 +65,6 @@ type HistoryAnalyzer struct {
 	FileDiff             *plumbing.FileDiffAnalyzer
 	TreeDiff             *plumbing.TreeDiffAnalyzer
 	HibernationDirectory string
-	hibernatedFileName   string
 	peopleHistories      []sparseHistory
 	shards               []*Shard
 	reversedPeopleDict   []string
@@ -175,14 +174,14 @@ func (b *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 		},
 		{
 			Name:        ConfigBurndownHibernationToDisk,
-			Description: "Save hibernated RBTree allocators to disk rather than keep it in memory.",
+			Description: "If true, save hibernated state to disk (no-op with default treap timeline).",
 			Flag:        "burndown-hibernation-disk",
 			Type:        pipeline.BoolConfigurationOption,
 			Default:     true,
 		},
 		{
 			Name:        ConfigBurndownHibernationDirectory,
-			Description: "Temporary directory where to save the hibernated RBTree allocators.",
+			Description: "Temporary directory for hibernated state (no-op with default treap timeline).",
 			Flag:        "burndown-hibernation-dir",
 			Type:        pipeline.PathConfigurationOption,
 			Default:     "",
@@ -265,14 +264,14 @@ func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 	}
 
 	if val < 0 {
-		return fmt.Errorf("PeopleNumber is negative: %d", val) //nolint:err113 // dynamic error is acceptable here.
+		return fmt.Errorf("PeopleNumber is negative: %d", val)
 	}
 
 	b.PeopleNumber = val
 
 	rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
 	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // type assertion error.
+		return errors.New("expected []string for reversedPeopleDict")
 	}
 
 	b.reversedPeopleDict = rpd
@@ -306,7 +305,7 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	b.globalHistory = sparseHistory{}
 
 	if b.PeopleNumber < 0 {
-		return fmt.Errorf("PeopleNumber is negative: %d", b.PeopleNumber) //nolint:err113 // dynamic error is acceptable here.
+		return fmt.Errorf("PeopleNumber is negative: %d", b.PeopleNumber)
 	}
 
 	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
@@ -315,30 +314,29 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 		b.HibernationThreshold = DefaultBurndownHibernationThreshold
 	}
 
-	if b.shardedAllocator == nil {
-		b.shardedAllocator = rbtree.NewShardedAllocator(b.Goroutines, b.HibernationThreshold)
+	if b.pathInterner == nil {
+		b.pathInterner = NewPathInterner()
 	}
 
 	b.shards = make([]*Shard, b.Goroutines)
-
-	allocators := b.shardedAllocator.Shards()
 	for i := range b.Goroutines {
 		b.shards[i] = &Shard{
-			files:           map[string]*burndown.File{},
-			fileHistories:   map[string]sparseHistory{},
-			allocator:       allocators[i],
-			globalHistory:   sparseHistory{},
-			peopleHistories: make([]sparseHistory, b.PeopleNumber),
-			matrix:          make([]map[int]int64, b.PeopleNumber),
-			mergedFiles:     map[string]bool{},
-			deletions:       map[string]bool{},
+			filesByID:         nil,
+			fileHistoriesByID: nil,
+			activeIDs:         nil,
+			globalHistory:     sparseHistory{},
+			peopleHistories:   make([]sparseHistory, b.PeopleNumber),
+			matrix:            make([]map[int]int64, b.PeopleNumber),
+			mergedByID:        map[PathID]bool{},
+			deletionsByID:     map[PathID]bool{},
 		}
 	}
 
 	b.renames = map[string]string{}
-	b.matrix = nil          // Aggregated in Finalize
-	b.peopleHistories = nil // Aggregated in Finalize
-	b.globalHistory = nil   // Aggregated in Finalize
+	b.renamesReverse = map[string]map[string]bool{}
+	b.matrix = nil          // Aggregated in Finalize.
+	b.peopleHistories = nil // Aggregated in Finalize.
+	b.globalHistory = nil   // Aggregated in Finalize.
 	b.tick = 0
 	b.previousTick = 0
 
@@ -362,6 +360,37 @@ func (b *HistoryAnalyzer) getShardIndex(name string) int {
 	return idx
 }
 
+// ensureCapacity grows shard slices so id is a valid index (Track B).
+func (b *HistoryAnalyzer) ensureCapacity(shard *Shard, id PathID) {
+	n := int(id) + 1
+	if n <= len(shard.filesByID) {
+		return
+	}
+	if cap(shard.filesByID) >= n {
+		shard.filesByID = shard.filesByID[:n]
+		shard.fileHistoriesByID = shard.fileHistoriesByID[:n]
+		return
+	}
+	newFiles := make([]*burndown.File, n)
+	copy(newFiles, shard.filesByID)
+	shard.filesByID = newFiles
+	newHistories := make([]sparseHistory, n)
+	copy(newHistories, shard.fileHistoriesByID)
+	shard.fileHistoriesByID = newHistories
+}
+
+// removeActiveID removes id from shard.activeIDs (swap-remove) (Track B).
+func (b *HistoryAnalyzer) removeActiveID(shard *Shard, id PathID) {
+	for i, aid := range shard.activeIDs {
+		if aid == id {
+			last := len(shard.activeIDs) - 1
+			shard.activeIDs[i] = shard.activeIDs[last]
+			shard.activeIDs = shard.activeIDs[:last]
+			return
+		}
+	}
+}
+
 // Consume processes a single commit with the provided dependency results.
 func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	author := b.Identity.AuthorID
@@ -377,7 +406,7 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		b.mergedAuthor = author
 
 		for _, shard := range b.shards {
-			shard.mergedFiles = map[string]bool{}
+			shard.mergedByID = map[PathID]bool{}
 		}
 	}
 
@@ -418,7 +447,7 @@ func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) erro
 		b.mergedAuthor = author
 
 		for _, shard := range b.shards {
-			shard.mergedFiles = map[string]bool{}
+			shard.mergedByID = map[PathID]bool{}
 		}
 	}
 
@@ -474,8 +503,6 @@ func (b *HistoryAnalyzer) groupChangesByShard(
 }
 
 // processShardChanges processes grouped changes across shards in parallel.
-//
-//nolint:gocognit // complexity is inherent to parallel shard coordination logic.
 func (b *HistoryAnalyzer) processShardChanges(
 	shardChanges [][]*gitlib.Change, author int, cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 	fileDiffs map[string]pkgplumbing.FileDiffData,
@@ -533,81 +560,23 @@ func (b *HistoryAnalyzer) processShardChanges(
 
 // Fork creates a copy of the analyzer for parallel processing.
 func (b *HistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer {
-	// Fork is used for branching logic.
-	// Since ShardedAllocator doesn't support cloning yet, we panic.
-	panic("Fork not implemented for ShardedAllocator yet")
+	panic("Fork not implemented yet")
 }
 
 // Merge combines results from forked analyzer branches.
 func (b *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
-	panic("Merge not implemented for ShardedAllocator yet")
+	panic("Merge not implemented yet")
 }
 
 // Hibernate releases resources between processing phases.
+// Hibernation of timeline allocators is no-op when using the default treap timeline.
 func (b *HistoryAnalyzer) Hibernate() error {
-	b.shardedAllocator.Hibernate()
-
-	if !b.HibernationToDisk {
-		return nil
-	}
-
-	return b.hibernateToDisk()
-}
-
-// hibernateToDisk serializes the sharded allocator to a temporary file on disk.
-func (b *HistoryAnalyzer) hibernateToDisk() error {
-	file, err := os.CreateTemp(b.HibernationDirectory, "*-codefang.bin")
-	if err != nil {
-		return fmt.Errorf("hibernate: %w", err)
-	}
-
-	b.hibernatedFileName = file.Name()
-
-	err = file.Close()
-	if err != nil {
-		b.hibernatedFileName = ""
-
-		return fmt.Errorf("hibernate: %w", err)
-	}
-
-	// Clean up the temp file as Serialize will create its own files with suffix.
-	err = os.Remove(b.hibernatedFileName)
-	if err != nil {
-		b.hibernatedFileName = ""
-
-		return fmt.Errorf("hibernate: %w", err)
-	}
-
-	err = b.shardedAllocator.Serialize(b.hibernatedFileName)
-	if err != nil {
-		b.hibernatedFileName = ""
-
-		return err
-	}
-
 	return nil
 }
 
 // Boot performs early initialization before repository processing.
+// No-op when using the default treap timeline (no allocator to boot).
 func (b *HistoryAnalyzer) Boot() error {
-	if b.hibernatedFileName != "" {
-		err := b.shardedAllocator.Deserialize(b.hibernatedFileName)
-		if err != nil {
-			return err
-		}
-		// Cleanup happens implicitly if user deletes the files?
-		// Or we should clean up here?
-		// The original code: err = os.Remove(b.hibernatedFileName)
-		// Now we have .shard.N files.
-		for i := range len(b.shards) {
-			_ = os.Remove(fmt.Sprintf("%s.shard.%d", b.hibernatedFileName, i))
-		}
-
-		b.hibernatedFileName = ""
-	}
-
-	b.shardedAllocator.Boot()
-
 	return nil
 }
 
@@ -704,18 +673,27 @@ func (b *HistoryAnalyzer) mergeMatrix(shard *Shard) {
 }
 
 // collectFileHistories builds dense file histories and ownership maps from all shards.
+// Iterates over activeIDs (slice) per shard instead of map iteration (Track B).
 func (b *HistoryAnalyzer) collectFileHistories(lastTick int) (histories map[string]DenseHistory, owners map[string]map[int]int) {
 	fileHistories := map[string]DenseHistory{}
 	fileOwnership := map[string]map[int]int{}
 
 	for _, shard := range b.shards {
-		for key, history := range shard.fileHistories {
+		for _, id := range shard.activeIDs {
+			if int(id) >= len(shard.fileHistoriesByID) || int(id) >= len(shard.filesByID) {
+				continue
+			}
+			history := shard.fileHistoriesByID[id]
 			if len(history) == 0 {
 				continue
 			}
 
+			key := b.pathInterner.Lookup(id)
 			fileHistories[key], _ = b.groupSparseHistory(history, lastTick)
-			file := shard.files[key]
+			file := shard.filesByID[id]
+			if file == nil {
+				continue
+			}
 			previousLine := 0
 			previousAuthor := identity.AuthorMissing
 			ownership := map[int]int{}
@@ -915,7 +893,7 @@ func (b *HistoryAnalyzer) updateMatrix(shard *Shard, currentTime, previousTime, 
 	row[newAuthor] = cell + int64(delta)
 }
 
-func (b *HistoryAnalyzer) createUpdaters(shard *Shard, name string) []burndown.Updater {
+func (b *HistoryAnalyzer) createUpdaters(shard *Shard, pathID PathID) []burndown.Updater {
 	updaters := make([]burndown.Updater, 1)
 
 	updaters[0] = func(currentTime, previousTime, delta int) {
@@ -923,10 +901,10 @@ func (b *HistoryAnalyzer) createUpdaters(shard *Shard, name string) []burndown.U
 	}
 
 	if b.TrackFiles {
-		history := shard.fileHistories[name]
+		history := shard.fileHistoriesByID[pathID]
 		if history == nil {
 			history = sparseHistory{}
-			shard.fileHistories[name] = history
+			shard.fileHistoriesByID[pathID] = history
 		}
 
 		updaters = append(updaters, func(currentTime, previousTime, delta int) { //nolint:makezero // zero-length init is intentional.
@@ -946,15 +924,15 @@ func (b *HistoryAnalyzer) createUpdaters(shard *Shard, name string) []burndown.U
 }
 
 func (b *HistoryAnalyzer) newFile(
-	shard *Shard, _ gitlib.Hash, name string, author int, tick int, size int,
+	shard *Shard, _ gitlib.Hash, pathID PathID, author int, tick int, size int,
 ) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
-	updaters := b.createUpdaters(shard, name)
+	updaters := b.createUpdaters(shard, pathID)
 
 	if b.PeopleNumber > 0 {
 		tick = b.packPersonWithTick(author, tick)
 	}
 
-	return burndown.NewFile(tick, size, shard.allocator, updaters...), nil
+	return burndown.NewFile(tick, size, updaters...), nil
 }
 
 func (b *HistoryAnalyzer) handleInsertion(
@@ -971,10 +949,10 @@ func (b *HistoryAnalyzer) handleInsertion(
 	}
 
 	name := change.To.Name
-
-	file, exists := shard.files[name] //nolint:ineffassign,staticcheck,wastedassign // assignment is needed for clarity.
-	if exists {
-		return fmt.Errorf("file %s already exists", name) //nolint:err113 // dynamic error is acceptable here.
+	id := b.pathInterner.Intern(name)
+	b.ensureCapacity(shard, id)
+	if shard.filesByID[id] != nil {
+		return fmt.Errorf("file %s already exists", name)
 	}
 
 	var hash gitlib.Hash
@@ -982,23 +960,14 @@ func (b *HistoryAnalyzer) handleInsertion(
 		hash = blob.Hash()
 	}
 
-	file, err = b.newFile(shard, hash, name, author, b.tick, lines)
-	shard.files[name] = file
+	file, err := b.newFile(shard, hash, id, author, b.tick, lines)
+	shard.filesByID[id] = file
+	shard.activeIDs = append(shard.activeIDs, id)
 
-	// Renames and deletions maps also need protection or sharding?
-	// Deletions is map[string]bool. Used for special logic in handleDeletion.
-	// We can shard it too or use sync map.
-	// Since deletions is accessed by filename, and we shard by filename, we can put it in shard.
-	// But struct doesn't have deletions map in shard yet.
-	// For now, let's use GlobalMu for deletions/renames maps access in these methods if they are not heavily contended or shard them.
-	// Renames are global. Deletions are global.
-	// But deletions[name] is only accessed when processing 'name'.
-	// So if we shard deletions map...
-	// For now, lock GlobalMu.
-	delete(shard.deletions, name)
+	delete(shard.deletionsByID, id)
 
 	if b.isMerge {
-		shard.mergedFiles[name] = true
+		shard.mergedByID[id] = true
 	}
 
 	return err
@@ -1014,8 +983,10 @@ func (b *HistoryAnalyzer) handleDeletion(
 		name = change.From.Name
 	}
 
-	file, exists := shard.files[name]
-	if !exists {
+	id := b.pathInterner.Intern(name)
+	b.ensureCapacity(shard, id)
+	file := shard.filesByID[id]
+	if file == nil {
 		return nil
 	}
 
@@ -1026,13 +997,13 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	lines, err := blob.CountLines()
 	if err != nil {
-		return fmt.Errorf("previous version of %s unexpectedly became binary", name) //nolint:err113 // dynamic error is acceptable here.
+		return fmt.Errorf("previous version of %s unexpectedly became binary", name)
 	}
 
 	tick := b.tick
 
-	isDeletion := shard.deletions[name]
-	shard.deletions[name] = true
+	isDeletion := shard.deletionsByID[id]
+	shard.deletionsByID[id] = true
 
 	if b.isMerge && !isDeletion {
 		tick = 0
@@ -1040,8 +1011,9 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	file.Update(b.packPersonWithTick(author, tick), 0, 0, lines)
 	file.Delete()
-	delete(shard.files, name)
-	delete(shard.fileHistories, name)
+	shard.filesByID[id] = nil
+	shard.fileHistoriesByID[id] = nil
+	b.removeActiveID(shard, id)
 
 	stack := []string{name}
 
@@ -1051,18 +1023,26 @@ func (b *HistoryAnalyzer) handleDeletion(
 		head := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		b.renames[head] = ""
-		for key, val := range b.renames {
-			if val == head {
-				stack = append(stack, key)
+		oldTo := b.renames[head]
+		if oldTo != "" {
+			delete(b.renamesReverse[oldTo], head)
+			if len(b.renamesReverse[oldTo]) == 0 {
+				delete(b.renamesReverse, oldTo)
 			}
 		}
+		b.renames[head] = ""
+
+		for child := range b.renamesReverse[head] {
+			stack = append(stack, child)
+			b.renames[child] = "" // clear so when child is popped we don't use stale oldTo
+		}
+		delete(b.renamesReverse, head)
 	}
 
 	b.GlobalMu.Unlock()
 
 	if b.isMerge {
-		shard.mergedFiles[name] = false
+		shard.mergedByID[id] = false
 	}
 
 	return nil
@@ -1073,12 +1053,14 @@ func (b *HistoryAnalyzer) handleModification(
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob, diffs map[string]pkgplumbing.FileDiffData,
 ) error {
 	// This method handles modification WITHOUT rename (checked in Consume).
+	id := b.pathInterner.Intern(change.From.Name)
+	b.ensureCapacity(shard, id)
 	if b.isMerge {
-		shard.mergedFiles[change.To.Name] = true
+		shard.mergedByID[id] = true
 	}
 
-	file, exists := shard.files[change.From.Name]
-	if !exists {
+	file := shard.filesByID[id]
+	if file == nil {
 		return b.handleInsertion(shard, change, author, cache)
 	}
 
@@ -1105,7 +1087,6 @@ func (b *HistoryAnalyzer) handleModification(
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		//nolint:err113 // dynamic error is acceptable here.
 		return fmt.Errorf("%s: internal integrity error src %d != %d",
 			change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
 	}
@@ -1122,9 +1103,11 @@ func (b *HistoryAnalyzer) handleModificationRename(
 	// Handles modification WITH rename (From != To).
 	// This runs sequentially, so we can access shards safely if we look them up.
 	shardFrom := b.getShard(change.From.Name)
+	fromID := b.pathInterner.Intern(change.From.Name)
+	b.ensureCapacity(shardFrom, fromID)
 
-	file, exists := shardFrom.files[change.From.Name]
-	if !exists {
+	file := shardFrom.filesByID[fromID]
+	if file == nil {
 		// Fallback to insertion in To shard.
 		shardTo := b.getShard(change.To.Name)
 
@@ -1138,7 +1121,9 @@ func (b *HistoryAnalyzer) handleModificationRename(
 		}
 		// File is now at change.To.Name in correct shard.
 		shardTo := b.getShard(change.To.Name)
-		file = shardTo.files[change.To.Name]
+		toID := b.pathInterner.Intern(change.To.Name)
+		b.ensureCapacity(shardTo, toID)
+		file = shardTo.filesByID[toID]
 	}
 
 	blobFrom := cache[change.From.Hash]
@@ -1171,7 +1156,6 @@ func (b *HistoryAnalyzer) handleModificationRename(
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		//nolint:err113 // dynamic error is acceptable here.
 		return fmt.Errorf("%s: internal integrity error src %d != %d",
 			change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
 	}
@@ -1253,14 +1237,16 @@ func (b *HistoryAnalyzer) applyDiffs(
 }
 
 // migrateFileHistory moves a file's sparse history from one shard to another during a rename.
-func (b *HistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *Shard, from, to string) {
-	history := shardFrom.fileHistories[from]
+func (b *HistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *Shard, fromID, toID PathID) {
+	b.ensureCapacity(shardFrom, fromID)
+	b.ensureCapacity(shardTo, toID)
+	history := shardFrom.fileHistoriesByID[fromID]
 	if history == nil {
 		history = sparseHistory{}
 	}
 
-	delete(shardFrom.fileHistories, from)
-	shardTo.fileHistories[to] = history
+	shardFrom.fileHistoriesByID[fromID] = nil
+	shardTo.fileHistoriesByID[toID] = history
 }
 
 func (b *HistoryAnalyzer) handleRename(from, to string) error {
@@ -1269,37 +1255,55 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 	}
 
 	shardFrom := b.getShard(from)
+	fromID := b.pathInterner.Intern(from)
+	toID := b.pathInterner.Intern(to)
+	b.ensureCapacity(shardFrom, fromID)
 
-	file, exists := shardFrom.files[from]
-	if !exists {
-		return fmt.Errorf("file %s > %s does not exist", from, to) //nolint:err113 // dynamic error is acceptable here.
+	file := shardFrom.filesByID[fromID]
+	if file == nil {
+		return fmt.Errorf("file %s > %s does not exist", from, to)
 	}
 
 	shardTo := b.getShard(to)
+	b.ensureCapacity(shardTo, toID)
 
 	if shardFrom == shardTo {
-		delete(shardFrom.files, from)
-		shardFrom.files[to] = file
+		shardFrom.filesByID[fromID] = nil
+		b.removeActiveID(shardFrom, fromID)
+		shardFrom.filesByID[toID] = file
+		shardFrom.activeIDs = append(shardFrom.activeIDs, toID)
 	} else {
-		// Cross-shard move: deep clone to new allocator.
-		newFile := file.CloneDeep(shardTo.allocator)
+		// Cross-shard move: deep clone timeline.
+		newFile := file.CloneDeep()
 		// Rebind updaters to the new shard.
-		newFile.ReplaceUpdaters(b.createUpdaters(shardTo, to))
+		newFile.ReplaceUpdaters(b.createUpdaters(shardTo, toID))
 
-		shardTo.files[to] = newFile
+		shardTo.filesByID[toID] = newFile
+		shardTo.activeIDs = append(shardTo.activeIDs, toID)
 
 		file.Delete()
-		delete(shardFrom.files, from)
+		shardFrom.filesByID[fromID] = nil
+		b.removeActiveID(shardFrom, fromID)
 	}
 
 	if b.TrackFiles {
-		b.migrateFileHistory(shardFrom, shardTo, from, to)
+		b.migrateFileHistory(shardFrom, shardTo, fromID, toID)
 	}
 
-	delete(shardTo.deletions, to)
+	delete(shardTo.deletionsByID, toID)
 
 	b.GlobalMu.Lock()
+	if oldTo := b.renames[from]; oldTo != "" {
+		delete(b.renamesReverse[oldTo], from)
+		if len(b.renamesReverse[oldTo]) == 0 {
+			delete(b.renamesReverse, oldTo)
+		}
+	}
 	b.renames[from] = to
+	if b.renamesReverse[to] == nil {
+		b.renamesReverse[to] = map[string]bool{}
+	}
+	b.renamesReverse[to][from] = true
 	b.GlobalMu.Unlock()
 
 	return nil

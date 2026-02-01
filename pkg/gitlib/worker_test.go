@@ -281,3 +281,28 @@ func TestCGOBridge_BatchDiffBlobsInvalidHash(t *testing.T) {
 	require.Error(t, results[0].Error)
 	require.Equal(t, gitlib.ErrDiffLookup, results[0].Error)
 }
+
+// TestCGOBridge_TreeDiffSameHash verifies TreeDiff returns empty when both tree hashes are equal (skip path).
+func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	hash := tr.commit("only")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+	defer repo.Free()
+
+	commit, err := repo.LookupCommit(hash)
+	require.NoError(t, err)
+	defer commit.Free()
+
+	treeHash := commit.TreeHash()
+	require.False(t, treeHash.IsZero())
+
+	bridge := gitlib.NewCGOBridge(repo)
+	changes, err := bridge.TreeDiff(treeHash, treeHash)
+	require.NoError(t, err)
+	require.Empty(t, changes)
+}
