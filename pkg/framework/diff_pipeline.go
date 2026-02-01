@@ -80,12 +80,12 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 	// or until input channel is dry.
 	// Since BlobPipeline emits BlobData which already contains multiple diffs per commit,
 	// we are effectively re-batching across commits.
-	
+
 	const maxBatchSize = 1000
 
 	var currentBatchReqs []gitlib.DiffRequest
 	var currentBatchJobs []*diffJob
-	
+
 	flushBatch := func() {
 		if len(currentBatchJobs) == 0 {
 			return
@@ -146,7 +146,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 		if job == nil {
 			return
 		}
-		
+
 		if len(reqs) > 0 {
 			currentBatchReqs = append(currentBatchReqs, reqs...)
 			job.pendingRequests = reqs // Keep track for offset calculation
@@ -157,7 +157,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 			flushBatch()
 		}
 	}
-	
+
 	// Flush remaining
 	flushBatch()
 }
@@ -200,7 +200,7 @@ func (p *DiffPipeline) createDiffJobInternal(_ context.Context, blobData BlobDat
 	job.paths = paths
 	job.changes = changes
 	job.cacheHits = cacheHits
-	
+
 	return job, req.Requests
 }
 

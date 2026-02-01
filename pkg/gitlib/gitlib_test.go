@@ -1855,6 +1855,32 @@ func TestTreeDiffNilTrees(t *testing.T) {
 	assert.Empty(t, changes)
 }
 
+// TestTreeDiffSameTreeOID verifies TreeDiff returns empty when both trees have the same OID (skip path).
+func TestTreeDiffSameTreeOID(t *testing.T) {
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	hash := tr.commit("first")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+	defer repo.Free()
+
+	commit, err := repo.LookupCommit(hash)
+	require.NoError(t, err)
+	defer commit.Free()
+
+	tree, err := commit.Tree()
+	require.NoError(t, err)
+	defer tree.Free()
+
+	// Same tree OID: must skip libgit2 diff and return empty changes.
+	changes, err := gitlib.TreeDiff(repo, tree, tree)
+	require.NoError(t, err)
+	assert.Empty(t, changes)
+}
+
 func TestCommitIterForEachError(t *testing.T) {
 	tr := newTestRepo(t)
 

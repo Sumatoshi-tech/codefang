@@ -41,8 +41,12 @@ func (c *Commit) Hash() Hash {
 	return HashFromOid(c.commit.Id())
 }
 
-// Author returns the commit author.
+// Author returns the commit author. Zero value when commit is a test double (nil internal).
 func (c *Commit) Author() Signature {
+	if c.commit == nil {
+		return Signature{}
+	}
+
 	sig := c.commit.Author()
 
 	return Signature{
@@ -52,8 +56,12 @@ func (c *Commit) Author() Signature {
 	}
 }
 
-// Committer returns the commit committer.
+// Committer returns the commit committer. Zero value when commit is a test double (nil internal).
 func (c *Commit) Committer() Signature {
+	if c.commit == nil {
+		return Signature{}
+	}
+
 	sig := c.commit.Committer()
 
 	return Signature{
@@ -63,18 +71,30 @@ func (c *Commit) Committer() Signature {
 	}
 }
 
-// Message returns the commit message.
+// Message returns the commit message. Empty when commit is a test double (nil internal).
 func (c *Commit) Message() string {
+	if c.commit == nil {
+		return ""
+	}
+
 	return c.commit.Message()
 }
 
-// NumParents returns the number of parent commits.
+// NumParents returns the number of parent commits. Zero when commit is a test double (nil internal).
 func (c *Commit) NumParents() int {
+	if c.commit == nil {
+		return 0
+	}
+
 	return safeconv.MustUintToInt(c.commit.ParentCount())
 }
 
-// Parent returns the nth parent commit.
+// Parent returns the nth parent commit. ErrParentNotFound when commit is a test double (nil internal).
 func (c *Commit) Parent(n int) (*Commit, error) {
+	if c.commit == nil {
+		return nil, ErrParentNotFound
+	}
+
 	parent := c.commit.Parent(safeconv.MustIntToUint(n))
 	if parent == nil {
 		return nil, ErrParentNotFound
@@ -83,18 +103,30 @@ func (c *Commit) Parent(n int) (*Commit, error) {
 	return &Commit{commit: parent, repo: c.repo}, nil
 }
 
-// ParentHash returns the hash of the nth parent.
+// ParentHash returns the hash of the nth parent. Zero hash when commit is a test double (nil internal).
 func (c *Commit) ParentHash(n int) Hash {
+	if c.commit == nil {
+		return Hash{}
+	}
+
 	return HashFromOid(c.commit.ParentId(safeconv.MustIntToUint(n)))
 }
 
-// TreeHash returns the hash of the tree associated with this commit.
+// TreeHash returns the hash of the tree associated with this commit. Zero when commit is a test double (nil internal).
 func (c *Commit) TreeHash() Hash {
+	if c.commit == nil {
+		return Hash{}
+	}
+
 	return HashFromOid(c.commit.TreeId())
 }
 
-// Tree returns the tree associated with this commit.
+// Tree returns the tree associated with this commit. Error when commit is a test double (nil internal).
 func (c *Commit) Tree() (*Tree, error) {
+	if c.commit == nil {
+		return nil, errors.New("get commit tree: test commit has no tree")
+	}
+
 	tree, err := c.commit.Tree()
 	if err != nil {
 		return nil, fmt.Errorf("get commit tree: %w", err)

@@ -126,3 +126,22 @@ func TestChangeEntry_Hash(t *testing.T) {
 		t.Error("Name mismatch")
 	}
 }
+
+// TestTreeDiff_filterChanges_prefixBlacklist verifies blacklist uses path prefix match only.
+func TestTreeDiff_filterChanges_prefixBlacklist(t *testing.T) {
+	t.Parallel()
+
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	td := &TreeDiffAnalyzer{
+		SkipFiles: []string{"vendor/"},
+		Languages: map[string]bool{allLanguages: true},
+	}
+
+	changes := gitlib.Changes{
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "vendor/foo.go", Hash: hash}},
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "pkg/bar.go", Hash: hash}},
+	}
+	filtered := td.filterChanges(changes)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "pkg/bar.go", filtered[0].To.Name)
+}

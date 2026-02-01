@@ -38,7 +38,12 @@ type ChangeEntry struct {
 type Changes []*Change
 
 // TreeDiff computes the changes between two trees using libgit2.
+// Skips diff when both tree OIDs are equal (e.g. metadata-only commits).
 func TreeDiff(repo *Repository, oldTree, newTree *Tree) (Changes, error) {
+	if oldTree != nil && newTree != nil && oldTree.Hash() == newTree.Hash() {
+		return make(Changes, 0), nil
+	}
+
 	diff, err := repo.DiffTreeToTree(oldTree, newTree)
 	if err != nil {
 		return nil, fmt.Errorf("diff trees: %w", err)

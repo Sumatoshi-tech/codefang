@@ -40,11 +40,10 @@ const (
 	allLanguages               = "all"
 )
 
+// defaultBlacklistedPrefixes: path prefixes only (e.g. vendor/). No language-specific filenames.
 var defaultBlacklistedPrefixes = []string{ //nolint:gochecknoglobals // global is needed for registration.
 	"vendor/",
 	"vendors/",
-	"package-lock.json",
-	"Gopkg.lock",
 }
 
 // Name returns the name of the analyzer.
@@ -237,7 +236,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 		hash = change.To.Hash
 	}
 
-	// Check blacklist.
+	// Check blacklist: path prefix match only (e.g. "vendor/").
 	if len(t.SkipFiles) > 0 {
 		for _, prefix := range t.SkipFiles {
 			if strings.HasPrefix(name, prefix) {

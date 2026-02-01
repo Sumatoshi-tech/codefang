@@ -122,7 +122,7 @@ func (b *CGOBridge) BatchLoadBlobsArena(hashes []Hash, arena []byte) []BlobResul
 	} else {
 		b.requestBuf = b.requestBuf[:count]
 	}
-	
+
 	if cap(b.resultBuf) < count {
 		b.resultBuf = make([]C.cf_blob_arena_result, count, count*2)
 	} else {
@@ -262,7 +262,12 @@ func (b *CGOBridge) BatchLoadBlobs(hashes []Hash) []BlobResult {
 }
 
 // TreeDiff computes the difference between two trees in a single batch CGO call.
+// Skips libgit2 diff when both tree OIDs are equal (e.g. metadata-only commits).
 func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
+	if !oldTreeHash.IsZero() && !newTreeHash.IsZero() && oldTreeHash == newTreeHash {
+		return make(Changes, 0), nil
+	}
+
 	var cOldOid, cNewOid C.git_oid
 	var pOldOid, pNewOid *C.git_oid
 
@@ -286,11 +291,11 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 	}
 
 	var cResult C.cf_tree_diff_result
-	
+
 	// Ensure result is clean
 	cResult.changes = nil
 	cResult.count = 0
-	
+
 	// Call C function
 	ret := C.cf_tree_diff(
 		(*C.git_repository)(repoPtr),
@@ -309,7 +314,7 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 	}
 
 	changes := make(Changes, 0, cResult.count)
-	
+
 	// Iterate C array
 	// Unsafe pointer arithmetic
 	cChanges := (*[1 << 30]C.cf_change)(unsafe.Pointer(cResult.changes))[:cResult.count:cResult.count]
@@ -321,7 +326,7 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 
 	for i := range int(cResult.count) {
 		cChange := cChanges[i]
-		
+
 		// Filter out non-blob changes (submodules, trees) early
 		// We only want to surface changes to files that we can process content for.
 		// If either side is a Commit or Tree, skip it.
@@ -329,12 +334,12 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 		// But status is usually TYPECHANGE for that.
 		// If status is MODIFIED, modes usually match or compatible (exec vs non-exec).
 		if cChange.old_mode == FileModeCommit || cChange.old_mode == FileModeTree ||
-		   cChange.new_mode == FileModeCommit || cChange.new_mode == FileModeTree {
+			cChange.new_mode == FileModeCommit || cChange.new_mode == FileModeTree {
 			continue
 		}
 
 		change := &Change{}
-		
+
 		// Map status
 		switch cChange.status {
 		case C.GIT_DELTA_ADDED:
@@ -345,7 +350,7 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 				Mode: uint16(cChange.new_mode),
 			}
 			copy(change.To.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.new_oid[0]), 20))
-			
+
 		case C.GIT_DELTA_DELETED:
 			change.Action = Delete
 			change.From = ChangeEntry{
@@ -363,7 +368,7 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 				Mode: uint16(cChange.old_mode),
 			}
 			copy(change.From.Hash[:], C.GoBytes(unsafe.Pointer(&cChange.old_oid[0]), 20))
-			
+
 			change.To = ChangeEntry{
 				Name: C.GoString(cChange.new_path),
 				Size: int64(cChange.new_size),
@@ -373,7 +378,7 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 		default:
 			continue
 		}
-		
+
 		changes = append(changes, change)
 	}
 

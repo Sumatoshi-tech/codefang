@@ -53,7 +53,7 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		DiffCacheSize:   DefaultDiffCacheSize,
 		// 4MB arena size balances performance and memory usage.
 		// Smaller arenas reduce GC pressure and improve cache locality.
-		BlobArenaSize:   4 * 1024 * 1024,
+		BlobArenaSize: 4 * 1024 * 1024,
 	}
 }
 
@@ -210,26 +210,4 @@ func (c *Coordinator) ProcessSingle(ctx context.Context, commit *gitlib.Commit, 
 // Config returns the coordinator configuration.
 func (c *Coordinator) Config() CoordinatorConfig {
 	return c.config
-}
-
-// BlobCacheStats returns statistics about the blob cache, or nil if caching is disabled.
-func (c *Coordinator) BlobCacheStats() *CacheStats {
-	if c.blobCache == nil {
-		return nil
-	}
-
-	stats := c.blobCache.Stats()
-
-	return &stats
-}
-
-// DiffCacheStats returns statistics about the diff cache, or nil if caching is disabled.
-func (c *Coordinator) DiffCacheStats() *DiffCacheStats {
-	if c.diffCache == nil {
-		return nil
-	}
-
-	stats := c.diffCache.Stats()
-
-	return &stats
 }

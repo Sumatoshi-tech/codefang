@@ -8,7 +8,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// BlobBatchArenaSize is the default size of the memory arena for blob loading (4MB).
+// DefaultBlobBatchArenaSize is the default size of the memory arena for blob loading (4MB).
 const DefaultBlobBatchArenaSize = 4 * 1024 * 1024
 
 // BlobData holds loaded blob data for a commit.
@@ -73,9 +73,9 @@ type batchBlobState struct {
 
 type blobJob struct {
 	data       BlobData
-	neededHash []gitlib.Hash                   // Hashes this job specifically needs
+	neededHash []gitlib.Hash                      // Hashes this job specifically needs
 	cacheHits  map[gitlib.Hash]*gitlib.CachedBlob // Blobs already found in global cache
-	batchState *batchBlobState                 // Shared state for the batch request
+	batchState *batchBlobState                    // Shared state for the batch request
 }
 
 // Process receives commit batches and outputs blob data.
@@ -119,12 +119,12 @@ func (p *BlobPipeline) processBatch(
 		commit   *gitlib.Commit
 		respChan chan gitlib.TreeDiffResponse
 	}
-	
+
 	diffJobs := make([]treeDiffJob, len(batch.Commits))
-	
+
 	for i, commit := range batch.Commits {
 		respChan := make(chan gitlib.TreeDiffResponse, 1)
-		
+
 		var prevHash gitlib.Hash
 		if i == 0 {
 			prevHash = previousHash
@@ -142,7 +142,7 @@ func (p *BlobPipeline) processBatch(
 		// But usually `processBatch` implies a linear sequence provided by `CommitStreamer`.
 		// Let's rely on explicit previousHash for continuity, but fallback to parent(0) if needed?
 		// Actually, `TreeDiffRequest` with `PreviousCommitHash` logic in worker handles the lookup.
-		
+
 		// Wait: if `prevHash` is zero, worker treats it as "Initial Commit" (no parent).
 		// But if `commit` actually HAS a parent, we want to diff against it.
 		// We should only pass Zero hash if we explicitly want "Initial vs Commit" diff.
@@ -153,7 +153,7 @@ func (p *BlobPipeline) processBatch(
 		// But `runProducer` starts with `previousCommitHash` zero.
 		// If the first commit we process HAS a parent, we should use it!
 		// But `previousCommitHash` is zero.
-		
+
 		// Fix: If prevHash is zero, we should verify if commit has parents.
 		// If yes, use Parent(0) hash.
 		if prevHash.IsZero() && commit.NumParents() > 0 {
@@ -165,14 +165,14 @@ func (p *BlobPipeline) processBatch(
 			CommitHash:         commit.Hash(),
 			Response:           respChan,
 		}
-		
+
 		// Send to POOL workers for parallelism
 		select {
 		case p.PoolWorkerChan <- req:
 		case <-ctx.Done():
 			return gitlib.Hash{}
 		}
-		
+
 		diffJobs[i] = treeDiffJob{
 			index:    i,
 			commit:   commit,
@@ -187,7 +187,7 @@ func (p *BlobPipeline) processBatch(
 
 	for i, job := range diffJobs {
 		resp := <-job.respChan
-		
+
 		// Helper to free tree if we don't need it (we don't pass it forward anymore)
 		if resp.CurrentTree != nil {
 			resp.CurrentTree.Free()
@@ -240,7 +240,7 @@ func (p *BlobPipeline) processBatch(
 	if p.WorkerCount > 1 && len(missingHashes) > p.WorkerCount*2 { // Shard if enough items
 		chunkCount = p.WorkerCount
 	}
-	
+
 	chunks := make([][]gitlib.Hash, chunkCount)
 	for i, h := range missingHashes {
 		idx := i % chunkCount
@@ -252,7 +252,7 @@ func (p *BlobPipeline) processBatch(
 		if len(chunk) == 0 {
 			continue
 		}
-		
+
 		// Allocate arena for this batch
 		// We allocate one arena per request. It will be passed to CGO to fill.
 		arena := make([]byte, p.ArenaSize)
@@ -275,7 +275,7 @@ func (p *BlobPipeline) processBatch(
 	// Second pass: Dispatch jobs
 	for i := range batchJobs {
 		job := batchJobs[i]
-		
+
 		// Assign cache hits relevant to this job
 		job.cacheHits = make(map[gitlib.Hash]*gitlib.CachedBlob)
 		for _, h := range job.neededHash {
@@ -283,7 +283,7 @@ func (p *BlobPipeline) processBatch(
 				job.cacheHits[h] = blob
 			}
 		}
-		
+
 		job.batchState = batchState
 
 		select {
@@ -369,12 +369,12 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	if !success {
 		return false
 	}
-	
+
 	// Now grab from shared results what this job needs
 	for _, h := range job.neededHash {
 		// If it wasn't in cacheHits, check shared results
 		if _, ok := cache[h]; !ok {
-			if blob, ok := job.batchState.results[h]; ok {
+			if blob, found := job.batchState.results[h]; found {
 				cache[h] = blob
 			}
 		}
@@ -384,25 +384,12 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	return true
 }
 
-func (p *BlobPipeline) doTreeDiff(commit *gitlib.Commit, previousTree *gitlib.Tree) (gitlib.Changes, *gitlib.Tree, error) {
-	respChan := make(chan gitlib.TreeDiffResponse, 1)
-	p.SeqWorkerChan <- gitlib.TreeDiffRequest{
-		PreviousTree: previousTree,
-		CommitHash:   commit.Hash(),
-		Response:     respChan,
-	}
-
-	resp := <-respChan
-
-	return resp.Changes, resp.CurrentTree, resp.Error
-}
-
 const (
-	FileModeCommit = 0160000
-	FileModeTree   = 0040000
-	FileModeBlob   = 0100644
-	FileModeExec   = 0100755
-	FileModeLink   = 0120000
+	FileModeCommit = 0o160000
+	FileModeTree   = 0o040000
+	FileModeBlob   = 0o100644
+	FileModeExec   = 0o100755
+	FileModeLink   = 0o120000
 )
 
 func (p *BlobPipeline) collectBlobHashes(changes gitlib.Changes) []gitlib.Hash {
