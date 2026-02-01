@@ -47,6 +47,7 @@ help:
 	@echo "  uast-dev-status  - Check status of UAST development servers"
 	@echo "  uast-test        - Run UI tests for UAST development service"
 	@echo "  dev-service      - Start backend only (legacy)"
+	@echo "  compare-burndown - Run burndown and compare with Hercules reference (REPO=~/sources/iortcw, FP=1 for --first-parent)"
 	@echo "  clean            - Clean build artifacts"
 
 # Pre-compile UAST mappings for faster startup
@@ -176,6 +177,15 @@ compare:
 # Compare specific runs
 compare-runs:
 	python3 build/scripts/benchmark/benchmark_comparison.py $(CURRENT_RUN) --baseline $(BASELINE_RUN)
+
+# Run Codefang burndown and compare with Hercules reference.
+# Usage: make compare-burndown [REPO=~/sources/iortcw] [FP=1 for --first-parent]
+.PHONY: compare-burndown
+compare-burndown: build
+	@REPO=$${REPO:-$$HOME/sources/iortcw}; \
+	FP=$${FP:-0}; \
+	$(GOBIN)/codefang history -a burndown -f yaml $$([ "$$FP" = "1" ] && echo --first-parent) "$$REPO" 2>/dev/null > /tmp/codefang_burndown.yaml; \
+	python3 references/compare_burndown.py /tmp/codefang_burndown.yaml references/iortcw_burndown.yaml
 
 # Compare last N benchmark runs (usage: make compare-last N=3)
 compare-last:

@@ -140,21 +140,12 @@ func registerConfigFlag(cobraCmd *cobra.Command, opt pipeline.ConfigurationOptio
 
 // run executes the history analysis pipeline.
 func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
-	// Start CPU profiling if requested.
-	if hc.cpuprofile != "" {
-		f, err := os.Create(hc.cpuprofile)
-		if err != nil {
-			return fmt.Errorf("could not create CPU profile: %w", err)
-		}
-		defer f.Close()
-
-		err = pprof.StartCPUProfile(f)
-		if err != nil {
-			return fmt.Errorf("could not start CPU profile: %w", err)
-		}
-
-		defer pprof.StopCPUProfile()
+	stopProfiler, err := hc.maybeStartCPUProfile()
+	if err != nil {
+		return err
 	}
+
+	defer stopProfiler()
 
 	if len(hc.analyzers) == 0 {
 		return ErrNoAnalyzersSelected
@@ -165,7 +156,6 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Special case: fast devs analyzer.
 	if hc.isFastDevsMode() {
 		return hc.runFastDevsAnalyzer(cmd, uri)
 	}
@@ -176,17 +166,55 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 	}
 	defer repository.Free()
 
+	hc.ensureBurndownFirstParent()
+
 	commits, err := hc.loadCommits(repository, cmd)
 	if err != nil {
 		return err
 	}
 
-	// Load configuration facts from flags
+	facts := hc.buildFacts(cmd)
+
+	return hc.runPipeline(repository, uri, commits, hc.format, facts)
+}
+
+func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
+	if hc.cpuprofile == "" {
+		return func() {}, nil
+	}
+
+	profileFile, err := os.Create(hc.cpuprofile)
+	if err != nil {
+		return nil, fmt.Errorf("could not create CPU profile: %w", err)
+	}
+
+	err = pprof.StartCPUProfile(profileFile)
+	if err != nil {
+		profileFile.Close()
+
+		return nil, fmt.Errorf("could not start CPU profile: %w", err)
+	}
+
+	stopAndClose := func() {
+		pprof.StopCPUProfile()
+
+		_ = profileFile.Close()
+	}
+
+	return stopAndClose, nil
+}
+
+func (hc *HistoryCommand) ensureBurndownFirstParent() {
+	if hc.isBurndownOnly() && !hc.firstParent {
+		hc.firstParent = true
+	}
+}
+
+func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
 	facts := map[string]any{}
 	dummyPipeline := newAnalyzerPipeline(nil)
 
-	var allAnalyzers []analyze.HistoryAnalyzer
-
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(dummyPipeline.core)+len(dummyPipeline.leaves))
 	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
 
 	for _, leaf := range dummyPipeline.leaves {
@@ -199,12 +227,17 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return hc.runPipeline(repository, uri, commits, hc.format, facts)
+	return facts
 }
 
 // isFastDevsMode returns true if only the fast devs analyzer is selected.
 func (hc *HistoryCommand) isFastDevsMode() bool {
 	return len(hc.analyzers) == 1 && hc.analyzers[0] == "devs"
+}
+
+// isBurndownOnly returns true if only the burndown analyzer is selected.
+func (hc *HistoryCommand) isBurndownOnly() bool {
+	return len(hc.analyzers) == 1 && hc.analyzers[0] == "burndown"
 }
 
 // resolveRepoURI resolves the repository URI from command args.
@@ -320,7 +353,9 @@ func (hc *HistoryCommand) loadHistoryCommits(repository *gitlib.Repository, cmd 
 
 // buildLogOptions constructs LogOptions from command flags.
 func (hc *HistoryCommand) buildLogOptions(cmd *cobra.Command) (*gitlib.LogOptions, error) {
-	logOpts := &gitlib.LogOptions{}
+	logOpts := &gitlib.LogOptions{
+		FirstParent: hc.firstParent,
+	}
 
 	sinceStr, err := cmd.Flags().GetString("since")
 	if err != nil {
@@ -357,12 +392,8 @@ func (hc *HistoryCommand) collectCommits(iter *gitlib.CommitIter, limit int) []*
 			break
 		}
 
-		if hc.firstParent && commit.NumParents() > 1 {
-			commit.Free()
-
-			continue
-		}
-
+		// With FirstParent, gitlib.Log uses SimplifyFirstParent so we get the
+		// first-parent chain; previous commit is always the parent. No need to skip merges.
 		commits = append(commits, commit)
 		count++
 	}

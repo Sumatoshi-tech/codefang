@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"io"
 	"maps"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -83,6 +84,7 @@ type HistoryAnalyzer struct {
 	Debug                bool
 	TrackFiles           bool
 	HibernationToDisk    bool
+	lastCommitTime       time.Time
 }
 
 type sparseHistory = map[int]map[int]int64
@@ -112,7 +114,8 @@ const (
 	// DefaultBurndownGranularity defines the default granularity in days.
 	DefaultBurndownGranularity = 30
 	// DefaultBurndownSampling defines the default sampling in ticks.
-	DefaultBurndownSampling = 1
+	// Matches Hercules: sampling equals granularity (30) for comparable output.
+	DefaultBurndownSampling = 30
 	// DefaultBurndownHibernationThreshold defines the default node count threshold for hibernation.
 	DefaultBurndownHibernationThreshold = 1000
 	// Sentinel value representing the current author.
@@ -427,6 +430,7 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	}
 
 	b.tick = tick
+	b.lastCommitTime = ctx.Time
 
 	return nil
 }
@@ -470,6 +474,7 @@ func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) erro
 	}
 
 	b.tick = tick
+	b.lastCommitTime = prepared.Ctx.Time
 
 	return nil
 }
@@ -590,7 +595,11 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	peopleHistories := b.buildPeopleHistories(globalHistory, lastTick)
 	peopleMatrix := b.buildPeopleMatrix()
 
-	return analyze.Report{
+	projectName := "project"
+	if b.repository != nil && b.repository.Path() != "" {
+		projectName = filepath.Base(b.repository.Path())
+	}
+	report := analyze.Report{
 		"GlobalHistory":      globalHistory,
 		"FileHistories":      fileHistories,
 		"FileOwnership":      fileOwnership,
@@ -600,7 +609,12 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 		"ReversedPeopleDict": b.reversedPeopleDict,
 		"Sampling":           b.Sampling,
 		"Granularity":        b.Granularity,
-	}, nil
+		reportKeyProjectName: projectName,
+	}
+	if !b.lastCommitTime.IsZero() {
+		report[reportKeyEndTime] = b.lastCommitTime
+	}
+	return report, nil
 }
 
 // initAggregationState initializes the aggregation state for Finalize.

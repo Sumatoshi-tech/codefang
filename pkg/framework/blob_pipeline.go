@@ -125,39 +125,15 @@ func (p *BlobPipeline) processBatch(
 	for i, commit := range batch.Commits {
 		respChan := make(chan gitlib.TreeDiffResponse, 1)
 
+		// With first-parent walk, previous in stream equals parent; diff base must match burndown state.
 		var prevHash gitlib.Hash
-		if i == 0 {
-			prevHash = previousHash
-		} else {
-			// For subsequent commits in batch, parent is usually at i-1
-			// But careful: we need the hash.
-			prevHash = batch.Commits[i-1].Hash()
-		}
-
-		// If prevHash is zero, check if commit has parents.
-		// If commit has parents, we SHOULD use the first parent as previous.
-		// If i=0 and previousHash is zero, it might mean we are at start of stream
-		// OR we just don't have context.
-		// If we are at start of stream, we should trust the commit's parent logic?
-		// But usually `processBatch` implies a linear sequence provided by `CommitStreamer`.
-		// Let's rely on explicit previousHash for continuity, but fallback to parent(0) if needed?
-		// Actually, `TreeDiffRequest` with `PreviousCommitHash` logic in worker handles the lookup.
-
-		// Wait: if `prevHash` is zero, worker treats it as "Initial Commit" (no parent).
-		// But if `commit` actually HAS a parent, we want to diff against it.
-		// We should only pass Zero hash if we explicitly want "Initial vs Commit" diff.
-		// For the very first commit of the repo, parent is null -> Zero Hash -> Initial Diff. Correct.
-		// For the first commit of a batch (but not repo), `previousHash` should be set.
-		// If `previousHash` is Zero (start of stream), AND commit has parents, we might have a gap?
-		// `CommitStreamer` usually emits linear history.
-		// But `runProducer` starts with `previousCommitHash` zero.
-		// If the first commit we process HAS a parent, we should use it!
-		// But `previousCommitHash` is zero.
-
-		// Fix: If prevHash is zero, we should verify if commit has parents.
-		// If yes, use Parent(0) hash.
-		if prevHash.IsZero() && commit.NumParents() > 0 {
+		switch {
+		case commit.NumParents() > 0:
 			prevHash = commit.ParentHash(0)
+		case i > 0:
+			prevHash = batch.Commits[i-1].Hash()
+		default:
+			prevHash = previousHash
 		}
 
 		req := gitlib.TreeDiffRequest{
