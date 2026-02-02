@@ -34,6 +34,7 @@ const (
 	magic1000        = 1000
 	magic3           = 3
 	magic999         = 999
+	unknownName      = "unknown"
 )
 
 // Name returns the analyzer name.
@@ -427,7 +428,7 @@ func (c *Analyzer) isGapAcceptable(commentStartLine, commentEndLine, gap int) bo
 // determinePosition determines the relative position of comment to target.
 func (c *Analyzer) determinePosition(comment, target *node.Node) string {
 	if comment.Pos == nil || target.Pos == nil {
-		return "unknown"
+		return unknownName
 	}
 
 	commentEndLine := safeconv.MustUintToInt(comment.Pos.EndLine)
@@ -455,7 +456,7 @@ func (c *Analyzer) extractTargetName(target *node.Node) string {
 		return name
 	}
 
-	return "unknown"
+	return unknownName
 }
 
 // calculateMetrics calculates overall metrics from comment details and functions.

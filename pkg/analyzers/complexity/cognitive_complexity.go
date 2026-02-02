@@ -4,6 +4,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const unknownNestingType = "unknown"
+
 // NestingContext tracks the nesting level and type for cognitive complexity.
 type NestingContext struct {
 	Type  string
@@ -202,7 +204,7 @@ func (c *CognitiveComplexityCalculator) endNesting() {
 // getNestingType determines the type of nesting for a node.
 func (c *CognitiveComplexityCalculator) getNestingType(n *node.Node) string {
 	nestingType := c.getNestingTypeByNodeType(n)
-	if nestingType != "unknown" { //nolint:goconst // constant extraction would reduce readability.
+	if nestingType != unknownNestingType {
 		return nestingType
 	}
 
@@ -224,7 +226,7 @@ func (c *CognitiveComplexityCalculator) getNestingTypeByNodeType(target *node.No
 		return nestingType
 	}
 
-	return "unknown"
+	return unknownNestingType
 }
 
 // getNestingTypeByRole determines nesting type based on node roles.
@@ -242,5 +244,5 @@ func (c *CognitiveComplexityCalculator) getNestingTypeByRole(target *node.Node) 
 		}
 	}
 
-	return "unknown"
+	return unknownNestingType
 }

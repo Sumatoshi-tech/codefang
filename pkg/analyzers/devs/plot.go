@@ -1,239 +1,242 @@
 package devs
 
 import (
-	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 )
 
 const (
-	plotStackName = "total"
-	fullZoomPct   = 100
-	maxDevs       = 20
+	maxDevs          = 20
+	chartHeight      = "550px"
+	emptyChartHeight = "400px"
+	dataZoomEnd      = 100
+	xAxisRotate      = 45
+	labelFontSize    = 10
 )
 
-// GeneratePlot writes an interactive HTML bar chart from a devs analysis report.
-// It is used by both HistoryAnalyzer and the fast devs path (Libgit2Analyzer).
+// GeneratePlot creates a full plot page for developer activity.
 func GeneratePlot(report analyze.Report, writer io.Writer) error {
 	chart, err := GenerateChart(report)
 	if err != nil {
-		return fmt.Errorf("generate chart: %w", err)
+		return err
 	}
 
-	if r, ok := chart.(interface{ Render(io.Writer) error }); ok {
-		err = r.Render(writer)
-		if err != nil {
-			return fmt.Errorf("render chart: %w", err)
-		}
+	page := plotpage.NewPage(
+		"Developer Activity Analysis",
+		"Contribution patterns over project lifetime",
+	)
+	page.Add(plotpage.Section{
+		Title:    "Developer Activity Over Time",
+		Subtitle: "Stacked bar chart showing commits per developer across time intervals (Top 20).",
+		Chart:    chart,
+		Hint: plotpage.Hint{
+			Title: "How to interpret:",
+			Items: []string{
+				"Stacked bars = contribution from each developer at each time point",
+				"Large colored sections = high activity developers",
+				"Consistent colors over time = sustained contributors",
+				"Disappearing colors = developers who left the project",
+				"Look for: Bus factor risks (few developers dominating)",
+				"Action: Identify key contributors for succession planning",
+			},
+		},
+	})
 
-		return nil
-	}
-
-	return errors.New("chart does not support Render") //nolint:err113 // dynamic error
+	return page.Render(writer)
 }
 
-// GenerateChart creates the chart object from the report.
-func GenerateChart(report analyze.Report) (components.Charter, error) {
+// GenerateChart creates a stacked bar chart showing developer activity over time.
+func GenerateChart(report analyze.Report) (*charts.Bar, error) {
 	ticks, ok := report["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
-		return nil, errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error
+		return nil, ErrInvalidTicks
 	}
 
-	reversedPeopleDict, ok := report["ReversedPeopleDict"].([]string)
+	names, ok := report["ReversedPeopleDict"].([]string)
 	if !ok {
-		return nil, errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error
+		return nil, ErrInvalidPeopleDict
 	}
 
-	tickKeys := getTickKeys(ticks)
+	tickKeys := sortedKeys(ticks)
 	if len(tickKeys) == 0 {
-		return createEmptyChart(), nil
+		return createEmptyBar(), nil
 	}
 
-	devIDs := collectDevIDs(ticks)
+	style := plotpage.DefaultStyle()
+	devTotals := computeDevTotals(ticks)
+	topDevs := topNByValue(devTotals, maxDevs)
+	xLabels := buildXLabels(tickKeys)
 
-	// Filter and sort top N developers.
-	sortedDevs := sortDevsByTotalCommits(devIDs, ticks)
-	topDevs := sortedDevs
-	hasOthers := false
-
-	if len(sortedDevs) > maxDevs {
-		topDevs = sortedDevs[:maxDevs]
-		hasOthers = true
-	}
-
-	xLabels := make([]string, len(tickKeys))
-	for i, t := range tickKeys {
-		xLabels[i] = strconv.Itoa(t)
-	}
-
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title:    "Developer Activity History",
-			Subtitle: "Commits per developer over time (Top 20)",
-			Left:     "2%",
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(true),
-			Type: "scroll",
-			Top:  "5px",
-			Left: "40%",
-		}),
-		charts.WithGridOpts(opts.Grid{
-			Top:    "15%",
-			Bottom: "10%",
-			Left:   "5%",
-			Right:  "5%",
-		}),
-		charts.WithDataZoomOpts(opts.DataZoom{Type: "slider", Start: 0, End: fullZoomPct}, opts.DataZoom{Type: "inside"}),
-		charts.WithXAxisOpts(opts.XAxis{Name: "Time (tick)"}),
-		charts.WithYAxisOpts(opts.YAxis{Name: "Commits"}),
-	)
+	bar := createBarChart(style)
 	bar.SetXAxis(xLabels)
+	addDevSeries(bar, topDevs, tickKeys, ticks, names)
 
-	addTopDevsSeries(bar, topDevs, reversedPeopleDict, tickKeys, ticks)
-
-	// Add "Others" series if needed.
-	if hasOthers {
-		addOthersSeries(bar, sortedDevs, tickKeys, ticks)
+	if len(devTotals) > maxDevs {
+		addOthersSeries(bar, topDevs, tickKeys, ticks)
 	}
 
 	return bar, nil
-}
-
-func getTickKeys(ticks map[int]map[int]*DevTick) []int {
-	tickKeys := make([]int, 0, len(ticks))
-	for tick := range ticks {
-		tickKeys = append(tickKeys, tick)
-	}
-
-	sort.Ints(tickKeys)
-
-	return tickKeys
-}
-
-func addTopDevsSeries(
-	bar *charts.Bar, topDevs []int, reversedPeopleDict []string, tickKeys []int, ticks map[int]map[int]*DevTick,
-) {
-	for _, devID := range topDevs {
-		name := devName(devID, reversedPeopleDict)
-		data := make([]opts.BarData, len(tickKeys))
-
-		for i, tick := range tickKeys {
-			devTick := ticks[tick][devID]
-			val := 0
-
-			if devTick != nil {
-				val = devTick.Commits
-			}
-
-			data[i] = opts.BarData{Value: val}
-		}
-
-		bar.AddSeries(name, data, charts.WithBarChartOpts(opts.BarChart{Stack: plotStackName}))
-	}
-}
-
-func addOthersSeries(bar *charts.Bar, sortedDevs, tickKeys []int, ticks map[int]map[int]*DevTick) {
-	data := make([]opts.BarData, len(tickKeys))
-	otherDevs := sortedDevs[maxDevs:]
-
-	for i, tick := range tickKeys {
-		total := 0
-
-		for _, devID := range otherDevs {
-			devTick := ticks[tick][devID]
-			if devTick != nil {
-				total += devTick.Commits
-			}
-		}
-
-		data[i] = opts.BarData{Value: total}
-	}
-
-	bar.AddSeries("Others", data, charts.WithBarChartOpts(opts.BarChart{Stack: plotStackName}))
-}
-
-func sortDevsByTotalCommits(devIDs []int, ticks map[int]map[int]*DevTick) []int {
-	totals := make(map[int]int)
-
-	for _, devID := range devIDs {
-		sum := 0
-
-		for _, tickMap := range ticks {
-			if dt, ok := tickMap[devID]; ok {
-				sum += dt.Commits
-			}
-		}
-
-		totals[devID] = sum
-	}
-
-	sorted := make([]int, len(devIDs))
-	copy(sorted, devIDs)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		return totals[sorted[i]] > totals[sorted[j]]
-	})
-
-	return sorted
-}
-
-func collectDevIDs(ticks map[int]map[int]*DevTick) []int {
-	seen := make(map[int]bool)
-
-	for _, devTick := range ticks {
-		for devID := range devTick {
-			seen[devID] = true
-		}
-	}
-
-	ids := make([]int, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
-
-	return ids
-}
-
-func devName(devID int, reversedPeopleDict []string) string {
-	if devID == identity.AuthorMissing {
-		return identity.AuthorMissingName
-	}
-
-	if devID >= 0 && devID < len(reversedPeopleDict) {
-		return reversedPeopleDict[devID]
-	}
-
-	return fmt.Sprintf("dev_%d", devID)
 }
 
 func (d *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	return GeneratePlot(report, writer)
 }
 
-// GenerateChart creates the chart object from the report.
-func (d *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+// GenerateChart creates a chart for the history analyzer.
+func (d *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
 	return GenerateChart(report)
 }
 
-func createEmptyChart() *charts.Bar {
+func computeDevTotals(ticks map[int]map[int]*DevTick) map[int]int {
+	devTotals := make(map[int]int)
+
+	for _, tickMap := range ticks {
+		for devID, devTick := range tickMap {
+			devTotals[devID] += devTick.Commits
+		}
+	}
+
+	return devTotals
+}
+
+func buildXLabels(tickKeys []int) []string {
+	xLabels := make([]string, len(tickKeys))
+	for i, t := range tickKeys {
+		xLabels[i] = strconv.Itoa(t)
+	}
+
+	return xLabels
+}
+
+func createBarChart(style plotpage.Style) *charts.Bar {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(
+		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
+		charts.WithLegendOpts(opts.Legend{
+			Show: opts.Bool(true), Type: "scroll", Top: "0", Left: "center",
+		}),
+		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: chartHeight}),
+		charts.WithGridOpts(opts.Grid{
+			Top: "15%", Bottom: style.GridBottom,
+			Left: style.GridLeft, Right: style.GridRight,
+			ContainLabel: opts.Bool(true),
+		}),
+		charts.WithDataZoomOpts(
+			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
+			opts.DataZoom{Type: "inside"},
+		),
+		charts.WithXAxisOpts(opts.XAxis{
+			Name:      "Time (tick)",
+			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, FontSize: labelFontSize},
+		}),
+		charts.WithYAxisOpts(opts.YAxis{Name: "Commits"}),
+	)
+
+	return bar
+}
+
+func addDevSeries(bar *charts.Bar, topDevs, tickKeys []int, ticks map[int]map[int]*DevTick, names []string) {
+	for _, devID := range topDevs {
+		data := make([]opts.BarData, len(tickKeys))
+
+		for i, tick := range tickKeys {
+			val := 0
+			if devTick := ticks[tick][devID]; devTick != nil {
+				val = devTick.Commits
+			}
+
+			data[i] = opts.BarData{Value: val}
+		}
+
+		bar.AddSeries(devName(devID, names), data, charts.WithBarChartOpts(opts.BarChart{Stack: "total"}))
+	}
+}
+
+func addOthersSeries(bar *charts.Bar, topDevs, tickKeys []int, ticks map[int]map[int]*DevTick) {
+	others := make([]opts.BarData, len(tickKeys))
+
+	for i, tick := range tickKeys {
+		total := 0
+
+		for devID, devTick := range ticks[tick] {
+			if !slices.Contains(topDevs, devID) {
+				total += devTick.Commits
+			}
+		}
+
+		others[i] = opts.BarData{Value: total}
+	}
+
+	bar.AddSeries("Others", others, charts.WithBarChartOpts(opts.BarChart{Stack: "total"}))
+}
+
+func sortedKeys(m map[int]map[int]*DevTick) []int {
+	keys := make([]int, 0, len(m))
+
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Ints(keys)
+
+	return keys
+}
+
+func topNByValue(totals map[int]int, count int) []int {
+	type kv struct {
+		k, v int
+	}
+
+	var items []kv
+
+	for k, v := range totals {
+		items = append(items, kv{k, v})
+	}
+
+	sort.Slice(items, func(i, j int) bool { return items[i].v > items[j].v })
+
+	if len(items) > count {
+		items = items[:count]
+	}
+
+	result := make([]int, len(items))
+
+	for i, item := range items {
+		result[i] = item.k
+	}
+
+	return result
+}
+
+func devName(id int, names []string) string {
+	if id == identity.AuthorMissing {
+		return identity.AuthorMissingName
+	}
+
+	if id >= 0 && id < len(names) {
+		return names[id]
+	}
+
+	return fmt.Sprintf("dev_%d", id)
+}
+
+func createEmptyBar() *charts.Bar {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
-			Title:    "Developer Activity History",
-			Subtitle: "No data (empty repository or time range)",
+			Title: "Developer Activity", Subtitle: "No data", Left: "center",
 		}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
 	)
 	bar.SetXAxis([]string{})
 

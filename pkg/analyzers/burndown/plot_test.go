@@ -2,7 +2,6 @@ package burndown //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
-	"io"
 	"testing"
 	"time"
 
@@ -11,55 +10,42 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-func TestFormatBandLabel(t *testing.T) {
+func TestBandLabel(t *testing.T) {
 	t.Parallel()
 
 	tick := 24 * time.Hour
 	ref2025 := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
-	tests := []struct {
-		bandIdx, granularity, maxBandIdx int
-		endTime                          time.Time
-		want                             string
-	}{
-		{0, 30, 2, time.Time{}, "1mo"},
-		{1, 30, 2, time.Time{}, "2mo"},
-		{2, 30, 2, time.Time{}, "3mo"},
-		{11, 30, 35, time.Time{}, "1y"},
-		{23, 30, 35, time.Time{}, "2y"},
-		{35, 30, 35, time.Time{}, "3y"},
-		{0, 30, 35, time.Time{}, "1mo"},
-		{11, 30, 35, ref2025, "2024"},
-		{23, 30, 35, ref2025, "2023"},
-		{35, 30, 35, ref2025, "2022"},
-	}
-	for _, tt := range tests {
-		got := formatBandLabel(tt.bandIdx, tt.granularity, tick, tt.maxBandIdx, tt.endTime)
-		require.Equal(t, tt.want, got, "bandIdx=%d granularity=%d maxBandIdx=%d", tt.bandIdx, tt.granularity, tt.maxBandIdx)
-	}
-}
 
-func TestComputeMaxLines(t *testing.T) {
-	t.Parallel()
+	makeParams := func(granularity int, numBands int, endTime time.Time) *burndownParams {
+		history := make(DenseHistory, 1)
+		history[0] = make([]int64, numBands)
+		return &burndownParams{
+			globalHistory: history,
+			granularity:   granularity,
+			tickSize:      tick,
+			endTime:       endTime,
+		}
+	}
 
 	tests := []struct {
-		name    string
-		history DenseHistory
-		want    int64
+		bandIdx int
+		params  *burndownParams
+		want    string
 	}{
-		{"empty", DenseHistory{}, 0},
-		{"single_sample", DenseHistory{{100, 50}}, 150},
-		{"multiple_samples", DenseHistory{
-			{10, 20},
-			{100, 200},
-			{50, 50},
-		}, 300},
+		{0, makeParams(30, 3, time.Time{}), "1mo"},
+		{1, makeParams(30, 3, time.Time{}), "2mo"},
+		{2, makeParams(30, 3, time.Time{}), "3mo"},
+		{11, makeParams(30, 36, time.Time{}), "1y"},
+		{23, makeParams(30, 36, time.Time{}), "2y"},
+		{35, makeParams(30, 36, time.Time{}), "3y"},
+		{0, makeParams(30, 36, time.Time{}), "1mo"},
+		{11, makeParams(30, 36, ref2025), "2024"},
+		{23, makeParams(30, 36, ref2025), "2023"},
+		{35, makeParams(30, 36, ref2025), "2022"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := computeMaxLines(tt.history)
-			require.Equal(t, tt.want, got)
-		})
+		got := bandLabel(tt.bandIdx, tt.params)
+		require.Equal(t, tt.want, got, "bandIdx=%d granularity=%d", tt.bandIdx, tt.params.granularity)
 	}
 }
 
@@ -82,9 +68,7 @@ func TestGenerateChart_WithData(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
-	renderer, ok := chart.(interface{ Render(io.Writer) error })
-	require.True(t, ok, "chart must support Render(io.Writer)")
-	err = renderer.Render(&buf)
+	err = chart.Render(&buf)
 	require.NoError(t, err)
 	require.Greater(t, buf.Len(), 100, "rendered HTML should have substantial content")
 	require.Contains(t, buf.String(), "project x 210", "title should include project and max lines")
@@ -124,9 +108,7 @@ func TestGenerateChart_YearAggregation(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
-	renderer, ok := chart.(interface{ Render(io.Writer) error })
-	require.True(t, ok)
-	err = renderer.Render(&buf)
+	err = chart.Render(&buf)
 	require.NoError(t, err)
 	html := buf.String()
 	require.Contains(t, html, "codefang x ", "title should use project name")

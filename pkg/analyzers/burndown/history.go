@@ -609,10 +609,10 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 		"ReversedPeopleDict": b.reversedPeopleDict,
 		"Sampling":           b.Sampling,
 		"Granularity":        b.Granularity,
-		reportKeyProjectName: projectName,
+		"ProjectName":        projectName,
 	}
 	if !b.lastCommitTime.IsZero() {
-		report[reportKeyEndTime] = b.lastCommitTime
+		report["EndTime"] = b.lastCommitTime
 	}
 	return report, nil
 }
