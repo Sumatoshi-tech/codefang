@@ -55,10 +55,10 @@ func newTestAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 			"imports": &imports.HistoryAnalyzer{
 				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
 			},
-			"sentiment": &sentiment.HistoryAnalyzer{UASTChanges: uastChanges, Ticks: ticks},
-			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UASTChanges: uastChanges},
+			"sentiment": &sentiment.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
+			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UAST: uastChanges},
 			"typos": &typos.HistoryAnalyzer{
-				UASTChanges: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
+				UAST: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
 			},
 		},
 	}
