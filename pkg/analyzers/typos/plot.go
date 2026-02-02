@@ -2,111 +2,122 @@ package typos
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
 
-// generatePlot creates an interactive HTML bar chart from the typos analysis report.
+const (
+	topFilesLimit    = 20
+	xAxisRotate      = 60
+	emptyChartHeight = "400px"
+)
+
+// ErrInvalidTypos indicates the report doesn't contain expected typos data.
+var ErrInvalidTypos = errors.New("invalid typos report: expected []Typo for typos")
+
 func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	chart, err := t.GenerateChart(report)
 	if err != nil {
-		return fmt.Errorf("generate chart: %w", err)
+		return err
 	}
 
-	if r, ok := chart.(interface{ Render(io.Writer) error }); ok {
-		err = r.Render(writer)
-		if err != nil {
-			return fmt.Errorf("render chart: %w", err)
-		}
+	page := plotpage.NewPage(
+		"Typo Analysis",
+		"Tracking typo corrections across the codebase",
+	)
+	page.Add(plotpage.Section{
+		Title:    "Typo-Prone Files",
+		Subtitle: "Files ranked by number of typo fixes detected in commit history.",
+		Chart:    chart,
+		Hint: plotpage.Hint{
+			Title: "How to interpret:",
+			Items: []string{
+				"Tall bars = files where typos are frequently fixed",
+				"Documentation files = expected to have more text-related fixes",
+				"Code files = typos may indicate hasty commits",
+				"Look for: Code files with unusually high typo rates",
+				"Action: Consider adding spell-checking to pre-commit hooks",
+			},
+		},
+	})
 
-		return nil
-	}
-
-	return errors.New("chart does not support Render") //nolint:err113 // dynamic error
+	return page.Render(writer)
 }
 
-// GenerateChart creates the chart object from the report.
-func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+// GenerateChart creates a bar chart showing typo-prone files.
+func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
 	typos, ok := report["typos"].([]Typo)
 	if !ok {
-		return nil, errors.New("expected []Typo for typos") //nolint:err113 // descriptive error
+		return nil, ErrInvalidTypos
 	}
 
 	if len(typos) == 0 {
-		return createTyposEmptyChart(), nil
+		return createEmptyTyposChart(), nil
 	}
 
-	// Count typos per file.
-	fileCounts := make(map[string]int)
-	for _, typo := range typos {
-		fileCounts[typo.File]++
-	}
+	counts := countTyposPerFile(typos)
+	labels, data := topTypoFiles(counts, topFilesLimit)
 
-	// Sort files by typo count.
-	type fileScore struct {
-		Name  string
-		Count int
-	}
+	style := plotpage.DefaultStyle()
 
-	scores := make([]fileScore, 0, len(fileCounts))
-	for name, count := range fileCounts {
-		scores = append(scores, fileScore{Name: name, Count: count})
-	}
-
-	sort.Slice(scores, func(i, j int) bool {
-		return scores[i].Count > scores[j].Count
-	})
-
-	// Take top 20.
-	topN := 20
-	topN = min(topN, len(scores))
-	scores = scores[:topN]
-
-	xLabels := make([]string, topN)
-	barData := make([]opts.BarData, topN)
-
-	for i, sc := range scores {
-		xLabels[i] = sc.Name
-		barData[i] = opts.BarData{Value: sc.Count}
-	}
-
-	const rotateDegrees = 45
-
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title:    "Top Typo-Prone Files",
-			Subtitle: "Files with most fixed typos",
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name: "File",
-			AxisLabel: &opts.AxisLabel{
-				Rotate: rotateDegrees,
-			},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{Name: "Typo Count"}),
-	)
-	bar.SetXAxis(xLabels)
-	bar.AddSeries("Typos", barData)
-
-	return bar, nil
+	return plotpage.NewBarChart(style).
+		XAxis(labels, xAxisRotate).
+		YAxis("Typo Count").
+		Series("Typos", data, "#fac858").
+		Build(), nil
 }
 
-func createTyposEmptyChart() *charts.Bar {
+func countTyposPerFile(typos []Typo) map[string]int {
+	counts := make(map[string]int)
+	for _, typo := range typos {
+		counts[typo.File]++
+	}
+
+	return counts
+}
+
+func topTypoFiles(counts map[string]int, limit int) (labels []string, data []int) {
+	type kv struct {
+		k string
+		v int
+	}
+
+	var items []kv
+
+	for k, v := range counts {
+		items = append(items, kv{k, v})
+	}
+
+	sort.Slice(items, func(i, j int) bool { return items[i].v > items[j].v })
+
+	if len(items) > limit {
+		items = items[:limit]
+	}
+
+	labels = make([]string, len(items))
+	data = make([]int, len(items))
+
+	for i, item := range items {
+		labels[i] = item.k
+		data[i] = item.v
+	}
+
+	return labels, data
+}
+
+func createEmptyTyposChart() *charts.Bar {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
-			Title:    "Top Typo-Prone Files",
-			Subtitle: "No data",
+			Title: "Typo-Prone Files", Subtitle: "No data", Left: "center",
 		}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
 	)
 
 	return bar

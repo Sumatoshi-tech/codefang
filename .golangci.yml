@@ -483,7 +483,20 @@ linters:
       - path: pkg/analyzers/common/
         linters: [godot]
       - path: pkg/burndown/
-        linters: [wsl_v5, nlreturn, ireturn, iface, interfacebloat, intrange, modernize, mnd, gosec, varnamelen, revive]
+        linters:
+          [
+            wsl_v5,
+            nlreturn,
+            ireturn,
+            iface,
+            interfacebloat,
+            intrange,
+            modernize,
+            mnd,
+            gosec,
+            varnamelen,
+            revive,
+          ]
 
       # The "common" package name is intentional for shared analyzer utilities.
       - path: cmd/

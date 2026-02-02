@@ -259,7 +259,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 
 	plotOut := plotBuf.String()
-	if !strings.Contains(plotOut, "Developer Activity History") {
+	if !strings.Contains(plotOut, "Developer Activity Analysis") {
 		t.Error("expected chart title in plot output")
 	}
 
@@ -285,7 +285,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize Plot empty failed: %v", err)
 	}
 
-	if !strings.Contains(emptyPlotBuf.String(), "Developer Activity History") {
+	if !strings.Contains(emptyPlotBuf.String(), "Developer Activity Analysis") {
 		t.Error("expected chart title in empty plot output")
 	}
 }

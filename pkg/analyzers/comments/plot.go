@@ -1,0 +1,294 @@
+package comments
+
+import (
+	"errors"
+	"io"
+	"sort"
+
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
+)
+
+const (
+	topFunctionsLimit = 20
+	xAxisRotate       = 45
+	emptyChartHeight  = "400px"
+	pieRadius         = "60%"
+)
+
+// ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
+var ErrInvalidFunctionsData = errors.New("invalid comments report: expected []map[string]any for functions")
+
+// FormatReportPlot generates an HTML plot visualization for comments analysis.
+func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
+	barChart, err := c.generateFunctionCoverageChart(report)
+	if err != nil {
+		return err
+	}
+
+	pieChart := c.generateDocumentationPieChart(report)
+	gaugeChart := c.generateOverallScoreGauge(report)
+
+	page := plotpage.NewPage(
+		"Code Comments Analysis",
+		"Documentation coverage and comment quality metrics",
+	)
+
+	page.Add(
+		plotpage.Section{
+			Title:    "Overall Documentation Score",
+			Subtitle: "Combined score based on comment quality and placement.",
+			Chart:    gaugeChart,
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"<strong>Green (≥80%)</strong> = Excellent documentation quality",
+					"<strong>Yellow (60-80%)</strong> = Good quality with room for improvement",
+					"<strong>Orange (40-60%)</strong> = Fair quality - improvements needed",
+					"<strong>Red (<40%)</strong> = Poor quality - significant improvements needed",
+				},
+			},
+		},
+		plotpage.Section{
+			Title:    "Function Documentation Status",
+			Subtitle: "Documentation status for each function (sorted by lines of code).",
+			Chart:    barChart,
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"<strong>Green bars</strong> = Well-documented functions",
+					"<strong>Red bars</strong> = Functions without documentation",
+					"<strong>Taller bars</strong> = Larger functions (more lines)",
+					"<strong>Action:</strong> Prioritize documenting larger undocumented functions",
+				},
+			},
+		},
+		plotpage.Section{
+			Title:    "Documentation Coverage",
+			Subtitle: "Distribution of documented vs undocumented functions.",
+			Chart:    pieChart,
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"<strong>Documented</strong> = Functions with properly placed comments",
+					"<strong>Undocumented</strong> = Functions missing documentation",
+					"<strong>Goal:</strong> Maximize the Documented segment",
+				},
+			},
+		},
+	)
+
+	return page.Render(w)
+}
+
+func (c *Analyzer) generateFunctionCoverageChart(report analyze.Report) (*charts.Bar, error) {
+	functions, ok := report["functions"].([]map[string]any)
+	if !ok {
+		return nil, ErrInvalidFunctionsData
+	}
+
+	if len(functions) == 0 {
+		return createEmptyCommentsChart(), nil
+	}
+
+	sorted := sortByLines(functions)
+	if len(sorted) > topFunctionsLimit {
+		sorted = sorted[:topFunctionsLimit]
+	}
+
+	labels, lines, colors := extractFunctionData(sorted)
+	style := plotpage.DefaultStyle()
+
+	return createFunctionCoverageBarChart(labels, lines, colors, style), nil
+}
+
+func sortByLines(functions []map[string]any) []map[string]any {
+	sorted := make([]map[string]any, len(functions))
+	copy(sorted, functions)
+
+	sort.Slice(sorted, func(i, j int) bool {
+		li := getLinesValue(sorted[i])
+		lj := getLinesValue(sorted[j])
+
+		return li > lj
+	})
+
+	return sorted
+}
+
+func getLinesValue(fn map[string]any) int {
+	if val, ok := fn["lines"].(int); ok {
+		return val
+	}
+
+	return 0
+}
+
+func isDocumented(fn map[string]any) bool {
+	if assessment, ok := fn["assessment"].(string); ok {
+		return assessment == "✅ Well Documented"
+	}
+
+	return false
+}
+
+func extractFunctionData(functions []map[string]any) (labels []string, lines []int, colors []string) {
+	labels = make([]string, len(functions))
+	lines = make([]int, len(functions))
+	colors = make([]string, len(functions))
+
+	for i, fn := range functions {
+		if name, ok := fn["function"].(string); ok {
+			labels[i] = name
+		} else {
+			labels[i] = "unknown"
+		}
+
+		lines[i] = getLinesValue(fn)
+
+		if isDocumented(fn) {
+			colors[i] = "#91cc75"
+		} else {
+			colors[i] = "#ee6666"
+		}
+	}
+
+	return labels, lines, colors
+}
+
+func createFunctionCoverageBarChart(labels []string, lines []int, colors []string, style plotpage.Style) *charts.Bar {
+	bar := charts.NewBar()
+
+	bar.SetGlobalOptions(
+		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
+		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
+		charts.WithGridOpts(opts.Grid{
+			Left: style.GridLeft, Right: style.GridRight,
+			Top: style.GridTop, Bottom: style.GridBottom,
+			ContainLabel: opts.Bool(true),
+		}),
+		charts.WithXAxisOpts(opts.XAxis{
+			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, Interval: "0"},
+		}),
+		charts.WithYAxisOpts(opts.YAxis{
+			Name: "Lines of Code",
+		}),
+	)
+
+	bar.SetXAxis(labels)
+
+	barData := make([]opts.BarData, len(lines))
+
+	for i, lineCount := range lines {
+		barData[i] = opts.BarData{
+			Value: lineCount,
+			ItemStyle: &opts.ItemStyle{
+				Color: colors[i],
+			},
+		}
+	}
+
+	bar.AddSeries("Lines", barData)
+
+	return bar
+}
+
+func (c *Analyzer) generateDocumentationPieChart(report analyze.Report) *charts.Pie {
+	documented := 0
+	undocumented := 0
+
+	if val, ok := report["documented_functions"].(int); ok {
+		documented = val
+	}
+
+	if total, ok := report["total_functions"].(int); ok {
+		undocumented = total - documented
+	}
+
+	if documented == 0 && undocumented == 0 {
+		return createEmptyCommentsPie()
+	}
+
+	return createDocumentationPieChart(documented, undocumented)
+}
+
+func createDocumentationPieChart(documented, undocumented int) *charts.Pie {
+	pie := charts.NewPie()
+
+	pie.SetGlobalOptions(
+		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: "400px"}),
+		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "bottom"}),
+	)
+
+	pieData := []opts.PieData{
+		{Name: "Documented", Value: documented, ItemStyle: &opts.ItemStyle{Color: "#91cc75"}},
+		{Name: "Undocumented", Value: undocumented, ItemStyle: &opts.ItemStyle{Color: "#ee6666"}},
+	}
+
+	pie.AddSeries("Documentation", pieData).
+		SetSeriesOptions(
+			charts.WithLabelOpts(opts.Label{
+				Show:      opts.Bool(true),
+				Formatter: "{b}: {c} ({d}%)",
+			}),
+			charts.WithPieChartOpts(opts.PieChart{
+				Radius: pieRadius,
+			}),
+		)
+
+	return pie
+}
+
+func (c *Analyzer) generateOverallScoreGauge(report analyze.Report) *charts.Liquid {
+	score := 0.0
+
+	if val, ok := report["overall_score"].(float64); ok {
+		score = val
+	}
+
+	return createScoreLiquid(score)
+}
+
+func createScoreLiquid(score float64) *charts.Liquid {
+	liquid := charts.NewLiquid()
+
+	liquid.SetGlobalOptions(
+		charts.WithInitializationOpts(opts.Initialization{Width: "400px", Height: "400px"}),
+	)
+
+	liquid.AddSeries("Score", []opts.LiquidData{
+		{Value: score},
+	})
+
+	return liquid
+}
+
+func createEmptyCommentsChart() *charts.Bar {
+	bar := charts.NewBar()
+
+	bar.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title: "Function Documentation", Subtitle: "No data", Left: "center",
+		}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+	)
+
+	return bar
+}
+
+func createEmptyCommentsPie() *charts.Pie {
+	pie := charts.NewPie()
+
+	pie.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title: "Documentation Coverage", Subtitle: "No data", Left: "center",
+		}),
+		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: emptyChartHeight}),
+	)
+
+	return pie
+}
