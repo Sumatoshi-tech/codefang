@@ -25,7 +25,7 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	UASTChanges            *plumbing.UASTChangesAnalyzer
+	UAST                   *plumbing.UASTChangesAnalyzer
 	FileDiff               *plumbing.FileDiffAnalyzer
 	BlobCache              *plumbing.BlobCacheAnalyzer
 	lcontext               *levenshtein.Context
@@ -224,7 +224,7 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit.Hash()
 
-	changes := t.UASTChanges.Changes
+	changes := t.UAST.Changes()
 	cache := t.BlobCache.Cache
 	diffs := t.FileDiff.FileDiffs
 

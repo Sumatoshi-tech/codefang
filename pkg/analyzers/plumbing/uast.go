@@ -13,6 +13,7 @@ import (
 )
 
 // UASTChangesAnalyzer extracts UAST-level changes between commits.
+// It uses lazy parsing - changes are only parsed when Changes() is called.
 type UASTChangesAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
@@ -20,7 +21,8 @@ type UASTChangesAnalyzer struct {
 	TreeDiff  *TreeDiffAnalyzer
 	BlobCache *BlobCacheAnalyzer
 	parser    *uast.Parser
-	Changes   []uast.Change
+	changes   []uast.Change
+	parsed    bool // tracks whether parsing was done for current commit
 }
 
 const (
@@ -65,14 +67,29 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
+// Consume resets state for the new commit. Parsing is deferred until Changes() is called.
 func (c *UASTChangesAnalyzer) Consume(_ *analyze.Context) error {
-	changes := c.TreeDiff.Changes
+	// Reset state for new commit - parsing is lazy
+	c.changes = nil
+	c.parsed = false
+
+	return nil
+}
+
+// Changes returns parsed UAST changes, parsing lazily on first call per commit.
+// This avoids expensive UAST parsing when downstream analyzers don't need it.
+func (c *UASTChangesAnalyzer) Changes() []uast.Change {
+	if c.parsed {
+		return c.changes
+	}
+
+	c.parsed = true
+	treeChanges := c.TreeDiff.Changes
 	cache := c.BlobCache.Cache
 
 	var result []uast.Change
 
-	for _, change := range changes {
+	for _, change := range treeChanges {
 		before := c.parseBeforeVersion(change, cache)
 		after := c.parseAfterVersion(change, cache)
 
@@ -85,9 +102,9 @@ func (c *UASTChangesAnalyzer) Consume(_ *analyze.Context) error {
 		}
 	}
 
-	c.Changes = result
+	c.changes = result
 
-	return nil
+	return c.changes
 }
 
 // parseBeforeVersion parses the "before" version for modifications and deletions.
@@ -135,6 +152,12 @@ func (c *UASTChangesAnalyzer) parseBlob(
 	}
 
 	return parsed
+}
+
+// SetChangesForTest sets the changes directly (for testing only).
+func (c *UASTChangesAnalyzer) SetChangesForTest(changes []uast.Change) {
+	c.changes = changes
+	c.parsed = true
 }
 
 // Finalize completes the analysis and returns the result.

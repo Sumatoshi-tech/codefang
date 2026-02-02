@@ -29,7 +29,7 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	UASTChanges      *plumbing.UASTChangesAnalyzer
+	UAST             *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
 	commentsByTick   map[int][]string
 	commitsByTick    map[int][]gitlib.Hash
@@ -135,7 +135,7 @@ func (s *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (s *HistoryAnalyzer) Consume(_ *analyze.Context) error {
-	changes := s.UASTChanges.Changes
+	changes := s.UAST.Changes()
 	tick := s.Ticks.Tick
 
 	var commentNodes []*node.Node

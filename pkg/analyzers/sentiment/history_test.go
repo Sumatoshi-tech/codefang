@@ -76,7 +76,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -94,7 +94,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 			After: commentNode,
 		},
 	}
-	s.UASTChanges.Changes = changes
+	s.UAST.SetChangesForTest(changes)
 	s.Ticks.Tick = 0
 
 	err := s.Consume(&analyze.Context{})
@@ -117,7 +117,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 		Token: "bad",
 		Pos:   &node.Positions{StartLine: 2, EndLine: 2},
 	}
-	s.UASTChanges.Changes = []uast.Change{{After: shortCommentNode}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: shortCommentNode}})
 	s.Ticks.Tick = 1
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
@@ -131,7 +131,7 @@ func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -145,7 +145,7 @@ func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	}
 	root.Children = []*node.Node{child}
 
-	s.UASTChanges.Changes = []uast.Change{{After: root}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
 
@@ -168,7 +168,7 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -179,7 +179,7 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	c2 := &node.Node{Type: node.UASTComment, Token: "Line 2 is nice", Pos: &node.Positions{StartLine: 2, EndLine: 2}}
 
 	root := &node.Node{Type: "Block", Children: []*node.Node{c1, c2}}
-	s.UASTChanges.Changes = []uast.Change{{After: root}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
 

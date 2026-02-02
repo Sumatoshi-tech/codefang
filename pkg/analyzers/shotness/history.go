@@ -25,13 +25,13 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	FileDiff    *plumbing.FileDiffAnalyzer
-	UASTChanges *plumbing.UASTChangesAnalyzer
-	nodes       map[string]*nodeShotness
-	files       map[string]map[string]*nodeShotness
-	merges      map[gitlib.Hash]bool
-	DSLStruct   string
-	DSLName     string
+	FileDiff  *plumbing.FileDiffAnalyzer
+	UAST      *plumbing.UASTChangesAnalyzer
+	nodes     map[string]*nodeShotness
+	files     map[string]map[string]*nodeShotness
+	merges    map[gitlib.Hash]bool
+	DSLStruct string
+	DSLName   string
 }
 
 type nodeShotness struct {
@@ -379,7 +379,7 @@ func (s *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	changesList := s.UASTChanges.Changes
+	changesList := s.UAST.Changes()
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 
