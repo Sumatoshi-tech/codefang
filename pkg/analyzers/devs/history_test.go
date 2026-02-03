@@ -2,10 +2,12 @@ package devs //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -222,7 +224,7 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"TickSize":           24 * time.Hour,
 	}
 
-	// YAML.
+	// YAML (uses computed metrics format).
 	var buf bytes.Buffer
 
 	err := d.Serialize(report, analyze.FormatYAML, &buf)
@@ -230,12 +232,17 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
-	if !strings.Contains(buf.String(), "ticks:") {
-		t.Error("expected ticks in output")
+	yamlOut := buf.String()
+	if !strings.Contains(yamlOut, "aggregate:") {
+		t.Error("expected aggregate in YAML output")
 	}
 
-	if !strings.Contains(buf.String(), "Go: [10, 0, 0]") {
-		t.Error("expected language stats in output")
+	if !strings.Contains(yamlOut, "developers:") {
+		t.Error("expected developers in YAML output")
+	}
+
+	if !strings.Contains(yamlOut, "languages:") {
+		t.Error("expected languages in YAML output")
 	}
 
 	// Binary.
@@ -316,4 +323,78 @@ func TestHistoryAnalyzer_Misc(t *testing.T) {
 	if len(clones) != 2 {
 		t.Error("expected 2 clones")
 	}
+}
+
+func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	d := &HistoryAnalyzer{}
+
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {
+				Commits:   5,
+				LineStats: pkgplumbing.LineStats{Added: 100, Removed: 30},
+				Languages: map[string]pkgplumbing.LineStats{"Go": {Added: 100}},
+			},
+		},
+	}
+
+	report := analyze.Report{
+		"Ticks":              ticks,
+		"ReversedPeopleDict": []string{"Alice"},
+		"TickSize":           24 * time.Hour,
+	}
+
+	var buf bytes.Buffer
+	err := d.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
+
+	// Parse the JSON output
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Should have computed metrics structure with lowercase keys (from json tags)
+	assert.Contains(t, result, "aggregate")
+	assert.Contains(t, result, "developers")
+	assert.Contains(t, result, "languages")
+	assert.Contains(t, result, "busfactor")
+	assert.Contains(t, result, "activity")
+	assert.Contains(t, result, "churn")
+}
+
+func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	d := &HistoryAnalyzer{}
+
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {
+				Commits:   5,
+				LineStats: pkgplumbing.LineStats{Added: 100, Removed: 30},
+				Languages: map[string]pkgplumbing.LineStats{"Go": {Added: 100}},
+			},
+		},
+	}
+
+	report := analyze.Report{
+		"Ticks":              ticks,
+		"ReversedPeopleDict": []string{"Alice"},
+		"TickSize":           24 * time.Hour,
+	}
+
+	var buf bytes.Buffer
+	err := d.Serialize(report, analyze.FormatYAML, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Should have computed metrics structure (YAML keys)
+	assert.Contains(t, output, "aggregate:")
+	assert.Contains(t, output, "developers:")
+	assert.Contains(t, output, "languages:")
+	assert.Contains(t, output, "busfactor:")
+	assert.Contains(t, output, "activity:")
+	assert.Contains(t, output, "churn:")
 }

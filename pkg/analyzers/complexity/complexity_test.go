@@ -1,8 +1,14 @@
 package complexity //nolint:testpackage // testing internal implementation.
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -231,4 +237,81 @@ func TestCognitiveComplexityCalculator_NestedStructures(t *testing.T) {
 	if complexity < 2 {
 		t.Errorf("Expected complexity >= 2 for nested ifs, got %d", complexity)
 	}
+}
+
+// --- FormatReportJSON/YAML Tests ---
+
+func TestAnalyzer_FormatReportJSON(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	report := analyze.Report{
+		"total_functions":      3,
+		"average_complexity":   5.5,
+		"max_complexity":       15,
+		"total_complexity":     55,
+		"cognitive_complexity": 25,
+		"nesting_depth":        3,
+		"decision_points":      20,
+		"message":              "Test message",
+		"functions": []map[string]any{
+			{
+				"name":                  "testFunc",
+				"cyclomatic_complexity": 10,
+				"cognitive_complexity":  12,
+				"nesting_depth":         3,
+				"lines_of_code":         50,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportJSON(report, &buf)
+	require.NoError(t, err)
+
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Contains(t, result, "function_complexity")
+	assert.Contains(t, result, "distribution")
+	assert.Contains(t, result, "high_risk_functions")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestAnalyzer_FormatReportYAML(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	report := analyze.Report{
+		"total_functions":      3,
+		"average_complexity":   5.5,
+		"max_complexity":       15,
+		"total_complexity":     55,
+		"cognitive_complexity": 25,
+		"nesting_depth":        3,
+		"decision_points":      20,
+		"message":              "Test message",
+		"functions": []map[string]any{
+			{
+				"name":                  "testFunc",
+				"cyclomatic_complexity": 10,
+				"cognitive_complexity":  12,
+				"nesting_depth":         3,
+				"lines_of_code":         50,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "function_complexity:")
+	assert.Contains(t, output, "distribution:")
+	assert.Contains(t, output, "aggregate:")
 }

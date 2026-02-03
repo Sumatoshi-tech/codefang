@@ -189,7 +189,10 @@ func getComplexityColor(complexity int) string {
 	}
 }
 
-func createComplexityBarChart(labels []string, cyclomatic, cognitive []int, colors []string, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+func createComplexityBarChart(
+	labels []string, cyclomatic, cognitive []int, colors []string,
+	co *plotpage.ChartOpts, palette plotpage.ChartPalette,
+) *charts.Bar {
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(

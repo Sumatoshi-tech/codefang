@@ -245,6 +245,11 @@ func (h *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	return h.formatter.FormatReportJSON(report, w)
 }
 
+// FormatReportYAML formats the analysis report as YAML.
+func (h *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportYAML(report, w)
+}
+
 // buildEmptyResult creates an empty result for cases with no functions.
 func (h *Analyzer) buildEmptyResult(message string) analyze.Report {
 	return common.NewResultBuilder().BuildCustomEmptyResult(map[string]any{

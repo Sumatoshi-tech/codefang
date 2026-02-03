@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -189,10 +191,12 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 // Finalize completes the analysis and returns the result.
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	names := d.reversedPeopleDict
+
 	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector
 	if len(names) == 0 && d.Identity != nil {
 		names = d.Identity.ReversedPeopleDict
 	}
+
 	if d.Anonymize {
 		names = anonymizeNames(names)
 	}
@@ -274,19 +278,54 @@ func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
 
 // Serialize writes the analysis result to the given writer.
 func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
-	}
-
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return d.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return d.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return d.generatePlot(result, writer)
+	default:
+		return d.serializeLegacy(result, writer)
+	}
+}
+
+func (d *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure
+		metrics = &ComputedMetrics{}
 	}
 
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
+	}
+
+	return nil
+}
+
+func (d *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (d *HistoryAnalyzer) serializeLegacy(result analyze.Report, writer io.Writer) error {
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.

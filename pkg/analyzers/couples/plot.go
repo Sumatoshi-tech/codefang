@@ -43,7 +43,7 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := c.generateChart(report)
+	chart, err := c.buildChart(report)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +69,11 @@ func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 
 // GenerateChart implements PlotGenerator interface.
 func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return c.generateChart(report)
+	return c.buildChart(report)
 }
 
-// generateChart creates a heatmap chart showing developer coupling.
-func (c *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.HeatMap, error) {
+// buildChart creates a heatmap chart showing developer coupling.
+func (c *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.HeatMap, error) {
 	matrix, ok := report["PeopleMatrix"].([]map[int]int64)
 	if !ok {
 		return nil, ErrInvalidMatrix

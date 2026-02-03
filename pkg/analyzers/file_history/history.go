@@ -3,16 +3,14 @@ package filehistory
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"sort"
-	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -217,51 +215,46 @@ func (h *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (h *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return h.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return h.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return h.generatePlot(result, writer)
+	default:
+		return h.serializeYAML(result, writer)
+	}
+}
+
+func (h *Analyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	files, ok := result["Files"].(map[string]FileHistory)
-	if !ok {
-		return errors.New("expected map[string]FileHistory for files") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (h *Analyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	keys := make([]string, 0, len(files))
-	for key := range files {
-		keys = append(keys, key)
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
 	}
 
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		fmt.Fprintf(writer, "  - %s:\n", key)
-		file := files[key]
-		hashes := file.Hashes
-
-		strhashes := make([]string, len(hashes))
-		for i, hash := range hashes {
-			strhashes[i] = "\"" + hash.String() + "\""
-		}
-
-		sort.Strings(strhashes)
-		fmt.Fprintf(writer, "    commits: [%s]\n", strings.Join(strhashes, ","))
-
-		strpeople := make([]string, 0, len(file.People))
-		for key, val := range file.People {
-			strpeople = append(strpeople, fmt.Sprintf("%d:[%d,%d,%d]", key, val.Added, val.Removed, val.Changed))
-		}
-
-		sort.Strings(strpeople)
-		fmt.Fprintf(writer, "    people: {%s}\n", strings.Join(strpeople, ","))
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil

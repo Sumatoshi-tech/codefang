@@ -4,6 +4,9 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
+// DataZoom defaults.
+const dataZoomEndPercent = 100
+
 // ChartOpts provides themed chart options based on the current theme.
 type ChartOpts struct {
 	theme ThemeConfig
@@ -98,7 +101,7 @@ func (c *ChartOpts) GridCompact() opts.Grid {
 // DataZoom returns standard data zoom options.
 func (c *ChartOpts) DataZoom() []opts.DataZoom {
 	return []opts.DataZoom{
-		{Type: "slider", Start: 0, End: 100},
+		{Type: "slider", Start: 0, End: dataZoomEndPercent},
 		{Type: "inside"},
 	}
 }

@@ -2,15 +2,15 @@ package sentiment //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
 	"testing"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -220,7 +220,54 @@ func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+
+	report := analyze.Report{
+		"emotions_by_tick": map[int]float32{0: 0.5, 1: 0.8},
+		"comments_by_tick": map[int][]string{0: {"Comment"}},
+		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
+	}
+
+	var buf bytes.Buffer
+	err := s.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
+
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Contains(t, result, "time_series")
+	assert.Contains(t, result, "trend")
+	assert.Contains(t, result, "low_sentiment_periods")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+
+	report := analyze.Report{
+		"emotions_by_tick": map[int]float32{0: 0.5, 1: 0.8},
+		"comments_by_tick": map[int][]string{0: {"Comment"}},
+		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
+	}
+
+	var buf bytes.Buffer
+	err := s.Serialize(report, analyze.FormatYAML, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "time_series:")
+	assert.Contains(t, output, "trend:")
+	assert.Contains(t, output, "aggregate:")
+}
+
+func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{}
@@ -231,29 +278,13 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
 	}
 
-	// YAML.
+	// Default format should use YAML
 	var buf bytes.Buffer
+	err := s.Serialize(report, "unknown", &buf)
+	require.NoError(t, err)
 
-	err := s.Serialize(report, analyze.FormatYAML, &buf)
-	if err != nil {
-		t.Fatalf("Serialize YAML failed: %v", err)
-	}
-
-	if !strings.Contains(buf.String(), "0: [0.5000, [c1") {
-		t.Errorf("unexpected output: %s", buf.String())
-	}
-
-	if !strings.Contains(buf.String(), "\"Comment\"]") {
-		t.Errorf("unexpected output: %s", buf.String())
-	}
-
-	// Binary.
-	var pbuf bytes.Buffer
-
-	err = s.Serialize(report, analyze.FormatBinary, &pbuf)
-	if err != nil {
-		t.Fatalf("Serialize Binary failed: %v", err)
-	}
+	output := buf.String()
+	assert.Contains(t, output, "time_series:")
 }
 
 func TestHistoryAnalyzer_Misc(t *testing.T) {

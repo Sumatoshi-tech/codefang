@@ -11,8 +11,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
 
-var chartOpts = plotpage.DefaultChartOpts()
-
 type activityContent struct {
 	chart *charts.Line
 }
@@ -21,7 +19,7 @@ func createActivityTab(data *DashboardData) *activityContent {
 	return &activityContent{chart: createActivityChart(data)}
 }
 
-// Render implements the Renderable interface for the activity tab.
+// Render renders the activity content to the writer.
 func (a *activityContent) Render(w io.Writer) error {
 	if a.chart == nil {
 		return plotpage.NewText("No activity data available").Render(w)
@@ -31,94 +29,88 @@ func (a *activityContent) Render(w io.Writer) error {
 }
 
 func createActivityChart(data *DashboardData) *charts.Line {
-	tickKeys := sortedKeys(data.Ticks)
-	if len(tickKeys) == 0 {
+	if len(data.Metrics.Activity) == 0 {
 		return nil
 	}
 
-	topDevs := getTopDevIDs(data.DevSummaries, maxDevs)
-	xLabels := ticksToLabels(tickKeys)
+	topDevs := getTopDevIDs(data.Metrics.Developers, maxDevs)
+	xLabels := make([]string, len(data.Metrics.Activity))
+
+	for i, ad := range data.Metrics.Activity {
+		xLabels[i] = strconv.Itoa(ad.Tick)
+	}
 
 	line := charts.NewLine()
 	configureActivityChart(line)
 	line.SetXAxis(xLabels)
 
-	addDevSeriesTo(line, topDevs, tickKeys, data)
-	addOthersSeriesTo(line, topDevs, tickKeys, data)
+	addDevSeriesTo(line, topDevs, data)
+	addOthersSeriesTo(line, topDevs, data)
 
 	return line
 }
 
-func getTopDevIDs(summaries []DeveloperSummary, limit int) []int {
+func getTopDevIDs(developers []DeveloperData, limit int) []int {
 	ids := make([]int, 0, limit)
 
-	for i, ds := range summaries {
+	for i, dev := range developers {
 		if i >= limit {
 			break
 		}
 
-		ids = append(ids, ds.ID)
+		ids = append(ids, dev.ID)
 	}
 
 	return ids
 }
 
-func ticksToLabels(tickKeys []int) []string {
-	labels := make([]string, len(tickKeys))
-
-	for i, tick := range tickKeys {
-		labels[i] = strconv.Itoa(tick)
-	}
-
-	return labels
-}
-
 func configureActivityChart(line *charts.Line) {
+	co := plotpage.DefaultChartOpts()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(chartOpts.Init("100%", lineChartHeight)),
-		charts.WithTitleOpts(chartOpts.Title("Developer Activity Over Time", "Stacked area showing contribution velocity (commits per tick)")),
-		charts.WithTooltipOpts(chartOpts.Tooltip("axis")),
-		charts.WithLegendOpts(chartOpts.Legend()),
-		charts.WithGridOpts(chartOpts.Grid()),
-		charts.WithDataZoomOpts(chartOpts.DataZoom()...),
-		charts.WithXAxisOpts(chartOpts.XAxis("Time (tick)")),
-		charts.WithYAxisOpts(chartOpts.YAxis("Commits")),
+		charts.WithInitializationOpts(co.Init("100%", lineChartHeight)),
+		charts.WithTitleOpts(co.Title("Developer Activity Over Time", "Stacked area showing contribution velocity (commits per tick)")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithLegendOpts(co.Legend()),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(co.XAxis("Time (tick)")),
+		charts.WithYAxisOpts(co.YAxis("Commits")),
 	)
 }
 
-func addDevSeriesTo(line *charts.Line, devIDs, tickKeys []int, data *DashboardData) {
+func addDevSeriesTo(line *charts.Line, devIDs []int, data *DashboardData) {
+	nameByID := make(map[int]string)
+
+	for _, dev := range data.Metrics.Developers {
+		nameByID[dev.ID] = dev.Name
+	}
+
 	for _, devID := range devIDs {
-		seriesData := make([]opts.LineData, len(tickKeys))
-
-		for i, tick := range tickKeys {
-			val := 0
-			if devTick := data.Ticks[tick][devID]; devTick != nil {
-				val = devTick.Commits
-			}
-
-			seriesData[i] = opts.LineData{Value: val}
+		seriesData := make([]opts.LineData, len(data.Metrics.Activity))
+		for i, ad := range data.Metrics.Activity {
+			seriesData[i] = opts.LineData{Value: ad.ByDeveloper[devID]}
 		}
 
-		line.AddSeries(devName(devID, data.Names), seriesData,
+		line.AddSeries(nameByID[devID], seriesData,
 			charts.WithLineChartOpts(opts.LineChart{Stack: "total"}),
 			charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacityNormal)}),
 		)
 	}
 }
 
-func addOthersSeriesTo(line *charts.Line, topDevs, tickKeys []int, data *DashboardData) {
-	if len(data.DevSummaries) <= maxDevs {
+func addOthersSeriesTo(line *charts.Line, topDevs []int, data *DashboardData) {
+	if len(data.Metrics.Developers) <= maxDevs {
 		return
 	}
 
-	othersData := make([]opts.LineData, len(tickKeys))
+	othersData := make([]opts.LineData, len(data.Metrics.Activity))
 
-	for i, tick := range tickKeys {
+	for i, ad := range data.Metrics.Activity {
 		total := 0
 
-		for devID, dt := range data.Ticks[tick] {
+		for devID, commits := range ad.ByDeveloper {
 			if !slices.Contains(topDevs, devID) {
-				total += dt.Commits
+				total += commits
 			}
 		}
 

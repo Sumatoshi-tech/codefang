@@ -6,9 +6,6 @@ import (
 	"html/template"
 	"io"
 	"strings"
-
-	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
 const (
@@ -193,112 +190,6 @@ func (r HTMLRenderer) renderSection(section Section) (template.HTML, error) {
 	}
 
 	return renderTemplate("section.html", data)
-}
-
-// BarBuilder provides a fluent API for building bar charts.
-type BarBuilder struct {
-	style Style
-	theme Theme
-	bar   *charts.Bar
-}
-
-// NewBarChart creates a new bar chart builder.
-func NewBarChart(style Style) *BarBuilder {
-	return NewBarChartWithTheme(style, ThemeDark)
-}
-
-// NewBarChartWithTheme creates a new bar chart builder with theme support.
-func NewBarChartWithTheme(style Style, theme Theme) *BarBuilder {
-	themeConfig := GetThemeConfig(theme)
-	bar := charts.NewBar()
-
-	initOpts := opts.Initialization{
-		Width:  style.Width,
-		Height: style.Height,
-	}
-
-	if themeConfig.EChartsTheme != "" {
-		initOpts.Theme = themeConfig.EChartsTheme
-	}
-
-	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(initOpts),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
-	)
-
-	return &BarBuilder{style: style, theme: theme, bar: bar}
-}
-
-// XAxis sets the x-axis labels and rotation.
-func (b *BarBuilder) XAxis(labels []string, rotate float64) *BarBuilder {
-	themeConfig := GetThemeConfig(b.theme)
-	b.bar.SetGlobalOptions(charts.WithXAxisOpts(opts.XAxis{
-		AxisLabel: &opts.AxisLabel{
-			Rotate:   rotate,
-			Interval: "0",
-			FontSize: labelFontSize,
-			Color:    themeConfig.ChartText,
-		},
-		AxisLine: &opts.AxisLine{
-			LineStyle: &opts.LineStyle{Color: themeConfig.ChartAxis},
-		},
-	}))
-	b.bar.SetXAxis(labels)
-
-	return b
-}
-
-// YAxis sets the y-axis name.
-func (b *BarBuilder) YAxis(name string) *BarBuilder {
-	themeConfig := GetThemeConfig(b.theme)
-	b.bar.SetGlobalOptions(charts.WithYAxisOpts(opts.YAxis{
-		Name:      name,
-		AxisLabel: &opts.AxisLabel{Color: themeConfig.ChartText},
-		SplitLine: &opts.SplitLine{
-			LineStyle: &opts.LineStyle{Color: themeConfig.ChartGrid},
-		},
-	}))
-
-	return b
-}
-
-// Legend enables the chart legend.
-func (b *BarBuilder) Legend() *BarBuilder {
-	themeConfig := GetThemeConfig(b.theme)
-	b.bar.SetGlobalOptions(charts.WithLegendOpts(opts.Legend{
-		Show:      opts.Bool(true),
-		Top:       "0",
-		TextStyle: &opts.TextStyle{Color: themeConfig.ChartText},
-	}))
-
-	return b
-}
-
-// Series adds a data series to the chart.
-func (b *BarBuilder) Series(name string, data []int, color string) *BarBuilder {
-	barData := make([]opts.BarData, len(data))
-
-	for i, v := range data {
-		barData[i] = opts.BarData{Value: v}
-	}
-
-	b.bar.AddSeries(name, barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: color}))
-
-	return b
-}
-
-// Build returns the constructed bar chart.
-func (b *BarBuilder) Build() *charts.Bar {
-	return b.bar
 }
 
 // ChartWrapper wraps an echarts chart and renders only the chart content.

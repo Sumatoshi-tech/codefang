@@ -39,7 +39,7 @@ func (s *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := s.generateChart(report)
+	chart, err := s.buildChart(report)
 	if err != nil {
 		return nil, err
 	}
@@ -66,11 +66,11 @@ func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 
 // GenerateChart implements PlotGenerator interface.
 func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return s.generateChart(report)
+	return s.buildChart(report)
 }
 
-// generateChart creates a line chart showing sentiment over time.
-func (s *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Line, error) {
+// buildChart creates a line chart showing sentiment over time.
+func (s *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error) {
 	emotions, ok := report["emotions_by_tick"].(map[int]float32)
 	if !ok {
 		return nil, ErrInvalidEmotions

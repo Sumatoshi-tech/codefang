@@ -24,14 +24,6 @@ const (
 	labelFontSize    = 10
 )
 
-// GeneratePlot creates a full dashboard page for developer analytics.
-// This is the main entry point for visualization, providing a comprehensive
-// multi-tab dashboard with activity trends, workload distribution, language
-// expertise, bus factor analysis, and code churn metrics.
-func GeneratePlot(report analyze.Report, writer io.Writer) error {
-	return GenerateDashboard(report, writer)
-}
-
 // GenerateChart creates a stacked bar chart showing developer activity over time.
 func GenerateChart(report analyze.Report) (components.Charter, error) {
 	ticks, ok := report["Ticks"].(map[int]map[int]*DevTick)

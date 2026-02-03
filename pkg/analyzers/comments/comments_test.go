@@ -1,13 +1,16 @@
 package comments //nolint:testpackage // testing internal implementation.
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert/yaml"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -800,4 +803,141 @@ func getKeys(m map[string]any) []string {
 	}
 
 	return keys
+}
+
+// --- FormatReportJSON Tests ---
+
+func TestAnalyzer_FormatReportJSON(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_comments":       2,
+		"good_comments":        1,
+		"bad_comments":         1,
+		"overall_score":        0.5,
+		"total_functions":      1,
+		"documented_functions": 1,
+		"comments": []map[string]any{
+			{"line": 10, "quality": "good"},
+			{"line": 20, "quality": "bad"},
+		},
+		"functions": []map[string]any{
+			{"name": "testFunc", "has_comment": true, "comment_score": 0.8},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.CommentQuality, 2)
+	assert.Equal(t, 2, result.Aggregate.TotalComments)
+}
+
+func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.CommentQuality)
+	assert.Equal(t, 0, result.Aggregate.TotalComments)
+}
+
+// --- FormatReportYAML Tests ---
+
+func TestAnalyzer_FormatReportYAML(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_comments":       2,
+		"good_comments":        1,
+		"bad_comments":         1,
+		"overall_score":        0.5,
+		"total_functions":      1,
+		"documented_functions": 1,
+		"comments": []map[string]any{
+			{"line": 10, "quality": "good"},
+			{"line": 20, "quality": "bad"},
+		},
+		"functions": []map[string]any{
+			{"name": "testFunc", "has_comment": true, "comment_score": 0.8},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.CommentQuality, 2)
+	assert.Equal(t, 2, result.Aggregate.TotalComments)
+}
+
+func TestAnalyzer_FormatReportYAML_Empty(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.CommentQuality)
+	assert.Equal(t, 0, result.Aggregate.TotalComments)
+}
+
+func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_comments": 1,
+		"comments": []map[string]any{
+			{"line": 10, "quality": "good"},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "comment_quality:")
+	assert.Contains(t, output, "function_documentation:")
+	assert.Contains(t, output, "undocumented_functions:")
+	assert.Contains(t, output, "aggregate:")
 }

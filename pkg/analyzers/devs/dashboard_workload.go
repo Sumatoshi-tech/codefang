@@ -10,6 +10,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
 
+const langOther = "Other"
+
 type workloadContent struct {
 	chart *charts.TreeMap
 }
@@ -18,7 +20,7 @@ func createWorkloadTab(data *DashboardData) *workloadContent {
 	return &workloadContent{chart: createWorkloadTreemap(data)}
 }
 
-// Render implements the Renderable interface for the workload tab.
+// Render renders the workload content to the writer.
 func (wc *workloadContent) Render(w io.Writer) error {
 	if wc.chart == nil {
 		return plotpage.NewText("No workload data available").Render(w)
@@ -28,7 +30,7 @@ func (wc *workloadContent) Render(w io.Writer) error {
 }
 
 func createWorkloadTreemap(data *DashboardData) *charts.TreeMap {
-	if len(data.DevSummaries) == 0 {
+	if len(data.Metrics.Developers) == 0 {
 		return nil
 	}
 
@@ -70,17 +72,17 @@ func buildTreemapNodes(data *DashboardData) []opts.TreeMapNode {
 	langDevs := make(map[string][]opts.TreeMapNode)
 	langTotals := make(map[string]int)
 
-	count := min(topDevsForTreemap, len(data.DevSummaries))
+	count := min(topDevsForTreemap, len(data.Metrics.Developers))
 
 	for i := range count {
-		ds := data.DevSummaries[i]
-		primaryLang := findPrimaryLanguage(ds)
+		dev := data.Metrics.Developers[i]
+		primaryLang := findPrimaryLanguage(dev)
 
 		langDevs[primaryLang] = append(langDevs[primaryLang], opts.TreeMapNode{
-			Name:  ds.Name,
-			Value: ds.Commits,
+			Name:  dev.Name,
+			Value: dev.Commits,
 		})
-		langTotals[primaryLang] += ds.Commits
+		langTotals[primaryLang] += dev.Commits
 	}
 
 	rootNodes := make([]opts.TreeMapNode, 0, len(langDevs))
@@ -104,11 +106,11 @@ func buildTreemapNodes(data *DashboardData) []opts.TreeMapNode {
 	return rootNodes
 }
 
-func findPrimaryLanguage(ds DeveloperSummary) string {
+func findPrimaryLanguage(dev DeveloperData) string {
 	primaryLang := langOther
 	maxLines := 0
 
-	for lang, stats := range ds.Languages {
+	for lang, stats := range dev.Languages {
 		if stats.Added > maxLines {
 			maxLines = stats.Added
 			primaryLang = lang

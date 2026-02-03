@@ -2,9 +2,12 @@ package imports //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert/yaml"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -134,4 +137,117 @@ func TestExtractImportsFromUAST(t *testing.T) {
 	if len(imps5) != 1 || imps5[0] != "module" {
 		t.Errorf("Child import failed: %v", imps5)
 	}
+}
+
+// --- FormatReportJSON Tests ---
+
+func TestAnalyzer_FormatReportJSON_WithMetrics(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{
+		"imports": []string{"fmt", "os", "github.com/user/repo"},
+		"count":   3,
+	}
+
+	var buf bytes.Buffer
+	err := a.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.ImportList, 3)
+	assert.Equal(t, 3, result.Aggregate.TotalImports)
+}
+
+func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := a.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.ImportList)
+	assert.Equal(t, 0, result.Aggregate.TotalImports)
+}
+
+// --- FormatReportYAML Tests ---
+
+func TestAnalyzer_FormatReportYAML(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{
+		"imports": []string{"fmt", "os", "github.com/user/repo"},
+		"count":   3,
+	}
+
+	var buf bytes.Buffer
+	err := a.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.ImportList, 3)
+	assert.Equal(t, 3, result.Aggregate.TotalImports)
+}
+
+func TestAnalyzer_FormatReportYAML_Empty(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := a.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.ImportList)
+	assert.Equal(t, 0, result.Aggregate.TotalImports)
+}
+
+func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{
+		"imports": []string{"fmt"},
+		"count":   1,
+	}
+
+	var buf bytes.Buffer
+	err := a.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "import_list:")
+	assert.Contains(t, output, "categories:")
+	assert.Contains(t, output, "dependencies:")
+	assert.Contains(t, output, "aggregate:")
 }
