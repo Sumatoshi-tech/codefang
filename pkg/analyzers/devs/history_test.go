@@ -87,7 +87,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	d.TreeDiff.Changes = gitlib.Changes{change1}
 	d.Ticks.Tick = 0
 	d.Identity.AuthorID = 0
-	d.Languages.Languages = map[gitlib.Hash]string{hash1: "Go"}
+	d.Languages.SetLanguagesForTest(map[gitlib.Hash]string{hash1: "Go"})
 	d.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
 		change1.To: {Added: 10, Removed: 0, Changed: 0},
 	}
@@ -259,8 +259,8 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	}
 
 	plotOut := plotBuf.String()
-	if !strings.Contains(plotOut, "Developer Activity Analysis") {
-		t.Error("expected chart title in plot output")
+	if !strings.Contains(plotOut, "Developer Analytics Dashboard") {
+		t.Error("expected dashboard title in plot output")
 	}
 
 	if !strings.Contains(plotOut, "echarts") {
@@ -285,8 +285,8 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize Plot empty failed: %v", err)
 	}
 
-	if !strings.Contains(emptyPlotBuf.String(), "Developer Activity Analysis") {
-		t.Error("expected chart title in empty plot output")
+	if !strings.Contains(emptyPlotBuf.String(), "Developer Analytics Dashboard") {
+		t.Error("expected dashboard title in empty plot output")
 	}
 }
 

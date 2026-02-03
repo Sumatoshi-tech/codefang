@@ -1,0 +1,64 @@
+<header class="mb-8">
+    <div
+        class="flex items-center justify-between py-4 border-b border-stone-200 dark:border-stone-800"
+    >
+        <div class="flex items-center gap-3">
+            <img
+                src="{{.LogoDataURI}}"
+                alt="{{.ProjectName}}"
+                class="w-8 h-8"
+            />
+            <div>
+                <h1
+                    class="text-lg font-semibold text-stone-900 dark:text-stone-50"
+                >
+                    {{.ProjectName}}
+                </h1>
+                <p class="text-xs text-stone-500 dark:text-stone-400">
+                    {{.Subtitle}}
+                </p>
+            </div>
+        </div>
+        {{if .ShowThemeToggle}}
+        <button
+            onclick="toggleTheme()"
+            class="p-2 rounded-sm text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            title="Toggle theme"
+        >
+            <svg
+                class="w-5 h-5 hidden dark:block"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+            >
+                <circle cx="12" cy="12" r="5" />
+                <path
+                    d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+                />
+            </svg>
+            <svg
+                class="w-5 h-5 block dark:hidden"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+            >
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+        </button>
+        {{end}}
+    </div>
+    <div class="mt-6 text-center">
+        <h2
+            class="text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50"
+        >
+            {{.Title}}
+        </h2>
+        {{if .Description}}
+        <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">
+            {{.Description}}
+        </p>
+        {{end}}
+    </div>
+</header>

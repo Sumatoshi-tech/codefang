@@ -1,0 +1,19 @@
+<div
+    class="bg-white dark:bg-stone-900 rounded-sm border border-stone-200 dark:border-stone-700 shadow-sm overflow-hidden"
+>
+    {{if or .Title .Subtitle}}
+    <div class="px-5 py-4 border-b border-stone-100 dark:border-stone-800">
+        {{if .Title}}
+        <h3 class="text-lg font-medium text-stone-900 dark:text-stone-50">
+            {{.Title}}
+        </h3>
+        {{end}} {{if .Subtitle}}
+        <p class="mt-0.5 text-sm text-stone-500 dark:text-stone-400">
+            {{.Subtitle}}
+        </p>
+        {{end}}
+    </div>
+    {{end}} {{if .Content}}
+    <div class="p-5">{{.Content}}</div>
+    {{end}}
+</div>
