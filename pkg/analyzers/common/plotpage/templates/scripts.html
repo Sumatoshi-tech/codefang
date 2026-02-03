@@ -1,0 +1,49 @@
+<script>
+    function switchTab(groupId, tabId) {
+        const group = document.querySelector('[data-tabs="' + groupId + '"]');
+        if (!group) return;
+
+        group.querySelectorAll('[role="tab"]').forEach((btn) => {
+            const isActive = btn.dataset.tab === tabId;
+            btn.setAttribute("aria-selected", isActive);
+            btn.classList.toggle("border-accent", isActive);
+            btn.classList.toggle("text-accent", isActive);
+            btn.classList.toggle("border-transparent", !isActive);
+            btn.classList.toggle("text-stone-500", !isActive);
+            btn.classList.toggle("dark:text-stone-400", !isActive);
+        });
+
+        group.querySelectorAll('[role="tabpanel"]').forEach((panel) => {
+            panel.classList.toggle("hidden", panel.dataset.panel !== tabId);
+        });
+
+        // Resize echarts instances in the newly visible tab
+        setTimeout(function () {
+            const activePanel = group.querySelector(
+                '[data-panel="' + tabId + '"]',
+            );
+            if (activePanel) {
+                activePanel
+                    .querySelectorAll("[_echarts_instance_]")
+                    .forEach(function (el) {
+                        const chart = echarts.getInstanceByDom(el);
+                        if (chart) chart.resize();
+                    });
+            }
+        }, 0);
+    }
+
+    function toggleTheme() {
+        const html = document.documentElement;
+        const isDark = html.classList.contains("dark");
+        html.classList.toggle("dark", !isDark);
+        localStorage.setItem("theme", isDark ? "light" : "dark");
+    }
+
+    (function () {
+        const saved = localStorage.getItem("theme");
+        if (saved === "dark") {
+            document.documentElement.classList.add("dark");
+        }
+    })();
+</script>

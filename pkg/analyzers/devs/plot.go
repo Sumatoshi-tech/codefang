@@ -19,40 +19,16 @@ const (
 	maxDevs          = 20
 	chartHeight      = "550px"
 	emptyChartHeight = "400px"
-	dataZoomEnd      = 100
 	xAxisRotate      = 45
 	labelFontSize    = 10
 )
 
-// GeneratePlot creates a full plot page for developer activity.
+// GeneratePlot creates a full dashboard page for developer analytics.
+// This is the main entry point for visualization, providing a comprehensive
+// multi-tab dashboard with activity trends, workload distribution, language
+// expertise, bus factor analysis, and code churn metrics.
 func GeneratePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := GenerateChart(report)
-	if err != nil {
-		return err
-	}
-
-	page := plotpage.NewPage(
-		"Developer Activity Analysis",
-		"Contribution patterns over project lifetime",
-	)
-	page.Add(plotpage.Section{
-		Title:    "Developer Activity Over Time",
-		Subtitle: "Stacked bar chart showing commits per developer across time intervals (Top 20).",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Stacked bars = contribution from each developer at each time point",
-				"Large colored sections = high activity developers",
-				"Consistent colors over time = sustained contributors",
-				"Disappearing colors = developers who left the project",
-				"Look for: Bus factor risks (few developers dominating)",
-				"Action: Identify key contributors for succession planning",
-			},
-		},
-	})
-
-	return page.Render(writer)
+	return GenerateDashboard(report, writer)
 }
 
 // GenerateChart creates a stacked bar chart showing developer activity over time.
@@ -89,12 +65,17 @@ func GenerateChart(report analyze.Report) (*charts.Bar, error) {
 }
 
 func (d *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	return GeneratePlot(report, writer)
+	return GenerateDashboard(report, writer)
 }
 
 // GenerateChart creates a chart for the history analyzer.
 func (d *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
 	return GenerateChart(report)
+}
+
+// GenerateDashboardForAnalyzer creates the full dashboard for this analyzer.
+func (d *HistoryAnalyzer) GenerateDashboardForAnalyzer(report analyze.Report, writer io.Writer) error {
+	return GenerateDashboard(report, writer)
 }
 
 func computeDevTotals(ticks map[int]map[int]*DevTick) map[int]int {

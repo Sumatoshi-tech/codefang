@@ -240,13 +240,15 @@ func languageByExtension(filename string) string {
 }
 
 // LanguagesDetectionAnalyzer detects programming languages of changed files.
+// It uses lazy detection - languages are only computed when Languages() is called.
 type LanguagesDetectionAnalyzer struct {
 	// Dependencies.
 	TreeDiff  *TreeDiffAnalyzer
 	BlobCache *BlobCacheAnalyzer
 
-	// Output.
-	Languages map[gitlib.Hash]string
+	// Output (private, use Languages() accessor).
+	languages map[gitlib.Hash]string
+	parsed    bool // tracks whether detection was done for current commit
 
 	// Internal. //nolint:unused // used via reflection or external caller.
 	l interface { //nolint:unused // acknowledged.
@@ -289,8 +291,23 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
+// Consume resets state for the new commit. Detection is deferred until Languages() is called.
 func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
+	// Reset state for new commit - detection is lazy
+	l.languages = nil
+	l.parsed = false
+
+	return nil
+}
+
+// Languages returns detected languages, computing lazily on first call per commit.
+// This avoids expensive language detection when downstream analyzers don't need it.
+func (l *LanguagesDetectionAnalyzer) Languages() map[gitlib.Hash]string {
+	if l.parsed {
+		return l.languages
+	}
+
+	l.parsed = true
 	changes := l.TreeDiff.Changes
 	cache := l.BlobCache.Cache
 	result := map[gitlib.Hash]string{}
@@ -311,9 +328,9 @@ func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
 		}
 	}
 
-	l.Languages = result
+	l.languages = result
 
-	return nil
+	return l.languages
 }
 
 func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.CachedBlob) string {
@@ -335,6 +352,12 @@ func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.Ca
 	lang := enry.GetLanguage(path.Base(name), blob.Data)
 
 	return lang
+}
+
+// SetLanguagesForTest sets the languages directly (for testing only).
+func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Hash]string) {
+	l.languages = languages
+	l.parsed = true
 }
 
 // Finalize completes the analysis and returns the result.

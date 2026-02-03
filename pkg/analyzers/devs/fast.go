@@ -18,11 +18,11 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-// Sentinel errors for serialization.
+// Error definitions for the devs analyzer.
 var (
-	ErrInvalidTicks      = errors.New("missing or invalid Ticks in result")
-	ErrInvalidPeopleDict = errors.New("missing or invalid ReversedPeopleDict in result")
-	ErrInvalidTickSize   = errors.New("missing or invalid TickSize in result")
+	ErrInvalidTicks      = errors.New("devs: invalid Ticks in report")
+	ErrInvalidPeopleDict = errors.New("devs: invalid ReversedPeopleDict in report")
+	ErrInvalidTickSize   = errors.New("devs: invalid TickSize in report")
 )
 
 // Constants for tick calculations.

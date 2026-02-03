@@ -33,6 +33,7 @@ type HistoryAnalyzer struct {
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
+	Anonymize            bool
 }
 
 // DevTick is the statistics for a development tick and a particular developer.
@@ -43,11 +44,11 @@ type DevTick struct {
 	Commits   int
 }
 
+// Configuration option keys for the devs analyzer.
 const (
-	// ConfigDevsConsiderEmptyCommits is the configuration key for including empty commits in developer statistics.
 	ConfigDevsConsiderEmptyCommits = "Devs.ConsiderEmptyCommits"
+	ConfigDevsAnonymize            = "Devs.Anonymize"
 
-	// DefaultHoursPerDay defines the number of hours in a day for tick size calculation.
 	defaultHoursPerDay = 24
 )
 
@@ -68,19 +69,32 @@ func (d *HistoryAnalyzer) Description() string {
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
 func (d *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
-	return []pipeline.ConfigurationOption{{
-		Name:        ConfigDevsConsiderEmptyCommits,
-		Description: "Take into account empty commits such as trivial merges.",
-		Flag:        "empty-commits",
-		Type:        pipeline.BoolConfigurationOption,
-		Default:     false,
-	}}
+	return []pipeline.ConfigurationOption{
+		{
+			Name:        ConfigDevsConsiderEmptyCommits,
+			Description: "Take into account empty commits such as trivial merges.",
+			Flag:        "empty-commits",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+		{
+			Name:        ConfigDevsAnonymize,
+			Description: "Anonymize developer names in output (e.g., Developer-A, Developer-B).",
+			Flag:        "anonymize",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+	}
 }
 
 // Configure configures the analyzer with the given facts.
 func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigDevsConsiderEmptyCommits].(bool); exists {
 		d.ConsiderEmptyCommits = val
+	}
+
+	if val, exists := facts[ConfigDevsAnonymize].(bool); exists {
+		d.Anonymize = val
 	}
 
 	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
@@ -153,7 +167,7 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	langs := d.Languages.Languages
+	langs := d.Languages.Languages()
 	lineStats := d.LineStats.LineStats
 
 	for changeEntry, stats := range lineStats {
@@ -174,9 +188,14 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 // Finalize completes the analysis and returns the result.
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
+	names := d.reversedPeopleDict
+	if d.Anonymize {
+		names = anonymizeNames(names)
+	}
+
 	return analyze.Report{
 		"Ticks":              d.ticks,
-		"ReversedPeopleDict": d.reversedPeopleDict,
+		"ReversedPeopleDict": names,
 		"TickSize":           d.tickSize,
 	}, nil
 }
