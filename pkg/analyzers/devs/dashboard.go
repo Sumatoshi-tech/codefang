@@ -102,7 +102,7 @@ type DashboardData struct {
 
 // GenerateDashboard creates the developer analytics dashboard HTML.
 func GenerateDashboard(report analyze.Report, writer io.Writer) error {
-	data, err := computeDashboardData(report)
+	sections, err := GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -112,14 +112,27 @@ func GenerateDashboard(report analyze.Report, writer io.Writer) error {
 		"Comprehensive analysis of developer contributions, expertise, and team health",
 	)
 
-	tabs := createDashboardTabs(data)
-	page.Add(plotpage.Section{
-		Title:    "Developer Analytics",
-		Subtitle: "Multi-dimensional view of team contributions and codebase ownership",
-		Chart:    tabs,
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
+}
+
+// GenerateSections returns the dashboard sections without rendering.
+func GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	data, err := computeDashboardData(report)
+	if err != nil {
+		return nil, err
+	}
+
+	tabs := createDashboardTabs(data)
+
+	return []plotpage.Section{
+		{
+			Title:    "Developer Analytics",
+			Subtitle: "Multi-dimensional view of team contributions and codebase ownership",
+			Chart:    tabs,
+		},
+	}, nil
 }
 
 func computeDashboardData(report analyze.Report) (*DashboardData, error) {

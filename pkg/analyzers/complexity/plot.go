@@ -113,9 +113,10 @@ func (c *Analyzer) generateComplexityBarChart(report analyze.Report) (*charts.Ba
 	}
 
 	labels, cyclomatic, cognitive, colors := extractComplexityData(sorted)
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return createComplexityBarChart(labels, cyclomatic, cognitive, colors, style), nil
+	return createComplexityBarChart(labels, cyclomatic, cognitive, colors, co, palette), nil
 }
 
 func sortByComplexity(functions []map[string]any) []map[string]any {
@@ -188,24 +189,28 @@ func getComplexityColor(complexity int) string {
 	}
 }
 
-func createComplexityBarChart(labels []string, cyclomatic, cognitive []int, colors []string, style plotpage.Style) *charts.Bar {
+func createComplexityBarChart(labels []string, cyclomatic, cognitive []int, colors []string, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "0"}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithLegendOpts(co.Legend()),
 		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: "15%", Bottom: style.GridBottom,
+			Left: "5%", Right: "5%",
+			Top: "25%", Bottom: "15%",
 			ContainLabel: opts.Bool(true),
 		}),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
-			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, Interval: "0"},
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Complexity",
-		}),
+		charts.WithYAxisOpts(co.YAxis("Complexity")),
 	)
 
 	bar.SetXAxis(labels)
@@ -228,7 +233,7 @@ func createComplexityBarChart(labels []string, cyclomatic, cognitive []int, colo
 	}
 
 	bar.AddSeries("Cyclomatic", cyclomaticData)
-	bar.AddSeries("Cognitive", cognitiveData, charts.WithItemStyleOpts(opts.ItemStyle{Color: "#5470c6"}))
+	bar.AddSeries("Cognitive", cognitiveData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}))
 
 	return bar
 }
@@ -243,30 +248,31 @@ func (c *Analyzer) generateComplexityScatterChart(report analyze.Report) (*chart
 		return createEmptyScatterChart(), nil
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return createComplexityScatterChart(functions, style), nil
+	return createComplexityScatterChart(functions, co, palette), nil
 }
 
-func createComplexityScatterChart(functions []map[string]any, style plotpage.Style) *charts.Scatter {
+func createComplexityScatterChart(functions []map[string]any, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Scatter {
 	scatter := charts.NewScatter()
 
 	scatter.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("item")),
 		charts.WithXAxisOpts(opts.XAxis{
-			Name: "Cyclomatic Complexity",
-			Type: "value",
+			Name:      "Cyclomatic Complexity",
+			Type:      "value",
+			AxisLabel: &opts.AxisLabel{Color: co.TextMutedColor()},
+			AxisLine:  &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Cognitive Complexity",
-			Type: "value",
+			Name:      "Cognitive Complexity",
+			Type:      "value",
+			AxisLabel: &opts.AxisLabel{Color: co.TextMutedColor()},
+			SplitLine: &opts.SplitLine{LineStyle: &opts.LineStyle{Color: co.GridColor()}},
 		}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithGridOpts(co.Grid()),
 	)
 
 	scatterData := make([]opts.ScatterData, len(functions))
@@ -290,7 +296,7 @@ func createComplexityScatterChart(functions []map[string]any, style plotpage.Sty
 	}
 
 	scatter.AddSeries("Functions", scatterData,
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: "#5470c6"}),
+		charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}),
 	)
 
 	return scatter
@@ -331,18 +337,24 @@ func countComplexityDistribution(functions []map[string]any) map[string]int {
 }
 
 func createComplexityDistributionPie(distribution map[string]int) *charts.Pie {
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: "400px"}),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "bottom"}),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithInitializationOpts(co.Init("600px", "400px")),
+		charts.WithLegendOpts(opts.Legend{
+			Show:      opts.Bool(true),
+			Top:       "bottom",
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
+		}),
 	)
 
 	pieData := []opts.PieData{
-		{Name: "Simple (1-5)", Value: distribution["Simple"], ItemStyle: &opts.ItemStyle{Color: "#91cc75"}},
-		{Name: "Moderate (6-10)", Value: distribution["Moderate"], ItemStyle: &opts.ItemStyle{Color: "#fac858"}},
-		{Name: "Complex (>10)", Value: distribution["Complex"], ItemStyle: &opts.ItemStyle{Color: "#ee6666"}},
+		{Name: "Simple (1-5)", Value: distribution["Simple"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: "Moderate (6-10)", Value: distribution["Moderate"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
+		{Name: "Complex (>10)", Value: distribution["Complex"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
 	pie.AddSeries("Complexity", pieData).
@@ -350,6 +362,7 @@ func createComplexityDistributionPie(distribution map[string]int) *charts.Pie {
 			charts.WithLabelOpts(opts.Label{
 				Show:      opts.Bool(true),
 				Formatter: "{b}: {c} ({d}%)",
+				Color:     co.TextMutedColor(),
 			}),
 			charts.WithPieChartOpts(opts.PieChart{
 				Radius: pieRadius,
@@ -360,39 +373,36 @@ func createComplexityDistributionPie(distribution map[string]int) *charts.Pie {
 }
 
 func createEmptyComplexityChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Function Complexity", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Function Complexity", "No data")),
 	)
 
 	return bar
 }
 
 func createEmptyScatterChart() *charts.Scatter {
+	co := plotpage.DefaultChartOpts()
 	scatter := charts.NewScatter()
 
 	scatter.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Complexity Scatter", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Complexity Scatter", "No data")),
 	)
 
 	return scatter
 }
 
 func createEmptyComplexityPie() *charts.Pie {
+	co := plotpage.DefaultChartOpts()
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Complexity Distribution", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("600px", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Complexity Distribution", "No data")),
 	)
 
 	return pie

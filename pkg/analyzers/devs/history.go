@@ -189,6 +189,10 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 // Finalize completes the analysis and returns the result.
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	names := d.reversedPeopleDict
+	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector
+	if len(names) == 0 && d.Identity != nil {
+		names = d.Identity.ReversedPeopleDict
+	}
 	if d.Anonymize {
 		names = anonymizeNames(names)
 	}

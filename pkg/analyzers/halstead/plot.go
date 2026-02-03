@@ -117,9 +117,9 @@ func (h *Analyzer) generateEffortBarChart(report analyze.Report) (*charts.Bar, e
 	}
 
 	labels, efforts, colors := extractEffortData(sorted)
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 
-	return createEffortBarChart(labels, efforts, colors, style), nil
+	return createEffortBarChart(labels, efforts, colors, co), nil
 }
 
 func sortByEffort(functions []map[string]any) []map[string]any {
@@ -198,23 +198,23 @@ func getEffortColor(effort float64) string {
 	}
 }
 
-func createEffortBarChart(labels []string, efforts []float64, colors []string, style plotpage.Style) *charts.Bar {
+func createEffortBarChart(labels []string, efforts []float64, colors []string, co *plotpage.ChartOpts) *charts.Bar {
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
-			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, Interval: "0"},
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Effort",
-		}),
+		charts.WithYAxisOpts(co.YAxis("Effort")),
 	)
 
 	bar.SetXAxis(labels)
@@ -245,30 +245,31 @@ func (h *Analyzer) generateVolumeVsDifficultyChart(report analyze.Report) (*char
 		return createEmptyHalsteadScatter(), nil
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return createVolumeVsDifficultyChart(functions, style), nil
+	return createVolumeVsDifficultyChart(functions, co, palette), nil
 }
 
-func createVolumeVsDifficultyChart(functions []map[string]any, style plotpage.Style) *charts.Scatter {
+func createVolumeVsDifficultyChart(functions []map[string]any, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Scatter {
 	scatter := charts.NewScatter()
 
 	scatter.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("item")),
 		charts.WithXAxisOpts(opts.XAxis{
-			Name: "Volume",
-			Type: "value",
+			Name:      "Volume",
+			Type:      "value",
+			AxisLabel: &opts.AxisLabel{Color: co.TextMutedColor()},
+			AxisLine:  &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Difficulty",
-			Type: "value",
+			Name:      "Difficulty",
+			Type:      "value",
+			AxisLabel: &opts.AxisLabel{Color: co.TextMutedColor()},
+			SplitLine: &opts.SplitLine{LineStyle: &opts.LineStyle{Color: co.GridColor()}},
 		}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithGridOpts(co.Grid()),
 	)
 
 	scatterData := make([]opts.ScatterData, len(functions))
@@ -292,7 +293,7 @@ func createVolumeVsDifficultyChart(functions []map[string]any, style plotpage.St
 	}
 
 	scatter.AddSeries("Functions", scatterData,
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: "#5470c6"}),
+		charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}),
 	)
 
 	return scatter
@@ -336,19 +337,25 @@ func countVolumeDistribution(functions []map[string]any) map[string]int {
 }
 
 func createVolumeDistributionPie(distribution map[string]int) *charts.Pie {
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: "400px"}),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "bottom"}),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithInitializationOpts(co.Init("600px", "400px")),
+		charts.WithLegendOpts(opts.Legend{
+			Show:      opts.Bool(true),
+			Top:       "bottom",
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
+		}),
 	)
 
 	pieData := []opts.PieData{
-		{Name: "Low (≤100)", Value: distribution["Low"], ItemStyle: &opts.ItemStyle{Color: "#91cc75"}},
-		{Name: "Medium (101-1000)", Value: distribution["Medium"], ItemStyle: &opts.ItemStyle{Color: "#5470c6"}},
-		{Name: "High (1001-5000)", Value: distribution["High"], ItemStyle: &opts.ItemStyle{Color: "#fac858"}},
-		{Name: "Very High (>5000)", Value: distribution["Very High"], ItemStyle: &opts.ItemStyle{Color: "#ee6666"}},
+		{Name: "Low (≤100)", Value: distribution["Low"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: "Medium (101-1000)", Value: distribution["Medium"], ItemStyle: &opts.ItemStyle{Color: palette.Primary[1]}},
+		{Name: "High (1001-5000)", Value: distribution["High"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
+		{Name: "Very High (>5000)", Value: distribution["Very High"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
 	pie.AddSeries("Volume", pieData).
@@ -356,6 +363,7 @@ func createVolumeDistributionPie(distribution map[string]int) *charts.Pie {
 			charts.WithLabelOpts(opts.Label{
 				Show:      opts.Bool(true),
 				Formatter: "{b}: {c} ({d}%)",
+				Color:     co.TextMutedColor(),
 			}),
 			charts.WithPieChartOpts(opts.PieChart{
 				Radius: pieRadius,
@@ -366,39 +374,36 @@ func createVolumeDistributionPie(distribution map[string]int) *charts.Pie {
 }
 
 func createEmptyHalsteadChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Function Effort", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Function Effort", "No data")),
 	)
 
 	return bar
 }
 
 func createEmptyHalsteadScatter() *charts.Scatter {
+	co := plotpage.DefaultChartOpts()
 	scatter := charts.NewScatter()
 
 	scatter.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Volume vs Difficulty", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Volume vs Difficulty", "No data")),
 	)
 
 	return scatter
 }
 
 func createEmptyHalsteadPie() *charts.Pie {
+	co := plotpage.DefaultChartOpts()
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Volume Distribution", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("600px", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Volume Distribution", "No data")),
 	)
 
 	return pie

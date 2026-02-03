@@ -100,9 +100,9 @@ func (c *Analyzer) generateFunctionCoverageChart(report analyze.Report) (*charts
 	}
 
 	labels, lines, colors := extractFunctionData(sorted)
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 
-	return createFunctionCoverageBarChart(labels, lines, colors, style), nil
+	return createFunctionCoverageBarChart(labels, lines, colors, co), nil
 }
 
 func sortByLines(functions []map[string]any) []map[string]any {
@@ -159,23 +159,23 @@ func extractFunctionData(functions []map[string]any) (labels []string, lines []i
 	return labels, lines, colors
 }
 
-func createFunctionCoverageBarChart(labels []string, lines []int, colors []string, style plotpage.Style) *charts.Bar {
+func createFunctionCoverageBarChart(labels []string, lines []int, colors []string, co *plotpage.ChartOpts) *charts.Bar {
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
-			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, Interval: "0"},
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Lines of Code",
-		}),
+		charts.WithYAxisOpts(co.YAxis("Lines of Code")),
 	)
 
 	bar.SetXAxis(labels)
@@ -216,17 +216,23 @@ func (c *Analyzer) generateDocumentationPieChart(report analyze.Report) *charts.
 }
 
 func createDocumentationPieChart(documented, undocumented int) *charts.Pie {
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: "400px"}),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "bottom"}),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithInitializationOpts(co.Init("600px", "400px")),
+		charts.WithLegendOpts(opts.Legend{
+			Show:      opts.Bool(true),
+			Top:       "bottom",
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
+		}),
 	)
 
 	pieData := []opts.PieData{
-		{Name: "Documented", Value: documented, ItemStyle: &opts.ItemStyle{Color: "#91cc75"}},
-		{Name: "Undocumented", Value: undocumented, ItemStyle: &opts.ItemStyle{Color: "#ee6666"}},
+		{Name: "Documented", Value: documented, ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: "Undocumented", Value: undocumented, ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
 	pie.AddSeries("Documentation", pieData).
@@ -234,6 +240,7 @@ func createDocumentationPieChart(documented, undocumented int) *charts.Pie {
 			charts.WithLabelOpts(opts.Label{
 				Show:      opts.Bool(true),
 				Formatter: "{b}: {c} ({d}%)",
+				Color:     co.TextMutedColor(),
 			}),
 			charts.WithPieChartOpts(opts.PieChart{
 				Radius: pieRadius,
@@ -268,26 +275,24 @@ func createScoreLiquid(score float64) *charts.Liquid {
 }
 
 func createEmptyCommentsChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Function Documentation", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Function Documentation", "No data")),
 	)
 
 	return bar
 }
 
 func createEmptyCommentsPie() *charts.Pie {
+	co := plotpage.DefaultChartOpts()
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Documentation Coverage", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("600px", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Documentation Coverage", "No data")),
 	)
 
 	return pie

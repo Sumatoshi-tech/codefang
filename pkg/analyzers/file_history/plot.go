@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -22,7 +23,7 @@ const (
 var ErrInvalidFiles = errors.New("invalid file_history report: expected map[string]FileHistory for Files")
 
 func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := h.GenerateChart(report)
+	sections, err := h.GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -31,27 +32,44 @@ func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 		"File History Analysis",
 		"Identifying the most actively modified files in the repository",
 	)
-	page.Add(plotpage.Section{
-		Title:    "Most Modified Files",
-		Subtitle: "Files ranked by total number of commits touching them.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Tall bars = frequently modified files (high churn)",
-				"Configuration files = expected to change often",
-				"Core business logic = may indicate instability or active development",
-				"Look for: Files changing too frequently that should be stable",
-				"Action: High-churn files benefit from better test coverage",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
 }
 
-// GenerateChart creates a bar chart showing the most modified files.
-func (h *Analyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
+// GenerateSections returns the sections for combined reports.
+func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := h.generateChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Most Modified Files",
+			Subtitle: "Files ranked by total number of commits touching them.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Tall bars = frequently modified files (high churn)",
+					"Configuration files = expected to change often",
+					"Core business logic = may indicate instability or active development",
+					"Look for: Files changing too frequently that should be stable",
+					"Action: High-churn files benefit from better test coverage",
+				},
+			},
+		},
+	}, nil
+}
+
+// GenerateChart creates a bar chart showing the most modified files (implements PlotGenerator).
+func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return h.generateChart(report)
+}
+
+// generateChart creates a bar chart showing the most modified files.
+func (h *Analyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
 	files, ok := report["Files"].(map[string]FileHistory)
 	if !ok {
 		return nil, ErrInvalidFiles
@@ -86,22 +104,47 @@ func (h *Analyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
 		data[i] = item.v
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return plotpage.NewBarChart(style).
-		XAxis(labels, xAxisRotate).
-		YAxis("Commits").
-		Series("Commits", data, "#ee6666").
-		Build(), nil
+	return createFileHistoryBarChart(labels, data, co, palette), nil
+}
+
+func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(opts.XAxis{
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
+		}),
+		charts.WithYAxisOpts(co.YAxis("Commits")),
+	)
+	bar.SetXAxis(labels)
+
+	barData := make([]opts.BarData, len(data))
+	for i, v := range data {
+		barData[i] = opts.BarData{Value: v}
+	}
+
+	bar.AddSeries("Commits", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Bad}))
+
+	return bar
 }
 
 func createEmptyFileChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Top Modified Files", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Top Modified Files", "No data")),
 	)
 
 	return bar

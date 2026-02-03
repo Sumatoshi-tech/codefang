@@ -88,9 +88,9 @@ func (c *Analyzer) generateBarChart(report analyze.Report) (*charts.Bar, error) 
 	}
 
 	labels, scores, colors := extractCohesionData(sorted)
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 
-	return createCohesionBarChart(labels, scores, colors, style), nil
+	return createCohesionBarChart(labels, scores, colors, co), nil
 }
 
 func sortByCohesion(functions []map[string]any) []map[string]any {
@@ -147,24 +147,28 @@ func getCohesionColor(cohesion float64) string {
 	}
 }
 
-func createCohesionBarChart(labels []string, scores []float64, colors []string, style plotpage.Style) *charts.Bar {
+func createCohesionBarChart(labels []string, scores []float64, colors []string, co *plotpage.ChartOpts) *charts.Bar {
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
-			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, Interval: "0"},
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
-			Name: "Cohesion Score",
-			Min:  0,
-			Max:  1,
+			Name:      "Cohesion Score",
+			Min:       0,
+			Max:       1,
+			AxisLabel: &opts.AxisLabel{Color: co.TextMutedColor()},
+			SplitLine: &opts.SplitLine{LineStyle: &opts.LineStyle{Color: co.GridColor()}},
 		}),
 	)
 
@@ -224,19 +228,25 @@ func countCohesionDistribution(functions []map[string]any) map[string]int {
 }
 
 func createCohesionPieChart(distribution map[string]int) *charts.Pie {
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: "400px"}),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true), Top: "bottom"}),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithInitializationOpts(co.Init("600px", "400px")),
+		charts.WithLegendOpts(opts.Legend{
+			Show:      opts.Bool(true),
+			Top:       "bottom",
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
+		}),
 	)
 
 	pieData := []opts.PieData{
-		{Name: "Excellent", Value: distribution["Excellent"], ItemStyle: &opts.ItemStyle{Color: "#91cc75"}},
-		{Name: "Good", Value: distribution["Good"], ItemStyle: &opts.ItemStyle{Color: "#fac858"}},
+		{Name: "Excellent", Value: distribution["Excellent"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: "Good", Value: distribution["Good"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
 		{Name: "Fair", Value: distribution["Fair"], ItemStyle: &opts.ItemStyle{Color: "#fd8c73"}},
-		{Name: "Poor", Value: distribution["Poor"], ItemStyle: &opts.ItemStyle{Color: "#ee6666"}},
+		{Name: "Poor", Value: distribution["Poor"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
 	pie.AddSeries("Cohesion", pieData).
@@ -244,6 +254,7 @@ func createCohesionPieChart(distribution map[string]int) *charts.Pie {
 			charts.WithLabelOpts(opts.Label{
 				Show:      opts.Bool(true),
 				Formatter: "{b}: {c} ({d}%)",
+				Color:     co.TextMutedColor(),
 			}),
 			charts.WithPieChartOpts(opts.PieChart{
 				Radius: pieRadius,
@@ -254,26 +265,24 @@ func createCohesionPieChart(distribution map[string]int) *charts.Pie {
 }
 
 func createEmptyCohesionChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Function Cohesion", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Function Cohesion", "No data")),
 	)
 
 	return bar
 }
 
 func createEmptyPieChart() *charts.Pie {
+	co := plotpage.DefaultChartOpts()
 	pie := charts.NewPie()
 
 	pie.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Cohesion Distribution", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "600px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("600px", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Cohesion Distribution", "No data")),
 	)
 
 	return pie

@@ -168,6 +168,6 @@ type alertData struct {
 // tableData holds data for the table template.
 type tableData struct {
 	Headers []string
-	Rows    [][]string
+	Rows    [][]template.HTML
 	Striped bool
 }

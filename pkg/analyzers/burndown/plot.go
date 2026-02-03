@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -21,7 +22,6 @@ const (
 	monthsPerYear          = 12
 	minYearsForAggregation = 2
 	interpolationFactor    = 5
-	dataZoomEnd            = 100
 	chartHeight            = "600px"
 	areaOpacity            = 0.5
 	roundingOffset         = 0.5
@@ -32,9 +32,9 @@ const (
 var ErrInvalidReport = errors.New("invalid burndown report: expected DenseHistory")
 
 func (b *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := b.GenerateChart(report)
+	sections, err := b.GenerateSections(report)
 	if err != nil {
-		return fmt.Errorf("generate chart: %w", err)
+		return fmt.Errorf("generate sections: %w", err)
 	}
 
 	params := extractParams(report)
@@ -46,23 +46,35 @@ func (b *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 	}
 
 	page := plotpage.NewPage(title, desc)
-	page.Add(plotpage.Section{
-		Title:    "Code Burndown Chart",
-		Subtitle: "Shows how code written at different times survives over the project's lifetime.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Stacked layers = code written in different time periods",
-				"Bottom layers = oldest code still surviving",
-				"Narrowing layers = code being deleted or rewritten",
-				"Flat layers = stable code that rarely changes",
-				"Look for: Rapid decrease in recent layers indicates instability",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
+}
+
+// GenerateSections returns the sections for combined reports.
+func (b *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := b.generateChart(report)
+	if err != nil {
+		return nil, fmt.Errorf("generate chart: %w", err)
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Code Burndown Chart",
+			Subtitle: "Shows how code written at different times survives over the project's lifetime.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Stacked layers = code written in different time periods",
+					"Bottom layers = oldest code still surviving",
+					"Narrowing layers = code being deleted or rewritten",
+					"Flat layers = stable code that rarely changes",
+					"Look for: Rapid decrease in recent layers indicates instability",
+				},
+			},
+		},
+	}, nil
 }
 
 type burndownParams struct {
@@ -103,8 +115,13 @@ func extractParams(report analyze.Report) *burndownParams {
 	return &burndownParams{globalHistory, sampling, granularity, tickSize, endTime, projectName}
 }
 
-// GenerateChart creates a burndown line chart from the report.
-func (b *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Line, error) {
+// GenerateChart implements PlotGenerator interface.
+func (b *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return b.generateChart(report)
+}
+
+// generateChart creates a burndown line chart from the report.
+func (b *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Line, error) {
 	params := extractParams(report)
 	if params == nil {
 		return nil, ErrInvalidReport
@@ -113,9 +130,9 @@ func (b *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Line, er
 		return createEmptyBurndown(), nil
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 	xLabels := buildXLabels(params)
-	line := createLineChart(xLabels, params, style)
+	line := createLineChart(xLabels, params, co)
 	addSeries(line, params)
 
 	return line, nil
@@ -160,54 +177,29 @@ func computeMaxLines(history DenseHistory) int64 {
 	return maxLines
 }
 
-func createLineChart(xLabels []string, params *burndownParams, style plotpage.Style) *charts.Line {
+func createLineChart(xLabels []string, params *burndownParams, co *plotpage.ChartOpts) *charts.Line {
 	maxLines := computeMaxLines(params.globalHistory)
 	title := fmt.Sprintf("%s x %d (granularity %d, sampling %d)",
 		params.projectName, maxLines, params.granularity, params.sampling)
 
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: style.Width, Height: chartHeight,
-			BackgroundColor: "#000000", Theme: "dark",
-		}),
+		charts.WithInitializationOpts(co.Init("100%", chartHeight)),
 		charts.WithColorsOpts(getColorPalette()),
-		charts.WithTitleOpts(opts.Title{
-			Title: title, Left: "center",
-			TitleStyle: &opts.TextStyle{Color: "#fff"},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
+		charts.WithTitleOpts(co.Title(title, "")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
 		charts.WithLegendOpts(opts.Legend{
 			Show: opts.Bool(true), Type: "scroll", Top: "5%", Left: "5%",
-			TextStyle: &opts.TextStyle{Color: "#fff"},
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
 		}),
 		charts.WithGridOpts(opts.Grid{
-			Top: "20%", Bottom: style.GridBottom,
-			Left: "10%", Right: style.GridRight,
+			Top: "20%", Bottom: "15%",
+			Left: "10%", Right: "5%",
 			ContainLabel: opts.Bool(true),
 		}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name:      "Time (days)",
-			AxisLabel: &opts.AxisLabel{Color: "#fff"},
-			AxisLine:  &opts.AxisLine{LineStyle: &opts.LineStyle{Color: "#fff"}},
-			SplitLine: &opts.SplitLine{
-				Show:      opts.Bool(true),
-				LineStyle: &opts.LineStyle{Color: "rgba(255,255,255,0.2)"},
-			},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name:      "Lines of Code",
-			AxisLabel: &opts.AxisLabel{Color: "#fff"},
-			AxisLine:  &opts.AxisLine{LineStyle: &opts.LineStyle{Color: "#fff"}},
-			SplitLine: &opts.SplitLine{
-				Show:      opts.Bool(true),
-				LineStyle: &opts.LineStyle{Color: "rgba(255,255,255,0.2)"},
-			},
-		}),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(co.XAxis("Time (days)")),
+		charts.WithYAxisOpts(co.YAxis("Lines of Code")),
 	)
 	line.SetXAxis(xLabels)
 
@@ -454,17 +446,11 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 }
 
 func createEmptyBurndown() *charts.Line {
+	co := plotpage.DefaultChartOpts()
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: "1200px", Height: chartHeight,
-			BackgroundColor: "#000", Theme: "dark",
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title: "Burndown", Subtitle: "No data",
-			TitleStyle:    &opts.TextStyle{Color: "#fff"},
-			SubtitleStyle: &opts.TextStyle{Color: "#fff"},
-		}),
+		charts.WithInitializationOpts(co.Init("100%", chartHeight)),
+		charts.WithTitleOpts(co.Title("Burndown", "No data")),
 	)
 	line.SetXAxis([]string{})
 

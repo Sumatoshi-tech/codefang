@@ -11,6 +11,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
 
+var chartOpts = plotpage.DefaultChartOpts()
+
 type activityContent struct {
 	chart *charts.Line
 }
@@ -73,40 +75,14 @@ func ticksToLabels(tickKeys []int) []string {
 
 func configureActivityChart(line *charts.Line) {
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: "100%", Height: lineChartHeight, Theme: "dark",
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:      "Developer Activity Over Time",
-			Subtitle:   "Stacked area showing contribution velocity (commits per tick)",
-			Left:       "center",
-			TitleStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(true), Type: "scroll", Top: "10%", Left: "center",
-			TextStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithGridOpts(opts.Grid{
-			Top: "25%", Bottom: "15%", Left: "5%", Right: "5%",
-			ContainLabel: opts.Bool(true),
-		}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name:      "Time (tick)",
-			AxisLabel: &opts.AxisLabel{Color: "#a8a29e"},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name:      "Commits",
-			AxisLabel: &opts.AxisLabel{Color: "#a8a29e"},
-			SplitLine: &opts.SplitLine{
-				Show:      opts.Bool(true),
-				LineStyle: &opts.LineStyle{Color: "rgba(255,255,255,0.1)"},
-			},
-		}),
+		charts.WithInitializationOpts(chartOpts.Init("100%", lineChartHeight)),
+		charts.WithTitleOpts(chartOpts.Title("Developer Activity Over Time", "Stacked area showing contribution velocity (commits per tick)")),
+		charts.WithTooltipOpts(chartOpts.Tooltip("axis")),
+		charts.WithLegendOpts(chartOpts.Legend()),
+		charts.WithGridOpts(chartOpts.Grid()),
+		charts.WithDataZoomOpts(chartOpts.DataZoom()...),
+		charts.WithXAxisOpts(chartOpts.XAxis("Time (tick)")),
+		charts.WithYAxisOpts(chartOpts.YAxis("Commits")),
 	)
 }
 

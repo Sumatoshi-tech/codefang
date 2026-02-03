@@ -15,6 +15,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
 	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
@@ -205,9 +206,19 @@ func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
 }
 
 func (hc *HistoryCommand) ensureBurndownFirstParent() {
-	if hc.isBurndownOnly() && !hc.firstParent {
+	if hc.hasBurndown() && !hc.firstParent {
 		hc.firstParent = true
 	}
+}
+
+// hasBurndown returns true if burndown is one of the selected analyzers.
+func (hc *HistoryCommand) hasBurndown() bool {
+	for _, a := range hc.analyzers {
+		if a == "burndown" {
+			return true
+		}
+	}
+	return false
 }
 
 func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
@@ -545,6 +556,11 @@ type PlotGenerator interface {
 	GenerateChart(report analyze.Report) (components.Charter, error)
 }
 
+// SectionGenerator interface for analyzers that can generate page sections.
+type SectionGenerator interface {
+	GenerateSections(report analyze.Report) ([]plotpage.Section, error)
+}
+
 // outputResults outputs the results for all selected leaves.
 func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report, format string) error {
 	rawOutput := format == FormatJSON || format == analyze.FormatPlot
@@ -576,8 +592,16 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 }
 
 func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report) error {
-	page := components.NewPage()
-	page.PageTitle = "Codefang Analysis Report"
+	// Build analyzer names for description
+	names := make([]string, 0, len(leaves))
+	for _, leaf := range leaves {
+		names = append(names, leaf.Name())
+	}
+
+	page := plotpage.NewPage(
+		"Combined Analysis Report",
+		fmt.Sprintf("Analysis results for: %s", strings.Join(names, ", ")),
+	)
 
 	for _, leaf := range leaves {
 		res := results[leaf]
@@ -585,13 +609,33 @@ func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.Hi
 			continue
 		}
 
+		// Prefer SectionGenerator for full-featured sections
+		if sectionGen, ok := leaf.(SectionGenerator); ok {
+			sections, err := sectionGen.GenerateSections(res)
+			if err != nil {
+				return fmt.Errorf("failed to generate sections for %s: %w", leaf.Name(), err)
+			}
+
+			page.Add(sections...)
+
+			continue
+		}
+
+		// Fallback to PlotGenerator for basic chart
 		if plotter, ok := leaf.(PlotGenerator); ok {
 			chart, err := plotter.GenerateChart(res)
 			if err != nil {
 				return fmt.Errorf("failed to generate chart for %s: %w", leaf.Name(), err)
 			}
 
-			page.AddCharts(chart)
+			// Charter from go-echarts implements Render(io.Writer) error
+			if renderable, ok := chart.(plotpage.Renderable); ok {
+				page.Add(plotpage.Section{
+					Title:    leaf.Name(),
+					Subtitle: fmt.Sprintf("Results from %s analyzer", leaf.Name()),
+					Chart:    plotpage.WrapChart(renderable),
+				})
+			}
 		}
 	}
 
