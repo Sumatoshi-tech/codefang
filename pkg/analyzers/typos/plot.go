@@ -39,7 +39,7 @@ func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (t *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := t.generateChart(report)
+	chart, err := t.buildChart(report)
 	if err != nil {
 		return nil, err
 	}
@@ -65,11 +65,11 @@ func (t *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 
 // GenerateChart implements PlotGenerator interface.
 func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return t.generateChart(report)
+	return t.buildChart(report)
 }
 
-// generateChart creates a bar chart showing typo-prone files.
-func (t *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
+// buildChart creates a bar chart showing typo-prone files.
+func (t *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 	typos, ok := report["typos"].([]Typo)
 	if !ok {
 		return nil, ErrInvalidTypos

@@ -2,10 +2,11 @@ package filehistory //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -198,7 +199,7 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		},
 	}
 
-	// YAML.
+	// YAML - now uses computed metrics.
 	var buf bytes.Buffer
 
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
@@ -206,25 +207,88 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
-	if !strings.Contains(buf.String(), "test.txt") {
-		t.Error("expected test.txt in YAML output")
-	}
+	// Should contain metrics structure keys
+	assert.Contains(t, buf.String(), "file_churn:")
+	assert.Contains(t, buf.String(), "aggregate:")
 
-	if !strings.Contains(buf.String(), "10,0,5") {
-		t.Error("expected stats in YAML output")
-	}
+	// Default format falls back to YAML.
+	var defaultBuf bytes.Buffer
 
-	// Binary.
-	var pbuf bytes.Buffer
-
-	err = h.Serialize(report, analyze.FormatBinary, &pbuf)
+	err = h.Serialize(report, analyze.FormatBinary, &defaultBuf)
 	if err != nil {
-		t.Fatalf("Serialize Binary failed: %v", err)
+		t.Fatalf("Serialize default failed: %v", err)
 	}
 
-	if pbuf.Len() == 0 {
-		t.Error("expected binary output")
+	if defaultBuf.Len() == 0 {
+		t.Error("expected output for default format")
 	}
+}
+
+func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	report := analyze.Report{
+		"Files": map[string]FileHistory{
+			"test.go": {
+				Hashes: []gitlib.Hash{
+					gitlib.NewHash("c100000000000000000000000000000000000001"),
+					gitlib.NewHash("c200000000000000000000000000000000000002"),
+				},
+				People: map[int]pkgplumbing.LineStats{
+					0: {Added: 100, Removed: 10, Changed: 20},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := h.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
+
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Should have computed metrics structure
+	assert.Contains(t, result, "file_churn")
+	assert.Contains(t, result, "file_contributors")
+	assert.Contains(t, result, "hotspots")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	report := analyze.Report{
+		"Files": map[string]FileHistory{
+			"test.go": {
+				Hashes: []gitlib.Hash{
+					gitlib.NewHash("c100000000000000000000000000000000000001"),
+					gitlib.NewHash("c200000000000000000000000000000000000002"),
+				},
+				People: map[int]pkgplumbing.LineStats{
+					0: {Added: 100, Removed: 10, Changed: 20},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := h.Serialize(report, analyze.FormatYAML, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Should have computed metrics structure (YAML keys)
+	assert.Contains(t, output, "file_churn:")
+	assert.Contains(t, output, "file_contributors:")
+	assert.Contains(t, output, "hotspots:")
+	assert.Contains(t, output, "aggregate:")
 }
 
 func TestAnalyzer_Misc(t *testing.T) {

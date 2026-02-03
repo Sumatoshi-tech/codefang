@@ -8,10 +8,11 @@ import (
 	"io"
 	"sort"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
@@ -340,97 +341,49 @@ func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return c.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return c.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return c.generatePlot(result, writer)
+	default:
+		return c.serializeYAML(result, writer)
+	}
+}
+
+func (c *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
-	if !ok {
-		return errors.New("expected []map[int]int64 for peopleMatrix") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	files, ok := result["Files"].([]string)
-	if !ok {
-		return errors.New("expected []string for files") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	filesLines, ok := result["FilesLines"].([]int)
-	if !ok {
-		return errors.New("expected []int for filesLines") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	filesMatrix, ok := result["FilesMatrix"].([]map[int]int64)
-	if !ok {
-		return errors.New("expected []map[int]int64 for filesMatrix") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	reversedPeopleDict, ok := result["ReversedPeopleDict"].([]string)
-	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	fmt.Fprintln(writer, "  files_coocc:")
-	fmt.Fprintln(writer, "    index:")
-
-	for _, file := range files {
-		fmt.Fprintf(writer, "      - %s\n", file)
-	}
-
-	fmt.Fprintln(writer, "    lines:")
-
-	for _, l := range filesLines {
-		fmt.Fprintf(writer, "      - %d\n", l)
-	}
-
-	writeMatrixSection(writer, filesMatrix)
-
-	fmt.Fprintln(writer, "  people_coocc:")
-	fmt.Fprintln(writer, "    index:")
-
-	for _, person := range reversedPeopleDict {
-		fmt.Fprintf(writer, "      - %s\n", person)
-	}
-
-	writeMatrixSection(writer, peopleMatrix)
-
-	fmt.Fprintln(writer, "    author_files:")
-	// ... (author_files logic omitted).
 	return nil
 }
 
-// writeMatrixSection writes a YAML "matrix:" section with sorted sparse row data.
-func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
-	fmt.Fprintln(writer, "    matrix:")
-
-	for _, row := range matrix {
-		fmt.Fprint(writer, "      - {")
-
-		indices := make([]int, 0, len(row))
-		for k := range row {
-			indices = append(indices, k)
-		}
-
-		sort.Ints(indices)
-
-		for i, k := range indices {
-			fmt.Fprintf(writer, "%d: %d", k, row[k])
-
-			if i < len(indices)-1 {
-				fmt.Fprint(writer, ", ")
-			}
-		}
-
-		fmt.Fprintln(writer, "}")
+func (c *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

@@ -3,17 +3,17 @@ package sentiment
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -298,54 +298,46 @@ func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return s.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return s.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return s.generatePlot(result, writer)
+	default:
+		return s.serializeYAML(result, writer)
+	}
+}
+
+func (s *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	emotions, ok := result["emotions_by_tick"].(map[int]float32)
-	if !ok {
-		return errors.New("expected map[int]float32 for emotions") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	comments, ok := result["comments_by_tick"].(map[int][]string)
-	if !ok {
-		return errors.New("expected map[int][]string for comments") //nolint:err113 // descriptive error for type assertion failure.
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
 	}
 
-	commits, ok := result["commits_by_tick"].(map[int][]gitlib.Hash)
-	if !ok {
-		//nolint:err113 // type assertion error.
-		return errors.New("expected map[int][]gitlib.Hash for commits")
-	}
-
-	ticks := make([]int, 0, len(emotions))
-	for tick := range emotions {
-		ticks = append(ticks, tick)
-	}
-
-	sort.Ints(ticks)
-
-	for _, tick := range ticks {
-		hashes := make([]string, 0)
-
-		if list, hasCommits := commits[tick]; hasCommits {
-			for _, hash := range list {
-				hashes = append(hashes, hash.String())
-			}
-		}
-
-		fmt.Fprintf(writer, "  %d: [%.4f, [%s], \"%s\"]\n",
-			tick, emotions[tick], strings.Join(hashes, ","),
-			strings.Join(comments[tick], "|"))
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil

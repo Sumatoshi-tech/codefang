@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -68,13 +69,14 @@ func TestGenerateChart_WithData(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
-	err = chart.Render(&buf)
+	renderer := render.NewChartRender(chart)
+	err = renderer.Render(&buf)
 	require.NoError(t, err)
 	require.Greater(t, buf.Len(), 100, "rendered HTML should have substantial content")
 	require.Contains(t, buf.String(), "project x 210", "title should include project and max lines")
 	require.Contains(t, buf.String(), "granularity 30", "title should include granularity")
 	require.Contains(t, buf.String(), "sampling 30", "title should include sampling")
-	require.Contains(t, buf.String(), "#000000", "chart should have black background")
+	require.Contains(t, buf.String(), "transparent", "chart should have transparent background")
 	require.Contains(t, buf.String(), "1mo", "legend should use month labels for short history")
 }
 
@@ -108,7 +110,8 @@ func TestGenerateChart_YearAggregation(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
-	err = chart.Render(&buf)
+	renderer := render.NewChartRender(chart)
+	err = renderer.Render(&buf)
 	require.NoError(t, err)
 	html := buf.String()
 	require.Contains(t, html, "codefang x ", "title should use project name")

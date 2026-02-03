@@ -39,7 +39,7 @@ func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 
 // GenerateSections returns the sections for combined reports.
 func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := h.generateChart(report)
+	chart, err := h.buildChart(report)
 	if err != nil {
 		return nil, err
 	}
@@ -65,11 +65,11 @@ func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, 
 
 // GenerateChart creates a bar chart showing the most modified files (implements PlotGenerator).
 func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return h.generateChart(report)
+	return h.buildChart(report)
 }
 
-// generateChart creates a bar chart showing the most modified files.
-func (h *Analyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
+// buildChart creates a bar chart showing the most modified files.
+func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 	files, ok := report["Files"].(map[string]FileHistory)
 	if !ok {
 		return nil, ErrInvalidFiles

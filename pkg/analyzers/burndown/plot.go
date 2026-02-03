@@ -53,7 +53,7 @@ func (b *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (b *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := b.generateChart(report)
+	chart, err := b.buildChart(report)
 	if err != nil {
 		return nil, fmt.Errorf("generate chart: %w", err)
 	}
@@ -117,11 +117,11 @@ func extractParams(report analyze.Report) *burndownParams {
 
 // GenerateChart implements PlotGenerator interface.
 func (b *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return b.generateChart(report)
+	return b.buildChart(report)
 }
 
-// generateChart creates a burndown line chart from the report.
-func (b *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Line, error) {
+// buildChart creates a burndown line chart from the report.
+func (b *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error) {
 	params := extractParams(report)
 	if params == nil {
 		return nil, ErrInvalidReport

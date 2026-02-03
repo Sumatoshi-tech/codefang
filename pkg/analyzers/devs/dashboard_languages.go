@@ -17,7 +17,7 @@ func createLanguagesTab(data *DashboardData) *languagesContent {
 	return &languagesContent{chart: createLanguagesRadar(data)}
 }
 
-// Render implements the Renderable interface for the languages tab.
+// Render renders the languages content to the writer.
 func (lc *languagesContent) Render(w io.Writer) error {
 	if lc.chart == nil {
 		return plotpage.NewText("No language data available").Render(w)
@@ -27,7 +27,7 @@ func (lc *languagesContent) Render(w io.Writer) error {
 }
 
 func createLanguagesRadar(data *DashboardData) *charts.Radar {
-	if len(data.TopLanguages) == 0 || len(data.DevSummaries) == 0 {
+	if len(data.TopLanguages) == 0 || len(data.Metrics.Developers) == 0 {
 		return nil
 	}
 
@@ -72,8 +72,8 @@ func buildRadarIndicators(data *DashboardData) []*opts.Indicator {
 func computeLanguageMaxValues(data *DashboardData) map[string]int {
 	maxValues := make(map[string]int)
 
-	for _, ds := range data.DevSummaries {
-		for lang, stats := range ds.Languages {
+	for _, dev := range data.Metrics.Developers {
+		for lang, stats := range dev.Languages {
 			if stats.Added > maxValues[lang] {
 				maxValues[lang] = stats.Added
 			}
@@ -89,20 +89,20 @@ type radarSeriesData struct {
 }
 
 func buildRadarData(data *DashboardData) []radarSeriesData {
-	count := min(topDevsForRadar, len(data.DevSummaries))
+	count := min(topDevsForRadar, len(data.Metrics.Developers))
 	result := make([]radarSeriesData, count)
 
 	for i := range count {
-		ds := data.DevSummaries[i]
+		dev := data.Metrics.Developers[i]
 		values := make([]float64, len(data.TopLanguages))
 
 		for j, lang := range data.TopLanguages {
-			if stats, ok := ds.Languages[lang]; ok {
+			if stats, ok := dev.Languages[lang]; ok {
 				values[j] = float64(stats.Added)
 			}
 		}
 
-		result[i] = radarSeriesData{name: ds.Name, values: values}
+		result[i] = radarSeriesData{name: dev.Name, values: values}
 	}
 
 	return result

@@ -7,6 +7,8 @@ import (
 	"io"
 	"sort"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
@@ -119,7 +121,12 @@ func (c *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
 
 // FormatReportJSON formats comment analysis results as JSON.
 func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
-	jsonData, err := json.MarshalIndent(report, "", "  ")
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
 	}
@@ -127,6 +134,26 @@ func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	_, err = fmt.Fprint(w, string(jsonData))
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportYAML formats comment analysis results as YAML.
+func (c *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
 	}
 
 	return nil

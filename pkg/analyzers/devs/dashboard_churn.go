@@ -28,13 +28,19 @@ func (cc *churnContent) Render(w io.Writer) error {
 }
 
 func createChurnChart(data *DashboardData) *charts.Bar {
-	tickKeys := sortedKeys(data.Ticks)
-	if len(tickKeys) == 0 {
+	if len(data.Metrics.Churn) == 0 {
 		return nil
 	}
 
-	added, removed := computeChurnData(tickKeys, data.Ticks)
-	xLabels := buildChurnLabels(tickKeys)
+	xLabels := make([]string, len(data.Metrics.Churn))
+	added := make([]opts.BarData, len(data.Metrics.Churn))
+	removed := make([]opts.BarData, len(data.Metrics.Churn))
+
+	for i, cm := range data.Metrics.Churn {
+		xLabels[i] = strconv.Itoa(cm.Tick)
+		added[i] = opts.BarData{Value: cm.Added}
+		removed[i] = opts.BarData{Value: -cm.Removed}
+	}
 
 	co := plotpage.DefaultChartOpts()
 
@@ -60,33 +66,4 @@ func createChurnChart(data *DashboardData) *charts.Bar {
 	)
 
 	return bar
-}
-
-func computeChurnData(tickKeys []int, ticks map[int]map[int]*DevTick) (added, removed []opts.BarData) {
-	added = make([]opts.BarData, len(tickKeys))
-	removed = make([]opts.BarData, len(tickKeys))
-
-	for i, tick := range tickKeys {
-		totalAdded, totalRemoved := 0, 0
-
-		for _, dt := range ticks[tick] {
-			totalAdded += dt.Added
-			totalRemoved += dt.Removed
-		}
-
-		added[i] = opts.BarData{Value: totalAdded}
-		removed[i] = opts.BarData{Value: -totalRemoved}
-	}
-
-	return added, removed
-}
-
-func buildChurnLabels(tickKeys []int) []string {
-	labels := make([]string, len(tickKeys))
-
-	for i, tick := range tickKeys {
-		labels[i] = strconv.Itoa(tick)
-	}
-
-	return labels
 }

@@ -4,12 +4,12 @@ package typos
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -303,30 +303,51 @@ func (t *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (t *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return t.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return t.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return t.generatePlot(result, writer)
+	default:
+		return t.serializeYAML(result, writer)
+	}
+}
+
+func (t *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
+	if err != nil {
+		return fmt.Errorf("json marshal: %w", err)
 	}
 
-	typos, ok := result["typos"].([]Typo)
-	if !ok {
-		return errors.New("expected []Typo for typos") //nolint:err113 // descriptive error for type assertion failure.
+	_, err = fmt.Fprint(writer, string(jsonData))
+	if err != nil {
+		return fmt.Errorf("write json: %w", err)
 	}
 
-	for _, ty := range typos {
-		fmt.Fprintf(writer, "  - wrong: %s\n", ty.Wrong)
-		fmt.Fprintf(writer, "    correct: %s\n", ty.Correct)
-		fmt.Fprintf(writer, "    commit: %s\n", ty.Commit.String())
-		fmt.Fprintf(writer, "    file: %s\n", ty.File)
-		fmt.Fprintf(writer, "    line: %d\n", ty.Line)
+	return nil
+}
+
+func (t *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("write yaml: %w", err)
 	}
 
 	return nil

@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -778,16 +779,54 @@ func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 
 // Serialize writes the analysis result to the given writer.
 func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return b.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return b.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return b.generatePlot(result, writer)
+	default:
+		return b.serializeLegacy(result, writer)
+	}
+}
+
+func (b *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
+	}
+
+	return nil
+}
+
+func (b *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (b *HistoryAnalyzer) serializeLegacy(result analyze.Report, writer io.Writer) error {
 	enc := json.NewEncoder(writer)
-
-	// For YAML format, use indentation for readability (burndown default is JSON-like).
-	if format == analyze.FormatYAML {
-		enc.SetIndent("", "  ")
-	}
+	enc.SetIndent("", "  ")
 
 	err := enc.Encode(result)
 	if err != nil {

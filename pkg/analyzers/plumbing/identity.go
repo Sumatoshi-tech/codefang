@@ -111,6 +111,7 @@ func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
 	// If PeopleDict is already set (from Configure), mark as finalized.
 	if d.PeopleDict != nil {
 		d.dictFinalized = true
+
 		return nil
 	}
 
@@ -129,39 +130,15 @@ func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
 	signature := commit.Author()
 
-	var authorID int
-
-	var exists bool
+	var (
+		authorID int
+		exists   bool
+	)
 
 	if d.ExactSignatures {
-		// For exact signatures, combine name and email.
-		sigStr := strings.ToLower(fmt.Sprintf("%s <%s>", signature.Name, signature.Email))
-		authorID, exists = d.PeopleDict[sigStr]
-
-		// If not finalized, register new identity incrementally.
-		if !exists && !d.dictFinalized {
-			authorID = d.incrementalSize
-			d.PeopleDict[sigStr] = authorID
-			d.incrementalSize++
-		}
+		authorID, exists = d.lookupExactSignature(signature)
 	} else {
-		email := strings.ToLower(signature.Email)
-		name := strings.ToLower(signature.Name)
-
-		authorID, exists = d.PeopleDict[email]
-		if !exists {
-			authorID, exists = d.PeopleDict[name]
-		}
-
-		// If not finalized, register new identity incrementally using loose matching.
-		if !exists && !d.dictFinalized {
-			d.incrementalSize = registerLooseIdentity(
-				d.PeopleDict, d.incrementalEmails, d.incrementalNames,
-				email, name, d.incrementalSize,
-			)
-			// Get the ID after registration.
-			authorID = d.PeopleDict[email]
-		}
+		authorID, exists = d.lookupLooseSignature(signature)
 	}
 
 	if !exists && d.dictFinalized {
@@ -171,6 +148,41 @@ func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
 	d.AuthorID = authorID
 
 	return nil
+}
+
+// lookupExactSignature finds or registers an author using exact signature matching.
+func (d *IdentityDetector) lookupExactSignature(signature gitlib.Signature) (int, bool) {
+	sigStr := strings.ToLower(fmt.Sprintf("%s <%s>", signature.Name, signature.Email))
+	authorID, exists := d.PeopleDict[sigStr]
+
+	if !exists && !d.dictFinalized {
+		authorID = d.incrementalSize
+		d.PeopleDict[sigStr] = authorID
+		d.incrementalSize++
+	}
+
+	return authorID, exists
+}
+
+// lookupLooseSignature finds or registers an author using loose signature matching.
+func (d *IdentityDetector) lookupLooseSignature(signature gitlib.Signature) (int, bool) {
+	email := strings.ToLower(signature.Email)
+	name := strings.ToLower(signature.Name)
+
+	authorID, exists := d.PeopleDict[email]
+	if !exists {
+		authorID, exists = d.PeopleDict[name]
+	}
+
+	if !exists && !d.dictFinalized {
+		d.incrementalSize = registerLooseIdentity(
+			d.PeopleDict, d.incrementalEmails, d.incrementalNames,
+			email, name, d.incrementalSize,
+		)
+		authorID = d.PeopleDict[email]
+	}
+
+	return authorID, exists
 }
 
 // LoadPeopleDict loads the author identity mapping from a file.

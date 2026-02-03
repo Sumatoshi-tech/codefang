@@ -130,7 +130,7 @@ func TestGenerateDashboard_InvalidPeopleDict(t *testing.T) {
 	}
 }
 
-func TestComputeDashboardData(t *testing.T) {
+func TestNewDashboardData(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
@@ -165,26 +165,26 @@ func TestComputeDashboardData(t *testing.T) {
 		"TickSize":           24 * time.Hour,
 	}
 
-	data, err := computeDashboardData(report)
+	data, err := newDashboardData(report)
 	if err != nil {
-		t.Fatalf("computeDashboardData failed: %v", err)
+		t.Fatalf("newDashboardData failed: %v", err)
 	}
 
-	// Check developer summaries
-	if len(data.DevSummaries) != 2 {
-		t.Errorf("expected 2 developers, got %d", len(data.DevSummaries))
+	// Check developers via metrics
+	if len(data.Metrics.Developers) != 2 {
+		t.Errorf("expected 2 developers, got %d", len(data.Metrics.Developers))
 	}
 
 	// Find Alice (should have 8 commits total)
-	var alice *DeveloperSummary
-	for i := range data.DevSummaries {
-		if data.DevSummaries[i].Name == "Alice" {
-			alice = &data.DevSummaries[i]
+	var alice *DeveloperData
+	for i := range data.Metrics.Developers {
+		if data.Metrics.Developers[i].Name == "Alice" {
+			alice = &data.Metrics.Developers[i]
 			break
 		}
 	}
 	if alice == nil {
-		t.Fatal("Alice not found in summaries")
+		t.Fatal("Alice not found in developers")
 	}
 	if alice.Commits != 8 {
 		t.Errorf("expected Alice to have 8 commits, got %d", alice.Commits)
@@ -193,17 +193,17 @@ func TestComputeDashboardData(t *testing.T) {
 		t.Errorf("expected Alice to have 150 added lines, got %d", alice.Added)
 	}
 
-	// Check language summaries
-	if len(data.LanguageSummaries) == 0 {
-		t.Error("expected language summaries")
+	// Check languages
+	if len(data.Metrics.Languages) == 0 {
+		t.Error("expected language data")
 	}
 
 	// Check aggregates
-	if data.TotalCommits != 10 {
-		t.Errorf("expected 10 total commits, got %d", data.TotalCommits)
+	if data.Metrics.Aggregate.TotalCommits != 10 {
+		t.Errorf("expected 10 total commits, got %d", data.Metrics.Aggregate.TotalCommits)
 	}
-	if data.TotalDevelopers != 2 {
-		t.Errorf("expected 2 total developers, got %d", data.TotalDevelopers)
+	if data.Metrics.Aggregate.TotalDevelopers != 2 {
+		t.Errorf("expected 2 total developers, got %d", data.Metrics.Aggregate.TotalDevelopers)
 	}
 }
 
@@ -233,21 +233,21 @@ func TestBusFactorCalculation(t *testing.T) {
 		"TickSize":           24 * time.Hour,
 	}
 
-	data, err := computeDashboardData(report)
+	data, err := newDashboardData(report)
 	if err != nil {
-		t.Fatalf("computeDashboardData failed: %v", err)
+		t.Fatalf("newDashboardData failed: %v", err)
 	}
 
 	// Check bus factor entries
-	if len(data.BusFactorEntries) == 0 {
+	if len(data.Metrics.BusFactor) == 0 {
 		t.Fatal("expected bus factor entries")
 	}
 
 	// Find Go entry
-	var goEntry *BusFactorEntry
-	for i := range data.BusFactorEntries {
-		if data.BusFactorEntries[i].Language == "Go" {
-			goEntry = &data.BusFactorEntries[i]
+	var goEntry *BusFactorData
+	for i := range data.Metrics.BusFactor {
+		if data.Metrics.BusFactor[i].Language == "Go" {
+			goEntry = &data.Metrics.BusFactor[i]
 			break
 		}
 	}
@@ -259,8 +259,8 @@ func TestBusFactorCalculation(t *testing.T) {
 	if goEntry.RiskLevel != "CRITICAL" {
 		t.Errorf("expected CRITICAL risk for Go, got %s (primary: %.1f%%)", goEntry.RiskLevel, goEntry.PrimaryPct)
 	}
-	if goEntry.PrimaryDev != "Hero Developer" {
-		t.Errorf("expected Hero Developer as primary, got %s", goEntry.PrimaryDev)
+	if goEntry.PrimaryDevName != "Hero Developer" {
+		t.Errorf("expected Hero Developer as primary, got %s", goEntry.PrimaryDevName)
 	}
 }
 

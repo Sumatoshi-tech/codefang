@@ -1,10 +1,15 @@
 package halstead //nolint:testpackage // testing internal implementation.
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert/yaml"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -432,4 +437,132 @@ func TestAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	// We need to check the file-level aggregation, not individual functions
 	// The test verifies that the real aggregation is working by checking the file-level counts
 	// which should properly merge the operators and operands from both functions.
+}
+
+// --- FormatReportJSON Tests ---
+
+func TestAnalyzer_FormatReportJSON(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_functions": 2,
+		"volume":          1500.0,
+		"difficulty":      10.0,
+		"effort":          15000.0,
+		"functions": []map[string]any{
+			{"name": "func1", "volume": 500.0},
+			{"name": "func2", "volume": 1000.0},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.FunctionHalstead, 2)
+	assert.Equal(t, 2, result.Aggregate.TotalFunctions)
+}
+
+func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportJSON(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid JSON
+	var result ComputedMetrics
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.FunctionHalstead)
+	assert.Equal(t, 0, result.Aggregate.TotalFunctions)
+}
+
+// --- FormatReportYAML Tests ---
+
+func TestAnalyzer_FormatReportYAML(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_functions": 2,
+		"volume":          1500.0,
+		"difficulty":      10.0,
+		"effort":          15000.0,
+		"functions": []map[string]any{
+			{"name": "func1", "volume": 500.0},
+			{"name": "func2", "volume": 1000.0},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Len(t, result.FunctionHalstead, 2)
+	assert.Equal(t, 2, result.Aggregate.TotalFunctions)
+}
+
+func TestAnalyzer_FormatReportYAML_Empty(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	// Verify output is valid YAML
+	var result ComputedMetrics
+	err = yaml.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	assert.Empty(t, result.FunctionHalstead)
+	assert.Equal(t, 0, result.Aggregate.TotalFunctions)
+}
+
+func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	report := analyze.Report{
+		"total_functions": 1,
+		"volume":          500.0,
+		"functions": []map[string]any{
+			{"name": "testFunc", "volume": 500.0},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := analyzer.FormatReportYAML(report, &buf)
+
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "function_halstead:")
+	assert.Contains(t, output, "distribution:")
+	assert.Contains(t, output, "high_effort_functions:")
+	assert.Contains(t, output, "aggregate:")
 }

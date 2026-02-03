@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/pprof"
+	"slices"
 	"strings"
 	"time"
 
@@ -157,10 +158,6 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if hc.isFastDevsMode() {
-		return hc.runFastDevsAnalyzer(cmd, uri)
-	}
-
 	repository := loadRepository(uri)
 	if repository == nil {
 		return fmt.Errorf("%w: %s", ErrRepositoryLoad, uri)
@@ -213,12 +210,7 @@ func (hc *HistoryCommand) ensureBurndownFirstParent() {
 
 // hasBurndown returns true if burndown is one of the selected analyzers.
 func (hc *HistoryCommand) hasBurndown() bool {
-	for _, a := range hc.analyzers {
-		if a == "burndown" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(hc.analyzers, "burndown")
 }
 
 func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
@@ -241,16 +233,6 @@ func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
 	return facts
 }
 
-// isFastDevsMode returns true if only the fast devs analyzer is selected.
-func (hc *HistoryCommand) isFastDevsMode() bool {
-	return len(hc.analyzers) == 1 && hc.analyzers[0] == "devs"
-}
-
-// isBurndownOnly returns true if only the burndown analyzer is selected.
-func (hc *HistoryCommand) isBurndownOnly() bool {
-	return len(hc.analyzers) == 1 && hc.analyzers[0] == "burndown"
-}
-
 // resolveRepoURI resolves the repository URI from command args.
 func resolveRepoURI(args []string) (string, error) {
 	uri := "."
@@ -269,33 +251,6 @@ func resolveRepoURI(args []string) (string, error) {
 	}
 
 	return uri, nil
-}
-
-// runFastDevsAnalyzer runs the fast devs analyzer.
-func (hc *HistoryCommand) runFastDevsAnalyzer(cmd *cobra.Command, uri string) error {
-	fa := devs.NewFastAnalyzer()
-
-	sinceStr, err := cmd.Flags().GetString("since")
-	if err != nil {
-		return fmt.Errorf("failed to get since flag: %w", err)
-	}
-
-	limit, err := cmd.Flags().GetInt("limit")
-	if err != nil {
-		return fmt.Errorf("failed to get limit flag: %w", err)
-	}
-
-	report, err := fa.Analyze(uri, sinceStr, limit)
-	if err != nil {
-		return fmt.Errorf("fast devs analysis failed: %w", err)
-	}
-
-	if hc.format != FormatJSON && hc.format != analyze.FormatPlot {
-		printHeader()
-		fmt.Fprintln(os.Stdout, "Devs:")
-	}
-
-	return fa.Serialize(report, hc.format, os.Stdout)
 }
 
 func loadRepository(uri string) *gitlib.Repository {
@@ -592,16 +547,7 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 }
 
 func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report) error {
-	// Build analyzer names for description
-	names := make([]string, 0, len(leaves))
-	for _, leaf := range leaves {
-		names = append(names, leaf.Name())
-	}
-
-	page := plotpage.NewPage(
-		"Combined Analysis Report",
-		fmt.Sprintf("Analysis results for: %s", strings.Join(names, ", ")),
-	)
+	page := buildCombinedPage(leaves)
 
 	for _, leaf := range leaves {
 		res := results[leaf]
@@ -609,39 +555,67 @@ func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.Hi
 			continue
 		}
 
-		// Prefer SectionGenerator for full-featured sections
-		if sectionGen, ok := leaf.(SectionGenerator); ok {
-			sections, err := sectionGen.GenerateSections(res)
-			if err != nil {
-				return fmt.Errorf("failed to generate sections for %s: %w", leaf.Name(), err)
-			}
-
-			page.Add(sections...)
-
-			continue
-		}
-
-		// Fallback to PlotGenerator for basic chart
-		if plotter, ok := leaf.(PlotGenerator); ok {
-			chart, err := plotter.GenerateChart(res)
-			if err != nil {
-				return fmt.Errorf("failed to generate chart for %s: %w", leaf.Name(), err)
-			}
-
-			// Charter from go-echarts implements Render(io.Writer) error
-			if renderable, ok := chart.(plotpage.Renderable); ok {
-				page.Add(plotpage.Section{
-					Title:    leaf.Name(),
-					Subtitle: fmt.Sprintf("Results from %s analyzer", leaf.Name()),
-					Chart:    plotpage.WrapChart(renderable),
-				})
-			}
+		err := addLeafToPage(page, leaf, res)
+		if err != nil {
+			return err
 		}
 	}
 
 	err := page.Render(os.Stdout)
 	if err != nil {
 		return fmt.Errorf("render page: %w", err)
+	}
+
+	return nil
+}
+
+func buildCombinedPage(leaves []analyze.HistoryAnalyzer) *plotpage.Page {
+	names := make([]string, 0, len(leaves))
+	for _, leaf := range leaves {
+		names = append(names, leaf.Name())
+	}
+
+	return plotpage.NewPage(
+		"Combined Analysis Report",
+		fmt.Sprintf("Analysis results for: %s", strings.Join(names, ", ")),
+	)
+}
+
+func addLeafToPage(page *plotpage.Page, leaf analyze.HistoryAnalyzer, res analyze.Report) error {
+	if sectionGen, ok := leaf.(SectionGenerator); ok {
+		return addSectionsToPage(page, sectionGen, leaf.Name(), res)
+	}
+
+	if plotter, ok := leaf.(PlotGenerator); ok {
+		return addChartToPage(page, plotter, leaf.Name(), res)
+	}
+
+	return nil
+}
+
+func addSectionsToPage(page *plotpage.Page, gen SectionGenerator, name string, res analyze.Report) error {
+	sections, err := gen.GenerateSections(res)
+	if err != nil {
+		return fmt.Errorf("failed to generate sections for %s: %w", name, err)
+	}
+
+	page.Add(sections...)
+
+	return nil
+}
+
+func addChartToPage(page *plotpage.Page, plotter PlotGenerator, name string, res analyze.Report) error {
+	chart, err := plotter.GenerateChart(res)
+	if err != nil {
+		return fmt.Errorf("failed to generate chart for %s: %w", name, err)
+	}
+
+	if renderable, ok := chart.(plotpage.Renderable); ok {
+		page.Add(plotpage.Section{
+			Title:    name,
+			Subtitle: fmt.Sprintf("Results from %s analyzer", name),
+			Chart:    plotpage.WrapChart(renderable),
+		})
 	}
 
 	return nil

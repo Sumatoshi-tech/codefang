@@ -39,7 +39,7 @@ func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := h.generateChart(report)
+	chart, err := h.buildChart(report)
 	if err != nil {
 		return nil, err
 	}
@@ -65,11 +65,11 @@ func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 
 // GenerateChart implements PlotGenerator interface.
 func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return h.generateChart(report)
+	return h.buildChart(report)
 }
 
-// generateChart creates a bar chart showing top imports by usage.
-func (h *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
+// buildChart creates a bar chart showing top imports by usage.
+func (h *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 	imports, ok := report["imports"].(Map)
 	if !ok {
 		return nil, ErrInvalidImports

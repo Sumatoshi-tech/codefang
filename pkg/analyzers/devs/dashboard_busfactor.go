@@ -17,9 +17,9 @@ func createBusFactorTab(data *DashboardData) *busfactorContent {
 	return &busfactorContent{data: data}
 }
 
-// Render implements the Renderable interface for the bus factor tab.
+// Render renders the bus factor content to the writer.
 func (bf *busfactorContent) Render(w io.Writer) error {
-	if len(bf.data.BusFactorEntries) == 0 {
+	if len(bf.data.Metrics.BusFactor) == 0 {
 		return plotpage.NewText("No bus factor data available").Render(w)
 	}
 
@@ -45,15 +45,15 @@ func (bf *busfactorContent) renderSummary(w io.Writer) error {
 }
 
 func (bf *busfactorContent) countByRiskLevel() (critical, high, medium, low int) {
-	for _, entry := range bf.data.BusFactorEntries {
-		switch entry.RiskLevel {
-		case riskCritical:
+	for _, bfd := range bf.data.Metrics.BusFactor {
+		switch bfd.RiskLevel {
+		case RiskCritical:
 			critical++
-		case riskHigh:
+		case RiskHigh:
 			high++
-		case riskMedium:
+		case RiskMedium:
 			medium++
-		case riskLow:
+		case RiskLow:
 			low++
 		}
 	}
@@ -72,14 +72,16 @@ func (bf *busfactorContent) renderTable(w io.Writer) error {
 		"Language", "Risk Level", "Primary Owner", "Primary %", "Secondary Owner", "Secondary %",
 	})
 
-	for _, entry := range bf.data.BusFactorEntries {
+	count := min(riskTableMaxRows, len(bf.data.Metrics.BusFactor))
+	for i := range count {
+		bfd := bf.data.Metrics.BusFactor[i]
 		table.AddRow(
-			entry.Language,
-			riskBadgeHTML(entry.RiskLevel),
-			entry.PrimaryDev,
-			formatPercent(entry.PrimaryPct),
-			secondaryDevDisplay(entry.SecondaryDev),
-			secondaryPctDisplay(entry.SecondaryPct),
+			bfd.Language,
+			riskBadgeHTML(bfd.RiskLevel),
+			bfd.PrimaryDevName,
+			formatPercent(bfd.PrimaryPct),
+			secondaryDevDisplay(bfd.SecondaryDevName),
+			secondaryPctDisplay(bfd.SecondaryPct),
 		)
 	}
 
@@ -102,11 +104,11 @@ func riskBadgeHTML(level string) string {
 	badge := plotpage.NewBadge(level)
 
 	switch level {
-	case riskCritical:
+	case RiskCritical:
 		badge.WithColor(plotpage.BadgeError)
-	case riskHigh:
+	case RiskHigh:
 		badge.WithColor(plotpage.BadgeWarning)
-	case riskMedium:
+	case RiskMedium:
 		badge.WithColor(plotpage.BadgeInfo)
 	default:
 		badge.WithColor(plotpage.BadgeSuccess)

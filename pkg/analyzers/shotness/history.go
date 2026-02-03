@@ -3,13 +3,13 @@ package shotness
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -455,50 +455,46 @@ func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
 
 // Serialize writes the analysis result to the given writer.
 func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatJSON:
+		return s.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return s.serializeYAML(result, writer)
+	case analyze.FormatPlot:
 		return s.generatePlot(result, writer)
+	default:
+		return s.serializeYAML(result, writer)
+	}
+}
+
+func (s *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	nodes, ok := result["Nodes"].([]NodeSummary)
-	if !ok {
-		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	counters, ok := result["Counters"].([]map[int]int)
-	if !ok {
-		return errors.New("expected []map[int]int for counters") //nolint:err113 // descriptive error for type assertion failure.
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
 	}
 
-	for i, summary := range nodes {
-		fmt.Fprintf(writer, "  - name: %s\n    file: %s\n    internal_role: %s\n    counters: {",
-			summary.Name, summary.File, summary.Type)
-
-		keys := make([]int, 0, len(counters[i]))
-		for key := range counters[i] {
-			keys = append(keys, key)
-		}
-
-		sort.Ints(keys)
-
-		for j, key := range keys {
-			val := counters[i][key]
-			if j < len(keys)-1 {
-				fmt.Fprintf(writer, "\"%d\":%d,", key, val)
-			} else {
-				fmt.Fprintf(writer, "\"%d\":%d", key, val)
-			}
-		}
-
-		fmt.Fprintln(writer, "}")
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil

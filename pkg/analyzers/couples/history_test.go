@@ -2,10 +2,11 @@ package couples //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -209,7 +210,7 @@ func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{}
@@ -218,37 +219,78 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 	pm := []map[int]int64{{1: 5}, {0: 5}}
 
 	report := analyze.Report{
-		"Files":              []string{"f1", "f2"},
+		"Files":              []string{"f1.go", "f2.go"},
 		"FilesLines":         []int{10, 20},
 		"FilesMatrix":        fm,
 		"PeopleMatrix":       pm,
 		"PeopleFiles":        [][]int{{0, 1}, {0}},
 		"ReversedPeopleDict": []string{"dev0", "dev1"},
-		"PeopleCommits":      []int{5, 3},
 	}
 
-	// YAML.
 	var buf bytes.Buffer
+	err := c.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
 
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Should have computed metrics structure
+	assert.Contains(t, result, "file_coupling")
+	assert.Contains(t, result, "developer_coupling")
+	assert.Contains(t, result, "file_ownership")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{}
+
+	fm := []map[int]int64{{1: 3}, {0: 3}}
+	pm := []map[int]int64{{1: 5}, {0: 5}}
+
+	report := analyze.Report{
+		"Files":              []string{"f1.go", "f2.go"},
+		"FilesLines":         []int{10, 20},
+		"FilesMatrix":        fm,
+		"PeopleMatrix":       pm,
+		"PeopleFiles":        [][]int{{0, 1}, {0}},
+		"ReversedPeopleDict": []string{"dev0", "dev1"},
+	}
+
+	var buf bytes.Buffer
 	err := c.Serialize(report, analyze.FormatYAML, &buf)
-	if err != nil {
-		t.Fatalf("Serialize YAML failed: %v", err)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Should have computed metrics structure (YAML keys)
+	assert.Contains(t, output, "file_coupling:")
+	assert.Contains(t, output, "developer_coupling:")
+	assert.Contains(t, output, "file_ownership:")
+	assert.Contains(t, output, "aggregate:")
+}
+
+func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{}
+
+	report := analyze.Report{
+		"Files":              []string{"f1.go"},
+		"FilesLines":         []int{10},
+		"FilesMatrix":        []map[int]int64{{}},
+		"PeopleMatrix":       []map[int]int64{{}},
+		"PeopleFiles":        [][]int{{}},
+		"ReversedPeopleDict": []string{"dev0"},
 	}
 
-	if !strings.Contains(buf.String(), "f1") {
-		t.Error("expected f1 in output")
-	}
+	var buf bytes.Buffer
+	err := c.Serialize(report, analyze.FormatBinary, &buf)
+	require.NoError(t, err)
 
-	// Binary.
-	var pbuf bytes.Buffer
-
-	err = c.Serialize(report, analyze.FormatBinary, &pbuf)
-	if err != nil {
-		t.Fatalf("Serialize Binary failed: %v", err)
-	}
-
-	if pbuf.Len() == 0 {
-		t.Error("expected binary output")
+	if buf.Len() == 0 {
+		t.Error("expected output for default format")
 	}
 }
 

@@ -94,6 +94,61 @@ uast:
         uast_role: "Name"
 ```
 
-## 3. Contributing
+## 3. Implementing MetricsOutput for JSON/YAML Output
+
+To enable your analyzer's computed metrics to be rendered as JSON or YAML, implement the `MetricsOutput` interface from `pkg/analyzers/common/renderer`.
+
+### The MetricsOutput Interface
+
+```go
+type MetricsOutput interface {
+    // AnalyzerName returns the analyzer identifier (e.g., "devs", "burndown").
+    AnalyzerName() string
+
+    // ToJSON returns a struct suitable for JSON marshaling.
+    ToJSON() any
+
+    // ToYAML returns a struct suitable for YAML marshaling.
+    // For most analyzers, this can return the same value as ToJSON.
+    ToYAML() any
+}
+```
+
+### Example Implementation
+
+Add these methods to your `ComputedMetrics` struct:
+
+```go
+// AnalyzerName returns the analyzer identifier.
+func (m *ComputedMetrics) AnalyzerName() string {
+    return "myanalyzer"
+}
+
+// ToJSON returns the metrics in JSON-serializable format.
+func (m *ComputedMetrics) ToJSON() any {
+    return m
+}
+
+// ToYAML returns the metrics in YAML-serializable format.
+func (m *ComputedMetrics) ToYAML() any {
+    return m
+}
+```
+
+### Using the Render Helpers
+
+The renderer package provides helper functions:
+
+```go
+import "github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+
+// Render to JSON
+jsonBytes, err := renderer.RenderMetricsJSON(computedMetrics)
+
+// Render to YAML
+yamlBytes, err := renderer.RenderMetricsYAML(computedMetrics)
+```
+
+## 4. Contributing
 
 Please read `CONTRIBUTING.md` (if available) and ensure you run the full test suite before submitting a PR.
