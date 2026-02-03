@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -22,7 +23,7 @@ const (
 var ErrInvalidTypos = errors.New("invalid typos report: expected []Typo for typos")
 
 func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := t.GenerateChart(report)
+	sections, err := t.GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -31,27 +32,44 @@ func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		"Typo Analysis",
 		"Tracking typo corrections across the codebase",
 	)
-	page.Add(plotpage.Section{
-		Title:    "Typo-Prone Files",
-		Subtitle: "Files ranked by number of typo fixes detected in commit history.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Tall bars = files where typos are frequently fixed",
-				"Documentation files = expected to have more text-related fixes",
-				"Code files = typos may indicate hasty commits",
-				"Look for: Code files with unusually high typo rates",
-				"Action: Consider adding spell-checking to pre-commit hooks",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
 }
 
-// GenerateChart creates a bar chart showing typo-prone files.
-func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
+// GenerateSections returns the sections for combined reports.
+func (t *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := t.generateChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Typo-Prone Files",
+			Subtitle: "Files ranked by number of typo fixes detected in commit history.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Tall bars = files where typos are frequently fixed",
+					"Documentation files = expected to have more text-related fixes",
+					"Code files = typos may indicate hasty commits",
+					"Look for: Code files with unusually high typo rates",
+					"Action: Consider adding spell-checking to pre-commit hooks",
+				},
+			},
+		},
+	}, nil
+}
+
+// GenerateChart implements PlotGenerator interface.
+func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return t.generateChart(report)
+}
+
+// generateChart creates a bar chart showing typo-prone files.
+func (t *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
 	typos, ok := report["typos"].([]Typo)
 	if !ok {
 		return nil, ErrInvalidTypos
@@ -64,13 +82,39 @@ func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, err
 	counts := countTyposPerFile(typos)
 	labels, data := topTypoFiles(counts, topFilesLimit)
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return plotpage.NewBarChart(style).
-		XAxis(labels, xAxisRotate).
-		YAxis("Typo Count").
-		Series("Typos", data, "#fac858").
-		Build(), nil
+	return createTyposBarChart(labels, data, co, palette), nil
+}
+
+func createTyposBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(opts.XAxis{
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
+		}),
+		charts.WithYAxisOpts(co.YAxis("Typo Count")),
+	)
+	bar.SetXAxis(labels)
+
+	barData := make([]opts.BarData, len(data))
+	for i, v := range data {
+		barData[i] = opts.BarData{Value: v}
+	}
+
+	bar.AddSeries("Typos", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Warning}))
+
+	return bar
 }
 
 func countTyposPerFile(typos []Typo) map[string]int {
@@ -112,12 +156,11 @@ func topTypoFiles(counts map[string]int, limit int) (labels []string, data []int
 }
 
 func createEmptyTyposChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Typo-Prone Files", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Typo-Prone Files", "No data")),
 	)
 
 	return bar

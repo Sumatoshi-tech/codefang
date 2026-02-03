@@ -45,6 +45,7 @@ type ThemeConfig struct {
 	ChartGrid       string
 	ChartAxis       string
 	ChartText       string
+	ChartTextMuted  string
 
 	// ECharts theme name
 	EChartsTheme string
@@ -116,10 +117,11 @@ var lightTheme = ThemeConfig{
 	InfoSubtle:    "#dbeafe", // blue-100
 
 	// Chart
-	ChartBackground: "#ffffff",
-	ChartGrid:       "#e7e5e4",
-	ChartAxis:       "#78716c",
-	ChartText:       "#44403c",
+	ChartBackground: "transparent",
+	ChartGrid:       "#e7e5e4", // stone-200
+	ChartAxis:       "#a8a29e", // stone-400
+	ChartText:       "#44403c", // stone-700
+	ChartTextMuted:  "#78716c", // stone-500
 
 	EChartsTheme: "",
 }
@@ -155,12 +157,13 @@ var darkTheme = ThemeConfig{
 	InfoSubtle:    "#1e3a8a", // blue-900
 
 	// Chart
-	ChartBackground: "#1c1917",
-	ChartGrid:       "#44403c",
-	ChartAxis:       "#a8a29e",
-	ChartText:       "#d6d3d1",
+	ChartBackground: "transparent",
+	ChartGrid:       "#44403c", // stone-700
+	ChartAxis:       "#57534e", // stone-600
+	ChartText:       "#d6d3d1", // stone-300
+	ChartTextMuted:  "#a8a29e", // stone-400
 
-	EChartsTheme: "dark",
+	EChartsTheme: "",
 }
 
 //nolint:gochecknoglobals // theme configuration constants

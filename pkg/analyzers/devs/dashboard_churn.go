@@ -36,42 +36,18 @@ func createChurnChart(data *DashboardData) *charts.Bar {
 	added, removed := computeChurnData(tickKeys, data.Ticks)
 	xLabels := buildChurnLabels(tickKeys)
 
+	co := plotpage.DefaultChartOpts()
+
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: "100%", Height: churnChartHeight, Theme: "dark",
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:      "Code Churn",
-			Subtitle:   "Lines added vs removed over time",
-			Left:       "center",
-			TitleStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(true), Top: "10%", Left: "center",
-			TextStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithGridOpts(opts.Grid{
-			Top: "20%", Bottom: "15%", Left: "5%", Right: "5%",
-			ContainLabel: opts.Bool(true),
-		}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name:      "Time (tick)",
-			AxisLabel: &opts.AxisLabel{Color: "#a8a29e"},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name:      "Lines",
-			AxisLabel: &opts.AxisLabel{Color: "#a8a29e"},
-			SplitLine: &opts.SplitLine{
-				Show:      opts.Bool(true),
-				LineStyle: &opts.LineStyle{Color: "rgba(255,255,255,0.1)"},
-			},
-		}),
+		charts.WithInitializationOpts(co.Init("100%", churnChartHeight)),
+		charts.WithTitleOpts(co.Title("Code Churn", "Lines added vs removed over time")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithLegendOpts(co.Legend()),
+		charts.WithGridOpts(co.GridCompact()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(co.XAxis("Time (tick)")),
+		charts.WithYAxisOpts(co.YAxis("Lines")),
 	)
 
 	bar.SetXAxis(xLabels)

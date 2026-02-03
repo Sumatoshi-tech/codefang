@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -13,7 +14,6 @@ import (
 
 const (
 	heatMapHeight    = "650px"
-	dataZoomEnd      = 100
 	labelRotate      = 60
 	labelFontSize    = 10
 	innerLabelSize   = 9
@@ -27,7 +27,7 @@ var ErrInvalidMatrix = errors.New("invalid couples report: expected []map[int]in
 var ErrInvalidNames = errors.New("invalid couples report: expected []string for ReversedPeopleDict")
 
 func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := c.GenerateChart(report)
+	sections, err := c.GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -36,27 +36,44 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		"Developer Coupling Analysis",
 		"Co-occurrence patterns between developers based on commit history",
 	)
-	page.Add(plotpage.Section{
-		Title:    "Developer Coupling Heatmap",
-		Subtitle: "Shows how often developers work on the same files in the same commits.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"High values on diagonal = individual developer activity",
-				"High off-diagonal values = developers frequently working on the same code",
-				"Symmetric patterns = collaborative pairs who often commit together",
-				"Look for: Isolated developers or tight clusters",
-				"Action: High coupling may indicate knowledge sharing or ownership issues",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
 }
 
-// GenerateChart creates a heatmap chart showing developer coupling.
-func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.HeatMap, error) {
+// GenerateSections returns the sections for combined reports.
+func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := c.generateChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Developer Coupling Heatmap",
+			Subtitle: "Shows how often developers work on the same files in the same commits.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"High values on diagonal = individual developer activity",
+					"High off-diagonal values = developers frequently working on the same code",
+					"Symmetric patterns = collaborative pairs who often commit together",
+					"Look for: Isolated developers or tight clusters",
+					"Action: High coupling may indicate knowledge sharing or ownership issues",
+				},
+			},
+		},
+	}, nil
+}
+
+// GenerateChart implements PlotGenerator interface.
+func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return c.generateChart(report)
+}
+
+// generateChart creates a heatmap chart showing developer coupling.
+func (c *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.HeatMap, error) {
 	matrix, ok := report["PeopleMatrix"].([]map[int]int64)
 	if !ok {
 		return nil, ErrInvalidMatrix
@@ -71,10 +88,10 @@ func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.HeatMap,
 		return createEmptyHeatMap(), nil
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 	maxVal := findMaxValue(matrix)
 	data := buildHeatMapData(matrix, names)
-	hm := createHeatMapChart(names, maxVal, data, style)
+	hm := createHeatMapChart(names, maxVal, data, co)
 
 	return hm, nil
 }
@@ -107,32 +124,30 @@ func buildHeatMapData(matrix []map[int]int64, names []string) []opts.HeatMapData
 	return data
 }
 
-func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, style plotpage.Style) *charts.HeatMap {
+func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, co *plotpage.ChartOpts) *charts.HeatMap {
 	hm := charts.NewHeatMap()
 	hm.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: heatMapHeight}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithInitializationOpts(co.Init("100%", heatMapHeight)),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
 			Type: "category", Data: names,
 			SplitArea: &opts.SplitArea{Show: opts.Bool(true)},
-			AxisLabel: &opts.AxisLabel{Rotate: labelRotate, Interval: "0", FontSize: labelFontSize},
+			AxisLabel: &opts.AxisLabel{Rotate: labelRotate, Interval: "0", FontSize: labelFontSize, Color: co.TextMutedColor()},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
 			Type: "category", Data: names,
 			SplitArea: &opts.SplitArea{Show: opts.Bool(true)},
-			AxisLabel: &opts.AxisLabel{FontSize: labelFontSize},
+			AxisLabel: &opts.AxisLabel{FontSize: labelFontSize, Color: co.TextMutedColor()},
 		}),
 		charts.WithVisualMapOpts(opts.VisualMap{
 			Calculable: opts.Bool(true), Min: 0, Max: float32(maxVal),
 			InRange: &opts.VisualMapInRange{Color: []string{"#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"}},
 			Orient:  "horizontal", Left: "center", Bottom: "2%",
+			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
 		}),
 		charts.WithGridOpts(opts.Grid{
-			Left: "20%", Right: style.GridRight, Top: style.GridTop, Bottom: "20%",
+			Left: "20%", Right: "5%", Top: "40", Bottom: "20%",
 		}),
 	)
 	hm.AddSeries("Coupling", data, charts.WithLabelOpts(opts.Label{
@@ -143,12 +158,11 @@ func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, s
 }
 
 func createEmptyHeatMap() *charts.HeatMap {
+	co := plotpage.DefaultChartOpts()
 	hm := charts.NewHeatMap()
 	hm.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Developer Coupling", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Developer Coupling", "No data")),
 	)
 
 	return hm

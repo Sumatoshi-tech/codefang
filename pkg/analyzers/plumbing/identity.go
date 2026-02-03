@@ -25,6 +25,12 @@ type IdentityDetector struct {
 	ReversedPeopleDict []string
 	AuthorID           int
 	ExactSignatures    bool
+	// incrementalEmails and incrementalNames are used when building the dict incrementally
+	// during Consume() when commits aren't available during Configure().
+	incrementalEmails map[int][]string
+	incrementalNames  map[int][]string
+	incrementalSize   int
+	dictFinalized     bool
 }
 
 const (
@@ -102,30 +108,63 @@ func (d *IdentityDetector) Configure(facts map[string]any) error {
 
 // Initialize prepares the analyzer for processing commits.
 func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
+	// If PeopleDict is already set (from Configure), mark as finalized.
+	if d.PeopleDict != nil {
+		d.dictFinalized = true
+		return nil
+	}
+
+	// Initialize for incremental building during Consume().
+	d.PeopleDict = make(map[string]int)
+	d.incrementalEmails = make(map[int][]string)
+	d.incrementalNames = make(map[int][]string)
+	d.incrementalSize = 0
+	d.dictFinalized = false
+
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
 func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
+	signature := commit.Author()
 
 	var authorID int
 
 	var exists bool
 
-	signature := commit.Author()
-	if !d.ExactSignatures {
-		authorID, exists = d.PeopleDict[strings.ToLower(signature.Email)]
-		if !exists {
-			authorID, exists = d.PeopleDict[strings.ToLower(signature.Name)]
+	if d.ExactSignatures {
+		// For exact signatures, combine name and email.
+		sigStr := strings.ToLower(fmt.Sprintf("%s <%s>", signature.Name, signature.Email))
+		authorID, exists = d.PeopleDict[sigStr]
+
+		// If not finalized, register new identity incrementally.
+		if !exists && !d.dictFinalized {
+			authorID = d.incrementalSize
+			d.PeopleDict[sigStr] = authorID
+			d.incrementalSize++
 		}
 	} else {
-		// For exact signatures, combine name and email.
-		sigStr := fmt.Sprintf("%s <%s>", signature.Name, signature.Email)
-		authorID, exists = d.PeopleDict[strings.ToLower(sigStr)]
+		email := strings.ToLower(signature.Email)
+		name := strings.ToLower(signature.Name)
+
+		authorID, exists = d.PeopleDict[email]
+		if !exists {
+			authorID, exists = d.PeopleDict[name]
+		}
+
+		// If not finalized, register new identity incrementally using loose matching.
+		if !exists && !d.dictFinalized {
+			d.incrementalSize = registerLooseIdentity(
+				d.PeopleDict, d.incrementalEmails, d.incrementalNames,
+				email, name, d.incrementalSize,
+			)
+			// Get the ID after registration.
+			authorID = d.PeopleDict[email]
+		}
 	}
 
-	if !exists {
+	if !exists && d.dictFinalized {
 		authorID = identity.AuthorMissing
 	}
 
@@ -254,6 +293,28 @@ func registerLooseIdentity(dict map[string]int, emails, names map[int][]string, 
 
 // Finalize completes the analysis and returns the result.
 func (d *IdentityDetector) Finalize() (analyze.Report, error) {
+	// Build ReversedPeopleDict from incrementally collected data if needed.
+	if !d.dictFinalized && d.incrementalSize > 0 {
+		d.ReversedPeopleDict = make([]string, d.incrementalSize)
+
+		if d.ExactSignatures {
+			// For exact signatures, reverse the dict directly.
+			for key, val := range d.PeopleDict {
+				d.ReversedPeopleDict[val] = key
+			}
+		} else {
+			// For loose matching, build readable names from emails and names.
+			for id := range d.incrementalSize {
+				sort.Strings(d.incrementalNames[id])
+				sort.Strings(d.incrementalEmails[id])
+				d.ReversedPeopleDict[id] = strings.Join(d.incrementalNames[id], "|") +
+					"|" + strings.Join(d.incrementalEmails[id], "|")
+			}
+		}
+
+		d.dictFinalized = true
+	}
+
 	return nil, nil //nolint:nilnil // nil,nil return is intentional.
 }
 

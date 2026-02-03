@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -22,7 +23,7 @@ const (
 var ErrInvalidImports = errors.New("invalid imports report: expected Map for imports")
 
 func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := h.GenerateChart(report)
+	sections, err := h.GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -31,27 +32,44 @@ func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		"Import Usage Analysis",
 		"Tracking dependency usage patterns over project history",
 	)
-	page.Add(plotpage.Section{
-		Title:    "Top Imports Usage",
-		Subtitle: "Most frequently added imports across the codebase.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Tall bars = frequently used imports (core dependencies)",
-				"External libraries = check for outdated or redundant dependencies",
-				"Standard library imports = indicate code patterns",
-				"Look for: Unexpected dependencies or duplicate functionality",
-				"Action: Consider consolidating similar imports",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
 }
 
-// GenerateChart creates a bar chart showing top imports by usage.
-func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
+// GenerateSections returns the sections for combined reports.
+func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := h.generateChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Top Imports Usage",
+			Subtitle: "Most frequently added imports across the codebase.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Tall bars = frequently used imports (core dependencies)",
+					"External libraries = check for outdated or redundant dependencies",
+					"Standard library imports = indicate code patterns",
+					"Look for: Unexpected dependencies or duplicate functionality",
+					"Action: Consider consolidating similar imports",
+				},
+			},
+		},
+	}, nil
+}
+
+// GenerateChart implements PlotGenerator interface.
+func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return h.generateChart(report)
+}
+
+// generateChart creates a bar chart showing top imports by usage.
+func (h *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Bar, error) {
 	imports, ok := report["imports"].(Map)
 	if !ok {
 		return nil, ErrInvalidImports
@@ -64,13 +82,39 @@ func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, err
 	counts := aggregateImportCounts(imports)
 	labels, data := topImports(counts, topImportsLimit)
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return plotpage.NewBarChart(style).
-		XAxis(labels, xAxisRotate).
-		YAxis("Usage Count").
-		Series("Usage", data, "#5470c6").
-		Build(), nil
+	return createImportsBarChart(labels, data, co, palette), nil
+}
+
+func createImportsBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(opts.XAxis{
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
+		}),
+		charts.WithYAxisOpts(co.YAxis("Usage Count")),
+	)
+	bar.SetXAxis(labels)
+
+	barData := make([]opts.BarData, len(data))
+	for i, v := range data {
+		barData[i] = opts.BarData{Value: v}
+	}
+
+	bar.AddSeries("Usage", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}))
+
+	return bar
 }
 
 func aggregateImportCounts(imports Map) map[string]int64 {
@@ -119,12 +163,11 @@ func topImports(counts map[string]int64, limit int) (labels []string, data []int
 }
 
 func createEmptyImportsChart() *charts.Bar {
+	co := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Top Imports", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Top Imports", "No data")),
 	)
 
 	return bar

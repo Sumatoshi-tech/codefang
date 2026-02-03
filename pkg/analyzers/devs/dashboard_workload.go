@@ -34,18 +34,13 @@ func createWorkloadTreemap(data *DashboardData) *charts.TreeMap {
 
 	rootNodes := buildTreemapNodes(data)
 
+	co := plotpage.DefaultChartOpts()
+
 	tm := charts.NewTreeMap()
 	tm.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: "100%", Height: treemapHeight, Theme: "dark",
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:      "Workload Distribution",
-			Subtitle:   "Developers grouped by primary language, sized by commits",
-			Left:       "center",
-			TitleStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
+		charts.WithInitializationOpts(co.Init("100%", treemapHeight)),
+		charts.WithTitleOpts(co.Title("Workload Distribution", "Developers grouped by primary language, sized by commits")),
+		charts.WithTooltipOpts(co.Tooltip("item")),
 	)
 
 	tm.AddSeries("Workload", rootNodes, charts.WithTreeMapOpts(opts.TreeMapChart{

@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -32,7 +33,7 @@ func GeneratePlot(report analyze.Report, writer io.Writer) error {
 }
 
 // GenerateChart creates a stacked bar chart showing developer activity over time.
-func GenerateChart(report analyze.Report) (*charts.Bar, error) {
+func GenerateChart(report analyze.Report) (components.Charter, error) {
 	ticks, ok := report["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return nil, ErrInvalidTicks
@@ -48,12 +49,12 @@ func GenerateChart(report analyze.Report) (*charts.Bar, error) {
 		return createEmptyBar(), nil
 	}
 
-	style := plotpage.DefaultStyle()
+	co := plotpage.DefaultChartOpts()
 	devTotals := computeDevTotals(ticks)
 	topDevs := topNByValue(devTotals, maxDevs)
 	xLabels := buildXLabels(tickKeys)
 
-	bar := createBarChart(style)
+	bar := createBarChart(co)
 	bar.SetXAxis(xLabels)
 	addDevSeries(bar, topDevs, tickKeys, ticks, names)
 
@@ -69,8 +70,13 @@ func (d *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 }
 
 // GenerateChart creates a chart for the history analyzer.
-func (d *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Bar, error) {
+func (d *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	return GenerateChart(report)
+}
+
+// GenerateSections returns the dashboard sections for combined reports.
+func (d *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	return GenerateSections(report)
 }
 
 // GenerateDashboardForAnalyzer creates the full dashboard for this analyzer.
@@ -99,28 +105,24 @@ func buildXLabels(tickKeys []int) []string {
 	return xLabels
 }
 
-func createBarChart(style plotpage.Style) *charts.Bar {
+func createBarChart(co *plotpage.ChartOpts) *charts.Bar {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(true), Type: "scroll", Top: "0", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: chartHeight}),
-		charts.WithGridOpts(opts.Grid{
-			Top: "15%", Bottom: style.GridBottom,
-			Left: style.GridLeft, Right: style.GridRight,
-			ContainLabel: opts.Bool(true),
-		}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
+		charts.WithInitializationOpts(co.Init("100%", chartHeight)),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithLegendOpts(co.Legend()),
+		charts.WithGridOpts(co.Grid()),
+		charts.WithDataZoomOpts(co.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
-			Name:      "Time (tick)",
-			AxisLabel: &opts.AxisLabel{Rotate: xAxisRotate, FontSize: labelFontSize},
+			Name: "Time (tick)",
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				FontSize: labelFontSize,
+				Color:    co.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(opts.YAxis{Name: "Commits"}),
+		charts.WithYAxisOpts(co.YAxis("Commits")),
 	)
 
 	return bar

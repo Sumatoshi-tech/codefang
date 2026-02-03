@@ -34,30 +34,15 @@ func createLanguagesRadar(data *DashboardData) *charts.Radar {
 	indicators := buildRadarIndicators(data)
 	radarData := buildRadarData(data)
 
+	co := plotpage.DefaultChartOpts()
+
 	radar := charts.NewRadar()
 	radar.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			Width: "100%", Height: radarHeight, Theme: "dark",
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:      "Language Expertise",
-			Subtitle:   "Radar chart showing developer expertise across languages",
-			Left:       "center",
-			TitleStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(true), Type: "scroll", Top: "10%", Left: "center",
-			TextStyle: &opts.TextStyle{Color: "#d6d3d1"},
-		}),
-		charts.WithRadarComponentOpts(opts.RadarComponent{
-			Indicator:   indicators,
-			Shape:       "polygon",
-			SplitNumber: radarSplitNum,
-			SplitLine:   &opts.SplitLine{Show: opts.Bool(true)},
-			SplitArea:   &opts.SplitArea{Show: opts.Bool(true)},
-			AxisLine:    &opts.AxisLine{Show: opts.Bool(true)},
-		}),
+		charts.WithInitializationOpts(co.Init("100%", radarHeight)),
+		charts.WithTitleOpts(co.Title("Language Expertise", "Radar chart showing developer expertise across languages")),
+		charts.WithTooltipOpts(co.Tooltip("item")),
+		charts.WithLegendOpts(co.Legend()),
+		charts.WithRadarComponentOpts(co.RadarComponent(indicators, radarSplitNum)),
 	)
 
 	for _, rd := range radarData {

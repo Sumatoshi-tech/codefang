@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -14,8 +15,6 @@ import (
 )
 
 const (
-	dataZoomEnd      = 100
-	labelFontSize    = 10
 	areaOpacity      = 0.3
 	emptyChartHeight = "400px"
 )
@@ -24,7 +23,7 @@ const (
 var ErrInvalidEmotions = errors.New("invalid sentiment report: expected map[int]float32 for emotions_by_tick")
 
 func (s *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	chart, err := s.GenerateChart(report)
+	sections, err := s.GenerateSections(report)
 	if err != nil {
 		return err
 	}
@@ -33,28 +32,45 @@ func (s *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		"Commit Sentiment Analysis",
 		"Emotional tone of commit messages over project lifetime",
 	)
-	page.Add(plotpage.Section{
-		Title:    "Sentiment History Over Time",
-		Subtitle: "Average sentiment score extracted from commit messages per time interval.",
-		Chart:    chart,
-		Hint: plotpage.Hint{
-			Title: "How to interpret:",
-			Items: []string{
-				"Positive values = generally positive/constructive commit messages",
-				"Negative values = frustration, urgency, or negative sentiment",
-				"Sudden drops = may indicate stressful periods or difficult bugs",
-				"Stable positive trend = healthy team communication",
-				"Look for: Correlation with release dates or team changes",
-				"Action: Investigate periods of sustained negative sentiment",
-			},
-		},
-	})
+	page.Add(sections...)
 
 	return page.Render(writer)
 }
 
-// GenerateChart creates a line chart showing sentiment over time.
-func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Line, error) {
+// GenerateSections returns the sections for combined reports.
+func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+	chart, err := s.generateChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return []plotpage.Section{
+		{
+			Title:    "Sentiment History Over Time",
+			Subtitle: "Average sentiment score extracted from commit messages per time interval.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Positive values = generally positive/constructive commit messages",
+					"Negative values = frustration, urgency, or negative sentiment",
+					"Sudden drops = may indicate stressful periods or difficult bugs",
+					"Stable positive trend = healthy team communication",
+					"Look for: Correlation with release dates or team changes",
+					"Action: Investigate periods of sustained negative sentiment",
+				},
+			},
+		},
+	}, nil
+}
+
+// GenerateChart implements PlotGenerator interface.
+func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+	return s.generateChart(report)
+}
+
+// generateChart creates a line chart showing sentiment over time.
+func (s *HistoryAnalyzer) generateChart(report analyze.Report) (*charts.Line, error) {
 	emotions, ok := report["emotions_by_tick"].(map[int]float32)
 	if !ok {
 		return nil, ErrInvalidEmotions
@@ -67,8 +83,9 @@ func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (*charts.Line, er
 	ticks := sortedTicks(emotions)
 	labels, data := buildSentimentData(ticks, emotions)
 
-	style := plotpage.DefaultStyle()
-	line := createSentimentChart(labels, data, style)
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
+	line := createSentimentChart(labels, data, co, palette)
 
 	return line, nil
 }
@@ -97,30 +114,20 @@ func buildSentimentData(ticks []int, emotions map[int]float32) ([]string, []opts
 	return labels, data
 }
 
-func createSentimentChart(labels []string, data []opts.LineData, style plotpage.Style) *charts.Line {
+func createSentimentChart(labels []string, data []opts.LineData, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Line {
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true), Trigger: "axis"}),
-		charts.WithInitializationOpts(opts.Initialization{Width: style.Width, Height: style.Height}),
-		charts.WithDataZoomOpts(
-			opts.DataZoom{Type: "slider", Start: 0, End: dataZoomEnd},
-			opts.DataZoom{Type: "inside"},
-		),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name:      "Time (tick)",
-			AxisLabel: &opts.AxisLabel{FontSize: labelFontSize},
-		}),
-		charts.WithYAxisOpts(opts.YAxis{Name: "Sentiment Score"}),
-		charts.WithGridOpts(opts.Grid{
-			Left: style.GridLeft, Right: style.GridRight,
-			Top: style.GridTop, Bottom: style.GridBottom,
-			ContainLabel: opts.Bool(true),
-		}),
+		charts.WithInitializationOpts(co.Init("100%", "500px")),
+		charts.WithTooltipOpts(co.Tooltip("axis")),
+		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithXAxisOpts(co.XAxis("Time (tick)")),
+		charts.WithYAxisOpts(co.YAxis("Sentiment Score")),
+		charts.WithGridOpts(co.Grid()),
 	)
 	line.SetXAxis(labels)
 	line.AddSeries("Sentiment", data,
 		charts.WithLineChartOpts(opts.LineChart{Smooth: opts.Bool(true)}),
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: "#91cc75"}),
+		charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Good}),
 		charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacity)}),
 	)
 
@@ -128,12 +135,11 @@ func createSentimentChart(labels []string, data []opts.LineData, style plotpage.
 }
 
 func createEmptySentimentChart() *charts.Line {
+	co := plotpage.DefaultChartOpts()
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title: "Sentiment History", Subtitle: "No data", Left: "center",
-		}),
-		charts.WithInitializationOpts(opts.Initialization{Width: "1200px", Height: emptyChartHeight}),
+		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(co.Title("Sentiment History", "No data")),
 	)
 
 	return line
