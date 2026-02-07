@@ -677,6 +677,82 @@ func BenchmarkMerge_Couples(b *testing.B) {
 	}
 }
 
+func BenchmarkFork_Sentiment(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &sentiment.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = analyzer.Fork(numForks)
+	}
+}
+
+func BenchmarkMerge_Sentiment(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &sentiment.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	forks := analyzer.Fork(numForks)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		analyzer.Merge(forks)
+	}
+}
+
+func BenchmarkFork_Shotness(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &shotness.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = analyzer.Fork(numForks)
+	}
+}
+
+func BenchmarkMerge_Shotness(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &shotness.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	forks := analyzer.Fork(numForks)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		analyzer.Merge(forks)
+	}
+}
+
 func BenchmarkFork_Typos(b *testing.B) {
 	const numForks = 4
 
@@ -699,6 +775,44 @@ func BenchmarkMerge_Typos(b *testing.B) {
 	const numForks = 4
 
 	analyzer := &typos.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	forks := analyzer.Fork(numForks)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		analyzer.Merge(forks)
+	}
+}
+
+func BenchmarkFork_Imports(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &imports.HistoryAnalyzer{}
+
+	err := analyzer.Initialize(nil)
+	if err != nil {
+		b.Fatalf("Initialize failed: %v", err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = analyzer.Fork(numForks)
+	}
+}
+
+func BenchmarkMerge_Imports(b *testing.B) {
+	const numForks = 4
+
+	analyzer := &imports.HistoryAnalyzer{}
 
 	err := analyzer.Initialize(nil)
 	if err != nil {

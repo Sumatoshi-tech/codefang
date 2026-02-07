@@ -17,11 +17,12 @@ var (
 
 // PatternMatcher compiles and matches S-expression patterns to Tree-sitter queries.
 type PatternMatcher struct {
-	cache  map[string]*sitter.Query
-	lang   *sitter.Language
-	mu     sync.RWMutex
-	hits   int64
-	misses int64
+	cache      map[string]*sitter.Query
+	lang       *sitter.Language
+	cursorPool sync.Pool
+	mu         sync.RWMutex
+	hits       int64
+	misses     int64
 }
 
 // NewPatternMatcher creates a new PatternMatcher with an empty cache and language.
@@ -29,6 +30,9 @@ func NewPatternMatcher(lang *sitter.Language) *PatternMatcher {
 	return &PatternMatcher{
 		cache: make(map[string]*sitter.Query),
 		lang:  lang,
+		cursorPool: sync.Pool{
+			New: func() any { return sitter.NewQueryCursor() },
+		},
 	}
 }
 
@@ -68,7 +72,10 @@ func (pm *PatternMatcher) CacheStats() (hits, misses int64) {
 
 // MatchPattern matches a compiled query against a Tree-sitter node and returns captures.
 func (pm *PatternMatcher) MatchPattern(query *sitter.Query, tsNode *sitter.Node, source []byte) (map[string]string, error) {
-	return matchTreeSitterQuery(query, tsNode, source)
+	cursor := pm.cursorPool.Get().(*sitter.QueryCursor)
+	defer pm.cursorPool.Put(cursor)
+
+	return matchTreeSitterQuery(query, cursor, tsNode, source)
 }
 
 // compileTreeSitterQuery compiles a pattern to a Tree-sitter query object.
@@ -86,12 +93,10 @@ func compileTreeSitterQuery(pattern string, lang *sitter.Language) (*sitter.Quer
 }
 
 // matchTreeSitterQuery matches a query against a node and returns the first set of captures as a map.
-func matchTreeSitterQuery(query *sitter.Query, tsNode *sitter.Node, source []byte) (map[string]string, error) {
+func matchTreeSitterQuery(query *sitter.Query, cursor *sitter.QueryCursor, tsNode *sitter.Node, source []byte) (map[string]string, error) {
 	if query == nil || tsNode == nil {
 		return nil, errNilQueryArg
 	}
-
-	cursor := sitter.NewQueryCursor()
 
 	// Use Matches with dereferenced node.
 	matches := cursor.Matches(query, *tsNode, source)

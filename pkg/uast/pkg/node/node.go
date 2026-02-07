@@ -150,6 +150,38 @@ type Positions struct {
 	EndOffset   uint `json:"end_offset,omitempty"`
 }
 
+// posPool is a [sync.Pool] for Positions structs to reduce allocation overhead.
+//
+//nolint:gochecknoglobals // Shared pool for positions allocation performance.
+var posPool = sync.Pool{
+	New: func() any {
+		return &Positions{}
+	},
+}
+
+// NewPositions returns a Positions from the pool, initialized with the given values.
+func NewPositions(startLine, startCol, startOffset, endLine, endCol, endOffset uint) *Positions {
+	p, ok := posPool.Get().(*Positions)
+	if !ok {
+		p = &Positions{}
+	}
+
+	p.StartLine = startLine
+	p.StartCol = startCol
+	p.StartOffset = startOffset
+	p.EndLine = endLine
+	p.EndCol = endCol
+	p.EndOffset = endOffset
+
+	return p
+}
+
+// Release returns a Positions to the pool for reuse.
+func (p *Positions) Release() {
+	*p = Positions{}
+	posPool.Put(p)
+}
+
 // Node is the canonical UAST node structure.
 //
 // Fields:

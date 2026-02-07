@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
 	"runtime/pprof"
 	"slices"
 	"strings"
@@ -47,11 +48,10 @@ var (
 		"no analyzers selected. Use -a flag, e.g.: -a burndown,couples\n" +
 			"Available: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
 	)
-	ErrUnknownAnalyzer      = errors.New("unknown analyzer")
-	ErrRepositoryLoad       = errors.New("failed to load repository")
-	ErrInvalidTimeFormat    = errors.New("cannot parse time")
-	ErrInvalidSizeFormat    = errors.New("invalid size format")
-	ErrInvalidStreamingMode = errors.New("invalid streaming mode")
+	ErrUnknownAnalyzer   = errors.New("unknown analyzer")
+	ErrRepositoryLoad    = errors.New("failed to load repository")
+	ErrInvalidTimeFormat = errors.New("cannot parse time")
+	ErrInvalidSizeFormat = errors.New("invalid size format")
 )
 
 // HistoryCommand holds the configuration for the history command.
@@ -61,6 +61,7 @@ type HistoryCommand struct {
 	head        bool
 	firstParent bool
 	cpuprofile  string
+	heapprofile string
 }
 
 // NewHistoryCommand creates and configures the history command.
@@ -91,6 +92,7 @@ Available analyzers:
 	cobraCmd.Flags().Int("limit", 0, "Limit number of commits to analyze (0 = no limit)")
 	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
 	cobraCmd.Flags().StringVar(&hc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
+	cobraCmd.Flags().StringVar(&hc.heapprofile, "heapprofile", "", "Write heap profile to file")
 
 	// Resource knob flags for tuning pipeline performance.
 	cobraCmd.Flags().Int("workers", 0, "Number of parallel workers (0 = use CPU count)")
@@ -100,7 +102,6 @@ Available analyzers:
 	cobraCmd.Flags().Int("diff-cache-size", 0, "Max diff cache entries (0 = default 10000)")
 	cobraCmd.Flags().String("blob-arena-size", "", "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)")
 	cobraCmd.Flags().String("memory-budget", "", "Memory budget for auto-tuning (e.g., '512MB', '2GB')")
-	cobraCmd.Flags().String("streaming-mode", "auto", "Streaming mode for large repos (auto, on, off)")
 
 	// Checkpoint flags.
 	cobraCmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
@@ -176,6 +177,7 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 	}
 
 	defer stopProfiler()
+	defer hc.maybeWriteHeapProfile()
 
 	if len(hc.analyzers) == 0 {
 		return ErrNoAnalyzersSelected
@@ -206,17 +208,12 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	streamMode, err := getStreamingMode(cmd)
-	if err != nil {
-		return err
-	}
-
 	cpConfig, err := getCheckpointConfig(cmd)
 	if err != nil {
 		return err
 	}
 
-	return hc.runPipeline(repository, uri, commits, hc.format, facts, coordConfig, memBudget, streamMode, cpConfig)
+	return hc.runPipeline(repository, uri, commits, hc.format, facts, coordConfig, memBudget, cpConfig)
 }
 
 func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
@@ -243,6 +240,26 @@ func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
 	}
 
 	return stopAndClose, nil
+}
+
+func (hc *HistoryCommand) maybeWriteHeapProfile() {
+	if hc.heapprofile == "" {
+		return
+	}
+
+	f, err := os.Create(hc.heapprofile)
+	if err != nil {
+		log.Printf("could not create heap profile: %v", err)
+
+		return
+	}
+	defer f.Close()
+
+	runtime.GC()
+
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Printf("could not write heap profile: %v", err)
+	}
 }
 
 func (hc *HistoryCommand) ensureBurndownFirstParent() {
@@ -315,21 +332,6 @@ func getCheckpointConfig(cmd *cobra.Command) (checkpointConfig, error) {
 	}
 
 	return cfg, nil
-}
-
-// getStreamingMode parses the --streaming-mode flag.
-func getStreamingMode(cmd *cobra.Command) (streaming.Mode, error) {
-	modeStr, err := cmd.Flags().GetString("streaming-mode")
-	if err != nil {
-		return streaming.ModeAuto, fmt.Errorf("failed to get streaming-mode flag: %w", err)
-	}
-
-	mode, err := streaming.ParseMode(modeStr)
-	if err != nil {
-		return streaming.ModeAuto, fmt.Errorf("%w: %s (use auto, on, or off)", ErrInvalidStreamingMode, modeStr)
-	}
-
-	return mode, nil
 }
 
 // buildCoordinatorConfigWithBudget builds CoordinatorConfig and returns the memory budget if set.
@@ -652,7 +654,7 @@ func parseTime(s string) (time.Time, error) {
 
 func (hc *HistoryCommand) runPipeline(
 	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
-	facts map[string]any, coordConfig framework.CoordinatorConfig, memBudget int64, streamMode streaming.Mode,
+	facts map[string]any, coordConfig framework.CoordinatorConfig, memBudget int64,
 	cpConfig checkpointConfig,
 ) error {
 	pl := newAnalyzerPipeline(repository)
@@ -671,17 +673,14 @@ func (hc *HistoryCommand) runPipeline(
 	allAnalyzers = append(allAnalyzers, pl.core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
-	// Determine if streaming mode should be used.
-	useStreaming := shouldUseStreaming(streamMode, len(commits), memBudget)
-
 	runner := framework.NewRunnerWithConfig(repository, repoPath, coordConfig, allAnalyzers...)
 
-	// Setup checkpoint manager if enabled and streaming.
+	// Setup checkpoint manager if enabled.
 	var cpManager *checkpoint.Manager
 
 	analyzerNames := hc.analyzers
 
-	if cpConfig.enabled && useStreaming {
+	if cpConfig.enabled {
 		repoHash := checkpoint.RepoHash(repoPath)
 		cpManager = checkpoint.NewManager(cpConfig.dir, repoHash)
 
@@ -693,15 +692,7 @@ func (hc *HistoryCommand) runPipeline(
 		}
 	}
 
-	var results map[analyze.HistoryAnalyzer]analyze.Report
-
-	var runErr error
-
-	if useStreaming {
-		results, runErr = runWithStreaming(runner, commits, memBudget, allAnalyzers, cpManager, repoPath, analyzerNames, cpConfig.resume)
-	} else {
-		results, runErr = runner.Run(commits)
-	}
+	results, runErr := runWithStreaming(runner, commits, memBudget, allAnalyzers, cpManager, repoPath, analyzerNames, cpConfig.resume)
 
 	if runErr != nil {
 		return fmt.Errorf("pipeline execution failed: %w", runErr)
@@ -716,25 +707,6 @@ func (hc *HistoryCommand) runPipeline(
 	}
 
 	return outputResults(selectedLeaves, results, format)
-}
-
-// shouldUseStreaming determines if streaming mode should be used based on mode, commit count, and budget.
-func shouldUseStreaming(mode streaming.Mode, commitCount int, memBudget int64) bool {
-	switch mode {
-	case streaming.ModeOn:
-		return true
-	case streaming.ModeOff:
-		return false
-	case streaming.ModeAuto:
-		detector := streaming.Detector{
-			CommitCount:  commitCount,
-			MemoryBudget: memBudget,
-		}
-
-		return detector.ShouldStream()
-	}
-
-	return false
 }
 
 // runWithStreaming executes the pipeline in streaming chunks.
