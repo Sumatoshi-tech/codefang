@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Complexity Analyzer Output",
+  "description": "JSON schema for the complexity analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "distribution": {
+      "$ref": "#/definitions/DistributionData"
+    },
+    "function_complexity": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FunctionComplexityData"
+      }
+    },
+    "high_risk_functions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HighRiskFunctionData"
+      }
+    }
+  },
+  "required": [
+    "function_complexity",
+    "distribution",
+    "high_risk_functions",
+    "aggregate"
+  ],
+  "definitions": {
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "average_complexity": {
+          "type": "number"
+        },
+        "cognitive_complexity": {
+          "type": "integer"
+        },
+        "decision_points": {
+          "type": "integer"
+        },
+        "health_score": {
+          "type": "number"
+        },
+        "max_complexity": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nesting_depth": {
+          "type": "integer"
+        },
+        "total_complexity": {
+          "type": "integer"
+        },
+        "total_functions": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_functions",
+        "average_complexity",
+        "max_complexity",
+        "total_complexity",
+        "cognitive_complexity",
+        "nesting_depth",
+        "decision_points",
+        "health_score",
+        "message"
+      ]
+    },
+    "DistributionData": {
+      "type": "object",
+      "properties": {
+        "complex": {
+          "type": "integer"
+        },
+        "moderate": {
+          "type": "integer"
+        },
+        "simple": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "simple",
+        "moderate",
+        "complex"
+      ]
+    },
+    "FunctionComplexityData": {
+      "type": "object",
+      "properties": {
+        "cognitive_complexity": {
+          "type": "integer"
+        },
+        "complexity_density": {
+          "type": "number"
+        },
+        "cyclomatic_complexity": {
+          "type": "integer"
+        },
+        "lines_of_code": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "nesting_depth": {
+          "type": "integer"
+        },
+        "risk_level": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cyclomatic_complexity",
+        "cognitive_complexity",
+        "nesting_depth",
+        "lines_of_code",
+        "complexity_density",
+        "risk_level"
+      ]
+    },
+    "HighRiskFunctionData": {
+      "type": "object",
+      "properties": {
+        "cognitive_complexity": {
+          "type": "integer"
+        },
+        "cyclomatic_complexity": {
+          "type": "integer"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "risk_level": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cyclomatic_complexity",
+        "cognitive_complexity",
+        "risk_level",
+        "issues"
+      ]
+    }
+  }
+}

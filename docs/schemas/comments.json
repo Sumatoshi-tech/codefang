@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Comments Analyzer Output",
+  "description": "JSON schema for the comments analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "comment_quality": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CommentQualityData"
+      }
+    },
+    "function_documentation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FunctionDocumentationData"
+      }
+    },
+    "undocumented_functions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/UndocumentedFunctionData"
+      }
+    }
+  },
+  "required": [
+    "comment_quality",
+    "function_documentation",
+    "undocumented_functions",
+    "aggregate"
+  ],
+  "definitions": {
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "bad_comments": {
+          "type": "integer"
+        },
+        "documentation_coverage": {
+          "type": "number"
+        },
+        "documented_functions": {
+          "type": "integer"
+        },
+        "good_comments": {
+          "type": "integer"
+        },
+        "good_comments_ratio": {
+          "type": "number"
+        },
+        "health_score": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        },
+        "overall_score": {
+          "type": "number"
+        },
+        "total_comments": {
+          "type": "integer"
+        },
+        "total_functions": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_comments",
+        "good_comments",
+        "bad_comments",
+        "overall_score",
+        "total_functions",
+        "documented_functions",
+        "good_comments_ratio",
+        "documentation_coverage",
+        "health_score",
+        "message"
+      ]
+    },
+    "CommentQualityData": {
+      "type": "object",
+      "properties": {
+        "line_number": {
+          "type": "integer"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "target_name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line_number",
+        "quality",
+        "type",
+        "target_name",
+        "score"
+      ]
+    },
+    "FunctionDocumentationData": {
+      "type": "object",
+      "properties": {
+        "documentation_score": {
+          "type": "number"
+        },
+        "is_documented": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "is_documented",
+        "documentation_score",
+        "status"
+      ]
+    },
+    "UndocumentedFunctionData": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "needs_comment": {
+          "type": "boolean"
+        },
+        "risk_level": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "needs_comment",
+        "risk_level"
+      ]
+    }
+  }
+}

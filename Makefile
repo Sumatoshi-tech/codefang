@@ -37,6 +37,7 @@ help:
 	@echo "  test             - Run all tests"
 	@echo "  lint             - Run linters and deadcode analysis"
 	@echo "  fmt              - Format code"
+	@echo "  schemas          - Generate JSON schemas for all analyzers"
 	@echo "  deadcode         - Run deadcode analysis with detailed output"
 	@echo "  deadcode-prod    - Run deadcode analysis excluding tests"
 	@echo "  deadcode-why     - Show why a function is not dead (FUNC=name)"
@@ -63,6 +64,16 @@ precompile: libgit2
 uastmaps-gen:
 	@echo "Generating UAST mappings..."
 	@python3 build/scripts/uastmapsgen/gen_uastmaps.py
+
+# Generate JSON schemas for all analyzers
+.PHONY: schemas
+schemas: libgit2
+	@echo "Generating JSON schemas..."
+	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_ENABLED=1 go run ./build/scripts/schemagen/schemagen.go -o docs/schemas
+	@echo "✓ Schemas generated in docs/schemas/"
 
 # Install binaries to user's local bin directory
 install: all
@@ -379,4 +390,3 @@ $(LIBGIT2_INSTALL)/lib64/libgit2.a:
 	cd $(LIBGIT2_BUILD) && cmake --build . --parallel
 	cd $(LIBGIT2_BUILD) && cmake --install .
 	@echo "✓ libgit2 built and installed to $(LIBGIT2_INSTALL)"
-

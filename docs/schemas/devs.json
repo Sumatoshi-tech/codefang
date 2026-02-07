@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Devs Analyzer Output",
+  "description": "JSON schema for the devs analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "activity": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityData"
+      }
+    },
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "busfactor": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/BusFactorData"
+      }
+    },
+    "churn": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ChurnData"
+      }
+    },
+    "developers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DeveloperData"
+      }
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LanguageData"
+      }
+    }
+  },
+  "required": [
+    "aggregate",
+    "developers",
+    "languages",
+    "busfactor",
+    "activity",
+    "churn"
+  ],
+  "definitions": {
+    "ActivityData": {
+      "type": "object",
+      "properties": {
+        "by_developer": {
+          "description": "Map with int keys and int values",
+          "type": "object"
+        },
+        "tick": {
+          "type": "integer"
+        },
+        "total_commits": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tick",
+        "by_developer",
+        "total_commits"
+      ]
+    },
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "active_developers": {
+          "type": "integer"
+        },
+        "analysis_period_ticks": {
+          "type": "integer"
+        },
+        "total_commits": {
+          "type": "integer"
+        },
+        "total_developers": {
+          "type": "integer"
+        },
+        "total_lines_added": {
+          "type": "integer"
+        },
+        "total_lines_removed": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_commits",
+        "total_lines_added",
+        "total_lines_removed",
+        "total_developers",
+        "active_developers",
+        "analysis_period_ticks"
+      ]
+    },
+    "BusFactorData": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "primary_dev_id": {
+          "type": "integer"
+        },
+        "primary_dev_name": {
+          "type": "string"
+        },
+        "primary_percentage": {
+          "type": "number"
+        },
+        "risk_level": {
+          "type": "string"
+        },
+        "secondary_dev_id": {
+          "type": "integer"
+        },
+        "secondary_dev_name": {
+          "type": "string"
+        },
+        "secondary_percentage": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "language",
+        "primary_dev_id",
+        "primary_dev_name",
+        "primary_percentage",
+        "risk_level"
+      ]
+    },
+    "ChurnData": {
+      "type": "object",
+      "properties": {
+        "lines_added": {
+          "type": "integer"
+        },
+        "lines_removed": {
+          "type": "integer"
+        },
+        "net_change": {
+          "type": "integer"
+        },
+        "tick": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tick",
+        "lines_added",
+        "lines_removed",
+        "net_change"
+      ]
+    },
+    "DeveloperData": {
+      "type": "object",
+      "properties": {
+        "active_ticks": {
+          "type": "integer"
+        },
+        "commits": {
+          "type": "integer"
+        },
+        "first_tick": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "languages": {
+          "description": "Map with string keys and struct values",
+          "type": "object"
+        },
+        "last_tick": {
+          "type": "integer"
+        },
+        "lines_added": {
+          "type": "integer"
+        },
+        "lines_changed": {
+          "type": "integer"
+        },
+        "lines_removed": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "net_lines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "commits",
+        "lines_added",
+        "lines_removed",
+        "lines_changed",
+        "net_lines",
+        "languages",
+        "first_tick",
+        "last_tick",
+        "active_ticks"
+      ]
+    },
+    "LanguageData": {
+      "type": "object",
+      "properties": {
+        "contributors": {
+          "description": "Map with int keys and int values",
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "total_lines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "total_lines",
+        "contributors"
+      ]
+    }
+  }
+}

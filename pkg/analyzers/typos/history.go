@@ -291,14 +291,28 @@ func (t *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 func (t *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		res[i] = t // Shared state.
+		clone := &HistoryAnalyzer{
+			MaximumAllowedDistance: t.MaximumAllowedDistance,
+			// Dependencies (UAST, FileDiff, BlobCache) are injected by framework.
+		}
+		clone.lcontext = &levenshtein.Context{}
+		clone.typos = nil // Fresh accumulator for this fork.
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (t *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (t *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		t.typos = append(t.typos, other.typos...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.

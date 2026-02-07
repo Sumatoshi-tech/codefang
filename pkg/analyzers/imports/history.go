@@ -264,18 +264,79 @@ func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only config.
 func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		// Use shared state legacy behavior for now.
-		forks[i] = h
+		clone := &HistoryAnalyzer{
+			TreeDiff:           h.TreeDiff,
+			BlobCache:          h.BlobCache,
+			Identity:           h.Identity,
+			Ticks:              h.Ticks,
+			reversedPeopleDict: h.reversedPeopleDict,
+			TickSize:           h.TickSize,
+			Goroutines:         h.Goroutines,
+			MaxFileSize:        h.MaxFileSize,
+			parser:             h.parser, // Parser is thread-safe for reads
+		}
+		// Initialize independent state for each fork
+		clone.imports = Map{}
+
+		forks[i] = clone
 	}
 
 	return forks
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		h.mergeImports(other.imports)
+	}
+}
+
+// mergeImports combines import data from another analyzer.
+func (h *HistoryAnalyzer) mergeImports(other Map) {
+	for author, otherLangs := range other {
+		h.ensureAuthor(author)
+		h.mergeAuthorImports(author, otherLangs)
+	}
+}
+
+// ensureAuthor ensures the author entry exists in imports map.
+func (h *HistoryAnalyzer) ensureAuthor(author int) {
+	if h.imports[author] == nil {
+		h.imports[author] = make(map[string]map[string]map[int]int64)
+	}
+}
+
+// mergeAuthorImports merges language imports for a specific author.
+func (h *HistoryAnalyzer) mergeAuthorImports(author int, otherLangs map[string]map[string]map[int]int64) {
+	for lang, otherImps := range otherLangs {
+		if h.imports[author][lang] == nil {
+			h.imports[author][lang] = make(map[string]map[int]int64)
+		}
+
+		h.mergeLangImports(author, lang, otherImps)
+	}
+}
+
+// mergeLangImports merges imports for a specific author and language.
+func (h *HistoryAnalyzer) mergeLangImports(author int, lang string, otherImps map[string]map[int]int64) {
+	for imp, otherTicks := range otherImps {
+		if h.imports[author][lang][imp] == nil {
+			h.imports[author][lang][imp] = make(map[int]int64)
+		}
+
+		for tick, count := range otherTicks {
+			h.imports[author][lang][imp][tick] += count
+		}
+	}
 }
 
 // Serialize writes the analysis result to the given writer.

@@ -199,18 +199,74 @@ func (h *Analyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets its own independent copies of mutable state.
 func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *h
-		res[i] = &clone
+		clone := &Analyzer{
+			Identity:  h.Identity,
+			TreeDiff:  h.TreeDiff,
+			LineStats: h.LineStats,
+		}
+		// Initialize independent state for each fork
+		clone.files = make(map[string]*FileHistory)
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*Analyzer)
+		if !ok {
+			continue
+		}
+
+		h.mergeFiles(other.files)
+		h.mergeMerges(other.merges)
+	}
+}
+
+// mergeFiles combines file histories from another analyzer.
+func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
+	for name, otherFH := range other {
+		if h.files[name] == nil {
+			h.files[name] = &FileHistory{
+				People: make(map[int]pkgplumbing.LineStats),
+			}
+		}
+
+		fh := h.files[name]
+
+		// Initialize People map if needed
+		if fh.People == nil {
+			fh.People = make(map[int]pkgplumbing.LineStats)
+		}
+
+		// Merge people stats (sum)
+		for person, stats := range otherFH.People {
+			existing := fh.People[person]
+			fh.People[person] = pkgplumbing.LineStats{
+				Added:   existing.Added + stats.Added,
+				Removed: existing.Removed + stats.Removed,
+				Changed: existing.Changed + stats.Changed,
+			}
+		}
+
+		// Append hashes
+		fh.Hashes = append(fh.Hashes, otherFH.Hashes...)
+	}
+}
+
+// mergeMerges combines merge commit tracking from another analyzer.
+func (h *Analyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		h.merges[hash] = true
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
