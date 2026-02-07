@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/spf13/cobra"
 
@@ -25,10 +26,19 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
+	"github.com/Sumatoshi-tech/codefang/pkg/budget"
+	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
+)
+
+// Maximum integer values for safe conversion from uint64.
+const (
+	maxInt   = int(^uint(0) >> 1)
+	maxInt64 = int64(^uint64(0) >> 1)
 )
 
 // Sentinel errors for the history command.
@@ -37,9 +47,11 @@ var (
 		"no analyzers selected. Use -a flag, e.g.: -a burndown,couples\n" +
 			"Available: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
 	)
-	ErrUnknownAnalyzer   = errors.New("unknown analyzer")
-	ErrRepositoryLoad    = errors.New("failed to load repository")
-	ErrInvalidTimeFormat = errors.New("cannot parse time")
+	ErrUnknownAnalyzer      = errors.New("unknown analyzer")
+	ErrRepositoryLoad       = errors.New("failed to load repository")
+	ErrInvalidTimeFormat    = errors.New("cannot parse time")
+	ErrInvalidSizeFormat    = errors.New("invalid size format")
+	ErrInvalidStreamingMode = errors.New("invalid streaming mode")
 )
 
 // HistoryCommand holds the configuration for the history command.
@@ -79,6 +91,22 @@ Available analyzers:
 	cobraCmd.Flags().Int("limit", 0, "Limit number of commits to analyze (0 = no limit)")
 	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
 	cobraCmd.Flags().StringVar(&hc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
+
+	// Resource knob flags for tuning pipeline performance.
+	cobraCmd.Flags().Int("workers", 0, "Number of parallel workers (0 = use CPU count)")
+	cobraCmd.Flags().Int("buffer-size", 0, "Size of internal pipeline channels (0 = workers×2)")
+	cobraCmd.Flags().Int("commit-batch-size", 0, "Commits per processing batch (0 = default 100)")
+	cobraCmd.Flags().String("blob-cache-size", "", "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)")
+	cobraCmd.Flags().Int("diff-cache-size", 0, "Max diff cache entries (0 = default 10000)")
+	cobraCmd.Flags().String("blob-arena-size", "", "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)")
+	cobraCmd.Flags().String("memory-budget", "", "Memory budget for auto-tuning (e.g., '512MB', '2GB')")
+	cobraCmd.Flags().String("streaming-mode", "auto", "Streaming mode for large repos (auto, on, off)")
+
+	// Checkpoint flags.
+	cobraCmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
+	cobraCmd.Flags().String("checkpoint-dir", "", "Checkpoint directory (default: ~/.codefang/checkpoints)")
+	cobraCmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
+	cobraCmd.Flags().Bool("clear-checkpoint", false, "Clear existing checkpoint before run")
 
 	registerAnalyzerFlags(cobraCmd)
 
@@ -173,7 +201,22 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 
 	facts := hc.buildFacts(cmd)
 
-	return hc.runPipeline(repository, uri, commits, hc.format, facts)
+	coordConfig, memBudget, err := buildCoordinatorConfigWithBudget(cmd)
+	if err != nil {
+		return err
+	}
+
+	streamMode, err := getStreamingMode(cmd)
+	if err != nil {
+		return err
+	}
+
+	cpConfig, err := getCheckpointConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	return hc.runPipeline(repository, uri, commits, hc.format, facts, coordConfig, memBudget, streamMode, cpConfig)
 }
 
 func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
@@ -231,6 +274,217 @@ func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
 	}
 
 	return facts
+}
+
+// checkpointConfig holds checkpoint-related configuration.
+type checkpointConfig struct {
+	enabled   bool
+	dir       string
+	resume    bool
+	clearPrev bool
+}
+
+// getCheckpointConfig parses checkpoint-related flags.
+func getCheckpointConfig(cmd *cobra.Command) (checkpointConfig, error) {
+	cfg := checkpointConfig{}
+
+	var err error
+
+	cfg.enabled, err = cmd.Flags().GetBool("checkpoint")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get checkpoint flag: %w", err)
+	}
+
+	cfg.dir, err = cmd.Flags().GetString("checkpoint-dir")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get checkpoint-dir flag: %w", err)
+	}
+
+	if cfg.dir == "" {
+		cfg.dir = checkpoint.DefaultDir()
+	}
+
+	cfg.resume, err = cmd.Flags().GetBool("resume")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get resume flag: %w", err)
+	}
+
+	cfg.clearPrev, err = cmd.Flags().GetBool("clear-checkpoint")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get clear-checkpoint flag: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// getStreamingMode parses the --streaming-mode flag.
+func getStreamingMode(cmd *cobra.Command) (streaming.Mode, error) {
+	modeStr, err := cmd.Flags().GetString("streaming-mode")
+	if err != nil {
+		return streaming.ModeAuto, fmt.Errorf("failed to get streaming-mode flag: %w", err)
+	}
+
+	mode, err := streaming.ParseMode(modeStr)
+	if err != nil {
+		return streaming.ModeAuto, fmt.Errorf("%w: %s (use auto, on, or off)", ErrInvalidStreamingMode, modeStr)
+	}
+
+	return mode, nil
+}
+
+// buildCoordinatorConfigWithBudget builds CoordinatorConfig and returns the memory budget if set.
+// Zero/empty values use defaults from framework.DefaultCoordinatorConfig().
+// If --memory-budget is specified, it takes precedence and auto-tunes knobs.
+func buildCoordinatorConfigWithBudget(cmd *cobra.Command) (framework.CoordinatorConfig, int64, error) {
+	// Check if memory budget is specified first.
+	memBudgetStr, err := cmd.Flags().GetString("memory-budget")
+	if err != nil {
+		return framework.CoordinatorConfig{}, 0, fmt.Errorf("failed to get memory-budget flag: %w", err)
+	}
+
+	if memBudgetStr != "" {
+		cfg, budgetErr := buildConfigFromBudget(memBudgetStr)
+		if budgetErr != nil {
+			return framework.CoordinatorConfig{}, 0, budgetErr
+		}
+
+		// Parse succeeded in buildConfigFromBudget, so this won't error.
+		budgetBytes, parseErr := humanize.ParseBytes(memBudgetStr)
+		if parseErr != nil {
+			return framework.CoordinatorConfig{}, 0, fmt.Errorf("failed to parse budget: %w", parseErr)
+		}
+
+		return cfg, safeInt64(budgetBytes), nil
+	}
+
+	// No budget specified, use manual knobs or defaults.
+	config := framework.DefaultCoordinatorConfig()
+
+	err = applyIntFlags(cmd, &config)
+	if err != nil {
+		return config, 0, err
+	}
+
+	err = applySizeFlags(cmd, &config)
+	if err != nil {
+		return config, 0, err
+	}
+
+	return config, 0, nil
+}
+
+// buildCoordinatorConfig builds CoordinatorConfig from CLI flags (legacy wrapper).
+func buildCoordinatorConfig(cmd *cobra.Command) (framework.CoordinatorConfig, error) {
+	cfg, _, err := buildCoordinatorConfigWithBudget(cmd)
+
+	return cfg, err
+}
+
+// buildConfigFromBudget creates a CoordinatorConfig from a memory budget string.
+func buildConfigFromBudget(budgetStr string) (framework.CoordinatorConfig, error) {
+	budgetBytes, err := humanize.ParseBytes(budgetStr)
+	if err != nil {
+		return framework.CoordinatorConfig{}, fmt.Errorf("%w for --memory-budget: %s", ErrInvalidSizeFormat, budgetStr)
+	}
+
+	cfg, err := budget.SolveForBudget(safeInt64(budgetBytes))
+	if err != nil {
+		return framework.CoordinatorConfig{}, fmt.Errorf("memory budget error: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// applyIntFlags applies integer flags to the config.
+func applyIntFlags(cmd *cobra.Command, config *framework.CoordinatorConfig) error {
+	workers, err := cmd.Flags().GetInt("workers")
+	if err != nil {
+		return fmt.Errorf("failed to get workers flag: %w", err)
+	}
+
+	if workers > 0 {
+		config.Workers = workers
+	}
+
+	bufferSize, err := cmd.Flags().GetInt("buffer-size")
+	if err != nil {
+		return fmt.Errorf("failed to get buffer-size flag: %w", err)
+	}
+
+	if bufferSize > 0 {
+		config.BufferSize = bufferSize
+	}
+
+	commitBatchSize, err := cmd.Flags().GetInt("commit-batch-size")
+	if err != nil {
+		return fmt.Errorf("failed to get commit-batch-size flag: %w", err)
+	}
+
+	if commitBatchSize > 0 {
+		config.CommitBatchSize = commitBatchSize
+	}
+
+	diffCacheSize, err := cmd.Flags().GetInt("diff-cache-size")
+	if err != nil {
+		return fmt.Errorf("failed to get diff-cache-size flag: %w", err)
+	}
+
+	if diffCacheSize > 0 {
+		config.DiffCacheSize = diffCacheSize
+	}
+
+	return nil
+}
+
+// applySizeFlags applies human-readable size flags to the config.
+func applySizeFlags(cmd *cobra.Command, config *framework.CoordinatorConfig) error {
+	blobCacheSizeStr, err := cmd.Flags().GetString("blob-cache-size")
+	if err != nil {
+		return fmt.Errorf("failed to get blob-cache-size flag: %w", err)
+	}
+
+	if blobCacheSizeStr != "" {
+		size, parseErr := humanize.ParseBytes(blobCacheSizeStr)
+		if parseErr != nil {
+			return fmt.Errorf("%w for --blob-cache-size: %s", ErrInvalidSizeFormat, blobCacheSizeStr)
+		}
+
+		config.BlobCacheSize = safeInt64(size)
+	}
+
+	blobArenaSizeStr, err := cmd.Flags().GetString("blob-arena-size")
+	if err != nil {
+		return fmt.Errorf("failed to get blob-arena-size flag: %w", err)
+	}
+
+	if blobArenaSizeStr != "" {
+		size, parseErr := humanize.ParseBytes(blobArenaSizeStr)
+		if parseErr != nil {
+			return fmt.Errorf("%w for --blob-arena-size: %s", ErrInvalidSizeFormat, blobArenaSizeStr)
+		}
+
+		config.BlobArenaSize = safeInt(size)
+	}
+
+	return nil
+}
+
+// safeInt64 converts uint64 to int64, clamping to maxInt64 to prevent overflow.
+func safeInt64(v uint64) int64 {
+	if v > uint64(maxInt64) {
+		return maxInt64
+	}
+
+	return int64(v)
+}
+
+// safeInt converts uint64 to int, clamping to maxInt to prevent overflow.
+func safeInt(v uint64) int {
+	if v > uint64(maxInt) {
+		return maxInt
+	}
+
+	return int(v)
 }
 
 // resolveRepoURI resolves the repository URI from command args.
@@ -398,7 +652,8 @@ func parseTime(s string) (time.Time, error) {
 
 func (hc *HistoryCommand) runPipeline(
 	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
-	facts map[string]any,
+	facts map[string]any, coordConfig framework.CoordinatorConfig, memBudget int64, streamMode streaming.Mode,
+	cpConfig checkpointConfig,
 ) error {
 	pl := newAnalyzerPipeline(repository)
 
@@ -416,14 +671,253 @@ func (hc *HistoryCommand) runPipeline(
 	allAnalyzers = append(allAnalyzers, pl.core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
-	runner := framework.NewRunner(repository, repoPath, allAnalyzers...)
+	// Determine if streaming mode should be used.
+	useStreaming := shouldUseStreaming(streamMode, len(commits), memBudget)
 
-	results, runErr := runner.Run(commits)
+	runner := framework.NewRunnerWithConfig(repository, repoPath, coordConfig, allAnalyzers...)
+
+	// Setup checkpoint manager if enabled and streaming.
+	var cpManager *checkpoint.Manager
+
+	analyzerNames := hc.analyzers
+
+	if cpConfig.enabled && useStreaming {
+		repoHash := checkpoint.RepoHash(repoPath)
+		cpManager = checkpoint.NewManager(cpConfig.dir, repoHash)
+
+		if cpConfig.clearPrev {
+			clearErr := cpManager.Clear()
+			if clearErr != nil {
+				log.Printf("warning: failed to clear checkpoint: %v", clearErr)
+			}
+		}
+	}
+
+	var results map[analyze.HistoryAnalyzer]analyze.Report
+
+	var runErr error
+
+	if useStreaming {
+		results, runErr = runWithStreaming(runner, commits, memBudget, allAnalyzers, cpManager, repoPath, analyzerNames, cpConfig.resume)
+	} else {
+		results, runErr = runner.Run(commits)
+	}
+
 	if runErr != nil {
 		return fmt.Errorf("pipeline execution failed: %w", runErr)
 	}
 
+	// Clear checkpoint on successful completion.
+	if cpManager != nil {
+		clearErr := cpManager.Clear()
+		if clearErr != nil {
+			log.Printf("warning: failed to clear checkpoint after completion: %v", clearErr)
+		}
+	}
+
 	return outputResults(selectedLeaves, results, format)
+}
+
+// shouldUseStreaming determines if streaming mode should be used based on mode, commit count, and budget.
+func shouldUseStreaming(mode streaming.Mode, commitCount int, memBudget int64) bool {
+	switch mode {
+	case streaming.ModeOn:
+		return true
+	case streaming.ModeOff:
+		return false
+	case streaming.ModeAuto:
+		detector := streaming.Detector{
+			CommitCount:  commitCount,
+			MemoryBudget: memBudget,
+		}
+
+		return detector.ShouldStream()
+	}
+
+	return false
+}
+
+// runWithStreaming executes the pipeline in streaming chunks.
+func runWithStreaming(
+	runner *framework.Runner,
+	commits []*gitlib.Commit,
+	memBudget int64,
+	analyzers []analyze.HistoryAnalyzer,
+	cpManager *checkpoint.Manager,
+	repoPath string,
+	analyzerNames []string,
+	resumeEnabled bool,
+) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	chunks := planChunks(len(commits), memBudget)
+	hibernatables := collectHibernatables(analyzers)
+	checkpointables := collectCheckpointables(analyzers)
+
+	log.Printf("streaming: processing %d commits in %d chunks", len(commits), len(chunks))
+
+	startChunk := 0
+
+	// Try to resume from checkpoint if enabled.
+	if cpManager != nil && resumeEnabled && cpManager.Exists() {
+		resumedChunk, err := tryResumeFromCheckpoint(cpManager, checkpointables, repoPath, analyzerNames)
+		if err != nil {
+			log.Printf("checkpoint: resume failed, starting fresh: %v", err)
+		} else if resumedChunk > 0 {
+			startChunk = resumedChunk
+			log.Printf("checkpoint: resuming from chunk %d", startChunk+1)
+		}
+	}
+
+	// Initialize once at the start (or after resume).
+	if startChunk == 0 {
+		err := runner.Initialize()
+		if err != nil {
+			return nil, fmt.Errorf("initialization failed: %w", err)
+		}
+	}
+
+	err := processChunksWithCheckpoint(
+		runner, commits, chunks, hibernatables, checkpointables,
+		cpManager, repoPath, analyzerNames, startChunk,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Finalize once at the end.
+	return runner.Finalize()
+}
+
+// planChunks creates chunk boundaries for streaming execution.
+func planChunks(commitCount int, memBudget int64) []streaming.ChunkBounds {
+	planner := streaming.Planner{
+		TotalCommits: commitCount,
+		MemoryBudget: memBudget,
+	}
+
+	return planner.Plan()
+}
+
+// collectHibernatables extracts analyzers that support hibernation.
+func collectHibernatables(analyzers []analyze.HistoryAnalyzer) []streaming.Hibernatable {
+	var hibernatables []streaming.Hibernatable
+
+	for _, a := range analyzers {
+		if h, ok := a.(streaming.Hibernatable); ok {
+			hibernatables = append(hibernatables, h)
+		}
+	}
+
+	return hibernatables
+}
+
+// collectCheckpointables extracts analyzers that support checkpointing.
+func collectCheckpointables(analyzers []analyze.HistoryAnalyzer) []checkpoint.Checkpointable {
+	var checkpointables []checkpoint.Checkpointable
+
+	for _, a := range analyzers {
+		if c, ok := a.(checkpoint.Checkpointable); ok {
+			checkpointables = append(checkpointables, c)
+		}
+	}
+
+	return checkpointables
+}
+
+// tryResumeFromCheckpoint attempts to restore state from a checkpoint.
+// Returns the chunk index to resume from, or 0 if no valid checkpoint.
+func tryResumeFromCheckpoint(
+	cpManager *checkpoint.Manager,
+	checkpointables []checkpoint.Checkpointable,
+	repoPath string,
+	analyzerNames []string,
+) (int, error) {
+	// Validate checkpoint matches current run.
+	validateErr := cpManager.Validate(repoPath, analyzerNames)
+	if validateErr != nil {
+		return 0, fmt.Errorf("checkpoint validation failed: %w", validateErr)
+	}
+
+	// Load state into analyzers.
+	state, err := cpManager.Load(checkpointables)
+	if err != nil {
+		return 0, fmt.Errorf("checkpoint load failed: %w", err)
+	}
+
+	// Return the next chunk to process.
+	return state.CurrentChunk + 1, nil
+}
+
+// processChunksWithCheckpoint executes chunks with optional checkpointing.
+func processChunksWithCheckpoint(
+	runner *framework.Runner,
+	commits []*gitlib.Commit,
+	chunks []streaming.ChunkBounds,
+	hibernatables []streaming.Hibernatable,
+	checkpointables []checkpoint.Checkpointable,
+	cpManager *checkpoint.Manager,
+	repoPath string,
+	analyzerNames []string,
+	startChunk int,
+) error {
+	for i := startChunk; i < len(chunks); i++ {
+		chunk := chunks[i]
+		log.Printf("streaming: processing chunk %d/%d (commits %d-%d)",
+			i+1, len(chunks), chunk.Start, chunk.End)
+
+		if i > startChunk {
+			hibErr := hibernateAndBoot(hibernatables)
+			if hibErr != nil {
+				return hibErr
+			}
+		}
+
+		chunkCommits := commits[chunk.Start:chunk.End]
+
+		err := runner.ProcessChunk(chunkCommits, chunk.Start)
+		if err != nil {
+			return fmt.Errorf("chunk %d failed: %w", i+1, err)
+		}
+
+		// Save checkpoint after each chunk (except the last).
+		if cpManager != nil && i < len(chunks)-1 {
+			lastCommit := chunkCommits[len(chunkCommits)-1]
+			state := checkpoint.StreamingState{
+				TotalCommits:     len(commits),
+				ProcessedCommits: chunk.End,
+				CurrentChunk:     i,
+				TotalChunks:      len(chunks),
+				LastCommitHash:   lastCommit.Hash().String(),
+			}
+
+			saveErr := cpManager.Save(checkpointables, state, repoPath, analyzerNames)
+			if saveErr != nil {
+				log.Printf("warning: failed to save checkpoint: %v", saveErr)
+			} else {
+				log.Printf("checkpoint: saved after chunk %d", i+1)
+			}
+		}
+	}
+
+	return nil
+}
+
+// hibernateAndBoot hibernates and then boots all hibernatable analyzers.
+func hibernateAndBoot(hibernatables []streaming.Hibernatable) error {
+	for _, h := range hibernatables {
+		err := h.Hibernate()
+		if err != nil {
+			return fmt.Errorf("hibernation failed: %w", err)
+		}
+	}
+
+	for _, h := range hibernatables {
+		err := h.Boot()
+		if err != nil {
+			return fmt.Errorf("boot failed: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // analyzerPipeline holds the core and leaf analyzers for the pipeline.

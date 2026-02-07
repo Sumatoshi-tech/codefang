@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"unicode/utf8"
 
@@ -438,19 +439,85 @@ func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only dependencies.
 func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *s
-		// Shallow copy for shared state (legacy behavior).
-		res[i] = &clone
+		clone := &HistoryAnalyzer{
+			FileDiff:  s.FileDiff,
+			UAST:      s.UAST,
+			DSLStruct: s.DSLStruct,
+			DSLName:   s.DSLName,
+		}
+		// Initialize independent state for each fork
+		clone.nodes = make(map[string]*nodeShotness)
+		clone.files = make(map[string]map[string]*nodeShotness)
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		s.mergeNodes(other.nodes)
+		s.mergeMerges(other.merges)
+	}
+
+	// Rebuild files map from merged nodes
+	s.rebuildFilesMap()
+}
+
+// mergeNodes combines node data from another analyzer.
+func (s *HistoryAnalyzer) mergeNodes(other map[string]*nodeShotness) {
+	for key, otherNode := range other {
+		if s.nodes[key] == nil {
+			s.nodes[key] = &nodeShotness{
+				Summary: otherNode.Summary,
+				Count:   otherNode.Count,
+				Couples: make(map[string]int),
+			}
+
+			maps.Copy(s.nodes[key].Couples, otherNode.Couples)
+		} else {
+			// Sum counts
+			s.nodes[key].Count += otherNode.Count
+
+			// Sum couples
+			for ck, cv := range otherNode.Couples {
+				s.nodes[key].Couples[ck] += cv
+			}
+		}
+	}
+}
+
+// mergeMerges combines merge tracking from another analyzer.
+func (s *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		s.merges[hash] = true
+	}
+}
+
+// rebuildFilesMap rebuilds the files map from the nodes map.
+func (s *HistoryAnalyzer) rebuildFilesMap() {
+	s.files = make(map[string]map[string]*nodeShotness)
+
+	for key, ns := range s.nodes {
+		fileName := ns.Summary.File
+		if s.files[fileName] == nil {
+			s.files[fileName] = make(map[string]*nodeShotness)
+		}
+
+		s.files[fileName][key] = ns
+	}
 }
 
 // Serialize writes the analysis result to the given writer.

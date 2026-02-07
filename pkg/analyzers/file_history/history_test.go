@@ -327,7 +327,98 @@ func TestAnalyzer_Misc(t *testing.T) {
 	c1, ok := clones[0].(*Analyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
-	if len(c1.files) != 1 {
-		t.Error("expected 1 file in clone")
+	// After fix: clones should have empty files (independent state)
+	if len(c1.files) != 0 {
+		t.Error("expected 0 files in clone (independent copy)")
 	}
+}
+
+func TestFork_CreatesIndependentCopies(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	clones := h.Fork(2)
+
+	c1, ok := clones[0].(*Analyzer)
+	require.True(t, ok, "type assertion failed for c1")
+
+	c2, ok := clones[1].(*Analyzer)
+	require.True(t, ok, "type assertion failed for c2")
+
+	// Modify c1's state
+	c1.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 10}},
+	}
+
+	// c2 should not be affected
+	require.Empty(t, c2.files, "clones should have independent state")
+}
+
+func TestMerge_CombinesFiles(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.files["a.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 5}},
+		Hashes: []gitlib.Hash{gitlib.NewHash("abc123")},
+	}
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.files["b.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{1: {Added: 10}},
+		Hashes: []gitlib.Hash{gitlib.NewHash("def456")},
+	}
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Main should have both files
+	require.Len(t, main.files, 2)
+	require.NotNil(t, main.files["a.go"])
+	require.NotNil(t, main.files["b.go"])
+}
+
+func TestMerge_CombinesPeopleStats(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 5, Removed: 2}},
+	}
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 3, Removed: 1}},
+	}
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Stats should be summed
+	stats := main.files["test.go"].People[0]
+	require.Equal(t, 8, stats.Added)
+	require.Equal(t, 3, stats.Removed)
+}
+
+func TestMerge_CombinesMerges(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.merges[gitlib.NewHash("abc123")] = true
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.merges[gitlib.NewHash("def456")] = true
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Both merges should be present
+	require.Len(t, main.merges, 2)
+	require.True(t, main.merges[gitlib.NewHash("abc123")])
+	require.True(t, main.merges[gitlib.NewHash("def456")])
 }

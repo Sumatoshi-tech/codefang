@@ -565,24 +565,225 @@ func (b *HistoryAnalyzer) processShardChanges(
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
-func (b *HistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer {
-	panic("Fork not implemented yet")
+func (b *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
+	res := make([]analyze.HistoryAnalyzer, n)
+
+	for i := range n {
+		clone := &HistoryAnalyzer{
+			// Share dependencies (injected by framework, read-only).
+			pathInterner: b.pathInterner, // Shared for consistent PathIDs.
+			repository:   b.repository,
+
+			// Copy configuration.
+			HibernationDirectory: b.HibernationDirectory,
+			HibernationThreshold: b.HibernationThreshold,
+			Granularity:          b.Granularity,
+			PeopleNumber:         b.PeopleNumber,
+			TickSize:             b.TickSize,
+			Goroutines:           b.Goroutines,
+			Sampling:             b.Sampling,
+			Debug:                b.Debug,
+			TrackFiles:           b.TrackFiles,
+			HibernationToDisk:    b.HibernationToDisk,
+			reversedPeopleDict:   b.reversedPeopleDict,
+		}
+
+		// Create fresh shards for this fork.
+		clone.shards = make([]*Shard, b.Goroutines)
+		for j := range b.Goroutines {
+			clone.shards[j] = &Shard{
+				filesByID:         nil,
+				fileHistoriesByID: nil,
+				activeIDs:         nil,
+				globalHistory:     sparseHistory{},
+				peopleHistories:   make([]sparseHistory, b.PeopleNumber),
+				matrix:            make([]map[int]int64, b.PeopleNumber),
+				mergedByID:        map[PathID]bool{},
+				deletionsByID:     map[PathID]bool{},
+			}
+		}
+
+		// Fresh rename tracking.
+		clone.renames = map[string]string{}
+		clone.renamesReverse = map[string]map[string]bool{}
+
+		// Reset per-chunk state.
+		clone.tick = 0
+		clone.previousTick = 0
+		clone.isMerge = false
+		clone.mergedAuthor = 0
+
+		res[i] = clone
+	}
+
+	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (b *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
-	panic("Merge not implemented yet")
+func (b *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		b.mergeShards(other)
+		b.mergeRenameTracking(other)
+		b.mergeTicks(other)
+	}
+}
+
+// mergeShards merges shard statistics from another analyzer.
+func (b *HistoryAnalyzer) mergeShards(other *HistoryAnalyzer) {
+	for i, otherShard := range other.shards {
+		if i >= len(b.shards) {
+			break
+		}
+
+		shard := b.shards[i]
+
+		shard.mu.Lock()
+		otherShard.mu.Lock()
+
+		b.mergeShardGlobalHistory(shard, otherShard)
+		b.mergeShardPeopleHistories(shard, otherShard)
+		b.mergeShardMatrix(shard, otherShard)
+
+		otherShard.mu.Unlock()
+		shard.mu.Unlock()
+	}
+}
+
+// mergeShardGlobalHistory merges global history from another shard.
+func (b *HistoryAnalyzer) mergeShardGlobalHistory(shard, otherShard *Shard) {
+	for tick, counts := range otherShard.globalHistory {
+		if shard.globalHistory[tick] == nil {
+			shard.globalHistory[tick] = map[int]int64{}
+		}
+
+		for prevTick, count := range counts {
+			shard.globalHistory[tick][prevTick] += count
+		}
+	}
+}
+
+// mergeShardPeopleHistories merges people histories from another shard.
+func (b *HistoryAnalyzer) mergeShardPeopleHistories(shard, otherShard *Shard) {
+	for person, history := range otherShard.peopleHistories {
+		if len(history) == 0 {
+			continue
+		}
+
+		if shard.peopleHistories[person] == nil {
+			shard.peopleHistories[person] = sparseHistory{}
+		}
+
+		for tick, counts := range history {
+			if shard.peopleHistories[person][tick] == nil {
+				shard.peopleHistories[person][tick] = map[int]int64{}
+			}
+
+			for prevTick, count := range counts {
+				shard.peopleHistories[person][tick][prevTick] += count
+			}
+		}
+	}
+}
+
+// mergeShardMatrix merges the interaction matrix from another shard.
+func (b *HistoryAnalyzer) mergeShardMatrix(shard, otherShard *Shard) {
+	for author, row := range otherShard.matrix {
+		if len(row) == 0 {
+			continue
+		}
+
+		if shard.matrix[author] == nil {
+			shard.matrix[author] = map[int]int64{}
+		}
+
+		for otherAuthor, count := range row {
+			shard.matrix[author][otherAuthor] += count
+		}
+	}
+}
+
+// mergeRenameTracking merges rename tracking from another analyzer.
+func (b *HistoryAnalyzer) mergeRenameTracking(other *HistoryAnalyzer) {
+	b.GlobalMu.Lock()
+	defer b.GlobalMu.Unlock()
+
+	for from, to := range other.renames {
+		if to == "" {
+			continue
+		}
+
+		b.renames[from] = to
+
+		if b.renamesReverse[to] == nil {
+			b.renamesReverse[to] = map[string]bool{}
+		}
+
+		b.renamesReverse[to][from] = true
+	}
+}
+
+// mergeTicks updates tick tracking from another analyzer.
+func (b *HistoryAnalyzer) mergeTicks(other *HistoryAnalyzer) {
+	if other.tick > b.tick {
+		b.tick = other.tick
+	}
+
+	if other.previousTick > b.previousTick {
+		b.previousTick = other.previousTick
+	}
+
+	if !other.lastCommitTime.IsZero() && other.lastCommitTime.After(b.lastCommitTime) {
+		b.lastCommitTime = other.lastCommitTime
+	}
 }
 
 // Hibernate releases resources between processing phases.
-// Hibernation of timeline allocators is no-op when using the default treap timeline.
+// Clears per-shard tracking maps (mergedByID, deletionsByID) that are only
+// needed within a chunk. Also compacts file timelines to reduce memory usage.
 func (b *HistoryAnalyzer) Hibernate() error {
+	for _, shard := range b.shards {
+		shard.mu.Lock()
+
+		// Clear per-commit tracking maps.
+		shard.mergedByID = make(map[PathID]bool)
+		shard.deletionsByID = make(map[PathID]bool)
+
+		// Compact file timelines to reduce memory.
+		// MergeAdjacentSameValue coalesces consecutive segments with the same time.
+		for _, id := range shard.activeIDs {
+			if int(id) < len(shard.filesByID) {
+				if file := shard.filesByID[id]; file != nil {
+					file.MergeAdjacentSameValue()
+				}
+			}
+		}
+
+		shard.mu.Unlock()
+	}
+
 	return nil
 }
 
 // Boot performs early initialization before repository processing.
-// No-op when using the default treap timeline (no allocator to boot).
+// Ensures per-shard tracking maps are ready for the next chunk.
 func (b *HistoryAnalyzer) Boot() error {
+	for _, shard := range b.shards {
+		shard.mu.Lock()
+		if shard.mergedByID == nil {
+			shard.mergedByID = make(map[PathID]bool)
+		}
+
+		if shard.deletionsByID == nil {
+			shard.deletionsByID = make(map[PathID]bool)
+		}
+		shard.mu.Unlock()
+	}
+
 	return nil
 }
 

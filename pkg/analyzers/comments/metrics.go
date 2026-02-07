@@ -431,8 +431,6 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
-
 // ComputedMetrics holds all computed metric results for the comments analyzer.
 type ComputedMetrics struct {
 	CommentQuality        []CommentQualityData        `json:"comment_quality"        yaml:"comment_quality"`

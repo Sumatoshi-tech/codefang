@@ -283,17 +283,43 @@ func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only config.
 func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		res[i] = s // Shared state.
+		clone := &HistoryAnalyzer{
+			UAST:             s.UAST,
+			Ticks:            s.Ticks,
+			MinCommentLength: s.MinCommentLength,
+			Gap:              s.Gap,
+			commitsByTick:    s.commitsByTick, // shared read-only
+		}
+		// Initialize independent state for each fork
+		clone.commentsByTick = make(map[int][]string)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		s.mergeCommentsByTick(other.commentsByTick)
+	}
+}
+
+// mergeCommentsByTick combines comments from another analyzer.
+func (s *HistoryAnalyzer) mergeCommentsByTick(other map[int][]string) {
+	for tick, comments := range other {
+		s.commentsByTick[tick] = append(s.commentsByTick[tick], comments...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.

@@ -12,6 +12,11 @@ import (
 // bufferSizeMultiplier is the factor by which buffer size scales with worker count.
 const bufferSizeMultiplier = 2
 
+// optimalWorkerRatio is the fraction of CPU cores to use for workers.
+// Testing shows ~60% of CPU cores provides optimal performance due to
+// contention overhead when using all cores.
+const optimalWorkerRatio = 60
+
 // CoordinatorConfig configures the pipeline coordinator.
 type CoordinatorConfig struct {
 	// BatchConfig configures batch sizes for blob and diff operations.
@@ -41,8 +46,10 @@ type CoordinatorConfig struct {
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
 func DefaultCoordinatorConfig() CoordinatorConfig {
-	// Revert to full CPU usage as we now have parallelized TreeDiff.
-	workers := max(runtime.NumCPU(), 1)
+	// Use 60% of CPU cores for optimal performance.
+	// Testing on kubernetes repo (135k commits) showed that using all CPU cores
+	// causes contention and degrades performance by ~17% compared to 60%.
+	workers := max(runtime.NumCPU()*optimalWorkerRatio/100, 1)
 
 	return CoordinatorConfig{
 		BatchConfig:     gitlib.DefaultBatchConfig(),

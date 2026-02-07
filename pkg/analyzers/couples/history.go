@@ -98,6 +98,30 @@ func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
+// ensureCapacity grows people and peopleCommits slices if needed.
+// This handles incremental identity detection where PeopleNumber
+// isn't known at Configure time.
+func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
+	if minSize <= len(c.people) {
+		return
+	}
+
+	// Grow people slice
+	newPeople := make([]map[string]int, minSize)
+	copy(newPeople, c.people)
+
+	for i := len(c.people); i < minSize; i++ {
+		newPeople[i] = make(map[string]int)
+	}
+
+	c.people = newPeople
+
+	// Grow peopleCommits slice
+	newPeopleCommits := make([]int, minSize)
+	copy(newPeopleCommits, c.peopleCommits)
+	c.peopleCommits = newPeopleCommits
+}
+
 // Consume processes a single commit with the provided dependency results.
 func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
@@ -118,6 +142,11 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	if author == identity.AuthorMissing {
 		author = c.PeopleNumber
 	}
+
+	// Grow slices dynamically if author ID exceeds current capacity.
+	// This handles incremental identity detection where PeopleNumber
+	// isn't known at Configure time.
+	c.ensureCapacity(author + 1)
 
 	if shouldConsume {
 		c.peopleCommits[author]++
@@ -325,18 +354,99 @@ func countNewlines(p []byte) int {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets its own independent copies of mutable state (slices and maps).
 func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *c
-		res[i] = &clone
+		clone := &HistoryAnalyzer{
+			Identity:           c.Identity,
+			TreeDiff:           c.TreeDiff,
+			PeopleNumber:       c.PeopleNumber,
+			reversedPeopleDict: c.reversedPeopleDict,
+		}
+		// Initialize independent state for each fork
+		clone.files = make(map[string]map[string]int)
+		clone.renames = &[]rename{}
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		clone.people = make([]map[string]int, c.PeopleNumber+1)
+		for j := range clone.people {
+			clone.people[j] = make(map[string]int)
+		}
+
+		clone.peopleCommits = make([]int, c.PeopleNumber+1)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		c.mergeFiles(other.files)
+		c.mergePeople(other.people)
+		c.mergePeopleCommits(other.peopleCommits)
+		c.mergeMerges(other.merges)
+		c.mergeRenames(other.renames)
+	}
+}
+
+// mergeFiles combines file coupling counts from another analyzer.
+func (c *HistoryAnalyzer) mergeFiles(other map[string]map[string]int) {
+	for file, otherCouplings := range other {
+		if c.files[file] == nil {
+			c.files[file] = make(map[string]int)
+		}
+
+		for otherFile, count := range otherCouplings {
+			c.files[file][otherFile] += count
+		}
+	}
+}
+
+// mergePeople combines per-person file touch counts from another analyzer.
+func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
+	for i, otherFiles := range other {
+		if i >= len(c.people) {
+			continue
+		}
+
+		for file, count := range otherFiles {
+			c.people[i][file] += count
+		}
+	}
+}
+
+// mergePeopleCommits combines per-person commit counts from another analyzer.
+func (c *HistoryAnalyzer) mergePeopleCommits(other []int) {
+	for i, count := range other {
+		if i >= len(c.peopleCommits) {
+			continue
+		}
+
+		c.peopleCommits[i] += count
+	}
+}
+
+// mergeMerges combines merge commit tracking from another analyzer.
+func (c *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		c.merges[hash] = true
+	}
+}
+
+// mergeRenames combines rename tracking from another analyzer.
+func (c *HistoryAnalyzer) mergeRenames(other *[]rename) {
+	if other != nil {
+		*c.renames = append(*c.renames, *other...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.

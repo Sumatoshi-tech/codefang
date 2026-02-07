@@ -304,3 +304,131 @@ func TestHistoryAnalyzer_Misc(t *testing.T) {
 		t.Error("expected 2 clones")
 	}
 }
+
+func TestFork_CreatesIndependentCopies(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 20,
+		Gap:              0.5,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	// Add some state to original
+	s.commentsByTick[0] = []string{"original comment"}
+
+	forks := s.Fork(2)
+	require.Len(t, forks, 2)
+
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+	fork2, ok := forks[1].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Forks should have empty independent maps (not inherit parent state)
+	require.Empty(t, fork1.commentsByTick, "fork should have empty commentsByTick map")
+	require.Empty(t, fork2.commentsByTick, "fork should have empty commentsByTick map")
+
+	// Modifying one fork should not affect the other
+	fork1.commentsByTick[1] = []string{"fork1 comment"}
+
+	require.Len(t, fork1.commentsByTick, 1)
+	require.Empty(t, fork2.commentsByTick, "fork2 should not see fork1's changes")
+}
+
+func TestFork_SharesConfig(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 25,
+		Gap:              0.7,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	forks := s.Fork(2)
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Config should be shared
+	require.Equal(t, s.MinCommentLength, fork1.MinCommentLength)
+	require.InDelta(t, s.Gap, fork1.Gap, 0.001)
+}
+
+func TestMerge_CombinesCommentsByTick(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	// Original has comments at tick 0
+	s.commentsByTick[0] = []string{"original comment"}
+
+	// Create a branch with comments at different tick
+	branch := &HistoryAnalyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.commentsByTick[1] = []string{"branch comment"}
+
+	s.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Should have both ticks
+	require.Len(t, s.commentsByTick, 2)
+	require.Len(t, s.commentsByTick[0], 1)
+	require.Len(t, s.commentsByTick[1], 1)
+	require.Equal(t, "original comment", s.commentsByTick[0][0])
+	require.Equal(t, "branch comment", s.commentsByTick[1][0])
+}
+
+func TestMerge_AppendsCommentsAtSameTick(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	// Original has comments at tick 0
+	s.commentsByTick[0] = []string{"comment 1"}
+
+	// Branch also has comments at tick 0
+	branch := &HistoryAnalyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.commentsByTick[0] = []string{"comment 2", "comment 3"}
+
+	s.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Should have all comments at tick 0
+	require.Len(t, s.commentsByTick[0], 3)
+	require.Contains(t, s.commentsByTick[0], "comment 1")
+	require.Contains(t, s.commentsByTick[0], "comment 2")
+	require.Contains(t, s.commentsByTick[0], "comment 3")
+}
+
+func TestForkMerge_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 20,
+		Gap:              0.5,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	// Fork
+	forks := s.Fork(2)
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+	fork2, ok := forks[1].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Each fork adds different comments
+	fork1.commentsByTick[0] = []string{"fork1 tick0 comment"}
+	fork1.commentsByTick[1] = []string{"fork1 tick1 comment"}
+	fork2.commentsByTick[0] = []string{"fork2 tick0 comment"}
+	fork2.commentsByTick[2] = []string{"fork2 tick2 comment"}
+
+	// Merge
+	s.Merge(forks)
+
+	// Verify all comments are merged
+	require.Len(t, s.commentsByTick, 3)
+	require.Len(t, s.commentsByTick[0], 2) // from both forks
+	require.Len(t, s.commentsByTick[1], 1) // from fork1
+	require.Len(t, s.commentsByTick[2], 1) // from fork2
+}

@@ -6,13 +6,14 @@ require (
 	github.com/alexaandru/go-sitter-forest v1.9.163
 	github.com/alexaandru/go-sitter-forest/go v1.9.4
 	github.com/alexaandru/go-tree-sitter-bare v1.11.0
+	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
+	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/libgit2/git2go/v34 v34.0.0
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.9.1
-	github.com/spf13/viper v1.20.1
 	github.com/src-d/enry/v2 v2.1.0
 	github.com/stretchr/testify v1.10.0
 	github.com/tliron/glsp v0.2.2
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	github.com/adrg/strutil v0.3.1 // indirect
 	github.com/alexaandru/go-sitter-forest/abap v1.9.0 // indirect
 	github.com/alexaandru/go-sitter-forest/abl v1.9.7 // indirect
 	github.com/alexaandru/go-sitter-forest/ada v1.9.0 // indirect
@@ -533,40 +533,29 @@ require (
 	github.com/alexaandru/go-sitter-forest/zoomba v1.9.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/go-echarts/go-echarts/v2 v2.6.7 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/muesli/termenv v0.15.2 // indirect
-	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
-	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/sourcegraph/jsonrpc2 v0.2.0 // indirect
-	github.com/spf13/afero v1.12.0 // indirect
-	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/src-d/go-oniguruma v1.1.0 // indirect
-	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tliron/commonlog v0.2.8 // indirect
 	github.com/tliron/kutil v0.3.11 // indirect
 	github.com/toqueteos/trie v1.0.0 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	go.uber.org/atomic v1.9.0 // indirect
-	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
 	golang.org/x/net v0.42.0 // indirect

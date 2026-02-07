@@ -14,14 +14,27 @@ type Runner struct {
 	Repo      *gitlib.Repository
 	RepoPath  string
 	Analyzers []analyze.HistoryAnalyzer
+	Config    CoordinatorConfig
 }
 
 // NewRunner creates a new Runner for the given repository and analyzers.
+// Uses DefaultCoordinatorConfig(). Use NewRunnerWithConfig for custom configuration.
 func NewRunner(repo *gitlib.Repository, repoPath string, analyzers ...analyze.HistoryAnalyzer) *Runner {
+	return NewRunnerWithConfig(repo, repoPath, DefaultCoordinatorConfig(), analyzers...)
+}
+
+// NewRunnerWithConfig creates a new Runner with custom coordinator configuration.
+func NewRunnerWithConfig(
+	repo *gitlib.Repository,
+	repoPath string,
+	config CoordinatorConfig,
+	analyzers ...analyze.HistoryAnalyzer,
+) *Runner {
 	return &Runner{
 		Repo:      repo,
 		RepoPath:  repoPath,
 		Analyzers: analyzers,
+		Config:    config,
 	}
 }
 
@@ -54,34 +67,47 @@ func (runner *Runner) Run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer
 
 // runInternal uses the Coordinator to process commits (batch blob + batch diff in C), then feeds analyzers.
 func (runner *Runner) runInternal(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
-	ctx := context.Background()
-	coordinator := NewCoordinator(runner.Repo, DefaultCoordinatorConfig())
-	dataChan := coordinator.Process(ctx, commits)
+	processErr := runner.processCommits(commits, 0)
+	if processErr != nil {
+		return nil, processErr
+	}
 
-	for data := range dataChan {
-		if data.Error != nil {
-			return nil, data.Error
+	reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
+
+	for _, a := range runner.Analyzers {
+		rep, finalizeErr := a.Finalize()
+		if finalizeErr != nil {
+			return nil, finalizeErr
 		}
 
-		commit := data.Commit
-		analyzeCtx := &analyze.Context{
-			Commit:    commit,
-			Index:     data.Index,
-			Time:      commit.Committer().When,
-			IsMerge:   commit.NumParents() > 1,
-			Changes:   data.Changes,
-			BlobCache: data.BlobCache,
-			FileDiffs: data.FileDiffs,
-		}
+		reports[a] = rep
+	}
 
-		for _, a := range runner.Analyzers {
-			err := a.Consume(analyzeCtx)
-			if err != nil {
-				return nil, err
-			}
+	return reports, nil
+}
+
+// Initialize initializes all analyzers. Call once before processing chunks.
+func (runner *Runner) Initialize() error {
+	for _, a := range runner.Analyzers {
+		err := a.Initialize(runner.Repo)
+		if err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+// ProcessChunk processes a chunk of commits without Initialize/Finalize.
+// Use this for streaming mode where Initialize is called once at start
+// and Finalize once at end.
+// The indexOffset is added to the commit index to maintain correct ordering across chunks.
+func (runner *Runner) ProcessChunk(commits []*gitlib.Commit, indexOffset int) error {
+	return runner.processCommits(commits, indexOffset)
+}
+
+// Finalize finalizes all analyzers and returns their reports.
+func (runner *Runner) Finalize() (map[analyze.HistoryAnalyzer]analyze.Report, error) {
 	reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
 
 	for _, a := range runner.Analyzers {
@@ -94,4 +120,37 @@ func (runner *Runner) runInternal(commits []*gitlib.Commit) (map[analyze.History
 	}
 
 	return reports, nil
+}
+
+// processCommits processes commits through the pipeline without Initialize/Finalize.
+func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) error {
+	ctx := context.Background()
+	coordinator := NewCoordinator(runner.Repo, runner.Config)
+	dataChan := coordinator.Process(ctx, commits)
+
+	for data := range dataChan {
+		if data.Error != nil {
+			return data.Error
+		}
+
+		commit := data.Commit
+		analyzeCtx := &analyze.Context{
+			Commit:    commit,
+			Index:     data.Index + indexOffset,
+			Time:      commit.Committer().When,
+			IsMerge:   commit.NumParents() > 1,
+			Changes:   data.Changes,
+			BlobCache: data.BlobCache,
+			FileDiffs: data.FileDiffs,
+		}
+
+		for _, a := range runner.Analyzers {
+			err := a.Consume(analyzeCtx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
