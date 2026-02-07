@@ -1,5 +1,11 @@
 package streaming
 
+// Size constants.
+const (
+	kib = 1024
+	mib = 1024 * kib
+)
+
 // Planner constraints.
 const (
 	// MinChunkSize is the minimum commits per chunk to amortize hibernation cost.
@@ -10,6 +16,12 @@ const (
 	// Benchmarks on kubernetes repo (56k commits) showed 5k chunks are 2x faster
 	// than 10k and 4x faster than 20k due to better memory locality.
 	MaxChunkSize = 5000
+
+	// BaseOverhead is the fixed memory overhead for Go runtime + libgit2.
+	BaseOverhead = 50 * mib
+
+	// AvgStateGrowthPerCommit is the estimated memory growth per commit for analyzer state.
+	AvgStateGrowthPerCommit = 2 * kib
 )
 
 // Planner calculates chunk boundaries for streaming execution.

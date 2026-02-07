@@ -43,6 +43,7 @@ help:
 	@echo "  deadcode-why     - Show why a function is not dead (FUNC=name)"
 	@echo "  bench            - Run UAST performance benchmarks"
 	@echo "  perf             - Run history burndown perf baseline (1k + 15k, CPU profiles). REPO=path (default: .)"
+	@echo "  battle           - Battle test on large repo with CPU+heap profiles. BATTLE_REPO=path BATTLE_ANALYZER=name"
 	@echo "  uast-dev         - Start UAST development environment (frontend + backend)"
 	@echo "  uast-dev-stop    - Stop UAST development servers"
 	@echo "  uast-dev-status  - Check status of UAST development servers"
@@ -131,6 +132,30 @@ perf-treap: all
 	echo "Profiles: cpu_1k_treap.prof, cpu_15k_treap.prof"; \
 	go tool pprof -text -diff_base=cpu_1k_treap.prof cpu_15k_treap.prof > pprof_diff_treap.txt 2>/dev/null || true; \
 	echo "Diff: pprof_diff_treap.txt"
+
+# Battle test: full run on large repo with CPU+heap profiles and /usr/bin/time metrics.
+# Usage: make battle [BATTLE_REPO=~/sources/kubernetes] [BATTLE_ANALYZER=burndown]
+.PHONY: battle
+battle: all
+	@REPO=$${BATTLE_REPO:-$$HOME/sources/kubernetes}; \
+	ANALYZER=$${BATTLE_ANALYZER:-burndown}; \
+	STAMP=$$(date +%Y%m%d-%H%M%S); \
+	DIR=profiles/$$(basename $$REPO)/$$STAMP; \
+	mkdir -p $$DIR; \
+	echo "Battle test: $$REPO ($$ANALYZER)"; \
+	echo "Output dir: $$DIR"; \
+	/usr/bin/time -v $(GOBIN)/codefang history \
+		-a $$ANALYZER -f yaml --first-parent \
+		--cpuprofile=$$DIR/cpu.prof \
+		--heapprofile=$$DIR/heap.prof \
+		$$REPO > $$DIR/output.yaml 2> $$DIR/time.txt; \
+	echo "--- Profile summaries ---"; \
+	go tool pprof -top -cum $$DIR/cpu.prof 2>/dev/null | head -25 > $$DIR/cpu_top.txt || true; \
+	go tool pprof -top -inuse_space $$DIR/heap.prof 2>/dev/null | head -25 > $$DIR/heap_top.txt || true; \
+	go tool pprof -svg $$DIR/cpu.prof > $$DIR/cpu_flamegraph.svg 2>/dev/null || true; \
+	go tool pprof -svg -inuse_space $$DIR/heap.prof > $$DIR/heap_flamegraph.svg 2>/dev/null || true; \
+	echo "Done. Artifacts in $$DIR/"; \
+	cat $$DIR/time.txt | grep -E "(wall clock|Maximum resident|Percent of CPU)" || true
 
 # Run basic Go benchmarks directly (no organization)
 bench-basic: all
@@ -237,6 +262,7 @@ clean:
 	rm -f *.prof
 	rm -f test/benchmarks/benchmark_results.txt
 	rm -rf benchmark_plots/
+	rm -rf profiles/
 	rm -rf $(LIBGIT2_BUILD)
 	rm -rf $(LIBGIT2_INSTALL)
 	rm -rf bin/

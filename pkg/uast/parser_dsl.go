@@ -7,6 +7,8 @@ import (
 	"io"
 	"maps"
 	"strings"
+	"sync"
+	"unsafe"
 
 	forest "github.com/alexaandru/go-sitter-forest"
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
@@ -38,6 +40,8 @@ type DSLParser struct {
 	langInfo        *mapping.LanguageInfo
 	originalDSL     string
 	mappingRules    []mapping.Rule
+	ruleIndex       map[string]int
+	tsParserPool    sync.Pool
 	IncludeUnmapped bool
 }
 
@@ -92,6 +96,22 @@ func (parser *DSLParser) initializeLanguage() error {
 
 	parser.language = lang
 	parser.patternMatcher = mapping.NewPatternMatcher(parser.language)
+	parser.tsParserPool = sync.Pool{
+		New: func() any {
+			p := sitter.NewParser()
+			p.SetLanguage(lang)
+			return p
+		},
+	}
+
+	// Build O(1) rule lookup index (first occurrence wins, matching
+	// the original linear-scan semantics of findMappingRule).
+	parser.ruleIndex = make(map[string]int, len(parser.mappingRules))
+	for i, r := range parser.mappingRules {
+		if _, exists := parser.ruleIndex[r.Name]; !exists {
+			parser.ruleIndex[r.Name] = i
+		}
+	}
 
 	return nil
 }
@@ -103,13 +123,14 @@ func (parser *DSLParser) Extensions() []string {
 
 // Parse parses the given file content and returns the root UAST node.
 func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
-	tsParser := sitter.NewParser()
-	tsParser.SetLanguage(parser.language)
+	tsParser := parser.tsParserPool.Get().(*sitter.Parser)
+	defer parser.tsParserPool.Put(tsParser)
 
 	tree, err := tsParser.ParseString(context.Background(), nil, content)
 	if err != nil {
 		return nil, fmt.Errorf("dsl parser: failed to parse: %w", err)
 	}
+	defer tree.Close()
 
 	root := tree.RootNode()
 	if root.IsNull() {
@@ -140,6 +161,7 @@ type DSLNode struct {
 	Language        string
 	ParentContext   string
 	MappingRules    []mapping.Rule
+	ruleIndex       map[string]int
 	Source          []byte
 	IncludeUnmapped bool
 }
@@ -158,15 +180,13 @@ func (dn *DSLNode) ToCanonicalNode() *node.Node {
 		return nil
 	}
 
-	props := map[string]string{}
-
 	var roles []node.Role
 
 	if mappingRule != nil {
-		return dn.createMappedNode(mappingRule, children, props, roles)
+		return dn.createMappedNode(mappingRule, children, roles)
 	}
 
-	return dn.createUnmappedNode(nodeType, props, roles)
+	return dn.createUnmappedNode(nodeType, roles)
 }
 
 // createDSLNode creates a new DSLNode with the given parameters.
@@ -177,6 +197,7 @@ func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, cont
 		Language:        parser.langInfo.Name,
 		Source:          content,
 		MappingRules:    parser.mappingRules,
+		ruleIndex:       parser.ruleIndex,
 		PatternMatcher:  parser.patternMatcher,
 		IncludeUnmapped: parser.IncludeUnmapped,
 		ParentContext:   "",
@@ -185,21 +206,12 @@ func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, cont
 
 // findMappingRule finds a mapping rule for the given node type, resolving inheritance and merging fields.
 func (dn *DSLNode) findMappingRule(nodeType string) *mapping.Rule {
-	var rule *mapping.Rule
-
-	for idx := range dn.MappingRules {
-		if dn.MappingRules[idx].Name == nodeType {
-			rule = &dn.MappingRules[idx]
-
-			break
-		}
-	}
-
-	if rule == nil {
+	idx, ok := dn.ruleIndex[nodeType]
+	if !ok {
 		return nil
 	}
 
-	return dn.resolveInheritance(rule)
+	return dn.resolveInheritance(&dn.MappingRules[idx])
 }
 
 // resolveInheritance recursively merges base rule fields if Extends is set.
@@ -208,19 +220,12 @@ func (dn *DSLNode) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
 		return rule
 	}
 
-	var base *mapping.Rule
-
-	for idx := range dn.MappingRules {
-		if dn.MappingRules[idx].Name == rule.Extends {
-			base = &dn.MappingRules[idx]
-
-			break
-		}
-	}
-
-	if base == nil {
+	baseIdx, ok := dn.ruleIndex[rule.Extends]
+	if !ok {
 		return rule
 	}
+
+	base := &dn.MappingRules[baseIdx]
 
 	merged := *base // Shallow copy.
 
@@ -300,6 +305,7 @@ func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.Rule)
 		Language:        dn.Language,
 		Source:          dn.Source,
 		MappingRules:    dn.MappingRules,
+		ruleIndex:       dn.ruleIndex,
 		PatternMatcher:  dn.PatternMatcher,
 		IncludeUnmapped: dn.IncludeUnmapped,
 		ParentContext:   parentContext,
@@ -432,18 +438,18 @@ func (dn *DSLNode) evaluateComparisonOp(expr, op string, captures map[string]str
 		return compare(capturedVal, val)
 	}
 
-	// Check field names in the AST.
+	// Check field names in the AST (zero-copy: comparison only).
 	if fieldNode := dn.Root.ChildByFieldName(field); !fieldNode.IsNull() {
-		fieldText := fieldNode.Content(dn.Source)
+		fieldText := dn.unsafeNodeText(fieldNode)
 
 		return compare(fieldText, val)
 	}
 
-	// Check if field is a child type.
+	// Check if field is a child type (zero-copy: comparison only).
 	for idx := range dn.Root.NamedChildCount() {
 		child := dn.Root.NamedChild(idx)
 		if child.Type() == field {
-			childText := child.Content(dn.Source)
+			childText := dn.unsafeNodeText(child)
 
 			return compare(childText, val)
 		}
@@ -497,11 +503,17 @@ func (dn *DSLNode) shouldSkipEmptyFile(nodeType string, children []*node.Node) b
 // createMappedNode creates a UAST node from a mapped Tree-sitter node.
 func (dn *DSLNode) createMappedNode(
 	mappingRule *mapping.Rule, children []*node.Node,
-	props map[string]string, roles []node.Role,
+	roles []node.Role,
 ) *node.Node {
 	dn.extractRoles(mappingRule, &roles)
+
+	// Lazily allocate props only when properties or names are present.
+	var props map[string]string
+	if mappingRule.UASTSpec.Props != nil {
+		props = make(map[string]string, len(mappingRule.UASTSpec.Props))
+	}
 	dn.extractProperties(mappingRule, props)
-	dn.extractName(mappingRule, props)
+	dn.extractName(mappingRule, &props)
 
 	uastNode := node.New(
 		"", node.Type(mappingRule.UASTSpec.Type),
@@ -526,7 +538,7 @@ func (dn *DSLNode) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
 }
 
 // extractName extracts name from the node if specified in mapping.
-func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]string) {
+func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props *map[string]string) {
 	// For now, extract name from the first identifier child if available.
 	if mappingRule == nil {
 		return
@@ -534,7 +546,10 @@ func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]strin
 
 	name := dn.extractNameFromNode(tokenSourceFieldsName)
 	if name != "" {
-		props["name"] = name
+		if *props == nil {
+			*props = make(map[string]string, 1)
+		}
+		(*props)["name"] = name
 	}
 }
 
@@ -705,6 +720,7 @@ func (dn *DSLNode) findDescendantToken(nodeType string) string {
 			Language:        dn.Language,
 			Source:          dn.Source,
 			MappingRules:    dn.MappingRules,
+			ruleIndex:       dn.ruleIndex,
 			PatternMatcher:  dn.PatternMatcher,
 			IncludeUnmapped: dn.IncludeUnmapped,
 			ParentContext:   dn.ParentContext,
@@ -749,22 +765,22 @@ func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
 
 // extractPositions extracts position information from the Tree-sitter node.
 func (dn *DSLNode) extractPositions() *node.Positions {
-	return &node.Positions{
-		StartLine:   dn.Root.StartPoint().Row + 1,
-		StartCol:    dn.Root.StartPoint().Column + 1,
-		StartOffset: dn.Root.StartByte(),
-		EndLine:     dn.Root.EndPoint().Row + 1,
-		EndCol:      dn.Root.EndPoint().Column + 1,
-		EndOffset:   dn.Root.EndByte(),
-	}
+	return node.NewPositions(
+		dn.Root.StartPoint().Row+1,
+		dn.Root.StartPoint().Column+1,
+		dn.Root.StartByte(),
+		dn.Root.EndPoint().Row+1,
+		dn.Root.EndPoint().Column+1,
+		dn.Root.EndByte(),
+	)
 }
 
 // createUnmappedNode creates a UAST node for unmapped Tree-sitter nodes.
-func (dn *DSLNode) createUnmappedNode(nodeType string, props map[string]string, roles []node.Role) *node.Node {
+func (dn *DSLNode) createUnmappedNode(nodeType string, roles []node.Role) *node.Node {
 	mappedChildren := dn.processUnmappedChildren()
 
 	if dn.IncludeUnmapped {
-		return dn.createIncludeUnmappedNode(nodeType, mappedChildren, props, roles)
+		return dn.createIncludeUnmappedNode(nodeType, mappedChildren, roles)
 	}
 
 	return dn.createSyntheticNode(mappedChildren)
@@ -795,6 +811,7 @@ func (dn *DSLNode) createUnmappedChildNode(child sitter.Node) *DSLNode {
 		Language:        dn.Language,
 		Source:          dn.Source,
 		MappingRules:    dn.MappingRules,
+		ruleIndex:       dn.ruleIndex,
 		PatternMatcher:  dn.PatternMatcher,
 		IncludeUnmapped: dn.IncludeUnmapped,
 		ParentContext:   dn.ParentContext,
@@ -804,11 +821,11 @@ func (dn *DSLNode) createUnmappedChildNode(child sitter.Node) *DSLNode {
 // createIncludeUnmappedNode creates a node when IncludeUnmapped is true.
 func (dn *DSLNode) createIncludeUnmappedNode(
 	nodeType string, mappedChildren []*node.Node,
-	props map[string]string, roles []node.Role,
+	roles []node.Role,
 ) *node.Node {
 	uastNode := node.New(
 		"", node.Type(dn.Language+":"+nodeType),
-		dn.Token(), roles, dn.Positions(), props,
+		dn.Token(), roles, dn.Positions(), nil,
 	)
 	uastNode.Children = mappedChildren
 
@@ -885,14 +902,14 @@ func (b *positionBounds) toPositions() *node.Positions {
 		return nil
 	}
 
-	return &node.Positions{
-		StartLine:   b.minStartLine,
-		StartCol:    b.minStartCol,
-		StartOffset: b.minStartOffset,
-		EndLine:     b.maxEndLine,
-		EndCol:      b.maxEndCol,
-		EndOffset:   b.maxEndOffset,
-	}
+	return node.NewPositions(
+		b.minStartLine,
+		b.minStartCol,
+		b.minStartOffset,
+		b.maxEndLine,
+		b.maxEndCol,
+		b.maxEndOffset,
+	)
 }
 
 // computeChildrenSpan computes the bounding span across children positions.
@@ -921,23 +938,39 @@ func (dn *DSLNode) Token() string {
 func (dn *DSLNode) Positions() *node.Positions {
 	root := dn.Root
 
-	return &node.Positions{
-		StartLine:   root.StartPoint().Row + 1,
-		StartCol:    root.StartPoint().Column + 1,
-		StartOffset: root.StartByte(),
-		EndLine:     root.EndPoint().Row + 1,
-		EndCol:      root.EndPoint().Column + 1,
-		EndOffset:   root.EndByte(),
-	}
+	return node.NewPositions(
+		root.StartPoint().Row+1,
+		root.StartPoint().Column+1,
+		root.StartByte(),
+		root.EndPoint().Row+1,
+		root.EndPoint().Column+1,
+		root.EndByte(),
+	)
 }
 
-// extractNodeText extracts text from a Tree-sitter node.
+// extractNodeText extracts text from a Tree-sitter node (allocating copy).
+// Use for values that are stored in Node.Token or Node.Props.
 func (dn *DSLNode) extractNodeText(tsNode sitter.Node) string {
 	start := tsNode.StartByte()
 	end := tsNode.EndByte()
 
 	if safeconv.MustUintToInt(end) <= len(dn.Source) {
 		return string(dn.Source[start:end])
+	}
+
+	return ""
+}
+
+// unsafeNodeText returns a zero-copy string view of a Tree-sitter node's text.
+// The returned string shares the Source []byte backing array and must NOT be
+// stored beyond the current parse call (i.e., not in Node.Token or Node.Props).
+// Safe for comparison, filtering, and condition evaluation within Parse().
+func (dn *DSLNode) unsafeNodeText(tsNode sitter.Node) string {
+	start := tsNode.StartByte()
+	end := tsNode.EndByte()
+
+	if end <= uint(len(dn.Source)) {
+		return unsafe.String(&dn.Source[start], int(end-start))
 	}
 
 	return ""

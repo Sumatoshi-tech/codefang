@@ -183,71 +183,42 @@ Size flags accept human-readable values using the `go-humanize` format:
 
 Examples: `256MiB`, `1GiB`, `500MB`
 
-## Streaming Mode for Large Repositories
+## Streaming Chunk Processing
 
-For repositories with very large commit histories (50,000+ commits), Codefang
-can automatically process commits in streaming chunks to bound memory usage.
-
-### Streaming Mode Flag
-
-| Flag | Values | Default | Description |
-|------|--------|---------|-------------|
-| `--streaming-mode` | auto, on, off | auto | Control streaming chunk processing |
-
-- **auto**: Detect large repos and enable streaming automatically
-- **on**: Force streaming mode regardless of repo size
-- **off**: Disable streaming (may OOM on very large repos)
-
-### When Streaming Mode Activates (auto)
-
-In `auto` mode, streaming is enabled when either:
-1. The repository has 50,000+ commits
-2. A memory budget is set and estimated peak memory exceeds 80% of the budget
+Codefang always processes commits in streaming chunks. This improves performance
+by keeping the working set small enough for CPU caches, reducing libgit2 pack
+cache contention, and bounding memory growth.
 
 ### How It Works
 
-When streaming mode is active:
-1. Commits are split into chunks (10,000-50,000 commits each)
-2. Each chunk is processed independently
-3. Between chunks, analyzers may hibernate to reduce memory
+1. Commits are split into chunks (2,000-5,000 commits each)
+2. Each chunk is processed independently through the pipeline
+3. Between chunks, analyzers hibernate to release temporary state
 4. Results are aggregated across all chunks
 
 ```bash
-# Force streaming mode for testing
-codefang history --streaming-mode=on --memory-budget=256MiB -a burndown .
+codefang history --memory-budget=256MiB -a burndown .
 
 # Output shows chunk processing
-# streaming: processing 100000 commits in 3 chunks
-# streaming: processing chunk 1/3 (commits 0-40000)
-# streaming: processing chunk 2/3 (commits 40000-80000)
-# streaming: processing chunk 3/3 (commits 80000-100000)
+# streaming: processing 100000 commits in 20 chunks
+# streaming: processing chunk 1/20 (commits 0-5000)
+# streaming: processing chunk 2/20 (commits 5000-10000)
+# ...
 ```
 
-### Chunk Size Calculation
+### Chunk Size
 
-The chunk size is determined by the memory budget:
+The default chunk size is 5,000 commits (empirically optimal for CPU cache locality).
+When `--memory-budget` is set, the chunk size may be reduced:
 - Available memory after overhead is divided by per-commit state growth (~2 KiB)
-- Minimum chunk size: 10,000 commits (to amortize hibernation cost)
-- Maximum chunk size: 50,000 commits (to bound memory growth)
-
-| Budget | Approximate Chunk Size |
-|--------|----------------------|
-| 128 MiB | ~40,000 commits |
-| 256 MiB | 50,000 commits (max) |
-| 512 MiB | 50,000 commits (max) |
-
-### Streaming Mode Best Practices
-
-- Use `--memory-budget` with streaming mode for predictable memory usage
-- For very large repos (100k+ commits), streaming is recommended
-- Streaming adds ~5-10% overhead due to chunk transitions
-- Output is identical to non-streaming mode
+- Minimum chunk size: 2,000 commits
+- Maximum chunk size: 5,000 commits
 
 ## Checkpointing for Crash Recovery
 
-When analyzing very large repositories in streaming mode, Codefang can save
-checkpoints after each chunk. If the process crashes or is interrupted, the
-analysis resumes from the last checkpoint instead of starting over.
+Codefang saves checkpoints after each streaming chunk by default. If the process
+crashes or is interrupted, the analysis resumes from the last checkpoint instead
+of starting over.
 
 ### Checkpoint Flags
 
@@ -260,7 +231,7 @@ analysis resumes from the last checkpoint instead of starting over.
 
 ### How It Works
 
-When checkpointing is enabled (default) and streaming mode is active:
+When checkpointing is enabled (default):
 1. After each chunk completes, analyzer state is saved to disk
 2. Progress metadata (current chunk, commit hash) is recorded
 3. If the process crashes, the next run detects the checkpoint
@@ -280,7 +251,7 @@ repositories don't conflict.
 
 ```bash
 # Normal run with checkpointing (enabled by default)
-codefang history --streaming-mode=on -a burndown ~/sources/kubernetes
+codefang history -a burndown ~/sources/kubernetes
 
 # Disable checkpointing
 codefang history --checkpoint=false -a burndown ~/sources/kubernetes
@@ -358,6 +329,204 @@ codefang history \
 - Increase `--blob-arena-size` when large files are common and fallbacks are frequent.
 - Reduce `--workers` if CPU contention outweighs parallel gains.
 - Use `--commit-batch-size` to control memory per batch (smaller = less memory, more batches).
+
+## Battle Test: kubernetes Repository
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| CPU | AMD Ryzen AI 9 HX 370 (24 logical cores) |
+| RAM | 64 GB DDR5 |
+| OS | Linux 6.18.7-200.fc43.x86_64 (Fedora 43) |
+| Repository | kubernetes (135,104 total / 56,782 first-parent commits) |
+| Analyzer | burndown (--first-parent, streaming auto, checkpoint on) |
+| Date | 2026-02-07 |
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| Wall clock | 1m 56.6s |
+| User time | 954.5s |
+| System time | 71.3s |
+| CPU utilization | 879% |
+| Peak RSS | 15.2 GB |
+| Major page faults | 0 |
+| Minor page faults | 12.2M |
+| Voluntary context switches | 17.8M |
+| Involuntary context switches | 173k |
+| Streaming chunks | 12 (5,000 commits each) |
+
+### USE Analysis (Brendan Gregg's Methodology)
+
+The USE method examines **Utilization**, **Saturation**, and **Errors** for each
+resource to identify bottlenecks systematically.
+
+#### CPU
+
+| Dimension | Observation |
+|-----------|-------------|
+| **Utilization** | 879% across 24 cores (37% per-core average). 14 workers active (60% of cores). |
+| **Saturation** | 173k involuntary context switches indicate moderate scheduling pressure. Worker threads block on CGO calls (69% of CPU time in `runtime.cgocall`). |
+| **Errors** | None. |
+
+**Key finding:** 69% of CPU time is spent in CGO calls — 48% in `TreeDiff` (C-level
+tree diffing) and 14% in `BatchLoadBlobsArena` (blob loading). The Go-side burndown
+analyzer consumes ~6% (treap operations). GC accounts for 2.9% (`gcBgMarkWorker`).
+
+#### Memory
+
+| Dimension | Observation |
+|-----------|-------------|
+| **Utilization** | 15.2 GB peak RSS out of 64 GB available (24%). |
+| **Saturation** | 12.2M minor page faults (normal for large working set). Zero major faults — all data served from RAM. |
+| **Errors** | None. No OOM events. |
+
+**Heap profile (inuse at exit):** Only 25 MB in-use after final GC — streaming mode
+and hibernation effectively release inter-chunk state. The 15.2 GB peak is dominated
+by transient allocations during chunk processing.
+
+**Allocation profile (cumulative):** 134.6 GB total allocated over the run:
+- 51% — `burndown.ensureCapacity` (treap node arrays, expected for line tracking)
+- 24% — `BlobPipeline.processBatch` (arena allocations, recycled per batch)
+- 16% — `CachedBlob.Clone` (blob copies for cache insertion)
+- 6% — `BatchLoadBlobs` (fallback path when arena overflows)
+
+#### I/O
+
+| Dimension | Observation |
+|-----------|-------------|
+| **Utilization** | 243 MB written (profiles + output). Zero filesystem reads (git packfiles are mmap'd). |
+| **Saturation** | No I/O wait observed (0 major page faults). |
+| **Errors** | None. |
+
+The libgit2 ODB uses mmap for pack file access, keeping I/O off the critical path.
+
+#### Caches
+
+| Resource | Observation |
+|----------|-------------|
+| **Blob cache** | 1 GB default. Arena fallback path (`BatchLoadBlobs`) consumed 6% of total allocations, indicating the 4 MB arena handles most blobs successfully. |
+| **Diff cache** | 10,000 entries default. Diff operations account for only 2% of CPU time (`BatchDiffBlobs`), suggesting good cache reuse. |
+
+### CPU Flamegraph Observations
+
+The CPU flamegraph (`profiles/kubernetes/*/cpu_flamegraph.svg`) shows:
+
+1. **Widest bar:** `runtime.cgocall` → `cf_tree_diff` (48%). This is the C-level
+   git tree comparison — the fundamental cost of history analysis.
+2. **Second widest:** `cf_batch_load_blobs_arena` (14%). Blob loading from packfiles.
+3. **Go-side hotspot:** `treapTimeline.splitByLines` (4%). The burndown analyzer's
+   persistent data structure operations.
+4. **GC pressure:** `gcBgMarkWorker` at 2.9% — low, confirming the arena pattern
+   effectively reduces GC overhead.
+5. **Memory copies:** `runtime.memmove` at 3% — driven by blob cloning for cache.
+
+### Heap Profile Observations
+
+At-rest heap after GC shows 25 MB — dominated by static init data (language detection
+maps from `enry`). The streaming architecture successfully reclaims all per-chunk state.
+
+The cumulative allocation profile reveals that `burndown.ensureCapacity` is the largest
+allocator (69 GB over the run). This is the treap node array growth for line-level
+tracking. The arena pattern keeps `BlobPipeline` allocations efficient (32 GB allocated
+but reused across batches).
+
+## Battle Test: Streaming vs Non-Streaming on kubernetes
+
+### Environment
+
+Same hardware as the battle test above. Burndown analyzer, `--first-parent`,
+all 56,782 first-parent commits. Each mode run with CPU and heap profiling.
+
+### Results
+
+| Metric | streaming=OFF | streaming=ON | Delta |
+|--------|--------------|-------------|-------|
+| Wall clock | 9m 17.2s | 1m 38.3s | **5.7x faster** |
+| User time | 2621.7s | 827.8s | 3.2x less |
+| System time | 811.2s | 67.5s | **12x less** |
+| CPU utilization | 616% | 910% | +48% higher |
+| Peak RSS | 14.4 GB | 15.7 GB | +9% |
+| Minor page faults | 7.9M | 11.2M | +42% |
+| Voluntary ctx switches | 400.6M | 18.2M | **22x fewer** |
+| Involuntary ctx switches | 596k | 224k | 2.7x fewer |
+| **Output** | **byte-identical** | **byte-identical** | **PASS** |
+
+### Output Correctness
+
+The YAML reports from both modes are byte-identical, confirming that the streaming
+orchestrator with hibernate/boot cycles produces the same results as a single-pass run.
+
+### Per-Chunk Timing (streaming=ON, 12 chunks of 5,000 commits)
+
+| Chunk | Commits | Wall Time | Notes |
+|-------|---------|-----------|-------|
+| 1 | 0-5,000 | 2s | Earliest commits, small changes |
+| 2 | 5,000-10,000 | 4s | |
+| 3 | 10,000-15,000 | 9s | |
+| 4 | 15,000-20,000 | 9s | |
+| 5 | 20,000-25,000 | 8s | |
+| 6 | 25,000-30,000 | 7s | |
+| 7 | 30,000-35,000 | 8s | |
+| 8 | 35,000-40,000 | 8s | |
+| 9 | 40,000-45,000 | 11s | Larger merges in recent history |
+| 10 | 45,000-50,000 | 15s | |
+| 11 | 50,000-55,000 | 12s | |
+| 12 | 55,000-56,782 | 5s | Partial chunk (1,782 commits) |
+
+Later chunks take longer because recent kubernetes commits touch more files per commit.
+
+### USE Analysis: Streaming Overhead
+
+#### CPU
+
+| Dimension | streaming=OFF | streaming=ON |
+|-----------|--------------|-------------|
+| **Utilization** | 616% (26% per-core) | 910% (38% per-core) |
+| **Saturation** | 400M voluntary ctx switches — severe contention on libgit2 pack cache with unbounded working set | 18M voluntary ctx switches — chunked working set fits better in CPU cache |
+| **Errors** | None | None |
+
+Streaming mode achieves **higher CPU utilization** (910% vs 616%) because smaller working
+sets reduce cache thrashing and libgit2 pack cache contention. The 22x reduction in
+voluntary context switches confirms that the non-streaming mode spends most of its time
+blocked on contention rather than doing useful work.
+
+#### Memory
+
+| Dimension | streaming=OFF | streaming=ON |
+|-----------|--------------|-------------|
+| **Utilization** | 14.4 GB peak | 15.7 GB peak (+9%) |
+| **Saturation** | 811s system time — heavy mmap/munmap pressure from unbounded pack traversal | 67.5s system time — bounded working set |
+| **Errors** | None | None |
+
+The 12x reduction in system time is the most striking finding. Non-streaming mode's
+unbounded commit traversal causes excessive mmap activity in libgit2's pack file access.
+Streaming bounds the working set per chunk, dramatically reducing kernel overhead.
+
+#### I/O
+
+| Dimension | streaming=OFF | streaming=ON |
+|-----------|--------------|-------------|
+| **Utilization** | 912 KB written | 243 MB written (checkpoint files) |
+| **Saturation** | None | None |
+| **Errors** | None | None |
+
+Streaming writes checkpoint files between chunks (243 MB total), but this has negligible
+impact — the I/O is not on the critical path.
+
+### Key Insight
+
+The streaming mode's 5.7x speedup is **not** from reduced memory — RSS is similar.
+It comes from **better memory locality**. Processing 5,000 commits at a time keeps the
+working set (git pack indices, blob cache entries, treap nodes) small enough to fit in
+CPU caches. The non-streaming mode traverses the entire 56k commit history with an
+ever-growing working set, causing catastrophic cache thrashing and libgit2 contention
+(evidenced by 400M voluntary context switches and 811s of system time).
+
+This validates the streaming chunk orchestrator as a significant performance optimization,
+not just a memory management tool.
 
 ## Summary
 
