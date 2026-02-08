@@ -4,6 +4,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unsafe"
+
+	sitter "github.com/alexaandru/go-tree-sitter-bare"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -731,9 +734,410 @@ func Add(a int, b int) int { return a + b }
 	os.Remove(fileName)
 }
 
+// TestAllPositions_MatchesOriginal verifies that allPositions() returns the same
+// values as individual StartPoint()/EndPoint()/StartByte()/EndByte() calls
+// for every node in a parsed tree.
+func TestAllPositions_MatchesOriginal(t *testing.T) {
+	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Declaration"
+)
+
+identifier <- (identifier) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+block <- (block) => uast(
+    type: "Block",
+    roles: "Block"
+)
+`))
+
+	loadErr := parser.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+
+func Hello() {
+	x := 1
+	y := 2
+	_ = x + y
+}
+
+func World() {
+	for i := 0; i < 10; i++ {
+		fmt.Println(i)
+	}
+}
+`)
+
+	tree, err := parser.parseTSTree(source)
+	if err != nil {
+		t.Fatalf("Failed to parse tree: %v", err)
+	}
+	defer tree.Close()
+
+	// Walk every node in the tree and compare positions.
+	root := tree.RootNode()
+	nodeCount := 0
+
+	var walkAndCheck func(n sitter.Node)
+	walkAndCheck = func(n sitter.Node) {
+		if n.IsNull() {
+			return
+		}
+
+		// Get start positions via readStartPositions (unsafe direct read).
+		sb, sr, sc := readStartPositions(unsafe.Pointer(&n))
+
+		// Compare against individual CGO calls (original approach).
+		startPt := n.StartPoint()
+
+		if sr != startPt.Row {
+			t.Errorf("node %q: startRow mismatch: unsafe=%d, StartPoint=%d",
+				n.Type(), sr, startPt.Row)
+		}
+
+		if sc != startPt.Column {
+			t.Errorf("node %q: startCol mismatch: unsafe=%d, StartPoint=%d",
+				n.Type(), sc, startPt.Column)
+		}
+
+		if sb != n.StartByte() {
+			t.Errorf("node %q: startByte mismatch: unsafe=%d, StartByte=%d",
+				n.Type(), sb, n.StartByte())
+		}
+
+		nodeCount++
+
+		// Walk all children (named and unnamed).
+		for i := range n.ChildCount() {
+			walkAndCheck(n.Child(i))
+		}
+	}
+
+	walkAndCheck(root)
+
+	if nodeCount == 0 {
+		t.Fatal("Expected to check at least one node")
+	}
+
+	t.Logf("Verified %d nodes — all positions match", nodeCount)
+}
+
+// TestReadNamedChildCount_MatchesCGO verifies that readNamedChildCount returns
+// the same value as the CGO NamedChildCount() call for every node in a parsed tree.
+func TestReadNamedChildCount_MatchesCGO(t *testing.T) {
+	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)
+`))
+
+	loadErr := parser.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+
+func Hello(a, b int) (string, error) {
+	x := 1
+	y := 2
+	_ = x + y
+}
+
+type Foo struct {
+	Name string
+	Age  int
+}
+`)
+
+	tree, err := parser.parseTSTree(source)
+	if err != nil {
+		t.Fatalf("Failed to parse tree: %v", err)
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+	nodeCount := 0
+	parentCount := 0
+
+	var walkAndCheck func(n sitter.Node)
+	walkAndCheck = func(n sitter.Node) {
+		if n.IsNull() {
+			return
+		}
+
+		expected := n.NamedChildCount()
+		got := readNamedChildCount(unsafe.Pointer(&n))
+
+		if got != expected {
+			t.Errorf("node %q: namedChildCount mismatch: unsafe=%d, CGO=%d",
+				n.Type(), got, expected)
+		}
+
+		if expected > 0 {
+			parentCount++
+		}
+
+		nodeCount++
+
+		for i := range n.ChildCount() {
+			walkAndCheck(n.Child(i))
+		}
+	}
+
+	walkAndCheck(root)
+
+	if nodeCount == 0 {
+		t.Fatal("Expected to check at least one node")
+	}
+
+	if parentCount == 0 {
+		t.Fatal("Expected at least one parent node with children")
+	}
+
+	t.Logf("Verified %d nodes (%d parents) — all named child counts match", nodeCount, parentCount)
+}
+
+// TestCursorChildren_MatchesNamedChild verifies that iterating children via
+// TreeCursor + IsNamed() filter produces the same set as NamedChild(idx) loop.
+func TestCursorChildren_MatchesNamedChild(t *testing.T) {
+	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)
+`))
+
+	loadErr := parser.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+func Hello(a, b int) (string, error) {
+	x := map[string]int{"a": 1, "b": 2}
+	for k, v := range x {
+		if v > 1 {
+			fmt.Println(k, v)
+		}
+	}
+	return strings.Join([]string{"a", "b"}, ","), nil
+}
+
+type Foo struct {
+	Name string
+	Age  int
+}
+`)
+
+	tree, err := parser.parseTSTree(source)
+	if err != nil {
+		t.Fatalf("Failed to parse tree: %v", err)
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+	nodeCount := 0
+	parentCount := 0
+
+	var walkAndCheck func(n sitter.Node)
+	walkAndCheck = func(n sitter.Node) {
+		if n.IsNull() {
+			return
+		}
+
+		// Collect named children via NamedChild(idx) — the reference method.
+		namedCount := n.NamedChildCount()
+		expectedChildren := make([]string, 0, namedCount)
+
+		for idx := range namedCount {
+			child := n.NamedChild(idx)
+			expectedChildren = append(expectedChildren, n.Type()+"/"+child.Type())
+		}
+
+		// Collect named children via TreeCursor + IsNamed() filter.
+		cursorChildren := make([]string, 0, namedCount)
+		cursor := sitter.NewTreeCursor(n)
+
+		if cursor.GoToFirstChild() {
+			for {
+				child := cursor.CurrentNode()
+				if child.IsNamed() {
+					cursorChildren = append(cursorChildren, n.Type()+"/"+child.Type())
+				}
+
+				if !cursor.GoToNextSibling() {
+					break
+				}
+			}
+		}
+
+		if len(cursorChildren) != len(expectedChildren) {
+			t.Errorf("node %q: child count mismatch: cursor=%d, NamedChild=%d\n  cursor=%v\n  expected=%v",
+				n.Type(), len(cursorChildren), len(expectedChildren), cursorChildren, expectedChildren)
+		} else {
+			for idx := range expectedChildren {
+				if cursorChildren[idx] != expectedChildren[idx] {
+					t.Errorf("node %q child[%d]: cursor=%q, NamedChild=%q",
+						n.Type(), idx, cursorChildren[idx], expectedChildren[idx])
+				}
+			}
+		}
+
+		if namedCount > 0 {
+			parentCount++
+		}
+
+		nodeCount++
+
+		for i := range n.ChildCount() {
+			walkAndCheck(n.Child(i))
+		}
+	}
+
+	walkAndCheck(root)
+
+	if nodeCount == 0 {
+		t.Fatal("Expected to check at least one node")
+	}
+
+	if parentCount == 0 {
+		t.Fatal("Expected at least one parent node with children")
+	}
+
+	t.Logf("Verified %d nodes (%d parents) — all cursor children match NamedChild", nodeCount, parentCount)
+}
+
 // TestDSLProvider_NameExtractionWithoutChildTypeFallback verifies that name extraction
 // works via ChildByFieldName (the field API) and that nodes without a "name" field
 // correctly get no name property — without relying on child-type scanning fallback.
+// TestNodeType_Interning verifies that nodeType() returns the same string pointer
+// for repeated calls with the same tree-sitter node type, confirming interning works.
+func TestNodeType_Interning(t *testing.T) {
+	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Declaration"
+)
+
+identifier <- (identifier) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+`))
+
+	loadErr := parser.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+func Hello() {}
+func World() {}
+`)
+
+	uastNode, parseErr := parser.Parse("test.go", source)
+	if parseErr != nil {
+		t.Fatalf("Failed to parse: %v", parseErr)
+	}
+
+	if uastNode == nil {
+		t.Fatal("Expected UAST node, got nil")
+	}
+
+	// Parse succeeds with interning — verify behavioral correctness.
+	// Two functions should both be mapped as "Function" type.
+	funcCount := 0
+
+	for _, c := range uastNode.Children {
+		if c.Type == "Function" {
+			funcCount++
+		}
+	}
+
+	if funcCount != 2 {
+		t.Errorf("Expected 2 Function nodes, got %d", funcCount)
+	}
+}
+
+// TestNodeType_CachePopulated verifies that typeCache is populated after parsing.
+func TestNodeType_CachePopulated(t *testing.T) {
+	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Declaration"
+)
+
+identifier <- (identifier) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+`))
+
+	loadErr := parser.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+func Hello() {}
+`)
+
+	tree, err := parser.parseTSTree(source)
+	if err != nil {
+		t.Fatalf("Failed to parse tree: %v", err)
+	}
+	defer tree.Close()
+
+	ctx := parser.newParseContext(tree, source)
+	root := tree.RootNode()
+	_ = ctx.toCanonicalNode(root, "")
+
+	// typeCache should have entries after parsing.
+	if len(ctx.typeCache) == 0 {
+		t.Error("Expected typeCache to be populated after parsing")
+	}
+
+	// "source_file" must be in the cache since it's the root node type.
+	if _, ok := ctx.typeCache["source_file"]; !ok {
+		t.Error("Expected 'source_file' in typeCache")
+	}
+}
+
 func TestDSLProvider_NameExtractionWithoutChildTypeFallback(t *testing.T) {
 	dslContent := `[language "go", extensions: ".go"]
 

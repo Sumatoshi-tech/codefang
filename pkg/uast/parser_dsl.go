@@ -149,16 +149,9 @@ func (parser *DSLParser) Extensions() []string {
 
 // Parse parses the given file content and returns the root UAST node.
 func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
-	tsParser, ok := parser.tsParserPool.Get().(*sitter.Parser)
-	if !ok {
-		return nil, errPoolType
-	}
-
-	defer parser.tsParserPool.Put(tsParser)
-
-	tree, err := tsParser.ParseString(context.Background(), nil, content)
+	tree, err := parser.parseTSTree(content)
 	if err != nil {
-		return nil, fmt.Errorf("dsl parser: failed to parse: %w", err)
+		return nil, err
 	}
 	defer tree.Close()
 
@@ -171,6 +164,24 @@ func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
 	canonical := ctx.toCanonicalNode(root, "")
 
 	return canonical, nil
+}
+
+// parseTSTree parses source bytes into a tree-sitter Tree.
+// The caller is responsible for calling tree.Close().
+func (parser *DSLParser) parseTSTree(content []byte) (*sitter.Tree, error) {
+	tsParser, ok := parser.tsParserPool.Get().(*sitter.Parser)
+	if !ok {
+		return nil, errPoolType
+	}
+
+	defer parser.tsParserPool.Put(tsParser)
+
+	tree, err := tsParser.ParseString(context.Background(), nil, content)
+	if err != nil {
+		return nil, fmt.Errorf("dsl parser: failed to parse: %w", err)
+	}
+
+	return tree, nil
 }
 
 // Language returns the language name for this parser.
@@ -188,6 +199,8 @@ func (parser *DSLParser) GetOriginalDSL() string {
 // eliminating per-node heap allocations.
 type parseContext struct {
 	tree            *sitter.Tree
+	alloc           *node.Allocator
+	cursors         []*sitter.TreeCursor
 	patternMatcher  *mapping.PatternMatcher
 	language        string
 	mappingRules    []mapping.Rule
@@ -195,6 +208,7 @@ type parseContext struct {
 	internedTypes   map[string]node.Type
 	internedRoles   map[string]node.Role
 	interner        map[string]string
+	typeCache       map[string]string
 	source          []byte
 	includeUnmapped bool
 }
@@ -203,6 +217,7 @@ type parseContext struct {
 func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
 	return &parseContext{
 		tree:            tree,
+		alloc:           &node.Allocator{},
 		language:        parser.langInfo.Name,
 		source:          content,
 		mappingRules:    parser.mappingRules,
@@ -210,14 +225,51 @@ func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *par
 		internedTypes:   parser.internedTypes,
 		internedRoles:   parser.internedRoles,
 		interner:        make(map[string]string, 128), //nolint:mnd // initial capacity for per-parse string interner
+		typeCache:       make(map[string]string, 64),  //nolint:mnd // initial capacity for node type interning
 		patternMatcher:  parser.patternMatcher,
 		includeUnmapped: parser.IncludeUnmapped,
 	}
 }
 
+// getCursor returns a TreeCursor from the pool, or creates a new one.
+// Cursors are reused across recursive processChildren calls within a single parse.
+func (ctx *parseContext) getCursor(root sitter.Node) *sitter.TreeCursor {
+	poolLen := len(ctx.cursors)
+	if poolLen > 0 {
+		cursor := ctx.cursors[poolLen-1]
+		ctx.cursors = ctx.cursors[:poolLen-1]
+
+		cursor.Reset(root)
+
+		return cursor
+	}
+
+	return sitter.NewTreeCursor(root)
+}
+
+// putCursor returns a TreeCursor to the pool for reuse.
+func (ctx *parseContext) putCursor(cursor *sitter.TreeCursor) {
+	ctx.cursors = append(ctx.cursors, cursor)
+}
+
+// nodeType returns the tree-sitter node type string, interning it in typeCache.
+// Each unique node type string is allocated once per parse; subsequent calls
+// for the same type return the cached copy, deduplicating CGO allocations.
+func (ctx *parseContext) nodeType(root sitter.Node) string {
+	typ := root.Type()
+
+	if cached, ok := ctx.typeCache[typ]; ok {
+		return cached
+	}
+
+	ctx.typeCache[typ] = typ
+
+	return typ
+}
+
 // toCanonicalNode converts a tree-sitter node to a canonical UAST Node.
 func (ctx *parseContext) toCanonicalNode(root sitter.Node, parentContext string) *node.Node {
-	nodeType := root.Type()
+	nodeType := ctx.nodeType(root)
 	mappingRule := ctx.findMappingRule(nodeType)
 
 	children := ctx.processChildren(root, mappingRule)
@@ -300,11 +352,28 @@ func (ctx *parseContext) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
 	return ctx.resolveInheritance(&merged)
 }
 
+// cursorThreshold is the minimum named child count at which cursor-based
+// iteration is faster than NamedChild(idx). Below this, the per-child CGO
+// overhead of cursor operations exceeds the O(N*C) savings.
+const cursorThreshold = 8
+
 // processChildren processes all children of the node.
 func (ctx *parseContext) processChildren(root sitter.Node, mappingRule *mapping.Rule) []*node.Node {
-	childCount := root.NamedChildCount()
+	childCount := readNamedChildCount(unsafe.Pointer(&root))
 	children := make([]*node.Node, 0, childCount)
 
+	if childCount < cursorThreshold {
+		return ctx.processChildrenDirect(root, childCount, mappingRule, children)
+	}
+
+	return ctx.processChildrenCursor(root, mappingRule, children)
+}
+
+// processChildrenDirect iterates children via NamedChild(idx). Efficient for
+// nodes with few children where cursor allocation overhead exceeds O(N*C) savings.
+func (ctx *parseContext) processChildrenDirect(
+	root sitter.Node, childCount uint32, mappingRule *mapping.Rule, children []*node.Node,
+) []*node.Node {
 	for idx := range childCount {
 		child := root.NamedChild(idx)
 
@@ -312,7 +381,7 @@ func (ctx *parseContext) processChildren(root sitter.Node, mappingRule *mapping.
 			continue
 		}
 
-		childParentCtx := deriveParentContext(root, mappingRule)
+		childParentCtx := ctx.deriveParentContext(root, mappingRule)
 
 		canonical := ctx.toCanonicalNode(child, childParentCtx)
 		if canonical != nil {
@@ -323,13 +392,50 @@ func (ctx *parseContext) processChildren(root sitter.Node, mappingRule *mapping.
 	return children
 }
 
+// processChildrenCursor iterates children via TreeCursor. Efficient for nodes
+// with many children where O(C) cursor traversal beats O(N*C) NamedChild(idx).
+func (ctx *parseContext) processChildrenCursor(
+	root sitter.Node, mappingRule *mapping.Rule, children []*node.Node,
+) []*node.Node {
+	cursor := ctx.getCursor(root)
+
+	if !cursor.GoToFirstChild() {
+		ctx.putCursor(cursor)
+
+		return children
+	}
+
+	for {
+		child := cursor.CurrentNode()
+
+		if child.IsNamed() {
+			if !ctx.shouldExcludeChild(child, mappingRule) {
+				childParentCtx := ctx.deriveParentContext(root, mappingRule)
+
+				canonical := ctx.toCanonicalNode(child, childParentCtx)
+				if canonical != nil {
+					children = append(children, canonical)
+				}
+			}
+		}
+
+		if !cursor.GoToNextSibling() {
+			break
+		}
+	}
+
+	ctx.putCursor(cursor)
+
+	return children
+}
+
 // deriveParentContext computes the parent context string for child nodes.
-func deriveParentContext(root sitter.Node, mappingRule *mapping.Rule) string {
+func (ctx *parseContext) deriveParentContext(root sitter.Node, mappingRule *mapping.Rule) string {
 	if mappingRule != nil && mappingRule.UASTSpec.Type != "" {
 		return mappingRule.UASTSpec.Type
 	}
 
-	return root.Type()
+	return ctx.nodeType(root)
 }
 
 // Pattern Matching and Capture Extraction.
@@ -355,7 +461,7 @@ func (ctx *parseContext) matchPattern(root sitter.Node, mappingRule *mapping.Rul
 
 // extractCaptureText extracts text for a named capture using the pattern matcher.
 func (ctx *parseContext) extractCaptureText(root sitter.Node, captureName string) string {
-	mappingRule := ctx.findMappingRule(root.Type())
+	mappingRule := ctx.findMappingRule(ctx.nodeType(root))
 	captures := ctx.matchPattern(root, mappingRule)
 
 	if captures != nil {
@@ -372,7 +478,7 @@ func (ctx *parseContext) extractCaptureText(root sitter.Node, captureName string
 		}
 
 		// Not a leaf: return node type as placeholder.
-		return fieldNode.Type()
+		return ctx.nodeType(fieldNode)
 	}
 
 	// Recursively search for a descendant node of the given type.
@@ -469,14 +575,26 @@ func (ctx *parseContext) evaluateComparisonOp(
 	}
 
 	// Check if field is a child type (zero-copy: comparison only).
-	for idx := range root.NamedChildCount() {
-		child := root.NamedChild(idx)
-		if child.Type() == field {
-			childText := ctx.unsafeNodeText(child)
+	cursor := ctx.getCursor(root)
 
-			return compare(childText, val)
+	if cursor.GoToFirstChild() {
+		for {
+			child := cursor.CurrentNode()
+
+			if child.IsNamed() && ctx.nodeType(child) == field {
+				childText := ctx.unsafeNodeText(child)
+				ctx.putCursor(cursor)
+
+				return compare(childText, val)
+			}
+
+			if !cursor.GoToNextSibling() {
+				break
+			}
 		}
 	}
+
+	ctx.putCursor(cursor)
 
 	return false
 }
@@ -498,7 +616,7 @@ func (ctx *parseContext) shouldExcludeChild(child sitter.Node, mappingRule *mapp
 		return false
 	}
 
-	childRule := ctx.findMappingRule(child.Type())
+	childRule := ctx.findMappingRule(ctx.nodeType(child))
 	if childRule == nil {
 		return false
 	}
@@ -533,7 +651,7 @@ func (ctx *parseContext) createMappedNode(
 		nodeType = node.Type(mappingRule.UASTSpec.Type)
 	}
 
-	uastNode := node.New(
+	uastNode := ctx.alloc.NewNode(
 		"", nodeType,
 		ctx.extractTokenText(root, mappingRule), roles, ctx.extractPositions(root), props,
 	)
@@ -644,7 +762,7 @@ func (ctx *parseContext) extractDirectChildProperty(root sitter.Node, propStr st
 	for idx := range root.NamedChildCount() {
 		child := root.NamedChild(idx)
 
-		childKind := child.Type()
+		childKind := ctx.nodeType(child)
 		if childKind == propStr {
 			return ctx.extractChildText(child)
 		}
@@ -711,7 +829,7 @@ func (ctx *parseContext) extractTokenFromNode(root sitter.Node, source string) s
 func (ctx *parseContext) extractTokenFromChildType(root sitter.Node, nodeType string) string {
 	for idx := range root.NamedChildCount() {
 		child := root.NamedChild(idx)
-		if child.Type() == nodeType {
+		if ctx.nodeType(child) == nodeType {
 			return ctx.extractNodeText(child)
 		}
 	}
@@ -721,7 +839,7 @@ func (ctx *parseContext) extractTokenFromChildType(root sitter.Node, nodeType st
 
 // findDescendantToken recursively searches for a descendant of the specified type.
 func (ctx *parseContext) findDescendantToken(root sitter.Node, nodeType string) string {
-	if root.Type() == nodeType {
+	if ctx.nodeType(root) == nodeType {
 		return ctx.extractNodeText(root)
 	}
 
@@ -766,14 +884,17 @@ func (ctx *parseContext) extractTokenText(root sitter.Node, mappingRule *mapping
 }
 
 // extractPositions extracts position information from the Tree-sitter node.
+// Start values are read directly from the TSNode struct via unsafe (0 CGO calls).
+// End values use the Go wrapper methods (2 CGO calls).
+// Total: 2 CGO calls per node, down from 4 (Phase 1.4).
 func (ctx *parseContext) extractPositions(root sitter.Node) *node.Positions {
-	start := root.StartPoint()
+	startByte, startRow, startCol := readStartPositions(unsafe.Pointer(&root))
 	end := root.EndPoint()
 
-	return node.NewPositions(
-		start.Row+1,
-		start.Column+1,
-		root.StartByte(),
+	return ctx.alloc.NewPositions(
+		startRow+1,
+		startCol+1,
+		startByte,
 		end.Row+1,
 		end.Column+1,
 		root.EndByte(),
@@ -788,14 +909,26 @@ func (ctx *parseContext) createUnmappedNode(root sitter.Node, parentContext, nod
 		return ctx.createIncludeUnmappedNode(root, nodeType, mappedChildren, roles)
 	}
 
-	return createSyntheticNode(mappedChildren)
+	return ctx.createSyntheticNode(mappedChildren)
 }
 
 // processUnmappedChildren processes children for unmapped nodes.
 func (ctx *parseContext) processUnmappedChildren(root sitter.Node, parentContext string) []*node.Node {
+	childCount := readNamedChildCount(unsafe.Pointer(&root))
+
+	if childCount < cursorThreshold {
+		return ctx.processUnmappedChildrenDirect(root, childCount, parentContext)
+	}
+
+	return ctx.processUnmappedChildrenCursor(root, parentContext)
+}
+
+func (ctx *parseContext) processUnmappedChildrenDirect(
+	root sitter.Node, childCount uint32, parentContext string,
+) []*node.Node {
 	var mappedChildren []*node.Node
 
-	for idx := range root.NamedChildCount() {
+	for idx := range childCount {
 		child := root.NamedChild(idx)
 
 		canonical := ctx.toCanonicalNode(child, parentContext)
@@ -807,12 +940,43 @@ func (ctx *parseContext) processUnmappedChildren(root sitter.Node, parentContext
 	return mappedChildren
 }
 
+func (ctx *parseContext) processUnmappedChildrenCursor(root sitter.Node, parentContext string) []*node.Node {
+	var mappedChildren []*node.Node
+
+	cursor := ctx.getCursor(root)
+
+	if !cursor.GoToFirstChild() {
+		ctx.putCursor(cursor)
+
+		return mappedChildren
+	}
+
+	for {
+		child := cursor.CurrentNode()
+
+		if child.IsNamed() {
+			canonical := ctx.toCanonicalNode(child, parentContext)
+			if canonical != nil {
+				mappedChildren = append(mappedChildren, canonical)
+			}
+		}
+
+		if !cursor.GoToNextSibling() {
+			break
+		}
+	}
+
+	ctx.putCursor(cursor)
+
+	return mappedChildren
+}
+
 // createIncludeUnmappedNode creates a node when IncludeUnmapped is true.
 func (ctx *parseContext) createIncludeUnmappedNode(
 	root sitter.Node, nodeType string,
 	mappedChildren []*node.Node, roles []node.Role,
 ) *node.Node {
-	uastNode := node.New(
+	uastNode := ctx.alloc.NewNode(
 		"", node.Type(ctx.language+":"+nodeType),
 		ctx.tokenText(root), roles, ctx.extractPositions(root), nil,
 	)
@@ -835,7 +999,7 @@ func (ctx *parseContext) tokenText(root sitter.Node) string {
 // for span computation.
 // If only one child is passed, it is returned as-is.
 // If no position can be computed, pos is left nil.
-func createSyntheticNode(mappedChildren []*node.Node) *node.Node {
+func (ctx *parseContext) createSyntheticNode(mappedChildren []*node.Node) *node.Node {
 	if len(mappedChildren) == 1 {
 		return mappedChildren[0]
 	}
@@ -844,9 +1008,9 @@ func createSyntheticNode(mappedChildren []*node.Node) *node.Node {
 		return nil
 	}
 
-	pos := computeChildrenSpan(mappedChildren)
+	pos := ctx.computeChildrenSpan(mappedChildren)
 
-	synth := node.New("", "Synthetic", "", nil, pos, nil)
+	synth := ctx.alloc.NewNode("", "Synthetic", "", nil, pos, nil)
 	synth.Children = mappedChildren
 
 	return synth
@@ -895,12 +1059,12 @@ func (b *positionBounds) update(pos *node.Positions) {
 	}
 }
 
-func (b *positionBounds) toPositions() *node.Positions {
+func (b *positionBounds) toPositions(alloc *node.Allocator) *node.Positions {
 	if !b.found {
 		return nil
 	}
 
-	return node.NewPositions(
+	return alloc.NewPositions(
 		b.minStartLine,
 		b.minStartCol,
 		b.minStartOffset,
@@ -911,7 +1075,7 @@ func (b *positionBounds) toPositions() *node.Positions {
 }
 
 // computeChildrenSpan computes the bounding span across children positions.
-func computeChildrenSpan(children []*node.Node) *node.Positions {
+func (ctx *parseContext) computeChildrenSpan(children []*node.Node) *node.Positions {
 	bounds := newPositionBounds()
 
 	for _, child := range children {
@@ -920,7 +1084,7 @@ func computeChildrenSpan(children []*node.Node) *node.Positions {
 		}
 	}
 
-	return bounds.toPositions()
+	return bounds.toPositions(ctx.alloc)
 }
 
 // extractNodeText extracts text from a Tree-sitter node (allocating copy).
