@@ -178,6 +178,18 @@ allocs/op (small), -7.5% allocs/op (large).
 Large history analyzers use contiguous, index-based structures instead of
 pointer-heavy nodes to reduce GC overhead and improve cache locality.
 
+### 12) Parse context pattern (eliminate per-node DSLNode allocation)
+The DSL parser previously created a new `DSLNode` struct (160 bytes, 13 fields)
+for every tree-sitter node during UAST conversion. Only 2 fields (`Root`,
+`ParentContext`) changed between parent and child — the other 11 were identical
+pointer copies. Profiling on kubernetes (2000 commits, sentiment) showed
+`createChildNode` allocating 109.8 GB and `createUnmappedChildNode` allocating
+7.9 GB. The `DSLNode` struct was replaced with a shared `parseContext` that is
+created once per `Parse()` call. Per-node state (`root sitter.Node`,
+`parentContext string`) is passed as function parameters instead of struct fields,
+eliminating all per-node heap allocations for shared state. Benchmark: -16.3%
+allocs/op (large), -46.3% B/op (large), -43.8% B/op (medium).
+
 ## CLI Resource Knobs
 
 The `codefang history` command exposes flags to tune pipeline performance for

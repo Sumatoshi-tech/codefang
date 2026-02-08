@@ -167,9 +167,8 @@ func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
 		return nil, errNoRootNode
 	}
 
-	interner := make(map[string]string, 128) //nolint:mnd // initial capacity for per-parse string interner
-	dslNode := parser.createDSLNode(root, tree, content, interner)
-	canonical := dslNode.ToCanonicalNode()
+	ctx := parser.newParseContext(tree, content)
+	canonical := ctx.toCanonicalNode(root, "")
 
 	return canonical, nil
 }
@@ -184,85 +183,83 @@ func (parser *DSLParser) GetOriginalDSL() string {
 	return parser.originalDSL
 }
 
-// DSLNode wraps a Tree-sitter node for conversion to UAST using DSL mappings.
-type DSLNode struct {
-	Root            sitter.Node
-	Tree            *sitter.Tree
-	PatternMatcher  *mapping.PatternMatcher
-	Language        string
-	ParentContext   string
-	MappingRules    []mapping.Rule
+// parseContext holds shared state for a single Parse() call.
+// Per-node varying state (root, parentContext) is passed as function parameters,
+// eliminating per-node heap allocations.
+type parseContext struct {
+	tree            *sitter.Tree
+	patternMatcher  *mapping.PatternMatcher
+	language        string
+	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
-	internedTypes   map[string]node.Type // shared from DSLParser (read-only)
-	internedRoles   map[string]node.Role // shared from DSLParser (read-only)
-	interner        map[string]string    // per-parse string interner for short tokens
-	Source          []byte
-	IncludeUnmapped bool
+	internedTypes   map[string]node.Type
+	internedRoles   map[string]node.Role
+	interner        map[string]string
+	source          []byte
+	includeUnmapped bool
 }
 
-// ToCanonicalNode converts the DSLNode to a canonical UAST Node.
-func (dn *DSLNode) ToCanonicalNode() *node.Node {
-	nodeType := dn.Root.Type()
-	mappingRule := dn.findMappingRule(nodeType)
+// newParseContext creates a parseContext for a single Parse() call.
+func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
+	return &parseContext{
+		tree:            tree,
+		language:        parser.langInfo.Name,
+		source:          content,
+		mappingRules:    parser.mappingRules,
+		ruleIndex:       parser.ruleIndex,
+		internedTypes:   parser.internedTypes,
+		internedRoles:   parser.internedRoles,
+		interner:        make(map[string]string, 128), //nolint:mnd // initial capacity for per-parse string interner
+		patternMatcher:  parser.patternMatcher,
+		includeUnmapped: parser.IncludeUnmapped,
+	}
+}
 
-	children := dn.processChildren(mappingRule)
-	if dn.shouldSkipNode(mappingRule) {
+// toCanonicalNode converts a tree-sitter node to a canonical UAST Node.
+func (ctx *parseContext) toCanonicalNode(root sitter.Node, parentContext string) *node.Node {
+	nodeType := root.Type()
+	mappingRule := ctx.findMappingRule(nodeType)
+
+	children := ctx.processChildren(root, mappingRule)
+	if ctx.shouldSkipNode(root, mappingRule) {
 		return nil
 	}
 
-	if dn.shouldSkipEmptyFile(nodeType, children) {
+	if ctx.shouldSkipEmptyFile(nodeType, children) {
 		return nil
 	}
 
 	var roles []node.Role
 
 	if mappingRule != nil {
-		return dn.createMappedNode(mappingRule, children, roles)
+		return ctx.createMappedNode(root, mappingRule, children, roles)
 	}
 
-	return dn.createUnmappedNode(nodeType, roles)
-}
-
-// createDSLNode creates a new DSLNode with the given parameters.
-func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, content []byte, interner map[string]string) *DSLNode {
-	return &DSLNode{
-		Root:            root,
-		Tree:            tree,
-		Language:        parser.langInfo.Name,
-		Source:          content,
-		MappingRules:    parser.mappingRules,
-		ruleIndex:       parser.ruleIndex,
-		internedTypes:   parser.internedTypes,
-		internedRoles:   parser.internedRoles,
-		interner:        interner,
-		PatternMatcher:  parser.patternMatcher,
-		IncludeUnmapped: parser.IncludeUnmapped,
-		ParentContext:   "",
-	}
+	return ctx.createUnmappedNode(root, parentContext, nodeType, roles)
 }
 
 // findMappingRule finds a mapping rule for the given node type, resolving inheritance and merging fields.
-func (dn *DSLNode) findMappingRule(nodeType string) *mapping.Rule {
-	idx, ok := dn.ruleIndex[nodeType]
+func (ctx *parseContext) findMappingRule(nodeType string) *mapping.Rule {
+	idx, ok := ctx.ruleIndex[nodeType]
 	if !ok {
 		return nil
 	}
 
-	return dn.resolveInheritance(&dn.MappingRules[idx])
+	return ctx.resolveInheritance(&ctx.mappingRules[idx])
 }
 
 // resolveInheritance recursively merges base rule fields if Extends is set.
-func (dn *DSLNode) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
+func (ctx *parseContext) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
 	if rule.Extends == "" {
 		return rule
 	}
 
-	baseIdx, ok := dn.ruleIndex[rule.Extends]
+	baseIdx, ok := ctx.ruleIndex[rule.Extends]
 	if !ok {
 		return rule
 	}
 
-	base := &dn.MappingRules[baseIdx]
+	base := &ctx.mappingRules[baseIdx]
 
 	merged := *base // Shallow copy.
 
@@ -300,23 +297,24 @@ func (dn *DSLNode) resolveInheritance(rule *mapping.Rule) *mapping.Rule {
 	}
 
 	// Recursively resolve further inheritance.
-	return dn.resolveInheritance(&merged)
+	return ctx.resolveInheritance(&merged)
 }
 
 // processChildren processes all children of the node.
-func (dn *DSLNode) processChildren(mappingRule *mapping.Rule) []*node.Node {
-	childCount := dn.Root.NamedChildCount()
+func (ctx *parseContext) processChildren(root sitter.Node, mappingRule *mapping.Rule) []*node.Node {
+	childCount := root.NamedChildCount()
 	children := make([]*node.Node, 0, childCount)
 
 	for idx := range childCount {
-		child := dn.Root.NamedChild(idx)
-		childNode := dn.createChildNode(child, mappingRule)
+		child := root.NamedChild(idx)
 
-		if dn.shouldExcludeChild(childNode, mappingRule) {
+		if ctx.shouldExcludeChild(child, mappingRule) {
 			continue
 		}
 
-		canonical := childNode.ToCanonicalNode()
+		childParentCtx := deriveParentContext(root, mappingRule)
+
+		canonical := ctx.toCanonicalNode(child, childParentCtx)
 		if canonical != nil {
 			children = append(children, canonical)
 		}
@@ -325,47 +323,29 @@ func (dn *DSLNode) processChildren(mappingRule *mapping.Rule) []*node.Node {
 	return children
 }
 
-// createChildNode creates a child DSLNode with proper parent context.
-func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.Rule) *DSLNode {
-	parentContext := ""
-	if mappingRule != nil {
-		parentContext = mappingRule.UASTSpec.Type
+// deriveParentContext computes the parent context string for child nodes.
+func deriveParentContext(root sitter.Node, mappingRule *mapping.Rule) string {
+	if mappingRule != nil && mappingRule.UASTSpec.Type != "" {
+		return mappingRule.UASTSpec.Type
 	}
 
-	if parentContext == "" {
-		parentContext = dn.Root.Type()
-	}
-
-	return &DSLNode{
-		Root:            child,
-		Tree:            dn.Tree,
-		Language:        dn.Language,
-		Source:          dn.Source,
-		MappingRules:    dn.MappingRules,
-		ruleIndex:       dn.ruleIndex,
-		internedTypes:   dn.internedTypes,
-		internedRoles:   dn.internedRoles,
-		interner:        dn.interner,
-		PatternMatcher:  dn.PatternMatcher,
-		IncludeUnmapped: dn.IncludeUnmapped,
-		ParentContext:   parentContext,
-	}
+	return root.Type()
 }
 
 // Pattern Matching and Capture Extraction.
 
 // matchPattern returns the capture map for the current node and mapping rule, or nil if no match.
-func (dn *DSLNode) matchPattern(mappingRule *mapping.Rule) map[string]string {
+func (ctx *parseContext) matchPattern(root sitter.Node, mappingRule *mapping.Rule) map[string]string {
 	if mappingRule == nil || mappingRule.Pattern == "" {
 		return nil
 	}
 
-	query, err := dn.PatternMatcher.CompileAndCache(mappingRule.Pattern)
+	query, err := ctx.patternMatcher.CompileAndCache(mappingRule.Pattern)
 	if err != nil {
 		return nil
 	}
 
-	captures, err := dn.PatternMatcher.MatchPattern(query, &dn.Root, dn.Source)
+	captures, err := ctx.patternMatcher.MatchPattern(query, &root, ctx.source)
 	if err != nil {
 		return nil
 	}
@@ -374,9 +354,9 @@ func (dn *DSLNode) matchPattern(mappingRule *mapping.Rule) map[string]string {
 }
 
 // extractCaptureText extracts text for a named capture using the pattern matcher.
-func (dn *DSLNode) extractCaptureText(captureName string) string {
-	mappingRule := dn.findMappingRule(dn.Root.Type())
-	captures := dn.matchPattern(mappingRule)
+func (ctx *parseContext) extractCaptureText(root sitter.Node, captureName string) string {
+	mappingRule := ctx.findMappingRule(root.Type())
+	captures := ctx.matchPattern(root, mappingRule)
 
 	if captures != nil {
 		if val, ok := captures[captureName]; ok {
@@ -385,10 +365,10 @@ func (dn *DSLNode) extractCaptureText(captureName string) string {
 	}
 
 	// Fallback: try to extract by field name.
-	fieldNode := dn.Root.ChildByFieldName(captureName)
+	fieldNode := root.ChildByFieldName(captureName)
 	if !fieldNode.IsNull() {
 		if fieldNode.ChildCount() == 0 {
-			return dn.extractNodeText(fieldNode)
+			return ctx.extractNodeText(fieldNode)
 		}
 
 		// Not a leaf: return node type as placeholder.
@@ -396,9 +376,9 @@ func (dn *DSLNode) extractCaptureText(captureName string) string {
 	}
 
 	// Recursively search for a descendant node of the given type.
-	desc := findDescendantByType(dn.Root, captureName)
+	desc := findDescendantByType(root, captureName)
 	if !desc.IsNull() {
-		return dn.extractNodeText(desc)
+		return ctx.extractNodeText(desc)
 	}
 
 	return ""
@@ -424,15 +404,15 @@ func findDescendantByType(tsNode sitter.Node, typ string) sitter.Node {
 // Condition Evaluation.
 
 // evaluateConditions returns true if all conditions are satisfied for the current node.
-func (dn *DSLNode) evaluateConditions(mappingRule *mapping.Rule) bool {
+func (ctx *parseContext) evaluateConditions(root sitter.Node, mappingRule *mapping.Rule) bool {
 	if mappingRule == nil || len(mappingRule.Conditions) == 0 {
 		return true
 	}
 
-	captures := dn.matchPattern(mappingRule)
+	captures := ctx.matchPattern(root, mappingRule)
 
 	for _, cond := range mappingRule.Conditions {
-		if !dn.evaluateCondition(cond.Expr, captures) {
+		if !ctx.evaluateCondition(root, cond.Expr, captures) {
 			return false
 		}
 	}
@@ -441,20 +421,20 @@ func (dn *DSLNode) evaluateConditions(mappingRule *mapping.Rule) bool {
 }
 
 // evaluateCondition evaluates a single condition expression (very basic implementation).
-func (dn *DSLNode) evaluateCondition(expr string, captures map[string]string) bool {
+func (ctx *parseContext) evaluateCondition(root sitter.Node, expr string, captures map[string]string) bool {
 	// Only support simple equality: field == "value" or field != "value".
 	expr = strings.TrimSpace(expr)
 
 	if strings.Contains(expr, "==") {
-		return dn.evaluateComparisonOp(
-			expr, "==", captures,
+		return ctx.evaluateComparisonOp(
+			root, expr, "==", captures,
 			func(left, right string) bool { return left == right },
 		)
 	}
 
 	if strings.Contains(expr, "!=") {
-		return dn.evaluateComparisonOp(
-			expr, "!=", captures,
+		return ctx.evaluateComparisonOp(
+			root, expr, "!=", captures,
 			func(left, right string) bool { return left != right },
 		)
 	}
@@ -464,7 +444,10 @@ func (dn *DSLNode) evaluateCondition(expr string, captures map[string]string) bo
 
 // evaluateComparisonOp is a helper that evaluates comparison expressions
 // with the given operator and comparator.
-func (dn *DSLNode) evaluateComparisonOp(expr, op string, captures map[string]string, compare func(left, right string) bool) bool {
+func (ctx *parseContext) evaluateComparisonOp(
+	root sitter.Node, expr, op string,
+	captures map[string]string, compare func(left, right string) bool,
+) bool {
 	parts := strings.SplitN(expr, op, comparisonParts)
 	if len(parts) != comparisonParts {
 		return false
@@ -479,17 +462,17 @@ func (dn *DSLNode) evaluateComparisonOp(expr, op string, captures map[string]str
 	}
 
 	// Check field names in the AST (zero-copy: comparison only).
-	if fieldNode := dn.Root.ChildByFieldName(field); !fieldNode.IsNull() {
-		fieldText := dn.unsafeNodeText(fieldNode)
+	if fieldNode := root.ChildByFieldName(field); !fieldNode.IsNull() {
+		fieldText := ctx.unsafeNodeText(fieldNode)
 
 		return compare(fieldText, val)
 	}
 
 	// Check if field is a child type (zero-copy: comparison only).
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
+	for idx := range root.NamedChildCount() {
+		child := root.NamedChild(idx)
 		if child.Type() == field {
-			childText := dn.unsafeNodeText(child)
+			childText := ctx.unsafeNodeText(child)
 
 			return compare(childText, val)
 		}
@@ -501,39 +484,39 @@ func (dn *DSLNode) evaluateComparisonOp(expr, op string, captures map[string]str
 // Node/Child Inclusion/Exclusion.
 
 // shouldSkipNode checks if the current node should be skipped based on mapping rule conditions.
-func (dn *DSLNode) shouldSkipNode(mappingRule *mapping.Rule) bool {
+func (ctx *parseContext) shouldSkipNode(root sitter.Node, mappingRule *mapping.Rule) bool {
 	if mappingRule == nil {
 		return false
 	}
 
-	return !dn.evaluateConditions(mappingRule)
+	return !ctx.evaluateConditions(root, mappingRule)
 }
 
 // shouldExcludeChild checks if a child should be excluded based on mapping rules and conditions.
-func (dn *DSLNode) shouldExcludeChild(childNode *DSLNode, mappingRule *mapping.Rule) bool {
+func (ctx *parseContext) shouldExcludeChild(child sitter.Node, mappingRule *mapping.Rule) bool {
 	if mappingRule == nil {
 		return false
 	}
 
-	childRule := childNode.findMappingRule(childNode.Root.Type())
+	childRule := ctx.findMappingRule(child.Type())
 	if childRule == nil {
 		return false
 	}
 
-	return !childNode.evaluateConditions(childRule)
+	return !ctx.evaluateConditions(child, childRule)
 }
 
 // shouldSkipEmptyFile checks if an empty file should be skipped.
-func (dn *DSLNode) shouldSkipEmptyFile(nodeType string, children []*node.Node) bool {
-	return nodeType == "source_file" && len(children) == 0 && len(dn.Source) == 0
+func (ctx *parseContext) shouldSkipEmptyFile(nodeType string, children []*node.Node) bool {
+	return nodeType == "source_file" && len(children) == 0 && len(ctx.source) == 0
 }
 
 // createMappedNode creates a UAST node from a mapped Tree-sitter node.
-func (dn *DSLNode) createMappedNode(
-	mappingRule *mapping.Rule, children []*node.Node,
-	roles []node.Role,
+func (ctx *parseContext) createMappedNode(
+	root sitter.Node, mappingRule *mapping.Rule,
+	children []*node.Node, roles []node.Role,
 ) *node.Node {
-	dn.extractRoles(mappingRule, &roles)
+	ctx.extractRoles(mappingRule, &roles)
 
 	// Lazily allocate props only when properties or names are present.
 	var props map[string]string
@@ -541,34 +524,34 @@ func (dn *DSLNode) createMappedNode(
 		props = make(map[string]string, len(mappingRule.UASTSpec.Props))
 	}
 
-	dn.extractProperties(mappingRule, props)
-	props = dn.extractName(mappingRule, props)
+	ctx.extractProperties(root, mappingRule, props)
+	props = ctx.extractName(root, mappingRule, props)
 
 	// Use pre-interned type string if available, avoiding repeated allocation.
-	nodeType := dn.internedTypes[mappingRule.UASTSpec.Type]
+	nodeType := ctx.internedTypes[mappingRule.UASTSpec.Type]
 	if nodeType == "" {
 		nodeType = node.Type(mappingRule.UASTSpec.Type)
 	}
 
 	uastNode := node.New(
 		"", nodeType,
-		dn.extractTokenText(mappingRule), roles, dn.extractPositions(), props,
+		ctx.extractTokenText(root, mappingRule), roles, ctx.extractPositions(root), props,
 	)
 	uastNode.Children = children
 
-	dn.extractToken(mappingRule, uastNode)
+	ctx.extractToken(root, mappingRule, uastNode)
 
 	return uastNode
 }
 
 // extractRoles extracts roles from the mapping rule, using pre-interned values.
-func (dn *DSLNode) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
+func (ctx *parseContext) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
 	if mappingRule == nil {
 		return
 	}
 
 	for _, roleStr := range mappingRule.UASTSpec.Roles {
-		if interned, ok := dn.internedRoles[roleStr]; ok {
+		if interned, ok := ctx.internedRoles[roleStr]; ok {
 			*roles = append(*roles, interned)
 		} else {
 			*roles = append(*roles, node.Role(roleStr))
@@ -578,12 +561,12 @@ func (dn *DSLNode) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
 
 // extractName extracts name from the node if specified in mapping.
 // Returns the updated props map (may allocate if name is found and props is nil).
-func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]string) map[string]string {
+func (ctx *parseContext) extractName(root sitter.Node, mappingRule *mapping.Rule, props map[string]string) map[string]string {
 	if mappingRule == nil {
 		return props
 	}
 
-	name := dn.extractNameFromNode(tokenSourceFieldsName)
+	name := ctx.extractNameFromNode(root, tokenSourceFieldsName)
 	if name != "" {
 		if props == nil {
 			props = make(map[string]string, 1)
@@ -596,51 +579,46 @@ func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]strin
 }
 
 // extractNameFromNode extracts a name from a node using the specified source.
-func (dn *DSLNode) extractNameFromNode(source string) string {
+func (ctx *parseContext) extractNameFromNode(root sitter.Node, source string) string {
 	switch source {
 	case tokenSourceFieldsName:
-		return dn.extractNameFromField("name")
+		return ctx.extractNameFromField(root, "name")
 	case tokenSourcePropsName:
-		return dn.extractNameFromProps()
+		return ctx.extractNameFromText(root)
 	case tokenSourceText:
-		return dn.extractNameFromText()
+		return ctx.extractNameFromText(root)
 	default:
 		return ""
 	}
 }
 
 // extractNameFromField extracts a name from a specific field using Tree-sitter's field API.
-func (dn *DSLNode) extractNameFromField(fieldName string) string {
-	fieldNode := dn.Root.ChildByFieldName(fieldName)
+func (ctx *parseContext) extractNameFromField(root sitter.Node, fieldName string) string {
+	fieldNode := root.ChildByFieldName(fieldName)
 	if !fieldNode.IsNull() {
-		return dn.extractNodeText(fieldNode)
+		return ctx.extractNodeText(fieldNode)
 	}
 
 	return ""
 }
 
 // extractNameFromText extracts name from node text.
-func (dn *DSLNode) extractNameFromText() string {
-	if dn.Root.ChildCount() == 0 {
-		return dn.extractNodeText(dn.Root)
+func (ctx *parseContext) extractNameFromText(root sitter.Node) string {
+	if root.ChildCount() == 0 {
+		return ctx.extractNodeText(root)
 	}
 
 	return ""
 }
 
-// extractNameFromProps extracts name from node properties (legacy).
-func (dn *DSLNode) extractNameFromProps() string {
-	return dn.extractNameFromText()
-}
-
 // extractProperties extracts properties from the mapping rule.
-func (dn *DSLNode) extractProperties(mappingRule *mapping.Rule, props map[string]string) {
+func (ctx *parseContext) extractProperties(root sitter.Node, mappingRule *mapping.Rule, props map[string]string) {
 	if mappingRule == nil || mappingRule.UASTSpec.Props == nil {
 		return
 	}
 
 	for key, value := range mappingRule.UASTSpec.Props {
-		extractedValue := dn.extractPropertyValue(value)
+		extractedValue := ctx.extractPropertyValue(root, value)
 		if extractedValue != "" {
 			props[key] = extractedValue
 		}
@@ -648,27 +626,27 @@ func (dn *DSLNode) extractProperties(mappingRule *mapping.Rule, props map[string
 }
 
 // extractPropertyValue extracts a property value from the node.
-func (dn *DSLNode) extractPropertyValue(propStr string) string {
+func (ctx *parseContext) extractPropertyValue(root sitter.Node, propStr string) string {
 	if strings.HasPrefix(propStr, "@") && len(propStr) > 1 {
 		// Property references a capture.
-		return dn.extractCaptureText(propStr[1:])
+		return ctx.extractCaptureText(root, propStr[1:])
 	}
 
 	if after, ok := strings.CutPrefix(propStr, "descendant:"); ok {
-		return dn.extractTokenFromDescendant(after)
+		return ctx.findDescendantToken(root, after)
 	}
 
-	return dn.extractDirectChildProperty(propStr)
+	return ctx.extractDirectChildProperty(root, propStr)
 }
 
 // extractDirectChildProperty extracts a direct child property.
-func (dn *DSLNode) extractDirectChildProperty(propStr string) string {
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
+func (ctx *parseContext) extractDirectChildProperty(root sitter.Node, propStr string) string {
+	for idx := range root.NamedChildCount() {
+		child := root.NamedChild(idx)
 
 		childKind := child.Type()
 		if childKind == propStr {
-			return dn.extractChildText(child)
+			return ctx.extractChildText(child)
 		}
 	}
 
@@ -677,19 +655,19 @@ func (dn *DSLNode) extractDirectChildProperty(propStr string) string {
 
 // extractChildText extracts text from a child node.
 // Short strings are interned within the current parse.
-func (dn *DSLNode) extractChildText(child sitter.Node) string {
+func (ctx *parseContext) extractChildText(child sitter.Node) string {
 	start := child.StartByte()
 	end := child.EndByte()
 
-	if safeconv.MustUintToInt(end) <= len(dn.Source) {
-		s := string(dn.Source[start:end])
+	if safeconv.MustUintToInt(end) <= len(ctx.source) {
+		s := string(ctx.source[start:end])
 
-		if len(s) <= maxInternLen && dn.interner != nil {
-			if interned, ok := dn.interner[s]; ok {
+		if len(s) <= maxInternLen && ctx.interner != nil {
+			if interned, ok := ctx.interner[s]; ok {
 				return interned
 			}
 
-			dn.interner[s] = s
+			ctx.interner[s] = s
 		}
 
 		return s
@@ -699,30 +677,30 @@ func (dn *DSLNode) extractChildText(child sitter.Node) string {
 }
 
 // extractToken extracts token from the mapping rule.
-func (dn *DSLNode) extractToken(mappingRule *mapping.Rule, uastNode *node.Node) {
+func (ctx *parseContext) extractToken(root sitter.Node, mappingRule *mapping.Rule, uastNode *node.Node) {
 	if mappingRule == nil || mappingRule.UASTSpec.Token == "" {
 		return
 	}
 
-	token := dn.extractTokenFromNode(mappingRule.UASTSpec.Token)
+	token := ctx.extractTokenFromNode(root, mappingRule.UASTSpec.Token)
 	if token != "" {
 		uastNode.Token = token
 	}
 }
 
 // extractTokenFromNode extracts a token from a node using the specified source.
-func (dn *DSLNode) extractTokenFromNode(source string) string {
+func (ctx *parseContext) extractTokenFromNode(root sitter.Node, source string) string {
 	switch source {
 	case tokenSourceFieldsName:
-		return dn.extractNameFromField("name")
+		return ctx.extractNameFromField(root, "name")
 	case tokenSourcePropsName:
-		return dn.extractNameFromProps()
+		return ctx.extractNameFromText(root)
 	case tokenSourceText:
-		return dn.extractNameFromText()
+		return ctx.extractNameFromText(root)
 	default:
 		// Try to extract as a field name.
 		if after, ok := strings.CutPrefix(source, "fields."); ok {
-			return dn.extractNameFromField(after)
+			return ctx.extractNameFromField(root, after)
 		}
 
 		return ""
@@ -730,47 +708,27 @@ func (dn *DSLNode) extractTokenFromNode(source string) string {
 }
 
 // extractTokenFromChildType finds the first child of the specified type and extracts its token.
-func (dn *DSLNode) extractTokenFromChildType(nodeType string) string {
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
+func (ctx *parseContext) extractTokenFromChildType(root sitter.Node, nodeType string) string {
+	for idx := range root.NamedChildCount() {
+		child := root.NamedChild(idx)
 		if child.Type() == nodeType {
-			return dn.extractNodeText(child)
+			return ctx.extractNodeText(child)
 		}
 	}
 
 	return ""
 }
 
-// extractTokenFromDescendant finds the first descendant of the specified type and extracts its token.
-func (dn *DSLNode) extractTokenFromDescendant(nodeType string) string {
-	return dn.findDescendantToken(nodeType)
-}
-
 // findDescendantToken recursively searches for a descendant of the specified type.
-func (dn *DSLNode) findDescendantToken(nodeType string) string {
-	if dn.Root.Type() == nodeType {
-		return dn.extractNodeText(dn.Root)
+func (ctx *parseContext) findDescendantToken(root sitter.Node, nodeType string) string {
+	if root.Type() == nodeType {
+		return ctx.extractNodeText(root)
 	}
 
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
+	for idx := range root.NamedChildCount() {
+		child := root.NamedChild(idx)
 
-		childNode := &DSLNode{
-			Root:            child,
-			Tree:            dn.Tree,
-			Language:        dn.Language,
-			Source:          dn.Source,
-			MappingRules:    dn.MappingRules,
-			ruleIndex:       dn.ruleIndex,
-			internedTypes:   dn.internedTypes,
-			internedRoles:   dn.internedRoles,
-			interner:        dn.interner,
-			PatternMatcher:  dn.PatternMatcher,
-			IncludeUnmapped: dn.IncludeUnmapped,
-			ParentContext:   dn.ParentContext,
-		}
-
-		if result := childNode.findDescendantToken(nodeType); result != "" {
+		if result := ctx.findDescendantToken(child, nodeType); result != "" {
 			return result
 		}
 	}
@@ -779,7 +737,7 @@ func (dn *DSLNode) findDescendantToken(nodeType string) string {
 }
 
 // extractTokenText extracts the token text based on the mapping rule.
-func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
+func (ctx *parseContext) extractTokenText(root sitter.Node, mappingRule *mapping.Rule) string {
 	if mappingRule == nil || mappingRule.UASTSpec.Token == "" {
 		return ""
 	}
@@ -788,19 +746,19 @@ func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
 
 	if captureName, ok := strings.CutPrefix(tokenSpec, "@"); ok {
 		// Extract from capture.
-		return dn.extractCaptureText(captureName)
+		return ctx.extractCaptureText(root, captureName)
 	}
 
 	switch tokenSpec {
 	case "self", tokenSourceText:
-		return dn.extractNodeText(dn.Root)
+		return ctx.extractNodeText(root)
 	default:
 		if after, ok := strings.CutPrefix(tokenSpec, "child:"); ok {
-			return dn.extractTokenFromChildType(after)
+			return ctx.extractTokenFromChildType(root, after)
 		}
 
 		if after, ok := strings.CutPrefix(tokenSpec, "descendant:"); ok {
-			return dn.extractTokenFromDescendant(after)
+			return ctx.findDescendantToken(root, after)
 		}
 
 		return tokenSpec
@@ -808,40 +766,39 @@ func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
 }
 
 // extractPositions extracts position information from the Tree-sitter node.
-func (dn *DSLNode) extractPositions() *node.Positions {
-	start := dn.Root.StartPoint()
-	end := dn.Root.EndPoint()
+func (ctx *parseContext) extractPositions(root sitter.Node) *node.Positions {
+	start := root.StartPoint()
+	end := root.EndPoint()
 
 	return node.NewPositions(
 		start.Row+1,
 		start.Column+1,
-		dn.Root.StartByte(),
+		root.StartByte(),
 		end.Row+1,
 		end.Column+1,
-		dn.Root.EndByte(),
+		root.EndByte(),
 	)
 }
 
 // createUnmappedNode creates a UAST node for unmapped Tree-sitter nodes.
-func (dn *DSLNode) createUnmappedNode(nodeType string, roles []node.Role) *node.Node {
-	mappedChildren := dn.processUnmappedChildren()
+func (ctx *parseContext) createUnmappedNode(root sitter.Node, parentContext, nodeType string, roles []node.Role) *node.Node {
+	mappedChildren := ctx.processUnmappedChildren(root, parentContext)
 
-	if dn.IncludeUnmapped {
-		return dn.createIncludeUnmappedNode(nodeType, mappedChildren, roles)
+	if ctx.includeUnmapped {
+		return ctx.createIncludeUnmappedNode(root, nodeType, mappedChildren, roles)
 	}
 
-	return dn.createSyntheticNode(mappedChildren)
+	return createSyntheticNode(mappedChildren)
 }
 
 // processUnmappedChildren processes children for unmapped nodes.
-func (dn *DSLNode) processUnmappedChildren() []*node.Node {
+func (ctx *parseContext) processUnmappedChildren(root sitter.Node, parentContext string) []*node.Node {
 	var mappedChildren []*node.Node
 
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
-		childNode := dn.createUnmappedChildNode(child)
+	for idx := range root.NamedChildCount() {
+		child := root.NamedChild(idx)
 
-		canonical := childNode.ToCanonicalNode()
+		canonical := ctx.toCanonicalNode(child, parentContext)
 		if canonical != nil {
 			mappedChildren = append(mappedChildren, canonical)
 		}
@@ -850,36 +807,27 @@ func (dn *DSLNode) processUnmappedChildren() []*node.Node {
 	return mappedChildren
 }
 
-// createUnmappedChildNode creates a child node for unmapped nodes.
-func (dn *DSLNode) createUnmappedChildNode(child sitter.Node) *DSLNode {
-	return &DSLNode{
-		Root:            child,
-		Tree:            dn.Tree,
-		Language:        dn.Language,
-		Source:          dn.Source,
-		MappingRules:    dn.MappingRules,
-		ruleIndex:       dn.ruleIndex,
-		internedTypes:   dn.internedTypes,
-		internedRoles:   dn.internedRoles,
-		interner:        dn.interner,
-		PatternMatcher:  dn.PatternMatcher,
-		IncludeUnmapped: dn.IncludeUnmapped,
-		ParentContext:   dn.ParentContext,
-	}
-}
-
 // createIncludeUnmappedNode creates a node when IncludeUnmapped is true.
-func (dn *DSLNode) createIncludeUnmappedNode(
-	nodeType string, mappedChildren []*node.Node,
-	roles []node.Role,
+func (ctx *parseContext) createIncludeUnmappedNode(
+	root sitter.Node, nodeType string,
+	mappedChildren []*node.Node, roles []node.Role,
 ) *node.Node {
 	uastNode := node.New(
-		"", node.Type(dn.Language+":"+nodeType),
-		dn.Token(), roles, dn.Positions(), nil,
+		"", node.Type(ctx.language+":"+nodeType),
+		ctx.tokenText(root), roles, ctx.extractPositions(root), nil,
 	)
 	uastNode.Children = mappedChildren
 
 	return uastNode
+}
+
+// tokenText returns the string token for a node, if it is a leaf.
+func (ctx *parseContext) tokenText(root sitter.Node) string {
+	if root.ChildCount() == 0 {
+		return ctx.extractNodeText(root)
+	}
+
+	return ""
 }
 
 // createSyntheticNode creates a synthetic node for multiple children.
@@ -887,7 +835,7 @@ func (dn *DSLNode) createIncludeUnmappedNode(
 // for span computation.
 // If only one child is passed, it is returned as-is.
 // If no position can be computed, pos is left nil.
-func (dn *DSLNode) createSyntheticNode(mappedChildren []*node.Node) *node.Node {
+func createSyntheticNode(mappedChildren []*node.Node) *node.Node {
 	if len(mappedChildren) == 1 {
 		return mappedChildren[0]
 	}
@@ -975,48 +923,23 @@ func computeChildrenSpan(children []*node.Node) *node.Positions {
 	return bounds.toPositions()
 }
 
-// Token returns the string token for this node, if any.
-func (dn *DSLNode) Token() string {
-	if dn.Root.ChildCount() == 0 {
-		return dn.extractNodeText(dn.Root)
-	}
-
-	return ""
-}
-
-// Positions returns the source code positions for this node, using uint fields as per UAST spec.
-func (dn *DSLNode) Positions() *node.Positions {
-	root := dn.Root
-	start := root.StartPoint()
-	end := root.EndPoint()
-
-	return node.NewPositions(
-		start.Row+1,
-		start.Column+1,
-		root.StartByte(),
-		end.Row+1,
-		end.Column+1,
-		root.EndByte(),
-	)
-}
-
 // extractNodeText extracts text from a Tree-sitter node (allocating copy).
 // Use for values that are stored in Node.Token or Node.Props.
 // Short strings (≤ maxInternLen) are interned within the current parse to
 // deduplicate repeated identifiers, keywords, and operators.
-func (dn *DSLNode) extractNodeText(tsNode sitter.Node) string {
+func (ctx *parseContext) extractNodeText(tsNode sitter.Node) string {
 	start := tsNode.StartByte()
 	end := tsNode.EndByte()
 
-	if safeconv.MustUintToInt(end) <= len(dn.Source) {
-		s := string(dn.Source[start:end])
+	if safeconv.MustUintToInt(end) <= len(ctx.source) {
+		s := string(ctx.source[start:end])
 
-		if len(s) <= maxInternLen && dn.interner != nil {
-			if interned, ok := dn.interner[s]; ok {
+		if len(s) <= maxInternLen && ctx.interner != nil {
+			if interned, ok := ctx.interner[s]; ok {
 				return interned
 			}
 
-			dn.interner[s] = s
+			ctx.interner[s] = s
 		}
 
 		return s
@@ -1029,12 +952,12 @@ func (dn *DSLNode) extractNodeText(tsNode sitter.Node) string {
 // The returned string shares the Source []byte backing array and must NOT be
 // stored beyond the current parse call (i.e., not in Node.Token or Node.Props).
 // Safe for comparison, filtering, and condition evaluation within Parse().
-func (dn *DSLNode) unsafeNodeText(tsNode sitter.Node) string {
+func (ctx *parseContext) unsafeNodeText(tsNode sitter.Node) string {
 	start := tsNode.StartByte()
 	end := tsNode.EndByte()
 
-	if end <= uint(len(dn.Source)) {
-		return unsafe.String(&dn.Source[start], safeconv.MustUintToInt(end-start))
+	if end <= uint(len(ctx.source)) {
+		return unsafe.String(&ctx.source[start], safeconv.MustUintToInt(end-start))
 	}
 
 	return ""
