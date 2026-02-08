@@ -354,10 +354,15 @@ func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.Ca
 	return lang
 }
 
-// SetLanguagesForTest sets the languages directly (for testing only).
-func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Hash]string) {
+// SetLanguages sets the languages directly, marking them as parsed.
+func (l *LanguagesDetectionAnalyzer) SetLanguages(languages map[gitlib.Hash]string) {
 	l.languages = languages
 	l.parsed = true
+}
+
+// SetLanguagesForTest sets the languages directly (for testing only).
+func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Hash]string) {
+	l.SetLanguages(languages)
 }
 
 // Finalize completes the analysis and returns the result.

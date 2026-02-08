@@ -365,6 +365,64 @@ var x int`)
 	}
 }
 
+// TestDSLProvider_ConditionFilteringWithoutShouldIncludeChild verifies that
+// condition-based child filtering works solely through shouldExcludeChild and
+// ToCanonicalNode.shouldSkipNode — no redundant shouldIncludeChild needed.
+func TestDSLProvider_ConditionFilteringWithoutShouldIncludeChild(t *testing.T) {
+	dslContent := `[language "go", extensions: ".go"]
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Declaration",
+    token: "fields.name"
+) when name == "Allowed"
+identifier <- (identifier) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)`
+
+	provider := NewDSLParser(strings.NewReader(dslContent))
+
+	loadErr := provider.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	source := []byte(`package main
+func Allowed() {}
+func Blocked() {}
+func AlsoBlocked() {}`)
+
+	uastNode, parseErr := provider.Parse("test.go", source)
+	if parseErr != nil {
+		t.Fatalf("Failed to parse: %v", parseErr)
+	}
+
+	if uastNode == nil {
+		t.Fatal("Expected UAST node, got nil")
+	}
+
+	var functionNames []string
+
+	for _, child := range uastNode.Children {
+		if child.Type == node.Type("Function") {
+			functionNames = append(functionNames, child.Token)
+		}
+	}
+
+	if len(functionNames) != 1 {
+		t.Fatalf("Expected exactly 1 Function child, got %d: %v", len(functionNames), functionNames)
+	}
+
+	if functionNames[0] != "Allowed" {
+		t.Errorf("Expected function name 'Allowed', got '%s'", functionNames[0])
+	}
+}
+
 func TestDSLProvider_ChildInclusionExclusion(t *testing.T) {
 	dslContent := `[language "go", extensions: ".go"]
 
@@ -671,4 +729,79 @@ func Add(a int, b int) int { return a + b }
 	}
 
 	os.Remove(fileName)
+}
+
+// TestDSLProvider_NameExtractionWithoutChildTypeFallback verifies that name extraction
+// works via ChildByFieldName (the field API) and that nodes without a "name" field
+// correctly get no name property — without relying on child-type scanning fallback.
+func TestDSLProvider_NameExtractionWithoutChildTypeFallback(t *testing.T) {
+	dslContent := `[language "go", extensions: ".go"]
+
+function_declaration <- (function_declaration) => uast(
+    type: "Function",
+    roles: "Declaration",
+    token: "fields.name"
+)
+
+if_statement <- (if_statement) => uast(
+    type: "If",
+    roles: "Statement"
+)
+
+source_file <- (source_file) => uast(
+    type: "File",
+    roles: "Module"
+)`
+
+	goSource := `package main
+
+func Hello() {}
+
+func World() {}
+`
+
+	provider := NewDSLParser(strings.NewReader(dslContent))
+
+	loadErr := provider.Load()
+	if loadErr != nil {
+		t.Fatalf("Failed to load DSL: %v", loadErr)
+	}
+
+	uastNode, parseErr := provider.Parse("test.go", []byte(goSource))
+	if parseErr != nil {
+		t.Fatalf("Failed to parse: %v", parseErr)
+	}
+	defer node.ReleaseTree(uastNode)
+
+	// Collect function nodes — they should have names via ChildByFieldName.
+	var functions []*node.Node
+
+	var walk func(nd *node.Node)
+
+	walk = func(nd *node.Node) {
+		if nd == nil {
+			return
+		}
+
+		if nd.Type == "Function" {
+			functions = append(functions, nd)
+		}
+
+		for _, c := range nd.Children {
+			walk(c)
+		}
+	}
+
+	walk(uastNode)
+
+	if len(functions) != 2 {
+		t.Fatalf("Expected 2 functions, got %d", len(functions))
+	}
+
+	expectedNames := []string{"Hello", "World"}
+	for idx, fn := range functions {
+		if fn.Token != expectedNames[idx] {
+			t.Errorf("Function %d: expected token %q, got %q", idx, expectedNames[idx], fn.Token)
+		}
+	}
 }

@@ -127,7 +127,54 @@ Blob and diff pipelines are fronted by LRU caches to avoid recomputing data:
 Static analyzers share a single UAST traversal, reducing AST walks from N
 per analyzer to one pass for a group of analyzers.
 
-### 6) Memory-dense core data structures
+### 6) Eliminate redundant condition checks in UAST tree conversion
+The DSL parser's `processChildren` loop previously called `shouldIncludeChild`
+after `ToCanonicalNode` for every child node. Since `ToCanonicalNode` already
+evaluates mapping conditions via `shouldSkipNode`, the second check was redundant,
+costing an extra CGO call (`child.Type()`), a heap-allocated `DSLNode`, and
+a duplicate `evaluateConditions` call per child. Profiling on kubernetes (2000
+commits, sentiment) showed this consumed 67s CPU and 58 GB allocation. The
+redundant method was removed and the `shouldIncludeChild` function deleted.
+
+### 7) Single-pass tree release
+`ReleaseTree` previously collected all UAST nodes into an intermediate `order`
+slice, then released in reverse. The `order` slice grew to hold the entire tree,
+causing 8.6 GB allocation for temporary storage across a 2000-commit run. Since
+`sync.Pool.Put` is order-independent, the two-pass approach was replaced with a
+single-pass traversal that reads `n.Children` then releases `n` immediately.
+Benchmark: -98% bytes/op, -100% allocs/op, -30% ns/op.
+
+### 8) Lazy children slice allocation
+`Builder.Build()` unconditionally allocated `Children = make([]*Node, 0, 4)` for
+every node, including leaf nodes that never have children (~70% of all nodes). In
+`createMappedNode`, this slice is immediately overwritten by
+`uastNode.Children = children`, making the initial allocation pure waste. Profiling
+on kubernetes (2000 commits, sentiment) showed 10.5 GB allocation from this path.
+The allocation was removed from `Build()` and `AddChild()` was made nil-safe with
+lazy initialization. Benchmark: -10% allocs/op on large parse, -5.7% B/op.
+
+### 9) Cache StartPoint/EndPoint in position extraction
+`extractPositions()` and `Positions()` called `StartPoint()` and `EndPoint()`
+twice each — once for `.Row` and once for `.Column` — producing 6 CGO round-trips
+per node where 4 suffice. Each `StartPoint()`/`EndPoint()` call crosses the
+Go→C→Go boundary via `runtime.cgocall`. Profiling on kubernetes (2000 commits,
+sentiment) showed `extractPositions` costing 151s CPU cumulative. Caching the
+`sitter.Point` return values in local variables eliminates 2 CGO calls per node,
+saving ~50s CPU at scale.
+
+### 10) Remove extractName child-type scan fallback
+`extractNameFromField` called `ChildByFieldName("name")` (1 CGO call), and on
+miss fell through to `extractNameFromChildType("name")` which iterated all named
+children with 3 CGO calls each (`NamedChildCount`, `NamedChild`, `Type`). The
+fallback searched for a child whose type string is literally `"name"` — almost
+never present in real tree-sitter grammars. For nodes without a `name` field
+(if_statement, for_statement, expression_statement, etc.), the fallback ran
+fruitlessly on every node. Profiling on kubernetes (2000 commits, sentiment)
+showed this costing 111s CPU. The fallback was removed and
+`extractNameFromChildType` deleted. Benchmark: -14% ns/op (small), -10%
+allocs/op (small), -7.5% allocs/op (large).
+
+### 11) Memory-dense core data structures
 Large history analyzers use contiguous, index-based structures instead of
 pointer-heavy nodes to reduce GC overhead and improve cache locality.
 

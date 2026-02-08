@@ -6,6 +6,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
 // Serialization format constants.
@@ -60,6 +61,10 @@ type Context struct {
 	// FileDiffs maps file paths to diff data for modified files.
 	// Populated by the runtime pipeline using native C diff computation.
 	FileDiffs map[string]plumbing.FileDiffData
+
+	// UASTChanges contains pre-computed UAST changes for this commit.
+	// Populated by the UAST pipeline stage when enabled.
+	UASTChanges []uast.Change
 }
 
 // HistoryAnalyzer interface defines the contract for history-based analyzers.

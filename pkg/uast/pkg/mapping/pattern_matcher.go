@@ -13,6 +13,7 @@ var (
 	errNilLanguage = errors.New("tree-sitter language is nil")
 	errNilQueryArg = errors.New("query or node is nil")
 	errNoMatch     = errors.New("no match found")
+	errPoolType    = errors.New("pattern matcher: pool returned unexpected type")
 )
 
 // PatternMatcher compiles and matches S-expression patterns to Tree-sitter queries.
@@ -72,7 +73,11 @@ func (pm *PatternMatcher) CacheStats() (hits, misses int64) {
 
 // MatchPattern matches a compiled query against a Tree-sitter node and returns captures.
 func (pm *PatternMatcher) MatchPattern(query *sitter.Query, tsNode *sitter.Node, source []byte) (map[string]string, error) {
-	cursor := pm.cursorPool.Get().(*sitter.QueryCursor)
+	cursor, ok := pm.cursorPool.Get().(*sitter.QueryCursor)
+	if !ok {
+		return nil, errPoolType
+	}
+
 	defer pm.cursorPool.Put(cursor)
 
 	return matchTreeSitterQuery(query, cursor, tsNode, source)

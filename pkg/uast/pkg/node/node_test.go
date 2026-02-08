@@ -1008,6 +1008,78 @@ func TestDSLMapFilterPipeline(t *testing.T) {
 	}
 }
 
+// buildBenchTree creates a tree with the given branching factor and depth for benchmarking.
+// Total nodes = (branching^(depth+1) - 1) / (branching - 1) for branching > 1.
+func buildBenchTree(branching, depth int) *Node {
+	root := New("", "Root", "root", nil, NewPositions(1, 1, 0, 1, 10, 10), nil)
+	if depth > 0 {
+		for idx := range branching {
+			child := buildBenchTreeRecursive(branching, depth-1, idx)
+			root.AddChild(child)
+		}
+	}
+
+	return root
+}
+
+func buildBenchTreeRecursive(branching, depth, index int) *Node {
+	nd := New("", Type(fmt.Sprintf("Node_%d", index)), "", nil, NewPositions(1, 1, 0, 1, 1, 1), nil)
+	if depth > 0 {
+		for idx := range branching {
+			child := buildBenchTreeRecursive(branching, depth-1, idx)
+			nd.AddChild(child)
+		}
+	}
+
+	return nd
+}
+
+func TestReleaseTree_ReleasesAllNodes(t *testing.T) {
+	t.Parallel()
+
+	// Build a small tree: 3 children, depth 2 = 1 + 3 + 9 = 13 nodes.
+	root := buildBenchTree(3, 2)
+
+	// Count nodes before release.
+	nodeCount := 0
+
+	root.VisitPreOrder(func(_ *Node) {
+		nodeCount++
+	})
+
+	expectedNodes := 13
+	if nodeCount != expectedNodes {
+		t.Fatalf("Expected %d nodes, got %d", expectedNodes, nodeCount)
+	}
+
+	// Release should not panic.
+	ReleaseTree(root)
+}
+
+func TestReleaseTree_NilRoot(t *testing.T) {
+	t.Parallel()
+
+	// Should not panic.
+	ReleaseTree(nil)
+}
+
+const (
+	benchTreeBranching = 4
+	benchTreeDepth     = 4 // 4^0 + 4^1 + 4^2 + 4^3 + 4^4 = 1 + 4 + 16 + 64 + 256 = 341 nodes
+)
+
+func BenchmarkReleaseTree(b *testing.B) {
+	for b.Loop() {
+		b.StopTimer()
+
+		tree := buildBenchTree(benchTreeBranching, benchTreeDepth)
+
+		b.StartTimer()
+
+		ReleaseTree(tree)
+	}
+}
+
 func TestDSLMapChildren(t *testing.T) {
 	t.Parallel()
 

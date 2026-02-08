@@ -1,3 +1,4 @@
+// Package streaming provides chunked execution with analyzer hibernation for memory-bounded analysis.
 package streaming
 
 // Hibernatable is an optional interface for analyzers that support hibernation.
