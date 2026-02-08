@@ -563,7 +563,7 @@ func BenchmarkFindMappingRule(b *testing.B) {
 	parser := createBenchParser(b)
 	source := []byte(smallGoSource)
 
-	// Parse once to create a DSLNode.
+	// Parse once to create a parseContext.
 	tsParser := sitter.NewParser()
 	tsParser.SetLanguage(parser.language)
 
@@ -572,8 +572,7 @@ func BenchmarkFindMappingRule(b *testing.B) {
 		b.Fatalf("Failed to parse: %v", err)
 	}
 
-	root := tree.RootNode()
-	dslNode := parser.createDSLNode(root, tree, source, make(map[string]string))
+	ctx := parser.newParseContext(tree, source)
 
 	// Get some node types to search for.
 	nodeTypes := []string{
@@ -588,7 +587,7 @@ func BenchmarkFindMappingRule(b *testing.B) {
 
 	for b.Loop() {
 		for _, nodeType := range nodeTypes {
-			_ = dslNode.findMappingRule(nodeType)
+			_ = ctx.findMappingRule(nodeType)
 		}
 	}
 }
@@ -598,7 +597,7 @@ func BenchmarkProcessChildren(b *testing.B) {
 	parser := createBenchParser(b)
 	source := []byte(largeGoSource)
 
-	// Parse once to create a DSLNode.
+	// Parse once to create a parseContext.
 	tsParser := sitter.NewParser()
 	tsParser.SetLanguage(parser.language)
 
@@ -608,12 +607,12 @@ func BenchmarkProcessChildren(b *testing.B) {
 	}
 
 	root := tree.RootNode()
-	dslNode := parser.createDSLNode(root, tree, source, make(map[string]string))
-	mappingRule := dslNode.findMappingRule(root.Type())
+	ctx := parser.newParseContext(tree, source)
+	mappingRule := ctx.findMappingRule(root.Type())
 
 	b.ResetTimer()
 
 	for b.Loop() {
-		_ = dslNode.processChildren(mappingRule)
+		_ = ctx.processChildren(root, mappingRule)
 	}
 }
