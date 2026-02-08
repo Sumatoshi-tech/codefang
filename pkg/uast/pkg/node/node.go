@@ -150,6 +150,38 @@ type Positions struct {
 	EndOffset   uint `json:"end_offset,omitempty"`
 }
 
+// posPool is a [sync.Pool] for Positions structs to reduce allocation overhead.
+//
+//nolint:gochecknoglobals // Shared pool for positions allocation performance.
+var posPool = sync.Pool{
+	New: func() any {
+		return &Positions{}
+	},
+}
+
+// NewPositions returns a Positions from the pool, initialized with the given values.
+func NewPositions(startLine, startCol, startOffset, endLine, endCol, endOffset uint) *Positions {
+	pos, ok := posPool.Get().(*Positions)
+	if !ok {
+		pos = &Positions{}
+	}
+
+	pos.StartLine = startLine
+	pos.StartCol = startCol
+	pos.StartOffset = startOffset
+	pos.EndLine = endLine
+	pos.EndCol = endCol
+	pos.EndOffset = endOffset
+
+	return pos
+}
+
+// Release returns a Positions to the pool for reuse.
+func (p *Positions) Release() {
+	*p = Positions{}
+	posPool.Put(p)
+}
+
 // Node is the canonical UAST node structure.
 //
 // Fields:
@@ -258,9 +290,9 @@ func (builder *Builder) WithProps(props map[string]string) *Builder {
 }
 
 // Build creates and returns the final Node.
+// Children is left nil; callers that need children assign directly (e.g.,
+// uastNode.Children = children). This avoids allocating a slice for leaf nodes.
 func (builder *Builder) Build() *Node {
-	builder.node.Children = make([]*Node, 0, initialChildCap)
-
 	return builder.node
 }
 
@@ -312,6 +344,33 @@ func (targetNode *Node) Release() {
 	nodePool.Put(targetNode)
 }
 
+// ReleaseTree iteratively releases all nodes and their positions in the tree
+// back to their respective pools. Each node's children are read and pushed onto
+// the stack before the node itself is released, ensuring no use-after-free.
+// [sync.Pool.Put] is order-independent, so parent-before-child release is safe.
+func ReleaseTree(root *Node) {
+	if root == nil {
+		return
+	}
+
+	stack := make([]*Node, 0, defaultStackCap)
+	stack = append(stack, root)
+
+	for len(stack) > 0 {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Read children before releasing the node (Release clears Children to nil).
+		stack = append(stack, current.Children...)
+
+		if current.Pos != nil {
+			current.Pos.Release()
+		}
+
+		current.Release()
+	}
+}
+
 // Find returns all nodes in the tree (including root) for which predicate(node) is true.
 // Traversal is pre-order. Returns nil if n is nil.
 func (targetNode *Node) Find(predicate func(*Node) bool) []*Node {
@@ -323,7 +382,12 @@ func (targetNode *Node) Find(predicate func(*Node) bool) []*Node {
 }
 
 // AddChild appends a child node to n.
+// Allocates the Children slice on first use (lazy initialization).
 func (targetNode *Node) AddChild(child *Node) {
+	if targetNode.Children == nil {
+		targetNode.Children = make([]*Node, 0, initialChildCap)
+	}
+
 	targetNode.Children = append(targetNode.Children, child)
 }
 

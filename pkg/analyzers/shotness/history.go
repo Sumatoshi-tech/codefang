@@ -3,13 +3,14 @@ package shotness
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -25,13 +26,13 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	FileDiff    *plumbing.FileDiffAnalyzer
-	UASTChanges *plumbing.UASTChangesAnalyzer
-	nodes       map[string]*nodeShotness
-	files       map[string]map[string]*nodeShotness
-	merges      map[gitlib.Hash]bool
-	DSLStruct   string
-	DSLName     string
+	FileDiff  *plumbing.FileDiffAnalyzer
+	UAST      *plumbing.UASTChangesAnalyzer
+	nodes     map[string]*nodeShotness
+	files     map[string]map[string]*nodeShotness
+	merges    map[gitlib.Hash]bool
+	DSLStruct string
+	DSLName   string
 }
 
 type nodeShotness struct {
@@ -59,13 +60,16 @@ const (
 	// DefaultShotnessDSLStruct is the default DSL expression for selecting code structures.
 	DefaultShotnessDSLStruct = "filter(.roles has \"Function\")"
 	// DefaultShotnessDSLName is the default DSL expression for extracting names.
-	DefaultShotnessDSLName = ".token"
+	DefaultShotnessDSLName = ".props.name"
 )
 
 // Name returns the name of the analyzer.
 func (s *HistoryAnalyzer) Name() string {
 	return "Shotness"
 }
+
+// NeedsUAST returns true because shotness analysis requires UAST parsing.
+func (s *HistoryAnalyzer) NeedsUAST() bool { return true }
 
 // Flag returns the CLI flag for the analyzer.
 func (s *HistoryAnalyzer) Flag() string {
@@ -379,7 +383,7 @@ func (s *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	changesList := s.UASTChanges.Changes
+	changesList := s.UAST.Changes()
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 
@@ -438,63 +442,129 @@ func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only dependencies.
 func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *s
-		// Shallow copy for shared state (legacy behavior).
-		res[i] = &clone
+		clone := &HistoryAnalyzer{
+			FileDiff:  s.FileDiff,
+			UAST:      s.UAST,
+			DSLStruct: s.DSLStruct,
+			DSLName:   s.DSLName,
+		}
+		// Initialize independent state for each fork
+		clone.nodes = make(map[string]*nodeShotness)
+		clone.files = make(map[string]map[string]*nodeShotness)
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		s.mergeNodes(other.nodes)
+		s.mergeMerges(other.merges)
+	}
+
+	// Rebuild files map from merged nodes
+	s.rebuildFilesMap()
+}
+
+// mergeNodes combines node data from another analyzer.
+func (s *HistoryAnalyzer) mergeNodes(other map[string]*nodeShotness) {
+	for key, otherNode := range other {
+		if s.nodes[key] == nil {
+			s.nodes[key] = &nodeShotness{
+				Summary: otherNode.Summary,
+				Count:   otherNode.Count,
+				Couples: make(map[string]int),
+			}
+
+			maps.Copy(s.nodes[key].Couples, otherNode.Couples)
+		} else {
+			// Sum counts
+			s.nodes[key].Count += otherNode.Count
+
+			// Sum couples
+			for ck, cv := range otherNode.Couples {
+				s.nodes[key].Couples[ck] += cv
+			}
+		}
+	}
+}
+
+// mergeMerges combines merge tracking from another analyzer.
+func (s *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		s.merges[hash] = true
+	}
+}
+
+// rebuildFilesMap rebuilds the files map from the nodes map.
+func (s *HistoryAnalyzer) rebuildFilesMap() {
+	s.files = make(map[string]map[string]*nodeShotness)
+
+	for key, ns := range s.nodes {
+		fileName := ns.Summary.File
+		if s.files[fileName] == nil {
+			s.files[fileName] = make(map[string]*nodeShotness)
+		}
+
+		s.files[fileName][key] = ns
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return s.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return s.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return s.generatePlot(result, writer)
+	default:
+		return s.serializeYAML(result, writer)
+	}
+}
 
-		return nil
+func (s *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	nodes, ok := result["Nodes"].([]NodeSummary)
-	if !ok {
-		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	counters, ok := result["Counters"].([]map[int]int)
-	if !ok {
-		return errors.New("expected []map[int]int for counters") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	for i, summary := range nodes {
-		fmt.Fprintf(writer, "  - name: %s\n    file: %s\n    internal_role: %s\n    counters: {",
-			summary.Name, summary.File, summary.Type)
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
 
-		keys := make([]int, 0, len(counters[i]))
-		for key := range counters[i] {
-			keys = append(keys, key)
-		}
-
-		sort.Ints(keys)
-
-		for j, key := range keys {
-			val := counters[i][key]
-			if j < len(keys)-1 {
-				fmt.Fprintf(writer, "\"%d\":%d,", key, val)
-			} else {
-				fmt.Fprintf(writer, "\"%d\":%d", key, val)
-			}
-		}
-
-		fmt.Fprintln(writer, "}")
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil

@@ -69,7 +69,6 @@ func TestParser_Parse(t *testing.T) {
 	}
 }
 
-//nolint:gocyclo,cyclop // Integration test with many assertions.
 func TestIntegration_GoFunctionUAST_SPEC(t *testing.T) {
 	src := []byte(`package main
 func add(a, b int) int { return a + b }`)
@@ -292,7 +291,6 @@ func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
 	return results, err
 }
 
-//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -382,7 +380,6 @@ func instrumentedPostOrder(nd *node.Node, fn func(*node.Node)) {
 	nd.VisitPostOrder(fn)
 }
 
-//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {
@@ -879,8 +876,6 @@ func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 }
 
 // TestParser_GetMapping tests the GetMapping method.
-//
-//nolint:gocognit // Complex test with multiple subtests.
 func TestParser_GetMapping(t *testing.T) {
 	parser, err := NewParser()
 	if err != nil {

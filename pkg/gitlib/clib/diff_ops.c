@@ -1,0 +1,677 @@
+/*
+ * Codefang Git Library - Diff Operations
+ *
+ * Optimized for batch diff computation with:
+ * 1. ODB-based blob preloading for better cache efficiency
+ * 2. Sorted OID processing for pack locality
+ * 3. Single ODB refresh per batch
+ * 4. OpenMP parallel diff computation (pure buffer operations)
+ */
+
+#include "codefang_git.h"
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+/* Context for diff callbacks */
+typedef struct {
+    cf_diff_result* result;
+    int current_type;
+    int current_count;
+    int old_line_pos;
+    int new_line_pos;
+} diff_ctx_t;
+
+/* Flush pending diff operation to result */
+static void flush_op(diff_ctx_t* ctx) {
+    if (ctx->current_count > 0) {
+        cf_diff_result* res = ctx->result;
+        if (res->op_count < res->op_capacity) {
+            res->ops[res->op_count].type_ = ctx->current_type;
+            res->ops[res->op_count].line_count = ctx->current_count;
+            res->op_count++;
+        }
+        ctx->current_count = 0;
+    }
+}
+
+/* Add an operation, coalescing with current if same type */
+static void add_op(diff_ctx_t* ctx, int type, int count) {
+    if (type == ctx->current_type) {
+        ctx->current_count += count;
+    } else {
+        flush_op(ctx);
+        ctx->current_type = type;
+        ctx->current_count = count;
+    }
+}
+
+/* Callback for each line in the diff */
+static int line_callback(
+    const git_diff_delta* delta,
+    const git_diff_hunk* hunk,
+    const git_diff_line* line,
+    void* payload
+) {
+    diff_ctx_t* ctx = (diff_ctx_t*)payload;
+
+    switch (line->origin) {
+    case GIT_DIFF_LINE_CONTEXT:
+        add_op(ctx, CF_DIFF_EQUAL, 1);
+        ctx->old_line_pos++;
+        ctx->new_line_pos++;
+        break;
+    case GIT_DIFF_LINE_ADDITION:
+        add_op(ctx, CF_DIFF_INSERT, 1);
+        ctx->new_line_pos++;
+        break;
+    case GIT_DIFF_LINE_DELETION:
+        add_op(ctx, CF_DIFF_DELETE, 1);
+        ctx->old_line_pos++;
+        break;
+    default:
+        /* Skip file headers, hunk headers, etc. */
+        break;
+    }
+
+    return 0;
+}
+
+/* Callback for each hunk in the diff */
+static int hunk_callback(
+    const git_diff_delta* delta,
+    const git_diff_hunk* hunk,
+    void* payload
+) {
+    diff_ctx_t* ctx = (diff_ctx_t*)payload;
+
+    /* Insert implicit equal block for skipped lines before this hunk */
+    /* old_start is 1-based, old_line_pos is 0-based count of processed lines */
+    int hunk_start = hunk->old_start - 1;  /* Convert to 0-based */
+    if (hunk_start > ctx->old_line_pos) {
+        int skipped = hunk_start - ctx->old_line_pos;
+        add_op(ctx, CF_DIFF_EQUAL, skipped);
+        ctx->old_line_pos = hunk_start;
+        ctx->new_line_pos += skipped;
+    }
+
+    return 0;
+}
+
+/* Compute diff for a single blob pair */
+static int compute_single_diff(
+    git_repository* repo,
+    const cf_diff_request* req,
+    cf_diff_result* result
+) {
+    git_blob* old_blob = NULL;
+    git_blob* new_blob = NULL;
+    int ret = CF_OK;
+
+    /* Initialize result */
+    ret = cf_init_diff_result(result, CF_MAX_DIFF_OPS);
+    if (ret != CF_OK) {
+        return ret;
+    }
+
+    /* Load old blob if exists */
+    if (req->has_old) {
+        int err = git_blob_lookup(&old_blob, repo, &req->old_oid);
+        if (err != 0) {
+            result->error = CF_ERR_LOOKUP;
+            return CF_ERR_LOOKUP;
+        }
+
+        const char* content = (const char*)git_blob_rawcontent(old_blob);
+        size_t size = git_blob_rawsize(old_blob);
+
+        /* Check for binary */
+        if (size > 0 && cf_is_binary(content, size)) {
+            git_blob_free(old_blob);
+            result->error = CF_ERR_BINARY;
+            return CF_ERR_BINARY;
+        }
+
+        result->old_lines = cf_count_lines(content, size);
+    }
+
+    /* Load new blob if exists */
+    if (req->has_new) {
+        int err = git_blob_lookup(&new_blob, repo, &req->new_oid);
+        if (err != 0) {
+            if (old_blob) git_blob_free(old_blob);
+            result->error = CF_ERR_LOOKUP;
+            return CF_ERR_LOOKUP;
+        }
+
+        const char* content = (const char*)git_blob_rawcontent(new_blob);
+        size_t size = git_blob_rawsize(new_blob);
+
+        /* Check for binary */
+        if (size > 0 && cf_is_binary(content, size)) {
+            if (old_blob) git_blob_free(old_blob);
+            git_blob_free(new_blob);
+            result->error = CF_ERR_BINARY;
+            return CF_ERR_BINARY;
+        }
+
+        result->new_lines = cf_count_lines(content, size);
+    }
+
+    /* Setup diff context */
+    diff_ctx_t ctx = {
+        .result = result,
+        .current_type = -1,
+        .current_count = 0,
+        .old_line_pos = 0,
+        .new_line_pos = 0
+    };
+
+    /* Compute diff using libgit2 */
+    git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+    int err = git_diff_blobs(
+        old_blob, NULL,
+        new_blob, NULL,
+        &opts,
+        NULL,           /* file_cb */
+        NULL,           /* binary_cb */
+        hunk_callback,
+        line_callback,
+        &ctx
+    );
+
+    if (err != 0) {
+        if (old_blob) git_blob_free(old_blob);
+        if (new_blob) git_blob_free(new_blob);
+        result->error = CF_ERR_DIFF;
+        return CF_ERR_DIFF;
+    }
+
+    /* Flush any pending operation */
+    flush_op(&ctx);
+
+    /* Add trailing equal block for remaining unchanged lines */
+    if (result->old_lines > ctx.old_line_pos) {
+        int remaining = result->old_lines - ctx.old_line_pos;
+        add_op(&ctx, CF_DIFF_EQUAL, remaining);
+        flush_op(&ctx);
+    }
+
+    if (old_blob) git_blob_free(old_blob);
+    if (new_blob) git_blob_free(new_blob);
+
+    return CF_OK;
+}
+
+/* Structure for preloaded blob data */
+typedef struct {
+    git_oid oid;
+    const char* data;
+    size_t size;
+    git_odb_object* obj;  /* Keep reference for cleanup */
+    int is_binary;
+    int line_count;
+    int valid;
+} cf_preloaded_blob;
+
+/* OID comparison for sorting */
+static int compare_oids_diff(const void* a, const void* b) {
+    return memcmp(a, b, GIT_OID_RAWSZ);
+}
+
+/*
+ * Preload unique blobs from a batch of diff requests.
+ * Returns a map of OID -> preloaded blob data.
+ */
+static int preload_blobs_for_diff(
+    git_odb* odb,
+    const cf_diff_request* requests,
+    int count,
+    cf_preloaded_blob** out_blobs,
+    int* out_blob_count
+) {
+    /* Collect all unique OIDs */
+    git_oid* all_oids = (git_oid*)malloc(count * 2 * sizeof(git_oid));
+    if (all_oids == NULL) {
+        return CF_ERR_NOMEM;
+    }
+
+    int oid_count = 0;
+    for (int i = 0; i < count; i++) {
+        if (requests[i].has_old && requests[i].old_data == NULL) {
+            memcpy(&all_oids[oid_count++], &requests[i].old_oid, sizeof(git_oid));
+        }
+        if (requests[i].has_new && requests[i].new_data == NULL) {
+            memcpy(&all_oids[oid_count++], &requests[i].new_oid, sizeof(git_oid));
+        }
+    }
+
+    if (oid_count == 0) {
+        free(all_oids);
+        *out_blobs = NULL;
+        *out_blob_count = 0;
+        return CF_OK;
+    }
+
+    /* Sort OIDs for pack locality and deduplication */
+    qsort(all_oids, oid_count, sizeof(git_oid), compare_oids_diff);
+
+    /* Count unique OIDs */
+    int unique_count = 1;
+    for (int i = 1; i < oid_count; i++) {
+        if (memcmp(&all_oids[i], &all_oids[i-1], sizeof(git_oid)) != 0) {
+            unique_count++;
+        }
+    }
+
+    /* Allocate preloaded blob array */
+    cf_preloaded_blob* blobs = (cf_preloaded_blob*)calloc(unique_count, sizeof(cf_preloaded_blob));
+    if (blobs == NULL) {
+        free(all_oids);
+        return CF_ERR_NOMEM;
+    }
+
+    /* Load unique blobs in sorted order (maximizes pack cache hits) */
+    int blob_idx = 0;
+    git_oid prev_oid;
+    memset(&prev_oid, 0, sizeof(git_oid));
+
+    for (int i = 0; i < oid_count; i++) {
+        /* Skip duplicates */
+        if (i > 0 && memcmp(&all_oids[i], &prev_oid, sizeof(git_oid)) == 0) {
+            continue;
+        }
+        memcpy(&prev_oid, &all_oids[i], sizeof(git_oid));
+
+        cf_preloaded_blob* blob = &blobs[blob_idx];
+        memcpy(&blob->oid, &all_oids[i], sizeof(git_oid));
+
+        git_odb_object* obj = NULL;
+        int err = git_odb_read(&obj, odb, &all_oids[i]);
+        if (err != 0 || git_odb_object_type(obj) != GIT_OBJECT_BLOB) {
+            if (obj) git_odb_object_free(obj);
+            blob->valid = 0;
+            blob_idx++;
+            continue;
+        }
+
+        blob->obj = obj;
+        blob->data = (const char*)git_odb_object_data(obj);
+        blob->size = git_odb_object_size(obj);
+        blob->is_binary = (blob->size > 0) ? cf_is_binary(blob->data, blob->size) : 0;
+        blob->line_count = (!blob->is_binary && blob->size > 0) ? cf_count_lines(blob->data, blob->size) : 0;
+        blob->valid = 1;
+        blob_idx++;
+    }
+
+    free(all_oids);
+    *out_blobs = blobs;
+    *out_blob_count = unique_count;
+    return CF_OK;
+}
+
+/* Find a preloaded blob by OID using binary search */
+static cf_preloaded_blob* find_preloaded_blob(
+    cf_preloaded_blob* blobs,
+    int blob_count,
+    const git_oid* oid
+) {
+    int left = 0, right = blob_count - 1;
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        int cmp = memcmp(oid->id, blobs[mid].oid.id, GIT_OID_RAWSZ);
+        if (cmp == 0) {
+            return &blobs[mid];
+        } else if (cmp < 0) {
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
+    }
+    return NULL;
+}
+
+/* Free preloaded blobs */
+static void free_preloaded_blobs(cf_preloaded_blob* blobs, int count) {
+    if (blobs == NULL) return;
+    for (int i = 0; i < count; i++) {
+        if (blobs[i].obj != NULL) {
+            git_odb_object_free(blobs[i].obj);
+        }
+    }
+    free(blobs);
+}
+
+/* Compute diff using buffers */
+static int compute_diff_generic(
+    const char* old_data, size_t old_size,
+    const char* new_data, size_t new_size,
+    cf_diff_result* result
+) {
+    /* Initialize result */
+    int ret = cf_init_diff_result(result, CF_MAX_DIFF_OPS);
+    if (ret != CF_OK) {
+        return ret;
+    }
+
+    /* Check old blob */
+    if (old_data != NULL || old_size > 0) {
+        if (old_size > 0 && cf_is_binary(old_data, old_size)) {
+            result->error = CF_ERR_BINARY;
+            return CF_ERR_BINARY;
+        }
+        result->old_lines = cf_count_lines(old_data, old_size);
+    }
+
+    /* Check new blob */
+    if (new_data != NULL || new_size > 0) {
+        if (new_size > 0 && cf_is_binary(new_data, new_size)) {
+            result->error = CF_ERR_BINARY;
+            return CF_ERR_BINARY;
+        }
+        result->new_lines = cf_count_lines(new_data, new_size);
+    }
+
+    /* Setup diff context */
+    diff_ctx_t ctx = {
+        .result = result,
+        .current_type = -1,
+        .current_count = 0,
+        .old_line_pos = 0,
+        .new_line_pos = 0
+    };
+
+    git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+    
+    int err = git_diff_buffers(
+        old_data, old_size,
+        NULL,  /* old_as_path */
+        new_data, new_size,
+        NULL,  /* new_as_path */
+        &opts,
+        NULL,           /* file_cb */
+        NULL,           /* binary_cb */
+        hunk_callback,
+        line_callback,
+        &ctx
+    );
+
+    if (err != 0) {
+        result->error = CF_ERR_DIFF;
+        return CF_ERR_DIFF;
+    }
+
+    /* Flush any pending operation */
+    flush_op(&ctx);
+
+    /* Add trailing equal block for remaining unchanged lines */
+    if (result->old_lines > ctx.old_line_pos) {
+        int remaining = result->old_lines - ctx.old_line_pos;
+        add_op(&ctx, CF_DIFF_EQUAL, remaining);
+        flush_op(&ctx);
+    }
+
+    return CF_OK;
+}
+
+/*
+ * Compute diffs for multiple blob pairs in a single call.
+ *
+ * Optimizations:
+ * 1. Preloads all unique blobs in sorted order for pack cache efficiency
+ * 2. Uses git_diff_buffers instead of git_diff_blobs (avoids re-lookup)
+ * 3. Single ODB refresh for the entire batch
+ */
+int cf_batch_diff_blobs(
+    git_repository* repo,
+    const cf_diff_request* requests,
+    int count,
+    cf_diff_result* results
+) {
+    if (count == 0) {
+        return 0;
+    }
+
+    /* Get ODB for direct access */
+    git_odb* odb = NULL;
+    int err = git_repository_odb(&odb, repo);
+    if (err != 0) {
+        /* Fall back to basic diff on ODB error */
+        int success_count = 0;
+        for (int i = 0; i < count; i++) {
+            if (compute_single_diff(repo, &requests[i], &results[i]) == CF_OK) {
+                success_count++;
+            }
+        }
+        return success_count;
+    }
+
+    /* Refresh ODB once for the entire batch */
+    git_odb_refresh(odb);
+
+    /* Preload all blobs */
+    cf_preloaded_blob* preloaded = NULL;
+    int preloaded_count = 0;
+    err = preload_blobs_for_diff(odb, requests, count, &preloaded, &preloaded_count);
+    if (err != CF_OK) {
+        git_odb_free(odb);
+        /* Fall back to basic diff */
+        int success_count = 0;
+        for (int i = 0; i < count; i++) {
+            if (compute_single_diff(repo, &requests[i], &results[i]) == CF_OK) {
+                success_count++;
+            }
+        }
+        return success_count;
+    }
+
+    /* Compute diffs - parallelized with OpenMP for large batches.
+     * compute_diff_generic is pure computation on buffers, no shared state.
+     * Each thread writes to its own results[i] slot.
+     */
+    int success_count = 0;
+
+#ifdef _OPENMP
+    /* Only parallelize for sufficiently large batches to amortize thread overhead */
+    if (count >= 8) {
+        #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 4)
+        for (int i = 0; i < count; i++) {
+            const char *old_data = NULL, *new_data = NULL;
+            size_t old_size = 0, new_size = 0;
+            int skip = 0;
+
+            if (requests[i].has_old) {
+                if (requests[i].old_data) {
+                    old_data = (const char*)requests[i].old_data;
+                    old_size = requests[i].old_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].old_oid);
+                    if (blob && blob->valid) {
+                        old_data = blob->data;
+                        old_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        skip = 1;
+                    }
+                }
+            }
+
+            if (!skip && requests[i].has_new) {
+                if (requests[i].new_data) {
+                    new_data = (const char*)requests[i].new_data;
+                    new_size = requests[i].new_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].new_oid);
+                    if (blob && blob->valid) {
+                        new_data = blob->data;
+                        new_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        skip = 1;
+                    }
+                }
+            }
+
+            if (!skip && compute_diff_generic(old_data, old_size, new_data, new_size, &results[i]) == CF_OK) {
+                success_count++;
+            }
+        }
+    } else
+#endif
+    {
+        /* Sequential fallback for small batches or non-OpenMP builds */
+        for (int i = 0; i < count; i++) {
+            const char *old_data = NULL, *new_data = NULL;
+            size_t old_size = 0, new_size = 0;
+
+            if (requests[i].has_old) {
+                if (requests[i].old_data) {
+                    old_data = (const char*)requests[i].old_data;
+                    old_size = requests[i].old_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].old_oid);
+                    if (blob && blob->valid) {
+                        old_data = blob->data;
+                        old_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        continue;
+                    }
+                }
+            }
+
+            if (requests[i].has_new) {
+                if (requests[i].new_data) {
+                    new_data = (const char*)requests[i].new_data;
+                    new_size = requests[i].new_size;
+                } else {
+                    cf_preloaded_blob* blob = find_preloaded_blob(preloaded, preloaded_count, &requests[i].new_oid);
+                    if (blob && blob->valid) {
+                        new_data = blob->data;
+                        new_size = blob->size;
+                    } else {
+                        results[i].error = CF_ERR_LOOKUP;
+                        continue;
+                    }
+                }
+            }
+
+            if (compute_diff_generic(old_data, old_size, new_data, new_size, &results[i]) == CF_OK) {
+                success_count++;
+            }
+        }
+    }
+
+    free_preloaded_blobs(preloaded, preloaded_count);
+    git_odb_free(odb);
+
+    return success_count;
+}
+
+/*
+ * Free tree diff result.
+ */
+void cf_free_tree_diff_result(cf_tree_diff_result* result) {
+    if (result == NULL) return;
+    if (result->changes != NULL) {
+        for (int i = 0; i < result->count; i++) {
+            free(result->changes[i].old_path);
+            free(result->changes[i].new_path);
+        }
+        free(result->changes);
+        result->changes = NULL;
+    }
+}
+
+/*
+ * Compute diff between two trees.
+ * Returns a compact array of changes.
+ */
+int cf_tree_diff(
+    git_repository* repo,
+    git_oid* old_tree_oid,
+    git_oid* new_tree_oid,
+    cf_tree_diff_result* result
+) {
+    git_tree* old_tree = NULL;
+    git_tree* new_tree = NULL;
+    git_diff* diff = NULL;
+    int ret = CF_OK;
+
+    result->changes = NULL;
+    result->count = 0;
+    result->capacity = 0;
+    result->error = CF_OK;
+
+    /* Lookup trees */
+    if (old_tree_oid != NULL && !git_oid_iszero(old_tree_oid)) {
+        if (git_tree_lookup(&old_tree, repo, old_tree_oid) != 0) {
+            ret = CF_ERR_LOOKUP;
+            goto cleanup;
+        }
+    }
+
+    if (new_tree_oid != NULL && !git_oid_iszero(new_tree_oid)) {
+        if (git_tree_lookup(&new_tree, repo, new_tree_oid) != 0) {
+            ret = CF_ERR_LOOKUP;
+            goto cleanup;
+        }
+    }
+
+    /* Compute diff */
+    git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+    if (git_diff_tree_to_tree(&diff, repo, old_tree, new_tree, &opts) != 0) {
+        ret = CF_ERR_DIFF;
+        goto cleanup;
+    }
+
+    /* Allocate result array */
+    size_t num_deltas = git_diff_num_deltas(diff);
+    if (num_deltas > 0) {
+        result->changes = (cf_change*)malloc(num_deltas * sizeof(cf_change));
+        if (result->changes == NULL) {
+            ret = CF_ERR_NOMEM;
+            goto cleanup;
+        }
+        result->capacity = num_deltas;
+    }
+
+    /* Iterate deltas and populate result */
+    for (size_t i = 0; i < num_deltas; i++) {
+        const git_diff_delta* delta = git_diff_get_delta(diff, i);
+        cf_change* change = &result->changes[result->count];
+
+        change->status = delta->status;
+        
+        change->old_path = strdup(delta->old_file.path);
+        memcpy(change->old_oid, delta->old_file.id.id, 20);
+        change->old_size = delta->old_file.size;
+        change->old_mode = delta->old_file.mode;
+
+        change->new_path = strdup(delta->new_file.path);
+        memcpy(change->new_oid, delta->new_file.id.id, 20);
+        change->new_size = delta->new_file.size;
+        change->new_mode = delta->new_file.mode;
+
+        if (change->old_path == NULL || change->new_path == NULL) {
+            ret = CF_ERR_NOMEM;
+            goto cleanup;
+        }
+
+        result->count++;
+    }
+
+cleanup:
+    if (diff) git_diff_free(diff);
+    if (old_tree) git_tree_free(old_tree);
+    if (new_tree) git_tree_free(new_tree);
+
+    result->error = ret;
+    if (ret != CF_OK) {
+        cf_free_tree_diff_result(result);
+    }
+    return ret;
+}

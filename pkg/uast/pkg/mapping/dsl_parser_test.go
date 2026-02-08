@@ -1,4 +1,4 @@
-package mapping //nolint:testpackage,cyclop // Tests use internal type switches; package complexity from test helpers.
+package mapping //nolint:testpackage // Tests use internal type switches.
 
 import (
 	"context"
@@ -715,8 +715,6 @@ function_declaration <- (function_declaration name: (identifier) @name params: (
 }
 
 // Tests for real-world Go language mapping examples.
-//
-//nolint:gocognit,cyclop,gocyclo // Complex language mapping test with long DSL lines.
 func TestParseMappingRule_GoLanguageMapping(t *testing.T) {
 	input := `[language "go", extensions: ".go"]
 

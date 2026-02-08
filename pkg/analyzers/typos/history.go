@@ -4,12 +4,12 @@ package typos
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -25,7 +25,7 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	UASTChanges            *plumbing.UASTChangesAnalyzer
+	UAST                   *plumbing.UASTChangesAnalyzer
 	FileDiff               *plumbing.FileDiffAnalyzer
 	BlobCache              *plumbing.BlobCacheAnalyzer
 	lcontext               *levenshtein.Context
@@ -53,6 +53,9 @@ const (
 func (t *HistoryAnalyzer) Name() string {
 	return "TyposDataset"
 }
+
+// NeedsUAST returns true because typo detection requires UAST parsing.
+func (t *HistoryAnalyzer) NeedsUAST() bool { return true }
 
 // Flag returns the CLI flag for the analyzer.
 func (t *HistoryAnalyzer) Flag() string {
@@ -224,7 +227,7 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit.Hash()
 
-	changes := t.UASTChanges.Changes
+	changes := t.UAST.Changes()
 	cache := t.BlobCache.Cache
 	diffs := t.FileDiff.FileDiffs
 
@@ -291,38 +294,77 @@ func (t *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 func (t *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		res[i] = t // Shared state.
+		clone := &HistoryAnalyzer{
+			MaximumAllowedDistance: t.MaximumAllowedDistance,
+			// Dependencies (UAST, FileDiff, BlobCache) are injected by framework.
+		}
+		clone.lcontext = &levenshtein.Context{}
+		clone.typos = nil // Fresh accumulator for this fork.
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (t *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (t *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		t.typos = append(t.typos, other.typos...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (t *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return t.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return t.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return t.generatePlot(result, writer)
+	default:
+		return t.serializeYAML(result, writer)
+	}
+}
 
-		return nil
+func (t *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	typos, ok := result["typos"].([]Typo)
-	if !ok {
-		return errors.New("expected []Typo for typos") //nolint:err113 // descriptive error for type assertion failure.
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
+	if err != nil {
+		return fmt.Errorf("json marshal: %w", err)
 	}
 
-	for _, ty := range typos {
-		fmt.Fprintf(writer, "  - wrong: %s\n", ty.Wrong)
-		fmt.Fprintf(writer, "    correct: %s\n", ty.Correct)
-		fmt.Fprintf(writer, "    commit: %s\n", ty.Commit.String())
-		fmt.Fprintf(writer, "    file: %s\n", ty.File)
-		fmt.Fprintf(writer, "    line: %d\n", ty.Line)
+	_, err = fmt.Fprint(writer, string(jsonData))
+	if err != nil {
+		return fmt.Errorf("write json: %w", err)
+	}
+
+	return nil
+}
+
+func (t *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("write yaml: %w", err)
 	}
 
 	return nil

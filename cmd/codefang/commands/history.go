@@ -6,13 +6,19 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
+	"runtime/pprof"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
 	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
@@ -21,9 +27,19 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
+	"github.com/Sumatoshi-tech/codefang/pkg/budget"
+	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
+)
+
+// Maximum integer values for safe conversion from uint64.
+const (
+	maxInt   = int(^uint(0) >> 1)
+	maxInt64 = int64(^uint64(0) >> 1)
 )
 
 // Sentinel errors for the history command.
@@ -35,6 +51,7 @@ var (
 	ErrUnknownAnalyzer   = errors.New("unknown analyzer")
 	ErrRepositoryLoad    = errors.New("failed to load repository")
 	ErrInvalidTimeFormat = errors.New("cannot parse time")
+	ErrInvalidSizeFormat = errors.New("invalid size format")
 )
 
 // HistoryCommand holds the configuration for the history command.
@@ -43,6 +60,8 @@ type HistoryCommand struct {
 	analyzers   []string
 	head        bool
 	firstParent bool
+	cpuprofile  string
+	heapprofile string
 }
 
 // NewHistoryCommand creates and configures the history command.
@@ -66,18 +85,100 @@ Available analyzers:
 		RunE: hc.run,
 	}
 
-	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format (yaml, json)")
+	cobraCmd.Flags().StringVarP(&hc.format, "format", "f", "yaml", "Output format (yaml, json, plot; plot is HTML for devs only)")
 	cobraCmd.Flags().StringSliceVarP(&hc.analyzers, "analyzers", "a", nil, "Analyzers to run (comma-separated)")
 	cobraCmd.Flags().BoolVar(&hc.head, "head", false, "Analyze only HEAD commit")
 	cobraCmd.Flags().BoolVar(&hc.firstParent, "first-parent", false, "Follow only first parent of merge commits")
 	cobraCmd.Flags().Int("limit", 0, "Limit number of commits to analyze (0 = no limit)")
 	cobraCmd.Flags().String("since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
+	cobraCmd.Flags().StringVar(&hc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
+	cobraCmd.Flags().StringVar(&hc.heapprofile, "heapprofile", "", "Write heap profile to file")
+
+	// Resource knob flags for tuning pipeline performance.
+	cobraCmd.Flags().Int("workers", 0, "Number of parallel workers (0 = use CPU count)")
+	cobraCmd.Flags().Int("buffer-size", 0, "Size of internal pipeline channels (0 = workers×2)")
+	cobraCmd.Flags().Int("commit-batch-size", 0, "Commits per processing batch (0 = default 100)")
+	cobraCmd.Flags().String("blob-cache-size", "", "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)")
+	cobraCmd.Flags().Int("diff-cache-size", 0, "Max diff cache entries (0 = default 10000)")
+	cobraCmd.Flags().String("blob-arena-size", "", "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)")
+	cobraCmd.Flags().String("memory-budget", "", "Memory budget for auto-tuning (e.g., '512MB', '2GB')")
+
+	// Checkpoint flags.
+	cobraCmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
+	cobraCmd.Flags().String("checkpoint-dir", "", "Checkpoint directory (default: ~/.codefang/checkpoints)")
+	cobraCmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
+	cobraCmd.Flags().Bool("clear-checkpoint", false, "Clear existing checkpoint before run")
+
+	registerAnalyzerFlags(cobraCmd)
 
 	return cobraCmd
 }
 
+// registerAnalyzerFlags registers dynamic flags from all analyzers.
+func registerAnalyzerFlags(cobraCmd *cobra.Command) {
+	dummyPipeline := newAnalyzerPipeline(nil)
+
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(dummyPipeline.core)+len(dummyPipeline.leaves))
+	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+
+	for _, leaf := range dummyPipeline.leaves {
+		allAnalyzers = append(allAnalyzers, leaf)
+	}
+
+	registeredFlags := make(map[string]bool)
+
+	for _, analyzer := range allAnalyzers {
+		for _, opt := range analyzer.ListConfigurationOptions() {
+			if registeredFlags[opt.Flag] {
+				continue
+			}
+
+			registeredFlags[opt.Flag] = true
+			registerConfigFlag(cobraCmd, opt)
+		}
+	}
+}
+
+// registerConfigFlag registers a single configuration option as a cobra flag.
+func registerConfigFlag(cobraCmd *cobra.Command, opt pipeline.ConfigurationOption) {
+	switch opt.Type {
+	case pipeline.BoolConfigurationOption:
+		if v, ok := opt.Default.(bool); ok {
+			cobraCmd.Flags().Bool(opt.Flag, v, opt.Description)
+		}
+	case pipeline.IntConfigurationOption:
+		if v, ok := opt.Default.(int); ok {
+			cobraCmd.Flags().Int(opt.Flag, v, opt.Description)
+		}
+	case pipeline.StringConfigurationOption:
+		if v, ok := opt.Default.(string); ok {
+			cobraCmd.Flags().String(opt.Flag, v, opt.Description)
+		}
+	case pipeline.StringsConfigurationOption:
+		if v, ok := opt.Default.([]string); ok {
+			cobraCmd.Flags().StringSlice(opt.Flag, v, opt.Description)
+		}
+	case pipeline.PathConfigurationOption:
+		if v, ok := opt.Default.(string); ok {
+			cobraCmd.Flags().String(opt.Flag, v, opt.Description)
+		}
+	case pipeline.FloatConfigurationOption:
+		if v, ok := opt.Default.(float64); ok {
+			cobraCmd.Flags().Float64(opt.Flag, v, opt.Description)
+		}
+	}
+}
+
 // run executes the history analysis pipeline.
 func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
+	stopProfiler, err := hc.maybeStartCPUProfile()
+	if err != nil {
+		return err
+	}
+
+	defer stopProfiler()
+	defer hc.maybeWriteHeapProfile()
+
 	if len(hc.analyzers) == 0 {
 		return ErrNoAnalyzersSelected
 	}
@@ -87,28 +188,322 @@ func (hc *HistoryCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Special case: fast devs analyzer.
-	if hc.isFastDevsMode() {
-		return hc.runFastDevsAnalyzer(cmd, uri)
-	}
-
 	repository := loadRepository(uri)
 	if repository == nil {
 		return fmt.Errorf("%w: %s", ErrRepositoryLoad, uri)
 	}
 	defer repository.Free()
 
+	hc.ensureBurndownFirstParent()
+
 	commits, err := hc.loadCommits(repository, cmd)
 	if err != nil {
 		return err
 	}
 
-	return hc.runPipeline(repository, uri, commits, hc.format)
+	facts := hc.buildFacts(cmd)
+
+	coordConfig, memBudget, err := buildCoordinatorConfigWithBudget(cmd)
+	if err != nil {
+		return err
+	}
+
+	cpConfig, err := getCheckpointConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	return hc.runPipeline(repository, uri, commits, hc.format, facts, coordConfig, memBudget, cpConfig)
 }
 
-// isFastDevsMode returns true if only the fast devs analyzer is selected.
-func (hc *HistoryCommand) isFastDevsMode() bool {
-	return len(hc.analyzers) == 1 && hc.analyzers[0] == "devs"
+func (hc *HistoryCommand) maybeStartCPUProfile() (func(), error) {
+	if hc.cpuprofile == "" {
+		return func() {}, nil
+	}
+
+	profileFile, err := os.Create(hc.cpuprofile)
+	if err != nil {
+		return nil, fmt.Errorf("could not create CPU profile: %w", err)
+	}
+
+	err = pprof.StartCPUProfile(profileFile)
+	if err != nil {
+		profileFile.Close()
+
+		return nil, fmt.Errorf("could not start CPU profile: %w", err)
+	}
+
+	stopAndClose := func() {
+		pprof.StopCPUProfile()
+
+		_ = profileFile.Close()
+	}
+
+	return stopAndClose, nil
+}
+
+func (hc *HistoryCommand) maybeWriteHeapProfile() {
+	if hc.heapprofile == "" {
+		return
+	}
+
+	profileFile, err := os.Create(hc.heapprofile)
+	if err != nil {
+		log.Printf("could not create heap profile: %v", err)
+
+		return
+	}
+	defer profileFile.Close()
+
+	runtime.GC()
+
+	writeErr := pprof.WriteHeapProfile(profileFile)
+	if writeErr != nil {
+		log.Printf("could not write heap profile: %v", writeErr)
+	}
+}
+
+// uastDependent is implemented by leaf analyzers that depend on UAST parsing.
+type uastDependent interface {
+	NeedsUAST() bool
+}
+
+// needsUAST returns true if any selected leaf analyzer depends on UAST parsing.
+func needsUAST(leaves []analyze.HistoryAnalyzer) bool {
+	for _, leaf := range leaves {
+		if ud, ok := leaf.(uastDependent); ok && ud.NeedsUAST() {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (hc *HistoryCommand) ensureBurndownFirstParent() {
+	if hc.hasBurndown() && !hc.firstParent {
+		hc.firstParent = true
+	}
+}
+
+// hasBurndown returns true if burndown is one of the selected analyzers.
+func (hc *HistoryCommand) hasBurndown() bool {
+	return slices.Contains(hc.analyzers, "burndown")
+}
+
+func (hc *HistoryCommand) buildFacts(cmd *cobra.Command) map[string]any {
+	facts := map[string]any{}
+	dummyPipeline := newAnalyzerPipeline(nil)
+
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(dummyPipeline.core)+len(dummyPipeline.leaves))
+	allAnalyzers = append(allAnalyzers, dummyPipeline.core...)
+
+	for _, leaf := range dummyPipeline.leaves {
+		allAnalyzers = append(allAnalyzers, leaf)
+	}
+
+	for _, analyzer := range allAnalyzers {
+		for _, opt := range analyzer.ListConfigurationOptions() {
+			loadFlagValue(cmd, opt, facts)
+		}
+	}
+
+	return facts
+}
+
+// checkpointConfig holds checkpoint-related configuration.
+type checkpointConfig struct {
+	enabled   bool
+	dir       string
+	resume    bool
+	clearPrev bool
+}
+
+// getCheckpointConfig parses checkpoint-related flags.
+func getCheckpointConfig(cmd *cobra.Command) (checkpointConfig, error) {
+	cfg := checkpointConfig{}
+
+	var err error
+
+	cfg.enabled, err = cmd.Flags().GetBool("checkpoint")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get checkpoint flag: %w", err)
+	}
+
+	cfg.dir, err = cmd.Flags().GetString("checkpoint-dir")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get checkpoint-dir flag: %w", err)
+	}
+
+	if cfg.dir == "" {
+		cfg.dir = checkpoint.DefaultDir()
+	}
+
+	cfg.resume, err = cmd.Flags().GetBool("resume")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get resume flag: %w", err)
+	}
+
+	cfg.clearPrev, err = cmd.Flags().GetBool("clear-checkpoint")
+	if err != nil {
+		return cfg, fmt.Errorf("failed to get clear-checkpoint flag: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// buildCoordinatorConfigWithBudget builds CoordinatorConfig and returns the memory budget if set.
+// Zero/empty values use defaults from framework.DefaultCoordinatorConfig().
+// If --memory-budget is specified, it takes precedence and auto-tunes knobs.
+func buildCoordinatorConfigWithBudget(cmd *cobra.Command) (framework.CoordinatorConfig, int64, error) {
+	// Check if memory budget is specified first.
+	memBudgetStr, err := cmd.Flags().GetString("memory-budget")
+	if err != nil {
+		return framework.CoordinatorConfig{}, 0, fmt.Errorf("failed to get memory-budget flag: %w", err)
+	}
+
+	if memBudgetStr != "" {
+		cfg, budgetErr := buildConfigFromBudget(memBudgetStr)
+		if budgetErr != nil {
+			return framework.CoordinatorConfig{}, 0, budgetErr
+		}
+
+		// Parse succeeded in buildConfigFromBudget, so this won't error.
+		budgetBytes, parseErr := humanize.ParseBytes(memBudgetStr)
+		if parseErr != nil {
+			return framework.CoordinatorConfig{}, 0, fmt.Errorf("failed to parse budget: %w", parseErr)
+		}
+
+		return cfg, safeInt64(budgetBytes), nil
+	}
+
+	// No budget specified, use manual knobs or defaults.
+	config := framework.DefaultCoordinatorConfig()
+
+	err = applyIntFlags(cmd, &config)
+	if err != nil {
+		return config, 0, err
+	}
+
+	err = applySizeFlags(cmd, &config)
+	if err != nil {
+		return config, 0, err
+	}
+
+	return config, 0, nil
+}
+
+// buildCoordinatorConfig builds CoordinatorConfig from CLI flags (legacy wrapper).
+func buildCoordinatorConfig(cmd *cobra.Command) (framework.CoordinatorConfig, error) {
+	cfg, _, err := buildCoordinatorConfigWithBudget(cmd)
+
+	return cfg, err
+}
+
+// buildConfigFromBudget creates a CoordinatorConfig from a memory budget string.
+func buildConfigFromBudget(budgetStr string) (framework.CoordinatorConfig, error) {
+	budgetBytes, err := humanize.ParseBytes(budgetStr)
+	if err != nil {
+		return framework.CoordinatorConfig{}, fmt.Errorf("%w for --memory-budget: %s", ErrInvalidSizeFormat, budgetStr)
+	}
+
+	cfg, err := budget.SolveForBudget(safeInt64(budgetBytes))
+	if err != nil {
+		return framework.CoordinatorConfig{}, fmt.Errorf("memory budget error: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// applyIntFlags applies integer flags to the config.
+func applyIntFlags(cmd *cobra.Command, config *framework.CoordinatorConfig) error {
+	workers, err := cmd.Flags().GetInt("workers")
+	if err != nil {
+		return fmt.Errorf("failed to get workers flag: %w", err)
+	}
+
+	if workers > 0 {
+		config.Workers = workers
+	}
+
+	bufferSize, err := cmd.Flags().GetInt("buffer-size")
+	if err != nil {
+		return fmt.Errorf("failed to get buffer-size flag: %w", err)
+	}
+
+	if bufferSize > 0 {
+		config.BufferSize = bufferSize
+	}
+
+	commitBatchSize, err := cmd.Flags().GetInt("commit-batch-size")
+	if err != nil {
+		return fmt.Errorf("failed to get commit-batch-size flag: %w", err)
+	}
+
+	if commitBatchSize > 0 {
+		config.CommitBatchSize = commitBatchSize
+	}
+
+	diffCacheSize, err := cmd.Flags().GetInt("diff-cache-size")
+	if err != nil {
+		return fmt.Errorf("failed to get diff-cache-size flag: %w", err)
+	}
+
+	if diffCacheSize > 0 {
+		config.DiffCacheSize = diffCacheSize
+	}
+
+	return nil
+}
+
+// applySizeFlags applies human-readable size flags to the config.
+func applySizeFlags(cmd *cobra.Command, config *framework.CoordinatorConfig) error {
+	blobCacheSizeStr, err := cmd.Flags().GetString("blob-cache-size")
+	if err != nil {
+		return fmt.Errorf("failed to get blob-cache-size flag: %w", err)
+	}
+
+	if blobCacheSizeStr != "" {
+		size, parseErr := humanize.ParseBytes(blobCacheSizeStr)
+		if parseErr != nil {
+			return fmt.Errorf("%w for --blob-cache-size: %s", ErrInvalidSizeFormat, blobCacheSizeStr)
+		}
+
+		config.BlobCacheSize = safeInt64(size)
+	}
+
+	blobArenaSizeStr, err := cmd.Flags().GetString("blob-arena-size")
+	if err != nil {
+		return fmt.Errorf("failed to get blob-arena-size flag: %w", err)
+	}
+
+	if blobArenaSizeStr != "" {
+		size, parseErr := humanize.ParseBytes(blobArenaSizeStr)
+		if parseErr != nil {
+			return fmt.Errorf("%w for --blob-arena-size: %s", ErrInvalidSizeFormat, blobArenaSizeStr)
+		}
+
+		config.BlobArenaSize = safeInt(size)
+	}
+
+	return nil
+}
+
+// safeInt64 converts uint64 to int64, clamping to maxInt64 to prevent overflow.
+func safeInt64(v uint64) int64 {
+	if v > uint64(maxInt64) {
+		return maxInt64
+	}
+
+	return int64(v)
+}
+
+// safeInt converts uint64 to int, clamping to maxInt to prevent overflow.
+func safeInt(v uint64) int {
+	if v > uint64(maxInt) {
+		return maxInt
+	}
+
+	return int(v)
 }
 
 // resolveRepoURI resolves the repository URI from command args.
@@ -129,33 +524,6 @@ func resolveRepoURI(args []string) (string, error) {
 	}
 
 	return uri, nil
-}
-
-// runFastDevsAnalyzer runs the fast devs analyzer.
-func (hc *HistoryCommand) runFastDevsAnalyzer(cmd *cobra.Command, uri string) error {
-	fa := devs.NewFastAnalyzer()
-
-	sinceStr, err := cmd.Flags().GetString("since")
-	if err != nil {
-		return fmt.Errorf("failed to get since flag: %w", err)
-	}
-
-	limit, err := cmd.Flags().GetInt("limit")
-	if err != nil {
-		return fmt.Errorf("failed to get limit flag: %w", err)
-	}
-
-	report, err := fa.Analyze(uri, sinceStr, limit)
-	if err != nil {
-		return fmt.Errorf("fast devs analysis failed: %w", err)
-	}
-
-	if hc.format != FormatJSON {
-		printHeader()
-		fmt.Fprintln(os.Stdout, "Devs:")
-	}
-
-	return fa.Serialize(report, hc.format, os.Stdout)
 }
 
 func loadRepository(uri string) *gitlib.Repository {
@@ -224,7 +592,9 @@ func (hc *HistoryCommand) loadHistoryCommits(repository *gitlib.Repository, cmd 
 
 // buildLogOptions constructs LogOptions from command flags.
 func (hc *HistoryCommand) buildLogOptions(cmd *cobra.Command) (*gitlib.LogOptions, error) {
-	logOpts := &gitlib.LogOptions{}
+	logOpts := &gitlib.LogOptions{
+		FirstParent: hc.firstParent,
+	}
 
 	sinceStr, err := cmd.Flags().GetString("since")
 	if err != nil {
@@ -261,12 +631,8 @@ func (hc *HistoryCommand) collectCommits(iter *gitlib.CommitIter, limit int) []*
 			break
 		}
 
-		if hc.firstParent && commit.NumParents() > 1 {
-			commit.Free()
-
-			continue
-		}
-
+		// With FirstParent, gitlib.Log uses SimplifyFirstParent so we get the
+		// first-parent chain; previous commit is always the parent. No need to skip merges.
 		commits = append(commits, commit)
 		count++
 	}
@@ -305,32 +671,246 @@ func parseTime(s string) (time.Time, error) {
 
 func (hc *HistoryCommand) runPipeline(
 	repository *gitlib.Repository, repoPath string, commits []*gitlib.Commit, format string,
+	facts map[string]any, coordConfig framework.CoordinatorConfig, memBudget int64,
+	cpConfig checkpointConfig,
 ) error {
-	pipeline := newAnalyzerPipeline(repository)
-	facts := map[string]any{}
+	pl := newAnalyzerPipeline(repository)
 
-	configureErr := configureAnalyzers(pipeline.core, facts)
+	configureErr := configureAnalyzers(pl.core, facts)
 	if configureErr != nil {
 		return configureErr
 	}
 
-	selectedLeaves, selectErr := hc.selectLeaves(pipeline.leaves, facts)
+	selectedLeaves, selectErr := hc.selectLeaves(pl.leaves, facts)
 	if selectErr != nil {
 		return selectErr
 	}
 
-	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pipeline.core)+len(selectedLeaves))
-	allAnalyzers = append(allAnalyzers, pipeline.core...)
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pl.core)+len(selectedLeaves))
+	allAnalyzers = append(allAnalyzers, pl.core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
-	runner := framework.NewRunner(repository, repoPath, allAnalyzers...)
+	if !needsUAST(selectedLeaves) {
+		coordConfig.UASTPipelineWorkers = 0
+	}
 
-	results, runErr := runner.Run(commits)
+	runner := framework.NewRunnerWithConfig(repository, repoPath, coordConfig, allAnalyzers...)
+	runner.CoreCount = len(pl.core)
+
+	// Setup checkpoint manager if enabled.
+	var cpManager *checkpoint.Manager
+
+	analyzerNames := hc.analyzers
+
+	if cpConfig.enabled {
+		repoHash := checkpoint.RepoHash(repoPath)
+		cpManager = checkpoint.NewManager(cpConfig.dir, repoHash)
+
+		if cpConfig.clearPrev {
+			clearErr := cpManager.Clear()
+			if clearErr != nil {
+				log.Printf("warning: failed to clear checkpoint: %v", clearErr)
+			}
+		}
+	}
+
+	results, runErr := runWithStreaming(runner, commits, memBudget, allAnalyzers, cpManager, repoPath, analyzerNames, cpConfig.resume)
 	if runErr != nil {
 		return fmt.Errorf("pipeline execution failed: %w", runErr)
 	}
 
+	// Clear checkpoint on successful completion.
+	if cpManager != nil {
+		clearErr := cpManager.Clear()
+		if clearErr != nil {
+			log.Printf("warning: failed to clear checkpoint after completion: %v", clearErr)
+		}
+	}
+
 	return outputResults(selectedLeaves, results, format)
+}
+
+// runWithStreaming executes the pipeline in streaming chunks.
+func runWithStreaming(
+	runner *framework.Runner,
+	commits []*gitlib.Commit,
+	memBudget int64,
+	analyzers []analyze.HistoryAnalyzer,
+	cpManager *checkpoint.Manager,
+	repoPath string,
+	analyzerNames []string,
+	resumeEnabled bool,
+) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	chunks := planChunks(len(commits), memBudget)
+	hibernatables := collectHibernatables(analyzers)
+	checkpointables := collectCheckpointables(analyzers)
+
+	log.Printf("streaming: processing %d commits in %d chunks", len(commits), len(chunks))
+
+	startChunk := 0
+
+	// Try to resume from checkpoint if enabled.
+	if cpManager != nil && resumeEnabled && cpManager.Exists() {
+		resumedChunk, err := tryResumeFromCheckpoint(cpManager, checkpointables, repoPath, analyzerNames)
+		if err != nil {
+			log.Printf("checkpoint: resume failed, starting fresh: %v", err)
+		} else if resumedChunk > 0 {
+			startChunk = resumedChunk
+			log.Printf("checkpoint: resuming from chunk %d", startChunk+1)
+		}
+	}
+
+	// Initialize once at the start (or after resume).
+	if startChunk == 0 {
+		err := runner.Initialize()
+		if err != nil {
+			return nil, fmt.Errorf("initialization failed: %w", err)
+		}
+	}
+
+	err := processChunksWithCheckpoint(
+		runner, commits, chunks, hibernatables, checkpointables,
+		cpManager, repoPath, analyzerNames, startChunk,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Finalize once at the end.
+	return runner.Finalize()
+}
+
+// planChunks creates chunk boundaries for streaming execution.
+func planChunks(commitCount int, memBudget int64) []streaming.ChunkBounds {
+	planner := streaming.Planner{
+		TotalCommits: commitCount,
+		MemoryBudget: memBudget,
+	}
+
+	return planner.Plan()
+}
+
+// collectHibernatables extracts analyzers that support hibernation.
+func collectHibernatables(analyzers []analyze.HistoryAnalyzer) []streaming.Hibernatable {
+	var hibernatables []streaming.Hibernatable
+
+	for _, a := range analyzers {
+		if h, ok := a.(streaming.Hibernatable); ok {
+			hibernatables = append(hibernatables, h)
+		}
+	}
+
+	return hibernatables
+}
+
+// collectCheckpointables extracts analyzers that support checkpointing.
+func collectCheckpointables(analyzers []analyze.HistoryAnalyzer) []checkpoint.Checkpointable {
+	var checkpointables []checkpoint.Checkpointable
+
+	for _, a := range analyzers {
+		if c, ok := a.(checkpoint.Checkpointable); ok {
+			checkpointables = append(checkpointables, c)
+		}
+	}
+
+	return checkpointables
+}
+
+// tryResumeFromCheckpoint attempts to restore state from a checkpoint.
+// Returns the chunk index to resume from, or 0 if no valid checkpoint.
+func tryResumeFromCheckpoint(
+	cpManager *checkpoint.Manager,
+	checkpointables []checkpoint.Checkpointable,
+	repoPath string,
+	analyzerNames []string,
+) (int, error) {
+	// Validate checkpoint matches current run.
+	validateErr := cpManager.Validate(repoPath, analyzerNames)
+	if validateErr != nil {
+		return 0, fmt.Errorf("checkpoint validation failed: %w", validateErr)
+	}
+
+	// Load state into analyzers.
+	state, err := cpManager.Load(checkpointables)
+	if err != nil {
+		return 0, fmt.Errorf("checkpoint load failed: %w", err)
+	}
+
+	// Return the next chunk to process.
+	return state.CurrentChunk + 1, nil
+}
+
+// processChunksWithCheckpoint executes chunks with optional checkpointing.
+func processChunksWithCheckpoint(
+	runner *framework.Runner,
+	commits []*gitlib.Commit,
+	chunks []streaming.ChunkBounds,
+	hibernatables []streaming.Hibernatable,
+	checkpointables []checkpoint.Checkpointable,
+	cpManager *checkpoint.Manager,
+	repoPath string,
+	analyzerNames []string,
+	startChunk int,
+) error {
+	for i := startChunk; i < len(chunks); i++ {
+		chunk := chunks[i]
+		log.Printf("streaming: processing chunk %d/%d (commits %d-%d)",
+			i+1, len(chunks), chunk.Start, chunk.End)
+
+		if i > startChunk {
+			hibErr := hibernateAndBoot(hibernatables)
+			if hibErr != nil {
+				return hibErr
+			}
+		}
+
+		chunkCommits := commits[chunk.Start:chunk.End]
+
+		err := runner.ProcessChunk(chunkCommits, chunk.Start)
+		if err != nil {
+			return fmt.Errorf("chunk %d failed: %w", i+1, err)
+		}
+
+		// Save checkpoint after each chunk (except the last).
+		if cpManager != nil && i < len(chunks)-1 {
+			lastCommit := chunkCommits[len(chunkCommits)-1]
+			state := checkpoint.StreamingState{
+				TotalCommits:     len(commits),
+				ProcessedCommits: chunk.End,
+				CurrentChunk:     i,
+				TotalChunks:      len(chunks),
+				LastCommitHash:   lastCommit.Hash().String(),
+			}
+
+			saveErr := cpManager.Save(checkpointables, state, repoPath, analyzerNames)
+			if saveErr != nil {
+				log.Printf("warning: failed to save checkpoint: %v", saveErr)
+			} else {
+				log.Printf("checkpoint: saved after chunk %d", i+1)
+			}
+		}
+	}
+
+	return nil
+}
+
+// hibernateAndBoot hibernates and then boots all hibernatable analyzers.
+func hibernateAndBoot(hibernatables []streaming.Hibernatable) error {
+	for _, h := range hibernatables {
+		err := h.Hibernate()
+		if err != nil {
+			return fmt.Errorf("hibernation failed: %w", err)
+		}
+	}
+
+	for _, h := range hibernatables {
+		err := h.Boot()
+		if err != nil {
+			return fmt.Errorf("boot failed: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // analyzerPipeline holds the core and leaf analyzers for the pipeline.
@@ -348,7 +928,7 @@ func newAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
-	uastChanges := &plumbing.UASTChangesAnalyzer{FileDiff: fileDiff, BlobCache: blobCache}
+	uastChanges := &plumbing.UASTChangesAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
 	return &analyzerPipeline{
 		core: []analyze.HistoryAnalyzer{
@@ -366,10 +946,10 @@ func newAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 			"imports": &imports.HistoryAnalyzer{
 				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
 			},
-			"sentiment": &sentiment.HistoryAnalyzer{UASTChanges: uastChanges, Ticks: ticks},
-			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UASTChanges: uastChanges},
+			"sentiment": &sentiment.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
+			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UAST: uastChanges},
 			"typos": &typos.HistoryAnalyzer{
-				UASTChanges: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
+				UAST: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
 			},
 		},
 	}
@@ -413,10 +993,25 @@ func (hc *HistoryCommand) selectLeaves(
 	return selected, nil
 }
 
+// PlotGenerator interface for analyzers that can generate plots.
+type PlotGenerator interface {
+	GenerateChart(report analyze.Report) (components.Charter, error)
+}
+
+// SectionGenerator interface for analyzers that can generate page sections.
+type SectionGenerator interface {
+	GenerateSections(report analyze.Report) ([]plotpage.Section, error)
+}
+
 // outputResults outputs the results for all selected leaves.
 func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report, format string) error {
-	if format != FormatJSON {
+	rawOutput := format == FormatJSON || format == analyze.FormatPlot
+	if !rawOutput {
 		printHeader()
+	}
+
+	if format == analyze.FormatPlot && len(leaves) > 1 {
+		return outputCombinedPlot(leaves, results)
 	}
 
 	for _, leaf := range leaves {
@@ -425,7 +1020,7 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 			continue
 		}
 
-		if format != FormatJSON {
+		if !rawOutput {
 			fmt.Fprintf(os.Stdout, "%s:\n", leaf.Name())
 		}
 
@@ -438,9 +1033,120 @@ func outputResults(leaves []analyze.HistoryAnalyzer, results map[analyze.History
 	return nil
 }
 
+func outputCombinedPlot(leaves []analyze.HistoryAnalyzer, results map[analyze.HistoryAnalyzer]analyze.Report) error {
+	page := buildCombinedPage(leaves)
+
+	for _, leaf := range leaves {
+		res := results[leaf]
+		if res == nil {
+			continue
+		}
+
+		err := addLeafToPage(page, leaf, res)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := page.Render(os.Stdout)
+	if err != nil {
+		return fmt.Errorf("render page: %w", err)
+	}
+
+	return nil
+}
+
+func buildCombinedPage(leaves []analyze.HistoryAnalyzer) *plotpage.Page {
+	names := make([]string, 0, len(leaves))
+	for _, leaf := range leaves {
+		names = append(names, leaf.Name())
+	}
+
+	return plotpage.NewPage(
+		"Combined Analysis Report",
+		fmt.Sprintf("Analysis results for: %s", strings.Join(names, ", ")),
+	)
+}
+
+func addLeafToPage(page *plotpage.Page, leaf analyze.HistoryAnalyzer, res analyze.Report) error {
+	if sectionGen, ok := leaf.(SectionGenerator); ok {
+		return addSectionsToPage(page, sectionGen, leaf.Name(), res)
+	}
+
+	if plotter, ok := leaf.(PlotGenerator); ok {
+		return addChartToPage(page, plotter, leaf.Name(), res)
+	}
+
+	return nil
+}
+
+func addSectionsToPage(page *plotpage.Page, gen SectionGenerator, name string, res analyze.Report) error {
+	sections, err := gen.GenerateSections(res)
+	if err != nil {
+		return fmt.Errorf("failed to generate sections for %s: %w", name, err)
+	}
+
+	page.Add(sections...)
+
+	return nil
+}
+
+func addChartToPage(page *plotpage.Page, plotter PlotGenerator, name string, res analyze.Report) error {
+	chart, err := plotter.GenerateChart(res)
+	if err != nil {
+		return fmt.Errorf("failed to generate chart for %s: %w", name, err)
+	}
+
+	if renderable, ok := chart.(plotpage.Renderable); ok {
+		page.Add(plotpage.Section{
+			Title:    name,
+			Subtitle: fmt.Sprintf("Results from %s analyzer", name),
+			Chart:    plotpage.WrapChart(renderable),
+		})
+	}
+
+	return nil
+}
+
 // printHeader prints the codefang version header.
 func printHeader() {
 	fmt.Fprintln(os.Stdout, "codefang (v2):")
 	fmt.Fprintf(os.Stdout, "  version: %d\n", version.Binary)
 	fmt.Fprintln(os.Stdout, "  hash:", version.BinaryGitHash)
+}
+
+// loadFlagValue loads a configuration option's value from command flags into facts.
+func loadFlagValue(cmd *cobra.Command, opt pipeline.ConfigurationOption, facts map[string]any) {
+	switch opt.Type {
+	case pipeline.BoolConfigurationOption:
+		val, flagErr := cmd.Flags().GetBool(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.IntConfigurationOption:
+		val, flagErr := cmd.Flags().GetInt(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.StringConfigurationOption:
+		val, flagErr := cmd.Flags().GetString(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.StringsConfigurationOption:
+		val, flagErr := cmd.Flags().GetStringSlice(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.PathConfigurationOption:
+		val, flagErr := cmd.Flags().GetString(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	case pipeline.FloatConfigurationOption:
+		val, flagErr := cmd.Flags().GetFloat64(opt.Flag)
+		if flagErr == nil {
+			facts[opt.Name] = val
+		}
+	}
 }

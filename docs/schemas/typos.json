@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Typos Analyzer Output",
+  "description": "JSON schema for the typos analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "file_typos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FileTypoData"
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TypoPatternData"
+      }
+    },
+    "typo_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TypoData"
+      }
+    }
+  },
+  "required": [
+    "typo_list",
+    "patterns",
+    "file_typos",
+    "aggregate"
+  ],
+  "definitions": {
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "affected_commits": {
+          "type": "integer"
+        },
+        "affected_files": {
+          "type": "integer"
+        },
+        "total_typos": {
+          "type": "integer"
+        },
+        "unique_patterns": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_typos",
+        "unique_patterns",
+        "affected_files",
+        "affected_commits"
+      ]
+    },
+    "FileTypoData": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "fixed_typos": {
+          "type": "integer"
+        },
+        "typo_count": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file",
+        "typo_count",
+        "fixed_typos"
+      ]
+    },
+    "TypoData": {
+      "type": "object",
+      "properties": {
+        "commit": {
+          "type": "string"
+        },
+        "correct": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "wrong": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "wrong",
+        "correct",
+        "file",
+        "line",
+        "commit"
+      ]
+    },
+    "TypoPatternData": {
+      "type": "object",
+      "properties": {
+        "correct": {
+          "type": "string"
+        },
+        "frequency": {
+          "type": "integer"
+        },
+        "wrong": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "wrong",
+        "correct",
+        "frequency"
+      ]
+    }
+  }
+}

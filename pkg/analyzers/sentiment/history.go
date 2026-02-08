@@ -3,17 +3,17 @@ package sentiment
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -29,7 +29,7 @@ type HistoryAnalyzer struct {
 	l interface { //nolint:unused // used via dependency injection.
 		Warnf(format string, args ...any)
 	}
-	UASTChanges      *plumbing.UASTChangesAnalyzer
+	UAST             *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
 	commentsByTick   map[int][]string
 	commitsByTick    map[int][]gitlib.Hash
@@ -65,6 +65,9 @@ var (
 func (s *HistoryAnalyzer) Name() string {
 	return "Sentiment"
 }
+
+// NeedsUAST returns true because sentiment analysis requires UAST parsing.
+func (s *HistoryAnalyzer) NeedsUAST() bool { return true }
 
 // Flag returns the CLI flag for the analyzer.
 func (s *HistoryAnalyzer) Flag() string {
@@ -135,7 +138,7 @@ func (s *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (s *HistoryAnalyzer) Consume(_ *analyze.Context) error {
-	changes := s.UASTChanges.Changes
+	changes := s.UAST.Changes()
 	tick := s.Ticks.Tick
 
 	var commentNodes []*node.Node
@@ -283,65 +286,87 @@ func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only config.
 func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		res[i] = s // Shared state.
+		clone := &HistoryAnalyzer{
+			UAST:             s.UAST,
+			Ticks:            s.Ticks,
+			MinCommentLength: s.MinCommentLength,
+			Gap:              s.Gap,
+			commitsByTick:    s.commitsByTick, // shared read-only
+		}
+		// Initialize independent state for each fork
+		clone.commentsByTick = make(map[int][]string)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		s.mergeCommentsByTick(other.commentsByTick)
+	}
+}
+
+// mergeCommentsByTick combines comments from another analyzer.
+func (s *HistoryAnalyzer) mergeCommentsByTick(other map[int][]string) {
+	for tick, comments := range other {
+		s.commentsByTick[tick] = append(s.commentsByTick[tick], comments...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return s.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return s.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return s.generatePlot(result, writer)
+	default:
+		return s.serializeYAML(result, writer)
+	}
+}
 
-		return nil
+func (s *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	emotions, ok := result["emotions_by_tick"].(map[int]float32)
-	if !ok {
-		return errors.New("expected map[int]float32 for emotions") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	comments, ok := result["comments_by_tick"].(map[int][]string)
-	if !ok {
-		return errors.New("expected map[int][]string for comments") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	commits, ok := result["commits_by_tick"].(map[int][]gitlib.Hash)
-	if !ok {
-		//nolint:err113 // type assertion error.
-		return errors.New("expected map[int][]gitlib.Hash for commits")
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
 	}
 
-	ticks := make([]int, 0, len(emotions))
-	for tick := range emotions {
-		ticks = append(ticks, tick)
-	}
-
-	sort.Ints(ticks)
-
-	for _, tick := range ticks {
-		hashes := make([]string, 0)
-
-		if list, hasCommits := commits[tick]; hasCommits {
-			for _, hash := range list {
-				hashes = append(hashes, hash.String())
-			}
-		}
-
-		fmt.Fprintf(writer, "  %d: [%.4f, [%s], \"%s\"]\n",
-			tick, emotions[tick], strings.Join(hashes, ","),
-			strings.Join(comments[tick], "|"))
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil

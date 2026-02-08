@@ -89,7 +89,8 @@ func (r *Repository) Walk() (*RevWalk, error) {
 
 // LogOptions configures the commit log iteration.
 type LogOptions struct {
-	Since *time.Time // Only include commits after this time.
+	Since       *time.Time // Only include commits after this time.
+	FirstParent bool       // Follow only first parent (git log --first-parent).
 }
 
 // Log returns a commit iterator starting from HEAD.
@@ -115,7 +116,13 @@ func (r *Repository) Log(opts *LogOptions) (*CommitIter, error) {
 		return nil, fmt.Errorf("push HEAD to revwalk: %w", err)
 	}
 
-	walk.Sorting(git2go.SortTime)
+	// Topological order ensures we never diff against a descendant; prevents
+	// negative burndown values when branches have different timestamps.
+	walk.Sorting(git2go.SortTime | git2go.SortTopological)
+
+	if opts != nil && opts.FirstParent {
+		walk.SimplifyFirstParent()
+	}
 
 	return &CommitIter{walk: walk, repo: r, since: opts.Since}, nil
 }

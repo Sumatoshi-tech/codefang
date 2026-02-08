@@ -40,11 +40,10 @@ const (
 	allLanguages               = "all"
 )
 
+// defaultBlacklistedPrefixes: path prefixes only (e.g. vendor/). No language-specific filenames.
 var defaultBlacklistedPrefixes = []string{ //nolint:gochecknoglobals // global is needed for registration.
 	"vendor/",
 	"vendors/",
-	"package-lock.json",
-	"Gopkg.lock",
 }
 
 // Name returns the name of the analyzer.
@@ -141,45 +140,29 @@ func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
+	if ctx != nil && ctx.Changes != nil {
+		t.Changes = t.filterChanges(ctx.Changes)
 
+		return nil
+	}
+
+	return t.computeTreeDiff(ctx.Commit)
+}
+
+// computeTreeDiff performs traditional tree diff computation as a fallback.
+func (t *TreeDiffAnalyzer) computeTreeDiff(commit analyze.CommitLike) error {
 	tree, err := commit.Tree()
 	if err != nil {
 		return fmt.Errorf("consume: %w", err)
 	}
 
-	var changes gitlib.Changes
+	t.ensurePreviousTree(commit)
 
-	if t.previousTree == nil && commit.NumParents() > 0 {
-		// If previousTree is nil but we have parents, it means we jumped into the history (parallel processing).
-		// We need to fetch the parent tree to diff against.
-		parent, parentErr := commit.Parent(0)
-		if parentErr == nil && parent != nil {
-			var treeErr error
-
-			t.previousTree, treeErr = parent.Tree()
-			parent.Free()
-
-			if treeErr != nil {
-				// Parent tree unavailable, will diff against empty tree.
-				t.previousTree = nil
-			}
-		}
+	changes, err := t.diffTrees(tree)
+	if err != nil {
+		return err
 	}
 
-	if t.previousTree != nil {
-		changes, err = gitlib.TreeDiff(t.Repository, t.previousTree, tree)
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
-	} else {
-		changes, err = gitlib.InitialTreeChanges(t.Repository, tree)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Free previous tree before reassigning.
 	if t.previousTree != nil {
 		t.previousTree.Free()
 	}
@@ -189,6 +172,39 @@ func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
 	t.Changes = t.filterChanges(changes)
 
 	return nil
+}
+
+// ensurePreviousTree fetches the parent tree if needed for parallel processing.
+func (t *TreeDiffAnalyzer) ensurePreviousTree(commit analyze.CommitLike) {
+	if t.previousTree != nil || commit.NumParents() == 0 {
+		return
+	}
+
+	parent, err := commit.Parent(0)
+	if err != nil || parent == nil {
+		return
+	}
+
+	defer parent.Free()
+
+	tree, treeErr := parent.Tree()
+	if treeErr == nil {
+		t.previousTree = tree
+	}
+}
+
+// diffTrees computes the diff between previous tree and current tree.
+func (t *TreeDiffAnalyzer) diffTrees(tree *gitlib.Tree) (gitlib.Changes, error) {
+	if t.previousTree != nil {
+		changes, err := gitlib.TreeDiff(t.Repository, t.previousTree, tree)
+		if err != nil {
+			return nil, fmt.Errorf("consume: %w", err)
+		}
+
+		return changes, nil
+	}
+
+	return gitlib.InitialTreeChanges(t.Repository, tree)
 }
 
 func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes {
@@ -220,7 +236,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 		hash = change.To.Hash
 	}
 
-	// Check blacklist.
+	// Check blacklist: path prefix match only (e.g. "vendor/").
 	if len(t.SkipFiles) > 0 {
 		for _, prefix := range t.SkipFiles {
 			if strings.HasPrefix(name, prefix) {
@@ -312,4 +328,13 @@ func (t *TreeDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// InjectPreparedData sets pre-computed changes from parallel preparation.
+func (t *TreeDiffAnalyzer) InjectPreparedData(
+	changes []*gitlib.Change,
+	_ map[gitlib.Hash]*gitlib.CachedBlob,
+	_ any,
+) {
+	t.Changes = changes
 }

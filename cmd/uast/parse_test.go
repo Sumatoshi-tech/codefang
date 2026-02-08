@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-//nolint:gocognit // recursive tree walk with multiple type assertions is inherently complex
 func TestParseOutputIncludesPositions(t *testing.T) {
 	t.Parallel()
 

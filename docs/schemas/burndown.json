@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Burndown Analyzer Output",
+  "description": "JSON schema for the burndown analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "developer_survival": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DeveloperSurvivalData"
+      }
+    },
+    "file_survival": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FileSurvivalData"
+      }
+    },
+    "global_survival": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SurvivalData"
+      }
+    },
+    "interactions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/InteractionData"
+      }
+    }
+  },
+  "required": [
+    "aggregate",
+    "global_survival",
+    "file_survival",
+    "developer_survival",
+    "interactions"
+  ],
+  "definitions": {
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "analysis_period_days": {
+          "type": "integer"
+        },
+        "num_bands": {
+          "type": "integer"
+        },
+        "num_samples": {
+          "type": "integer"
+        },
+        "overall_survival_rate": {
+          "type": "number"
+        },
+        "total_current_lines": {
+          "type": "integer"
+        },
+        "total_peak_lines": {
+          "type": "integer"
+        },
+        "tracked_developers": {
+          "type": "integer"
+        },
+        "tracked_files": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_current_lines",
+        "total_peak_lines",
+        "overall_survival_rate",
+        "analysis_period_days",
+        "num_bands",
+        "num_samples",
+        "tracked_files",
+        "tracked_developers"
+      ]
+    },
+    "DeveloperSurvivalData": {
+      "type": "object",
+      "properties": {
+        "current_lines": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "peak_lines": {
+          "type": "integer"
+        },
+        "survival_rate": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "current_lines",
+        "peak_lines",
+        "survival_rate"
+      ]
+    },
+    "FileSurvivalData": {
+      "type": "object",
+      "properties": {
+        "current_lines": {
+          "type": "integer"
+        },
+        "ownership": {
+          "description": "Map with int keys and int values",
+          "type": "object"
+        },
+        "path": {
+          "type": "string"
+        },
+        "top_owner_id": {
+          "type": "integer"
+        },
+        "top_owner_name": {
+          "type": "string"
+        },
+        "top_owner_percentage": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "path",
+        "current_lines",
+        "ownership",
+        "top_owner_id",
+        "top_owner_name",
+        "top_owner_percentage"
+      ]
+    },
+    "InteractionData": {
+      "type": "object",
+      "properties": {
+        "author_id": {
+          "type": "integer"
+        },
+        "author_name": {
+          "type": "string"
+        },
+        "is_self_modify": {
+          "type": "boolean"
+        },
+        "lines_modified": {
+          "type": "integer"
+        },
+        "modifier_id": {
+          "type": "integer"
+        },
+        "modifier_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "author_id",
+        "author_name",
+        "modifier_id",
+        "modifier_name",
+        "lines_modified",
+        "is_self_modify"
+      ]
+    },
+    "SurvivalData": {
+      "type": "object",
+      "properties": {
+        "band_breakdown": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "sample_index": {
+          "type": "integer"
+        },
+        "survival_rate": {
+          "type": "number"
+        },
+        "total_lines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sample_index",
+        "total_lines",
+        "survival_rate",
+        "band_breakdown"
+      ]
+    }
+  }
+}

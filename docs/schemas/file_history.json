@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "File_history Analyzer Output",
+  "description": "JSON schema for the file_history analyzer ComputedMetrics output",
+  "type": "object",
+  "properties": {
+    "aggregate": {
+      "$ref": "#/definitions/AggregateData"
+    },
+    "file_churn": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FileChurnData"
+      }
+    },
+    "file_contributors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FileContributorData"
+      }
+    },
+    "hotspots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/HotspotData"
+      }
+    }
+  },
+  "required": [
+    "file_churn",
+    "file_contributors",
+    "hotspots",
+    "aggregate"
+  ],
+  "definitions": {
+    "AggregateData": {
+      "type": "object",
+      "properties": {
+        "avg_commits_per_file": {
+          "type": "number"
+        },
+        "avg_contributors_per_file": {
+          "type": "number"
+        },
+        "high_churn_files": {
+          "type": "integer"
+        },
+        "total_commits": {
+          "type": "integer"
+        },
+        "total_contributors": {
+          "type": "integer"
+        },
+        "total_files": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_files",
+        "total_commits",
+        "total_contributors",
+        "avg_commits_per_file",
+        "avg_contributors_per_file",
+        "high_churn_files"
+      ]
+    },
+    "FileChurnData": {
+      "type": "object",
+      "properties": {
+        "churn_score": {
+          "type": "number"
+        },
+        "commit_count": {
+          "type": "integer"
+        },
+        "contributor_count": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "total_lines_added": {
+          "type": "integer"
+        },
+        "total_lines_changed": {
+          "type": "integer"
+        },
+        "total_lines_removed": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "commit_count",
+        "contributor_count",
+        "total_lines_added",
+        "total_lines_removed",
+        "total_lines_changed",
+        "churn_score"
+      ]
+    },
+    "FileContributorData": {
+      "type": "object",
+      "properties": {
+        "contributors": {
+          "description": "Map with int keys and struct values",
+          "type": "object"
+        },
+        "path": {
+          "type": "string"
+        },
+        "top_contributor_id": {
+          "type": "integer"
+        },
+        "top_contributor_lines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "contributors",
+        "top_contributor_id",
+        "top_contributor_lines"
+      ]
+    },
+    "HotspotData": {
+      "type": "object",
+      "properties": {
+        "churn_score": {
+          "type": "number"
+        },
+        "commit_count": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "risk_level": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "commit_count",
+        "churn_score",
+        "risk_level"
+      ]
+    }
+  }
+}

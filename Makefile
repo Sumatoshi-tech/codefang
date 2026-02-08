@@ -37,15 +37,19 @@ help:
 	@echo "  test             - Run all tests"
 	@echo "  lint             - Run linters and deadcode analysis"
 	@echo "  fmt              - Format code"
+	@echo "  schemas          - Generate JSON schemas for all analyzers"
 	@echo "  deadcode         - Run deadcode analysis with detailed output"
 	@echo "  deadcode-prod    - Run deadcode analysis excluding tests"
 	@echo "  deadcode-why     - Show why a function is not dead (FUNC=name)"
 	@echo "  bench            - Run UAST performance benchmarks"
+	@echo "  perf             - Run history burndown perf baseline (1k + 15k, CPU profiles). REPO=path (default: .)"
+	@echo "  battle           - Battle test on large repo with CPU+heap profiles. BATTLE_REPO=path BATTLE_ANALYZER=name"
 	@echo "  uast-dev         - Start UAST development environment (frontend + backend)"
 	@echo "  uast-dev-stop    - Stop UAST development servers"
 	@echo "  uast-dev-status  - Check status of UAST development servers"
 	@echo "  uast-test        - Run UI tests for UAST development service"
 	@echo "  dev-service      - Start backend only (legacy)"
+	@echo "  compare-burndown - Run burndown and compare with Hercules reference (REPO=~/sources/iortcw, FP=1 for --first-parent)"
 	@echo "  clean            - Clean build artifacts"
 
 # Pre-compile UAST mappings for faster startup
@@ -61,6 +65,16 @@ precompile: libgit2
 uastmaps-gen:
 	@echo "Generating UAST mappings..."
 	@python3 build/scripts/uastmapsgen/gen_uastmaps.py
+
+# Generate JSON schemas for all analyzers
+.PHONY: schemas
+schemas: libgit2
+	@echo "Generating JSON schemas..."
+	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_ENABLED=1 go run ./build/scripts/schemagen/schemagen.go -o docs/schemas
+	@echo "✓ Schemas generated in docs/schemas/"
 
 # Install binaries to user's local bin directory
 install: all
@@ -93,6 +107,55 @@ testv: all
 # Run UAST performance benchmarks (comprehensive suite with organized results)
 bench: all
 	python3 build/scripts/benchmark/benchmark_runner.py
+
+# History burndown perf baseline: 1k + 15k commits with CPU profiles. REPO=path (default: .)
+# Produces cpu_1k.prof, cpu_15k.prof; run from repo root.
+perf: all
+	@REPO=$${REPO:-.}; \
+	echo "Perf repo: $$REPO"; \
+	echo "Running 1k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k.prof $$REPO > /tmp/out_1k.yaml 2>&1; \
+	echo "Running 15k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k.prof $$REPO > /tmp/out_15k.yaml 2>&1; \
+	echo "Profiles: cpu_1k.prof, cpu_15k.prof"; \
+	go tool pprof -text -diff_base=cpu_1k.prof cpu_15k.prof > pprof_diff.txt 2>/dev/null || true; \
+	echo "Diff: pprof_diff.txt"
+
+# Same as perf; writes to cpu_*_treap.prof for backward compatibility (treap is default).
+perf-treap: all
+	@REPO=$${REPO:-.}; \
+	echo "Perf repo: $$REPO"; \
+	echo "Running 1k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k_treap.prof $$REPO > /tmp/out_1k_treap.yaml 2>&1; \
+	echo "Running 15k commits..."; \
+	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k_treap.prof $$REPO > /tmp/out_15k_treap.yaml 2>&1; \
+	echo "Profiles: cpu_1k_treap.prof, cpu_15k_treap.prof"; \
+	go tool pprof -text -diff_base=cpu_1k_treap.prof cpu_15k_treap.prof > pprof_diff_treap.txt 2>/dev/null || true; \
+	echo "Diff: pprof_diff_treap.txt"
+
+# Battle test: full run on large repo with CPU+heap profiles and /usr/bin/time metrics.
+# Usage: make battle [BATTLE_REPO=~/sources/kubernetes] [BATTLE_ANALYZER=burndown]
+.PHONY: battle
+battle: all
+	@REPO=$${BATTLE_REPO:-$$HOME/sources/kubernetes}; \
+	ANALYZER=$${BATTLE_ANALYZER:-burndown}; \
+	STAMP=$$(date +%Y%m%d-%H%M%S); \
+	DIR=profiles/$$(basename $$REPO)/$$STAMP; \
+	mkdir -p $$DIR; \
+	echo "Battle test: $$REPO ($$ANALYZER)"; \
+	echo "Output dir: $$DIR"; \
+	/usr/bin/time -v $(GOBIN)/codefang history \
+		-a $$ANALYZER -f yaml --first-parent \
+		--cpuprofile=$$DIR/cpu.prof \
+		--heapprofile=$$DIR/heap.prof \
+		$$REPO > $$DIR/output.yaml 2> $$DIR/time.txt; \
+	echo "--- Profile summaries ---"; \
+	go tool pprof -top -cum $$DIR/cpu.prof 2>/dev/null | head -25 > $$DIR/cpu_top.txt || true; \
+	go tool pprof -top -inuse_space $$DIR/heap.prof 2>/dev/null | head -25 > $$DIR/heap_top.txt || true; \
+	go tool pprof -svg $$DIR/cpu.prof > $$DIR/cpu_flamegraph.svg 2>/dev/null || true; \
+	go tool pprof -svg -inuse_space $$DIR/heap.prof > $$DIR/heap_flamegraph.svg 2>/dev/null || true; \
+	echo "Done. Artifacts in $$DIR/"; \
+	cat $$DIR/time.txt | grep -E "(wall clock|Maximum resident|Percent of CPU)" || true
 
 # Run basic Go benchmarks directly (no organization)
 bench-basic: all
@@ -151,6 +214,15 @@ compare:
 compare-runs:
 	python3 build/scripts/benchmark/benchmark_comparison.py $(CURRENT_RUN) --baseline $(BASELINE_RUN)
 
+# Run Codefang burndown and compare with Hercules reference.
+# Usage: make compare-burndown [REPO=~/sources/iortcw] [FP=1 for --first-parent]
+.PHONY: compare-burndown
+compare-burndown: build
+	@REPO=$${REPO:-$$HOME/sources/iortcw}; \
+	FP=$${FP:-0}; \
+	$(GOBIN)/codefang history -a burndown -f yaml $$([ "$$FP" = "1" ] && echo --first-parent) "$$REPO" 2>/dev/null > /tmp/codefang_burndown.yaml; \
+	python3 references/compare_burndown.py /tmp/codefang_burndown.yaml references/iortcw_burndown.yaml
+
 # Compare last N benchmark runs (usage: make compare-last N=3)
 compare-last:
 	@N=$${N:-2}; \
@@ -190,6 +262,7 @@ clean:
 	rm -f *.prof
 	rm -f test/benchmarks/benchmark_results.txt
 	rm -rf benchmark_plots/
+	rm -rf profiles/
 	rm -rf $(LIBGIT2_BUILD)
 	rm -rf $(LIBGIT2_INSTALL)
 	rm -rf bin/
@@ -343,4 +416,3 @@ $(LIBGIT2_INSTALL)/lib64/libgit2.a:
 	cd $(LIBGIT2_BUILD) && cmake --build . --parallel
 	cd $(LIBGIT2_BUILD) && cmake --install .
 	@echo "✓ libgit2 built and installed to $(LIBGIT2_INSTALL)"
-

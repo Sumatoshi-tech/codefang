@@ -6,7 +6,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
 
-//nolint:gocognit,nestif // Test function exercises multiple matcher interface methods.
 func TestPatternMatcherOptimizations(t *testing.T) {
 	// Test that pattern matchers are generated correctly.
 	goMatcher := GetPatternMatcher("go")

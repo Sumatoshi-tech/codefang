@@ -114,7 +114,6 @@ func TestDSLParser_Parse_Invalid(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_LoweringAndExecution(t *testing.T) {
 	t.Parallel()
 
@@ -199,7 +198,6 @@ func TestDSLParser_Parse_MembershipAndLogical(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RecursiveFunctions(t *testing.T) {
 	t.Parallel()
 
@@ -387,7 +385,6 @@ func TestNestedFieldAccessExecution(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_HasSyntax(t *testing.T) {
 	t.Parallel()
 
@@ -426,7 +423,7 @@ func TestDSLParser_HasSyntax(t *testing.T) {
 			// Parse the query.
 			ast, err := ParseDSL(tc.query)
 
-			if tc.shouldParse { //nolint:nestif // Test validation logic.
+			if tc.shouldParse {
 				if err != nil {
 					t.Fatalf("Failed to parse query '%s': %v", tc.query, err)
 				}
@@ -447,7 +444,6 @@ func TestDSLParser_HasSyntax(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_HasSyntaxExecution(t *testing.T) {
 	t.Parallel()
 
@@ -1177,7 +1173,6 @@ func TestDSLParser_Spacing(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_ExecutionWithComplexQueries(t *testing.T) {
 	t.Parallel()
 
@@ -1345,7 +1340,6 @@ func TestDSLParser_Lowering_ComplexOrQuery(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 	t.Parallel()
 
@@ -1543,7 +1537,6 @@ func TestDSLParser_RFilter_DeepNestedStructure(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Comprehensive test with many subtests.
 func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 	t.Parallel()
 

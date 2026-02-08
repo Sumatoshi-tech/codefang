@@ -163,7 +163,6 @@ func assertIdentifierNodeWithTokenExists(t *testing.T, parsedNode map[string]any
 	}
 }
 
-//nolint:gocognit // recursive tree search is inherently complex
 func identifierNodeWithTokenExists(parsedNode map[string]any, token string) bool {
 	found := false
 

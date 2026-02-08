@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -33,6 +35,7 @@ type HistoryAnalyzer struct {
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
+	Anonymize            bool
 }
 
 // DevTick is the statistics for a development tick and a particular developer.
@@ -43,11 +46,11 @@ type DevTick struct {
 	Commits   int
 }
 
+// Configuration option keys for the devs analyzer.
 const (
-	// ConfigDevsConsiderEmptyCommits is the configuration key for including empty commits in developer statistics.
 	ConfigDevsConsiderEmptyCommits = "Devs.ConsiderEmptyCommits"
+	ConfigDevsAnonymize            = "Devs.Anonymize"
 
-	// DefaultHoursPerDay defines the number of hours in a day for tick size calculation.
 	defaultHoursPerDay = 24
 )
 
@@ -68,19 +71,32 @@ func (d *HistoryAnalyzer) Description() string {
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
 func (d *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
-	return []pipeline.ConfigurationOption{{
-		Name:        ConfigDevsConsiderEmptyCommits,
-		Description: "Take into account empty commits such as trivial merges.",
-		Flag:        "empty-commits",
-		Type:        pipeline.BoolConfigurationOption,
-		Default:     false,
-	}}
+	return []pipeline.ConfigurationOption{
+		{
+			Name:        ConfigDevsConsiderEmptyCommits,
+			Description: "Take into account empty commits such as trivial merges.",
+			Flag:        "empty-commits",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+		{
+			Name:        ConfigDevsAnonymize,
+			Description: "Anonymize developer names in output (e.g., Developer-A, Developer-B).",
+			Flag:        "anonymize",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+	}
 }
 
 // Configure configures the analyzer with the given facts.
 func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigDevsConsiderEmptyCommits].(bool); exists {
 		d.ConsiderEmptyCommits = val
+	}
+
+	if val, exists := facts[ConfigDevsAnonymize].(bool); exists {
+		d.Anonymize = val
 	}
 
 	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
@@ -153,7 +169,7 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	langs := d.Languages.Languages
+	langs := d.Languages.Languages()
 	lineStats := d.LineStats.LineStats
 
 	for changeEntry, stats := range lineStats {
@@ -174,9 +190,20 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 // Finalize completes the analysis and returns the result.
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
+	names := d.reversedPeopleDict
+
+	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector
+	if len(names) == 0 && d.Identity != nil {
+		names = d.Identity.ReversedPeopleDict
+	}
+
+	if d.Anonymize {
+		names = anonymizeNames(names)
+	}
+
 	return analyze.Report{
 		"Ticks":              d.ticks,
-		"ReversedPeopleDict": d.reversedPeopleDict,
+		"ReversedPeopleDict": names,
 		"TickSize":           d.tickSize,
 	}, nil
 }
@@ -251,15 +278,54 @@ func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
 
 // Serialize writes the analysis result to the given writer.
 func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return d.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return d.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return d.generatePlot(result, writer)
+	default:
+		return d.serializeLegacy(result, writer)
+	}
+}
 
-		return nil
+func (d *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure
+		metrics = &ComputedMetrics{}
 	}
 
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
+	}
+
+	return nil
+}
+
+func (d *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (d *HistoryAnalyzer) serializeLegacy(result analyze.Report, writer io.Writer) error {
 	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
 		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.

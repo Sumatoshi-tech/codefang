@@ -37,7 +37,7 @@ func newTestAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
-	uastChanges := &plumbing.UASTChangesAnalyzer{FileDiff: fileDiff, BlobCache: blobCache}
+	uastChanges := &plumbing.UASTChangesAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
 	return &analyzerPipeline{
 		core: []analyze.HistoryAnalyzer{
@@ -55,10 +55,10 @@ func newTestAnalyzerPipeline(repository *gitlib.Repository) *analyzerPipeline {
 			"imports": &imports.HistoryAnalyzer{
 				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
 			},
-			"sentiment": &sentiment.HistoryAnalyzer{UASTChanges: uastChanges, Ticks: ticks},
-			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UASTChanges: uastChanges},
+			"sentiment": &sentiment.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
+			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UAST: uastChanges},
 			"typos": &typos.HistoryAnalyzer{
-				UASTChanges: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
+				UAST: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
 			},
 		},
 	}
@@ -194,4 +194,5 @@ func TestFormatConstants(t *testing.T) {
 	assert.Equal(t, "yaml", analyze.FormatYAML)
 	assert.Equal(t, "json", analyze.FormatJSON)
 	assert.Equal(t, "binary", analyze.FormatBinary)
+	assert.Equal(t, "plot", analyze.FormatPlot)
 }

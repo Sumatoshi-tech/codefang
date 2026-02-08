@@ -1,0 +1,20 @@
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-stone-200 dark:border-stone-700">
+{{range .Headers}}
+                <th class="px-4 py-3 text-left font-medium text-stone-500 dark:text-stone-400">{{.}}</th>
+{{end}}
+            </tr>
+        </thead>
+        <tbody>
+{{range $i, $row := .Rows}}
+            <tr class="border-b border-stone-100 dark:border-stone-800 {{if and $.Striped (odd $i)}}bg-stone-50 dark:bg-stone-800/50{{end}}">
+{{range $row}}
+                <td class="px-4 py-3 text-stone-700 dark:text-stone-300">{{.}}</td>
+{{end}}
+            </tr>
+{{end}}
+        </tbody>
+    </table>
+</div>

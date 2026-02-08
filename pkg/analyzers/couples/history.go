@@ -8,10 +8,11 @@ import (
 	"io"
 	"sort"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
@@ -97,6 +98,30 @@ func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
+// ensureCapacity grows people and peopleCommits slices if needed.
+// This handles incremental identity detection where PeopleNumber
+// isn't known at Configure time.
+func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
+	if minSize <= len(c.people) {
+		return
+	}
+
+	// Grow people slice
+	newPeople := make([]map[string]int, minSize)
+	copy(newPeople, c.people)
+
+	for i := len(c.people); i < minSize; i++ {
+		newPeople[i] = make(map[string]int)
+	}
+
+	c.people = newPeople
+
+	// Grow peopleCommits slice
+	newPeopleCommits := make([]int, minSize)
+	copy(newPeopleCommits, c.peopleCommits)
+	c.peopleCommits = newPeopleCommits
+}
+
 // Consume processes a single commit with the provided dependency results.
 func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	commit := ctx.Commit
@@ -117,6 +142,11 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	if author == identity.AuthorMissing {
 		author = c.PeopleNumber
 	}
+
+	// Grow slices dynamically if author ID exceeds current capacity.
+	// This handles incremental identity detection where PeopleNumber
+	// isn't known at Configure time.
+	c.ensureCapacity(author + 1)
 
 	if shouldConsume {
 		c.peopleCommits[author]++
@@ -324,109 +354,146 @@ func countNewlines(p []byte) int {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets its own independent copies of mutable state (slices and maps).
 func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *c
-		res[i] = &clone
+		clone := &HistoryAnalyzer{
+			Identity:           c.Identity,
+			TreeDiff:           c.TreeDiff,
+			PeopleNumber:       c.PeopleNumber,
+			reversedPeopleDict: c.reversedPeopleDict,
+		}
+		// Initialize independent state for each fork
+		clone.files = make(map[string]map[string]int)
+		clone.renames = &[]rename{}
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		clone.people = make([]map[string]int, c.PeopleNumber+1)
+		for j := range clone.people {
+			clone.people[j] = make(map[string]int)
+		}
+
+		clone.peopleCommits = make([]int, c.PeopleNumber+1)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (c *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		c.mergeFiles(other.files)
+		c.mergePeople(other.people)
+		c.mergePeopleCommits(other.peopleCommits)
+		c.mergeMerges(other.merges)
+		c.mergeRenames(other.renames)
+	}
+}
+
+// mergeFiles combines file coupling counts from another analyzer.
+func (c *HistoryAnalyzer) mergeFiles(other map[string]map[string]int) {
+	for file, otherCouplings := range other {
+		if c.files[file] == nil {
+			c.files[file] = make(map[string]int)
+		}
+
+		for otherFile, count := range otherCouplings {
+			c.files[file][otherFile] += count
+		}
+	}
+}
+
+// mergePeople combines per-person file touch counts from another analyzer.
+func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
+	for i, otherFiles := range other {
+		if i >= len(c.people) {
+			continue
+		}
+
+		for file, count := range otherFiles {
+			c.people[i][file] += count
+		}
+	}
+}
+
+// mergePeopleCommits combines per-person commit counts from another analyzer.
+func (c *HistoryAnalyzer) mergePeopleCommits(other []int) {
+	for i, count := range other {
+		if i >= len(c.peopleCommits) {
+			continue
+		}
+
+		c.peopleCommits[i] += count
+	}
+}
+
+// mergeMerges combines merge commit tracking from another analyzer.
+func (c *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		c.merges[hash] = true
+	}
+}
+
+// mergeRenames combines rename tracking from another analyzer.
+func (c *HistoryAnalyzer) mergeRenames(other *[]rename) {
+	if other != nil {
+		*c.renames = append(*c.renames, *other...)
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return c.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return c.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return c.generatePlot(result, writer)
+	default:
+		return c.serializeYAML(result, writer)
+	}
+}
 
-		return nil
+func (c *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	peopleMatrix, ok := result["PeopleMatrix"].([]map[int]int64)
-	if !ok {
-		return errors.New("expected []map[int]int64 for peopleMatrix") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	files, ok := result["Files"].([]string)
-	if !ok {
-		return errors.New("expected []string for files") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	filesLines, ok := result["FilesLines"].([]int)
-	if !ok {
-		return errors.New("expected []int for filesLines") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	filesMatrix, ok := result["FilesMatrix"].([]map[int]int64)
-	if !ok {
-		return errors.New("expected []map[int]int64 for filesMatrix") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	reversedPeopleDict, ok := result["ReversedPeopleDict"].([]string)
-	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	fmt.Fprintln(writer, "  files_coocc:")
-	fmt.Fprintln(writer, "    index:")
-
-	for _, file := range files {
-		fmt.Fprintf(writer, "      - %s\n", file)
-	}
-
-	fmt.Fprintln(writer, "    lines:")
-
-	for _, l := range filesLines {
-		fmt.Fprintf(writer, "      - %d\n", l)
-	}
-
-	writeMatrixSection(writer, filesMatrix)
-
-	fmt.Fprintln(writer, "  people_coocc:")
-	fmt.Fprintln(writer, "    index:")
-
-	for _, person := range reversedPeopleDict {
-		fmt.Fprintf(writer, "      - %s\n", person)
-	}
-
-	writeMatrixSection(writer, peopleMatrix)
-
-	fmt.Fprintln(writer, "    author_files:")
-	// ... (author_files logic omitted).
 	return nil
 }
 
-// writeMatrixSection writes a YAML "matrix:" section with sorted sparse row data.
-func writeMatrixSection(writer io.Writer, matrix []map[int]int64) {
-	fmt.Fprintln(writer, "    matrix:")
-
-	for _, row := range matrix {
-		fmt.Fprint(writer, "      - {")
-
-		indices := make([]int, 0, len(row))
-		for k := range row {
-			indices = append(indices, k)
-		}
-
-		sort.Ints(indices)
-
-		for i, k := range indices {
-			fmt.Fprintf(writer, "%d: %d", k, row[k])
-
-			if i < len(indices)-1 {
-				fmt.Fprint(writer, ", ")
-			}
-		}
-
-		fmt.Fprintln(writer, "}")
+func (c *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

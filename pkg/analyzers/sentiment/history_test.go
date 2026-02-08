@@ -2,15 +2,15 @@ package sentiment //nolint:testpackage // testing internal implementation.
 
 import (
 	"bytes"
-	"strings"
+	"encoding/json"
 	"testing"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -76,7 +76,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -94,7 +94,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 			After: commentNode,
 		},
 	}
-	s.UASTChanges.Changes = changes
+	s.UAST.SetChangesForTest(changes)
 	s.Ticks.Tick = 0
 
 	err := s.Consume(&analyze.Context{})
@@ -117,7 +117,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 		Token: "bad",
 		Pos:   &node.Positions{StartLine: 2, EndLine: 2},
 	}
-	s.UASTChanges.Changes = []uast.Change{{After: shortCommentNode}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: shortCommentNode}})
 	s.Ticks.Tick = 1
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
@@ -131,7 +131,7 @@ func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -145,7 +145,7 @@ func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	}
 	root.Children = []*node.Node{child}
 
-	s.UASTChanges.Changes = []uast.Change{{After: root}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
 
@@ -168,7 +168,7 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{
-		UASTChanges:      &plumbing.UASTChangesAnalyzer{},
+		UAST:             &plumbing.UASTChangesAnalyzer{},
 		Ticks:            &plumbing.TicksSinceStart{},
 		MinCommentLength: 10,
 	}
@@ -179,7 +179,7 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	c2 := &node.Node{Type: node.UASTComment, Token: "Line 2 is nice", Pos: &node.Positions{StartLine: 2, EndLine: 2}}
 
 	root := &node.Node{Type: "Block", Children: []*node.Node{c1, c2}}
-	s.UASTChanges.Changes = []uast.Change{{After: root}}
+	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
 	require.NoError(t, s.Consume(&analyze.Context{}))
 
@@ -220,7 +220,54 @@ func TestHistoryAnalyzer_Finalize(t *testing.T) {
 	}
 }
 
-func TestHistoryAnalyzer_Serialize(t *testing.T) {
+func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+
+	report := analyze.Report{
+		"emotions_by_tick": map[int]float32{0: 0.5, 1: 0.8},
+		"comments_by_tick": map[int][]string{0: {"Comment"}},
+		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
+	}
+
+	var buf bytes.Buffer
+	err := s.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
+
+	var result map[string]any
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Verify metrics structure
+	assert.Contains(t, result, "time_series")
+	assert.Contains(t, result, "trend")
+	assert.Contains(t, result, "low_sentiment_periods")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+
+	report := analyze.Report{
+		"emotions_by_tick": map[int]float32{0: 0.5, 1: 0.8},
+		"comments_by_tick": map[int][]string{0: {"Comment"}},
+		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
+	}
+
+	var buf bytes.Buffer
+	err := s.Serialize(report, analyze.FormatYAML, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "time_series:")
+	assert.Contains(t, output, "trend:")
+	assert.Contains(t, output, "aggregate:")
+}
+
+func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{}
@@ -231,29 +278,13 @@ func TestHistoryAnalyzer_Serialize(t *testing.T) {
 		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
 	}
 
-	// YAML.
+	// Default format should use YAML
 	var buf bytes.Buffer
+	err := s.Serialize(report, "unknown", &buf)
+	require.NoError(t, err)
 
-	err := s.Serialize(report, analyze.FormatYAML, &buf)
-	if err != nil {
-		t.Fatalf("Serialize YAML failed: %v", err)
-	}
-
-	if !strings.Contains(buf.String(), "0: [0.5000, [c1") {
-		t.Errorf("unexpected output: %s", buf.String())
-	}
-
-	if !strings.Contains(buf.String(), "\"Comment\"]") {
-		t.Errorf("unexpected output: %s", buf.String())
-	}
-
-	// Binary.
-	var pbuf bytes.Buffer
-
-	err = s.Serialize(report, analyze.FormatBinary, &pbuf)
-	if err != nil {
-		t.Fatalf("Serialize Binary failed: %v", err)
-	}
+	output := buf.String()
+	assert.Contains(t, output, "time_series:")
 }
 
 func TestHistoryAnalyzer_Misc(t *testing.T) {
@@ -272,4 +303,132 @@ func TestHistoryAnalyzer_Misc(t *testing.T) {
 	if len(clones) != 2 {
 		t.Error("expected 2 clones")
 	}
+}
+
+func TestFork_CreatesIndependentCopies(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 20,
+		Gap:              0.5,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	// Add some state to original
+	s.commentsByTick[0] = []string{"original comment"}
+
+	forks := s.Fork(2)
+	require.Len(t, forks, 2)
+
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+	fork2, ok := forks[1].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Forks should have empty independent maps (not inherit parent state)
+	require.Empty(t, fork1.commentsByTick, "fork should have empty commentsByTick map")
+	require.Empty(t, fork2.commentsByTick, "fork should have empty commentsByTick map")
+
+	// Modifying one fork should not affect the other
+	fork1.commentsByTick[1] = []string{"fork1 comment"}
+
+	require.Len(t, fork1.commentsByTick, 1)
+	require.Empty(t, fork2.commentsByTick, "fork2 should not see fork1's changes")
+}
+
+func TestFork_SharesConfig(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 25,
+		Gap:              0.7,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	forks := s.Fork(2)
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Config should be shared
+	require.Equal(t, s.MinCommentLength, fork1.MinCommentLength)
+	require.InDelta(t, s.Gap, fork1.Gap, 0.001)
+}
+
+func TestMerge_CombinesCommentsByTick(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	// Original has comments at tick 0
+	s.commentsByTick[0] = []string{"original comment"}
+
+	// Create a branch with comments at different tick
+	branch := &HistoryAnalyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.commentsByTick[1] = []string{"branch comment"}
+
+	s.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Should have both ticks
+	require.Len(t, s.commentsByTick, 2)
+	require.Len(t, s.commentsByTick[0], 1)
+	require.Len(t, s.commentsByTick[1], 1)
+	require.Equal(t, "original comment", s.commentsByTick[0][0])
+	require.Equal(t, "branch comment", s.commentsByTick[1][0])
+}
+
+func TestMerge_AppendsCommentsAtSameTick(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	// Original has comments at tick 0
+	s.commentsByTick[0] = []string{"comment 1"}
+
+	// Branch also has comments at tick 0
+	branch := &HistoryAnalyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.commentsByTick[0] = []string{"comment 2", "comment 3"}
+
+	s.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Should have all comments at tick 0
+	require.Len(t, s.commentsByTick[0], 3)
+	require.Contains(t, s.commentsByTick[0], "comment 1")
+	require.Contains(t, s.commentsByTick[0], "comment 2")
+	require.Contains(t, s.commentsByTick[0], "comment 3")
+}
+
+func TestForkMerge_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		MinCommentLength: 20,
+		Gap:              0.5,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	// Fork
+	forks := s.Fork(2)
+	fork1, ok := forks[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+	fork2, ok := forks[1].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Each fork adds different comments
+	fork1.commentsByTick[0] = []string{"fork1 tick0 comment"}
+	fork1.commentsByTick[1] = []string{"fork1 tick1 comment"}
+	fork2.commentsByTick[0] = []string{"fork2 tick0 comment"}
+	fork2.commentsByTick[2] = []string{"fork2 tick2 comment"}
+
+	// Merge
+	s.Merge(forks)
+
+	// Verify all comments are merged
+	require.Len(t, s.commentsByTick, 3)
+	require.Len(t, s.commentsByTick[0], 2) // from both forks
+	require.Len(t, s.commentsByTick[1], 1) // from fork1
+	require.Len(t, s.commentsByTick[2], 1) // from fork2
 }

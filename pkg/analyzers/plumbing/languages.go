@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 
 	"github.com/src-d/enry/v2"
 
@@ -14,14 +15,240 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
+// extensionToLanguage maps common file extensions to their programming languages.
+// This provides O(1) lookup for unambiguous extensions, avoiding expensive content analysis.
+//
+//nolint:gochecknoglobals // package-level lookup table for performance.
+var extensionToLanguage = map[string]string{
+	// Go
+	".go": "Go",
+	// Python
+	".py":   "Python",
+	".pyw":  "Python",
+	".pyi":  "Python",
+	".pyx":  "Python",
+	".pxd":  "Python",
+	".gyp":  "Python",
+	".gypi": "Python",
+	// JavaScript
+	".js":     "JavaScript",
+	".mjs":    "JavaScript",
+	".cjs":    "JavaScript",
+	".jsx":    "JavaScript",
+	".es6":    "JavaScript",
+	".es":     "JavaScript",
+	".jsm":    "JavaScript",
+	".vue":    "Vue",
+	".svelte": "Svelte",
+	// TypeScript
+	".ts":  "TypeScript",
+	".mts": "TypeScript",
+	".cts": "TypeScript",
+	".tsx": "TSX",
+	// Rust
+	".rs": "Rust",
+	// Java
+	".java": "Java",
+	// Kotlin
+	".kt":  "Kotlin",
+	".kts": "Kotlin",
+	// Scala
+	".scala": "Scala",
+	".sc":    "Scala",
+	// C
+	".c": "C",
+	".h": "C",
+	// C++
+	".cpp": "C++",
+	".hpp": "C++",
+	".cc":  "C++",
+	".cxx": "C++",
+	".hxx": "C++",
+	".c++": "C++",
+	".h++": "C++",
+	".hh":  "C++",
+	".ipp": "C++",
+	".inl": "C++",
+	".tcc": "C++",
+	".tpp": "C++",
+	// C#
+	".cs":  "C#",
+	".csx": "C#",
+	// Ruby
+	".rb":       "Ruby",
+	".rake":     "Ruby",
+	".gemspec":  "Ruby",
+	".rbw":      "Ruby",
+	".ru":       "Ruby",
+	".podspec":  "Ruby",
+	".thor":     "Ruby",
+	".jbuilder": "Ruby",
+	// PHP
+	".php":   "PHP",
+	".php3":  "PHP",
+	".php4":  "PHP",
+	".php5":  "PHP",
+	".php7":  "PHP",
+	".phps":  "PHP",
+	".phtml": "PHP",
+	// Shell
+	".sh":   "Shell",
+	".bash": "Shell",
+	".zsh":  "Shell",
+	".ksh":  "Shell",
+	".csh":  "Shell",
+	".tcsh": "Shell",
+	".fish": "Shell",
+	// PowerShell
+	".ps1":  "PowerShell",
+	".psm1": "PowerShell",
+	".psd1": "PowerShell",
+	// Perl
+	".pl":  "Perl",
+	".pm":  "Perl",
+	".pod": "Perl",
+	".t":   "Perl",
+	// Lua
+	".lua": "Lua",
+	// R
+	".r":   "R",
+	".R":   "R",
+	".rmd": "RMarkdown",
+	".Rmd": "RMarkdown",
+	// Swift
+	".swift": "Swift",
+	// Objective-C
+	".m":  "Objective-C",
+	".mm": "Objective-C++",
+	// Dart
+	".dart": "Dart",
+	// Elixir
+	".ex":   "Elixir",
+	".exs":  "Elixir",
+	".eex":  "Elixir",
+	".leex": "Elixir",
+	".heex": "Elixir",
+	// Erlang
+	".erl": "Erlang",
+	".hrl": "Erlang",
+	// Haskell
+	".hs":  "Haskell",
+	".lhs": "Haskell",
+	// Clojure
+	".clj":  "Clojure",
+	".cljs": "ClojureScript",
+	".cljc": "Clojure",
+	".edn":  "Clojure",
+	// F#
+	".fs":       "F#",
+	".fsi":      "F#",
+	".fsx":      "F#",
+	".fsscript": "F#",
+	// OCaml
+	".ml":  "OCaml",
+	".mli": "OCaml",
+	".mll": "OCaml",
+	".mly": "OCaml",
+	// Data formats
+	".json":  "JSON",
+	".json5": "JSON5",
+	".yaml":  "YAML",
+	".yml":   "YAML",
+	".toml":  "TOML",
+	".xml":   "XML",
+	".csv":   "CSV",
+	".tsv":   "TSV",
+	// Config
+	".ini":  "INI",
+	".cfg":  "INI",
+	".conf": "INI",
+	".env":  "Dotenv",
+	// Markup
+	".html":  "HTML",
+	".htm":   "HTML",
+	".xhtml": "HTML",
+	".css":   "CSS",
+	".scss":  "SCSS",
+	".sass":  "Sass",
+	".less":  "Less",
+	".styl":  "Stylus",
+	// Documentation
+	".md":       "Markdown",
+	".markdown": "Markdown",
+	".rst":      "reStructuredText",
+	".tex":      "TeX",
+	".latex":    "TeX",
+	".adoc":     "AsciiDoc",
+	".asciidoc": "AsciiDoc",
+	// SQL
+	".sql":   "SQL",
+	".psql":  "SQL",
+	".mysql": "SQL",
+	".pgsql": "SQL",
+	// GraphQL
+	".graphql": "GraphQL",
+	".gql":     "GraphQL",
+	// Protocol Buffers
+	".proto": "Protocol Buffer",
+	// Thrift
+	".thrift": "Thrift",
+	// WebAssembly
+	".wat":  "WebAssembly",
+	".wast": "WebAssembly",
+	// Assembly
+	".asm": "Assembly",
+	".s":   "Assembly",
+	".S":   "Assembly",
+	// Zig
+	".zig": "Zig",
+	// Nim
+	".nim":    "Nim",
+	".nims":   "Nim",
+	".nimble": "Nim",
+	// Julia
+	".jl": "Julia",
+	// V
+	".v": "V",
+	// Crystal
+	".cr": "Crystal",
+	// Groovy
+	".groovy": "Groovy",
+	".gradle": "Groovy",
+	".gvy":    "Groovy",
+	// Dockerfile
+	".dockerfile": "Dockerfile",
+	// Makefile extensions
+	".mk":  "Makefile",
+	".mak": "Makefile",
+	// CMake
+	".cmake": "CMake",
+	// Terraform
+	".tf":     "HCL",
+	".tfvars": "HCL",
+	".hcl":    "HCL",
+}
+
+// languageByExtension returns the programming language for a filename based on its extension.
+// Returns empty string if the extension is not in the fast-path map (caller should fall back to content analysis).
+func languageByExtension(filename string) string {
+	ext := strings.ToLower(path.Ext(filename))
+	if ext == "" {
+		return ""
+	}
+
+	return extensionToLanguage[ext]
+}
+
 // LanguagesDetectionAnalyzer detects programming languages of changed files.
+// It uses lazy detection - languages are only computed when Languages() is called.
 type LanguagesDetectionAnalyzer struct {
 	// Dependencies.
 	TreeDiff  *TreeDiffAnalyzer
 	BlobCache *BlobCacheAnalyzer
 
-	// Output.
-	Languages map[gitlib.Hash]string
+	// Output (private, use Languages() accessor).
+	languages map[gitlib.Hash]string
+	parsed    bool // tracks whether detection was done for current commit
 
 	// Internal. //nolint:unused // used via reflection or external caller.
 	l interface { //nolint:unused // acknowledged.
@@ -64,8 +291,23 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
+// Consume resets state for the new commit. Detection is deferred until Languages() is called.
 func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
+	// Reset state for new commit - detection is lazy
+	l.languages = nil
+	l.parsed = false
+
+	return nil
+}
+
+// Languages returns detected languages, computing lazily on first call per commit.
+// This avoids expensive language detection when downstream analyzers don't need it.
+func (l *LanguagesDetectionAnalyzer) Languages() map[gitlib.Hash]string {
+	if l.parsed {
+		return l.languages
+	}
+
+	l.parsed = true
 	changes := l.TreeDiff.Changes
 	cache := l.BlobCache.Cache
 	result := map[gitlib.Hash]string{}
@@ -86,9 +328,9 @@ func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
 		}
 	}
 
-	l.Languages = result
+	l.languages = result
 
-	return nil
+	return l.languages
 }
 
 func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.CachedBlob) string {
@@ -101,9 +343,26 @@ func (l *LanguagesDetectionAnalyzer) detectLanguage(name string, blob *gitlib.Ca
 		return ""
 	}
 
+	// Fast path: use extension-based lookup for unambiguous extensions.
+	if lang := languageByExtension(name); lang != "" {
+		return lang
+	}
+
+	// Slow path: fall back to content analysis for ambiguous cases.
 	lang := enry.GetLanguage(path.Base(name), blob.Data)
 
 	return lang
+}
+
+// SetLanguages sets the languages directly, marking them as parsed.
+func (l *LanguagesDetectionAnalyzer) SetLanguages(languages map[gitlib.Hash]string) {
+	l.languages = languages
+	l.parsed = true
+}
+
+// SetLanguagesForTest sets the languages directly (for testing only).
+func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Hash]string) {
+	l.SetLanguages(languages)
 }
 
 // Finalize completes the analysis and returns the result.

@@ -3,16 +3,14 @@ package filehistory
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"sort"
-	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -201,63 +199,118 @@ func (h *Analyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets its own independent copies of mutable state.
 func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *h
-		res[i] = &clone
+		clone := &Analyzer{
+			Identity:  h.Identity,
+			TreeDiff:  h.TreeDiff,
+			LineStats: h.LineStats,
+		}
+		// Initialize independent state for each fork
+		clone.files = make(map[string]*FileHistory)
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*Analyzer)
+		if !ok {
+			continue
+		}
+
+		h.mergeFiles(other.files)
+		h.mergeMerges(other.merges)
+	}
+}
+
+// mergeFiles combines file histories from another analyzer.
+func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
+	for name, otherFH := range other {
+		if h.files[name] == nil {
+			h.files[name] = &FileHistory{
+				People: make(map[int]pkgplumbing.LineStats),
+			}
+		}
+
+		fh := h.files[name]
+
+		// Initialize People map if needed
+		if fh.People == nil {
+			fh.People = make(map[int]pkgplumbing.LineStats)
+		}
+
+		// Merge people stats (sum)
+		for person, stats := range otherFH.People {
+			existing := fh.People[person]
+			fh.People[person] = pkgplumbing.LineStats{
+				Added:   existing.Added + stats.Added,
+				Removed: existing.Removed + stats.Removed,
+				Changed: existing.Changed + stats.Changed,
+			}
+		}
+
+		// Append hashes
+		fh.Hashes = append(fh.Hashes, otherFH.Hashes...)
+	}
+}
+
+// mergeMerges combines merge commit tracking from another analyzer.
+func (h *Analyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		h.merges[hash] = true
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (h *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return h.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return h.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return h.generatePlot(result, writer)
+	default:
+		return h.serializeYAML(result, writer)
+	}
+}
 
-		return nil
+func (h *Analyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	files, ok := result["Files"].(map[string]FileHistory)
-	if !ok {
-		return errors.New("expected map[string]FileHistory for files") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	keys := make([]string, 0, len(files))
-	for key := range files {
-		keys = append(keys, key)
+	return nil
+}
+
+func (h *Analyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	sort.Strings(keys)
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
 
-	for _, key := range keys {
-		fmt.Fprintf(writer, "  - %s:\n", key)
-		file := files[key]
-		hashes := file.Hashes
-
-		strhashes := make([]string, len(hashes))
-		for i, hash := range hashes {
-			strhashes[i] = "\"" + hash.String() + "\""
-		}
-
-		sort.Strings(strhashes)
-		fmt.Fprintf(writer, "    commits: [%s]\n", strings.Join(strhashes, ","))
-
-		strpeople := make([]string, 0, len(file.People))
-		for key, val := range file.People {
-			strpeople = append(strpeople, fmt.Sprintf("%d:[%d,%d,%d]", key, val.Added, val.Removed, val.Changed))
-		}
-
-		sort.Strings(strpeople)
-		fmt.Fprintf(writer, "    people: {%s}\n", strings.Join(strpeople, ","))
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
 	}
 
 	return nil
