@@ -68,6 +68,9 @@ func (s *HistoryAnalyzer) Name() string {
 	return "Shotness"
 }
 
+// NeedsUAST returns true because shotness analysis requires UAST parsing.
+func (s *HistoryAnalyzer) NeedsUAST() bool { return true }
+
 // Flag returns the CLI flag for the analyzer.
 func (s *HistoryAnalyzer) Flag() string {
 	return "shotness"

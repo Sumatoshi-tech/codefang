@@ -66,6 +66,9 @@ func (s *HistoryAnalyzer) Name() string {
 	return "Sentiment"
 }
 
+// NeedsUAST returns true because sentiment analysis requires UAST parsing.
+func (s *HistoryAnalyzer) NeedsUAST() bool { return true }
+
 // Flag returns the CLI flag for the analyzer.
 func (s *HistoryAnalyzer) Flag() string {
 	return "sentiment"

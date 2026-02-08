@@ -106,7 +106,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 	streamYAML := serializeReport(t, streamLeaf, streamResults[streamLeaf])
 
 	// --- Compare ---
-	require.Equal(t, baselineYAML, streamYAML,
+	require.YAMLEq(t, baselineYAML, streamYAML,
 		"streaming output must be identical to non-streaming baseline")
 }
 

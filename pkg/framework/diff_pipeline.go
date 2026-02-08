@@ -10,16 +10,18 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
 // CommitData holds all processed data for a commit.
 type CommitData struct {
-	Commit    *gitlib.Commit
-	Index     int
-	Changes   gitlib.Changes
-	BlobCache map[gitlib.Hash]*gitlib.CachedBlob
-	FileDiffs map[string]plumbing.FileDiffData
-	Error     error
+	Commit      *gitlib.Commit
+	Index       int
+	Changes     gitlib.Changes
+	BlobCache   map[gitlib.Hash]*gitlib.CachedBlob
+	FileDiffs   map[string]plumbing.FileDiffData
+	UASTChanges []uast.Change // Pre-computed UAST changes (nil if not computed).
+	Error       error
 }
 
 // DiffPipeline processes blob data to compute file diffs.

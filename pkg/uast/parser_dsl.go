@@ -22,6 +22,7 @@ import (
 var (
 	errLanguageNotAvailable = errors.New("tree-sitter language not available")
 	errNoRootNode           = errors.New("dsl parser: no root node")
+	errPoolType             = errors.New("dsl parser: pool returned unexpected type")
 )
 
 // Token extraction source constants.
@@ -32,6 +33,10 @@ const (
 	comparisonParts       = 2
 )
 
+// maxInternLen is the maximum string length eligible for per-parse interning.
+// Strings longer than this are unlikely to repeat within a single file.
+const maxInternLen = 32
+
 // DSLParser implements the UAST LanguageParser interface using DSL-based mappings.
 type DSLParser struct {
 	reader          io.Reader
@@ -41,6 +46,8 @@ type DSLParser struct {
 	originalDSL     string
 	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
+	internedTypes   map[string]node.Type // pre-interned Type values from DSL rules
+	internedRoles   map[string]node.Role // pre-interned Role values from DSL rules
 	tsParserPool    sync.Pool
 	IncludeUnmapped bool
 }
@@ -98,18 +105,37 @@ func (parser *DSLParser) initializeLanguage() error {
 	parser.patternMatcher = mapping.NewPatternMatcher(parser.language)
 	parser.tsParserPool = sync.Pool{
 		New: func() any {
-			p := sitter.NewParser()
-			p.SetLanguage(lang)
-			return p
+			tsParser := sitter.NewParser()
+			tsParser.SetLanguage(lang)
+
+			return tsParser
 		},
 	}
 
 	// Build O(1) rule lookup index (first occurrence wins, matching
 	// the original linear-scan semantics of findMappingRule).
 	parser.ruleIndex = make(map[string]int, len(parser.mappingRules))
+
 	for i, r := range parser.mappingRules {
 		if _, exists := parser.ruleIndex[r.Name]; !exists {
 			parser.ruleIndex[r.Name] = i
+		}
+	}
+
+	// Pre-intern Type and Role strings from DSL rules. These are fixed per language
+	// and repeat for every parsed file, so deduplication saves significant allocations.
+	parser.internedTypes = make(map[string]node.Type, len(parser.mappingRules))
+	parser.internedRoles = make(map[string]node.Role)
+
+	for _, r := range parser.mappingRules {
+		if r.UASTSpec.Type != "" {
+			parser.internedTypes[r.UASTSpec.Type] = node.Type(r.UASTSpec.Type)
+		}
+
+		for _, role := range r.UASTSpec.Roles {
+			if _, exists := parser.internedRoles[role]; !exists {
+				parser.internedRoles[role] = node.Role(role)
+			}
 		}
 	}
 
@@ -123,7 +149,11 @@ func (parser *DSLParser) Extensions() []string {
 
 // Parse parses the given file content and returns the root UAST node.
 func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
-	tsParser := parser.tsParserPool.Get().(*sitter.Parser)
+	tsParser, ok := parser.tsParserPool.Get().(*sitter.Parser)
+	if !ok {
+		return nil, errPoolType
+	}
+
 	defer parser.tsParserPool.Put(tsParser)
 
 	tree, err := tsParser.ParseString(context.Background(), nil, content)
@@ -137,7 +167,8 @@ func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
 		return nil, errNoRootNode
 	}
 
-	dslNode := parser.createDSLNode(root, tree, content)
+	interner := make(map[string]string, 128) //nolint:mnd // initial capacity for per-parse string interner
+	dslNode := parser.createDSLNode(root, tree, content, interner)
 	canonical := dslNode.ToCanonicalNode()
 
 	return canonical, nil
@@ -162,6 +193,9 @@ type DSLNode struct {
 	ParentContext   string
 	MappingRules    []mapping.Rule
 	ruleIndex       map[string]int
+	internedTypes   map[string]node.Type // shared from DSLParser (read-only)
+	internedRoles   map[string]node.Role // shared from DSLParser (read-only)
+	interner        map[string]string    // per-parse string interner for short tokens
 	Source          []byte
 	IncludeUnmapped bool
 }
@@ -190,7 +224,7 @@ func (dn *DSLNode) ToCanonicalNode() *node.Node {
 }
 
 // createDSLNode creates a new DSLNode with the given parameters.
-func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, content []byte) *DSLNode {
+func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, content []byte, interner map[string]string) *DSLNode {
 	return &DSLNode{
 		Root:            root,
 		Tree:            tree,
@@ -198,6 +232,9 @@ func (parser *DSLParser) createDSLNode(root sitter.Node, tree *sitter.Tree, cont
 		Source:          content,
 		MappingRules:    parser.mappingRules,
 		ruleIndex:       parser.ruleIndex,
+		internedTypes:   parser.internedTypes,
+		internedRoles:   parser.internedRoles,
+		interner:        interner,
 		PatternMatcher:  parser.patternMatcher,
 		IncludeUnmapped: parser.IncludeUnmapped,
 		ParentContext:   "",
@@ -280,7 +317,7 @@ func (dn *DSLNode) processChildren(mappingRule *mapping.Rule) []*node.Node {
 		}
 
 		canonical := childNode.ToCanonicalNode()
-		if canonical != nil && dn.shouldIncludeChild(child) {
+		if canonical != nil {
 			children = append(children, canonical)
 		}
 	}
@@ -306,6 +343,9 @@ func (dn *DSLNode) createChildNode(child sitter.Node, mappingRule *mapping.Rule)
 		Source:          dn.Source,
 		MappingRules:    dn.MappingRules,
 		ruleIndex:       dn.ruleIndex,
+		internedTypes:   dn.internedTypes,
+		internedRoles:   dn.internedRoles,
+		interner:        dn.interner,
 		PatternMatcher:  dn.PatternMatcher,
 		IncludeUnmapped: dn.IncludeUnmapped,
 		ParentContext:   parentContext,
@@ -483,18 +523,6 @@ func (dn *DSLNode) shouldExcludeChild(childNode *DSLNode, mappingRule *mapping.R
 	return !childNode.evaluateConditions(childRule)
 }
 
-// shouldIncludeChild checks if a child should be included in the result.
-func (dn *DSLNode) shouldIncludeChild(child sitter.Node) bool {
-	childMappingRule := dn.findMappingRule(child.Type())
-	if childMappingRule == nil {
-		return true // Include unmapped children.
-	}
-
-	childNode := dn.createChildNode(child, childMappingRule)
-
-	return childNode.evaluateConditions(childMappingRule)
-}
-
 // shouldSkipEmptyFile checks if an empty file should be skipped.
 func (dn *DSLNode) shouldSkipEmptyFile(nodeType string, children []*node.Node) bool {
 	return nodeType == "source_file" && len(children) == 0 && len(dn.Source) == 0
@@ -512,11 +540,18 @@ func (dn *DSLNode) createMappedNode(
 	if mappingRule.UASTSpec.Props != nil {
 		props = make(map[string]string, len(mappingRule.UASTSpec.Props))
 	}
+
 	dn.extractProperties(mappingRule, props)
-	dn.extractName(mappingRule, &props)
+	props = dn.extractName(mappingRule, props)
+
+	// Use pre-interned type string if available, avoiding repeated allocation.
+	nodeType := dn.internedTypes[mappingRule.UASTSpec.Type]
+	if nodeType == "" {
+		nodeType = node.Type(mappingRule.UASTSpec.Type)
+	}
 
 	uastNode := node.New(
-		"", node.Type(mappingRule.UASTSpec.Type),
+		"", nodeType,
 		dn.extractTokenText(mappingRule), roles, dn.extractPositions(), props,
 	)
 	uastNode.Children = children
@@ -526,31 +561,38 @@ func (dn *DSLNode) createMappedNode(
 	return uastNode
 }
 
-// extractRoles extracts roles from the mapping rule.
+// extractRoles extracts roles from the mapping rule, using pre-interned values.
 func (dn *DSLNode) extractRoles(mappingRule *mapping.Rule, roles *[]node.Role) {
 	if mappingRule == nil {
 		return
 	}
 
 	for _, roleStr := range mappingRule.UASTSpec.Roles {
-		*roles = append(*roles, node.Role(roleStr))
+		if interned, ok := dn.internedRoles[roleStr]; ok {
+			*roles = append(*roles, interned)
+		} else {
+			*roles = append(*roles, node.Role(roleStr))
+		}
 	}
 }
 
 // extractName extracts name from the node if specified in mapping.
-func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props *map[string]string) {
-	// For now, extract name from the first identifier child if available.
+// Returns the updated props map (may allocate if name is found and props is nil).
+func (dn *DSLNode) extractName(mappingRule *mapping.Rule, props map[string]string) map[string]string {
 	if mappingRule == nil {
-		return
+		return props
 	}
 
 	name := dn.extractNameFromNode(tokenSourceFieldsName)
 	if name != "" {
-		if *props == nil {
-			*props = make(map[string]string, 1)
+		if props == nil {
+			props = make(map[string]string, 1)
 		}
-		(*props)["name"] = name
+
+		props["name"] = name
 	}
+
+	return props
 }
 
 // extractNameFromNode extracts a name from a node using the specified source.
@@ -572,18 +614,6 @@ func (dn *DSLNode) extractNameFromField(fieldName string) string {
 	fieldNode := dn.Root.ChildByFieldName(fieldName)
 	if !fieldNode.IsNull() {
 		return dn.extractNodeText(fieldNode)
-	}
-
-	return dn.extractNameFromChildType(fieldName)
-}
-
-// extractNameFromChildType extracts name from a child with the field name as its type.
-func (dn *DSLNode) extractNameFromChildType(fieldName string) string {
-	for idx := range dn.Root.NamedChildCount() {
-		child := dn.Root.NamedChild(idx)
-		if child.Type() == fieldName {
-			return dn.extractNodeText(child)
-		}
 	}
 
 	return ""
@@ -646,12 +676,23 @@ func (dn *DSLNode) extractDirectChildProperty(propStr string) string {
 }
 
 // extractChildText extracts text from a child node.
+// Short strings are interned within the current parse.
 func (dn *DSLNode) extractChildText(child sitter.Node) string {
 	start := child.StartByte()
 	end := child.EndByte()
 
 	if safeconv.MustUintToInt(end) <= len(dn.Source) {
-		return string(dn.Source[start:end])
+		s := string(dn.Source[start:end])
+
+		if len(s) <= maxInternLen && dn.interner != nil {
+			if interned, ok := dn.interner[s]; ok {
+				return interned
+			}
+
+			dn.interner[s] = s
+		}
+
+		return s
 	}
 
 	return ""
@@ -721,6 +762,9 @@ func (dn *DSLNode) findDescendantToken(nodeType string) string {
 			Source:          dn.Source,
 			MappingRules:    dn.MappingRules,
 			ruleIndex:       dn.ruleIndex,
+			internedTypes:   dn.internedTypes,
+			internedRoles:   dn.internedRoles,
+			interner:        dn.interner,
 			PatternMatcher:  dn.PatternMatcher,
 			IncludeUnmapped: dn.IncludeUnmapped,
 			ParentContext:   dn.ParentContext,
@@ -765,12 +809,15 @@ func (dn *DSLNode) extractTokenText(mappingRule *mapping.Rule) string {
 
 // extractPositions extracts position information from the Tree-sitter node.
 func (dn *DSLNode) extractPositions() *node.Positions {
+	start := dn.Root.StartPoint()
+	end := dn.Root.EndPoint()
+
 	return node.NewPositions(
-		dn.Root.StartPoint().Row+1,
-		dn.Root.StartPoint().Column+1,
+		start.Row+1,
+		start.Column+1,
 		dn.Root.StartByte(),
-		dn.Root.EndPoint().Row+1,
-		dn.Root.EndPoint().Column+1,
+		end.Row+1,
+		end.Column+1,
 		dn.Root.EndByte(),
 	)
 }
@@ -812,6 +859,9 @@ func (dn *DSLNode) createUnmappedChildNode(child sitter.Node) *DSLNode {
 		Source:          dn.Source,
 		MappingRules:    dn.MappingRules,
 		ruleIndex:       dn.ruleIndex,
+		internedTypes:   dn.internedTypes,
+		internedRoles:   dn.internedRoles,
+		interner:        dn.interner,
 		PatternMatcher:  dn.PatternMatcher,
 		IncludeUnmapped: dn.IncludeUnmapped,
 		ParentContext:   dn.ParentContext,
@@ -937,25 +987,39 @@ func (dn *DSLNode) Token() string {
 // Positions returns the source code positions for this node, using uint fields as per UAST spec.
 func (dn *DSLNode) Positions() *node.Positions {
 	root := dn.Root
+	start := root.StartPoint()
+	end := root.EndPoint()
 
 	return node.NewPositions(
-		root.StartPoint().Row+1,
-		root.StartPoint().Column+1,
+		start.Row+1,
+		start.Column+1,
 		root.StartByte(),
-		root.EndPoint().Row+1,
-		root.EndPoint().Column+1,
+		end.Row+1,
+		end.Column+1,
 		root.EndByte(),
 	)
 }
 
 // extractNodeText extracts text from a Tree-sitter node (allocating copy).
 // Use for values that are stored in Node.Token or Node.Props.
+// Short strings (≤ maxInternLen) are interned within the current parse to
+// deduplicate repeated identifiers, keywords, and operators.
 func (dn *DSLNode) extractNodeText(tsNode sitter.Node) string {
 	start := tsNode.StartByte()
 	end := tsNode.EndByte()
 
 	if safeconv.MustUintToInt(end) <= len(dn.Source) {
-		return string(dn.Source[start:end])
+		s := string(dn.Source[start:end])
+
+		if len(s) <= maxInternLen && dn.interner != nil {
+			if interned, ok := dn.interner[s]; ok {
+				return interned
+			}
+
+			dn.interner[s] = s
+		}
+
+		return s
 	}
 
 	return ""
@@ -970,7 +1034,7 @@ func (dn *DSLNode) unsafeNodeText(tsNode sitter.Node) string {
 	end := tsNode.EndByte()
 
 	if end <= uint(len(dn.Source)) {
-		return unsafe.String(&dn.Source[start], int(end-start))
+		return unsafe.String(&dn.Source[start], safeconv.MustUintToInt(end-start))
 	}
 
 	return ""

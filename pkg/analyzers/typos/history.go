@@ -54,6 +54,9 @@ func (t *HistoryAnalyzer) Name() string {
 	return "TyposDataset"
 }
 
+// NeedsUAST returns true because typo detection requires UAST parsing.
+func (t *HistoryAnalyzer) NeedsUAST() bool { return true }
+
 // Flag returns the CLI flag for the analyzer.
 func (t *HistoryAnalyzer) Flag() string {
 	return "typos-dataset"

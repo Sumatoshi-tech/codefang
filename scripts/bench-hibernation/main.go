@@ -33,6 +33,8 @@ func main() {
 	chunkSize := flag.Int("chunk-size", 5000, "Commits per chunk")
 	profileDir := flag.String("profile-dir", "", "Directory to write heap profiles")
 	analyzerName := flag.String("analyzer", "file-history", "Analyzer to benchmark (file-history, shotness)")
+	uastPipelineWorkers := flag.Int("uast-pipeline-workers", 0, "UAST pipeline workers (0 = default, -1 = disable)")
+	leafWorkers := flag.Int("leaf-workers", 0, "Leaf analyzer workers (0 = default, -1 = disable)")
 	flag.Parse()
 
 	if *repoPath == "" {
@@ -56,9 +58,27 @@ func main() {
 	commits := loadCommits(repo, *limit)
 	log.Printf("loaded %d commits", len(commits))
 
-	allAnalyzers := buildPipeline(repo, *analyzerName)
+	allAnalyzers, coreCount := buildPipeline(repo, *analyzerName)
 
-	runner := framework.NewRunner(repo, *repoPath, allAnalyzers...)
+	config := framework.DefaultCoordinatorConfig()
+	if *uastPipelineWorkers != 0 {
+		if *uastPipelineWorkers < 0 {
+			config.UASTPipelineWorkers = 0
+		} else {
+			config.UASTPipelineWorkers = *uastPipelineWorkers
+		}
+	}
+
+	if *leafWorkers != 0 {
+		if *leafWorkers < 0 {
+			config.LeafWorkers = 0
+		} else {
+			config.LeafWorkers = *leafWorkers
+		}
+	}
+
+	runner := framework.NewRunnerWithConfig(repo, *repoPath, config, allAnalyzers...)
+	runner.CoreCount = coreCount
 
 	if err := runner.Initialize(); err != nil {
 		log.Fatalf("initialize: %v", err)
@@ -191,7 +211,7 @@ func main() {
 	}
 }
 
-func buildPipeline(repo *gitlib.Repository, analyzerName string) []analyze.HistoryAnalyzer {
+func buildPipeline(repo *gitlib.Repository, analyzerName string) ([]analyze.HistoryAnalyzer, int) {
 	treeDiff := &plumbing.TreeDiffAnalyzer{Repository: repo}
 	identity := &plumbing.IdentityDetector{}
 	ticks := &plumbing.TicksSinceStart{}
@@ -203,29 +223,36 @@ func buildPipeline(repo *gitlib.Repository, analyzerName string) []analyze.Histo
 
 	switch analyzerName {
 	case "file-history":
+		core := []analyze.HistoryAnalyzer{
+			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect,
+		}
 		leaf := &filehistory.Analyzer{
 			Identity: identity, TreeDiff: treeDiff, LineStats: lineStats,
 		}
-		return []analyze.HistoryAnalyzer{
-			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, leaf,
-		}
+
+		return append(core, leaf), len(core)
 	case "shotness":
+		core := []analyze.HistoryAnalyzer{
+			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges,
+		}
 		leaf := &shotness.HistoryAnalyzer{
 			FileDiff: fileDiff, UAST: uastChanges,
 		}
-		return []analyze.HistoryAnalyzer{
-			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges, leaf,
-		}
+
+		return append(core, leaf), len(core)
 	case "sentiment":
+		core := []analyze.HistoryAnalyzer{
+			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges,
+		}
 		leaf := &sentiment.HistoryAnalyzer{
 			UAST: uastChanges, Ticks: ticks,
 		}
-		return []analyze.HistoryAnalyzer{
-			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges, leaf,
-		}
+
+		return append(core, leaf), len(core)
 	default:
 		log.Fatalf("unknown analyzer: %s (supported: file-history, shotness, sentiment)", analyzerName)
-		return nil
+
+		return nil, 0
 	}
 }
 

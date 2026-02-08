@@ -247,19 +247,36 @@ func (hc *HistoryCommand) maybeWriteHeapProfile() {
 		return
 	}
 
-	f, err := os.Create(hc.heapprofile)
+	profileFile, err := os.Create(hc.heapprofile)
 	if err != nil {
 		log.Printf("could not create heap profile: %v", err)
 
 		return
 	}
-	defer f.Close()
+	defer profileFile.Close()
 
 	runtime.GC()
 
-	if err := pprof.WriteHeapProfile(f); err != nil {
-		log.Printf("could not write heap profile: %v", err)
+	writeErr := pprof.WriteHeapProfile(profileFile)
+	if writeErr != nil {
+		log.Printf("could not write heap profile: %v", writeErr)
 	}
+}
+
+// uastDependent is implemented by leaf analyzers that depend on UAST parsing.
+type uastDependent interface {
+	NeedsUAST() bool
+}
+
+// needsUAST returns true if any selected leaf analyzer depends on UAST parsing.
+func needsUAST(leaves []analyze.HistoryAnalyzer) bool {
+	for _, leaf := range leaves {
+		if ud, ok := leaf.(uastDependent); ok && ud.NeedsUAST() {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (hc *HistoryCommand) ensureBurndownFirstParent() {
@@ -673,7 +690,12 @@ func (hc *HistoryCommand) runPipeline(
 	allAnalyzers = append(allAnalyzers, pl.core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
+	if !needsUAST(selectedLeaves) {
+		coordConfig.UASTPipelineWorkers = 0
+	}
+
 	runner := framework.NewRunnerWithConfig(repository, repoPath, coordConfig, allAnalyzers...)
+	runner.CoreCount = len(pl.core)
 
 	// Setup checkpoint manager if enabled.
 	var cpManager *checkpoint.Manager
@@ -693,7 +715,6 @@ func (hc *HistoryCommand) runPipeline(
 	}
 
 	results, runErr := runWithStreaming(runner, commits, memBudget, allAnalyzers, cpManager, repoPath, analyzerNames, cpConfig.resume)
-
 	if runErr != nil {
 		return fmt.Errorf("pipeline execution failed: %w", runErr)
 	}

@@ -573,7 +573,7 @@ func BenchmarkFindMappingRule(b *testing.B) {
 	}
 
 	root := tree.RootNode()
-	dslNode := parser.createDSLNode(root, tree, source)
+	dslNode := parser.createDSLNode(root, tree, source, make(map[string]string))
 
 	// Get some node types to search for.
 	nodeTypes := []string{
@@ -608,7 +608,7 @@ func BenchmarkProcessChildren(b *testing.B) {
 	}
 
 	root := tree.RootNode()
-	dslNode := parser.createDSLNode(root, tree, source)
+	dslNode := parser.createDSLNode(root, tree, source, make(map[string]string))
 	mappingRule := dslNode.findMappingRule(root.Type())
 
 	b.ResetTimer()
