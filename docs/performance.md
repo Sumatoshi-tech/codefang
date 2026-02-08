@@ -190,6 +190,53 @@ created once per `Parse()` call. Per-node state (`root sitter.Node`,
 eliminating all per-node heap allocations for shared state. Benchmark: -16.3%
 allocs/op (large), -46.3% B/op (large), -43.8% B/op (medium).
 
+### 13) Node.Type() string interning
+`go-tree-sitter-bare`'s `Node.Type()` calls `C.GoString(C.ts_node_type(n.c))`
+on every invocation, allocating a new Go string each time. Tree-sitter node
+types come from a fixed grammar string table (~30 unique types per language),
+but a typical file parse calls `.Type()` thousands of times. A per-parse
+`typeCache map[string]string` in `parseContext` deduplicates these allocations:
+the first call for each node type stores the string; subsequent calls return the
+cached copy. All 9 `.Type()` call sites in `parseContext` methods now go through
+`ctx.nodeType(root)`. The standalone `findDescendantByType` (rare fallback path)
+retains the direct call. Additionally, `deriveParentContext` was converted from
+a standalone function to a `parseContext` method to access the cache, and
+`parseTSTree` was extracted from `Parse()` to eliminate code duplication.
+Micro-benchmarks show flat allocs (map overhead balances dedup on small files);
+the real impact is in e2e where `_Cfunc_GoString` alloc drops from ~22.6 GB.
+
+### 14) Batch position extraction via unsafe start read
+`extractPositions` called 4 CGO methods per node (`StartPoint`, `EndPoint`,
+`StartByte`, `EndByte`). Tree-sitter's `TSNode` struct stores start byte/row/col
+directly in its `context[0..2]` uint32 fields. `readStartPositions` in
+`cgo_helpers.go` reads these via `unsafe.Pointer` with zero CGO overhead. End
+values still require CGO (they depend on internal subtree traversal). This
+reduces CGO calls per node from 4 to 2. E2E shows `extractPositions` cumulative
+dropping from 122.73s to 85.39s (-30%) and total `cgocall` from 908s to 836s.
+
+### 15) Per-parse node allocator
+The global `sync.Pool` for `Node` and `Positions` allocation suffered from
+cross-goroutine contention when 9+ UAST pipeline workers parsed concurrently:
+`Pool.Get` = 92s, `popTail` = 53s, `getSlow` = 62s. Each `Parse()` call now
+creates a local `node.Allocator` (plain slice free list) in `parseContext`,
+bypassing the global pool entirely during the hot parse phase. `ReleaseTree`
+(cold path, sequential) continues to use the global pool. E2E shows `Pool.Get`
+contention eliminated (92s → 0s), wall clock dropped from 218s to 197s (-10%).
+
+### 16) TreeCursor child iteration + unsafe NamedChildCount
+The `processChildren` loop called `NamedChild(idx)` sequentially. Each call to
+`ts_node_named_child(self, idx)` iterates all children from the start to find
+the Nth named one — O(N*C) total work in a loop of N children with C total
+(named + anonymous) children. For nodes with 8+ named children, iteration now
+uses tree-sitter's `TreeCursor` API (`GoToFirstChild`/`GoToNextSibling`) which
+maintains position state, reducing to O(C). A per-parse cursor pool avoids
+repeated cursor allocation across recursive calls. Additionally,
+`NamedChildCount()` (1 CGO call per parent) is replaced by reading
+`named_child_count` directly from the `SubtreeHeapData` struct at offset 52 via
+unsafe pointer dereference (0 CGO). E2E shows `Node.NamedChild` cumulative
+dropped from 178s to 98s (-45%), `NamedChildCount` eliminated (36s → 0s),
+`gcDrain` dropped from 78s to 56s (-28%), wall clock from 197s to 180s (-9%).
+
 ## CLI Resource Knobs
 
 The `codefang history` command exposes flags to tune pipeline performance for

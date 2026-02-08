@@ -35,6 +35,7 @@ func main() {
 	analyzerName := flag.String("analyzer", "file-history", "Analyzer to benchmark (file-history, shotness)")
 	uastPipelineWorkers := flag.Int("uast-pipeline-workers", 0, "UAST pipeline workers (0 = default, -1 = disable)")
 	leafWorkers := flag.Int("leaf-workers", 0, "Leaf analyzer workers (0 = default, -1 = disable)")
+	cpuProfile := flag.Bool("cpu-profile", false, "Write CPU profile to profile-dir/cpu.prof")
 	flag.Parse()
 
 	if *repoPath == "" {
@@ -47,6 +48,20 @@ func main() {
 
 	if err := os.MkdirAll(*profileDir, 0o755); err != nil {
 		log.Fatalf("mkdir profile-dir: %v", err)
+	}
+
+	if *cpuProfile {
+		cpuPath := filepath.Join(*profileDir, "cpu.prof")
+		cpuFile, cpuErr := os.Create(cpuPath)
+		if cpuErr != nil {
+			log.Fatalf("create cpu profile: %v", cpuErr)
+		}
+		defer cpuFile.Close()
+		if startErr := pprof.StartCPUProfile(cpuFile); startErr != nil {
+			log.Fatalf("start cpu profile: %v", startErr)
+		}
+		defer pprof.StopCPUProfile()
+		log.Printf("CPU profiling enabled -> %s", cpuPath)
 	}
 
 	repo, err := gitlib.OpenRepository(*repoPath)
