@@ -60,7 +60,7 @@ func DefaultMemoryBudget() int64 {
 		return 0
 	}
 
-	budget := int64(total * defaultMemoryBudgetRatio / 100)
+	budget := SafeInt64(total * defaultMemoryBudgetRatio / 100)
 
 	return min(budget, defaultMemoryBudgetCap)
 }

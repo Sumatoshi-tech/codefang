@@ -17,15 +17,24 @@ const (
 	topFilesLimit    = 20
 	xAxisRotate      = 60
 	emptyChartHeight = "400px"
+	chartHeight      = "500px"
+	chartWidth       = "100%"
 )
 
 // ErrInvalidTypos indicates the report doesn't contain expected typos data.
 var ErrInvalidTypos = errors.New("invalid typos report: expected []Typo for typos")
 
+// RegisterPlotSections registers the typos plot section renderer with the analyze package.
+func RegisterPlotSections() {
+	analyze.RegisterPlotSections("history/typos", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
+}
+
 func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	sections, err := t.GenerateSections(report)
-	if err != nil {
-		return err
+	sections, genErr := t.GenerateSections(report)
+	if genErr != nil {
+		return genErr
 	}
 
 	page := plotpage.NewPage(
@@ -39,9 +48,9 @@ func (t *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 
 // GenerateSections returns the sections for combined reports.
 func (t *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	chart, err := t.buildChart(report)
-	if err != nil {
-		return nil, err
+	chart, chartErr := t.buildChart(report)
+	if chartErr != nil {
+		return nil, chartErr
 	}
 
 	return []plotpage.Section{
@@ -70,123 +79,174 @@ func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 
 // buildChart creates a bar chart showing typo-prone files.
 func (t *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
-	labels, data, err := extractTyposPlotData(report)
-	if err != nil {
-		return nil, err
+	fileLabels, fileCounts, extractErr := extractTyposPlotData(report)
+	if extractErr != nil {
+		return nil, extractErr
 	}
 
-	if len(labels) == 0 {
+	if len(fileLabels) == 0 {
 		return createEmptyTyposChart(), nil
 	}
 
-	co := plotpage.DefaultChartOpts()
+	chartOpts := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return createTyposBarChart(labels, data, co, palette), nil
+	return createTyposBarChart(fileLabels, fileCounts, chartOpts, palette), nil
 }
 
 // extractTyposPlotData extracts typo file labels and counts from the report,
 // handling both in-memory and binary-decoded JSON key formats.
-func extractTyposPlotData(report analyze.Report) ([]string, []int, error) {
-	// Try in-memory key first.
-	if typos, ok := report["typos"].([]Typo); ok {
-		if len(typos) == 0 {
-			return nil, nil, nil
-		}
-		counts := countTyposPerFile(typos)
-		labels, data := topTypoFiles(counts, topFilesLimit)
-		return labels, data, nil
+func extractTyposPlotData(report analyze.Report) (fileLabels []string, fileCounts []int, extractErr error) {
+	fileLabels, fileCounts, extractErr = tryInMemoryTypos(report)
+	if extractErr == nil {
+		return fileLabels, fileCounts, nil
 	}
 
-	// Fallback: binary-decoded "typo_list" is []any of map[string]any
-	// with "file" field. Also try "file_typos" which has per-file counts directly.
-	if rawFileTypos, ok := report["file_typos"]; ok {
-		if fileTypoList, ok := rawFileTypos.([]any); ok && len(fileTypoList) > 0 {
-			counts := make(map[string]int, len(fileTypoList))
-			for _, item := range fileTypoList {
-				m, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				file, _ := m["file"].(string)
-				typoCount := typosToInt(m["typo_count"])
-				if file != "" {
-					counts[file] = typoCount
-				}
-			}
-			labels, data := topTypoFiles(counts, topFilesLimit)
-			return labels, data, nil
-		}
+	fileLabels, fileCounts, extractErr = tryFileTypos(report)
+	if extractErr == nil {
+		return fileLabels, fileCounts, nil
 	}
 
-	// Try typo_list as a last fallback.
-	rawList, ok := report["typo_list"]
+	return tryTypoList(report)
+}
+
+// errTyposKeyNotFound indicates the "typos" key is missing or has wrong type.
+var errTyposKeyNotFound = errors.New("typos key not found or wrong type")
+
+// errFileTyposKeyNotFound indicates the "file_typos" key is missing.
+var errFileTyposKeyNotFound = errors.New("file_typos key not found")
+
+// errFileTyposNotList indicates "file_typos" is not a non-empty list.
+var errFileTyposNotList = errors.New("file_typos is not a non-empty list")
+
+// tryInMemoryTypos attempts to extract typos from the in-memory []Typo key.
+func tryInMemoryTypos(report analyze.Report) (fileLabels []string, fileCounts []int, extractErr error) {
+	typos, ok := report["typos"].([]Typo)
 	if !ok {
+		return nil, nil, errTyposKeyNotFound
+	}
+
+	if len(typos) == 0 {
+		return nil, nil, nil
+	}
+
+	counts := countTyposPerFile(typos)
+	fileLabels, fileCounts = topTypoFiles(counts, topFilesLimit)
+
+	return fileLabels, fileCounts, nil
+}
+
+// tryFileTypos attempts to extract per-file typo counts from the "file_typos" key.
+func tryFileTypos(report analyze.Report) (fileLabels []string, fileCounts []int, extractErr error) {
+	rawFileTypos, exists := report["file_typos"]
+	if !exists {
+		return nil, nil, errFileTyposKeyNotFound
+	}
+
+	fileTypoList, isList := rawFileTypos.([]any)
+	if !isList || len(fileTypoList) == 0 {
+		return nil, nil, errFileTyposNotList
+	}
+
+	counts := make(map[string]int, len(fileTypoList))
+
+	for _, item := range fileTypoList {
+		entry, isMap := item.(map[string]any)
+		if !isMap {
+			continue
+		}
+
+		fileName, hasFile := entry["file"].(string)
+		if !hasFile || fileName == "" {
+			continue
+		}
+
+		counts[fileName] = typosToInt(entry["typo_count"])
+	}
+
+	fileLabels, fileCounts = topTypoFiles(counts, topFilesLimit)
+
+	return fileLabels, fileCounts, nil
+}
+
+// tryTypoList attempts to extract typos from the "typo_list" key (binary-decoded fallback).
+func tryTypoList(report analyze.Report) (fileLabels []string, fileCounts []int, extractErr error) {
+	rawList, exists := report["typo_list"]
+	if !exists {
 		return nil, nil, ErrInvalidTypos
 	}
+
 	if rawList == nil {
 		return nil, nil, nil
 	}
-	typoList, ok := rawList.([]any)
-	if !ok {
+
+	typoList, isList := rawList.([]any)
+	if !isList {
 		return nil, nil, ErrInvalidTypos
 	}
+
 	if len(typoList) == 0 {
 		return nil, nil, nil
 	}
 
 	counts := make(map[string]int)
+
 	for _, item := range typoList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		entry, isMap := item.(map[string]any)
+		if !isMap {
 			continue
 		}
-		file, _ := m["file"].(string)
-		if file != "" {
-			counts[file]++
+
+		fileName, hasFile := entry["file"].(string)
+		if !hasFile || fileName == "" {
+			continue
 		}
+
+		counts[fileName]++
 	}
 
-	labels, data := topTypoFiles(counts, topFilesLimit)
-	return labels, data, nil
+	fileLabels, fileCounts = topTypoFiles(counts, topFilesLimit)
+
+	return fileLabels, fileCounts, nil
 }
 
 // typosToInt converts a numeric value to int.
-func typosToInt(v any) int {
-	switch n := v.(type) {
+func typosToInt(val any) int {
+	switch num := val.(type) {
 	case float64:
-		return int(n)
+		return int(num)
 	case int:
-		return n
+		return num
 	case int64:
-		return int(n)
+		return int(num)
 	default:
 		return 0
 	}
 }
 
-func createTyposBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+func createTyposBarChart(labels []string, data []int, chartOpts *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", "500px")),
-		charts.WithTooltipOpts(co.Tooltip("axis")),
-		charts.WithGridOpts(co.Grid()),
-		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithInitializationOpts(chartOpts.Init(chartWidth, chartHeight)),
+		charts.WithTooltipOpts(chartOpts.Tooltip("axis")),
+		charts.WithGridOpts(chartOpts.Grid()),
+		charts.WithDataZoomOpts(chartOpts.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
 			AxisLabel: &opts.AxisLabel{
 				Rotate:   xAxisRotate,
 				Interval: "0",
-				Color:    co.TextMutedColor(),
+				Color:    chartOpts.TextMutedColor(),
 			},
-			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: chartOpts.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(co.YAxis("Typo Count")),
+		charts.WithYAxisOpts(chartOpts.YAxis("Typo Count")),
 	)
 	bar.SetXAxis(labels)
 
 	barData := make([]opts.BarData, len(data))
-	for i, v := range data {
-		barData[i] = opts.BarData{Value: v}
+
+	for idx, val := range data {
+		barData[idx] = opts.BarData{Value: val}
 	}
 
 	bar.AddSeries("Typos", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Warning}))
@@ -196,6 +256,7 @@ func createTyposBarChart(labels []string, data []int, co *plotpage.ChartOpts, pa
 
 func countTyposPerFile(typos []Typo) map[string]int {
 	counts := make(map[string]int)
+
 	for _, typo := range typos {
 		counts[typo.File]++
 	}
@@ -205,17 +266,17 @@ func countTyposPerFile(typos []Typo) map[string]int {
 
 func topTypoFiles(counts map[string]int, limit int) (labels []string, data []int) {
 	type kv struct {
-		k string
-		v int
+		key   string
+		value int
 	}
 
 	var items []kv
 
-	for k, v := range counts {
-		items = append(items, kv{k, v})
+	for name, count := range counts {
+		items = append(items, kv{name, count})
 	}
 
-	sort.Slice(items, func(i, j int) bool { return items[i].v > items[j].v })
+	sort.Slice(items, func(idx, jdx int) bool { return items[idx].value > items[jdx].value })
 
 	if len(items) > limit {
 		items = items[:limit]
@@ -224,26 +285,20 @@ func topTypoFiles(counts map[string]int, limit int) (labels []string, data []int
 	labels = make([]string, len(items))
 	data = make([]int, len(items))
 
-	for i, item := range items {
-		labels[i] = item.k
-		data[i] = item.v
+	for idx, item := range items {
+		labels[idx] = item.key
+		data[idx] = item.value
 	}
 
 	return labels, data
 }
 
-func init() {
-	analyze.RegisterPlotSections("history/typos", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
-	})
-}
-
 func createEmptyTyposChart() *charts.Bar {
-	co := plotpage.DefaultChartOpts()
+	chartOpts := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
-		charts.WithTitleOpts(co.Title("Typo-Prone Files", "No data")),
+		charts.WithInitializationOpts(chartOpts.Init(chartWidth, emptyChartHeight)),
+		charts.WithTitleOpts(chartOpts.Title("Typo-Prone Files", "No data")),
 	)
 
 	return bar

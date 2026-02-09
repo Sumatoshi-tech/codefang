@@ -84,6 +84,7 @@ func newDashboardData(report analyze.Report) (*DashboardData, error) {
 		if !isBinaryDecodedReport(report) {
 			return nil, err
 		}
+
 		metrics, err = recoverMetricsFromBinary(report)
 		if err != nil {
 			return nil, err
@@ -124,6 +125,7 @@ func isBinaryDecodedReport(report analyze.Report) bool {
 	_, hasActivity := report["activity"]
 	_, hasDevelopers := report["developers"]
 	_, hasTicks := report["Ticks"]
+
 	return (hasActivity || hasDevelopers) && !hasTicks
 }
 
@@ -213,6 +215,7 @@ func GenerateIdentityAudit(report analyze.Report) []IdentityAuditEntry {
 	}
 
 	entries := make([]IdentityAuditEntry, len(metrics.Developers))
+
 	for i, d := range metrics.Developers {
 		entries[i] = IdentityAuditEntry{
 			CanonicalName: d.Name,

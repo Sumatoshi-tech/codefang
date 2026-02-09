@@ -36,6 +36,12 @@ var ErrInvalidNodes = errors.New("invalid shotness report: expected []NodeSummar
 // ErrInvalidCounters indicates the report doesn't contain expected counters data.
 var ErrInvalidCounters = errors.New("invalid shotness report: expected []map[int]int for Counters")
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
+}
+
 func (s *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	sections, err := s.GenerateSections(report)
 	if err != nil {
@@ -72,13 +78,13 @@ func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 		return nil, nil
 	}
 
-	co := plotpage.DefaultChartOpts()
+	chartOpts := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
 	return []plotpage.Section{
-		treeMapSection(nodes, counters, co),
-		heatMapSection(nodes, counters, co),
-		barChartSection(nodes, counters, co, palette),
+		treeMapSection(nodes, counters, chartOpts),
+		heatMapSection(nodes, counters, chartOpts),
+		barChartSection(nodes, counters, chartOpts, palette),
 	}, nil
 }
 
@@ -93,105 +99,137 @@ func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 		return createEmptyChart(), nil
 	}
 
-	co := plotpage.DefaultChartOpts()
+	chartOpts := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
-	return createBarChart(nodes, counters, co, palette), nil
+	return createBarChart(nodes, counters, chartOpts, palette), nil
 }
 
 func extractShotnessData(report analyze.Report) ([]NodeSummary, []map[int]int, error) {
 	nodes, nodesOK := report["Nodes"].([]NodeSummary)
 	counters, countersOK := report["Counters"].([]map[int]int)
+
 	if nodesOK && countersOK {
 		return nodes, counters, nil
 	}
 
-	// Fallback: after binary encode -> JSON decode, "Nodes" becomes "node_hotness"
-	// ([]any of map[string]any with name/type/file/change_count/coupled_nodes/hotness_score)
-	// and "Counters" becomes "node_coupling" ([]any of map[string]any with
-	// node1_name/node1_file/node2_name/node2_file/co_changes).
-	// Also "hotspot_nodes" has change_count per node.
+	return extractShotnessFromJSON(report, nodesOK)
+}
+
+// extractShotnessFromJSON handles the fallback path where, after binary encode -> JSON decode,
+// "Nodes" becomes "node_hotness" and "Counters" becomes "node_coupling".
+func extractShotnessFromJSON(report analyze.Report, nodesOK bool) ([]NodeSummary, []map[int]int, error) {
 	rawHotness, hotnessOK := report["node_hotness"]
 	if !hotnessOK {
 		if !nodesOK {
 			return nil, nil, ErrInvalidNodes
 		}
+
 		return nil, nil, ErrInvalidCounters
 	}
+
 	if rawHotness == nil {
 		return nil, nil, nil
 	}
 
-	hotnessList, ok := rawHotness.([]any)
-	if !ok {
+	hotnessList, listOK := rawHotness.([]any)
+	if !listOK {
 		return nil, nil, ErrInvalidNodes
 	}
+
 	if len(hotnessList) == 0 {
 		return nil, nil, nil
 	}
 
-	// Build nodes and self-counts from node_hotness.
-	nodes = make([]NodeSummary, len(hotnessList))
-	counters = make([]map[int]int, len(hotnessList))
-	nameToIdx := make(map[string]int, len(hotnessList))
-	for i, item := range hotnessList {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		name, _ := m["name"].(string)
-		typ, _ := m["type"].(string)
-		file, _ := m["file"].(string)
-		changeCount := shotnessToInt(m["change_count"])
-
-		nodes[i] = NodeSummary{Name: name, Type: typ, File: file}
-		counters[i] = map[int]int{i: changeCount}
-		nameToIdx[name] = i
-	}
-
-	// Fill cross-node coupling from node_coupling.
-	if rawCoupling, ok := report["node_coupling"]; ok {
-		if couplingList, ok := rawCoupling.([]any); ok {
-			for _, item := range couplingList {
-				m, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				n1, _ := m["node1_name"].(string)
-				n2, _ := m["node2_name"].(string)
-				coChanges := shotnessToInt(m["co_changes"])
-				i1, ok1 := nameToIdx[n1]
-				i2, ok2 := nameToIdx[n2]
-				if ok1 && ok2 && coChanges > 0 {
-					counters[i1][i2] = coChanges
-					counters[i2][i1] = coChanges
-				}
-			}
-		}
-	}
+	nodes, counters, nameToIdx := buildNodesFromHotness(hotnessList)
+	applyCouplingData(report, counters, nameToIdx)
 
 	return nodes, counters, nil
 }
 
+// buildNodesFromHotness builds NodeSummary slices and self-counts from the node_hotness list.
+func buildNodesFromHotness(hotnessList []any) (nodes []NodeSummary, counters []map[int]int, nameToIdx map[string]int) {
+	nodes = make([]NodeSummary, len(hotnessList))
+	counters = make([]map[int]int, len(hotnessList))
+	nameToIdx = make(map[string]int, len(hotnessList))
+
+	for idx, item := range hotnessList {
+		entry, entryOK := item.(map[string]any)
+		if !entryOK {
+			continue
+		}
+
+		nodeName, _ := assertString(entry, "name")
+		nodeType, _ := assertString(entry, "type")
+		nodeFile, _ := assertString(entry, "file")
+		changeCount := shotnessToInt(entry["change_count"])
+
+		nodes[idx] = NodeSummary{Name: nodeName, Type: nodeType, File: nodeFile}
+		counters[idx] = map[int]int{idx: changeCount}
+		nameToIdx[nodeName] = idx
+	}
+
+	return nodes, counters, nameToIdx
+}
+
+// assertString safely extracts a string value from a map entry.
+func assertString(entry map[string]any, key string) (string, bool) {
+	val, valOK := entry[key].(string)
+
+	return val, valOK
+}
+
+// applyCouplingData fills cross-node coupling from the node_coupling report entry.
+func applyCouplingData(report analyze.Report, counters []map[int]int, nameToIdx map[string]int) {
+	rawCoupling, couplingExists := report["node_coupling"]
+	if !couplingExists {
+		return
+	}
+
+	couplingList, couplingOK := rawCoupling.([]any)
+	if !couplingOK {
+		return
+	}
+
+	for _, item := range couplingList {
+		entry, entryOK := item.(map[string]any)
+		if !entryOK {
+			continue
+		}
+
+		node1Name, _ := assertString(entry, "node1_name")
+		node2Name, _ := assertString(entry, "node2_name")
+		coChanges := shotnessToInt(entry["co_changes"])
+
+		idx1, found1 := nameToIdx[node1Name]
+		idx2, found2 := nameToIdx[node2Name]
+
+		if found1 && found2 && coChanges > 0 {
+			counters[idx1][idx2] = coChanges
+			counters[idx2][idx1] = coChanges
+		}
+	}
+}
+
 // shotnessToInt converts a numeric value (int, float64) to int.
-func shotnessToInt(v any) int {
-	switch n := v.(type) {
+func shotnessToInt(val any) int {
+	switch num := val.(type) {
 	case float64:
-		return int(n)
+		return int(num)
 	case int:
-		return n
+		return num
 	case int64:
-		return int(n)
+		return int(num)
 	default:
 		return 0
 	}
 }
 
-func treeMapSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts) plotpage.Section {
+func treeMapSection(nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts) plotpage.Section {
 	return plotpage.Section{
 		Title:    "Code Hotness TreeMap",
 		Subtitle: "Hierarchical view: Files -> Functions. Rectangle size = change frequency.",
-		Chart:    plotpage.WrapChart(createTreeMap(nodes, counters, co)),
+		Chart:    plotpage.WrapChart(createTreeMap(nodes, counters, chartOpts)),
 		Hint: plotpage.Hint{
 			Title: "How to interpret:",
 			Items: []string{
@@ -204,11 +242,11 @@ func treeMapSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.Ch
 	}
 }
 
-func heatMapSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts) plotpage.Section {
+func heatMapSection(nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts) plotpage.Section {
 	return plotpage.Section{
 		Title:    "Function Coupling Matrix",
 		Subtitle: "Co-change frequency between functions. Diagonal = self, off-diagonal = coupled.",
-		Chart:    plotpage.WrapChart(createHeatMap(nodes, counters, co)),
+		Chart:    plotpage.WrapChart(createHeatMap(nodes, counters, chartOpts)),
 		Hint: plotpage.Hint{
 			Title: "How to interpret:",
 			Items: []string{
@@ -221,11 +259,13 @@ func heatMapSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.Ch
 	}
 }
 
-func barChartSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) plotpage.Section {
+func barChartSection(
+	nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts, palette plotpage.ChartPalette,
+) plotpage.Section {
 	return plotpage.Section{
 		Title:    "Top Hot Functions",
 		Subtitle: "Ranking of most frequently changed functions with coupling information.",
-		Chart:    plotpage.WrapChart(createBarChart(nodes, counters, co, palette)),
+		Chart:    plotpage.WrapChart(createBarChart(nodes, counters, chartOpts, palette)),
 		Hint: plotpage.Hint{
 			Title: "How to interpret:",
 			Items: []string{
@@ -239,36 +279,36 @@ func barChartSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.C
 	}
 }
 
-func createTreeMap(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts) *charts.TreeMap {
+func createTreeMap(nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts) *charts.TreeMap {
 	fileMap, fileTotals := buildFileHierarchy(nodes, counters)
 	rootNodes := buildRootNodes(fileMap, fileTotals)
 
-	tm := charts.NewTreeMap()
-	tm.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("100%", treeMapHeight)),
+	treeMap := charts.NewTreeMap()
+	treeMap.SetGlobalOptions(
+		charts.WithTooltipOpts(chartOpts.Tooltip("item")),
+		charts.WithInitializationOpts(chartOpts.Init("100%", treeMapHeight)),
 	)
-	tm.AddSeries("Hotness", rootNodes, charts.WithTreeMapOpts(opts.TreeMapChart{
+	treeMap.AddSeries("Hotness", rootNodes, charts.WithTreeMapOpts(opts.TreeMapChart{
 		Animation:      opts.Bool(true),
 		Roam:           opts.Bool(true),
 		LeafDepth:      treeMapLeafDepth,
 		ColorMappingBy: "value",
-		Label:          &opts.Label{Show: opts.Bool(true), Formatter: "{b}", Color: co.TextColor()},
-		UpperLabel:     &opts.UpperLabel{Show: opts.Bool(true), Color: co.TextColor()},
+		Label:          &opts.Label{Show: opts.Bool(true), Formatter: "{b}", Color: chartOpts.TextColor()},
+		UpperLabel:     &opts.UpperLabel{Show: opts.Bool(true), Color: chartOpts.TextColor()},
 		Levels: &[]opts.TreeMapLevel{
 			{
-				ItemStyle:  &opts.ItemStyle{BorderColor: co.GridColor(), BorderWidth: borderWidth2, GapWidth: borderWidth2},
+				ItemStyle:  &opts.ItemStyle{BorderColor: chartOpts.GridColor(), BorderWidth: borderWidth2, GapWidth: borderWidth2},
 				UpperLabel: &opts.UpperLabel{Show: opts.Bool(true)},
 			},
 			{
-				ItemStyle:       &opts.ItemStyle{BorderColor: co.AxisColor(), BorderWidth: borderWidth1, GapWidth: borderWidth1},
+				ItemStyle:       &opts.ItemStyle{BorderColor: chartOpts.AxisColor(), BorderWidth: borderWidth1, GapWidth: borderWidth1},
 				ColorSaturation: []float32{0.3, 0.6},
 			},
 		},
 		Left: "2%", Right: "2%", Top: "10", Bottom: "2%",
 	}))
 
-	return tm
+	return treeMap
 }
 
 func buildFileHierarchy(
@@ -278,8 +318,8 @@ func buildFileHierarchy(
 	fileMap = make(map[string][]opts.TreeMapNode)
 	fileTotals = make(map[string]int)
 
-	for i, node := range nodes {
-		count := counters[i][i]
+	for idx, node := range nodes {
+		count := counters[idx][idx]
 		fileMap[node.File] = append(fileMap[node.File], opts.TreeMapNode{
 			Name:  node.Name,
 			Value: count,
@@ -294,9 +334,10 @@ func buildRootNodes(fileMap map[string][]opts.TreeMapNode, fileTotals map[string
 	var rootNodes []opts.TreeMapNode
 
 	for file, children := range fileMap {
-		sort.Slice(children, func(i, j int) bool {
-			return children[i].Value > children[j].Value
+		sort.Slice(children, func(idx1, idx2 int) bool {
+			return children[idx1].Value > children[idx2].Value
 		})
+
 		rootNodes = append(rootNodes, opts.TreeMapNode{
 			Name:     filepath.Base(file),
 			Value:    fileTotals[file],
@@ -304,8 +345,8 @@ func buildRootNodes(fileMap map[string][]opts.TreeMapNode, fileTotals map[string
 		})
 	}
 
-	sort.Slice(rootNodes, func(i, j int) bool {
-		return rootNodes[i].Value > rootNodes[j].Value
+	sort.Slice(rootNodes, func(idx1, idx2 int) bool {
+		return rootNodes[idx1].Value > rootNodes[idx2].Value
 	})
 
 	if len(rootNodes) > maxFiles {
@@ -315,8 +356,9 @@ func buildRootNodes(fileMap map[string][]opts.TreeMapNode, fileTotals map[string
 	return rootNodes
 }
 
-func createHeatMap(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts) *charts.HeatMap {
+func createHeatMap(nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts) *charts.HeatMap {
 	actives := getActiveNodes(nodes, counters)
+
 	if len(actives) < minHeatMapNodes {
 		return nil
 	}
@@ -324,35 +366,35 @@ func createHeatMap(nodes []NodeSummary, counters []map[int]int, co *plotpage.Cha
 	names := extractNames(actives)
 	data, maxVal := buildHeatMapData(actives, counters)
 
-	hm := charts.NewHeatMap()
-	hm.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("100%", heatMapHeight)),
+	heatMap := charts.NewHeatMap()
+	heatMap.SetGlobalOptions(
+		charts.WithTooltipOpts(chartOpts.Tooltip("item")),
+		charts.WithInitializationOpts(chartOpts.Init("100%", heatMapHeight)),
 		charts.WithXAxisOpts(opts.XAxis{
 			Type: "category", Data: names,
 			SplitArea: &opts.SplitArea{Show: opts.Bool(true)},
-			AxisLabel: &opts.AxisLabel{Rotate: rotateDegrees, Interval: "0", FontSize: labelFontSize, Color: co.TextMutedColor()},
+			AxisLabel: &opts.AxisLabel{Rotate: rotateDegrees, Interval: "0", FontSize: labelFontSize, Color: chartOpts.TextMutedColor()},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
 			Type: "category", Data: names,
 			SplitArea: &opts.SplitArea{Show: opts.Bool(true)},
-			AxisLabel: &opts.AxisLabel{FontSize: labelFontSize, Color: co.TextMutedColor()},
+			AxisLabel: &opts.AxisLabel{FontSize: labelFontSize, Color: chartOpts.TextMutedColor()},
 		}),
 		charts.WithVisualMapOpts(opts.VisualMap{
 			Calculable: opts.Bool(true), Min: 0, Max: float32(maxVal),
 			InRange: &opts.VisualMapInRange{Color: []string{"#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"}},
 			Orient:  "horizontal", Left: "center", Bottom: "2%",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
+			TextStyle: &opts.TextStyle{Color: chartOpts.TextMutedColor()},
 		}),
 		charts.WithGridOpts(opts.Grid{
 			Left: "20%", Right: "5%", Top: "40", Bottom: "20%",
 		}),
 	)
-	hm.AddSeries("Coupling", data, charts.WithLabelOpts(opts.Label{
+	heatMap.AddSeries("Coupling", data, charts.WithLabelOpts(opts.Label{
 		Show: opts.Bool(true), Position: "inside", Color: "black", FontSize: innerLabelSize,
 	}))
 
-	return hm
+	return heatMap
 }
 
 type activeNode struct {
@@ -364,13 +406,13 @@ type activeNode struct {
 func getActiveNodes(nodes []NodeSummary, counters []map[int]int) []activeNode {
 	var actives []activeNode
 
-	for i, counter := range counters {
-		if counter[i] > 0 {
-			actives = append(actives, activeNode{i, nodes[i].Name, counter[i]})
+	for idx, counter := range counters {
+		if counter[idx] > 0 {
+			actives = append(actives, activeNode{idx, nodes[idx].Name, counter[idx]})
 		}
 	}
 
-	sort.Slice(actives, func(i, j int) bool { return actives[i].count > actives[j].count })
+	sort.Slice(actives, func(idx1, idx2 int) bool { return actives[idx1].count > actives[idx2].count })
 
 	if len(actives) > topNNodes {
 		actives = actives[:topNNodes]
@@ -381,8 +423,9 @@ func getActiveNodes(nodes []NodeSummary, counters []map[int]int) []activeNode {
 
 func extractNames(actives []activeNode) []string {
 	names := make([]string, len(actives))
-	for i, a := range actives {
-		names[i] = a.name
+
+	for idx, active := range actives {
+		names[idx] = active.name
 	}
 
 	return names
@@ -394,17 +437,17 @@ func buildHeatMapData(
 ) (data []opts.HeatMapData, maxVal float64) {
 	data = make([]opts.HeatMapData, 0, len(actives)*len(actives))
 
-	for i, ai := range actives {
-		for j, aj := range actives {
+	for row, rowActive := range actives {
+		for col, colActive := range actives {
 			var val int
 
-			if i == j {
-				val = counters[ai.idx][ai.idx]
+			if row == col {
+				val = counters[rowActive.idx][rowActive.idx]
 			} else {
-				val = counters[ai.idx][aj.idx]
+				val = counters[rowActive.idx][colActive.idx]
 			}
 
-			data = append(data, opts.HeatMapData{Value: []any{i, j, val}})
+			data = append(data, opts.HeatMapData{Value: []any{row, col, val}})
 
 			if float64(val) > maxVal {
 				maxVal = float64(val)
@@ -419,37 +462,39 @@ func buildHeatMapData(
 	return data, maxVal
 }
 
-func createBarChart(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
+func createBarChart(nodes []NodeSummary, counters []map[int]int, chartOpts *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
 	scores := computeScores(nodes, counters)
 	labels, selfData, coupledData := buildBarData(scores)
 
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", "500px")),
-		charts.WithTooltipOpts(co.Tooltip("axis")),
-		charts.WithLegendOpts(co.Legend()),
-		charts.WithGridOpts(co.Grid()),
-		charts.WithDataZoomOpts(co.DataZoom()...),
+		charts.WithInitializationOpts(chartOpts.Init("100%", "500px")),
+		charts.WithTooltipOpts(chartOpts.Tooltip("axis")),
+		charts.WithLegendOpts(chartOpts.Legend()),
+		charts.WithGridOpts(chartOpts.Grid()),
+		charts.WithDataZoomOpts(chartOpts.DataZoom()...),
 		charts.WithXAxisOpts(opts.XAxis{
 			AxisLabel: &opts.AxisLabel{
 				Rotate:   rotateDegrees,
 				Interval: "0",
-				Color:    co.TextMutedColor(),
+				Color:    chartOpts.TextMutedColor(),
 			},
-			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: chartOpts.AxisColor()}},
 		}),
-		charts.WithYAxisOpts(co.YAxis("Count")),
+		charts.WithYAxisOpts(chartOpts.YAxis("Count")),
 	)
 	bar.SetXAxis(labels)
 
 	selfBarData := make([]opts.BarData, len(selfData))
-	for i, v := range selfData {
-		selfBarData[i] = opts.BarData{Value: v}
+
+	for idx, value := range selfData {
+		selfBarData[idx] = opts.BarData{Value: value}
 	}
 
 	coupledBarData := make([]opts.BarData, len(coupledData))
-	for i, v := range coupledData {
-		coupledBarData[i] = opts.BarData{Value: v}
+
+	for idx, value := range coupledData {
+		coupledBarData[idx] = opts.BarData{Value: value}
 	}
 
 	bar.AddSeries("Self Changes", selfBarData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}))
@@ -467,19 +512,19 @@ type nodeScore struct {
 func computeScores(nodes []NodeSummary, counters []map[int]int) []nodeScore {
 	scores := make([]nodeScore, len(nodes))
 
-	for i, counter := range counters {
+	for idx, counter := range counters {
 		var coupled int
 
-		for j, val := range counter {
-			if j != i && val > 0 {
+		for other, val := range counter {
+			if other != idx && val > 0 {
 				coupled += val
 			}
 		}
 
-		scores[i] = nodeScore{nodes[i].Name, counter[i], coupled}
+		scores[idx] = nodeScore{nodes[idx].Name, counter[idx], coupled}
 	}
 
-	sort.Slice(scores, func(i, j int) bool { return scores[i].self > scores[j].self })
+	sort.Slice(scores, func(idx1, idx2 int) bool { return scores[idx1].self > scores[idx2].self })
 
 	if len(scores) > topNNodes {
 		scores = scores[:topNNodes]
@@ -493,27 +538,21 @@ func buildBarData(scores []nodeScore) (labels []string, selfData, coupledData []
 	selfData = make([]int, len(scores))
 	coupledData = make([]int, len(scores))
 
-	for i, score := range scores {
-		labels[i] = score.name
-		selfData[i] = score.self
-		coupledData[i] = score.coupled
+	for idx, score := range scores {
+		labels[idx] = score.name
+		selfData[idx] = score.self
+		coupledData[idx] = score.coupled
 	}
 
 	return labels, selfData, coupledData
 }
 
-func init() {
-	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
-	})
-}
-
 func createEmptyChart() *charts.Bar {
-	co := plotpage.DefaultChartOpts()
+	chartOpts := plotpage.DefaultChartOpts()
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", emptyChartHeight)),
-		charts.WithTitleOpts(co.Title("Shotness Analysis", "No data - ensure UAST parsing is configured")),
+		charts.WithInitializationOpts(chartOpts.Init("100%", emptyChartHeight)),
+		charts.WithTitleOpts(chartOpts.Title("Shotness Analysis", "No data - ensure UAST parsing is configured")),
 	)
 
 	return bar

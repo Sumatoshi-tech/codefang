@@ -30,15 +30,15 @@ func GenerateChart(report analyze.Report) (components.Charter, error) {
 	if !ok {
 		// Fallback: after binary encode -> JSON decode, "Ticks" is json:"-"
 		// (excluded). Reconstruct from "activity" and "developers" keys.
-		var err error
 		ticks, ok = reconstructTicksFromBinary(report)
+
 		if !ok {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidTicks, err)
+			return nil, ErrInvalidTicks
 		}
 	}
 
-	names, ok := report["ReversedPeopleDict"].([]string)
-	if !ok {
+	names, namesOK := report["ReversedPeopleDict"].([]string)
+	if !namesOK {
 		// Fallback: extract names from binary-decoded "developers" list.
 		names = extractNamesFromBinary(report)
 		if names == nil {
@@ -74,28 +74,34 @@ func reconstructTicksFromBinary(report analyze.Report) (map[int]map[int]*DevTick
 	if !ok {
 		return nil, false
 	}
+
 	activityList, ok := rawActivity.([]any)
 	if !ok {
 		return nil, false
 	}
 
 	ticks := make(map[int]map[int]*DevTick, len(activityList))
+
 	for _, item := range activityList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		entry, entryOK := item.(map[string]any)
+		if !entryOK {
 			continue
 		}
-		tick := toInt(m["tick"])
-		byDev, ok := m["by_developer"].(map[string]any)
-		if !ok {
+
+		tick := toInt(entry["tick"])
+
+		byDev, devOK := entry["by_developer"].(map[string]any)
+		if !devOK {
 			continue
 		}
+
 		devMap := make(map[int]*DevTick, len(byDev))
+
 		for devIDStr, commits := range byDev {
-			devID := 0
-			fmt.Sscanf(devIDStr, "%d", &devID)
+			devID, _ := strconv.Atoi(devIDStr) //nolint:errcheck // invalid keys default to 0
 			devMap[devID] = &DevTick{Commits: toInt(commits)}
 		}
+
 		ticks[tick] = devMap
 	}
 
@@ -104,36 +110,42 @@ func reconstructTicksFromBinary(report analyze.Report) (map[int]map[int]*DevTick
 
 // extractNamesFromBinary extracts developer names from binary-decoded "developers" list.
 func extractNamesFromBinary(report analyze.Report) []string {
-	rawDevs, ok := report["developers"]
-	if !ok {
+	rawDevs, devsPresent := report["developers"]
+	if !devsPresent {
 		return nil
 	}
-	devList, ok := rawDevs.([]any)
-	if !ok {
+
+	devList, listOK := rawDevs.([]any)
+	if !listOK {
 		return nil
 	}
 
 	// Find max ID to size the names slice.
 	maxID := 0
+
 	for _, item := range devList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		entry, entryOK := item.(map[string]any)
+		if !entryOK {
 			continue
 		}
-		id := toInt(m["id"])
+
+		id := toInt(entry["id"])
 		if id > maxID {
 			maxID = id
 		}
 	}
 
 	names := make([]string, maxID+1)
+
 	for _, item := range devList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		entry, entryOK := item.(map[string]any)
+		if !entryOK {
 			continue
 		}
-		id := toInt(m["id"])
-		name, _ := m["name"].(string)
+
+		id := toInt(entry["id"])
+		name, _ := entry["name"].(string) //nolint:errcheck // type assertion, not error
+
 		if id >= 0 && id < len(names) {
 			names[id] = name
 		}
@@ -304,10 +316,10 @@ func devName(id int, names []string) string {
 	return fmt.Sprintf("dev_%d", id)
 }
 
-func init() {
-	analyze.RegisterPlotSections("history/devs", func(report analyze.Report) ([]plotpage.Section, error) {
-		return GenerateSections(report)
-	})
+// RegisterDevPlotSections registers the plot section renderer for the devs analyzer.
+// Called from HistoryAnalyzer.Initialize to avoid init().
+func RegisterDevPlotSections() {
+	analyze.RegisterPlotSections("history/devs", GenerateSections)
 }
 
 func createEmptyBar() *charts.Bar {

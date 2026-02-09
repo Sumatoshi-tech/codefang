@@ -211,6 +211,9 @@ func (h *Analyzer) Finalize() (analyze.Report, error) {
 // SequentialOnly returns false because file history analysis can be parallelized.
 func (h *Analyzer) SequentialOnly() bool { return false }
 
+// CPUHeavy returns false because file history tracking is lightweight bookkeeping.
+func (h *Analyzer) CPUHeavy() bool { return false }
+
 // SnapshotPlumbing captures the current plumbing output state for one commit.
 func (h *Analyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{

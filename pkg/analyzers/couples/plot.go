@@ -43,7 +43,7 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 }
 
 // GenerateSections returns the sections for combined reports.
-func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) (sections []plotpage.Section, err error) {
 	chart, err := c.buildChart(report)
 	if err != nil {
 		return nil, err
@@ -69,15 +69,15 @@ func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 }
 
 // GenerateChart implements PlotGenerator interface.
-func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (charter components.Charter, err error) {
 	return c.buildChart(report)
 }
 
 // buildChart creates a heatmap chart showing developer coupling.
-func (c *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.HeatMap, error) {
-	matrix, names, err := extractCouplesData(report)
-	if err != nil {
-		return nil, err
+func (c *HistoryAnalyzer) buildChart(report analyze.Report) (heatMap *charts.HeatMap, err error) {
+	matrix, names, extractErr := extractCouplesData(report)
+	if extractErr != nil {
+		return nil, extractErr
 	}
 
 	if len(matrix) == 0 {
@@ -92,96 +92,162 @@ func (c *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.HeatMap, er
 	return hm, nil
 }
 
-// extractCouplesData extracts the people matrix and names from the report,
-// handling both in-memory and binary-decoded JSON key formats.
-func extractCouplesData(report analyze.Report) ([]map[int]int64, []string, error) {
-	// Try in-memory keys first.
-	matrix, matrixOK := report["PeopleMatrix"].([]map[int]int64)
-	names, namesOK := report["ReversedPeopleDict"].([]string)
-	if matrixOK && namesOK {
-		return matrix, names, nil
-	}
+// tryDirectExtraction attempts to extract the matrix and names using in-memory keys.
+func tryDirectExtraction(report analyze.Report) (matrix []map[int]int64, names []string, matrixFound, namesFound bool) {
+	matrix, matrixFound = report["PeopleMatrix"].([]map[int]int64)
+	names, namesFound = report["ReversedPeopleDict"].([]string)
 
-	// Fallback: binary-decoded "developer_coupling" is []any of map[string]any
-	// with fields developer1, developer2, shared_file_changes, coupling_strength.
-	// We reconstruct a symmetric matrix from pairwise entries.
-	rawCoupling, ok := report["developer_coupling"]
-	if !ok {
-		if !matrixOK {
-			return nil, nil, ErrInvalidMatrix
+	return matrix, names, matrixFound, namesFound
+}
+
+// getCouplingList retrieves and validates the raw coupling list from the report.
+// Returns nil list with nil error when the coupling data is absent or empty.
+func getCouplingList(report analyze.Report, matrixFound bool) (couplingList []any, err error) {
+	rawCoupling, present := report["developer_coupling"]
+	if !present {
+		if !matrixFound {
+			return nil, ErrInvalidMatrix
 		}
-		return nil, nil, ErrInvalidNames
-	}
-	if rawCoupling == nil {
-		// Binary round-trip with no coupling data: null JSON → nil.
-		return nil, nil, nil
-	}
-	couplingList, ok := rawCoupling.([]any)
-	if !ok {
-		return nil, nil, ErrInvalidMatrix
-	}
-	if len(couplingList) == 0 {
-		return nil, nil, nil
+
+		return nil, ErrInvalidNames
 	}
 
-	// Collect unique developer names and build an index.
+	if rawCoupling == nil {
+		return nil, nil
+	}
+
+	list, listValid := rawCoupling.([]any)
+	if !listValid {
+		return nil, ErrInvalidMatrix
+	}
+
+	return list, nil
+}
+
+// collectDeveloperNames gathers unique developer names from coupling entries and returns
+// a sorted slice along with a name-to-index mapping.
+func collectDeveloperNames(couplingList []any) (names []string, nameIdx map[string]int) {
 	nameSet := map[string]bool{}
+
 	for _, item := range couplingList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		m, valid := item.(map[string]any)
+		if !valid {
 			continue
 		}
-		if d1, ok := m["developer1"].(string); ok {
-			nameSet[d1] = true
-		}
-		if d2, ok := m["developer2"].(string); ok {
-			nameSet[d2] = true
-		}
+
+		addDeveloperName(m, "developer1", nameSet)
+		addDeveloperName(m, "developer2", nameSet)
 	}
+
 	names = make([]string, 0, len(nameSet))
+
 	for n := range nameSet {
 		names = append(names, n)
 	}
+
 	sort.Strings(names)
-	nameIdx := make(map[string]int, len(names))
+
+	nameIdx = make(map[string]int, len(names))
+
 	for i, n := range names {
 		nameIdx[n] = i
 	}
 
-	// Build matrix.
+	return names, nameIdx
+}
+
+// addDeveloperName extracts a developer name from the map entry and adds it to the set.
+func addDeveloperName(m map[string]any, key string, nameSet map[string]bool) {
+	name, valid := m[key].(string)
+	if !valid {
+		return
+	}
+
+	nameSet[name] = true
+}
+
+// buildCouplingMatrix constructs a symmetric matrix from the coupling list entries.
+func buildCouplingMatrix(couplingList []any, names []string, nameIdx map[string]int) (matrix []map[int]int64) {
 	matrix = make([]map[int]int64, len(names))
+
 	for i := range matrix {
 		matrix[i] = map[int]int64{}
 	}
+
 	for _, item := range couplingList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		m, valid := item.(map[string]any)
+		if !valid {
 			continue
 		}
-		d1, _ := m["developer1"].(string)
-		d2, _ := m["developer2"].(string)
-		i1, ok1 := nameIdx[d1]
-		i2, ok2 := nameIdx[d2]
-		if !ok1 || !ok2 {
-			continue
-		}
-		var val int64
-		switch v := m["shared_file_changes"].(type) {
-		case float64:
-			val = int64(v)
-		case int64:
-			val = v
-		}
-		matrix[i1][i2] = val
-		matrix[i2][i1] = val
+
+		applyCouplingEntry(m, nameIdx, matrix)
 	}
+
+	return matrix
+}
+
+// applyCouplingEntry processes a single coupling entry and updates the matrix.
+func applyCouplingEntry(entry map[string]any, nameIdx map[string]int, matrix []map[int]int64) {
+	d1, d1Valid := entry["developer1"].(string)
+	d2, d2Valid := entry["developer2"].(string)
+
+	if !d1Valid || !d2Valid {
+		return
+	}
+
+	i1, i1Found := nameIdx[d1]
+	i2, i2Found := nameIdx[d2]
+
+	if !i1Found || !i2Found {
+		return
+	}
+
+	val := extractSharedFileChanges(entry)
+	matrix[i1][i2] = val
+	matrix[i2][i1] = val
+}
+
+// extractSharedFileChanges extracts the shared_file_changes value from a coupling entry.
+func extractSharedFileChanges(m map[string]any) int64 {
+	raw, present := m["shared_file_changes"]
+	if !present {
+		return 0
+	}
+
+	switch v := raw.(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	default:
+		return 0
+	}
+}
+
+// extractCouplesData extracts the people matrix and names from the report,
+// handling both in-memory and binary-decoded JSON key formats.
+func extractCouplesData(report analyze.Report) (matrix []map[int]int64, names []string, err error) {
+	matrix, names, matrixFound, namesFound := tryDirectExtraction(report)
+	if matrixFound && namesFound {
+		return matrix, names, nil
+	}
+
+	couplingList, listErr := getCouplingList(report, matrixFound)
+	if listErr != nil {
+		return nil, nil, listErr
+	}
+
+	if len(couplingList) == 0 {
+		return nil, nil, nil
+	}
+
+	names, nameIdx := collectDeveloperNames(couplingList)
+	matrix = buildCouplingMatrix(couplingList, names, nameIdx)
 
 	return matrix, names, nil
 }
 
-func findMaxValue(matrix []map[int]int64) int64 {
-	var maxVal int64
-
+func findMaxValue(matrix []map[int]int64) (maxVal int64) {
 	for _, row := range matrix {
 		for _, val := range row {
 			if val > maxVal {
@@ -193,9 +259,7 @@ func findMaxValue(matrix []map[int]int64) int64 {
 	return maxVal
 }
 
-func buildHeatMapData(matrix []map[int]int64, names []string) []opts.HeatMapData {
-	var data []opts.HeatMapData
-
+func buildHeatMapData(matrix []map[int]int64, names []string) (data []opts.HeatMapData) {
 	for i, row := range matrix {
 		for j, val := range row {
 			if i < len(names) && j < len(names) {
@@ -240,7 +304,7 @@ func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, c
 	return hm
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // registration pattern
 	analyze.RegisterPlotSections("history/couples", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

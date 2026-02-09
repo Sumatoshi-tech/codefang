@@ -138,6 +138,32 @@ func (runner *Runner) Finalize() (map[analyze.HistoryAnalyzer]analyze.Report, er
 	return reports, nil
 }
 
+// ProcessChunkFromData consumes pre-fetched CommitData through analyzers,
+// bypassing Coordinator creation. Used by double-buffered chunk pipelining
+// where the pipeline has already run and collected data.
+func (runner *Runner) ProcessChunkFromData(data []CommitData, indexOffset int) error {
+	runner.runtimeTuningOnce.Do(func() {
+		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
+	})
+
+	for _, cd := range data {
+		if cd.Error != nil {
+			return cd.Error
+		}
+
+		analyzeCtx := buildAnalyzeContext(cd, indexOffset)
+
+		for _, a := range runner.Analyzers {
+			err := a.Consume(analyzeCtx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // processCommits processes commits through the pipeline without Initialize/Finalize.
 func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) error {
 	runner.runtimeTuningOnce.Do(func() {
@@ -146,27 +172,36 @@ func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) 
 
 	w := runner.Config.LeafWorkers
 	if w > 0 && runner.CoreCount > 0 && runner.CoreCount < len(runner.Analyzers) {
-		parallelLeaves, serialLeaves := runner.splitLeaves()
-		if len(parallelLeaves) > 0 {
-			return runner.processCommitsHybrid(commits, indexOffset, parallelLeaves, serialLeaves)
+		cpuHeavy, lightweight, serialLeaves := runner.splitLeaves()
+		if len(cpuHeavy) > 0 {
+			return runner.processCommitsHybrid(commits, indexOffset, cpuHeavy, lightweight, serialLeaves)
 		}
 	}
 
 	return runner.processCommitsSerial(commits, indexOffset)
 }
 
-// splitLeaves partitions leaf analyzers into parallelizable and sequential groups.
-func (runner *Runner) splitLeaves() (parallel, serial []analyze.HistoryAnalyzer) {
-	for _, a := range runner.Analyzers[runner.CoreCount:] {
-		p, ok := a.(analyze.Parallelizable)
-		if ok && !p.SequentialOnly() {
-			parallel = append(parallel, a)
+// splitLeaves partitions leaf analyzers into three groups:
+//   - cpuHeavy: Parallelizable, not SequentialOnly, CPUHeavy — dispatched to W workers via Fork/Merge.
+//   - lightweight: Parallelizable, not SequentialOnly, not CPUHeavy — run on main goroutine.
+//   - serial: SequentialOnly or not Parallelizable — run on main goroutine.
+func (runner *Runner) splitLeaves() (cpuHeavy, lightweight, serial []analyze.HistoryAnalyzer) {
+	for _, leaf := range runner.Analyzers[runner.CoreCount:] {
+		par, ok := leaf.(analyze.Parallelizable)
+		if !ok || par.SequentialOnly() {
+			serial = append(serial, leaf)
+
+			continue
+		}
+
+		if par.CPUHeavy() {
+			cpuHeavy = append(cpuHeavy, leaf)
 		} else {
-			serial = append(serial, a)
+			lightweight = append(lightweight, leaf)
 		}
 	}
 
-	return parallel, serial
+	return cpuHeavy, lightweight, serial
 }
 
 // processCommitsSerial is the original serial consumption path.
@@ -332,49 +367,114 @@ func buildCompositeSnapshot(snapshotters []analyze.Parallelizable) analyze.Plumb
 			continue
 		}
 
-		if composite.Changes == nil && snap.Changes != nil {
-			composite.Changes = snap.Changes
-		}
-
-		if composite.BlobCache == nil && snap.BlobCache != nil {
-			composite.BlobCache = snap.BlobCache
-		}
-
-		if composite.FileDiffs == nil && snap.FileDiffs != nil {
-			composite.FileDiffs = snap.FileDiffs
-		}
-
-		if composite.LineStats == nil && snap.LineStats != nil {
-			composite.LineStats = snap.LineStats
-		}
-
-		if composite.Languages == nil && snap.Languages != nil {
-			composite.Languages = snap.Languages
-		}
-
-		if composite.UASTChanges == nil && snap.UASTChanges != nil {
-			composite.UASTChanges = snap.UASTChanges
-		}
-
-		if composite.Tick == 0 && snap.Tick != 0 {
-			composite.Tick = snap.Tick
-		}
-
-		if composite.AuthorID == 0 && snap.AuthorID != 0 {
-			composite.AuthorID = snap.AuthorID
-		}
+		mergeSnapshotMaps(&composite, snap)
+		mergeSnapshotScalars(&composite, snap)
 	}
 
 	return composite
 }
 
-// processCommitsHybrid processes commits with a mix of serial and parallel leaf analyzers.
-// Core analyzers and serial leaves run on the main goroutine; parallel leaves are
-// dispatched to W workers via round-robin Fork/Merge.
+// mergeSnapshotMaps copies nil reference-type fields (slices and maps) from snap
+// into composite, taking the first non-nil value for each field.
+func mergeSnapshotMaps(composite *plumbing.Snapshot, snap plumbing.Snapshot) {
+	if composite.Changes == nil && snap.Changes != nil {
+		composite.Changes = snap.Changes
+	}
+
+	if composite.BlobCache == nil && snap.BlobCache != nil {
+		composite.BlobCache = snap.BlobCache
+	}
+
+	if composite.FileDiffs == nil && snap.FileDiffs != nil {
+		composite.FileDiffs = snap.FileDiffs
+	}
+
+	if composite.LineStats == nil && snap.LineStats != nil {
+		composite.LineStats = snap.LineStats
+	}
+
+	if composite.Languages == nil && snap.Languages != nil {
+		composite.Languages = snap.Languages
+	}
+
+	if composite.UASTChanges == nil && snap.UASTChanges != nil {
+		composite.UASTChanges = snap.UASTChanges
+	}
+}
+
+// mergeSnapshotScalars copies zero-valued scalar fields from snap into composite,
+// taking the first non-zero value for each field.
+func mergeSnapshotScalars(composite *plumbing.Snapshot, snap plumbing.Snapshot) {
+	if composite.Tick == 0 && snap.Tick != 0 {
+		composite.Tick = snap.Tick
+	}
+
+	if composite.AuthorID == 0 && snap.AuthorID != 0 {
+		composite.AuthorID = snap.AuthorID
+	}
+}
+
+// closeWorkersAndWait closes all worker channels and waits for goroutines to finish.
+func closeWorkersAndWait(workers []*leafWorker, wg *sync.WaitGroup) {
+	for _, worker := range workers {
+		close(worker.workChan)
+	}
+
+	wg.Wait()
+}
+
+// collectSnapshotters extracts Parallelizable interfaces from leaf analyzers.
+func collectSnapshotters(leaves []analyze.HistoryAnalyzer) ([]analyze.Parallelizable, error) {
+	snapshotters := make([]analyze.Parallelizable, 0, len(leaves))
+
+	for _, leaf := range leaves {
+		p, ok := leaf.(analyze.Parallelizable)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrNotParallelizable, leaf.Name())
+		}
+
+		snapshotters = append(snapshotters, p)
+	}
+
+	return snapshotters, nil
+}
+
+// consumeAnalyzers runs Consume on each analyzer sequentially, returning the first error.
+func consumeAnalyzers(analyzers []analyze.HistoryAnalyzer, analyzeCtx *analyze.Context) error {
+	for _, a := range analyzers {
+		err := a.Consume(analyzeCtx)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// buildAnalyzeContext creates an analyze.Context from pipeline commit data.
+func buildAnalyzeContext(data CommitData, indexOffset int) *analyze.Context {
+	commit := data.Commit
+
+	return &analyze.Context{
+		Commit:      commit,
+		Index:       data.Index + indexOffset,
+		Time:        commit.Committer().When,
+		IsMerge:     commit.NumParents() > 1,
+		Changes:     data.Changes,
+		BlobCache:   data.BlobCache,
+		FileDiffs:   data.FileDiffs,
+		UASTChanges: data.UASTChanges,
+	}
+}
+
+// processCommitsHybrid processes commits with taxonomy-aware dispatch:
+//   - core analyzers run sequentially on the main goroutine.
+//   - cpuHeavy leaves are dispatched to W workers via Fork/Merge.
+//   - lightweight and serial leaves run on the main goroutine.
 func (runner *Runner) processCommitsHybrid(
 	commits []*gitlib.Commit,
 	indexOffset int,
-	parallelLeaves, serialLeaves []analyze.HistoryAnalyzer,
+	cpuHeavy, lightweight, serialLeaves []analyze.HistoryAnalyzer,
 ) error {
 	ctx := context.Background()
 	coordinator := NewCoordinator(runner.Repo, runner.Config)
@@ -383,58 +483,70 @@ func (runner *Runner) processCommitsHybrid(
 	core := runner.Analyzers[:runner.CoreCount]
 
 	numWorkers := runner.Config.LeafWorkers
-	workers := newLeafWorkers(parallelLeaves, numWorkers)
+	workers := newLeafWorkers(cpuHeavy, numWorkers)
 	wg, workerErrors := startLeafWorkers(workers)
 
-	// Collect all parallelizable leaves for composite snapshot building.
-	snapshotters := make([]analyze.Parallelizable, 0, len(parallelLeaves))
-	for _, leaf := range parallelLeaves {
-		p, ok := leaf.(analyze.Parallelizable)
-		if !ok {
-			return fmt.Errorf("%w: %s", ErrNotParallelizable, leaf.Name())
-		}
+	// Collect snapshotters from both cpuHeavy and lightweight leaves so the
+	// composite snapshot captures all plumbing fields (e.g. UASTChanges from
+	// cpuHeavy, Changes/BlobCache from lightweight).
+	allParallel := make([]analyze.HistoryAnalyzer, 0, len(cpuHeavy)+len(lightweight))
+	allParallel = append(allParallel, cpuHeavy...)
+	allParallel = append(allParallel, lightweight...)
 
-		snapshotters = append(snapshotters, p)
+	snapshotters, snapErr := collectSnapshotters(allParallel)
+	if snapErr != nil {
+		return snapErr
 	}
 
+	// Combine lightweight and serial leaves into one main-goroutine group.
+	mainLeaves := make([]analyze.HistoryAnalyzer, 0, len(lightweight)+len(serialLeaves))
+	mainLeaves = append(mainLeaves, lightweight...)
+	mainLeaves = append(mainLeaves, serialLeaves...)
+
+	loopErr := runner.hybridCommitLoop(dataChan, indexOffset, core, mainLeaves, snapshotters, workers, numWorkers, wg)
+	if loopErr != nil {
+		return loopErr
+	}
+
+	for _, workerErr := range workerErrors {
+		if workerErr != nil {
+			return workerErr
+		}
+	}
+
+	mergeLeafResults(cpuHeavy, workers)
+
+	return nil
+}
+
+// hybridCommitLoop iterates over pipeline data, dispatching work to parallel workers
+// and running core/serial analyzers on the main goroutine.
+func (runner *Runner) hybridCommitLoop(
+	dataChan <-chan CommitData,
+	indexOffset int,
+	core, serialLeaves []analyze.HistoryAnalyzer,
+	snapshotters []analyze.Parallelizable,
+	workers []*leafWorker,
+	numWorkers int,
+	wg *sync.WaitGroup,
+) error {
 	var commitIdx int
 
 	for data := range dataChan {
 		if data.Error != nil {
-			// Close work channels before returning to avoid goroutine leak.
-			for _, worker := range workers {
-				close(worker.workChan)
-			}
-
-			wg.Wait()
+			closeWorkersAndWait(workers, wg)
 
 			return data.Error
 		}
 
-		commit := data.Commit
-		analyzeCtx := &analyze.Context{
-			Commit:      commit,
-			Index:       data.Index + indexOffset,
-			Time:        commit.Committer().When,
-			IsMerge:     commit.NumParents() > 1,
-			Changes:     data.Changes,
-			BlobCache:   data.BlobCache,
-			FileDiffs:   data.FileDiffs,
-			UASTChanges: data.UASTChanges,
-		}
+		analyzeCtx := buildAnalyzeContext(data, indexOffset)
 
 		// Run core (plumbing) analyzers sequentially.
-		for _, analyzer := range core {
-			consumeErr := analyzer.Consume(analyzeCtx)
-			if consumeErr != nil {
-				for _, worker := range workers {
-					close(worker.workChan)
-				}
+		err := consumeAnalyzers(core, analyzeCtx)
+		if err != nil {
+			closeWorkersAndWait(workers, wg)
 
-				wg.Wait()
-
-				return consumeErr
-			}
+			return err
 		}
 
 		// Snapshot plumbing state for parallel workers before serial leaves mutate anything.
@@ -449,36 +561,18 @@ func (runner *Runner) processCommitsHybrid(
 		workers[commitIdx%numWorkers].workChan <- work
 
 		// Run serial leaves on the main goroutine.
-		for _, leaf := range serialLeaves {
-			consumeErr := leaf.Consume(analyzeCtx)
-			if consumeErr != nil {
-				for _, worker := range workers {
-					close(worker.workChan)
-				}
+		err = consumeAnalyzers(serialLeaves, analyzeCtx)
+		if err != nil {
+			closeWorkersAndWait(workers, wg)
 
-				wg.Wait()
-
-				return consumeErr
-			}
+			return err
 		}
 
 		commitIdx++
 	}
 
 	// Close all work channels to signal workers to finish.
-	for _, worker := range workers {
-		close(worker.workChan)
-	}
-
-	wg.Wait()
-
-	for _, workerErr := range workerErrors {
-		if workerErr != nil {
-			return workerErr
-		}
-	}
-
-	mergeLeafResults(parallelLeaves, workers)
+	closeWorkersAndWait(workers, wg)
 
 	return nil
 }

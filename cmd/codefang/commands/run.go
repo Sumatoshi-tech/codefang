@@ -126,6 +126,8 @@ type RunCommand struct {
 
 // NewRunCommand creates the unified run command.
 func NewRunCommand() *cobra.Command {
+	typos.RegisterPlotSections()
+
 	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry)
 }
 

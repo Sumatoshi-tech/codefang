@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
@@ -52,11 +53,7 @@ func RenderUnifiedModelPlot(model UnifiedModel, writer io.Writer) error {
 	)
 
 	for _, analyzer := range model.Analyzers {
-		sections, sErr := renderAnalyzerSections(analyzer)
-		if sErr != nil {
-			return fmt.Errorf("render %s: %w", analyzer.ID, sErr)
-		}
-
+		sections := renderAnalyzerSections(analyzer)
 		page.Add(sections...)
 	}
 
@@ -73,12 +70,12 @@ func RenderUnifiedModelPlot(model UnifiedModel, writer io.Writer) error {
 // falls back to a raw key-value table. If the custom renderer fails (e.g.
 // the report was decoded from binary and types don't match), falls back
 // to the table gracefully.
-func renderAnalyzerSections(analyzer analyze.AnalyzerResult) ([]plotpage.Section, error) {
+func renderAnalyzerSections(analyzer analyze.AnalyzerResult) []plotpage.Section {
 	renderer := analyze.PlotSectionsFor(analyzer.ID)
 	if renderer != nil {
 		sections, err := renderer(analyzer.Report)
 		if err == nil {
-			return sections, nil
+			return sections
 		}
 		// Custom renderer failed; fall back to table view.
 	}
@@ -87,7 +84,7 @@ func renderAnalyzerSections(analyzer analyze.AnalyzerResult) ([]plotpage.Section
 		Title:    analyzer.ID,
 		Subtitle: fmt.Sprintf("mode: %s", analyzer.Mode),
 		Chart:    reportTable(analyzer.Report),
-	}}, nil
+	}}
 }
 
 const maxTableValueLen = 500
@@ -95,12 +92,7 @@ const maxTableValueLen = 500
 func reportTable(report analyze.Report) *plotpage.Table {
 	table := plotpage.NewTable([]string{"Key", "Value"})
 
-	keys := make([]string, 0, len(report))
-	for key := range report {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(report))
 
 	for _, key := range keys {
 		value := report[key]

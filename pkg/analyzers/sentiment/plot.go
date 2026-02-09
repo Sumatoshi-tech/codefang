@@ -98,27 +98,32 @@ func (s *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error
 // extractEmotionsFromBinary converts binary-decoded time_series data back to
 // map[int]float32. Each entry has "tick" and "sentiment" fields.
 func extractEmotionsFromBinary(report analyze.Report) map[int]float32 {
-	rawTS, ok := report["time_series"]
-	if !ok {
+	rawTS, rawOK := report["time_series"]
+	if !rawOK {
 		return nil
 	}
+
 	if rawTS == nil {
 		return map[int]float32{}
 	}
-	tsList, ok := rawTS.([]any)
-	if !ok {
+
+	tsList, listOK := rawTS.([]any)
+	if !listOK {
 		return nil
 	}
+
 	if len(tsList) == 0 {
 		return map[int]float32{}
 	}
 
 	emotions := make(map[int]float32, len(tsList))
+
 	for _, item := range tsList {
-		m, ok := item.(map[string]any)
-		if !ok {
+		m, mOK := item.(map[string]any)
+		if !mOK {
 			continue
 		}
+
 		tick := sentimentToInt(m["tick"])
 		sentiment := sentimentToFloat32(m["sentiment"])
 		emotions[tick] = sentiment
@@ -195,7 +200,7 @@ func createSentimentChart(labels []string, data []opts.LineData, co *plotpage.Ch
 	return line
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // registration pattern
 	analyze.RegisterPlotSections("history/sentiment", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

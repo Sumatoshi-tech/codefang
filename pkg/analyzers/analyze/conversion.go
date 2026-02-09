@@ -12,8 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
 
 // ---------------------------------------------------------------------------

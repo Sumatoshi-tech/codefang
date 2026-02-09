@@ -119,6 +119,8 @@ func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 
 // Initialize prepares the analyzer for processing commits.
 func (d *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
+	RegisterDevPlotSections()
+
 	if d.tickSize == 0 {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
@@ -293,6 +295,9 @@ func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
 
 // SequentialOnly returns true because devs' Fork() does not isolate mutable map state.
 func (d *HistoryAnalyzer) SequentialOnly() bool { return true }
+
+// CPUHeavy returns false because developer stats aggregation is lightweight bookkeeping.
+func (d *HistoryAnalyzer) CPUHeavy() bool { return false }
 
 // SnapshotPlumbing captures the current plumbing state.
 func (d *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {

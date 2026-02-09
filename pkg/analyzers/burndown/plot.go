@@ -88,8 +88,8 @@ type burndownParams struct {
 }
 
 func extractParams(report analyze.Report) *burndownParams {
-	globalHistory, ok := report["GlobalHistory"].(DenseHistory)
-	if !ok {
+	globalHistory, histOK := report["GlobalHistory"].(DenseHistory)
+	if !histOK {
 		// Fallback: after binary encode -> JSON decode, "GlobalHistory" becomes
 		// "global_survival" ([]any of map[string]any with band_breakdown).
 		globalHistory = extractDenseHistoryFromBinary(report, "global_survival")
@@ -97,109 +97,172 @@ func extractParams(report analyze.Report) *burndownParams {
 			return nil
 		}
 	}
-	sampling := extractInt(report, "Sampling", 0)
-	granularity := extractInt(report, "Granularity", 0)
+
+	sampling, granularity := extractSamplingGranularity(report)
+
+	return &burndownParams{
+		globalHistory: globalHistory,
+		sampling:      sampling,
+		granularity:   granularity,
+		tickSize:      extractTickSize(report),
+		endTime:       extractEndTime(report),
+		projectName:   extractProjectName(report),
+	}
+}
+
+// extractSamplingGranularity extracts sampling and granularity from the report,
+// falling back to aggregate inference after binary round-trip.
+func extractSamplingGranularity(report analyze.Report) (sampling, granularity int) {
+	sampling = extractInt(report, "Sampling", 0)
+	granularity = extractInt(report, "Granularity", 0)
 
 	// After binary round-trip, Sampling/Granularity are lost. Infer from aggregate.
 	if sampling == 0 || granularity == 0 {
-		if agg, ok := report["aggregate"].(map[string]any); ok {
-			numSamples := extractIntFromMap(agg, "num_samples", 0)
-			numBands := extractIntFromMap(agg, "num_bands", 0)
-			if sampling == 0 && numSamples > 1 && numBands > 0 {
-				sampling = 1
-			}
-			if granularity == 0 && numBands > 0 {
-				granularity = 1
-			}
-		}
+		sampling, granularity = inferFromAggregate(report, sampling, granularity)
 	}
 
-	tickSize, ok := report["TickSize"].(time.Duration)
-	if !ok {
-		tickSize = hoursPerDay * time.Hour
-	}
-	endTime, ok := report["EndTime"].(time.Time)
-	if !ok {
-		endTime = time.Time{}
-	}
-	projectName, ok := report["ProjectName"].(string)
-	if !ok || projectName == "" {
-		projectName = "project"
+	return sampling, granularity
+}
+
+// inferFromAggregate attempts to infer sampling and granularity from the "aggregate" key.
+func inferFromAggregate(report analyze.Report, sampling, granularity int) (outSampling, outGranularity int) {
+	agg, aggOK := report["aggregate"].(map[string]any)
+	if !aggOK {
+		return sampling, granularity
 	}
 
-	return &burndownParams{globalHistory, sampling, granularity, tickSize, endTime, projectName}
+	numSamples := extractIntFromMap(agg, "num_samples", 0)
+	numBands := extractIntFromMap(agg, "num_bands", 0)
+
+	if sampling == 0 && numSamples > 1 && numBands > 0 {
+		sampling = 1
+	}
+
+	if granularity == 0 && numBands > 0 {
+		granularity = 1
+	}
+
+	return sampling, granularity
+}
+
+// extractTickSize returns the tick size from the report, defaulting to 24 hours.
+func extractTickSize(report analyze.Report) time.Duration {
+	tickSize, tsOK := report["TickSize"].(time.Duration)
+	if !tsOK {
+		return hoursPerDay * time.Hour
+	}
+
+	return tickSize
+}
+
+// extractEndTime returns the end time from the report, defaulting to zero time.
+func extractEndTime(report analyze.Report) time.Time {
+	endTime, etOK := report["EndTime"].(time.Time)
+	if !etOK {
+		return time.Time{}
+	}
+
+	return endTime
+}
+
+// extractProjectName returns the project name from the report, defaulting to "project".
+func extractProjectName(report analyze.Report) string {
+	projectName, pnOK := report["ProjectName"].(string)
+	if !pnOK || projectName == "" {
+		return "project"
+	}
+
+	return projectName
 }
 
 // extractDenseHistoryFromBinary converts binary-decoded JSON survival data back
 // to DenseHistory. After binary encode -> JSON decode round-trip, survival data
 // is []any where each element is map[string]any with "band_breakdown" ([]any of float64).
 func extractDenseHistoryFromBinary(report analyze.Report, key string) DenseHistory {
-	raw, ok := report[key]
-	if !ok {
+	raw, rawOK := report[key]
+	if !rawOK {
 		return nil
 	}
+
 	if raw == nil {
 		return DenseHistory{}
 	}
-	list, ok := raw.([]any)
-	if !ok {
+
+	list, listOK := raw.([]any)
+	if !listOK {
 		return nil
 	}
+
 	if len(list) == 0 {
 		return DenseHistory{}
 	}
+
 	result := make(DenseHistory, len(list))
+
 	for i, item := range list {
-		m, ok := item.(map[string]any)
-		if !ok {
+		m, mOK := item.(map[string]any)
+		if !mOK {
 			continue
 		}
-		bands, ok := m["band_breakdown"].([]any)
-		if !ok {
+
+		bands, bandsOK := m["band_breakdown"].([]any)
+		if !bandsOK {
 			continue
 		}
+
 		row := make([]int64, len(bands))
+
 		for j, v := range bands {
 			row[j] = toInt64(v)
 		}
+
 		result[i] = row
 	}
+
 	return result
 }
 
 // extractInt extracts an int from the report, handling float64 from JSON decode.
 func extractInt(report analyze.Report, key string, fallback int) int {
-	if v, ok := report[key].(int); ok {
-		return v
+	if intVal, intOK := report[key].(int); intOK {
+		return intVal
 	}
-	if v, ok := report[key].(float64); ok {
-		return int(v)
+
+	if floatVal, floatOK := report[key].(float64); floatOK {
+		return int(floatVal)
 	}
+
 	return fallback
 }
 
 // extractIntFromMap extracts an int from a generic map, handling float64 from JSON decode.
 func extractIntFromMap(m map[string]any, key string, fallback int) int {
-	if v, ok := m[key].(float64); ok {
-		return int(v)
+	if floatVal, floatOK := m[key].(float64); floatOK {
+		return int(floatVal)
 	}
-	if v, ok := m[key].(int); ok {
-		return v
+
+	if intVal, intOK := m[key].(int); intOK {
+		return intVal
 	}
+
 	return fallback
 }
 
 // toInt64 converts a numeric value (int, float64, etc.) to int64.
 func toInt64(v any) int64 {
-	switch n := v.(type) {
+	switch num := v.(type) {
 	case float64:
-		return int64(n)
+		return int64(num)
 	case int64:
-		return n
+		return num
 	case int:
-		return int64(n)
+		return int64(num)
 	case json.Number:
-		i, _ := n.Int64()
+		i, err := num.Int64()
+		if err != nil {
+			return 0
+		}
+
 		return i
 	default:
 		return 0
@@ -536,7 +599,7 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 	return fmt.Sprintf("%dmo", ageMonths)
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // registration pattern
 	analyze.RegisterPlotSections("history/burndown", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})
