@@ -1,4 +1,4 @@
-package imports //nolint:testpackage // testing internal implementation.
+package imports
 
 import (
 	"bytes"
@@ -250,4 +250,50 @@ func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
 	assert.Contains(t, output, "categories:")
 	assert.Contains(t, output, "dependencies:")
 	assert.Contains(t, output, "aggregate:")
+}
+
+func TestAnalyzer_FormatReportPlot(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+	report := analyze.Report{
+		"imports": []string{
+			"fmt",
+			"os",
+			"github.com/example/pkg",
+			"../../deep/path/module",
+		},
+		"count": 4,
+		"import_counts": map[string]int{
+			"fmt":                    5,
+			"os":                     4,
+			"github.com/example/pkg": 2,
+			"../../deep/path/module": 1,
+		},
+		"total_files": 6,
+	}
+
+	var buf bytes.Buffer
+	err := a.FormatReportPlot(report, &buf)
+
+	require.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "<!doctype html>")
+	assert.Contains(t, output, "Top Imports Usage")
+	assert.Contains(t, output, "Import Categories")
+	assert.Contains(t, output, "Dependency Risk Overview")
+}
+
+func TestAnalyzer_FormatReportPlot_Empty(t *testing.T) {
+	t.Parallel()
+
+	a := NewAnalyzer()
+
+	var buf bytes.Buffer
+	err := a.FormatReportPlot(analyze.Report{}, &buf)
+
+	require.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "<!doctype html>")
+	assert.Contains(t, output, "No dependency risks detected")
 }

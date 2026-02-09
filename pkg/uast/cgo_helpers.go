@@ -2,6 +2,11 @@ package uast
 
 import "unsafe"
 
+const (
+	invalidSymbolID = ^uint16(0)
+	maxSymbolID     = uint32(invalidSymbolID)
+)
+
 // tsNodeContext maps the first 4 uint32 fields of a tree-sitter TSNode.
 // TSNode layout (from tree-sitter api.h):
 //
@@ -39,6 +44,51 @@ type tsNodeFull struct {
 	context [4]uint32
 	id      unsafe.Pointer
 	tree    unsafe.Pointer
+}
+
+// readEndPositions reads end byte/row/col via one CGO helper call.
+// The nodePtr must point to a sitter.Node.
+func readEndPositions(nodePtr unsafe.Pointer) (endByte, endRow, endCol uint) {
+	full := (*tsNodeFull)(nodePtr)
+
+	return readEndPositionsFromParts(
+		full.context[0],
+		full.context[1],
+		full.context[2],
+		full.context[3],
+		uintptr(full.id),
+		uintptr(full.tree),
+	)
+}
+
+// readSymbol reads the node symbol ID directly from SubtreeHeapData.
+// For inline subtrees or unavailable heap pointers, it returns invalidSymbolID.
+func readSymbol(nodePtr unsafe.Pointer) uint16 {
+	full := (*tsNodeFull)(nodePtr)
+	ctx := (*tsNodeContext)(nodePtr)
+
+	// TSNode context[3] carries alias symbol ID when present.
+	if ctx.alias != 0 && ctx.alias <= maxSymbolID {
+		return uint16(ctx.alias)
+	}
+
+	if full.id == nil {
+		return invalidSymbolID
+	}
+
+	firstByte := (*byte)(full.id)
+	if *firstByte&1 == 1 {
+		return invalidSymbolID
+	}
+
+	heapPtrPtr := (*unsafe.Pointer)(full.id)
+	if *heapPtrPtr == nil {
+		return invalidSymbolID
+	}
+
+	heap := (*subtreeHeapPartial)(*heapPtrPtr)
+
+	return heap.symbol
 }
 
 // subtreeHeapPartial mirrors the SubtreeHeapData C struct fields up to

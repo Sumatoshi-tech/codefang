@@ -1,6 +1,7 @@
 package framework_test
 
 import (
+	"runtime/debug"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -123,5 +124,95 @@ func TestRunner_RunSingleCommit(t *testing.T) {
 
 	if _, ok := reports[r.Analyzers[0]]; !ok {
 		t.Error("reports missing entry for analyzer")
+	}
+}
+
+func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("gc.txt", "content")
+	repo.Commit("init")
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	commits := framework.CollectCommits(t, libRepo, 1)
+	if len(commits) != 1 {
+		t.Fatalf("got %d commits, want 1", len(commits))
+	}
+
+	originalGCPercent := debug.SetGCPercent(100)
+	t.Cleanup(func() {
+		debug.SetGCPercent(originalGCPercent)
+	})
+
+	config := framework.DefaultCoordinatorConfig()
+	config.GCPercent = 240
+
+	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
+	_, runErr := runner.Run(commits)
+	if runErr != nil {
+		t.Fatalf("Run: %v", runErr)
+	}
+
+	previousGCPercent := debug.SetGCPercent(100)
+	if previousGCPercent != 240 {
+		t.Fatalf("GC percent = %d, want 240", previousGCPercent)
+	}
+}
+
+func TestRunner_AppliesBallastSize(t *testing.T) {
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("ballast.txt", "content")
+	repo.Commit("init")
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	commits := framework.CollectCommits(t, libRepo, 1)
+	if len(commits) != 1 {
+		t.Fatalf("got %d commits, want 1", len(commits))
+	}
+
+	config := framework.DefaultCoordinatorConfig()
+	config.BallastSize = 8 * 1024 * 1024
+
+	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
+	_, runErr := runner.Run(commits)
+	if runErr != nil {
+		t.Fatalf("Run: %v", runErr)
+	}
+
+	if framework.RunnerBallastSizeForTest(runner) < int(config.BallastSize) {
+		t.Fatalf(
+			"runner ballast size = %d, want at least %d",
+			framework.RunnerBallastSizeForTest(runner),
+			config.BallastSize,
+		)
+	}
+}
+
+func TestResolveGCPercentForTest_AutoMode(t *testing.T) {
+	const overThreshold = uint64(33 * 1024 * 1024 * 1024)
+
+	got := framework.ResolveGCPercentForTest(0, overThreshold)
+	if got != 200 {
+		t.Fatalf("GC percent = %d, want 200", got)
+	}
+}
+
+func TestResolveGCPercentForTest_ExplicitMode(t *testing.T) {
+	got := framework.ResolveGCPercentForTest(180, 0)
+	if got != 180 {
+		t.Fatalf("GC percent = %d, want 180", got)
 	}
 }

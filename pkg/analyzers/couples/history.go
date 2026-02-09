@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
@@ -58,8 +59,17 @@ func (c *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (c *HistoryAnalyzer) Description() string {
-	return "The result is a square matrix, the value in each cell corresponds to the number of times " +
-		"the pair of files appeared in the same commit or pair of developers committed to the same file."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID: "history/couples",
+		Description: "The result is a square matrix, the value in each cell corresponds to the number of times " +
+			"the pair of files appeared in the same commit or pair of developers committed to the same file.",
+		Mode: analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -353,14 +363,39 @@ func countNewlines(p []byte) int {
 	return count
 }
 
+// SequentialOnly returns false because couples analysis can be parallelized.
+func (c *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for one commit.
+func (c *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:  c.TreeDiff.Changes,
+		AuthorID: c.Identity.AuthorID,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (c *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	s, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	c.TreeDiff.Changes = s.Changes
+	c.Identity.AuthorID = s.AuthorID
+}
+
+// ReleaseSnapshot releases any resources owned by the snapshot.
+func (c *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
 // Fork creates a copy of the analyzer for parallel processing.
 // Each fork gets its own independent copies of mutable state (slices and maps).
 func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
-			Identity:           c.Identity,
-			TreeDiff:           c.TreeDiff,
+			Identity:           &plumbing.IdentityDetector{},
+			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
 			PeopleNumber:       c.PeopleNumber,
 			reversedPeopleDict: c.reversedPeopleDict,
 		}
@@ -458,8 +493,10 @@ func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return c.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return c.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return c.serializeBinary(result, writer)
 	default:
-		return c.serializeYAML(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -491,6 +528,20 @@ func (c *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer)
 	_, err = writer.Write(data)
 	if err != nil {
 		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (c *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

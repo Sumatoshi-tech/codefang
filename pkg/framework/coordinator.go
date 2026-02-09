@@ -1,9 +1,13 @@
 package framework
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"runtime"
+	"runtime/debug"
+	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
@@ -25,6 +29,15 @@ const leafWorkerDivisor = 3
 
 // minLeafWorkers is the minimum number of leaf workers when enabled.
 const minLeafWorkers = 4
+
+const (
+	autoGCPercent              = 200
+	autoGCMemoryThresholdBytes = uint64(32 * 1024 * 1024 * 1024)
+	procMemInfoPath            = "/proc/meminfo"
+	memTotalPrefix             = "MemTotal:"
+	memTotalUnitKiB            = "kB"
+	kibibyte                   = uint64(1024)
+)
 
 // CoordinatorConfig configures the pipeline coordinator.
 type CoordinatorConfig struct {
@@ -60,6 +73,14 @@ type CoordinatorConfig struct {
 	// Each worker processes a disjoint subset of commits via Fork/Merge.
 	// Set to 0 to disable parallel leaf consumption (serial path).
 	LeafWorkers int
+
+	// GCPercent controls Go's GC aggressiveness.
+	// Set to 0 to use auto mode (200 when system memory > 32 GiB).
+	GCPercent int
+
+	// BallastSize reserves bytes in a long-lived slice to smooth GC behavior.
+	// Set to 0 to disable ballast allocation.
+	BallastSize int64
 }
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
@@ -84,6 +105,8 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		// 4MB arena size balances performance and memory usage.
 		// Smaller arenas reduce GC pressure and improve cache locality.
 		BlobArenaSize: 4 * 1024 * 1024,
+		GCPercent:     0,
+		BallastSize:   0,
 	}
 }
 
@@ -188,6 +211,94 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		poolRepos:    poolRepos,
 		seqRequests:  seqChan,
 		poolRequests: poolChan,
+	}
+}
+
+func applyRuntimeTuning(config CoordinatorConfig) []byte {
+	applyGCPercent(config.GCPercent)
+
+	return applyBallast(config.BallastSize)
+}
+
+func applyGCPercent(requestedGCPercent int) {
+	gcPercent := resolveGCPercent(requestedGCPercent, detectTotalMemoryBytes())
+	if gcPercent <= 0 {
+		return
+	}
+
+	debug.SetGCPercent(gcPercent)
+}
+
+func resolveGCPercent(requestedGCPercent int, totalMemoryBytes uint64) int {
+	if requestedGCPercent > 0 {
+		return requestedGCPercent
+	}
+
+	if requestedGCPercent < 0 {
+		return 0
+	}
+
+	if totalMemoryBytes > autoGCMemoryThresholdBytes {
+		return autoGCPercent
+	}
+
+	return 0
+}
+
+func applyBallast(ballastSize int64) []byte {
+	if ballastSize <= 0 {
+		return nil
+	}
+
+	return make([]byte, ballastSize)
+}
+
+func detectTotalMemoryBytes() uint64 {
+	if runtime.GOOS != "linux" {
+		return 0
+	}
+
+	memInfoBytes, err := os.ReadFile(procMemInfoPath)
+	if err != nil {
+		return 0
+	}
+
+	return parseMemTotalBytes(memInfoBytes)
+}
+
+func parseMemTotalBytes(memInfo []byte) uint64 {
+	for line := range bytes.SplitSeq(memInfo, []byte{'\n'}) {
+		if !bytes.HasPrefix(line, []byte(memTotalPrefix)) {
+			continue
+		}
+
+		fields := bytes.Fields(line)
+		if len(fields) < 2 {
+			return 0
+		}
+
+		memTotal, err := strconv.ParseUint(string(fields[1]), 10, 64)
+		if err != nil {
+			return 0
+		}
+
+		unit := memTotalUnitKiB
+		if len(fields) > 2 {
+			unit = string(fields[2])
+		}
+
+		return scaleBytesByUnit(memTotal, unit)
+	}
+
+	return 0
+}
+
+func scaleBytesByUnit(value uint64, unit string) uint64 {
+	switch unit {
+	case memTotalUnitKiB:
+		return value * kibibyte
+	default:
+		return value
 	}
 }
 

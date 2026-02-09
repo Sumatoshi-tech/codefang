@@ -60,7 +60,16 @@ func (f *FileDiffAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (f *FileDiffAnalyzer) Description() string {
-	return "Calculates the difference of files which were modified."
+	return f.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (f *FileDiffAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		f.Name(),
+		"Calculates the difference of files which were modified.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

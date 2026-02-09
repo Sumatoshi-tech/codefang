@@ -42,8 +42,9 @@ help:
 	@echo "  deadcode-prod    - Run deadcode analysis excluding tests"
 	@echo "  deadcode-why     - Show why a function is not dead (FUNC=name)"
 	@echo "  bench            - Run UAST performance benchmarks"
-	@echo "  perf             - Run history burndown perf baseline (1k + 15k, CPU profiles). REPO=path (default: .)"
-	@echo "  battle           - Battle test on large repo with CPU+heap profiles. BATTLE_REPO=path BATTLE_ANALYZER=name"
+	@echo "  perf             - Run burndown perf baseline (1k + 15k, CPU profiles). REPO=path (default: .)"
+	@echo "  deps-update-*    - Update libgit2/tree-sitter third-party dependencies"
+	@echo "  battle           - Battle test on large repo with CPU+heap profiles. BATTLE_REPO=path BATTLE_ANALYZER=burndown"
 	@echo "  uast-dev         - Start UAST development environment (frontend + backend)"
 	@echo "  uast-dev-stop    - Stop UAST development servers"
 	@echo "  uast-dev-status  - Check status of UAST development servers"
@@ -108,15 +109,15 @@ testv: all
 bench: all
 	python3 build/scripts/benchmark/benchmark_runner.py
 
-# History burndown perf baseline: 1k + 15k commits with CPU profiles. REPO=path (default: .)
+# Burndown perf baseline: 1k + 15k commits with CPU profiles. REPO=path (default: .)
 # Produces cpu_1k.prof, cpu_15k.prof; run from repo root.
 perf: all
 	@REPO=$${REPO:-.}; \
 	echo "Perf repo: $$REPO"; \
 	echo "Running 1k commits..."; \
-	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k.prof $$REPO > /tmp/out_1k.yaml 2>&1; \
+	time $(GOBIN)/codefang run -a history/burndown --format yaml --limit 1000 --cpuprofile=cpu_1k.prof $$REPO > /tmp/out_1k.yaml 2>&1; \
 	echo "Running 15k commits..."; \
-	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k.prof $$REPO > /tmp/out_15k.yaml 2>&1; \
+	time $(GOBIN)/codefang run -a history/burndown --format yaml --limit 15000 --cpuprofile=cpu_15k.prof $$REPO > /tmp/out_15k.yaml 2>&1; \
 	echo "Profiles: cpu_1k.prof, cpu_15k.prof"; \
 	go tool pprof -text -diff_base=cpu_1k.prof cpu_15k.prof > pprof_diff.txt 2>/dev/null || true; \
 	echo "Diff: pprof_diff.txt"
@@ -126,28 +127,32 @@ perf-treap: all
 	@REPO=$${REPO:-.}; \
 	echo "Perf repo: $$REPO"; \
 	echo "Running 1k commits..."; \
-	time $(GOBIN)/codefang history -a burndown -f yaml --limit 1000 --cpuprofile=cpu_1k_treap.prof $$REPO > /tmp/out_1k_treap.yaml 2>&1; \
+	time $(GOBIN)/codefang run -a history/burndown --format yaml --limit 1000 --cpuprofile=cpu_1k_treap.prof $$REPO > /tmp/out_1k_treap.yaml 2>&1; \
 	echo "Running 15k commits..."; \
-	time $(GOBIN)/codefang history -a burndown -f yaml --limit 15000 --cpuprofile=cpu_15k_treap.prof $$REPO > /tmp/out_15k_treap.yaml 2>&1; \
+	time $(GOBIN)/codefang run -a history/burndown --format yaml --limit 15000 --cpuprofile=cpu_15k_treap.prof $$REPO > /tmp/out_15k_treap.yaml 2>&1; \
 	echo "Profiles: cpu_1k_treap.prof, cpu_15k_treap.prof"; \
 	go tool pprof -text -diff_base=cpu_1k_treap.prof cpu_15k_treap.prof > pprof_diff_treap.txt 2>/dev/null || true; \
 	echo "Diff: pprof_diff_treap.txt"
 
 # Battle test: full run on large repo with CPU+heap profiles and /usr/bin/time metrics.
-# Usage: make battle [BATTLE_REPO=~/sources/kubernetes] [BATTLE_ANALYZER=burndown]
+# Usage: make battle [BATTLE_REPO=~/sources/kubernetes] [BATTLE_ANALYZER=burndown] [BATTLE_LIMIT=0]
 .PHONY: battle
 battle: all
 	@REPO=$${BATTLE_REPO:-$$HOME/sources/kubernetes}; \
 	ANALYZER=$${BATTLE_ANALYZER:-burndown}; \
+	LIMIT=$${BATTLE_LIMIT:-0}; \
 	STAMP=$$(date +%Y%m%d-%H%M%S); \
 	DIR=profiles/$$(basename $$REPO)/$$STAMP; \
 	mkdir -p $$DIR; \
 	echo "Battle test: $$REPO ($$ANALYZER)"; \
 	echo "Output dir: $$DIR"; \
-	/usr/bin/time -v $(GOBIN)/codefang history \
-		-a $$ANALYZER -f yaml --first-parent \
+	LIMIT_FLAG=""; \
+	if [ "$$LIMIT" != "0" ]; then LIMIT_FLAG="--limit $$LIMIT"; fi; \
+	/usr/bin/time -v $(GOBIN)/codefang run \
+		-a history/$$ANALYZER --format yaml --first-parent \
 		--cpuprofile=$$DIR/cpu.prof \
 		--heapprofile=$$DIR/heap.prof \
+		$$LIMIT_FLAG \
 		$$REPO > $$DIR/output.yaml 2> $$DIR/time.txt; \
 	echo "--- Profile summaries ---"; \
 	go tool pprof -top -cum $$DIR/cpu.prof 2>/dev/null | head -25 > $$DIR/cpu_top.txt || true; \
@@ -220,7 +225,7 @@ compare-runs:
 compare-burndown: build
 	@REPO=$${REPO:-$$HOME/sources/iortcw}; \
 	FP=$${FP:-0}; \
-	$(GOBIN)/codefang history -a burndown -f yaml $$([ "$$FP" = "1" ] && echo --first-parent) "$$REPO" 2>/dev/null > /tmp/codefang_burndown.yaml; \
+	$(GOBIN)/codefang run -a history/burndown --format yaml $$([ "$$FP" = "1" ] && echo --first-parent) "$$REPO" 2>/dev/null > /tmp/codefang_burndown.yaml; \
 	python3 references/compare_burndown.py /tmp/codefang_burndown.yaml references/iortcw_burndown.yaml
 
 # Compare last N benchmark runs (usage: make compare-last N=3)
@@ -274,31 +279,37 @@ DEADCODE=$(or $(shell command -v deadcode 2>/dev/null),$(GOPATH_BIN)/deadcode)
 
 # Package paths for linting
 INTERNAL_PKGS=./cmd/... ./pkg/...
+DEADCODE_PKGS=./cmd/... ./pkg/...
+LINT_GOCACHE?=/tmp/codefang-go-cache
+LINT_GOLANGCI_CACHE?=/tmp/codefang-golangci-lint-cache
 
 ## lint: Run linters and deadcode analysis
 .PHONY: lint
 lint:
 	@echo "Running linters..."
+	@mkdir -p $(LINT_GOCACHE) $(LINT_GOLANGCI_CACHE)
 	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	GOCACHE=$(LINT_GOCACHE) \
+	GOLANGCI_LINT_CACHE=$(LINT_GOLANGCI_CACHE) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
 	CGO_ENABLED=1 $(GOLINT) run $(INTERNAL_PKGS)
 	@echo "Running deadcode analysis..."
-	@./scripts/deadcode-filter.sh -test github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
+	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh -test $(DEADCODE_PKGS)
 	@echo "✓ Linting complete"
 
 ## deadcode: Run deadcode analysis with whitelist filter (fails if dead code found)
 .PHONY: deadcode
 deadcode:
 	@echo "Running deadcode analysis with whitelist..."
-	@./scripts/deadcode-filter.sh -test github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
+	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh -test $(DEADCODE_PKGS)
 
 ## deadcode-prod: Run deadcode analysis excluding tests (production-only dead code)
 .PHONY: deadcode-prod
 deadcode-prod:
 	@echo "Running deadcode analysis (production only)..."
 	@echo "================================================================"
-	@./scripts/deadcode-filter.sh github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
+	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh $(DEADCODE_PKGS)
 
 ## deadcode-test-only: Find functions used only by tests (requires jq)
 .PHONY: deadcode-test-only
@@ -306,8 +317,8 @@ deadcode-test-only:
 	@echo "Finding functions that are only used by tests..."
 	@echo "This compares deadcode results with and without tests..."
 	@mkdir -p .deadcode-tmp
-	@$(DEADCODE) -json github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/... | jq -r '.[] | .Funcs[].Name' | sort > .deadcode-tmp/dead_prod.txt
-	@$(DEADCODE) -test -json github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/... | jq -r '.[] | .Funcs[].Name' | sort > .deadcode-tmp/dead_with_tests.txt
+	@GOCACHE=$(LINT_GOCACHE) $(DEADCODE) -json $(DEADCODE_PKGS) | jq -r '.[] | .Funcs[].Name' | sort > .deadcode-tmp/dead_prod.txt
+	@GOCACHE=$(LINT_GOCACHE) $(DEADCODE) -test -json $(DEADCODE_PKGS) | jq -r '.[] | .Funcs[].Name' | sort > .deadcode-tmp/dead_with_tests.txt
 	@echo "Functions used only by tests:"
 	@comm -23 .deadcode-tmp/dead_prod.txt .deadcode-tmp/dead_with_tests.txt || echo "No test-only functions found"
 	@rm -rf .deadcode-tmp
@@ -316,7 +327,7 @@ deadcode-test-only:
 .PHONY: deadcode-json
 deadcode-json:
 	@echo "Running deadcode analysis (JSON output)..."
-	@$(DEADCODE) -json github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
+	@GOCACHE=$(LINT_GOCACHE) $(DEADCODE) -json $(DEADCODE_PKGS)
 
 ## deadcode-why: Show why a function is not dead (usage: make deadcode-why FUNC=functionName)
 .PHONY: deadcode-why
@@ -327,7 +338,7 @@ deadcode-why:
 		exit 1; \
 	fi
 	@echo "Analyzing why $(FUNC) is considered live..."
-	@$(DEADCODE) -whylive="$(FUNC)" github.com/Sumatoshi-tech/codefang/cmd/... github.com/Sumatoshi-tech/codefang/pkg/...
+	@GOCACHE=$(LINT_GOCACHE) $(DEADCODE) -whylive="$(FUNC)" $(DEADCODE_PKGS)
 
 ## fmt: Format code
 .PHONY: fmt
@@ -397,6 +408,42 @@ uast-dev: install
 # =============================================================================
 # libgit2 targets for fast history analysis
 # =============================================================================
+
+# Third-party update automation.
+# Examples:
+#   make deps-update-libgit2 LIBGIT2_REF=v1.9.1
+#   make deps-update-treesitter TREE_SITTER_BARE_REF=v1.11.0 SITTER_FOREST_REF=v1.9.163 SITTER_FOREST_GO_REF=v1.9.4
+#   make deps-update-all LIBGIT2_REF=v1.9.1 TREE_SITTER_BARE_REF=v1.11.0 SITTER_FOREST_REF=v1.9.163 SITTER_FOREST_GO_REF=v1.9.4
+.PHONY: deps-update-libgit2
+deps-update-libgit2:
+	@if [ -z "$(LIBGIT2_REF)" ]; then \
+		echo "Usage: make deps-update-libgit2 LIBGIT2_REF=<tag-or-sha>"; \
+		exit 1; \
+	fi
+	@./scripts/update-third-party.sh --mode libgit2 --libgit2-ref "$(LIBGIT2_REF)"
+
+.PHONY: deps-update-treesitter
+deps-update-treesitter:
+	@if [ -z "$(TREE_SITTER_BARE_REF)" ] || [ -z "$(SITTER_FOREST_REF)" ] || [ -z "$(SITTER_FOREST_GO_REF)" ]; then \
+		echo "Usage: make deps-update-treesitter TREE_SITTER_BARE_REF=<ref> SITTER_FOREST_REF=<ref> SITTER_FOREST_GO_REF=<ref>"; \
+		exit 1; \
+	fi
+	@./scripts/update-third-party.sh --mode treesitter \
+		--tree-sitter-bare-ref "$(TREE_SITTER_BARE_REF)" \
+		--sitter-forest-ref "$(SITTER_FOREST_REF)" \
+		--sitter-forest-go-ref "$(SITTER_FOREST_GO_REF)"
+
+.PHONY: deps-update-all
+deps-update-all:
+	@if [ -z "$(LIBGIT2_REF)" ] || [ -z "$(TREE_SITTER_BARE_REF)" ] || [ -z "$(SITTER_FOREST_REF)" ] || [ -z "$(SITTER_FOREST_GO_REF)" ]; then \
+		echo "Usage: make deps-update-all LIBGIT2_REF=<ref> TREE_SITTER_BARE_REF=<ref> SITTER_FOREST_REF=<ref> SITTER_FOREST_GO_REF=<ref>"; \
+		exit 1; \
+	fi
+	@./scripts/update-third-party.sh --mode all \
+		--libgit2-ref "$(LIBGIT2_REF)" \
+		--tree-sitter-bare-ref "$(TREE_SITTER_BARE_REF)" \
+		--sitter-forest-ref "$(SITTER_FOREST_REF)" \
+		--sitter-forest-go-ref "$(SITTER_FOREST_GO_REF)"
 
 # Build libgit2 as a static library (vendored in third_party/libgit2)
 .PHONY: libgit2

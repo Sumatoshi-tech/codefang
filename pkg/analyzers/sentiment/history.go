@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -76,7 +77,16 @@ func (s *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (s *HistoryAnalyzer) Description() string {
-	return "Classifies each new or changed comment per commit as containing positive or negative emotions."
+	return s.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (s *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/sentiment",
+		Description: "Classifies each new or changed comment per commit as containing positive or negative emotions.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -291,8 +301,8 @@ func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
-			UAST:             s.UAST,
-			Ticks:            s.Ticks,
+			UAST:             &plumbing.UASTChangesAnalyzer{},
+			Ticks:            &plumbing.TicksSinceStart{},
 			MinCommentLength: s.MinCommentLength,
 			Gap:              s.Gap,
 			commitsByTick:    s.commitsByTick, // shared read-only
@@ -318,6 +328,41 @@ func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 	}
 }
 
+// SequentialOnly returns false because sentiment analysis can be parallelized.
+func (s *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for parallel execution.
+func (s *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		UASTChanges: s.UAST.TransferChanges(),
+		Tick:        s.Ticks.Tick,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (s *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	s.UAST.SetChanges(ss.UASTChanges)
+	s.Ticks.Tick = ss.Tick
+}
+
+// ReleaseSnapshot releases UAST trees owned by the snapshot.
+func (s *HistoryAnalyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	for _, ch := range ss.UASTChanges {
+		node.ReleaseTree(ch.Before)
+		node.ReleaseTree(ch.After)
+	}
+}
+
 // mergeCommentsByTick combines comments from another analyzer.
 func (s *HistoryAnalyzer) mergeCommentsByTick(other map[int][]string) {
 	for tick, comments := range other {
@@ -334,8 +379,10 @@ func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return s.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return s.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return s.serializeBinary(result, writer)
 	default:
-		return s.serializeYAML(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -367,6 +414,20 @@ func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer)
 	_, err = writer.Write(data)
 	if err != nil {
 		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

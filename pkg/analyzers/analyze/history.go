@@ -88,3 +88,31 @@ type HistoryAnalyzer interface { //nolint:interfacebloat // interface methods ar
 	// Format can be: "yaml", "json", or "binary" (protobuf).
 	Serialize(result Report, format string, writer io.Writer) error
 }
+
+// PlumbingSnapshot is an opaque snapshot of plumbing state for one commit.
+// The framework treats this as an opaque value; concrete snapshot types
+// are defined in the plumbing package.
+type PlumbingSnapshot any
+
+// Parallelizable is optionally implemented by leaf analyzers that support
+// parallel execution via the framework's Fork/Merge worker pool.
+// The framework uses these methods instead of type-switching on concrete types.
+type Parallelizable interface { //nolint:iface // interface is implemented by leaf analyzers in other packages
+	// SequentialOnly returns true if this analyzer cannot be parallelized
+	// (e.g. it tracks cumulative state across all commits).
+	SequentialOnly() bool
+
+	// SnapshotPlumbing captures the current plumbing output state.
+	// Called once per commit after core analyzers have run.
+	// The returned value is opaque to the framework.
+	SnapshotPlumbing() PlumbingSnapshot
+
+	// ApplySnapshot restores plumbing state from a previously captured snapshot.
+	// Called on forked copies before Consume().
+	ApplySnapshot(snapshot PlumbingSnapshot)
+
+	// ReleaseSnapshot releases any resources owned by the snapshot
+	// (e.g. UAST trees). Called once per snapshot after all leaves
+	// in the worker have consumed it.
+	ReleaseSnapshot(snapshot PlumbingSnapshot)
+}

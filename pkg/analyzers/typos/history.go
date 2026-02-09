@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
@@ -64,7 +65,16 @@ func (t *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (t *HistoryAnalyzer) Description() string {
-	return "Extracts typo-fix identifier pairs from source code in commit diffs."
+	return t.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (t *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/typos",
+		Description: "Extracts typo-fix identifier pairs from source code in commit diffs.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -295,8 +305,10 @@ func (t *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
+			UAST:                   &plumbing.UASTChangesAnalyzer{},
+			BlobCache:              &plumbing.BlobCacheAnalyzer{},
+			FileDiff:               &plumbing.FileDiffAnalyzer{},
 			MaximumAllowedDistance: t.MaximumAllowedDistance,
-			// Dependencies (UAST, FileDiff, BlobCache) are injected by framework.
 		}
 		clone.lcontext = &levenshtein.Context{}
 		clone.typos = nil // Fresh accumulator for this fork.
@@ -318,6 +330,43 @@ func (t *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 	}
 }
 
+// SequentialOnly returns false because typo detection can be parallelized.
+func (t *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for parallel execution.
+func (t *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		UASTChanges: t.UAST.TransferChanges(),
+		BlobCache:   t.BlobCache.Cache,
+		FileDiffs:   t.FileDiff.FileDiffs,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (t *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	t.UAST.SetChanges(ss.UASTChanges)
+	t.BlobCache.Cache = ss.BlobCache
+	t.FileDiff.FileDiffs = ss.FileDiffs
+}
+
+// ReleaseSnapshot releases UAST trees owned by the snapshot.
+func (t *HistoryAnalyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	for _, ch := range ss.UASTChanges {
+		node.ReleaseTree(ch.Before)
+		node.ReleaseTree(ch.After)
+	}
+}
+
 // Serialize writes the analysis result to the given writer.
 func (t *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
 	switch format {
@@ -327,8 +376,10 @@ func (t *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return t.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return t.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return t.serializeBinary(result, writer)
 	default:
-		return t.serializeYAML(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -365,6 +416,20 @@ func (t *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer)
 	_, err = writer.Write(data)
 	if err != nil {
 		return fmt.Errorf("write yaml: %w", err)
+	}
+
+	return nil
+}
+
+func (t *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

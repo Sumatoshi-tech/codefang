@@ -24,7 +24,7 @@ type Thresholds = map[string]map[string]any
 type Analyzer interface {
 	Name() string
 	Flag() string
-	Description() string
+	Descriptor() Descriptor
 
 	// Configuration.
 	ListConfigurationOptions() []pipeline.ConfigurationOption
@@ -32,10 +32,9 @@ type Analyzer interface {
 }
 
 // StaticAnalyzer interface defines the contract for UAST-based static analysis.
-type StaticAnalyzer interface { //nolint:interfacebloat // interface methods are all needed.
+type StaticAnalyzer interface { //nolint:interfacebloat // formatting and aggregation methods are required by CLI/report contracts.
 	Analyzer
 
-	// Core analysis methods.
 	Analyze(root *node.Node) (Report, error)
 	Thresholds() Thresholds
 
@@ -45,6 +44,9 @@ type StaticAnalyzer interface { //nolint:interfacebloat // interface methods are
 	// Formatting methods.
 	FormatReport(report Report, writer io.Writer) error
 	FormatReportJSON(report Report, writer io.Writer) error
+	FormatReportYAML(report Report, writer io.Writer) error
+	FormatReportPlot(report Report, writer io.Writer) error
+	FormatReportBinary(report Report, writer io.Writer) error
 }
 
 // VisitorProvider enables single-pass traversal optimization.

@@ -102,20 +102,8 @@ func (b *CachedBlob) Clone() *CachedBlob {
 // CountLines returns the number of lines in the blob or (0, ErrBinary) if it is binary.
 // The result is cached after the first call for efficiency.
 func (b *CachedBlob) CountLines() (int, error) {
-	// Optimization: If lineCount is already set (non-zero), return it.
-	// 0 is ambiguous (empty file vs not computed).
-	// But we can check if lineCount != 0.
-	if b.lineCount != 0 {
-		if b.lineCount == lineCountBinary {
-			return 0, ErrBinary
-		}
-		return b.lineCount, nil
-	}
-
 	b.lineCountOnce.Do(func() {
-		if b.lineCount == 0 { // Double check
-			b.lineCount = b.computeLineCount()
-		}
+		b.lineCount = b.computeLineCount()
 	})
 
 	if b.lineCount == lineCountBinary {

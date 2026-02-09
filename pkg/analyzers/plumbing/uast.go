@@ -51,7 +51,16 @@ func (c *UASTChangesAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (c *UASTChangesAnalyzer) Description() string {
-	return "Extracts UAST changes from file changes in commits."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *UASTChangesAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		c.Name(),
+		"Extracts UAST changes from file changes in commits.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

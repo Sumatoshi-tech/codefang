@@ -9,6 +9,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 )
 
 // Configuration constants for Halstead report formatting.
@@ -94,6 +95,21 @@ func (rf *ReportFormatter) FormatReportYAML(report analyze.Report, w io.Writer) 
 	_, err = w.Write(data)
 	if err != nil {
 		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportBinary formats the analysis report as binary envelope.
+func (rf *ReportFormatter) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, w)
+	if err != nil {
+		return fmt.Errorf("formatreportbinary: %w", err)
 	}
 
 	return nil

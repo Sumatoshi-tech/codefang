@@ -278,13 +278,10 @@ func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 		"commits_by_tick":  map[int][]gitlib.Hash{0: {gitlib.NewHash("c1")}},
 	}
 
-	// Default format should use YAML
+	// Unsupported format should return validation error.
 	var buf bytes.Buffer
 	err := s.Serialize(report, "unknown", &buf)
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "time_series:")
+	require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 }
 
 func TestHistoryAnalyzer_Misc(t *testing.T) {
