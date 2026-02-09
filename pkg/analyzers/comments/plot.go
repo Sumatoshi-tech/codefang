@@ -102,13 +102,13 @@ func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, 
 // reportValue looks up a key in the report, falling back to the "aggregate" sub-map
 // that appears after binary encode -> JSON decode round-trip.
 func reportValue(report analyze.Report, key string) (any, bool) {
-	if v, ok := report[key]; ok {
-		return v, true
+	if val, found := report[key]; found {
+		return val, true
 	}
 
-	if agg, ok := report["aggregate"].(map[string]any); ok {
-		if v, ok := agg[key]; ok {
-			return v, true
+	if agg, aggOK := report["aggregate"].(map[string]any); aggOK {
+		if aggVal, aggFound := agg[key]; aggFound {
+			return aggVal, true
 		}
 	}
 
@@ -167,17 +167,17 @@ func getLinesValue(fn map[string]any) int {
 
 func isDocumented(fn map[string]any) bool {
 	// In-memory report uses "assessment" field.
-	if assessment, ok := fn["assessment"].(string); ok {
+	if assessment, assessOK := fn["assessment"].(string); assessOK {
 		return assessment == "✅ Well Documented"
 	}
 
 	// Binary-decoded ComputedMetrics uses "is_documented" bool.
-	if documented, ok := fn["is_documented"].(bool); ok {
+	if documented, docOK := fn["is_documented"].(bool); docOK {
 		return documented
 	}
 
 	// Binary-decoded ComputedMetrics uses "status" string.
-	if status, ok := fn["status"].(string); ok {
+	if status, statusOK := fn["status"].(string); statusOK {
 		return status == "Well Documented"
 	}
 
@@ -187,12 +187,14 @@ func isDocumented(fn map[string]any) bool {
 // getFunctionName returns the function name from a function record,
 // handling both in-memory ("function") and binary-decoded ("name") keys.
 func getFunctionName(fn map[string]any) string {
-	if name, ok := fn["function"].(string); ok {
-		return name
+	if fnName, fnOK := fn["function"].(string); fnOK {
+		return fnName
 	}
-	if name, ok := fn["name"].(string); ok {
-		return name
+
+	if altName, altOK := fn["name"].(string); altOK {
+		return altName
 	}
+
 	return "unknown"
 }
 

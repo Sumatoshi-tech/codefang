@@ -190,28 +190,47 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 		go func() {
 			defer wg.Done()
 
-			for change := range jobs {
-				blob := cache[change.To.Hash]
-				if blob == nil || blob.Size() > int64(h.MaxFileSize) {
-					continue
-				}
-
-				file, err := h.extractImports(change.To.Name, blob.Data)
-				if err == nil {
-					mu.Lock()
-
-					extracted[change.To.Hash] = *file
-
-					mu.Unlock()
-				}
-			}
+			h.processImportJobs(jobs, cache, &mu, extracted)
 		}()
 	}
 
-	for _, change := range changes {
-		action := change.Action
+	dispatchImportJobs(changes, jobs)
+	wg.Wait()
 
-		switch action {
+	return extracted
+}
+
+// processImportJobs reads changes from the jobs channel, extracts imports from
+// each blob, and stores results in the extracted map under lock.
+func (h *HistoryAnalyzer) processImportJobs(
+	jobs <-chan *gitlib.Change,
+	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
+	mu *sync.Mutex,
+	extracted map[gitlib.Hash]importmodel.File,
+) {
+	for change := range jobs {
+		blob := cache[change.To.Hash]
+		if blob == nil || blob.Size() > int64(h.MaxFileSize) {
+			continue
+		}
+
+		file, err := h.extractImports(change.To.Name, blob.Data)
+		if err != nil {
+			continue
+		}
+
+		mu.Lock()
+
+		extracted[change.To.Hash] = *file
+
+		mu.Unlock()
+	}
+}
+
+// dispatchImportJobs sends modified or inserted changes to the jobs channel.
+func dispatchImportJobs(changes gitlib.Changes, jobs chan<- *gitlib.Change) {
+	for _, change := range changes {
+		switch change.Action {
 		case gitlib.Modify, gitlib.Insert:
 			jobs <- change
 		case gitlib.Delete:
@@ -220,9 +239,6 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 	}
 
 	close(jobs)
-	wg.Wait()
-
-	return extracted
 }
 
 // aggregateImports folds the per-blob import data into the analyzer's
@@ -275,6 +291,9 @@ func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 
 // SequentialOnly returns false because imports analysis can be parallelized.
 func (h *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// CPUHeavy returns false because import tracking is lightweight bookkeeping.
+func (h *HistoryAnalyzer) CPUHeavy() bool { return false }
 
 // SnapshotPlumbing captures the current plumbing output state for one commit.
 func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {

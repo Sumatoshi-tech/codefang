@@ -1,13 +1,55 @@
 package framework_test
 
 import (
+	"io"
 	"runtime/debug"
 	"testing"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
+
+// stubLeaf is a minimal HistoryAnalyzer + Parallelizable stub for testing dispatch logic.
+type stubLeaf struct {
+	name           string
+	sequentialOnly bool
+	cpuHeavy       bool
+	consumed       int
+}
+
+func (s *stubLeaf) Name() string         { return s.name }
+func (s *stubLeaf) Flag() string         { return s.name }
+func (s *stubLeaf) SequentialOnly() bool { return s.sequentialOnly }
+func (s *stubLeaf) CPUHeavy() bool       { return s.cpuHeavy }
+
+func (s *stubLeaf) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{ID: s.name, Description: s.name, Mode: analyze.ModeHistory}
+}
+
+func (s *stubLeaf) ListConfigurationOptions() []pipeline.ConfigurationOption { return nil }
+func (s *stubLeaf) Configure(_ map[string]any) error                         { return nil }
+
+func (s *stubLeaf) Initialize(_ *gitlib.Repository) error { return nil }
+func (s *stubLeaf) Consume(_ *analyze.Context) error      { s.consumed++; return nil }
+func (s *stubLeaf) Finalize() (analyze.Report, error)     { return analyze.Report{}, nil }
+
+func (s *stubLeaf) Fork(n int) []analyze.HistoryAnalyzer {
+	forks := make([]analyze.HistoryAnalyzer, n)
+	for i := range n {
+		forks[i] = &stubLeaf{name: s.name, sequentialOnly: s.sequentialOnly, cpuHeavy: s.cpuHeavy}
+	}
+
+	return forks
+}
+
+func (s *stubLeaf) Merge(_ []analyze.HistoryAnalyzer)                       {}
+func (s *stubLeaf) Serialize(_ analyze.Report, _ string, _ io.Writer) error { return nil }
+func (s *stubLeaf) SnapshotPlumbing() analyze.PlumbingSnapshot              { return nil }
+func (s *stubLeaf) ApplySnapshot(_ analyze.PlumbingSnapshot)                {}
+func (s *stubLeaf) ReleaseSnapshot(_ analyze.PlumbingSnapshot)              {}
 
 func TestRunner_NewRunner(t *testing.T) {
 	repo := framework.NewTestRepo(t)
@@ -233,4 +275,120 @@ func TestResolveMemoryLimit_UnknownSystem(t *testing.T) {
 	if got != want {
 		t.Fatalf("memory limit = %d, want %d", got, want)
 	}
+}
+
+func TestSplitLeaves_ThreeGroups(t *testing.T) {
+	serial := &stubLeaf{name: "serial", sequentialOnly: true, cpuHeavy: false}
+	lightweight := &stubLeaf{name: "lightweight", sequentialOnly: false, cpuHeavy: false}
+	heavy := &stubLeaf{name: "heavy", sequentialOnly: false, cpuHeavy: true}
+
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("x.txt", "x")
+	repo.Commit("init")
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	// Core placeholder at index 0; leaves start at CoreCount=1.
+	core := &plumbing.TreeDiffAnalyzer{}
+	runner := framework.NewRunner(libRepo, repo.Path(), core, serial, lightweight, heavy)
+	runner.CoreCount = 1
+
+	cpuHeavy, lw, ser := framework.SplitLeavesForTest(runner)
+
+	if len(cpuHeavy) != 1 || cpuHeavy[0].Name() != "heavy" {
+		t.Errorf("cpuHeavy = %v, want [heavy]", analyzerNames(cpuHeavy))
+	}
+
+	if len(lw) != 1 || lw[0].Name() != "lightweight" {
+		t.Errorf("lightweight = %v, want [lightweight]", analyzerNames(lw))
+	}
+
+	if len(ser) != 1 || ser[0].Name() != "serial" {
+		t.Errorf("serial = %v, want [serial]", analyzerNames(ser))
+	}
+}
+
+func TestSplitLeaves_NoCPUHeavy(t *testing.T) {
+	serial := &stubLeaf{name: "serial", sequentialOnly: true, cpuHeavy: false}
+	lightweight := &stubLeaf{name: "lightweight", sequentialOnly: false, cpuHeavy: false}
+
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("x.txt", "x")
+	repo.Commit("init")
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	core := &plumbing.TreeDiffAnalyzer{}
+	runner := framework.NewRunner(libRepo, repo.Path(), core, serial, lightweight)
+	runner.CoreCount = 1
+
+	cpuHeavy, lw, ser := framework.SplitLeavesForTest(runner)
+
+	if len(cpuHeavy) != 0 {
+		t.Errorf("cpuHeavy = %v, want empty", analyzerNames(cpuHeavy))
+	}
+
+	if len(lw) != 1 || lw[0].Name() != "lightweight" {
+		t.Errorf("lightweight = %v, want [lightweight]", analyzerNames(lw))
+	}
+
+	if len(ser) != 1 || ser[0].Name() != "serial" {
+		t.Errorf("serial = %v, want [serial]", analyzerNames(ser))
+	}
+}
+
+func TestSplitLeaves_AllCPUHeavy(t *testing.T) {
+	heavy1 := &stubLeaf{name: "heavy1", sequentialOnly: false, cpuHeavy: true}
+	heavy2 := &stubLeaf{name: "heavy2", sequentialOnly: false, cpuHeavy: true}
+
+	repo := framework.NewTestRepo(t)
+	defer repo.Close()
+
+	repo.CreateFile("x.txt", "x")
+	repo.Commit("init")
+
+	libRepo, err := gitlib.OpenRepository(repo.Path())
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	defer libRepo.Free()
+
+	core := &plumbing.TreeDiffAnalyzer{}
+	runner := framework.NewRunner(libRepo, repo.Path(), core, heavy1, heavy2)
+	runner.CoreCount = 1
+
+	cpuHeavy, lw, ser := framework.SplitLeavesForTest(runner)
+
+	if len(cpuHeavy) != 2 {
+		t.Errorf("cpuHeavy = %v, want [heavy1, heavy2]", analyzerNames(cpuHeavy))
+	}
+
+	if len(lw) != 0 {
+		t.Errorf("lightweight = %v, want empty", analyzerNames(lw))
+	}
+
+	if len(ser) != 0 {
+		t.Errorf("serial = %v, want empty", analyzerNames(ser))
+	}
+}
+
+func analyzerNames(analyzers []analyze.HistoryAnalyzer) []string {
+	names := make([]string, len(analyzers))
+	for i, a := range analyzers {
+		names[i] = a.Name()
+	}
+
+	return names
 }

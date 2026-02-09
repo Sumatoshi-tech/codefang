@@ -102,6 +102,12 @@ type Parallelizable interface { //nolint:iface // interface is implemented by le
 	// (e.g. it tracks cumulative state across all commits).
 	SequentialOnly() bool
 
+	// CPUHeavy returns true if this analyzer's Consume() is CPU-intensive
+	// (e.g. UAST processing) and benefits from W parallel workers.
+	// Lightweight analyzers return false and run on the main goroutine
+	// to avoid fork/merge overhead.
+	CPUHeavy() bool
+
 	// SnapshotPlumbing captures the current plumbing output state.
 	// Called once per commit after core analyzers have run.
 	// The returned value is opaque to the framework.

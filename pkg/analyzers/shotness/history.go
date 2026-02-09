@@ -522,6 +522,9 @@ func (s *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
 // SequentialOnly returns false because shotness analysis can be parallelized.
 func (s *HistoryAnalyzer) SequentialOnly() bool { return false }
 
+// CPUHeavy returns true because shotness analysis performs UAST processing per commit.
+func (s *HistoryAnalyzer) CPUHeavy() bool { return true }
+
 // SnapshotPlumbing captures the current plumbing output state for parallel execution.
 func (s *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{

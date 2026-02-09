@@ -103,7 +103,7 @@ func buildStaticImportsBarChart(report analyze.Report, metrics *ComputedMetrics)
 		counts[name] = int64(count)
 	}
 
-	labels, data := topImports(counts, topImportsLimit)
+	labels, data := topImports(counts)
 	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
@@ -190,10 +190,7 @@ func buildDependencyRiskTable(metrics *ComputedMetrics) *plotpage.Table {
 		return deps[i].Path < deps[j].Path
 	})
 
-	limit := len(deps)
-	if limit > maxDependencyRiskRows {
-		limit = maxDependencyRiskRows
-	}
+	limit := min(len(deps), maxDependencyRiskRows)
 
 	for _, dep := range deps[:limit] {
 		table.AddRow(dep.Path, dep.RiskLevel, dep.Reason)

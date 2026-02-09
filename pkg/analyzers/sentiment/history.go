@@ -331,6 +331,9 @@ func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 // SequentialOnly returns false because sentiment analysis can be parallelized.
 func (s *HistoryAnalyzer) SequentialOnly() bool { return false }
 
+// CPUHeavy returns true because sentiment analysis performs UAST processing per commit.
+func (s *HistoryAnalyzer) CPUHeavy() bool { return true }
+
 // SnapshotPlumbing captures the current plumbing output state for parallel execution.
 func (s *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{

@@ -333,6 +333,9 @@ func (t *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 // SequentialOnly returns false because typo detection can be parallelized.
 func (t *HistoryAnalyzer) SequentialOnly() bool { return false }
 
+// CPUHeavy returns true because typo detection performs UAST processing per commit.
+func (t *HistoryAnalyzer) CPUHeavy() bool { return true }
+
 // SnapshotPlumbing captures the current plumbing output state for parallel execution.
 func (t *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{

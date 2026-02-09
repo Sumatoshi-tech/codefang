@@ -69,7 +69,7 @@ func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, err
 }
 
 // buildChart creates a bar chart showing the most modified files.
-func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
+func (h *Analyzer) buildChart(report analyze.Report) (chart *charts.Bar, buildErr error) {
 	labels, data, err := extractFileHistoryData(report)
 	if err != nil {
 		return nil, err
@@ -85,48 +85,26 @@ func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 	return createFileHistoryBarChart(labels, data, co, palette), nil
 }
 
+// fileChurnItem holds a file path and its commit count for sorting.
+type fileChurnItem struct {
+	path        string
+	commitCount int
+}
+
 // extractFileHistoryData extracts file names and commit counts from the report,
 // handling both in-memory and binary-decoded JSON key formats.
-func extractFileHistoryData(report analyze.Report) ([]string, []int, error) {
-	type kv struct {
-		k string
-		v int
-	}
-
-	var items []kv
+func extractFileHistoryData(report analyze.Report) (labels []string, data []int, err error) {
+	var items []fileChurnItem
 
 	// Try in-memory key first.
-	if files, ok := report["Files"].(map[string]FileHistory); ok {
+	if files, filesOK := report["Files"].(map[string]FileHistory); filesOK {
 		for name, hist := range files {
-			items = append(items, kv{name, len(hist.Hashes)})
+			items = append(items, fileChurnItem{name, len(hist.Hashes)})
 		}
 	} else {
-		// Fallback: binary-decoded "file_churn" is []any of map[string]any
-		// with "path" and "commit_count" fields.
-		rawChurn, ok := report["file_churn"]
-		if !ok {
-			return nil, nil, ErrInvalidFiles
-		}
-		if rawChurn == nil {
-			return nil, nil, nil
-		}
-		churnList, ok := rawChurn.([]any)
-		if !ok {
-			return nil, nil, ErrInvalidFiles
-		}
-		if len(churnList) == 0 {
-			return nil, nil, nil
-		}
-		for _, item := range churnList {
-			m, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			path, _ := m["path"].(string)
-			commitCount := fileHistoryToInt(m["commit_count"])
-			if path != "" {
-				items = append(items, kv{path, commitCount})
-			}
+		items, err = extractFileChurnFromBinary(report)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -134,21 +112,59 @@ func extractFileHistoryData(report analyze.Report) ([]string, []int, error) {
 		return nil, nil, nil
 	}
 
-	sort.Slice(items, func(i, j int) bool { return items[i].v > items[j].v })
+	sort.Slice(items, func(i, j int) bool { return items[i].commitCount > items[j].commitCount })
 
 	if len(items) > topFilesLimit {
 		items = items[:topFilesLimit]
 	}
 
-	labels := make([]string, len(items))
-	data := make([]int, len(items))
+	labels = make([]string, len(items))
+	data = make([]int, len(items))
 
 	for i, item := range items {
-		labels[i] = item.k
-		data[i] = item.v
+		labels[i] = item.path
+		data[i] = item.commitCount
 	}
 
 	return labels, data, nil
+}
+
+// extractFileChurnFromBinary extracts file churn data from the binary-decoded report format.
+// The "file_churn" key contains []any of map[string]any with "path" and "commit_count" fields.
+func extractFileChurnFromBinary(report analyze.Report) (items []fileChurnItem, err error) {
+	rawChurn, churnOK := report["file_churn"]
+	if !churnOK {
+		return nil, ErrInvalidFiles
+	}
+
+	if rawChurn == nil {
+		return nil, nil
+	}
+
+	churnList, listOK := rawChurn.([]any)
+	if !listOK {
+		return nil, ErrInvalidFiles
+	}
+
+	if len(churnList) == 0 {
+		return nil, nil
+	}
+
+	for _, item := range churnList {
+		m, mOK := item.(map[string]any)
+		if !mOK {
+			continue
+		}
+
+		filePath, _ := m["path"].(string) //nolint:errcheck // type assertion, not error
+		count := fileHistoryToInt(m["commit_count"])
+
+		if filePath != "" {
+			items = append(items, fileChurnItem{filePath, count})
+		}
+	}
+
+	return items, nil
 }
 
 // fileHistoryToInt converts a numeric value (int, float64) to int.
@@ -194,7 +210,7 @@ func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOp
 	return bar
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // registration pattern
 	analyze.RegisterPlotSections("history/file-history", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).GenerateSections(report)
 	})

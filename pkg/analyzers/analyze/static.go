@@ -92,6 +92,22 @@ func (svc *StaticService) collectFiles(rootPath string) ([]string, error) {
 	return files, nil
 }
 
+// workerState holds shared mutable state for parallel file analysis workers.
+type workerState struct {
+	mu       sync.Mutex
+	firstErr error
+}
+
+// setError records the first error encountered by any worker.
+func (ws *workerState) setError(err error) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	if ws.firstErr == nil {
+		ws.firstErr = err
+	}
+}
+
 // analyzeFilesParallel processes files using a pool of workers, each with its own parser.
 func (svc *StaticService) analyzeFilesParallel(
 	files []string,
@@ -100,62 +116,80 @@ func (svc *StaticService) analyzeFilesParallel(
 ) error {
 	numWorkers := max(1, runtime.NumCPU())
 	fileChan := make(chan string, numWorkers)
+	state := &workerState{}
 
-	var mu sync.Mutex
 	var wg sync.WaitGroup
-	var firstErr error
 
 	wg.Add(numWorkers)
 
 	for range numWorkers {
-		go func() {
-			defer wg.Done()
-
-			parser, parserErr := uast.NewParser()
-			if parserErr != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = fmt.Errorf("create worker parser: %w", parserErr)
-				}
-				mu.Unlock()
-
-				for range fileChan {
-				}
-
-				return
-			}
-
-			for path := range fileChan {
-				reportMap, analyzeErr := svc.analyzeFile(path, parser, analyzersToRun)
-				if analyzeErr != nil {
-					if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
-						continue
-					}
-
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = analyzeErr
-					}
-					mu.Unlock()
-
-					return
-				}
-
-				mu.Lock()
-				aggregateFolderAnalysis(reportMap, aggregators)
-				mu.Unlock()
-			}
-		}()
+		go svc.fileWorker(&wg, fileChan, analyzersToRun, aggregators, state)
 	}
 
-	for _, path := range files {
-		fileChan <- path
+	for _, filePath := range files {
+		fileChan <- filePath
 	}
 
 	close(fileChan)
 	wg.Wait()
 
-	return firstErr
+	return state.firstErr
+}
+
+// fileWorker is the body of each parallel file analysis goroutine.
+func (svc *StaticService) fileWorker(
+	wg *sync.WaitGroup,
+	fileChan <-chan string,
+	analyzersToRun []string,
+	aggregators map[string]ResultAggregator,
+	state *workerState,
+) {
+	defer wg.Done()
+
+	parser, parserErr := uast.NewParser()
+	if parserErr != nil {
+		state.setError(fmt.Errorf("create worker parser: %w", parserErr))
+
+		//nolint:revive // drain channel intentionally
+		for range fileChan {
+		}
+
+		return
+	}
+
+	for filePath := range fileChan {
+		stopped := svc.processFile(filePath, parser, analyzersToRun, aggregators, state)
+		if stopped {
+			return
+		}
+	}
+}
+
+// processFile analyzes a single file and aggregates the results.
+// Returns true if the worker should stop due to a fatal error.
+func (svc *StaticService) processFile(
+	filePath string,
+	parser *uast.Parser,
+	analyzersToRun []string,
+	aggregators map[string]ResultAggregator,
+	state *workerState,
+) bool {
+	reportMap, analyzeErr := svc.analyzeFile(filePath, parser, analyzersToRun)
+	if analyzeErr != nil {
+		if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
+			return false
+		}
+
+		state.setError(analyzeErr)
+
+		return true
+	}
+
+	state.mu.Lock()
+	aggregateFolderAnalysis(reportMap, aggregators)
+	state.mu.Unlock()
+
+	return false
 }
 
 // ShouldSkipFolderNode decides whether a folder walk entry should be skipped.

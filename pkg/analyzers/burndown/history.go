@@ -764,6 +764,9 @@ func (b *HistoryAnalyzer) mergeTicks(other *HistoryAnalyzer) {
 // line state across all commits and cannot be parallelized.
 func (b *HistoryAnalyzer) SequentialOnly() bool { return true }
 
+// CPUHeavy returns false because burndown tracks line ownership without UAST processing.
+func (b *HistoryAnalyzer) CPUHeavy() bool { return false }
+
 // SnapshotPlumbing captures the current plumbing state.
 func (b *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{

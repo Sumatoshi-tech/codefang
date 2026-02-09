@@ -8,6 +8,7 @@ import (
 
 	git2go "github.com/libgit2/git2go/v34"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -252,4 +253,9 @@ func RunnerBallastSizeForTest(runner *Runner) int {
 // ResolveMemoryLimitForTest exposes memory limit resolution logic.
 func ResolveMemoryLimitForTest(totalMemoryBytes uint64) uint64 {
 	return resolveMemoryLimit(totalMemoryBytes)
+}
+
+// SplitLeavesForTest exposes the three-group leaf split for testing.
+func SplitLeavesForTest(runner *Runner) (cpuHeavy, lightweight, serial []analyze.HistoryAnalyzer) {
+	return runner.splitLeaves()
 }

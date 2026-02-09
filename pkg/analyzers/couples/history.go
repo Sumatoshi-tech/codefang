@@ -231,12 +231,15 @@ func (c *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	files, people := c.propagateRenames(c.currentFiles())
 	filesSequence, filesIndex := buildFilesIndex(files)
 	filesLines := c.computeFilesLines(filesSequence)
+
 	// Use the actual people count from accumulated data rather than PeopleNumber,
 	// which may be 0 when IdentityDetector.PeopleCount fact was not provided.
 	effectivePeopleNumber := c.PeopleNumber
+
 	if len(people) > effectivePeopleNumber+1 {
 		effectivePeopleNumber = len(people) - 1
 	}
+
 	peopleMatrix, peopleFiles := computePeopleMatrix(people, filesIndex, effectivePeopleNumber)
 	filesMatrix := computeFilesMatrix(c.files, filesSequence, filesIndex)
 
@@ -372,6 +375,9 @@ func countNewlines(p []byte) int {
 // SequentialOnly returns false because couples analysis can be parallelized.
 func (c *HistoryAnalyzer) SequentialOnly() bool { return false }
 
+// CPUHeavy returns false because coupling analysis is lightweight file-pair bookkeeping.
+func (c *HistoryAnalyzer) CPUHeavy() bool { return false }
+
 // SnapshotPlumbing captures the current plumbing output state for one commit.
 func (c *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{
@@ -463,9 +469,11 @@ func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
 	if len(other) > len(c.people) {
 		grown := make([]map[string]int, len(other))
 		copy(grown, c.people)
+
 		for i := len(c.people); i < len(other); i++ {
 			grown[i] = make(map[string]int)
 		}
+
 		c.people = grown
 	}
 
@@ -574,26 +582,34 @@ func (c *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) 
 
 func (c *HistoryAnalyzer) currentFiles() map[string]bool {
 	files := map[string]bool{}
-	if c.lastCommit == nil { //nolint:nestif // complex tree traversal with nested iteration
+
+	if c.lastCommit == nil {
 		for key := range c.files {
 			files[key] = true
 		}
-	} else {
-		tree, treeErr := c.lastCommit.Tree()
-		if treeErr == nil {
-			iterErr := tree.Files().ForEach(func(fobj *gitlib.File) error {
-				files[fobj.Name] = true
 
-				return nil
-			})
-			// Best-effort enumeration; callback never returns an error.
-			if iterErr != nil {
-				return files
-			}
-		}
+		return files
 	}
 
+	c.collectTreeFiles(files)
+
 	return files
+}
+
+// collectTreeFiles populates the files map from the last commit's tree.
+// Best-effort: errors are silently ignored since this is a best-effort enumeration.
+func (c *HistoryAnalyzer) collectTreeFiles(files map[string]bool) {
+	tree, treeErr := c.lastCommit.Tree()
+	if treeErr != nil {
+		return
+	}
+
+	//nolint:errcheck // best-effort enumeration; errors are intentionally ignored
+	tree.Files().ForEach(func(fobj *gitlib.File) error {
+		files[fobj.Name] = true
+
+		return nil
+	})
 }
 
 func (c *HistoryAnalyzer) propagateRenames(

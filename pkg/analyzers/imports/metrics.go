@@ -28,18 +28,22 @@ type ReportData struct {
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
-	if v, ok := report["imports"].([]string); ok {
+	switch v := report["imports"].(type) {
+	case []string:
 		data.Imports = v
-	} else if items, ok := report["import_list"]; ok {
+	default:
 		// After binary encode -> JSON decode, "imports" becomes "import_list"
 		// and values are structured objects with a "path" field.
-		data.Imports = extractImportPaths(items)
+		if items, listOK := report["import_list"]; listOK {
+			data.Imports = extractImportPaths(items)
+		}
 	}
 
-	if v, ok := report["count"].(int); ok {
-		data.Count = v
-	} else if v, ok := report["count"].(float64); ok {
-		data.Count = int(v)
+	switch cv := report["count"].(type) {
+	case int:
+		data.Count = cv
+	case float64:
+		data.Count = int(cv)
 	}
 
 	return data, nil
