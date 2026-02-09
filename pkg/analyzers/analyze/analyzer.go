@@ -16,6 +16,34 @@ import (
 // Report is a map of string keys to arbitrary values representing analysis output.
 type Report = map[string]any
 
+// ReportFunctionList extracts a []map[string]any from a report key.
+// Handles both direct typed values and JSON-decoded []any slices.
+func ReportFunctionList(report Report, key string) ([]map[string]any, bool) {
+	val, exists := report[key]
+	if !exists {
+		return nil, false
+	}
+
+	if typed, ok := val.([]map[string]any); ok {
+		return typed, true
+	}
+
+	raw, ok := val.([]any)
+	if !ok {
+		return nil, false
+	}
+
+	result := make([]map[string]any, 0, len(raw))
+
+	for _, item := range raw {
+		if m, mOK := item.(map[string]any); mOK {
+			result = append(result, m)
+		}
+	}
+
+	return result, len(result) > 0
+}
+
 // Thresholds represents color-coded thresholds for multiple metrics
 // Structure: {"metric_name": {"red": value, "yellow": value, "green": value}}.
 type Thresholds = map[string]map[string]any

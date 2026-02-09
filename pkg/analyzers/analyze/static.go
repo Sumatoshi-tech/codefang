@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -46,50 +48,114 @@ func NewStaticService(analyzers []StaticAnalyzer) *StaticService {
 }
 
 // AnalyzeFolder runs static analyzers for supported files in a folder tree.
+// Files are discovered sequentially, then analyzed in parallel using a worker pool.
 func (svc *StaticService) AnalyzeFolder(rootPath string, analyzerList []string) (map[string]Report, error) {
 	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
 	aggregators := svc.initAggregators(analyzersToRun)
 
-	parser, err := uast.NewParser()
+	files, err := svc.collectFiles(rootPath)
 	if err != nil {
-		return nil, fmt.Errorf("create parser: %w", err)
+		return nil, err
 	}
 
-	err = filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
-		return svc.handleAnalyzeFolderPath(path, entry, walkErr, parser, analyzersToRun, aggregators)
-	})
+	err = svc.analyzeFilesParallel(files, analyzersToRun, aggregators)
 	if err != nil {
-		return nil, fmt.Errorf("walk %s: %w", rootPath, err)
+		return nil, err
 	}
 
 	return buildFinalResults(aggregators), nil
 }
 
-func (svc *StaticService) handleAnalyzeFolderPath(
-	path string,
-	entry os.DirEntry,
-	walkErr error,
-	parser *uast.Parser,
+// collectFiles walks the directory tree and returns paths of supported files.
+func (svc *StaticService) collectFiles(rootPath string) ([]string, error) {
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil, fmt.Errorf("create parser: %w", err)
+	}
+
+	var files []string
+
+	err = filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
+		skip, skipErr := ShouldSkipFolderNode(path, entry, walkErr, parser)
+		if skip || skipErr != nil {
+			return skipErr
+		}
+
+		files = append(files, path)
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk %s: %w", rootPath, err)
+	}
+
+	return files, nil
+}
+
+// analyzeFilesParallel processes files using a pool of workers, each with its own parser.
+func (svc *StaticService) analyzeFilesParallel(
+	files []string,
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
 ) error {
-	skip, err := ShouldSkipFolderNode(path, entry, walkErr, parser)
-	if skip || err != nil {
-		return err
+	numWorkers := max(1, runtime.NumCPU())
+	fileChan := make(chan string, numWorkers)
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr error
+
+	wg.Add(numWorkers)
+
+	for range numWorkers {
+		go func() {
+			defer wg.Done()
+
+			parser, parserErr := uast.NewParser()
+			if parserErr != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("create worker parser: %w", parserErr)
+				}
+				mu.Unlock()
+
+				for range fileChan {
+				}
+
+				return
+			}
+
+			for path := range fileChan {
+				reportMap, analyzeErr := svc.analyzeFile(path, parser, analyzersToRun)
+				if analyzeErr != nil {
+					if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
+						continue
+					}
+
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = analyzeErr
+					}
+					mu.Unlock()
+
+					return
+				}
+
+				mu.Lock()
+				aggregateFolderAnalysis(reportMap, aggregators)
+				mu.Unlock()
+			}
+		}()
 	}
 
-	reportMap, err := svc.analyzeFile(path, parser, analyzersToRun)
-	if err != nil {
-		if errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-
-		return err
+	for _, path := range files {
+		fileChan <- path
 	}
 
-	aggregateFolderAnalysis(reportMap, aggregators)
+	close(fileChan)
+	wg.Wait()
 
-	return nil
+	return firstErr
 }
 
 // ShouldSkipFolderNode decides whether a folder walk entry should be skipped.

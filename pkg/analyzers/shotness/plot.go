@@ -100,17 +100,91 @@ func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 }
 
 func extractShotnessData(report analyze.Report) ([]NodeSummary, []map[int]int, error) {
-	nodes, ok := report["Nodes"].([]NodeSummary)
+	nodes, nodesOK := report["Nodes"].([]NodeSummary)
+	counters, countersOK := report["Counters"].([]map[int]int)
+	if nodesOK && countersOK {
+		return nodes, counters, nil
+	}
+
+	// Fallback: after binary encode -> JSON decode, "Nodes" becomes "node_hotness"
+	// ([]any of map[string]any with name/type/file/change_count/coupled_nodes/hotness_score)
+	// and "Counters" becomes "node_coupling" ([]any of map[string]any with
+	// node1_name/node1_file/node2_name/node2_file/co_changes).
+	// Also "hotspot_nodes" has change_count per node.
+	rawHotness, hotnessOK := report["node_hotness"]
+	if !hotnessOK {
+		if !nodesOK {
+			return nil, nil, ErrInvalidNodes
+		}
+		return nil, nil, ErrInvalidCounters
+	}
+	if rawHotness == nil {
+		return nil, nil, nil
+	}
+
+	hotnessList, ok := rawHotness.([]any)
 	if !ok {
 		return nil, nil, ErrInvalidNodes
 	}
+	if len(hotnessList) == 0 {
+		return nil, nil, nil
+	}
 
-	counters, ok := report["Counters"].([]map[int]int)
-	if !ok {
-		return nil, nil, ErrInvalidCounters
+	// Build nodes and self-counts from node_hotness.
+	nodes = make([]NodeSummary, len(hotnessList))
+	counters = make([]map[int]int, len(hotnessList))
+	nameToIdx := make(map[string]int, len(hotnessList))
+	for i, item := range hotnessList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		typ, _ := m["type"].(string)
+		file, _ := m["file"].(string)
+		changeCount := shotnessToInt(m["change_count"])
+
+		nodes[i] = NodeSummary{Name: name, Type: typ, File: file}
+		counters[i] = map[int]int{i: changeCount}
+		nameToIdx[name] = i
+	}
+
+	// Fill cross-node coupling from node_coupling.
+	if rawCoupling, ok := report["node_coupling"]; ok {
+		if couplingList, ok := rawCoupling.([]any); ok {
+			for _, item := range couplingList {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				n1, _ := m["node1_name"].(string)
+				n2, _ := m["node2_name"].(string)
+				coChanges := shotnessToInt(m["co_changes"])
+				i1, ok1 := nameToIdx[n1]
+				i2, ok2 := nameToIdx[n2]
+				if ok1 && ok2 && coChanges > 0 {
+					counters[i1][i2] = coChanges
+					counters[i2][i1] = coChanges
+				}
+			}
+		}
 	}
 
 	return nodes, counters, nil
+}
+
+// shotnessToInt converts a numeric value (int, float64) to int.
+func shotnessToInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func treeMapSection(nodes []NodeSummary, counters []map[int]int, co *plotpage.ChartOpts) plotpage.Section {
@@ -426,6 +500,12 @@ func buildBarData(scores []nodeScore) (labels []string, selfData, coupledData []
 	}
 
 	return labels, selfData, coupledData
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptyChart() *charts.Bar {

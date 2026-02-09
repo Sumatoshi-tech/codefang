@@ -8,24 +8,25 @@ import (
 )
 
 func TestPlanner_SmallRepo_SingleChunk(t *testing.T) {
+	// 400 commits fits in a single chunk (MaxChunkSize=500).
 	p := Planner{
-		TotalCommits: 1000,
-		MemoryBudget: 512 * mib,
+		TotalCommits: 400,
+		MemoryBudget: 2000 * mib,
 	}
 	chunks := p.Plan()
 	require.Len(t, chunks, 1)
 	assert.Equal(t, 0, chunks[0].Start)
-	assert.Equal(t, 1000, chunks[0].End)
+	assert.Equal(t, 400, chunks[0].End)
 }
 
 func TestPlanner_LargeRepo_MultipleChunks(t *testing.T) {
-	// 100k commits with 128MiB budget
-	// Available for state = 128MiB - 50MiB overhead = 78MiB
-	// At 2KiB per commit, can fit ~40k commits per chunk
-	// So 100k commits should yield ~3 chunks
+	// 100k commits with 2GiB budget.
+	// Available for state = 2048MiB - 400MiB overhead = 1648MiB
+	// At 500KiB per commit, can fit ~3296 commits per chunk → clamped to MaxChunkSize=500
+	// So 100k commits / 500 = 200 chunks
 	p := Planner{
 		TotalCommits: 100000,
-		MemoryBudget: 128 * mib,
+		MemoryBudget: 2048 * mib,
 	}
 	chunks := p.Plan()
 	require.Greater(t, len(chunks), 1)
@@ -48,10 +49,12 @@ func TestPlanner_ZeroCommits_Empty(t *testing.T) {
 }
 
 func TestPlanner_ChunkSizeRespectsBounds(t *testing.T) {
-	// Very tight budget should use MinChunkSize
+	// Very tight budget should use MinChunkSize.
+	// BaseOverhead=400MiB, so 410MiB leaves 10MiB for state.
+	// At 500KiB/commit, that's 20 commits → clamped to MinChunkSize=200.
 	p := Planner{
 		TotalCommits: 100000,
-		MemoryBudget: 60 * mib, // Only 10MiB available after overhead
+		MemoryBudget: 410 * mib,
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
@@ -75,7 +78,7 @@ func TestPlanner_NoBudget_UsesMaxChunkSize(t *testing.T) {
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
 
-	// Without budget, should use MaxChunkSize (5000)
-	// 50k commits / 5k max = 10 chunks
-	assert.Len(t, chunks, 10)
+	// Without budget, should use MaxChunkSize (500)
+	// 50k commits / 500 max = 100 chunks
+	assert.Len(t, chunks, 100)
 }

@@ -32,27 +32,44 @@ const (
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctionsData = errors.New("invalid halstead report: expected []map[string]any for functions")
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("static/halstead", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).generateSections(report)
+	})
+}
+
 // FormatReportPlot generates an HTML plot visualization for Halstead analysis.
 func (h *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	effortChart, err := h.generateEffortBarChart(report)
+	sections, err := h.generateSections(report)
 	if err != nil {
 		return err
 	}
-
-	scatterChart, scatterErr := h.generateVolumeVsDifficultyChart(report)
-	if scatterErr != nil {
-		return scatterErr
-	}
-
-	pieChart := h.generateVolumePieChart(report)
 
 	page := plotpage.NewPage(
 		"Halstead Complexity Analysis",
 		"Program volume, difficulty, and effort metrics",
 	)
 
-	page.Add(
-		plotpage.Section{
+	page.Add(sections...)
+
+	return page.Render(w)
+}
+
+func (h *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
+	effortChart, err := h.generateEffortBarChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	scatterChart, scatterErr := h.generateVolumeVsDifficultyChart(report)
+	if scatterErr != nil {
+		return nil, scatterErr
+	}
+
+	pieChart := h.generateVolumePieChart(report)
+
+	return []plotpage.Section{
+		{
 			Title:    "Top Functions by Effort",
 			Subtitle: "Functions ranked by programming effort required (higher = more effort).",
 			Chart:    effortChart,
@@ -67,7 +84,7 @@ func (h *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Volume vs Difficulty",
 			Subtitle: "Scatter plot showing relationship between code volume and difficulty.",
 			Chart:    scatterChart,
@@ -82,7 +99,7 @@ func (h *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Volume Distribution",
 			Subtitle: "Distribution of functions by code volume category.",
 			Chart:    pieChart,
@@ -96,13 +113,15 @@ func (h *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-	)
-
-	return page.Render(w)
+	}, nil
 }
 
 func (h *Analyzer) generateEffortBarChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -236,7 +255,11 @@ func createEffortBarChart(labels []string, efforts []float64, colors []string, c
 }
 
 func (h *Analyzer) generateVolumeVsDifficultyChart(report analyze.Report) (*charts.Scatter, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -300,7 +323,11 @@ func createVolumeVsDifficultyChart(functions []map[string]any, co *plotpage.Char
 }
 
 func (h *Analyzer) generateVolumePieChart(report analyze.Report) *charts.Pie {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
+	}
+
 	if !ok || len(functions) == 0 {
 		return createEmptyHalsteadPie()
 	}

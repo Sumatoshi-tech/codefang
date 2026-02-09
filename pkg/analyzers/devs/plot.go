@@ -28,12 +28,22 @@ const (
 func GenerateChart(report analyze.Report) (components.Charter, error) {
 	ticks, ok := report["Ticks"].(map[int]map[int]*DevTick)
 	if !ok {
-		return nil, ErrInvalidTicks
+		// Fallback: after binary encode -> JSON decode, "Ticks" is json:"-"
+		// (excluded). Reconstruct from "activity" and "developers" keys.
+		var err error
+		ticks, ok = reconstructTicksFromBinary(report)
+		if !ok {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidTicks, err)
+		}
 	}
 
 	names, ok := report["ReversedPeopleDict"].([]string)
 	if !ok {
-		return nil, ErrInvalidPeopleDict
+		// Fallback: extract names from binary-decoded "developers" list.
+		names = extractNamesFromBinary(report)
+		if names == nil {
+			return nil, ErrInvalidPeopleDict
+		}
 	}
 
 	tickKeys := sortedKeys(ticks)
@@ -55,6 +65,95 @@ func GenerateChart(report analyze.Report) (components.Charter, error) {
 	}
 
 	return bar, nil
+}
+
+// reconstructTicksFromBinary rebuilds the Ticks map from binary-decoded JSON.
+// The "activity" key contains []any of map[string]any with "tick", "by_developer", "total_commits".
+func reconstructTicksFromBinary(report analyze.Report) (map[int]map[int]*DevTick, bool) {
+	rawActivity, ok := report["activity"]
+	if !ok {
+		return nil, false
+	}
+	activityList, ok := rawActivity.([]any)
+	if !ok {
+		return nil, false
+	}
+
+	ticks := make(map[int]map[int]*DevTick, len(activityList))
+	for _, item := range activityList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		tick := toInt(m["tick"])
+		byDev, ok := m["by_developer"].(map[string]any)
+		if !ok {
+			continue
+		}
+		devMap := make(map[int]*DevTick, len(byDev))
+		for devIDStr, commits := range byDev {
+			devID := 0
+			fmt.Sscanf(devIDStr, "%d", &devID)
+			devMap[devID] = &DevTick{Commits: toInt(commits)}
+		}
+		ticks[tick] = devMap
+	}
+
+	return ticks, len(ticks) > 0
+}
+
+// extractNamesFromBinary extracts developer names from binary-decoded "developers" list.
+func extractNamesFromBinary(report analyze.Report) []string {
+	rawDevs, ok := report["developers"]
+	if !ok {
+		return nil
+	}
+	devList, ok := rawDevs.([]any)
+	if !ok {
+		return nil
+	}
+
+	// Find max ID to size the names slice.
+	maxID := 0
+	for _, item := range devList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := toInt(m["id"])
+		if id > maxID {
+			maxID = id
+		}
+	}
+
+	names := make([]string, maxID+1)
+	for _, item := range devList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := toInt(m["id"])
+		name, _ := m["name"].(string)
+		if id >= 0 && id < len(names) {
+			names[id] = name
+		}
+	}
+
+	return names
+}
+
+// toInt converts a numeric value (int, float64) to int.
+func toInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func (d *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
@@ -203,6 +302,12 @@ func devName(id int, names []string) string {
 	}
 
 	return fmt.Sprintf("dev_%d", id)
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/devs", func(report analyze.Report) ([]plotpage.Section, error) {
+		return GenerateSections(report)
+	})
 }
 
 func createEmptyBar() *charts.Bar {

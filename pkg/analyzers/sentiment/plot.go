@@ -73,7 +73,12 @@ func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 func (s *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error) {
 	emotions, ok := report["emotions_by_tick"].(map[int]float32)
 	if !ok {
-		return nil, ErrInvalidEmotions
+		// Fallback: after binary encode -> JSON decode, "emotions_by_tick"
+		// becomes "time_series" ([]any of map[string]any with tick/sentiment).
+		emotions = extractEmotionsFromBinary(report)
+		if emotions == nil {
+			return nil, ErrInvalidEmotions
+		}
 	}
 
 	if len(emotions) == 0 {
@@ -88,6 +93,62 @@ func (s *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error
 	line := createSentimentChart(labels, data, co, palette)
 
 	return line, nil
+}
+
+// extractEmotionsFromBinary converts binary-decoded time_series data back to
+// map[int]float32. Each entry has "tick" and "sentiment" fields.
+func extractEmotionsFromBinary(report analyze.Report) map[int]float32 {
+	rawTS, ok := report["time_series"]
+	if !ok {
+		return nil
+	}
+	if rawTS == nil {
+		return map[int]float32{}
+	}
+	tsList, ok := rawTS.([]any)
+	if !ok {
+		return nil
+	}
+	if len(tsList) == 0 {
+		return map[int]float32{}
+	}
+
+	emotions := make(map[int]float32, len(tsList))
+	for _, item := range tsList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		tick := sentimentToInt(m["tick"])
+		sentiment := sentimentToFloat32(m["sentiment"])
+		emotions[tick] = sentiment
+	}
+
+	return emotions
+}
+
+// sentimentToInt converts a numeric value to int.
+func sentimentToInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	default:
+		return 0
+	}
+}
+
+// sentimentToFloat32 converts a numeric value to float32.
+func sentimentToFloat32(v any) float32 {
+	switch n := v.(type) {
+	case float64:
+		return float32(n)
+	case float32:
+		return n
+	default:
+		return 0
+	}
 }
 
 func sortedTicks(emotions map[int]float32) []int {
@@ -132,6 +193,12 @@ func createSentimentChart(labels []string, data []opts.LineData, co *plotpage.Ch
 	)
 
 	return line
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/sentiment", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptySentimentChart() *charts.Line {

@@ -3,6 +3,7 @@ package couples
 import (
 	"errors"
 	"io"
+	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/components"
@@ -74,14 +75,9 @@ func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 
 // buildChart creates a heatmap chart showing developer coupling.
 func (c *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.HeatMap, error) {
-	matrix, ok := report["PeopleMatrix"].([]map[int]int64)
-	if !ok {
-		return nil, ErrInvalidMatrix
-	}
-
-	names, ok := report["ReversedPeopleDict"].([]string)
-	if !ok {
-		return nil, ErrInvalidNames
+	matrix, names, err := extractCouplesData(report)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(matrix) == 0 {
@@ -94,6 +90,93 @@ func (c *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.HeatMap, er
 	hm := createHeatMapChart(names, maxVal, data, co)
 
 	return hm, nil
+}
+
+// extractCouplesData extracts the people matrix and names from the report,
+// handling both in-memory and binary-decoded JSON key formats.
+func extractCouplesData(report analyze.Report) ([]map[int]int64, []string, error) {
+	// Try in-memory keys first.
+	matrix, matrixOK := report["PeopleMatrix"].([]map[int]int64)
+	names, namesOK := report["ReversedPeopleDict"].([]string)
+	if matrixOK && namesOK {
+		return matrix, names, nil
+	}
+
+	// Fallback: binary-decoded "developer_coupling" is []any of map[string]any
+	// with fields developer1, developer2, shared_file_changes, coupling_strength.
+	// We reconstruct a symmetric matrix from pairwise entries.
+	rawCoupling, ok := report["developer_coupling"]
+	if !ok {
+		if !matrixOK {
+			return nil, nil, ErrInvalidMatrix
+		}
+		return nil, nil, ErrInvalidNames
+	}
+	if rawCoupling == nil {
+		// Binary round-trip with no coupling data: null JSON → nil.
+		return nil, nil, nil
+	}
+	couplingList, ok := rawCoupling.([]any)
+	if !ok {
+		return nil, nil, ErrInvalidMatrix
+	}
+	if len(couplingList) == 0 {
+		return nil, nil, nil
+	}
+
+	// Collect unique developer names and build an index.
+	nameSet := map[string]bool{}
+	for _, item := range couplingList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if d1, ok := m["developer1"].(string); ok {
+			nameSet[d1] = true
+		}
+		if d2, ok := m["developer2"].(string); ok {
+			nameSet[d2] = true
+		}
+	}
+	names = make([]string, 0, len(nameSet))
+	for n := range nameSet {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	nameIdx := make(map[string]int, len(names))
+	for i, n := range names {
+		nameIdx[n] = i
+	}
+
+	// Build matrix.
+	matrix = make([]map[int]int64, len(names))
+	for i := range matrix {
+		matrix[i] = map[int]int64{}
+	}
+	for _, item := range couplingList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		d1, _ := m["developer1"].(string)
+		d2, _ := m["developer2"].(string)
+		i1, ok1 := nameIdx[d1]
+		i2, ok2 := nameIdx[d2]
+		if !ok1 || !ok2 {
+			continue
+		}
+		var val int64
+		switch v := m["shared_file_changes"].(type) {
+		case float64:
+			val = int64(v)
+		case int64:
+			val = v
+		}
+		matrix[i1][i2] = val
+		matrix[i2][i1] = val
+	}
+
+	return matrix, names, nil
 }
 
 func findMaxValue(matrix []map[int]int64) int64 {
@@ -155,6 +238,12 @@ func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, c
 	}))
 
 	return hm
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/couples", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptyHeatMap() *charts.HeatMap {

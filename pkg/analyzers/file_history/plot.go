@@ -70,15 +70,24 @@ func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, err
 
 // buildChart creates a bar chart showing the most modified files.
 func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
-	files, ok := report["Files"].(map[string]FileHistory)
-	if !ok {
-		return nil, ErrInvalidFiles
+	labels, data, err := extractFileHistoryData(report)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(files) == 0 {
+	if len(labels) == 0 {
 		return createEmptyFileChart(), nil
 	}
 
+	co := plotpage.DefaultChartOpts()
+	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
+
+	return createFileHistoryBarChart(labels, data, co, palette), nil
+}
+
+// extractFileHistoryData extracts file names and commit counts from the report,
+// handling both in-memory and binary-decoded JSON key formats.
+func extractFileHistoryData(report analyze.Report) ([]string, []int, error) {
 	type kv struct {
 		k string
 		v int
@@ -86,8 +95,43 @@ func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 
 	var items []kv
 
-	for name, hist := range files {
-		items = append(items, kv{name, len(hist.Hashes)})
+	// Try in-memory key first.
+	if files, ok := report["Files"].(map[string]FileHistory); ok {
+		for name, hist := range files {
+			items = append(items, kv{name, len(hist.Hashes)})
+		}
+	} else {
+		// Fallback: binary-decoded "file_churn" is []any of map[string]any
+		// with "path" and "commit_count" fields.
+		rawChurn, ok := report["file_churn"]
+		if !ok {
+			return nil, nil, ErrInvalidFiles
+		}
+		if rawChurn == nil {
+			return nil, nil, nil
+		}
+		churnList, ok := rawChurn.([]any)
+		if !ok {
+			return nil, nil, ErrInvalidFiles
+		}
+		if len(churnList) == 0 {
+			return nil, nil, nil
+		}
+		for _, item := range churnList {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			path, _ := m["path"].(string)
+			commitCount := fileHistoryToInt(m["commit_count"])
+			if path != "" {
+				items = append(items, kv{path, commitCount})
+			}
+		}
+	}
+
+	if len(items) == 0 {
+		return nil, nil, nil
 	}
 
 	sort.Slice(items, func(i, j int) bool { return items[i].v > items[j].v })
@@ -104,10 +148,21 @@ func (h *Analyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
 		data[i] = item.v
 	}
 
-	co := plotpage.DefaultChartOpts()
-	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
+	return labels, data, nil
+}
 
-	return createFileHistoryBarChart(labels, data, co, palette), nil
+// fileHistoryToInt converts a numeric value (int, float64) to int.
+func fileHistoryToInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
@@ -137,6 +192,12 @@ func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOp
 	bar.AddSeries("Commits", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Bad}))
 
 	return bar
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/file-history", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptyFileChart() *charts.Bar {

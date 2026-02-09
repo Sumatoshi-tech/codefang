@@ -70,22 +70,99 @@ func (t *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Chart
 
 // buildChart creates a bar chart showing typo-prone files.
 func (t *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Bar, error) {
-	typos, ok := report["typos"].([]Typo)
-	if !ok {
-		return nil, ErrInvalidTypos
+	labels, data, err := extractTyposPlotData(report)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(typos) == 0 {
+	if len(labels) == 0 {
 		return createEmptyTyposChart(), nil
 	}
-
-	counts := countTyposPerFile(typos)
-	labels, data := topTypoFiles(counts, topFilesLimit)
 
 	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
 	return createTyposBarChart(labels, data, co, palette), nil
+}
+
+// extractTyposPlotData extracts typo file labels and counts from the report,
+// handling both in-memory and binary-decoded JSON key formats.
+func extractTyposPlotData(report analyze.Report) ([]string, []int, error) {
+	// Try in-memory key first.
+	if typos, ok := report["typos"].([]Typo); ok {
+		if len(typos) == 0 {
+			return nil, nil, nil
+		}
+		counts := countTyposPerFile(typos)
+		labels, data := topTypoFiles(counts, topFilesLimit)
+		return labels, data, nil
+	}
+
+	// Fallback: binary-decoded "typo_list" is []any of map[string]any
+	// with "file" field. Also try "file_typos" which has per-file counts directly.
+	if rawFileTypos, ok := report["file_typos"]; ok {
+		if fileTypoList, ok := rawFileTypos.([]any); ok && len(fileTypoList) > 0 {
+			counts := make(map[string]int, len(fileTypoList))
+			for _, item := range fileTypoList {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				file, _ := m["file"].(string)
+				typoCount := typosToInt(m["typo_count"])
+				if file != "" {
+					counts[file] = typoCount
+				}
+			}
+			labels, data := topTypoFiles(counts, topFilesLimit)
+			return labels, data, nil
+		}
+	}
+
+	// Try typo_list as a last fallback.
+	rawList, ok := report["typo_list"]
+	if !ok {
+		return nil, nil, ErrInvalidTypos
+	}
+	if rawList == nil {
+		return nil, nil, nil
+	}
+	typoList, ok := rawList.([]any)
+	if !ok {
+		return nil, nil, ErrInvalidTypos
+	}
+	if len(typoList) == 0 {
+		return nil, nil, nil
+	}
+
+	counts := make(map[string]int)
+	for _, item := range typoList {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		file, _ := m["file"].(string)
+		if file != "" {
+			counts[file]++
+		}
+	}
+
+	labels, data := topTypoFiles(counts, topFilesLimit)
+	return labels, data, nil
+}
+
+// typosToInt converts a numeric value to int.
+func typosToInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func createTyposBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
@@ -153,6 +230,12 @@ func topTypoFiles(counts map[string]int, limit int) (labels []string, data []int
 	}
 
 	return labels, data
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/typos", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptyTyposChart() *charts.Bar {

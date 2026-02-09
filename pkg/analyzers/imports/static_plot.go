@@ -1,6 +1,7 @@
 package imports
 
 import (
+	"fmt"
 	"io"
 	"sort"
 
@@ -17,20 +18,32 @@ const (
 	importsCategoryHeight = "420px"
 )
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("static/imports", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).generateStaticSections(report), nil
+	})
+}
+
 // FormatReportPlot renders static imports analysis using the same plot framework as other analyzers.
 func (a *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	metrics, err := ComputeAllMetrics(report)
-	if err != nil {
-		metrics = &ComputedMetrics{}
-	}
-
 	page := plotpage.NewPage(
 		"Static Import Analysis",
 		"Import usage, categories, and dependency risks in the scanned source tree",
 	)
 
-	page.Add(
-		plotpage.Section{
+	page.Add(a.generateStaticSections(report)...)
+
+	return page.Render(w)
+}
+
+func (a *Analyzer) generateStaticSections(report analyze.Report) []plotpage.Section {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	return []plotpage.Section{
+		{
 			Title:    "Top Imports Usage",
 			Subtitle: "Most frequently used imports across scanned files.",
 			Chart:    buildStaticImportsBarChart(report, metrics),
@@ -43,7 +56,7 @@ func (a *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Import Categories",
 			Subtitle: "Distribution across stdlib, external, and relative imports.",
 			Chart:    buildImportCategoriesPie(metrics),
@@ -56,7 +69,7 @@ func (a *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Dependency Risk Overview",
 			Subtitle: "Potentially risky import patterns extracted from static metrics.",
 			Chart:    buildDependencyRiskTable(metrics),
@@ -69,9 +82,7 @@ func (a *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-	)
-
-	return page.Render(w)
+	}
 }
 
 func buildStaticImportsBarChart(report analyze.Report, metrics *ComputedMetrics) *charts.Bar {
@@ -158,6 +169,8 @@ func createEmptyImportCategoriesPie() *charts.Pie {
 	return pie
 }
 
+const maxDependencyRiskRows = 30
+
 func buildDependencyRiskTable(metrics *ComputedMetrics) *plotpage.Table {
 	table := plotpage.NewTable([]string{"Import", "Risk", "Reason"})
 
@@ -177,8 +190,21 @@ func buildDependencyRiskTable(metrics *ComputedMetrics) *plotpage.Table {
 		return deps[i].Path < deps[j].Path
 	})
 
-	for _, dep := range deps {
+	limit := len(deps)
+	if limit > maxDependencyRiskRows {
+		limit = maxDependencyRiskRows
+	}
+
+	for _, dep := range deps[:limit] {
 		table.AddRow(dep.Path, dep.RiskLevel, dep.Reason)
+	}
+
+	if len(deps) > maxDependencyRiskRows {
+		table.AddRow(
+			fmt.Sprintf("... and %d more", len(deps)-maxDependencyRiskRows),
+			"INFO",
+			fmt.Sprintf("Showing top %d of %d total risks", maxDependencyRiskRows, len(deps)),
+		)
 	}
 
 	return table

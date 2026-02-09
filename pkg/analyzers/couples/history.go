@@ -231,7 +231,13 @@ func (c *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	files, people := c.propagateRenames(c.currentFiles())
 	filesSequence, filesIndex := buildFilesIndex(files)
 	filesLines := c.computeFilesLines(filesSequence)
-	peopleMatrix, peopleFiles := computePeopleMatrix(people, filesIndex, c.PeopleNumber)
+	// Use the actual people count from accumulated data rather than PeopleNumber,
+	// which may be 0 when IdentityDetector.PeopleCount fact was not provided.
+	effectivePeopleNumber := c.PeopleNumber
+	if len(people) > effectivePeopleNumber+1 {
+		effectivePeopleNumber = len(people) - 1
+	}
+	peopleMatrix, peopleFiles := computePeopleMatrix(people, filesIndex, effectivePeopleNumber)
 	filesMatrix := computeFilesMatrix(c.files, filesSequence, filesIndex)
 
 	return analyze.Report{
@@ -430,6 +436,11 @@ func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 		c.mergePeopleCommits(other.peopleCommits)
 		c.mergeMerges(other.merges)
 		c.mergeRenames(other.renames)
+
+		// Keep the latest lastCommit so Finalize can compute file line counts.
+		if other.lastCommit != nil {
+			c.lastCommit = other.lastCommit
+		}
 	}
 }
 
@@ -448,11 +459,17 @@ func (c *HistoryAnalyzer) mergeFiles(other map[string]map[string]int) {
 
 // mergePeople combines per-person file touch counts from another analyzer.
 func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
-	for i, otherFiles := range other {
-		if i >= len(c.people) {
-			continue
+	// Grow if the forked branch discovered more authors than we expected.
+	if len(other) > len(c.people) {
+		grown := make([]map[string]int, len(other))
+		copy(grown, c.people)
+		for i := len(c.people); i < len(other); i++ {
+			grown[i] = make(map[string]int)
 		}
+		c.people = grown
+	}
 
+	for i, otherFiles := range other {
 		for file, count := range otherFiles {
 			c.people[i][file] += count
 		}
@@ -461,11 +478,14 @@ func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
 
 // mergePeopleCommits combines per-person commit counts from another analyzer.
 func (c *HistoryAnalyzer) mergePeopleCommits(other []int) {
-	for i, count := range other {
-		if i >= len(c.peopleCommits) {
-			continue
-		}
+	// Grow if the forked branch discovered more authors than we expected.
+	if len(other) > len(c.peopleCommits) {
+		grown := make([]int, len(other))
+		copy(grown, c.peopleCommits)
+		c.peopleCommits = grown
+	}
 
+	for i, count := range other {
 		c.peopleCommits[i] += count
 	}
 }

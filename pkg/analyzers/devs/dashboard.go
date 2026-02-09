@@ -1,6 +1,8 @@
 package devs
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 
@@ -76,7 +78,16 @@ func GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
 func newDashboardData(report analyze.Report) (*DashboardData, error) {
 	metrics, err := ComputeAllMetrics(report)
 	if err != nil {
-		return nil, err
+		// Fallback: after binary round-trip, Ticks is json:"-" so ParseTickData
+		// fails. The report IS the ComputedMetrics JSON decoded as map[string]any.
+		// Only attempt recovery when the report has binary-specific keys.
+		if !isBinaryDecodedReport(report) {
+			return nil, err
+		}
+		metrics, err = recoverMetricsFromBinary(report)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Extract top language names for radar chart.
@@ -105,6 +116,34 @@ func createDashboardTabs(data *DashboardData) *plotpage.Tabs {
 		plotpage.TabItem{ID: "busfactor", Label: "Bus Factor", Content: createBusFactorTab(data)},
 		plotpage.TabItem{ID: "churn", Label: "Code Churn", Content: createChurnTab(data)},
 	)
+}
+
+// isBinaryDecodedReport returns true if the report appears to have been decoded
+// from the binary format (ComputedMetrics JSON keys present, Ticks absent).
+func isBinaryDecodedReport(report analyze.Report) bool {
+	_, hasActivity := report["activity"]
+	_, hasDevelopers := report["developers"]
+	_, hasTicks := report["Ticks"]
+	return (hasActivity || hasDevelopers) && !hasTicks
+}
+
+// recoverMetricsFromBinary re-marshals a binary-decoded report (map[string]any)
+// back to JSON and unmarshals into ComputedMetrics. This works because the binary
+// format serializes ComputedMetrics directly, so the map keys match the JSON tags.
+func recoverMetricsFromBinary(report analyze.Report) (*ComputedMetrics, error) {
+	data, err := json.Marshal(report)
+	if err != nil {
+		return nil, fmt.Errorf("devs: re-marshal binary report: %w", err)
+	}
+
+	var metrics ComputedMetrics
+
+	err = json.Unmarshal(data, &metrics)
+	if err != nil {
+		return nil, fmt.Errorf("devs: unmarshal binary report: %w", err)
+	}
+
+	return &metrics, nil
 }
 
 // Formatting utilities for dashboard display.

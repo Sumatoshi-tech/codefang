@@ -9,19 +9,20 @@ const (
 // Planner constraints.
 const (
 	// MinChunkSize is the minimum commits per chunk to amortize hibernation cost.
-	// Testing shows smaller chunks have better cache locality.
-	MinChunkSize = 2000
+	MinChunkSize = 200
 
 	// MaxChunkSize is the maximum commits per chunk to bound memory growth.
-	// Benchmarks on kubernetes repo (56k commits) showed 5k chunks are 2x faster
-	// than 10k and 4x faster than 20k due to better memory locality.
-	MaxChunkSize = 5000
+	// Smaller chunks reduce peak memory by enabling hibernation between chunks.
+	// On large repos (kubernetes), 500-commit chunks keep memory under control
+	// while amortizing the hibernate/boot overhead.
+	MaxChunkSize = 500
 
-	// BaseOverhead is the fixed memory overhead for Go runtime + libgit2.
-	BaseOverhead = 50 * mib
+	// BaseOverhead is the fixed memory overhead for Go runtime + libgit2 + caches.
+	BaseOverhead = 400 * mib
 
 	// AvgStateGrowthPerCommit is the estimated memory growth per commit for analyzer state.
-	AvgStateGrowthPerCommit = 2 * kib
+	// On large repos (kubernetes), burndown+couples+shotness accumulate ~500KB/commit.
+	AvgStateGrowthPerCommit = 500 * kib
 )
 
 // Planner calculates chunk boundaries for streaming execution.
