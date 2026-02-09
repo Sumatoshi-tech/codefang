@@ -44,7 +44,16 @@ func (t *TicksSinceStart) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (t *TicksSinceStart) Description() string {
-	return "Provides relative tick information for every commit."
+	return t.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (t *TicksSinceStart) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		t.Name(),
+		"Provides relative tick information for every commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

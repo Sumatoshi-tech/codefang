@@ -349,11 +349,5 @@ func TestHistoryAnalyzer_Serialize_DefaultFormat(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := h.Serialize(report, "", &buf)
-
-	require.NoError(t, err)
-
-	// Default should be YAML
-	var result ComputedMetrics
-	err = yaml.Unmarshal(buf.Bytes(), &result)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 }

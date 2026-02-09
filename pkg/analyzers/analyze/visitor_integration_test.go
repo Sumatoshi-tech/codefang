@@ -18,9 +18,12 @@ type MockVisitorAnalyzer struct {
 	visited bool
 }
 
-func (m *MockVisitorAnalyzer) Name() string                                             { return "mock_visitor" }
-func (m *MockVisitorAnalyzer) Flag() string                                             { return "mock-visitor" }
-func (m *MockVisitorAnalyzer) Description() string                                      { return "Mock visitor" }
+func (m *MockVisitorAnalyzer) Name() string        { return "mock_visitor" }
+func (m *MockVisitorAnalyzer) Flag() string        { return "mock-visitor" }
+func (m *MockVisitorAnalyzer) Description() string { return "Mock visitor" }
+func (m *MockVisitorAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(analyze.ModeStatic, m.Name(), m.Description())
+}
 func (m *MockVisitorAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption { return nil }
 func (m *MockVisitorAnalyzer) Configure(_ map[string]any) error                         { return nil }
 func (m *MockVisitorAnalyzer) Analyze(_ *node.Node) (analyze.Report, error) {
@@ -32,6 +35,11 @@ func (m *MockVisitorAnalyzer) Thresholds() analyze.Thresholds { return nil }
 func (m *MockVisitorAnalyzer) CreateAggregator() analyze.ResultAggregator           { return nil }
 func (m *MockVisitorAnalyzer) FormatReport(_ analyze.Report, _ io.Writer) error     { return nil }
 func (m *MockVisitorAnalyzer) FormatReportJSON(_ analyze.Report, _ io.Writer) error { return nil }
+func (m *MockVisitorAnalyzer) FormatReportYAML(_ analyze.Report, _ io.Writer) error { return nil }
+func (m *MockVisitorAnalyzer) FormatReportPlot(_ analyze.Report, _ io.Writer) error { return nil }
+func (m *MockVisitorAnalyzer) FormatReportBinary(_ analyze.Report, _ io.Writer) error {
+	return nil
+}
 
 func (m *MockVisitorAnalyzer) CreateVisitor() analyze.AnalysisVisitor {
 	return &MockNodeVisitor{analyzer: m}

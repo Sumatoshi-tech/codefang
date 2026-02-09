@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -51,8 +52,17 @@ func (h *Analyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (h *Analyzer) Description() string {
-	return "Each file path is mapped to the list of commits which touch that file " +
-		"and the mapping from involved developers to the corresponding line statistics."
+	return h.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (h *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID: "history/file-history",
+		Description: "Each file path is mapped to the list of commits which touch that file " +
+			"and the mapping from involved developers to the corresponding line statistics.",
+		Mode: analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -198,15 +208,42 @@ func (h *Analyzer) Finalize() (analyze.Report, error) {
 	return analyze.Report{"Files": files}, nil
 }
 
+// SequentialOnly returns false because file history analysis can be parallelized.
+func (h *Analyzer) SequentialOnly() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for one commit.
+func (h *Analyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   h.TreeDiff.Changes,
+		LineStats: h.LineStats.LineStats,
+		AuthorID:  h.Identity.AuthorID,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (h *Analyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	h.TreeDiff.Changes = snapshot.Changes
+	h.LineStats.LineStats = snapshot.LineStats
+	h.Identity.AuthorID = snapshot.AuthorID
+}
+
+// ReleaseSnapshot releases any resources owned by the snapshot.
+func (h *Analyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
 // Fork creates a copy of the analyzer for parallel processing.
 // Each fork gets its own independent copies of mutable state.
 func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &Analyzer{
-			Identity:  h.Identity,
-			TreeDiff:  h.TreeDiff,
-			LineStats: h.LineStats,
+			Identity:  &plumbing.IdentityDetector{},
+			TreeDiff:  &plumbing.TreeDiffAnalyzer{},
+			LineStats: &plumbing.LinesStatsCalculator{},
 		}
 		// Initialize independent state for each fork
 		clone.files = make(map[string]*FileHistory)
@@ -278,8 +315,10 @@ func (h *Analyzer) Serialize(result analyze.Report, format string, writer io.Wri
 		return h.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return h.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return h.serializeBinary(result, writer)
 	default:
-		return h.serializeYAML(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -311,6 +350,20 @@ func (h *Analyzer) serializeYAML(result analyze.Report, writer io.Writer) error 
 	_, err = writer.Write(data)
 	if err != nil {
 		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
+}
+
+func (h *Analyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

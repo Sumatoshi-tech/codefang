@@ -243,3 +243,13 @@ func FileDiffFromGoDiffForTest(
 ) pkgplumbing.FileDiffData {
 	return p.fileDiffFromGoDiff(oldBlob, newBlob, oldLines, newLines)
 }
+
+// RunnerBallastSizeForTest exposes runtime ballast size retained by a runner.
+func RunnerBallastSizeForTest(runner *Runner) int {
+	return len(runner.runtimeBallast)
+}
+
+// ResolveGCPercentForTest exposes GC-percent resolution logic.
+func ResolveGCPercentForTest(requestedGCPercent int, totalMemoryBytes uint64) int {
+	return resolveGCPercent(requestedGCPercent, totalMemoryBytes)
+}

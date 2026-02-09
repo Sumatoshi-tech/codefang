@@ -12,6 +12,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/importmodel"
@@ -59,7 +60,16 @@ func (h *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (h *HistoryAnalyzer) Description() string {
-	return "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author."
+	return h.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (h *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/imports",
+		Description: "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -263,16 +273,45 @@ func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}, nil
 }
 
+// SequentialOnly returns false because imports analysis can be parallelized.
+func (h *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for one commit.
+func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   h.TreeDiff.Changes,
+		BlobCache: h.BlobCache.Cache,
+		Tick:      h.Ticks.Tick,
+		AuthorID:  h.Identity.AuthorID,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (h *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	h.TreeDiff.Changes = snapshot.Changes
+	h.BlobCache.Cache = snapshot.BlobCache
+	h.Ticks.Tick = snapshot.Tick
+	h.Identity.AuthorID = snapshot.AuthorID
+}
+
+// ReleaseSnapshot releases any resources owned by the snapshot.
+func (h *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
 // Fork creates a copy of the analyzer for parallel processing.
 // Each fork gets independent mutable state while sharing read-only config.
 func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
-			TreeDiff:           h.TreeDiff,
-			BlobCache:          h.BlobCache,
-			Identity:           h.Identity,
-			Ticks:              h.Ticks,
+			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
+			BlobCache:          &plumbing.BlobCacheAnalyzer{},
+			Identity:           &plumbing.IdentityDetector{},
+			Ticks:              &plumbing.TicksSinceStart{},
 			reversedPeopleDict: h.reversedPeopleDict,
 			TickSize:           h.TickSize,
 			Goroutines:         h.Goroutines,
@@ -341,19 +380,31 @@ func (h *HistoryAnalyzer) mergeLangImports(author int, lang string, otherImps ma
 
 // Serialize writes the analysis result to the given writer.
 func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	switch format {
+	case analyze.FormatPlot:
 		return h.generatePlot(result, writer)
-	}
-
-	if format == analyze.FormatJSON {
+	case analyze.FormatJSON:
 		err := json.NewEncoder(writer).Encode(result)
 		if err != nil {
 			return fmt.Errorf("json encode: %w", err)
 		}
 
 		return nil
-	}
+	case analyze.FormatBinary:
+		err := reportutil.EncodeBinaryEnvelope(result, writer)
+		if err != nil {
+			return fmt.Errorf("binary encode: %w", err)
+		}
 
+		return nil
+	case analyze.FormatYAML:
+		return h.serializeYAML(result, writer)
+	default:
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
+	}
+}
+
+func (h *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
 	imports, ok := result["imports"].(Map)
 	if !ok {
 		return errors.New("expected Map for imports") //nolint:err113 // descriptive error for type assertion failure.

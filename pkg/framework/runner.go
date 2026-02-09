@@ -3,23 +3,16 @@ package framework
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
-	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
+
+// ErrNotParallelizable is returned when a leaf analyzer does not implement [analyze.Parallelizable].
+var ErrNotParallelizable = errors.New("leaf does not implement Parallelizable")
 
 // Runner orchestrates multiple HistoryAnalyzers over a commit sequence.
 // It always uses the Coordinator pipeline (batch blob load + batch diff in C).
@@ -34,6 +27,9 @@ type Runner struct {
 	// are leaf analyzers that can be parallelized via Fork/Merge.
 	// Set to 0 to disable parallel leaf consumption.
 	CoreCount int
+
+	runtimeTuningOnce sync.Once
+	runtimeBallast    []byte
 }
 
 // NewRunner creates a new Runner for the given repository and analyzers.
@@ -143,6 +139,10 @@ func (runner *Runner) Finalize() (map[analyze.HistoryAnalyzer]analyze.Report, er
 
 // processCommits processes commits through the pipeline without Initialize/Finalize.
 func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) error {
+	runner.runtimeTuningOnce.Do(func() {
+		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
+	})
+
 	w := runner.Config.LeafWorkers
 	if w > 0 && runner.CoreCount > 0 && runner.CoreCount < len(runner.Analyzers) && !runner.hasSequentialLeaf() {
 		return runner.processCommitsParallel(commits, indexOffset)
@@ -152,15 +152,11 @@ func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) 
 }
 
 // hasSequentialLeaf returns true if any leaf analyzer requires sequential commit processing
-// and cannot be parallelized via round-robin Fork/Merge (e.g., burndown tracks cumulative
-// per-file line state across all commits).
+// and cannot be parallelized via round-robin Fork/Merge.
 func (runner *Runner) hasSequentialLeaf() bool {
 	for _, a := range runner.Analyzers[runner.CoreCount:] {
-		switch a.(type) {
-		case *burndown.HistoryAnalyzer:
-			return true // Cumulative per-file line state across all commits.
-		case *devs.HistoryAnalyzer:
-			return true // Fork() does not isolate mutable map state.
+		if p, ok := a.(analyze.Parallelizable); ok && p.SequentialOnly() {
+			return true
 		}
 	}
 
@@ -201,171 +197,60 @@ func (runner *Runner) processCommitsSerial(commits []*gitlib.Commit, indexOffset
 	return nil
 }
 
-// leafWork holds a snapshot of plumbing outputs for one commit,
-// allowing leaf analyzers to process it independently.
+// leafWork holds an opaque plumbing snapshot and context for one commit.
 type leafWork struct {
-	ctx         *analyze.Context
-	tick        int
-	authorID    int
-	changes     gitlib.Changes
-	blobCache   map[gitlib.Hash]*gitlib.CachedBlob
-	fileDiffs   map[string]pkgplumbing.FileDiffData
-	uastChanges []uast.Change
-	lineStats   map[gitlib.ChangeEntry]pkgplumbing.LineStats
-	languages   map[gitlib.Hash]string
+	ctx      *analyze.Context
+	snapshot analyze.PlumbingSnapshot
 }
 
-// leafWorker holds forked plumbing copies and leaf analyzers for one worker goroutine.
+// leafWorker holds forked leaf analyzers for one worker goroutine.
 type leafWorker struct {
-	treeDiff  *plumbing.TreeDiffAnalyzer
-	blobCache *plumbing.BlobCacheAnalyzer
-	fileDiff  *plumbing.FileDiffAnalyzer
-	uast      *plumbing.UASTChangesAnalyzer
-	lineStats *plumbing.LinesStatsCalculator
-	languages *plumbing.LanguagesDetectionAnalyzer
-	ticks     *plumbing.TicksSinceStart
-	identity  *plumbing.IdentityDetector
-
 	leaves   []analyze.HistoryAnalyzer
 	workChan chan leafWork
 }
 
-// applyWork sets the worker's plumbing fields from a work snapshot.
-func (w *leafWorker) applyWork(work leafWork) {
-	w.treeDiff.Changes = work.changes
-	w.blobCache.Cache = work.blobCache
-	w.fileDiff.FileDiffs = work.fileDiffs
-	w.uast.SetChanges(work.uastChanges)
-	w.lineStats.LineStats = work.lineStats
-	w.languages.SetLanguages(work.languages)
-	w.ticks.Tick = work.tick
-	w.identity.AuthorID = work.authorID
-}
-
-// processWork applies plumbing snapshot, runs leaf Consume(), then releases UAST trees.
+// processWork applies the plumbing snapshot, runs leaf Consume(), then releases snapshot resources.
 func (w *leafWorker) processWork(work leafWork) error {
-	w.applyWork(work)
-
 	for _, leaf := range w.leaves {
+		p, ok := leaf.(analyze.Parallelizable)
+		if !ok {
+			return fmt.Errorf("%w: %s", ErrNotParallelizable, leaf.Name())
+		}
+
+		p.ApplySnapshot(work.snapshot)
+
 		consumeErr := leaf.Consume(work.ctx)
 		if consumeErr != nil {
 			return consumeErr
 		}
 	}
 
-	// Release UAST trees — this worker owns them.
-	for _, ch := range work.uastChanges {
-		node.ReleaseTree(ch.Before)
-		node.ReleaseTree(ch.After)
+	// Release snapshot resources (e.g. UAST trees). Any leaf can do it.
+	p, ok := w.leaves[0].(analyze.Parallelizable)
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNotParallelizable, w.leaves[0].Name())
 	}
+
+	p.ReleaseSnapshot(work.snapshot)
 
 	return nil
 }
 
-// findPlumbing extracts typed pointers to plumbing analyzers from the core slice.
-type plumbingRefs struct {
-	treeDiff  *plumbing.TreeDiffAnalyzer
-	blobCache *plumbing.BlobCacheAnalyzer
-	fileDiff  *plumbing.FileDiffAnalyzer
-	uast      *plumbing.UASTChangesAnalyzer
-	lineStats *plumbing.LinesStatsCalculator
-	languages *plumbing.LanguagesDetectionAnalyzer
-	ticks     *plumbing.TicksSinceStart
-	identity  *plumbing.IdentityDetector
-}
-
-func findPlumbing(core []analyze.HistoryAnalyzer) plumbingRefs {
-	var refs plumbingRefs
-
-	for _, analyzer := range core {
-		switch typed := analyzer.(type) {
-		case *plumbing.TreeDiffAnalyzer:
-			refs.treeDiff = typed
-		case *plumbing.BlobCacheAnalyzer:
-			refs.blobCache = typed
-		case *plumbing.FileDiffAnalyzer:
-			refs.fileDiff = typed
-		case *plumbing.UASTChangesAnalyzer:
-			refs.uast = typed
-		case *plumbing.LinesStatsCalculator:
-			refs.lineStats = typed
-		case *plumbing.LanguagesDetectionAnalyzer:
-			refs.languages = typed
-		case *plumbing.TicksSinceStart:
-			refs.ticks = typed
-		case *plumbing.IdentityDetector:
-			refs.identity = typed
-		}
-	}
-
-	return refs
-}
-
-// rewireLeaf updates a forked leaf analyzer's plumbing pointers to point to the worker's copies.
-func rewireLeaf(leaf analyze.HistoryAnalyzer, worker *leafWorker) {
-	switch typed := leaf.(type) {
-	case *sentiment.HistoryAnalyzer:
-		typed.UAST = worker.uast
-		typed.Ticks = worker.ticks
-	case *shotness.HistoryAnalyzer:
-		typed.UAST = worker.uast
-		typed.FileDiff = worker.fileDiff
-	case *imports.HistoryAnalyzer:
-		typed.TreeDiff = worker.treeDiff
-		typed.BlobCache = worker.blobCache
-		typed.Identity = worker.identity
-		typed.Ticks = worker.ticks
-	case *burndown.HistoryAnalyzer:
-		typed.Identity = worker.identity
-		typed.Ticks = worker.ticks
-		typed.BlobCache = worker.blobCache
-		typed.FileDiff = worker.fileDiff
-		typed.TreeDiff = worker.treeDiff
-	case *devs.HistoryAnalyzer:
-		typed.Identity = worker.identity
-		typed.Ticks = worker.ticks
-		typed.TreeDiff = worker.treeDiff
-		typed.Languages = worker.languages
-		typed.LineStats = worker.lineStats
-	case *couples.HistoryAnalyzer:
-		typed.Identity = worker.identity
-		typed.TreeDiff = worker.treeDiff
-	case *typos.HistoryAnalyzer:
-		typed.UAST = worker.uast
-		typed.BlobCache = worker.blobCache
-		typed.FileDiff = worker.fileDiff
-	case *filehistory.Analyzer:
-		typed.TreeDiff = worker.treeDiff
-		typed.LineStats = worker.lineStats
-		typed.Identity = worker.identity
-	}
-}
-
-// newLeafWorkers creates W leaf workers with forked plumbing and leaf analyzers.
+// newLeafWorkers creates W leaf workers with forked leaf analyzers.
+// Each forked leaf owns independent plumbing struct copies (created by Fork()).
 func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
 	workers := make([]*leafWorker, w)
 
 	for i := range w {
 		worker := &leafWorker{
-			// Create independent plumbing copies (shallow struct copies).
-			treeDiff:  &plumbing.TreeDiffAnalyzer{},
-			blobCache: &plumbing.BlobCacheAnalyzer{},
-			fileDiff:  &plumbing.FileDiffAnalyzer{},
-			uast:      &plumbing.UASTChangesAnalyzer{},
-			lineStats: &plumbing.LinesStatsCalculator{},
-			languages: &plumbing.LanguagesDetectionAnalyzer{},
-			ticks:     &plumbing.TicksSinceStart{},
-			identity:  &plumbing.IdentityDetector{},
-			workChan:  make(chan leafWork, 2),
+			workChan: make(chan leafWork, 2),
 		}
 
-		// Fork each leaf and rewire to this worker's plumbing.
 		worker.leaves = make([]analyze.HistoryAnalyzer, len(leaves))
 
 		for j, leaf := range leaves {
 			forked := leaf.Fork(1)
 			worker.leaves[j] = forked[0]
-			rewireLeaf(worker.leaves[j], worker)
 		}
 
 		workers[i] = worker
@@ -407,35 +292,6 @@ func startLeafWorkers(workers []*leafWorker) (*sync.WaitGroup, []error) {
 	return &wg, workerErrors
 }
 
-// snapshotPlumbing captures the current plumbing outputs into a leafWork struct.
-// UAST tree ownership is transferred (cleared from the source analyzer).
-func snapshotPlumbing(refs plumbingRefs, analyzeCtx *analyze.Context) leafWork {
-	var uastChanges []uast.Change
-	if refs.uast != nil {
-		uastChanges = refs.uast.TransferChanges()
-	}
-
-	work := leafWork{
-		ctx:         analyzeCtx,
-		tick:        refs.ticks.Tick,
-		authorID:    refs.identity.AuthorID,
-		changes:     refs.treeDiff.Changes,
-		blobCache:   refs.blobCache.Cache,
-		fileDiffs:   refs.fileDiff.FileDiffs,
-		uastChanges: uastChanges,
-	}
-
-	if refs.lineStats != nil {
-		work.lineStats = refs.lineStats.LineStats
-	}
-
-	if refs.languages != nil {
-		work.languages = refs.languages.Languages()
-	}
-
-	return work
-}
-
 // mergeLeafResults merges forked leaf results back into the original leaf analyzers.
 func mergeLeafResults(leaves []analyze.HistoryAnalyzer, workers []*leafWorker) {
 	numWorkers := len(workers)
@@ -459,14 +315,13 @@ func (runner *Runner) processCommitsParallel(commits []*gitlib.Commit, indexOffs
 
 	core := runner.Analyzers[:runner.CoreCount]
 	leaves := runner.Analyzers[runner.CoreCount:]
-	refs := findPlumbing(core)
 
 	numWorkers := runner.Config.LeafWorkers
 	workers := newLeafWorkers(leaves, numWorkers)
 	wg, workerErrors := startLeafWorkers(workers)
 
 	// Serial plumbing loop with round-robin dispatch to leaf workers.
-	loopErr := runner.consumeAndDispatch(dataChan, core, refs, workers, numWorkers, indexOffset)
+	loopErr := runner.consumeAndDispatch(dataChan, core, leaves, workers, numWorkers, indexOffset)
 
 	// Close all work channels to signal workers to finish.
 	for _, worker := range workers {
@@ -494,11 +349,16 @@ func (runner *Runner) processCommitsParallel(commits []*gitlib.Commit, indexOffs
 func (runner *Runner) consumeAndDispatch(
 	dataChan <-chan CommitData,
 	core []analyze.HistoryAnalyzer,
-	refs plumbingRefs,
+	leaves []analyze.HistoryAnalyzer,
 	workers []*leafWorker,
 	numWorkers int,
 	indexOffset int,
 ) error {
+	snapshotter, ok := leaves[0].(analyze.Parallelizable)
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNotParallelizable, leaves[0].Name())
+	}
+
 	var commitIdx int
 
 	for data := range dataChan {
@@ -525,7 +385,10 @@ func (runner *Runner) consumeAndDispatch(
 			}
 		}
 
-		work := snapshotPlumbing(refs, analyzeCtx)
+		work := leafWork{
+			ctx:      analyzeCtx,
+			snapshot: snapshotter.SnapshotPlumbing(),
+		}
 		workers[commitIdx%numWorkers].workChan <- work
 		commitIdx++
 	}

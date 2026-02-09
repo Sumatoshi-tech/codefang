@@ -19,6 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/burndown"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -135,7 +136,17 @@ func (b *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (b *HistoryAnalyzer) Description() string {
-	return "Line burndown stats indicate the numbers of lines which were last edited within specific time intervals through time."
+	return b.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (b *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID: "history/burndown",
+		Description: "Line burndown stats indicate the numbers of lines which were last edited " +
+			"within specific time intervals through time.",
+		Mode: analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -574,6 +585,13 @@ func (b *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			pathInterner: b.pathInterner, // Shared for consistent PathIDs.
 			repository:   b.repository,
 
+			// Independent plumbing state (not shared with parent).
+			Identity:  &plumbing.IdentityDetector{},
+			TreeDiff:  &plumbing.TreeDiffAnalyzer{},
+			Ticks:     &plumbing.TicksSinceStart{},
+			BlobCache: &plumbing.BlobCacheAnalyzer{},
+			FileDiff:  &plumbing.FileDiffAnalyzer{},
+
 			// Copy configuration.
 			HibernationDirectory: b.HibernationDirectory,
 			HibernationThreshold: b.HibernationThreshold,
@@ -741,6 +759,38 @@ func (b *HistoryAnalyzer) mergeTicks(other *HistoryAnalyzer) {
 		b.lastCommitTime = other.lastCommitTime
 	}
 }
+
+// SequentialOnly returns true because burndown tracks cumulative per-file
+// line state across all commits and cannot be parallelized.
+func (b *HistoryAnalyzer) SequentialOnly() bool { return true }
+
+// SnapshotPlumbing captures the current plumbing state.
+func (b *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   b.TreeDiff.Changes,
+		BlobCache: b.BlobCache.Cache,
+		FileDiffs: b.FileDiff.FileDiffs,
+		Tick:      b.Ticks.Tick,
+		AuthorID:  b.Identity.AuthorID,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a snapshot.
+func (b *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	b.TreeDiff.Changes = snapshot.Changes
+	b.BlobCache.Cache = snapshot.BlobCache
+	b.FileDiff.FileDiffs = snapshot.FileDiffs
+	b.Ticks.Tick = snapshot.Tick
+	b.Identity.AuthorID = snapshot.AuthorID
+}
+
+// ReleaseSnapshot is a no-op for burndown (no UAST resources).
+func (b *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
 
 // Hibernate releases resources between processing phases.
 // Clears per-shard tracking maps (mergedByID, deletionsByID) that are only
@@ -987,8 +1037,10 @@ func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return b.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return b.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return b.serializeBinary(result, writer)
 	default:
-		return b.serializeLegacy(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -1025,13 +1077,15 @@ func (b *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer)
 	return nil
 }
 
-func (b *HistoryAnalyzer) serializeLegacy(result analyze.Report, writer io.Writer) error {
-	enc := json.NewEncoder(writer)
-	enc.SetIndent("", "  ")
-
-	err := enc.Encode(result)
+func (b *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
 	if err != nil {
-		return fmt.Errorf("serialize: %w", err)
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

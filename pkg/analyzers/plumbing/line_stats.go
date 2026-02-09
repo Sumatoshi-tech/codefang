@@ -42,7 +42,16 @@ func (l *LinesStatsCalculator) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (l *LinesStatsCalculator) Description() string {
-	return "Measures line statistics for each text file in the commit."
+	return l.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (l *LinesStatsCalculator) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		l.Name(),
+		"Measures line statistics for each text file in the commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

@@ -32,6 +32,10 @@ func (m *mockAnalyzer) Description() string {
 	return "Mock analyzer for testing"
 }
 
+func (m *mockAnalyzer) Descriptor() Descriptor {
+	return NewDescriptor(ModeStatic, m.name, m.Description())
+}
+
 func (m *mockAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
@@ -63,6 +67,24 @@ func (m *mockAnalyzer) FormatReport(_ Report, _ io.Writer) error {
 }
 
 func (m *mockAnalyzer) FormatReportJSON(_ Report, _ io.Writer) error {
+	m.formatCalled = true
+
+	return nil
+}
+
+func (m *mockAnalyzer) FormatReportYAML(_ Report, _ io.Writer) error {
+	m.formatCalled = true
+
+	return nil
+}
+
+func (m *mockAnalyzer) FormatReportPlot(_ Report, _ io.Writer) error {
+	m.formatCalled = true
+
+	return nil
+}
+
+func (m *mockAnalyzer) FormatReportBinary(_ Report, _ io.Writer) error {
 	m.formatCalled = true
 
 	return nil

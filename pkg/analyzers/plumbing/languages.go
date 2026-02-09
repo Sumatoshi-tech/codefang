@@ -273,7 +273,16 @@ func (l *LanguagesDetectionAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (l *LanguagesDetectionAnalyzer) Description() string {
-	return "Run programming language detection over the changed files."
+	return l.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (l *LanguagesDetectionAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		l.Name(),
+		"Run programming language detection over the changed files.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

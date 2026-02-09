@@ -3,16 +3,14 @@ package devs
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"sort"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
@@ -66,7 +64,16 @@ func (d *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (d *HistoryAnalyzer) Description() string {
-	return "Calculates the number of commits, added, removed and changed lines per developer through time."
+	return d.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (d *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/devs",
+		Description: "Calculates the number of commits, added, removed and changed lines per developer through time.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -213,6 +220,14 @@ func (d *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *d
+
+		// Independent plumbing state (not shared with parent).
+		clone.Identity = &plumbing.IdentityDetector{}
+		clone.TreeDiff = &plumbing.TreeDiffAnalyzer{}
+		clone.Ticks = &plumbing.TicksSinceStart{}
+		clone.Languages = &plumbing.LanguagesDetectionAnalyzer{}
+		clone.LineStats = &plumbing.LinesStatsCalculator{}
+
 		res[i] = &clone
 	}
 
@@ -276,6 +291,37 @@ func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
 	}
 }
 
+// SequentialOnly returns true because devs' Fork() does not isolate mutable map state.
+func (d *HistoryAnalyzer) SequentialOnly() bool { return true }
+
+// SnapshotPlumbing captures the current plumbing state.
+func (d *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   d.TreeDiff.Changes,
+		Tick:      d.Ticks.Tick,
+		AuthorID:  d.Identity.AuthorID,
+		Languages: d.Languages.Languages(),
+		LineStats: d.LineStats.LineStats,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a snapshot.
+func (d *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	d.TreeDiff.Changes = snapshot.Changes
+	d.Ticks.Tick = snapshot.Tick
+	d.Identity.AuthorID = snapshot.AuthorID
+	d.Languages.SetLanguages(snapshot.Languages)
+	d.LineStats.LineStats = snapshot.LineStats
+}
+
+// ReleaseSnapshot is a no-op for devs (no UAST resources).
+func (d *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
 // Serialize writes the analysis result to the given writer.
 func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
 	switch format {
@@ -285,8 +331,10 @@ func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return d.serializeYAML(result, writer)
 	case analyze.FormatPlot:
 		return d.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return d.serializeBinary(result, writer)
 	default:
-		return d.serializeLegacy(result, writer)
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
 }
 
@@ -325,84 +373,18 @@ func (d *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer)
 	return nil
 }
 
-func (d *HistoryAnalyzer) serializeLegacy(result analyze.Report, writer io.Writer) error {
-	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
-	if !ok {
-		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.
+func (d *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	reversedPeopleDict, ok := result["ReversedPeopleDict"].([]string)
-	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
-
-	tickSize, ok := result["TickSize"].(time.Duration)
-	if !ok {
-		return errors.New("expected time.Duration for tickSize") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	fmt.Fprintln(writer, "  ticks:")
-	serializeDevTicks(writer, ticks)
-
-	fmt.Fprintln(writer, "  people:")
-
-	for _, person := range reversedPeopleDict {
-		fmt.Fprintf(writer, "  - %s\n", person)
-	}
-
-	fmt.Fprintln(writer, "  tick_size:", int(tickSize.Seconds()))
 
 	return nil
-}
-
-// serializeDevTicks writes sorted tick data to the writer.
-func serializeDevTicks(writer io.Writer, ticks map[int]map[int]*DevTick) {
-	tickKeys := make([]int, 0, len(ticks))
-	for tick := range ticks {
-		tickKeys = append(tickKeys, tick)
-	}
-
-	sort.Ints(tickKeys)
-
-	for _, tick := range tickKeys {
-		fmt.Fprintf(writer, "    %d:\n", tick)
-		serializeDevTickEntries(writer, ticks[tick])
-	}
-}
-
-// serializeDevTickEntries writes sorted developer entries for a single tick.
-func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
-	devseq := make([]int, 0, len(rtick))
-	for dev := range rtick {
-		devseq = append(devseq, dev)
-	}
-
-	sort.Ints(devseq)
-
-	for _, dev := range devseq {
-		stats := rtick[dev]
-
-		devID := dev
-		if dev == identity.AuthorMissing {
-			devID = -1
-		}
-
-		langs := make([]string, 0, len(stats.Languages))
-
-		for lang, ls := range stats.Languages {
-			if lang == "" {
-				lang = "none"
-			}
-
-			langs = append(langs,
-				fmt.Sprintf("%s: [%d, %d, %d]", lang, ls.Added, ls.Removed, ls.Changed))
-		}
-
-		sort.Strings(langs)
-		fmt.Fprintf(writer, "      %d: [%d, %d, %d, %d, {%s}]\n",
-			devID, stats.Commits, stats.Added, stats.Removed, stats.Changed,
-			strings.Join(langs, ", "))
-	}
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

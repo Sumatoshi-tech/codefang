@@ -46,6 +46,7 @@ type DSLParser struct {
 	originalDSL     string
 	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
+	symbolNames     []string
 	internedTypes   map[string]node.Type // pre-interned Type values from DSL rules
 	internedRoles   map[string]node.Role // pre-interned Role values from DSL rules
 	tsParserPool    sync.Pool
@@ -139,7 +140,21 @@ func (parser *DSLParser) initializeLanguage() error {
 		}
 	}
 
+	parser.symbolNames = buildSymbolNames(parser.language)
+
 	return nil
+}
+
+func buildSymbolNames(language *sitter.Language) []string {
+	symbolCount := min(language.SymbolCount(), maxSymbolID+1)
+
+	symbolNames := make([]string, int(symbolCount))
+
+	for symbolID := uint16(0); uint32(symbolID) < symbolCount; symbolID++ {
+		symbolNames[symbolID] = language.SymbolName(sitter.Symbol(symbolID))
+	}
+
+	return symbolNames
 }
 
 // Extensions returns the supported file extensions for this parser.
@@ -201,14 +216,15 @@ type parseContext struct {
 	tree            *sitter.Tree
 	alloc           *node.Allocator
 	cursors         []*sitter.TreeCursor
+	batchChildren   []batchChildInfo
 	patternMatcher  *mapping.PatternMatcher
 	language        string
 	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
+	symbolNames     []string
 	internedTypes   map[string]node.Type
 	internedRoles   map[string]node.Role
 	interner        map[string]string
-	typeCache       map[string]string
 	source          []byte
 	includeUnmapped bool
 }
@@ -222,10 +238,11 @@ func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *par
 		source:          content,
 		mappingRules:    parser.mappingRules,
 		ruleIndex:       parser.ruleIndex,
+		symbolNames:     parser.symbolNames,
 		internedTypes:   parser.internedTypes,
 		internedRoles:   parser.internedRoles,
-		interner:        make(map[string]string, 128), //nolint:mnd // initial capacity for per-parse string interner
-		typeCache:       make(map[string]string, 64),  //nolint:mnd // initial capacity for node type interning
+		interner:        make(map[string]string, 128),  //nolint:mnd // initial capacity for per-parse string interner
+		batchChildren:   make([]batchChildInfo, 0, 32), //nolint:mnd // small reusable child batch buffer per parse
 		patternMatcher:  parser.patternMatcher,
 		includeUnmapped: parser.IncludeUnmapped,
 	}
@@ -252,19 +269,25 @@ func (ctx *parseContext) putCursor(cursor *sitter.TreeCursor) {
 	ctx.cursors = append(ctx.cursors, cursor)
 }
 
-// nodeType returns the tree-sitter node type string, interning it in typeCache.
-// Each unique node type string is allocated once per parse; subsequent calls
-// for the same type return the cached copy, deduplicating CGO allocations.
+// nodeType resolves node type via unsafe symbol lookup and parser symbol table.
+// It falls back to the CGO Type() path for inline or invalid symbol cases.
 func (ctx *parseContext) nodeType(root sitter.Node) string {
-	typ := root.Type()
-
-	if cached, ok := ctx.typeCache[typ]; ok {
-		return cached
+	symbolID := readSymbol(unsafe.Pointer(&root))
+	if symbolID == invalidSymbolID {
+		// Inline subtrees do not expose heap symbol data. Use grammar symbol ID
+		// (numeric CGO call) to avoid string allocations from ts_node_type.
+		symbolID = uint16(root.GrammarSymbol())
 	}
 
-	ctx.typeCache[typ] = typ
+	symbolIndex := int(symbolID)
+	if symbolIndex < len(ctx.symbolNames) {
+		symbolName := ctx.symbolNames[symbolIndex]
+		if symbolName != "" {
+			return symbolName
+		}
+	}
 
-	return typ
+	return root.Type()
 }
 
 // toCanonicalNode converts a tree-sitter node to a canonical UAST Node.
@@ -366,7 +389,7 @@ func (ctx *parseContext) processChildren(root sitter.Node, mappingRule *mapping.
 		return ctx.processChildrenDirect(root, childCount, mappingRule, children)
 	}
 
-	return ctx.processChildrenCursor(root, mappingRule, children)
+	return ctx.processChildrenBatch(root, childCount, mappingRule, children)
 }
 
 // processChildrenDirect iterates children via NamedChild(idx). Efficient for
@@ -425,6 +448,52 @@ func (ctx *parseContext) processChildrenCursor(
 	}
 
 	ctx.putCursor(cursor)
+
+	return children
+}
+
+func (ctx *parseContext) ensureBatchChildren(size uint32) []batchChildInfo {
+	needed := safeconv.MustUintToInt(uint(size))
+
+	if cap(ctx.batchChildren) < needed {
+		ctx.batchChildren = make([]batchChildInfo, needed)
+	} else {
+		ctx.batchChildren = ctx.batchChildren[:needed]
+	}
+
+	return ctx.batchChildren
+}
+
+func (ctx *parseContext) processChildrenBatch(
+	root sitter.Node,
+	childCount uint32,
+	mappingRule *mapping.Rule,
+	children []*node.Node,
+) []*node.Node {
+	batchChildren := ctx.ensureBatchChildren(childCount)
+
+	written, total := readNamedChildrenBatch(unsafe.Pointer(&root), batchChildren)
+	if total != childCount || written != childCount {
+		return ctx.processChildrenCursor(root, mappingRule, children)
+	}
+
+	for idx := range written {
+		child := batchChildToNode(batchChildren[idx])
+		if child.IsNull() || !child.IsNamed() {
+			return ctx.processChildrenCursor(root, mappingRule, children)
+		}
+
+		if ctx.shouldExcludeChild(child, mappingRule) {
+			continue
+		}
+
+		childParentCtx := ctx.deriveParentContext(root, mappingRule)
+
+		canonical := ctx.toCanonicalNode(child, childParentCtx)
+		if canonical != nil {
+			children = append(children, canonical)
+		}
+	}
 
 	return children
 }
@@ -885,19 +954,19 @@ func (ctx *parseContext) extractTokenText(root sitter.Node, mappingRule *mapping
 
 // extractPositions extracts position information from the Tree-sitter node.
 // Start values are read directly from the TSNode struct via unsafe (0 CGO calls).
-// End values use the Go wrapper methods (2 CGO calls).
-// Total: 2 CGO calls per node, down from 4 (Phase 1.4).
+// End values use a dedicated C helper (1 CGO call).
+// Total: 1 CGO call per node, down from 2.
 func (ctx *parseContext) extractPositions(root sitter.Node) *node.Positions {
 	startByte, startRow, startCol := readStartPositions(unsafe.Pointer(&root))
-	end := root.EndPoint()
+	endByte, endRow, endCol := readEndPositions(unsafe.Pointer(&root))
 
 	return ctx.alloc.NewPositions(
 		startRow+1,
 		startCol+1,
 		startByte,
-		end.Row+1,
-		end.Column+1,
-		root.EndByte(),
+		endRow+1,
+		endCol+1,
+		endByte,
 	)
 }
 

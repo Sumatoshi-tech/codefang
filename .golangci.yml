@@ -209,9 +209,11 @@ linters:
         - stdlib
         - generic
         - github\.com/go-echarts/go-echarts/v2/components\.Charter
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.PlumbingSnapshot
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ResultAggregator
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.StaticAnalyzer
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.DSLNode
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.ValueExtractor

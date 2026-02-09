@@ -52,7 +52,16 @@ func (d *IdentityDetector) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (d *IdentityDetector) Description() string {
-	return "Determines the author of a commit."
+	return d.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (d *IdentityDetector) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		d.Name(),
+		"Determines the author of a commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

@@ -58,7 +58,16 @@ func (t *TreeDiffAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (t *TreeDiffAnalyzer) Description() string {
-	return "Generates the list of changes for a commit."
+	return t.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (t *TreeDiffAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		t.Name(),
+		"Generates the list of changes for a commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

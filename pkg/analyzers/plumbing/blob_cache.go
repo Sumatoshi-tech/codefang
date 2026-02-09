@@ -47,7 +47,16 @@ func (b *BlobCacheAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (b *BlobCacheAnalyzer) Description() string {
-	return "Loads the blobs which correspond to the changed files in a commit."
+	return b.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (b *BlobCacheAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		b.Name(),
+		"Loads the blobs which correspond to the changed files in a commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

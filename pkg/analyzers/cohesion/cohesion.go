@@ -11,6 +11,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -46,7 +47,16 @@ func (c *Analyzer) Flag() string {
 
 // Description returns the analyzer description.
 func (c *Analyzer) Description() string {
-	return "Calculates LCOM and cohesion metrics."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		c.Name(),
+		"Calculates LCOM and cohesion metrics.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -215,6 +225,21 @@ func (c *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
 	_, err = w.Write(data)
 	if err != nil {
 		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportBinary formats cohesion analysis results as binary envelope.
+func (c *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, w)
+	if err != nil {
+		return fmt.Errorf("formatreportbinary: %w", err)
 	}
 
 	return nil
