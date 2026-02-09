@@ -23,7 +23,8 @@ func TestBuildConfigFromParams_Defaults(t *testing.T) {
 	assert.Equal(t, defaultConfig.BlobCacheSize, config.BlobCacheSize)
 	assert.Equal(t, defaultConfig.DiffCacheSize, config.DiffCacheSize)
 	assert.Equal(t, defaultConfig.BlobArenaSize, config.BlobArenaSize)
-	assert.Zero(t, memBudget)
+	// memBudget is auto-detected from system memory on Linux, so it may be non-zero.
+	assert.Equal(t, framework.DefaultMemoryBudget(), memBudget)
 }
 
 func TestBuildConfigFromParams_Workers(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 )
 
 // DefaultGlobalCacheSize is the default maximum memory size for the global blob cache (256 MB).
-const DefaultGlobalCacheSize = 1024 * 1024 * 1024
+const DefaultGlobalCacheSize = 256 * 1024 * 1024
 
 // GlobalBlobCache provides a cross-commit LRU cache for blob data.
 // It tracks memory usage and evicts least recently used entries when the limit is exceeded.

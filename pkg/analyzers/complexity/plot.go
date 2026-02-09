@@ -29,27 +29,44 @@ const (
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctionsData = errors.New("invalid complexity report: expected []map[string]any for functions")
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("static/complexity", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).generateSections(report)
+	})
+}
+
 // FormatReportPlot generates an HTML plot visualization for complexity analysis.
 func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	barChart, err := c.generateComplexityBarChart(report)
+	sections, err := c.generateSections(report)
 	if err != nil {
 		return err
 	}
-
-	scatterChart, scatterErr := c.generateComplexityScatterChart(report)
-	if scatterErr != nil {
-		return scatterErr
-	}
-
-	pieChart := c.generateComplexityPieChart(report)
 
 	page := plotpage.NewPage(
 		"Code Complexity Analysis",
 		"Cyclomatic and cognitive complexity metrics",
 	)
 
-	page.Add(
-		plotpage.Section{
+	page.Add(sections...)
+
+	return page.Render(w)
+}
+
+func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
+	barChart, err := c.generateComplexityBarChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	scatterChart, scatterErr := c.generateComplexityScatterChart(report)
+	if scatterErr != nil {
+		return nil, scatterErr
+	}
+
+	pieChart := c.generateComplexityPieChart(report)
+
+	return []plotpage.Section{
+		{
 			Title:    "Top Complex Functions",
 			Subtitle: "Functions ranked by cyclomatic complexity (higher = more complex).",
 			Chart:    barChart,
@@ -63,7 +80,7 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Cyclomatic vs Cognitive Complexity",
 			Subtitle: "Scatter plot showing relationship between complexity measures.",
 			Chart:    scatterChart,
@@ -78,7 +95,7 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Complexity Distribution",
 			Subtitle: "Distribution of functions by complexity category.",
 			Chart:    pieChart,
@@ -92,13 +109,15 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-	)
-
-	return page.Render(w)
+	}, nil
 }
 
 func (c *Analyzer) generateComplexityBarChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -134,27 +153,26 @@ func sortByComplexity(functions []map[string]any) []map[string]any {
 }
 
 func getCyclomaticValue(fn map[string]any) int {
-	if val, ok := fn["cyclomatic_complexity"].(int); ok {
-		return val
-	}
-
-	return 0
+	return getIntValue(fn, "cyclomatic_complexity")
 }
 
 func getCognitiveValue(fn map[string]any) int {
-	if val, ok := fn["cognitive_complexity"].(int); ok {
-		return val
-	}
-
-	return 0
+	return getIntValue(fn, "cognitive_complexity")
 }
 
 func getNestingValue(fn map[string]any) int {
-	if val, ok := fn["nesting_depth"].(int); ok {
-		return val
-	}
+	return getIntValue(fn, "nesting_depth")
+}
 
-	return 0
+func getIntValue(fn map[string]any, key string) int {
+	switch val := fn[key].(type) {
+	case int:
+		return val
+	case float64:
+		return int(val)
+	default:
+		return 0
+	}
 }
 
 func extractComplexityData(functions []map[string]any) (labels []string, cyclomatic, cognitive []int, colors []string) {
@@ -242,7 +260,11 @@ func createComplexityBarChart(
 }
 
 func (c *Analyzer) generateComplexityScatterChart(report analyze.Report) (*charts.Scatter, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -306,7 +328,11 @@ func createComplexityScatterChart(functions []map[string]any, co *plotpage.Chart
 }
 
 func (c *Analyzer) generateComplexityPieChart(report analyze.Report) *charts.Pie {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
+	}
+
 	if !ok || len(functions) == 0 {
 		return createEmptyComplexityPie()
 	}

@@ -24,18 +24,46 @@ type ReportData struct {
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
+// It handles both in-memory Report keys and binary-decoded JSON keys.
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
 	if v, ok := report["imports"].([]string); ok {
 		data.Imports = v
+	} else if items, ok := report["import_list"]; ok {
+		// After binary encode -> JSON decode, "imports" becomes "import_list"
+		// and values are structured objects with a "path" field.
+		data.Imports = extractImportPaths(items)
 	}
 
 	if v, ok := report["count"].(int); ok {
 		data.Count = v
+	} else if v, ok := report["count"].(float64); ok {
+		data.Count = int(v)
 	}
 
 	return data, nil
+}
+
+// extractImportPaths extracts string paths from a JSON-decoded import_list.
+// The list may be []any of map[string]any (each with a "path" key).
+func extractImportPaths(items any) []string {
+	rawList, ok := items.([]any)
+	if !ok {
+		return nil
+	}
+
+	paths := make([]string, 0, len(rawList))
+
+	for _, item := range rawList {
+		if m, isMap := item.(map[string]any); isMap {
+			if p, hasPath := m["path"].(string); hasPath {
+				paths = append(paths, p)
+			}
+		}
+	}
+
+	return paths
 }
 
 // --- Output Data Types ---

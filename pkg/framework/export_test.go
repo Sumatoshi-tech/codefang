@@ -249,7 +249,7 @@ func RunnerBallastSizeForTest(runner *Runner) int {
 	return len(runner.runtimeBallast)
 }
 
-// ResolveGCPercentForTest exposes GC-percent resolution logic.
-func ResolveGCPercentForTest(requestedGCPercent int, totalMemoryBytes uint64) int {
-	return resolveGCPercent(requestedGCPercent, totalMemoryBytes)
+// ResolveMemoryLimitForTest exposes memory limit resolution logic.
+func ResolveMemoryLimitForTest(totalMemoryBytes uint64) uint64 {
+	return resolveMemoryLimit(totalMemoryBytes)
 }

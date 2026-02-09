@@ -45,6 +45,26 @@ type CheckpointParams struct {
 // BudgetSolver resolves a memory budget (in bytes) to a CoordinatorConfig.
 type BudgetSolver func(budgetBytes int64) (CoordinatorConfig, error)
 
+// defaultMemoryBudgetRatio is the fraction of system memory to use as default budget.
+const defaultMemoryBudgetRatio = 50
+
+// defaultMemoryBudgetCap is the maximum auto-detected memory budget (4 GiB).
+// This forces chunking on large repos, which bounds peak memory usage.
+const defaultMemoryBudgetCap = int64(4 * 1024 * 1024 * 1024)
+
+// DefaultMemoryBudget returns a sensible memory budget based on available system memory.
+// Returns min(50% of total RAM, 4 GiB), or 0 if detection fails.
+func DefaultMemoryBudget() int64 {
+	total := detectTotalMemoryBytes()
+	if total == 0 {
+		return 0
+	}
+
+	budget := int64(total * defaultMemoryBudgetRatio / 100)
+
+	return min(budget, defaultMemoryBudgetCap)
+}
+
 // BuildConfigFromParams builds a CoordinatorConfig from raw parameters.
 // Returns the config and the memory budget in bytes (0 if not set).
 // The budgetSolver is called when params.MemoryBudget is set; pass nil if
@@ -83,7 +103,10 @@ func BuildConfigFromParams(params ConfigParams, budgetSolver BudgetSolver) (Coor
 		return config, 0, tuningErr
 	}
 
-	return config, 0, nil
+	// Auto-detect memory budget from system memory when not explicitly set.
+	memBudget := DefaultMemoryBudget()
+
+	return config, memBudget, nil
 }
 
 func buildConfigFromBudget(budgetStr string, solver BudgetSolver) (CoordinatorConfig, error) {

@@ -192,7 +192,7 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 
 			for change := range jobs {
 				blob := cache[change.To.Hash]
-				if blob.Size() > int64(h.MaxFileSize) {
+				if blob == nil || blob.Size() > int64(h.MaxFileSize) {
 					continue
 				}
 

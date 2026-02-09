@@ -201,18 +201,36 @@ func TestRunner_AppliesBallastSize(t *testing.T) {
 	}
 }
 
-func TestResolveGCPercentForTest_AutoMode(t *testing.T) {
-	const overThreshold = uint64(33 * 1024 * 1024 * 1024)
+func TestResolveMemoryLimit_CappedAt14GiB(t *testing.T) {
+	const totalRAM = uint64(64 * 1024 * 1024 * 1024) // 64 GiB
 
-	got := framework.ResolveGCPercentForTest(0, overThreshold)
-	if got != 200 {
-		t.Fatalf("GC percent = %d, want 200", got)
+	got := framework.ResolveMemoryLimitForTest(totalRAM)
+
+	// 75% of 64 GiB = 48 GiB, but capped at 14 GiB.
+	const want = uint64(14 * 1024 * 1024 * 1024)
+	if got != want {
+		t.Fatalf("memory limit = %d, want %d", got, want)
 	}
 }
 
-func TestResolveGCPercentForTest_ExplicitMode(t *testing.T) {
-	got := framework.ResolveGCPercentForTest(180, 0)
-	if got != 180 {
-		t.Fatalf("GC percent = %d, want 180", got)
+func TestResolveMemoryLimit_SmallSystem(t *testing.T) {
+	const totalRAM = uint64(8 * 1024 * 1024 * 1024) // 8 GiB
+
+	got := framework.ResolveMemoryLimitForTest(totalRAM)
+
+	// 75% of 8 GiB = 6 GiB, which is less than the 14 GiB cap.
+	const want = uint64(6 * 1024 * 1024 * 1024)
+	if got != want {
+		t.Fatalf("memory limit = %d, want %d", got, want)
+	}
+}
+
+func TestResolveMemoryLimit_UnknownSystem(t *testing.T) {
+	got := framework.ResolveMemoryLimitForTest(0)
+
+	// Falls back to 14 GiB default.
+	const want = uint64(14 * 1024 * 1024 * 1024)
+	if got != want {
+		t.Fatalf("memory limit = %d, want %d", got, want)
 	}
 }

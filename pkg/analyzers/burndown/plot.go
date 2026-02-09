@@ -1,6 +1,7 @@
 package burndown
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -89,16 +90,30 @@ type burndownParams struct {
 func extractParams(report analyze.Report) *burndownParams {
 	globalHistory, ok := report["GlobalHistory"].(DenseHistory)
 	if !ok {
-		return nil
+		// Fallback: after binary encode -> JSON decode, "GlobalHistory" becomes
+		// "global_survival" ([]any of map[string]any with band_breakdown).
+		globalHistory = extractDenseHistoryFromBinary(report, "global_survival")
+		if globalHistory == nil {
+			return nil
+		}
 	}
-	sampling, ok := report["Sampling"].(int)
-	if !ok {
-		sampling = 0
+	sampling := extractInt(report, "Sampling", 0)
+	granularity := extractInt(report, "Granularity", 0)
+
+	// After binary round-trip, Sampling/Granularity are lost. Infer from aggregate.
+	if sampling == 0 || granularity == 0 {
+		if agg, ok := report["aggregate"].(map[string]any); ok {
+			numSamples := extractIntFromMap(agg, "num_samples", 0)
+			numBands := extractIntFromMap(agg, "num_bands", 0)
+			if sampling == 0 && numSamples > 1 && numBands > 0 {
+				sampling = 1
+			}
+			if granularity == 0 && numBands > 0 {
+				granularity = 1
+			}
+		}
 	}
-	granularity, ok := report["Granularity"].(int)
-	if !ok {
-		granularity = 0
-	}
+
 	tickSize, ok := report["TickSize"].(time.Duration)
 	if !ok {
 		tickSize = hoursPerDay * time.Hour
@@ -113,6 +128,82 @@ func extractParams(report analyze.Report) *burndownParams {
 	}
 
 	return &burndownParams{globalHistory, sampling, granularity, tickSize, endTime, projectName}
+}
+
+// extractDenseHistoryFromBinary converts binary-decoded JSON survival data back
+// to DenseHistory. After binary encode -> JSON decode round-trip, survival data
+// is []any where each element is map[string]any with "band_breakdown" ([]any of float64).
+func extractDenseHistoryFromBinary(report analyze.Report, key string) DenseHistory {
+	raw, ok := report[key]
+	if !ok {
+		return nil
+	}
+	if raw == nil {
+		return DenseHistory{}
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	if len(list) == 0 {
+		return DenseHistory{}
+	}
+	result := make(DenseHistory, len(list))
+	for i, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		bands, ok := m["band_breakdown"].([]any)
+		if !ok {
+			continue
+		}
+		row := make([]int64, len(bands))
+		for j, v := range bands {
+			row[j] = toInt64(v)
+		}
+		result[i] = row
+	}
+	return result
+}
+
+// extractInt extracts an int from the report, handling float64 from JSON decode.
+func extractInt(report analyze.Report, key string, fallback int) int {
+	if v, ok := report[key].(int); ok {
+		return v
+	}
+	if v, ok := report[key].(float64); ok {
+		return int(v)
+	}
+	return fallback
+}
+
+// extractIntFromMap extracts an int from a generic map, handling float64 from JSON decode.
+func extractIntFromMap(m map[string]any, key string, fallback int) int {
+	if v, ok := m[key].(float64); ok {
+		return int(v)
+	}
+	if v, ok := m[key].(int); ok {
+		return v
+	}
+	return fallback
+}
+
+// toInt64 converts a numeric value (int, float64, etc.) to int64.
+func toInt64(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return i
+	default:
+		return 0
+	}
 }
 
 // GenerateChart implements PlotGenerator interface.
@@ -443,6 +534,12 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 	}
 
 	return fmt.Sprintf("%dmo", ageMonths)
+}
+
+func init() {
+	analyze.RegisterPlotSections("history/burndown", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&HistoryAnalyzer{}).GenerateSections(report)
+	})
 }
 
 func createEmptyBurndown() *charts.Line {

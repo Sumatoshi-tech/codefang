@@ -22,23 +22,40 @@ const (
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctionsData = errors.New("invalid comments report: expected []map[string]any for functions")
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("static/comments", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).generateSections(report)
+	})
+}
+
 // FormatReportPlot generates an HTML plot visualization for comments analysis.
 func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	barChart, err := c.generateFunctionCoverageChart(report)
+	sections, err := c.generateSections(report)
 	if err != nil {
 		return err
 	}
-
-	pieChart := c.generateDocumentationPieChart(report)
-	gaugeChart := c.generateOverallScoreGauge(report)
 
 	page := plotpage.NewPage(
 		"Code Comments Analysis",
 		"Documentation coverage and comment quality metrics",
 	)
 
-	page.Add(
-		plotpage.Section{
+	page.Add(sections...)
+
+	return page.Render(w)
+}
+
+func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
+	barChart, err := c.generateFunctionCoverageChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	pieChart := c.generateDocumentationPieChart(report)
+	gaugeChart := c.generateOverallScoreGauge(report)
+
+	return []plotpage.Section{
+		{
 			Title:    "Overall Documentation Score",
 			Subtitle: "Combined score based on comment quality and placement.",
 			Chart:    gaugeChart,
@@ -52,7 +69,7 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Function Documentation Status",
 			Subtitle: "Documentation status for each function (sorted by lines of code).",
 			Chart:    barChart,
@@ -66,7 +83,7 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Documentation Coverage",
 			Subtitle: "Distribution of documented vs undocumented functions.",
 			Chart:    pieChart,
@@ -79,13 +96,31 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-	)
+	}, nil
+}
 
-	return page.Render(w)
+// reportValue looks up a key in the report, falling back to the "aggregate" sub-map
+// that appears after binary encode -> JSON decode round-trip.
+func reportValue(report analyze.Report, key string) (any, bool) {
+	if v, ok := report[key]; ok {
+		return v, true
+	}
+
+	if agg, ok := report["aggregate"].(map[string]any); ok {
+		if v, ok := agg[key]; ok {
+			return v, true
+		}
+	}
+
+	return nil, false
 }
 
 func (c *Analyzer) generateFunctionCoverageChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_documentation")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -120,19 +155,45 @@ func sortByLines(functions []map[string]any) []map[string]any {
 }
 
 func getLinesValue(fn map[string]any) int {
-	if val, ok := fn["lines"].(int); ok {
+	switch val := fn["lines"].(type) {
+	case int:
 		return val
+	case float64:
+		return int(val)
+	default:
+		return 0
 	}
-
-	return 0
 }
 
 func isDocumented(fn map[string]any) bool {
+	// In-memory report uses "assessment" field.
 	if assessment, ok := fn["assessment"].(string); ok {
 		return assessment == "✅ Well Documented"
 	}
 
+	// Binary-decoded ComputedMetrics uses "is_documented" bool.
+	if documented, ok := fn["is_documented"].(bool); ok {
+		return documented
+	}
+
+	// Binary-decoded ComputedMetrics uses "status" string.
+	if status, ok := fn["status"].(string); ok {
+		return status == "Well Documented"
+	}
+
 	return false
+}
+
+// getFunctionName returns the function name from a function record,
+// handling both in-memory ("function") and binary-decoded ("name") keys.
+func getFunctionName(fn map[string]any) string {
+	if name, ok := fn["function"].(string); ok {
+		return name
+	}
+	if name, ok := fn["name"].(string); ok {
+		return name
+	}
+	return "unknown"
 }
 
 func extractFunctionData(functions []map[string]any) (labels []string, lines []int, colors []string) {
@@ -141,12 +202,7 @@ func extractFunctionData(functions []map[string]any) (labels []string, lines []i
 	colors = make([]string, len(functions))
 
 	for i, fn := range functions {
-		if name, ok := fn["function"].(string); ok {
-			labels[i] = name
-		} else {
-			labels[i] = "unknown"
-		}
-
+		labels[i] = getFunctionName(fn)
 		lines[i] = getLinesValue(fn)
 
 		if isDocumented(fn) {
@@ -200,12 +256,22 @@ func (c *Analyzer) generateDocumentationPieChart(report analyze.Report) *charts.
 	documented := 0
 	undocumented := 0
 
-	if val, ok := report["documented_functions"].(int); ok {
+	docVal, _ := reportValue(report, "documented_functions")
+
+	switch val := docVal.(type) {
+	case int:
 		documented = val
+	case float64:
+		documented = int(val)
 	}
 
-	if total, ok := report["total_functions"].(int); ok {
+	totalVal, _ := reportValue(report, "total_functions")
+
+	switch total := totalVal.(type) {
+	case int:
 		undocumented = total - documented
+	case float64:
+		undocumented = int(total) - documented
 	}
 
 	if documented == 0 && undocumented == 0 {
@@ -253,8 +319,10 @@ func createDocumentationPieChart(documented, undocumented int) *charts.Pie {
 func (c *Analyzer) generateOverallScoreGauge(report analyze.Report) *charts.Liquid {
 	score := 0.0
 
-	if val, ok := report["overall_score"].(float64); ok {
-		score = val
+	if val, ok := reportValue(report, "overall_score"); ok {
+		if f, isFloat := val.(float64); isFloat {
+			score = f
+		}
 	}
 
 	return createScoreLiquid(score)

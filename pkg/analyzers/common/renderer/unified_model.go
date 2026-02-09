@@ -52,11 +52,12 @@ func RenderUnifiedModelPlot(model UnifiedModel, writer io.Writer) error {
 	)
 
 	for _, analyzer := range model.Analyzers {
-		page.Add(plotpage.Section{
-			Title:    analyzer.ID,
-			Subtitle: fmt.Sprintf("mode: %s", analyzer.Mode),
-			Chart:    reportTable(analyzer.Report),
-		})
+		sections, sErr := renderAnalyzerSections(analyzer)
+		if sErr != nil {
+			return fmt.Errorf("render %s: %w", analyzer.ID, sErr)
+		}
+
+		page.Add(sections...)
 	}
 
 	err = page.Render(writer)
@@ -66,6 +67,30 @@ func RenderUnifiedModelPlot(model UnifiedModel, writer io.Writer) error {
 
 	return nil
 }
+
+// renderAnalyzerSections returns plot sections for one analyzer result.
+// Uses the analyzer's registered section renderer if available, otherwise
+// falls back to a raw key-value table. If the custom renderer fails (e.g.
+// the report was decoded from binary and types don't match), falls back
+// to the table gracefully.
+func renderAnalyzerSections(analyzer analyze.AnalyzerResult) ([]plotpage.Section, error) {
+	renderer := analyze.PlotSectionsFor(analyzer.ID)
+	if renderer != nil {
+		sections, err := renderer(analyzer.Report)
+		if err == nil {
+			return sections, nil
+		}
+		// Custom renderer failed; fall back to table view.
+	}
+
+	return []plotpage.Section{{
+		Title:    analyzer.ID,
+		Subtitle: fmt.Sprintf("mode: %s", analyzer.Mode),
+		Chart:    reportTable(analyzer.Report),
+	}}, nil
+}
+
+const maxTableValueLen = 500
 
 func reportTable(report analyze.Report) *plotpage.Table {
 	table := plotpage.NewTable([]string{"Key", "Value"})
@@ -84,6 +109,10 @@ func reportTable(report analyze.Report) *plotpage.Table {
 		jsonValue, err := json.Marshal(value)
 		if err == nil {
 			renderedValue = string(jsonValue)
+		}
+
+		if len(renderedValue) > maxTableValueLen {
+			renderedValue = renderedValue[:maxTableValueLen] + "... (truncated)"
 		}
 
 		table.AddRow(template.HTMLEscapeString(key), template.HTMLEscapeString(renderedValue))

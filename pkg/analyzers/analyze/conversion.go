@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -332,6 +333,22 @@ var plotRendererFn PlotRenderer //nolint:gochecknoglobals // package-level regis
 // It is intended to be called from the renderer package's init function.
 func RegisterPlotRenderer(fn PlotRenderer) {
 	plotRendererFn = fn
+}
+
+// SectionRendererFunc generates plot sections from a raw report for a specific analyzer.
+type SectionRendererFunc func(report Report) ([]plotpage.Section, error)
+
+// plotSectionRenderers maps analyzer IDs to their plot section generators.
+var plotSectionRenderers = make(map[string]SectionRendererFunc) //nolint:gochecknoglobals // package-level registration
+
+// RegisterPlotSections registers a plot section renderer for the given analyzer ID.
+func RegisterPlotSections(analyzerID string, fn SectionRendererFunc) {
+	plotSectionRenderers[analyzerID] = fn
+}
+
+// PlotSectionsFor returns the registered section renderer for an analyzer ID, or nil.
+func PlotSectionsFor(analyzerID string) SectionRendererFunc {
+	return plotSectionRenderers[analyzerID]
 }
 
 // WriteConvertedOutput encodes the unified model into the requested output format

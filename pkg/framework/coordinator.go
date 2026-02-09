@@ -30,13 +30,20 @@ const leafWorkerDivisor = 3
 // minLeafWorkers is the minimum number of leaf workers when enabled.
 const minLeafWorkers = 4
 
+// defaultMemoryLimitBytes is the default soft memory limit (14 GiB).
+// This caps peak memory usage while leaving headroom for the OS.
+// Go's GC becomes aggressive as heap approaches this limit, preventing OOM.
+const defaultMemoryLimitBytes = uint64(14 * 1024 * 1024 * 1024)
+
+// memoryLimitRatio is the fraction of system memory to use as the soft limit.
+// Go's runtime GC becomes aggressive as heap approaches this limit.
+const memoryLimitRatio = 75
+
 const (
-	autoGCPercent              = 200
-	autoGCMemoryThresholdBytes = uint64(32 * 1024 * 1024 * 1024)
-	procMemInfoPath            = "/proc/meminfo"
-	memTotalPrefix             = "MemTotal:"
-	memTotalUnitKiB            = "kB"
-	kibibyte                   = uint64(1024)
+	procMemInfoPath = "/proc/meminfo"
+	memTotalPrefix  = "MemTotal:"
+	memTotalUnitKiB = "kB"
+	kibibyte        = uint64(1024)
 )
 
 // CoordinatorConfig configures the pipeline coordinator.
@@ -216,33 +223,36 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 
 func applyRuntimeTuning(config CoordinatorConfig) []byte {
 	applyGCPercent(config.GCPercent)
+	applyMemoryLimit()
 
 	return applyBallast(config.BallastSize)
 }
 
+// applyMemoryLimit sets Go's soft memory limit based on available system memory.
+// Uses 75% of system memory (capped at 14 GiB) to trigger aggressive GC before OOM.
+// Go's GC uses this as a target: when heap approaches the limit, GC runs more
+// frequently regardless of GOGC. This prevents OOM on large analysis workloads.
+func applyMemoryLimit() {
+	limit := resolveMemoryLimit(detectTotalMemoryBytes())
+	debug.SetMemoryLimit(int64(limit))
+}
+
+func resolveMemoryLimit(totalMemoryBytes uint64) uint64 {
+	if totalMemoryBytes == 0 {
+		return defaultMemoryLimitBytes
+	}
+
+	systemBased := totalMemoryBytes * memoryLimitRatio / 100
+
+	return min(systemBased, defaultMemoryLimitBytes)
+}
+
 func applyGCPercent(requestedGCPercent int) {
-	gcPercent := resolveGCPercent(requestedGCPercent, detectTotalMemoryBytes())
-	if gcPercent <= 0 {
+	if requestedGCPercent <= 0 {
 		return
 	}
 
-	debug.SetGCPercent(gcPercent)
-}
-
-func resolveGCPercent(requestedGCPercent int, totalMemoryBytes uint64) int {
-	if requestedGCPercent > 0 {
-		return requestedGCPercent
-	}
-
-	if requestedGCPercent < 0 {
-		return 0
-	}
-
-	if totalMemoryBytes > autoGCMemoryThresholdBytes {
-		return autoGCPercent
-	}
-
-	return 0
+	debug.SetGCPercent(requestedGCPercent)
 }
 
 func applyBallast(ballastSize int64) []byte {

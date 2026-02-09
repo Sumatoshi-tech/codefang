@@ -22,22 +22,39 @@ const (
 // ErrInvalidFunctions indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctions = errors.New("invalid cohesion report: expected []map[string]any for functions")
 
+func init() { //nolint:gochecknoinits // registration pattern
+	analyze.RegisterPlotSections("static/cohesion", func(report analyze.Report) ([]plotpage.Section, error) {
+		return (&Analyzer{}).generateSections(report)
+	})
+}
+
 // FormatReportPlot generates an HTML plot visualization for cohesion analysis.
 func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	barChart, err := c.generateBarChart(report)
+	sections, err := c.generateSections(report)
 	if err != nil {
 		return err
 	}
-
-	pieChart := c.generatePieChart(report)
 
 	page := plotpage.NewPage(
 		"Code Cohesion Analysis",
 		"Function cohesion metrics and distribution",
 	)
 
-	page.Add(
-		plotpage.Section{
+	page.Add(sections...)
+
+	return page.Render(w)
+}
+
+func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
+	barChart, err := c.generateBarChart(report)
+	if err != nil {
+		return nil, err
+	}
+
+	pieChart := c.generatePieChart(report)
+
+	return []plotpage.Section{
+		{
 			Title:    "Function Cohesion Scores",
 			Subtitle: "Cohesion score per function (higher is better, 0.0-1.0 scale).",
 			Chart:    barChart,
@@ -52,7 +69,7 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-		plotpage.Section{
+		{
 			Title:    "Cohesion Distribution",
 			Subtitle: "Distribution of functions by cohesion category.",
 			Chart:    pieChart,
@@ -67,13 +84,15 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 				},
 			},
 		},
-	)
-
-	return page.Render(w)
+	}, nil
 }
 
 func (c *Analyzer) generateBarChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_cohesion")
+	}
+
 	if !ok {
 		return nil, ErrInvalidFunctions
 	}
@@ -191,7 +210,11 @@ func createCohesionBarChart(labels []string, scores []float64, colors []string, 
 }
 
 func (c *Analyzer) generatePieChart(report analyze.Report) *charts.Pie {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
+	if !ok {
+		functions, ok = analyze.ReportFunctionList(report, "function_cohesion")
+	}
+
 	if !ok || len(functions) == 0 {
 		return createEmptyPieChart()
 	}

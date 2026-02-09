@@ -265,6 +265,11 @@ func (h *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
 
 		h.mergeFiles(other.files)
 		h.mergeMerges(other.merges)
+
+		// Keep the latest lastCommit so Finalize can filter deleted files.
+		if other.lastCommit != nil {
+			h.lastCommit = other.lastCommit
+		}
 	}
 }
 
