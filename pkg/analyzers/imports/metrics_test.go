@@ -20,9 +20,11 @@ const (
 	floatDelta = 0.01
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -33,6 +35,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"imports": []string{testImportStdlib, testImportExternal},
 		"count":   5,
@@ -47,9 +51,11 @@ func TestParseReportData_AllFields(t *testing.T) {
 	assert.Equal(t, 5, result.Count)
 }
 
-// --- categorizeImport Tests ---
+// --- categorizeImport Tests ---.
 
 func TestCategorizeImport(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		imp      string
@@ -66,15 +72,19 @@ func TestCategorizeImport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := categorizeImport(tt.imp)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- isExternalImport Tests ---
+// --- isExternalImport Tests ---.
 
 func TestIsExternalImport(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		imp      string
@@ -89,21 +99,25 @@ func TestIsExternalImport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := isExternalImport(tt.imp)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- isStandardLibrary Tests ---
+// --- isStandardLibrary Tests ---.
 
 func TestIsStandardLibrary(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		imp      string
 		expected bool
 	}{
-		// Go stdlib
+		// Go stdlib.
 		{"go_fmt", "fmt", true},
 		{"go_os", "os", true},
 		{"go_io", "io", true},
@@ -119,7 +133,7 @@ func TestIsStandardLibrary(t *testing.T) {
 		{"go_regexp", "regexp", true},
 		{"go_sort", "sort", true},
 		{"go_math", "math/rand", true},
-		// Python stdlib
+		// Python stdlib.
 		{"py_sys", "sys", true},
 		{"py_typing", "typing", true},
 		{"py_collections", "collections", true},
@@ -127,29 +141,33 @@ func TestIsStandardLibrary(t *testing.T) {
 		{"py_functools", "functools", true},
 		{"py_json", "json", true},
 		{"py_re", "re", true},
-		// JS/Node stdlib
+		// JS/Node stdlib.
 		{"node_fs", "fs", true},
 		{"node_util", "util", true},
 		{"node_events", "events", true},
 		{"node_stream", "stream", true},
 		{"node_crypto", "crypto", true},
 		{"node_https", "https", true},
-		// External
+		// External.
 		{"external", "github.com/user/repo", false},
 		{"unknown", "somepackage", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := isStandardLibrary(tt.imp)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- ImportListMetric Tests ---
+// --- ImportListMetric Tests ---.
 
 func TestNewImportListMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportListMetric()
 
 	assert.Equal(t, "import_list", m.Name())
@@ -159,6 +177,8 @@ func TestNewImportListMetric_Metadata(t *testing.T) {
 }
 
 func TestImportListMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportListMetric()
 	input := &ReportData{}
 
@@ -168,6 +188,8 @@ func TestImportListMetric_Empty(t *testing.T) {
 }
 
 func TestImportListMetric_SingleImport(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportListMetric()
 	input := &ReportData{
 		Imports: []string{testImportStdlib},
@@ -182,6 +204,8 @@ func TestImportListMetric_SingleImport(t *testing.T) {
 }
 
 func TestImportListMetric_MultipleImports_Sorted(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportListMetric()
 	input := &ReportData{
 		Imports: []string{
@@ -195,19 +219,21 @@ func TestImportListMetric_MultipleImports_Sorted(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 4)
-	// Sorted by category then path: external < relative < stdlib
+	// Sorted by category then path: external < relative < stdlib.
 	assert.Equal(t, "external", result[0].Category)
 	assert.Equal(t, "relative", result[1].Category)
 	assert.Equal(t, "stdlib", result[2].Category)
 	assert.Equal(t, "stdlib", result[3].Category)
-	// Within stdlib, sorted by path
-	assert.Equal(t, testImportStdlib, result[2].Path) // "fmt" < "os"
+	// Within stdlib, sorted by path.
+	assert.Equal(t, testImportStdlib, result[2].Path) // "fmt" < "os".
 	assert.Equal(t, "os", result[3].Path)
 }
 
-// --- ImportCategoryMetric Tests ---
+// --- ImportCategoryMetric Tests ---.
 
 func TestNewImportCategoryMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportCategoryMetric()
 
 	assert.Equal(t, "import_categories", m.Name())
@@ -217,6 +243,8 @@ func TestNewImportCategoryMetric_Metadata(t *testing.T) {
 }
 
 func TestImportCategoryMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportCategoryMetric()
 	input := &ReportData{}
 
@@ -226,6 +254,8 @@ func TestImportCategoryMetric_Empty(t *testing.T) {
 }
 
 func TestImportCategoryMetric_AllCategories(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportCategoryMetric()
 	input := &ReportData{
 		Imports: []string{
@@ -241,7 +271,7 @@ func TestImportCategoryMetric_AllCategories(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by count descending
+	// Sorted by count descending.
 	assert.Equal(t, "stdlib", result[0].Category)
 	assert.Equal(t, 3, result[0].Count)
 	assert.Equal(t, "external", result[1].Category)
@@ -250,9 +280,11 @@ func TestImportCategoryMetric_AllCategories(t *testing.T) {
 	assert.Equal(t, 1, result[2].Count)
 }
 
-// --- ImportDependencyMetric Tests ---
+// --- ImportDependencyMetric Tests ---.
 
 func TestNewImportDependencyMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportDependencyMetric()
 
 	assert.Equal(t, "import_dependencies", m.Name())
@@ -262,6 +294,8 @@ func TestNewImportDependencyMetric_Metadata(t *testing.T) {
 }
 
 func TestImportDependencyMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportDependencyMetric()
 	input := &ReportData{}
 
@@ -271,6 +305,8 @@ func TestImportDependencyMetric_Empty(t *testing.T) {
 }
 
 func TestImportDependencyMetric_NoIssues(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportDependencyMetric()
 	input := &ReportData{
 		Imports: []string{
@@ -286,6 +322,8 @@ func TestImportDependencyMetric_NoIssues(t *testing.T) {
 }
 
 func TestImportDependencyMetric_DeeplyNestedRelative(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportDependencyMetric()
 	input := &ReportData{
 		Imports: []string{
@@ -302,10 +340,12 @@ func TestImportDependencyMetric_DeeplyNestedRelative(t *testing.T) {
 }
 
 func TestImportDependencyMetric_LongPath(t *testing.T) {
+	t.Parallel()
+
 	m := NewImportDependencyMetric()
 	input := &ReportData{
 		Imports: []string{
-			"github.com/org/repo/pkg/internal/utils/helper", // 6 slashes
+			"github.com/org/repo/pkg/internal/utils/helper", // 6 slashes.
 		},
 	}
 
@@ -316,9 +356,11 @@ func TestImportDependencyMetric_LongPath(t *testing.T) {
 	assert.Contains(t, result[0].Reason, "Long import path")
 }
 
-// --- ImportsAggregateMetric Tests ---
+// --- ImportsAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "imports_aggregate", m.Name())
@@ -328,6 +370,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestImportsAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -341,14 +385,16 @@ func TestImportsAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestImportsAggregateMetric_MixedImports(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Imports: []string{
-			testImportStdlib,   // internal (stdlib)
-			"os",               // internal (stdlib)
-			testImportExternal, // external
-			"github.com/other", // external
-			testImportRelative, // internal (relative)
+			testImportStdlib,   // internal (stdlib).
+			"os",               // internal (stdlib).
+			testImportExternal, // external.
+			"github.com/other", // external.
+			testImportRelative, // internal (relative).
 		},
 	}
 
@@ -357,12 +403,14 @@ func TestImportsAggregateMetric_MixedImports(t *testing.T) {
 	assert.Equal(t, 5, result.TotalImports)
 	assert.Equal(t, 2, result.ExternalImports)
 	assert.Equal(t, 3, result.InternalImports)
-	// Unique packages: fmt, os, github.com, ..(from relative)
+	// Unique packages: fmt, os, github.com, ..(from relative).
 	assert.GreaterOrEqual(t, result.UniquePackages, 3)
 	assert.InDelta(t, 2.0/5.0, result.ExternalRatio, floatDelta)
 }
 
 func TestImportsAggregateMetric_AllExternal(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Imports: []string{
@@ -379,9 +427,11 @@ func TestImportsAggregateMetric_AllExternal(t *testing.T) {
 	assert.InDelta(t, 1.0, result.ExternalRatio, floatDelta)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -394,6 +444,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"imports": []string{
 			testImportStdlib,
@@ -408,29 +460,33 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// ImportList
+	// ImportList.
 	require.Len(t, result.ImportList, 4)
 
-	// Categories
+	// Categories.
 	require.GreaterOrEqual(t, len(result.Categories), 2)
 
-	// Dependencies - should have 1 issue (deeply nested)
+	// Dependencies - should have 1 issue (deeply nested).
 	require.Len(t, result.Dependencies, 1)
 	assert.Equal(t, "MEDIUM", result.Dependencies[0].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 4, result.Aggregate.TotalImports)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	assert.Equal(t, "imports", m.AnalyzerName())
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		ImportList: []ImportData{
 			{Path: testImportStdlib, Category: "stdlib"},
@@ -444,6 +500,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		ImportList: []ImportData{
 			{Path: testImportStdlib, Category: "stdlib"},

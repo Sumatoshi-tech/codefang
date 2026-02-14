@@ -11,7 +11,7 @@ import (
 const (
 	dataZoomEnd   = 100
 	labelFontSize = 10
-	styleTagLen   = 8 // len("</style>")
+	styleTagLen   = 8 // len("</style>").
 )
 
 // Style defines chart dimensions and grid margins.

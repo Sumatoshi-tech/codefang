@@ -20,15 +20,12 @@ import (
 
 // HistoryAnalyzer calculates per-developer line statistics across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	Identity             *plumbing.IdentityDetector
 	TreeDiff             *plumbing.TreeDiffAnalyzer
 	Ticks                *plumbing.TicksSinceStart
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
-	ticks                map[int]map[int]*DevTick //nolint:revive // intentional naming matches exported Ticks field.
+	tickData             map[int]map[int]*DevTick
 	merges               map[gitlib.Hash]bool
 	reversedPeopleDict   []string
 	tickSize             time.Duration
@@ -125,7 +122,7 @@ func (d *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
 
-	d.ticks = map[int]map[int]*DevTick{}
+	d.tickData = map[int]map[int]*DevTick{}
 	d.merges = map[gitlib.Hash]bool{}
 
 	return nil
@@ -159,10 +156,10 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 	tick := d.Ticks.Tick
 
-	devstick, exists := d.ticks[tick]
+	devstick, exists := d.tickData[tick]
 	if !exists {
 		devstick = map[int]*DevTick{}
-		d.ticks[tick] = devstick
+		d.tickData[tick] = devstick
 	}
 
 	dd, exists := devstick[author]
@@ -201,7 +198,7 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	names := d.reversedPeopleDict
 
-	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector
+	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector.
 	if len(names) == 0 && d.Identity != nil {
 		names = d.Identity.ReversedPeopleDict
 	}
@@ -211,7 +208,7 @@ func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}
 
 	return analyze.Report{
-		"Ticks":              d.ticks,
+		"Ticks":              d.tickData,
 		"ReversedPeopleDict": names,
 		"TickSize":           d.tickSize,
 	}, nil
@@ -250,7 +247,7 @@ func (d *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 
 // mergeBranch merges a single branch's ticks into this analyzer.
 func (d *HistoryAnalyzer) mergeBranch(other *HistoryAnalyzer) {
-	for tick, otherDevTick := range other.ticks {
+	for tick, otherDevTick := range other.tickData {
 		d.ensureTickExists(tick)
 
 		for devID, otherStats := range otherDevTick {
@@ -261,18 +258,18 @@ func (d *HistoryAnalyzer) mergeBranch(other *HistoryAnalyzer) {
 
 // ensureTickExists ensures the tick map exists.
 func (d *HistoryAnalyzer) ensureTickExists(tick int) {
-	if d.ticks[tick] == nil {
-		d.ticks[tick] = make(map[int]*DevTick)
+	if d.tickData[tick] == nil {
+		d.tickData[tick] = make(map[int]*DevTick)
 	}
 }
 
 // mergeDevStats merges stats for a single developer in a tick.
 func (d *HistoryAnalyzer) mergeDevStats(tick, devID int, otherStats *DevTick) {
-	if d.ticks[tick][devID] == nil {
-		d.ticks[tick][devID] = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
+	if d.tickData[tick][devID] == nil {
+		d.tickData[tick][devID] = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
 	}
 
-	currentStats := d.ticks[tick][devID]
+	currentStats := d.tickData[tick][devID]
 	currentStats.Commits += otherStats.Commits
 	currentStats.Added += otherStats.Added
 	currentStats.Removed += otherStats.Removed
@@ -346,7 +343,7 @@ func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 func (d *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
 	metrics, err := ComputeAllMetrics(result)
 	if err != nil {
-		// For empty or invalid reports, serialize empty metrics structure
+		// For empty or invalid reports, serialize empty metrics structure.
 		metrics = &ComputedMetrics{}
 	}
 
@@ -361,7 +358,7 @@ func (d *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer)
 func (d *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
 	metrics, err := ComputeAllMetrics(result)
 	if err != nil {
-		// For empty or invalid reports, serialize empty metrics structure
+		// For empty or invalid reports, serialize empty metrics structure.
 		metrics = &ComputedMetrics{}
 	}
 

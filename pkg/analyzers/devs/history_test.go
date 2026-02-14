@@ -1,4 +1,4 @@
-package devs //nolint:testpackage // testing internal implementation.
+package devs
 
 import (
 	"bytes"
@@ -59,7 +59,7 @@ func TestHistoryAnalyzer_Initialize(t *testing.T) {
 		t.Errorf("expected default tickSize 24h, got %v", d.tickSize)
 	}
 
-	if d.ticks == nil {
+	if d.tickData == nil {
 		t.Error("expected ticks initialized")
 	}
 
@@ -101,7 +101,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	)
 	require.NoError(t, d.Consume(&analyze.Context{Commit: commit1}))
 
-	tick := d.ticks[0]
+	tick := d.tickData[0]
 	if tick == nil {
 		t.Fatal("expected tick 0")
 	}
@@ -183,7 +183,7 @@ func TestHistoryAnalyzer_Finalize(t *testing.T) {
 		tickSize:           24 * time.Hour,
 	}
 	require.NoError(t, d.Initialize(nil))
-	d.ticks[0] = map[int]*DevTick{
+	d.tickData[0] = map[int]*DevTick{
 		0: {Commits: 1},
 	}
 
@@ -347,15 +347,17 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := d.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
-	// Parse the JSON output
+	// Parse the JSON output.
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure with lowercase keys (from json tags)
+	// Should have computed metrics structure with lowercase keys (from json tags).
 	assert.Contains(t, result, "aggregate")
 	assert.Contains(t, result, "developers")
 	assert.Contains(t, result, "languages")
@@ -386,11 +388,12 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := d.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys)
+	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "aggregate:")
 	assert.Contains(t, output, "developers:")
 	assert.Contains(t, output, "languages:")

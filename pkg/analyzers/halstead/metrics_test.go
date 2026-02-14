@@ -38,9 +38,11 @@ const (
 	floatDelta = 0.01
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -52,6 +54,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"total_functions":    testTotalFunctions,
 		"volume":             testVolumeHigh,
@@ -89,6 +93,8 @@ func TestParseReportData_AllFields(t *testing.T) {
 }
 
 func TestParseReportData_WithFunctions(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"functions": []map[string]any{
 			{
@@ -117,7 +123,7 @@ func TestParseReportData_WithFunctions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Functions, 2)
 
-	// First function - all fields
+	// First function - all fields.
 	fn1 := result.Functions[0]
 	assert.Equal(t, testFunctionName1, fn1.Name)
 	assert.InDelta(t, testVolumeMedium, fn1.Volume, floatDelta)
@@ -132,15 +138,17 @@ func TestParseReportData_WithFunctions(t *testing.T) {
 	assert.Equal(t, testVocabulary, fn1.Vocabulary)
 	assert.Equal(t, testLength, fn1.Length)
 
-	// Second function - minimal fields
+	// Second function - minimal fields.
 	fn2 := result.Functions[1]
 	assert.Equal(t, testFunctionName2, fn2.Name)
 	assert.InDelta(t, testVolumeHigh, fn2.Volume, floatDelta)
 }
 
-// --- FunctionHalsteadMetric Tests ---
+// --- FunctionHalsteadMetric Tests ---.
 
 func TestNewFunctionHalsteadMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionHalsteadMetric()
 
 	assert.Equal(t, "function_halstead", m.Name())
@@ -150,6 +158,8 @@ func TestNewFunctionHalsteadMetric_Metadata(t *testing.T) {
 }
 
 func TestFunctionHalsteadMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionHalsteadMetric()
 	input := &ReportData{}
 
@@ -159,6 +169,8 @@ func TestFunctionHalsteadMetric_Empty(t *testing.T) {
 }
 
 func TestFunctionHalsteadMetric_SingleFunction(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionHalsteadMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -186,6 +198,8 @@ func TestFunctionHalsteadMetric_SingleFunction(t *testing.T) {
 }
 
 func TestFunctionHalsteadMetric_SortedByVolume(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionHalsteadMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -198,13 +212,15 @@ func TestFunctionHalsteadMetric_SortedByVolume(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Should be sorted by volume descending
+	// Should be sorted by volume descending.
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, testFunctionName3, result[1].Name)
 	assert.Equal(t, testFunctionName1, result[2].Name)
 }
 
 func TestFunctionHalsteadMetric_ComplexityLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		volume   float64
@@ -222,6 +238,8 @@ func TestFunctionHalsteadMetric_ComplexityLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewFunctionHalsteadMetric()
 			input := &ReportData{
 				Functions: []FunctionData{
@@ -237,9 +255,11 @@ func TestFunctionHalsteadMetric_ComplexityLevels(t *testing.T) {
 	}
 }
 
-// --- classifyVolumeLevel Tests ---
+// --- classifyVolumeLevel Tests ---.
 
 func TestClassifyVolumeLevel(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		volume   float64
@@ -257,15 +277,19 @@ func TestClassifyVolumeLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := classifyVolumeLevel(tt.volume)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- EffortDistributionMetric Tests ---
+// --- EffortDistributionMetric Tests ---.
 
 func TestNewEffortDistributionMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewEffortDistributionMetric()
 
 	assert.Equal(t, "effort_distribution", m.Name())
@@ -275,6 +299,8 @@ func TestNewEffortDistributionMetric_Metadata(t *testing.T) {
 }
 
 func TestEffortDistributionMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewEffortDistributionMetric()
 	input := &ReportData{}
 
@@ -287,6 +313,8 @@ func TestEffortDistributionMetric_Empty(t *testing.T) {
 }
 
 func TestEffortDistributionMetric_AllLevels(t *testing.T) {
+	t.Parallel()
+
 	m := NewEffortDistributionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -310,6 +338,8 @@ func TestEffortDistributionMetric_AllLevels(t *testing.T) {
 }
 
 func TestEffortDistributionMetric_SingleCategory(t *testing.T) {
+	t.Parallel()
+
 	m := NewEffortDistributionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -327,9 +357,11 @@ func TestEffortDistributionMetric_SingleCategory(t *testing.T) {
 	assert.Equal(t, 0, result.VeryHigh)
 }
 
-// --- HighEffortFunctionMetric Tests ---
+// --- HighEffortFunctionMetric Tests ---.
 
 func TestNewHighEffortFunctionMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 
 	assert.Equal(t, "high_effort_functions", m.Name())
@@ -339,6 +371,8 @@ func TestNewHighEffortFunctionMetric_Metadata(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 	input := &ReportData{}
 
@@ -348,6 +382,8 @@ func TestHighEffortFunctionMetric_Empty(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_BelowThreshold(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -363,6 +399,8 @@ func TestHighEffortFunctionMetric_BelowThreshold(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_MediumRisk(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -388,6 +426,8 @@ func TestHighEffortFunctionMetric_MediumRisk(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_HighRisk(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -402,6 +442,8 @@ func TestHighEffortFunctionMetric_HighRisk(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_RiskLevelThreshold(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		volume   float64
@@ -415,6 +457,8 @@ func TestHighEffortFunctionMetric_RiskLevelThreshold(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewHighEffortFunctionMetric()
 			input := &ReportData{
 				Functions: []FunctionData{
@@ -431,6 +475,8 @@ func TestHighEffortFunctionMetric_RiskLevelThreshold(t *testing.T) {
 }
 
 func TestHighEffortFunctionMetric_SortedByVolume(t *testing.T) {
+	t.Parallel()
+
 	m := NewHighEffortFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
@@ -443,15 +489,17 @@ func TestHighEffortFunctionMetric_SortedByVolume(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Should be sorted by volume descending
+	// Should be sorted by volume descending.
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, testFunctionName3, result[1].Name)
 	assert.Equal(t, testFunctionName1, result[2].Name)
 }
 
-// --- HalsteadAggregateMetric Tests ---
+// --- HalsteadAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "halstead_aggregate", m.Name())
@@ -461,6 +509,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestHalsteadAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -472,6 +522,8 @@ func TestHalsteadAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestHalsteadAggregateMetric_AllFields(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		TotalFunctions:    testTotalFunctions,
@@ -509,6 +561,8 @@ func TestHalsteadAggregateMetric_AllFields(t *testing.T) {
 }
 
 func TestHalsteadAggregateMetric_HealthScoreLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		totalFunctions int
@@ -525,6 +579,8 @@ func TestHalsteadAggregateMetric_HealthScoreLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewAggregateMetric()
 			input := &ReportData{
 				TotalFunctions: tt.totalFunctions,
@@ -540,10 +596,12 @@ func TestHalsteadAggregateMetric_HealthScoreLevels(t *testing.T) {
 }
 
 func TestHalsteadAggregateMetric_HealthScoreNeverNegative(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		TotalFunctions: 1,
-		Volume:         1000000.0, // Extremely high volume
+		Volume:         1000000.0, // Extremely high volume.
 	}
 
 	result := m.Compute(input)
@@ -551,9 +609,11 @@ func TestHalsteadAggregateMetric_HealthScoreNeverNegative(t *testing.T) {
 	assert.GreaterOrEqual(t, result.HealthScore, 0.0)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -566,6 +626,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"total_functions":    3,
 		"volume":             9050.0,
@@ -592,41 +654,45 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// FunctionHalstead - sorted by volume descending
+	// FunctionHalstead - sorted by volume descending.
 	require.Len(t, result.FunctionHalstead, 3)
 	assert.Equal(t, "veryHighFunc", result.FunctionHalstead[0].Name)
 	assert.Equal(t, "highFunc", result.FunctionHalstead[1].Name)
 	assert.Equal(t, "lowFunc", result.FunctionHalstead[2].Name)
 
-	// Distribution
+	// Distribution.
 	assert.Equal(t, 1, result.Distribution.Low)
 	assert.Equal(t, 0, result.Distribution.Medium)
 	assert.Equal(t, 1, result.Distribution.High)
 	assert.Equal(t, 1, result.Distribution.VeryHigh)
 
-	// HighEffortFunctions - only High and VeryHigh volume functions
+	// HighEffortFunctions - only High and VeryHigh volume functions.
 	require.Len(t, result.HighEffortFunctions, 2)
 	assert.Equal(t, "veryHighFunc", result.HighEffortFunctions[0].Name)
 	assert.Equal(t, "HIGH", result.HighEffortFunctions[0].RiskLevel)
 	assert.Equal(t, "highFunc", result.HighEffortFunctions[1].Name)
 	assert.Equal(t, "MEDIUM", result.HighEffortFunctions[1].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalFunctions)
 	assert.InDelta(t, 9050.0, result.Aggregate.Volume, floatDelta)
 	assert.Equal(t, testMessage, result.Aggregate.Message)
 	assert.Greater(t, result.Aggregate.HealthScore, 0.0)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	assert.Equal(t, "halstead", m.AnalyzerName())
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FunctionHalstead: []FunctionHalsteadData{
 			{Name: testFunctionName1, Volume: testVolumeMedium},
@@ -641,6 +707,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FunctionHalstead: []FunctionHalsteadData{
 			{Name: testFunctionName1, Volume: testVolumeMedium},

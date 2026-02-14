@@ -15,21 +15,25 @@ type mockHibernatable struct {
 
 func (m *mockHibernatable) Hibernate() error {
 	m.hibernateCount++
+
 	return nil
 }
 
 func (m *mockHibernatable) Boot() error {
 	m.bootCount++
+
 	return nil
 }
 
 func TestHibernateAnalyzers_SingleChunk_NoHibernation(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockHibernatable{}
 	analyzers := []Hibernatable{mock}
 
 	chunks := []ChunkBounds{{Start: 0, End: 10}}
 
-	// Process single chunk - no hibernation between chunks
+	// Process single chunk - no hibernation between chunks.
 	for i := range chunks {
 		if i > 0 {
 			err := hibernateAll(analyzers)
@@ -44,6 +48,8 @@ func TestHibernateAnalyzers_SingleChunk_NoHibernation(t *testing.T) {
 }
 
 func TestHibernateAnalyzers_MultipleChunks_Hibernates(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockHibernatable{}
 	analyzers := []Hibernatable{mock}
 
@@ -53,7 +59,7 @@ func TestHibernateAnalyzers_MultipleChunks_Hibernates(t *testing.T) {
 		{Start: 20, End: 30},
 	}
 
-	// Process multiple chunks - hibernate between each
+	// Process multiple chunks - hibernate between each.
 	for i := range chunks {
 		if i > 0 {
 			err := hibernateAll(analyzers)
@@ -63,13 +69,15 @@ func TestHibernateAnalyzers_MultipleChunks_Hibernates(t *testing.T) {
 		}
 	}
 
-	// 3 chunks means 2 transitions
+	// 3 chunks means 2 transitions.
 	assert.Equal(t, 2, mock.hibernateCount)
 	assert.Equal(t, 2, mock.bootCount)
 }
 
 func TestCollectHibernatables_MixedAnalyzers(t *testing.T) {
-	// Test that only hibernatable analyzers are collected
+	t.Parallel()
+
+	// Test that only hibernatable analyzers are collected.
 	h1 := &mockHibernatable{}
 	h2 := &mockHibernatable{}
 

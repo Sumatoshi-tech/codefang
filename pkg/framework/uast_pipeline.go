@@ -194,8 +194,11 @@ func (p *UASTPipeline) parseCommitParallel(
 	jobs := make(chan *gitlib.Change, len(changes))
 	results := make(chan uastFileResult, len(changes))
 
-	// Use up to 4 goroutines for intra-commit parallelism.
-	numWorkers := min(4, len(changes))
+	// maxIntraCommitWorkers caps the goroutine count for parsing files within
+	// a single commit. Keeping this small avoids excessive concurrency.
+	const maxIntraCommitWorkers = 4
+
+	numWorkers := min(maxIntraCommitWorkers, len(changes))
 
 	var wg sync.WaitGroup
 

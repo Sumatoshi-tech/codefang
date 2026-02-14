@@ -8,7 +8,7 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for file history metrics computation.
 type ReportData struct {
@@ -25,7 +25,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return &ReportData{Files: files}, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // FileChurnData contains churn statistics for a single file.
 type FileChurnData struct {
@@ -64,7 +64,7 @@ type AggregateData struct {
 	HighChurnFiles         int     `json:"high_churn_files"          yaml:"high_churn_files"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // FileChurnMetric computes per-file churn statistics.
 type FileChurnMetric struct {
@@ -113,7 +113,7 @@ func (m *FileChurnMetric) Compute(input *ReportData) []FileChurnData {
 		})
 	}
 
-	// Sort by churn score descending
+	// Sort by churn score descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ChurnScore > result[j].ChurnScore
 	})
@@ -185,7 +185,7 @@ func NewHotspotMetric() *HotspotMetric {
 
 // Hotspot risk thresholds.
 const (
-	HotspotThresholdCritical = 50 // commits
+	HotspotThresholdCritical = 50 // commits.
 	HotspotThresholdHigh     = 30
 	HotspotThresholdMedium   = 15
 )
@@ -235,7 +235,7 @@ func (m *HotspotMetric) Compute(input *ReportData) []HotspotData {
 		case commitCount >= HotspotThresholdMedium:
 			riskLevel = RiskMedium
 		default:
-			continue // Skip low-risk files
+			continue // Skip low-risk files.
 		}
 
 		result = append(result, HotspotData{
@@ -246,7 +246,7 @@ func (m *HotspotMetric) Compute(input *ReportData) []HotspotData {
 		})
 	}
 
-	// Sort by risk (critical first) then by commit count
+	// Sort by risk (critical first) then by commit count.
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].RiskLevel != result[j].RiskLevel {
 			return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
@@ -331,7 +331,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the file history analyzer.
 type ComputedMetrics struct {

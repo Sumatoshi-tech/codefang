@@ -91,7 +91,6 @@ type canonicalTypeRole struct {
 	Roles   []string
 }
 
-//nolint:gochecknoglobals // Canonical mapping table used for type/role inference.
 var canonicalTypeRoleMap = []canonicalTypeRole{
 	{"function", "Function", []string{"Function", "Declaration"}},
 	{"method", "Method", []string{"Function", "Declaration", "Member"}},

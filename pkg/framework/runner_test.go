@@ -33,8 +33,12 @@ func (s *stubLeaf) ListConfigurationOptions() []pipeline.ConfigurationOption { r
 func (s *stubLeaf) Configure(_ map[string]any) error                         { return nil }
 
 func (s *stubLeaf) Initialize(_ *gitlib.Repository) error { return nil }
-func (s *stubLeaf) Consume(_ *analyze.Context) error      { s.consumed++; return nil }
-func (s *stubLeaf) Finalize() (analyze.Report, error)     { return analyze.Report{}, nil }
+func (s *stubLeaf) Consume(_ *analyze.Context) error {
+	s.consumed++
+
+	return nil
+}
+func (s *stubLeaf) Finalize() (analyze.Report, error) { return analyze.Report{}, nil }
 
 func (s *stubLeaf) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
@@ -52,6 +56,8 @@ func (s *stubLeaf) ApplySnapshot(_ analyze.PlumbingSnapshot)                {}
 func (s *stubLeaf) ReleaseSnapshot(_ analyze.PlumbingSnapshot)              {}
 
 func TestRunner_NewRunner(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -79,6 +85,8 @@ func TestRunner_NewRunner(t *testing.T) {
 }
 
 func TestRunner_RunEmptyCommits(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -111,6 +119,8 @@ func TestRunner_RunEmptyCommits(t *testing.T) {
 // when using first-parent walk. Without SimplifyFirstParent, topological+filter produced
 // interleaved order causing "internal integrity error src X != Y".
 func TestRunner_BurndownWithMergeRegression(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -130,12 +140,15 @@ func TestRunner_BurndownWithMergeRegression(t *testing.T) {
 	if len(commits) < 2 {
 		t.Fatalf("first-parent should yield at least 2 commits (merge + parent), got %d", len(commits))
 	}
+
 	for _, c := range commits {
 		c.Free()
 	}
 }
 
 func TestRunner_RunSingleCommit(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -170,6 +183,8 @@ func TestRunner_RunSingleCommit(t *testing.T) {
 }
 
 func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -188,6 +203,7 @@ func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
 	}
 
 	originalGCPercent := debug.SetGCPercent(100)
+
 	t.Cleanup(func() {
 		debug.SetGCPercent(originalGCPercent)
 	})
@@ -196,6 +212,7 @@ func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
 	config.GCPercent = 240
 
 	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
+
 	_, runErr := runner.Run(commits)
 	if runErr != nil {
 		t.Fatalf("Run: %v", runErr)
@@ -208,6 +225,8 @@ func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
 }
 
 func TestRunner_AppliesBallastSize(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -229,6 +248,7 @@ func TestRunner_AppliesBallastSize(t *testing.T) {
 	config.BallastSize = 8 * 1024 * 1024
 
 	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
+
 	_, runErr := runner.Run(commits)
 	if runErr != nil {
 		t.Fatalf("Run: %v", runErr)
@@ -244,7 +264,9 @@ func TestRunner_AppliesBallastSize(t *testing.T) {
 }
 
 func TestResolveMemoryLimit_CappedAt14GiB(t *testing.T) {
-	const totalRAM = uint64(64 * 1024 * 1024 * 1024) // 64 GiB
+	t.Parallel()
+
+	const totalRAM = uint64(64 * 1024 * 1024 * 1024) // 64 GiB.
 
 	got := framework.ResolveMemoryLimitForTest(totalRAM)
 
@@ -256,7 +278,9 @@ func TestResolveMemoryLimit_CappedAt14GiB(t *testing.T) {
 }
 
 func TestResolveMemoryLimit_SmallSystem(t *testing.T) {
-	const totalRAM = uint64(8 * 1024 * 1024 * 1024) // 8 GiB
+	t.Parallel()
+
+	const totalRAM = uint64(8 * 1024 * 1024 * 1024) // 8 GiB.
 
 	got := framework.ResolveMemoryLimitForTest(totalRAM)
 
@@ -268,6 +292,8 @@ func TestResolveMemoryLimit_SmallSystem(t *testing.T) {
 }
 
 func TestResolveMemoryLimit_UnknownSystem(t *testing.T) {
+	t.Parallel()
+
 	got := framework.ResolveMemoryLimitForTest(0)
 
 	// Falls back to 14 GiB default.
@@ -278,6 +304,8 @@ func TestResolveMemoryLimit_UnknownSystem(t *testing.T) {
 }
 
 func TestSplitLeaves_ThreeGroups(t *testing.T) {
+	t.Parallel()
+
 	serial := &stubLeaf{name: "serial", sequentialOnly: true, cpuHeavy: false}
 	lightweight := &stubLeaf{name: "lightweight", sequentialOnly: false, cpuHeavy: false}
 	heavy := &stubLeaf{name: "heavy", sequentialOnly: false, cpuHeavy: true}
@@ -315,6 +343,8 @@ func TestSplitLeaves_ThreeGroups(t *testing.T) {
 }
 
 func TestSplitLeaves_NoCPUHeavy(t *testing.T) {
+	t.Parallel()
+
 	serial := &stubLeaf{name: "serial", sequentialOnly: true, cpuHeavy: false}
 	lightweight := &stubLeaf{name: "lightweight", sequentialOnly: false, cpuHeavy: false}
 
@@ -350,6 +380,8 @@ func TestSplitLeaves_NoCPUHeavy(t *testing.T) {
 }
 
 func TestSplitLeaves_AllCPUHeavy(t *testing.T) {
+	t.Parallel()
+
 	heavy1 := &stubLeaf{name: "heavy1", sequentialOnly: false, cpuHeavy: true}
 	heavy2 := &stubLeaf{name: "heavy2", sequentialOnly: false, cpuHeavy: true}
 

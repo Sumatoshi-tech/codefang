@@ -3,7 +3,7 @@
 package node
 
 import (
-	"crypto/sha1" //nolint:gosec // SHA1 used for content fingerprinting, not security.
+	"crypto/sha1"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -151,8 +151,6 @@ type Positions struct {
 }
 
 // posPool is a [sync.Pool] for Positions structs to reduce allocation overhead.
-//
-//nolint:gochecknoglobals // Shared pool for positions allocation performance.
 var posPool = sync.Pool{
 	New: func() any {
 		return &Positions{}
@@ -204,8 +202,6 @@ type Node struct {
 }
 
 // nodePool is a [sync.Pool] for Node structs to reduce allocation overhead.
-//
-//nolint:gochecknoglobals // Shared pool for node allocation performance.
 var nodePool = sync.Pool{
 	New: func() any {
 		return &Node{}
@@ -1113,9 +1109,9 @@ func assignStableIDRecursive(targetNode *Node) {
 		return
 	}
 
-	// G401: SHA1 is used here for content-based fingerprinting to generate stable node IDs,
+	// SHA1 is used here for content-based fingerprinting to generate stable node IDs,
 	// not for security purposes. Collision resistance is not required for this use case.
-	hasher := sha1.New() //nolint:gosec // SHA1 used for content fingerprinting, not security.
+	hasher := sha1.New()
 
 	writeNodeContentToHash(hasher, targetNode)
 

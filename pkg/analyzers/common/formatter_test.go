@@ -1,4 +1,4 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"strings"
@@ -346,7 +346,7 @@ func TestFormatter_extractMetrics(t *testing.T) {
 	}
 }
 
-func TestFormatter_toFloat(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestFormatter_toFloat(t *testing.T) {
 	t.Parallel()
 
 	formatter := NewFormatter(FormatConfig{})
@@ -366,6 +366,8 @@ func TestFormatter_toFloat(t *testing.T) { //nolint:tparallel // parallel test p
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result, ok := formatter.toFloat(tt.value)
 			if ok != tt.ok || (ok && result != tt.expected) {
 				t.Errorf("toFloat(%v) = (%f, %v), want (%f, %v)", tt.value, result, ok, tt.expected, tt.ok)
@@ -430,7 +432,7 @@ func TestFormatter_sortCollection(t *testing.T) {
 	}
 }
 
-func TestFormatter_toComparable(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestFormatter_toComparable(t *testing.T) {
 	t.Parallel()
 
 	formatter := NewFormatter(FormatConfig{})
@@ -450,6 +452,8 @@ func TestFormatter_toComparable(t *testing.T) { //nolint:tparallel // parallel t
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := formatter.toComparable(tt.value)
 			if result != tt.expected {
 				t.Errorf("toComparable(%v) = %f, want %f", tt.value, result, tt.expected)

@@ -1,7 +1,8 @@
-package uast //nolint:testpackage // Tests need access to internal DSL parser functions.
+package uast
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -12,7 +13,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const testHelloName = "Hello"
+
 func TestDSLProviderIntegration(t *testing.T) {
+	t.Parallel()
+
 	// Test DSL content with language declaration.
 	dslContent := `[language "go", extensions: ".go"]
 
@@ -91,6 +96,8 @@ func Hello() {
 }
 
 func TestProviderFactoryIntegration(t *testing.T) {
+	t.Parallel()
+
 	// Test DSL content with language declaration.
 	dslContent := `[language "go", extensions: ".go"]
 
@@ -129,6 +136,8 @@ func Hello() {
 }
 
 func TestDSLProvider_CaptureExtraction(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -173,7 +182,7 @@ func Hello() {}`)
 	var fn *node.Node
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" {
+		if c.Type == testUASTFunctionType {
 			fn = c
 
 			break
@@ -184,16 +193,18 @@ func Hello() {}`)
 		t.Fatal("Expected Function node")
 	}
 
-	if fn.Token != "Hello" {
+	if fn.Token != testHelloName {
 		t.Errorf("Expected token 'Hello', got '%s'", fn.Token)
 	}
 
-	if fn.Props["name"] != "Hello" {
+	if fn.Props["name"] != testHelloName {
 		t.Errorf("Expected property name 'Hello', got '%s'", fn.Props["name"])
 	}
 }
 
 func TestDSLProvider_ConditionEvaluation(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -240,11 +251,11 @@ func World() {}`)
 	foundWorld := false
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" && c.Token == "Hello" {
+		if c.Type == testUASTFunctionType && c.Token == testHelloName {
 			foundHello = true
 		}
 
-		if c.Type == "Function" && c.Token == "World" {
+		if c.Type == testUASTFunctionType && c.Token == "World" {
 			foundWorld = true
 		}
 	}
@@ -259,6 +270,8 @@ func World() {}`)
 }
 
 func TestDSLProvider_InheritanceWithConditions(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -303,7 +316,7 @@ func World() {}`)
 	foundChild := false
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Child" && c.Token == "Hello" {
+		if c.Type == "Child" && c.Token == testHelloName {
 			foundChild = true
 		}
 	}
@@ -314,6 +327,8 @@ func World() {}`)
 }
 
 func TestDSLProvider_AdvancedPropertyExtraction(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 var_declaration <- (var_declaration) => uast(
@@ -372,6 +387,8 @@ var x int`)
 // condition-based child filtering works solely through shouldExcludeChild and
 // ToCanonicalNode.shouldSkipNode — no redundant shouldIncludeChild needed.
 func TestDSLProvider_ConditionFilteringWithoutShouldIncludeChild(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -412,7 +429,7 @@ func AlsoBlocked() {}`)
 	var functionNames []string
 
 	for _, child := range uastNode.Children {
-		if child.Type == node.Type("Function") {
+		if child.Type == node.Type(testUASTFunctionType) {
 			functionNames = append(functionNames, child.Token)
 		}
 	}
@@ -427,6 +444,8 @@ func AlsoBlocked() {}`)
 }
 
 func TestDSLProvider_ChildInclusionExclusion(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -473,11 +492,11 @@ func World() {}`)
 	foundWorld := false
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" && c.Token == "Hello" {
+		if c.Type == testUASTFunctionType && c.Token == testHelloName {
 			foundHello = true
 		}
 
-		if c.Type == "Function" && c.Token == "World" {
+		if c.Type == testUASTFunctionType && c.Token == "World" {
 			foundWorld = true
 		}
 	}
@@ -492,6 +511,8 @@ func World() {}`)
 }
 
 func TestE2E_MappingGenerationAndParsing(t *testing.T) {
+	t.Parallel()
+
 	// Minimal node-types.json fixture (Go function and identifier).
 	nodeTypesJSON := `[
 	  {"type": "function_declaration", "named": true, "fields": {"name": {"types": ["identifier"], "required": true}}},
@@ -539,10 +560,10 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 	}
 
 	// Check that a Function node is present.
-	foundFunc := uastNode.Type == "Function" || uastNode.Type == "function_declaration"
+	foundFunc := uastNode.Type == testUASTFunctionType || uastNode.Type == "function_declaration"
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" || c.Type == "function_declaration" {
+		if c.Type == testUASTFunctionType || c.Type == "function_declaration" {
 			foundFunc = true
 
 			break
@@ -557,6 +578,8 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 }
 
 func TestDSLProvider_RealWorldGoMap(t *testing.T) {
+	t.Parallel()
+
 	// Real-world go.uastmap DSL with advanced features.
 	dslContent := `[language "go", extensions: ".go"]
 
@@ -646,7 +669,7 @@ var x int = 42
 	var foundFunc bool
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" {
+		if c.Type == testUASTFunctionType {
 			foundFunc = true
 
 			if c.Props["name"] != "Add" {
@@ -726,7 +749,7 @@ func Add(a int, b int) int { return a + b }
 `
 	fileName := "test_var.go"
 
-	writeErr := os.WriteFile(fileName, []byte(tmpGo), 0o644)
+	writeErr := os.WriteFile(fileName, []byte(tmpGo), 0o600)
 	if writeErr != nil {
 		t.Fatalf("Failed to write test_var.go: %v", writeErr)
 	}
@@ -738,6 +761,8 @@ func Add(a int, b int) int { return a + b }
 // readers return the same values as individual StartPoint()/EndPoint()/
 // StartByte()/EndByte() calls for every node in a parsed tree.
 func TestAllPositions_MatchesOriginal(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -792,6 +817,7 @@ func World() {
 	nodeCount := 0
 
 	var walkAndCheck func(n sitter.Node)
+
 	walkAndCheck = func(n sitter.Node) {
 		if n.IsNull() {
 			return
@@ -856,6 +882,8 @@ func World() {
 // TestReadNamedChildCount_MatchesCGO verifies that readNamedChildCount returns
 // the same value as the CGO NamedChildCount() call for every node in a parsed tree.
 func TestReadNamedChildCount_MatchesCGO(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -894,6 +922,7 @@ type Foo struct {
 	parentCount := 0
 
 	var walkAndCheck func(n sitter.Node)
+
 	walkAndCheck = func(n sitter.Node) {
 		if n.IsNull() {
 			return
@@ -934,6 +963,8 @@ type Foo struct {
 // TestCursorChildren_MatchesNamedChild verifies that iterating children via
 // TreeCursor + IsNamed() filter produces the same set as NamedChild(idx) loop.
 func TestCursorChildren_MatchesNamedChild(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -981,6 +1012,7 @@ type Foo struct {
 	parentCount := 0
 
 	var walkAndCheck func(n sitter.Node)
+
 	walkAndCheck = func(n sitter.Node) {
 		if n.IsNull() {
 			return
@@ -1049,6 +1081,8 @@ type Foo struct {
 }
 
 func TestBatchChildren_MatchesCursor(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -1088,6 +1122,7 @@ func f9() { fmt.Println("9") }
 	checkedParents := 0
 
 	var walkAndCheck func(n sitter.Node)
+
 	walkAndCheck = func(n sitter.Node) {
 		if n.IsNull() {
 			return
@@ -1149,6 +1184,8 @@ func f9() { fmt.Println("9") }
 // TestNodeType_Interning verifies that nodeType() returns the same string pointer
 // for repeated calls with the same tree-sitter node type, confirming interning works.
 func TestNodeType_Interning(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -1191,7 +1228,7 @@ func World() {}
 	funcCount := 0
 
 	for _, c := range uastNode.Children {
-		if c.Type == "Function" {
+		if c.Type == testUASTFunctionType {
 			funcCount++
 		}
 	}
@@ -1203,6 +1240,8 @@ func World() {}
 
 // TestNodeType_SymbolTablePopulated verifies that symbolNames are populated after parser load.
 func TestNodeType_SymbolTablePopulated(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -1230,13 +1269,7 @@ identifier <- (identifier) => uast(
 		t.Fatal("Expected symbolNames to be populated")
 	}
 
-	foundSourceFile := false
-	for _, name := range parser.symbolNames {
-		if name == "source_file" {
-			foundSourceFile = true
-			break
-		}
-	}
+	foundSourceFile := slices.Contains(parser.symbolNames, "source_file")
 
 	if !foundSourceFile {
 		t.Error("Expected 'source_file' in symbolNames")
@@ -1246,6 +1279,8 @@ identifier <- (identifier) => uast(
 // TestReadSymbol_MatchesCGO verifies that readSymbol + symbol table lookup
 // resolves the same type names as CGO Type() for parsed nodes.
 func TestReadSymbol_MatchesCGO(t *testing.T) {
+	t.Parallel()
+
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -1284,6 +1319,7 @@ type Foo struct {
 	fallbackChecked := 0
 
 	var walkAndCheck func(n sitter.Node)
+
 	walkAndCheck = func(n sitter.Node) {
 		if n.IsNull() {
 			return
@@ -1331,6 +1367,7 @@ type Foo struct {
 }
 
 func TestNodeType_FallbackInline_ZeroAllocs(t *testing.T) {
+	// Not parallel: testing.AllocsPerRun is incompatible with t.Parallel().
 	parser := NewDSLParser(strings.NewReader(`[language "go", extensions: ".go"]
 
 source_file <- (source_file) => uast(
@@ -1393,6 +1430,7 @@ func Hello(a int) int {
 	}
 
 	want := parser.symbolNames[int(fallbackNode.GrammarSymbol())]
+
 	got := ctx.nodeType(fallbackNode)
 	if got != want {
 		t.Fatalf("fallback node type mismatch: got=%q want=%q", got, want)
@@ -1408,6 +1446,8 @@ func Hello(a int) int {
 }
 
 func TestDSLProvider_NameExtractionWithoutChildTypeFallback(t *testing.T) {
+	t.Parallel()
+
 	dslContent := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(
@@ -1456,7 +1496,7 @@ func World() {}
 			return
 		}
 
-		if nd.Type == "Function" {
+		if nd.Type == testUASTFunctionType {
 			functions = append(functions, nd)
 		}
 
@@ -1471,7 +1511,7 @@ func World() {}
 		t.Fatalf("Expected 2 functions, got %d", len(functions))
 	}
 
-	expectedNames := []string{"Hello", "World"}
+	expectedNames := []string{testHelloName, "World"}
 	for idx, fn := range functions {
 		if fn.Token != expectedNames[idx] {
 			t.Errorf("Function %d: expected token %q, got %q", idx, expectedNames[idx], fn.Token)

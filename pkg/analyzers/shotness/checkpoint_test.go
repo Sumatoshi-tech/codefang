@@ -33,7 +33,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add node data
+	// Add node data.
 	original.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   10,
@@ -77,7 +77,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add multiple nodes with coupling data
+	// Add multiple nodes with coupling data.
 	original.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "main.go"},
 		Count:   15,
@@ -94,11 +94,11 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 		Couples: map[string]int{"func1": 3},
 	}
 
-	// Add merges
+	// Add merges.
 	original.merges[gitlib.NewHash("merge1")] = true
 	original.merges[gitlib.NewHash("merge2")] = true
 
-	// Rebuild files map
+	// Rebuild files map.
 	original.rebuildFilesMap()
 
 	require.NoError(t, original.SaveCheckpoint(dir))
@@ -106,7 +106,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	restored := &HistoryAnalyzer{}
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
-	// Verify nodes
+	// Verify nodes.
 	require.Len(t, restored.nodes, 3)
 
 	func1 := restored.nodes["func1"]
@@ -126,10 +126,10 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	require.NotNil(t, func3)
 	require.Equal(t, "Method", func3.Summary.Type)
 
-	// Verify merges
+	// Verify merges.
 	require.Len(t, restored.merges, 2)
 
-	// Verify files map was rebuilt
+	// Verify files map was rebuilt.
 	require.Len(t, restored.files, 2)
 	require.Len(t, restored.files["main.go"], 2)
 	require.Len(t, restored.files["util.go"], 1)

@@ -7,7 +7,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for couples metrics computation.
 type ReportData struct {
@@ -50,7 +50,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return data, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // FileCouplingData contains coupling data for a file pair.
 type FileCouplingData struct {
@@ -85,7 +85,7 @@ type AggregateData struct {
 	HighlyCoupledPairs  int     `json:"highly_coupled_pairs"  yaml:"highly_coupled_pairs"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // FileCouplingMetric computes file co-change coupling.
 type FileCouplingMetric struct {
@@ -121,7 +121,7 @@ func (m *FileCouplingMetric) Compute(input *ReportData) []FileCouplingData {
 
 		for j, coChanges := range row {
 			if j <= i || j >= len(input.Files) {
-				continue // Skip self and lower triangle
+				continue // Skip self and lower triangle.
 			}
 
 			if coChanges == 0 {
@@ -148,7 +148,7 @@ func (m *FileCouplingMetric) Compute(input *ReportData) []FileCouplingData {
 		}
 	}
 
-	// Sort by co-changes descending
+	// Sort by co-changes descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].CoChanges > result[j].CoChanges
 	})
@@ -253,7 +253,7 @@ func NewFileOwnershipMetric() *FileOwnershipMetric {
 func (m *FileOwnershipMetric) Compute(input *ReportData) []FileOwnershipData {
 	result := make([]FileOwnershipData, 0, len(input.Files))
 
-	// Build reverse index: file index -> developers who touched it
+	// Build reverse index: file index -> developers who touched it.
 	fileContributors := make([]map[int]bool, len(input.Files))
 	for i := range fileContributors {
 		fileContributors[i] = make(map[int]bool)
@@ -342,7 +342,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the couples analyzer.
 type ComputedMetrics struct {

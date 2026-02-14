@@ -48,6 +48,9 @@ type BudgetSolver func(budgetBytes int64) (CoordinatorConfig, error)
 // defaultMemoryBudgetRatio is the fraction of system memory to use as default budget.
 const defaultMemoryBudgetRatio = 50
 
+// percentDenominator is the divisor for converting a percentage ratio to a fraction.
+const percentDenominator = 100
+
 // defaultMemoryBudgetCap is the maximum auto-detected memory budget (4 GiB).
 // This forces chunking on large repos, which bounds peak memory usage.
 const defaultMemoryBudgetCap = int64(4 * 1024 * 1024 * 1024)
@@ -60,7 +63,7 @@ func DefaultMemoryBudget() int64 {
 		return 0
 	}
 
-	budget := SafeInt64(total * defaultMemoryBudgetRatio / 100)
+	budget := SafeInt64(total * defaultMemoryBudgetRatio / percentDenominator)
 
 	return min(budget, defaultMemoryBudgetCap)
 }

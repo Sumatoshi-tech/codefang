@@ -51,11 +51,11 @@ func NewDiffPipelineWithCache(workerChan chan<- gitlib.WorkerRequest, bufferSize
 
 type diffJob struct {
 	data      CommitData
-	paths     []string                         // paths for diffs requested from C
-	changes   []*gitlib.Change                 // changes for diffs requested from C
-	cacheHits map[string]plumbing.FileDiffData // path -> cached diff
+	paths     []string                         // paths for diffs requested from C.
+	changes   []*gitlib.Change                 // changes for diffs requested from C.
+	cacheHits map[string]plumbing.FileDiffData // path -> cached diff.
 
-	// Batching fields for cross-commit batching
+	// Batching fields for cross-commit batching.
 	pendingRequests []gitlib.DiffRequest
 	batchResp       *sharedDiffResponse
 	batchOffset     int
@@ -65,8 +65,12 @@ type diffJob struct {
 // Process receives blob data and outputs commit data with computed diffs.
 func (p *DiffPipeline) Process(ctx context.Context, blobs <-chan BlobData) <-chan CommitData {
 	out := make(chan CommitData)
-	// Larger buffer for jobs to accumulate batch
-	jobs := make(chan diffJob, p.BufferSize*10)
+	// diffJobBufferMultiplier scales the job buffer relative to pipeline buffer size.
+	// A larger buffer allows accumulating more diff jobs for cross-commit batching.
+	const diffJobBufferMultiplier = 10
+
+	// Larger buffer for jobs to accumulate batch.
+	jobs := make(chan diffJob, p.BufferSize*diffJobBufferMultiplier)
 
 	go p.runDiffProducer(ctx, blobs, jobs)
 	go p.runDiffConsumer(ctx, jobs, out)
@@ -85,8 +89,10 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 
 	const maxBatchSize = 1000
 
-	var currentBatchReqs []gitlib.DiffRequest
-	var currentBatchJobs []*diffJob
+	var (
+		currentBatchReqs []gitlib.DiffRequest
+		currentBatchJobs []*diffJob
+	)
 
 	flushBatch := func() {
 		if len(currentBatchJobs) == 0 {
@@ -95,27 +101,28 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 
 		var sharedResp *sharedDiffResponse
 
-		// Only fire CGO request if there are actual diff requests
+		// Only fire CGO request if there are actual diff requests.
 		if len(currentBatchReqs) > 0 {
 			req := gitlib.DiffBatchRequest{Requests: currentBatchReqs}
 			respChan := make(chan gitlib.DiffBatchResponse, 1)
 			req.Response = respChan
 
-			// Send request
+			// Send request.
 			select {
 			case p.PoolWorkerChan <- req:
 			case <-ctx.Done():
 				return
 			}
 
-			// Create a shared state for this batch
+			// Create a shared state for this batch.
 			sharedResp = &sharedDiffResponse{
 				respChan: respChan,
 			}
 		}
 
-		// Assign shared response to all jobs and dispatch
+		// Assign shared response to all jobs and dispatch.
 		startIdx := 0
+
 		for _, job := range currentBatchJobs {
 			count := len(job.pendingRequests)
 			if count > 0 && sharedResp != nil {
@@ -132,7 +139,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 			}
 		}
 
-		// Reset batch
+		// Reset batch.
 		currentBatchReqs = nil
 		currentBatchJobs = nil
 	}
@@ -151,8 +158,9 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 
 		if len(reqs) > 0 {
 			currentBatchReqs = append(currentBatchReqs, reqs...)
-			job.pendingRequests = reqs // Keep track for offset calculation
+			job.pendingRequests = reqs // Keep track for offset calculation.
 		}
+
 		currentBatchJobs = append(currentBatchJobs, job)
 
 		if len(currentBatchReqs) >= maxBatchSize {
@@ -160,7 +168,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 		}
 	}
 
-	// Flush remaining
+	// Flush remaining.
 	flushBatch()
 }
 
@@ -235,7 +243,7 @@ func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob,
 			if job.batchResp.err != nil {
 				job.data.Error = job.batchResp.err
 			} else {
-				// Extract this job's portion of results
+				// Extract this job's portion of results.
 				batchResults := job.batchResp.results
 				if job.batchOffset+job.batchLen <= len(batchResults) {
 					jobResults := batchResults[job.batchOffset : job.batchOffset+job.batchLen]
@@ -277,7 +285,7 @@ func (p *DiffPipeline) prepareDiffRequest(blobData BlobData) (
 			continue
 		}
 
-		// Check cache for this diff
+		// Check cache for this diff.
 		if p.DiffCache != nil {
 			key := DiffKey{OldHash: change.From.Hash, NewHash: change.To.Hash}
 			if cached, found := p.DiffCache.Get(key); found {
@@ -320,7 +328,7 @@ func (p *DiffPipeline) processDiffResponse(
 		oldBlob := data.BlobCache[changes[i].From.Hash]
 		newBlob := data.BlobCache[changes[i].To.Hash]
 
-		// Use Go's counting
+		// Use Go's counting.
 		oldLines, errOld := oldBlob.CountLines()
 		newLines, errNew := newBlob.CountLines()
 
@@ -345,7 +353,7 @@ func (p *DiffPipeline) processDiffResponse(
 
 		data.FileDiffs[path] = fileDiff
 
-		// Store in cache
+		// Store in cache.
 		if p.DiffCache != nil {
 			key := DiffKey{OldHash: changes[i].From.Hash, NewHash: changes[i].To.Hash}
 			p.DiffCache.Put(key, fileDiff)

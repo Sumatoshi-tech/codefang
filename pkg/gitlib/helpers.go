@@ -45,7 +45,7 @@ func LoadRepository(uri string) (*Repository, error) {
 // ParseTime parses a time string in various formats:
 // - Duration relative to now (e.g. "24h")
 // - RFC3339 (e.g. "2024-01-01T00:00:00Z")
-// - Date only (e.g. "2024-01-01")
+// - Date only (e.g. "2024-01-01").
 func ParseTime(s string) (time.Time, error) {
 	d, durationErr := time.ParseDuration(s)
 	if durationErr == nil {

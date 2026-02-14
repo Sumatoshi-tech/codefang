@@ -7,7 +7,9 @@ import (
 )
 
 func TestDiffOpType(t *testing.T) {
-	// Test that DiffOpType constants have expected values
+	t.Parallel()
+
+	// Test that DiffOpType constants have expected values.
 	if gitlib.DiffOpEqual != 0 {
 		t.Errorf("DiffOpEqual = %d, want 0", gitlib.DiffOpEqual)
 	}
@@ -22,7 +24,9 @@ func TestDiffOpType(t *testing.T) {
 }
 
 func TestBlobResultError(t *testing.T) {
-	// Test error types
+	t.Parallel()
+
+	// Test error types.
 	tests := []struct {
 		err      error
 		expected string

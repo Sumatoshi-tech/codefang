@@ -36,7 +36,8 @@ var ErrInvalidNodes = errors.New("invalid shotness report: expected []NodeSummar
 // ErrInvalidCounters indicates the report doesn't contain expected counters data.
 var ErrInvalidCounters = errors.New("invalid shotness report: expected []map[int]int for Counters")
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the shotness plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

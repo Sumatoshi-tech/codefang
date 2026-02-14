@@ -68,7 +68,7 @@ type Context struct {
 }
 
 // HistoryAnalyzer interface defines the contract for history-based analyzers.
-type HistoryAnalyzer interface { //nolint:interfacebloat // interface methods are all needed.
+type HistoryAnalyzer interface {
 	Analyzer
 
 	// Core analysis methods.
@@ -97,7 +97,7 @@ type PlumbingSnapshot any
 // Parallelizable is optionally implemented by leaf analyzers that support
 // parallel execution via the framework's Fork/Merge worker pool.
 // The framework uses these methods instead of type-switching on concrete types.
-type Parallelizable interface { //nolint:iface // interface is implemented by leaf analyzers in other packages
+type Parallelizable interface {
 	// SequentialOnly returns true if this analyzer cannot be parallelized
 	// (e.g. it tracks cumulative state across all commits).
 	SequentialOnly() bool

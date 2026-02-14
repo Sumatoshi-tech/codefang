@@ -36,14 +36,18 @@ func NewFile(time, length int, updaters ...Updater) *File {
 	if time < 0 || time > math.MaxUint32 {
 		panic(fmt.Sprintf("time is out of allowed range: %d", time))
 	}
+
 	if length > math.MaxUint32 {
 		panic(fmt.Sprintf("length is out of allowed range: %d", length))
 	}
+
 	timeline := NewTreapTimeline(time, length)
+
 	file := &File{timeline: timeline, updaters: updaters}
 	if length > 0 {
 		file.updateTime(time, time, length)
 	}
+
 	return file
 }
 
@@ -107,24 +111,31 @@ func (file *File) Update(time, pos, insLength, delLength int) {
 	if time < 0 {
 		panic("time may not be negative")
 	}
+
 	if time >= math.MaxUint32 {
 		panic("time may not be >= MaxUint32")
 	}
+
 	if pos < 0 {
 		panic("attempt to insert/delete at a negative position")
 	}
+
 	if pos > math.MaxUint32 {
 		panic("pos may not be > MaxUint32")
 	}
+
 	if insLength < 0 || delLength < 0 {
 		panic("insLength and delLength must be non-negative")
 	}
+
 	if insLength|delLength == 0 {
 		return
 	}
+
 	if insLength > 0 {
 		file.updateTime(time, time, insLength)
 	}
+
 	reports := file.timeline.Replace(pos, delLength, insLength, TimeKey(time))
 	for _, d := range reports {
 		file.updateTime(d.Current, d.Previous, d.Delta)
@@ -154,6 +165,7 @@ func mergeOtherFiles(myself []int, others []*File) {
 		if other == nil {
 			panic("merging with a nil file")
 		}
+
 		lines := other.timeline.Flatten()
 
 		if len(myself) != len(lines) {
@@ -203,12 +215,14 @@ func (file *File) Validate() {
 
 // ForEach visits each segment start in the timeline in order (line, value); value is -1 for TreeEnd.
 func (file *File) ForEach(callback func(line, value int)) {
-	file.timeline.Iterate(func(offset, length int, t TimeKey) bool {
+	file.timeline.Iterate(func(offset, _ int, t TimeKey) bool {
 		v := int(t)
 		if t == TreeEnd {
 			v = -1
 		}
+
 		callback(offset, v)
+
 		return true
 	})
 }

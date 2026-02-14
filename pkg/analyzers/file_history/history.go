@@ -27,11 +27,6 @@ type Analyzer struct {
 	files      map[string]*FileHistory
 	lastCommit analyze.CommitLike
 	merges     map[gitlib.Hash]bool
-	//nolint:unused // used via reflection or external caller.
-	// Internal.
-	l interface {
-		Errorf(format string, args ...any)
-	}
 }
 
 // FileHistory holds the change history for a single file.
@@ -100,47 +95,58 @@ func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 }
 
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
-//
-//nolint:gocognit // complexity is inherent to multi-action file history tracking with renames.
 func (h *Analyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) error {
 	for _, change := range changes {
-		action := change.Action
-
-		var fh *FileHistory
-		if action != gitlib.Delete {
-			fh = h.files[change.To.Name]
-		} else {
-			fh = h.files[change.From.Name]
-		}
-
-		if fh == nil {
-			fh = &FileHistory{}
-			if action != gitlib.Delete {
-				h.files[change.To.Name] = fh
-			} else {
-				h.files[change.From.Name] = fh
-			}
-		}
-
-		switch action {
-		case gitlib.Insert:
-			fh.Hashes = []gitlib.Hash{commit.Hash()}
-		case gitlib.Delete:
-			fh.Hashes = append(fh.Hashes, commit.Hash())
-		case gitlib.Modify:
-			if change.From.Name != change.To.Name {
-				if oldFH, ok := h.files[change.From.Name]; ok {
-					delete(h.files, change.From.Name)
-					h.files[change.To.Name] = oldFH
-					fh = oldFH
-				}
-			}
-
-			fh.Hashes = append(fh.Hashes, commit.Hash())
-		}
+		h.processOneFileChange(change, commit)
 	}
 
 	return nil
+}
+
+// processOneFileChange handles a single file change for history tracking.
+func (h *Analyzer) processOneFileChange(change *gitlib.Change, commit analyze.CommitLike) {
+	action := change.Action
+	fh := h.getOrCreateFileHistory(change)
+
+	switch action {
+	case gitlib.Insert:
+		fh.Hashes = []gitlib.Hash{commit.Hash()}
+	case gitlib.Delete:
+		fh.Hashes = append(fh.Hashes, commit.Hash())
+	case gitlib.Modify:
+		fh = h.handleModifyRename(change, fh)
+		fh.Hashes = append(fh.Hashes, commit.Hash())
+	}
+}
+
+// getOrCreateFileHistory retrieves or creates a FileHistory for the given change.
+func (h *Analyzer) getOrCreateFileHistory(change *gitlib.Change) *FileHistory {
+	name := change.To.Name
+	if change.Action == gitlib.Delete {
+		name = change.From.Name
+	}
+
+	fh := h.files[name]
+	if fh == nil {
+		fh = &FileHistory{}
+		h.files[name] = fh
+	}
+
+	return fh
+}
+
+// handleModifyRename handles the rename portion of a Modify action.
+func (h *Analyzer) handleModifyRename(change *gitlib.Change, fh *FileHistory) *FileHistory {
+	if change.From.Name != change.To.Name {
+		if oldFH, ok := h.files[change.From.Name]; ok {
+			delete(h.files, change.From.Name)
+			h.files[change.To.Name] = oldFH
+
+			return oldFH
+		}
+	}
+
+	return fh
 }
 
 // aggregateLineStats merges line statistics from the current commit into file histories.
@@ -189,23 +195,35 @@ func (h *Analyzer) Consume(ctx *analyze.Context) error {
 func (h *Analyzer) Finalize() (analyze.Report, error) {
 	files := map[string]FileHistory{}
 
-	if h.lastCommit != nil { //nolint:nestif // complex tree traversal with nested iteration
-		fileIter, err := h.lastCommit.Files()
-		if err == nil {
-			iterErr := fileIter.ForEach(func(file *gitlib.File) error {
-				if fh := h.files[file.Name]; fh != nil {
-					files[file.Name] = *fh
-				}
-
-				return nil
-			})
-			if iterErr != nil {
-				return nil, fmt.Errorf("iterating files: %w", iterErr)
-			}
+	if h.lastCommit != nil {
+		err := h.collectFinalFiles(files)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	return analyze.Report{"Files": files}, nil
+}
+
+// collectFinalFiles populates the files map with histories of files present in the last commit.
+func (h *Analyzer) collectFinalFiles(files map[string]FileHistory) error {
+	fileIter, err := h.lastCommit.Files()
+	if err != nil {
+		return fmt.Errorf("listing files: %w", err)
+	}
+
+	iterErr := fileIter.ForEach(func(file *gitlib.File) error {
+		if fh := h.files[file.Name]; fh != nil {
+			files[file.Name] = *fh
+		}
+
+		return nil
+	})
+	if iterErr != nil {
+		return fmt.Errorf("iterating files: %w", iterErr)
+	}
+
+	return nil
 }
 
 // SequentialOnly returns false because file history analysis can be parallelized.
@@ -248,7 +266,7 @@ func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 			LineStats: &plumbing.LinesStatsCalculator{},
 		}
-		// Initialize independent state for each fork
+		// Initialize independent state for each fork.
 		clone.files = make(map[string]*FileHistory)
 		clone.merges = make(map[gitlib.Hash]bool)
 
@@ -287,12 +305,12 @@ func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
 
 		fh := h.files[name]
 
-		// Initialize People map if needed
+		// Initialize People map if needed.
 		if fh.People == nil {
 			fh.People = make(map[int]pkgplumbing.LineStats)
 		}
 
-		// Merge people stats (sum)
+		// Merge people stats (sum).
 		for person, stats := range otherFH.People {
 			existing := fh.People[person]
 			fh.People[person] = pkgplumbing.LineStats{
@@ -302,7 +320,7 @@ func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
 			}
 		}
 
-		// Append hashes
+		// Append hashes.
 		fh.Hashes = append(fh.Hashes, otherFH.Hashes...)
 	}
 }

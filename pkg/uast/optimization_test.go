@@ -1,4 +1,4 @@
-package uast //nolint:testpackage // White-box tests access internal optimization functions.
+package uast
 
 import (
 	"testing"
@@ -6,7 +6,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
 
+const testFunctionDeclarationPattern = "function_declaration"
+
 func TestPatternMatcherOptimizations(t *testing.T) {
+	t.Parallel()
+
 	// Test that pattern matchers are generated correctly.
 	goMatcher := GetPatternMatcher("go")
 	if goMatcher == nil {
@@ -21,12 +25,12 @@ func TestPatternMatcherOptimizations(t *testing.T) {
 		GetRuleIndex(string) (int, bool)
 	}); ok {
 		// Test pattern matching.
-		rule, exists := matcher.MatchPattern("function_declaration")
+		rule, exists := matcher.MatchPattern(testFunctionDeclarationPattern)
 		if !exists {
 			t.Error("function_declaration pattern should exist")
 		}
 
-		if rule.Name != "function_declaration" {
+		if rule.Name != testFunctionDeclarationPattern {
 			t.Errorf("Expected function_declaration, got %s", rule.Name)
 		}
 
@@ -47,7 +51,7 @@ func TestPatternMatcherOptimizations(t *testing.T) {
 		}
 
 		// Test rule index lookup.
-		index, exists := matcher.GetRuleIndex("function_declaration")
+		index, exists := matcher.GetRuleIndex(testFunctionDeclarationPattern)
 		if !exists {
 			t.Error("Should find rule index")
 		}
@@ -61,6 +65,8 @@ func TestPatternMatcherOptimizations(t *testing.T) {
 }
 
 func TestValidationFunctions(t *testing.T) {
+	t.Parallel()
+
 	// Test that validation functions are generated.
 	err := validategoRules()
 	if err != nil {
@@ -75,8 +81,10 @@ func TestValidationFunctions(t *testing.T) {
 }
 
 func TestPerformanceMetrics(t *testing.T) {
+	t.Parallel()
+
 	// Test metrics recording.
-	RecordPatternMatch("go", "function_declaration", true)
+	RecordPatternMatch("go", testFunctionDeclarationPattern, true)
 	RecordPatternMatch("go", "if_statement", false)
 
 	// Test metrics retrieval.
@@ -99,6 +107,8 @@ func TestPerformanceMetrics(t *testing.T) {
 }
 
 func TestPatternMatcherRegistry(t *testing.T) {
+	t.Parallel()
+
 	// Test that all languages have pattern matchers.
 	expectedLanguages := []string{"go", "yaml", "javascript", "python"}
 
@@ -120,12 +130,12 @@ func BenchmarkPatternMatching(b *testing.B) {
 		if matcher, ok := goMatcher.(interface {
 			MatchPattern(string) (mapping.Rule, bool)
 		}); ok {
-			rule, exists := matcher.MatchPattern("function_declaration")
+			rule, exists := matcher.MatchPattern(testFunctionDeclarationPattern)
 			if !exists {
 				b.Fatal("Pattern should exist")
 			}
 
-			if rule.Name != "function_declaration" {
+			if rule.Name != testFunctionDeclarationPattern {
 				b.Fatal("Wrong rule returned")
 			}
 		}

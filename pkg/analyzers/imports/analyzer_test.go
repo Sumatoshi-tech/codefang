@@ -139,7 +139,7 @@ func TestExtractImportsFromUAST(t *testing.T) {
 	}
 }
 
-// --- FormatReportJSON Tests ---
+// --- FormatReportJSON Tests ---.
 
 func TestAnalyzer_FormatReportJSON_WithMetrics(t *testing.T) {
 	t.Parallel()
@@ -151,16 +151,18 @@ func TestAnalyzer_FormatReportJSON_WithMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportJSON(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.ImportList, 3)
 	assert.Equal(t, 3, result.Aggregate.TotalImports)
 }
@@ -172,12 +174,14 @@ func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportJSON(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -185,7 +189,7 @@ func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
 	assert.Equal(t, 0, result.Aggregate.TotalImports)
 }
 
-// --- FormatReportYAML Tests ---
+// --- FormatReportYAML Tests ---.
 
 func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	t.Parallel()
@@ -197,16 +201,18 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.ImportList, 3)
 	assert.Equal(t, 3, result.Aggregate.TotalImports)
 }
@@ -218,12 +224,14 @@ func TestAnalyzer_FormatReportYAML_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -241,6 +249,7 @@ func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)
@@ -274,9 +283,11 @@ func TestAnalyzer_FormatReportPlot(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportPlot(report, &buf)
 
 	require.NoError(t, err)
+
 	output := buf.String()
 	assert.Contains(t, output, "<!doctype html>")
 	assert.Contains(t, output, "Top Imports Usage")
@@ -290,9 +301,11 @@ func TestAnalyzer_FormatReportPlot_Empty(t *testing.T) {
 	a := NewAnalyzer()
 
 	var buf bytes.Buffer
+
 	err := a.FormatReportPlot(analyze.Report{}, &buf)
 
 	require.NoError(t, err)
+
 	output := buf.String()
 	assert.Contains(t, output, "<!doctype html>")
 	assert.Contains(t, output, "No dependency risks detected")

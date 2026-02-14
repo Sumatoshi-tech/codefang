@@ -14,7 +14,7 @@ func TestHibernate_ClearsMergesMap(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Add some merge entries
+	// Add some merge entries.
 	s.merges[gitlib.NewHash("abc123")] = true
 	s.merges[gitlib.NewHash("def456")] = true
 	require.Len(t, s.merges, 2)
@@ -31,7 +31,7 @@ func TestHibernate_PreservesNodes(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Add node data
+	// Add node data.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   10,
@@ -46,7 +46,7 @@ func TestHibernate_PreservesNodes(t *testing.T) {
 	err := s.Hibernate()
 	require.NoError(t, err)
 
-	// Nodes must be preserved
+	// Nodes must be preserved.
 	require.Len(t, s.nodes, 2)
 	require.NotNil(t, s.nodes["func1"])
 	require.Equal(t, 10, s.nodes["func1"].Count)
@@ -60,7 +60,7 @@ func TestHibernate_PreservesFiles(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Add node and file data
+	// Add node and file data.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   10,
@@ -73,7 +73,7 @@ func TestHibernate_PreservesFiles(t *testing.T) {
 	err := s.Hibernate()
 	require.NoError(t, err)
 
-	// Files map must be preserved
+	// Files map must be preserved.
 	require.Len(t, s.files, 1)
 	require.NotNil(t, s.files["test.go"])
 }
@@ -82,7 +82,7 @@ func TestBoot_InitializesMergesMap(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{}
-	// Don't initialize - simulate loading from checkpoint with nil merges
+	// Don't initialize - simulate loading from checkpoint with nil merges.
 	s.merges = nil
 
 	err := s.Boot()
@@ -97,7 +97,7 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Set up state
+	// Set up state.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   42,
@@ -105,20 +105,20 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	}
 	s.merges[gitlib.NewHash("merge1")] = true
 
-	// Hibernate
+	// Hibernate.
 	require.NoError(t, s.Hibernate())
 	require.Empty(t, s.merges)
 
-	// Boot
+	// Boot.
 	require.NoError(t, s.Boot())
 	require.NotNil(t, s.merges)
 
-	// Nodes still preserved
+	// Nodes still preserved.
 	require.Len(t, s.nodes, 1)
 	require.Equal(t, 42, s.nodes["func1"].Count)
 	require.Equal(t, 10, s.nodes["func1"].Couples["func2"])
 
-	// Can add new merges after boot
+	// Can add new merges after boot.
 	s.merges[gitlib.NewHash("merge2")] = true
 	require.Len(t, s.merges, 1)
 }

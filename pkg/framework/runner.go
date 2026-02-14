@@ -275,11 +275,15 @@ func (w *leafWorker) processWork(work leafWork) error {
 // newLeafWorkers creates W leaf workers with forked leaf analyzers.
 // Each forked leaf owns independent plumbing struct copies (created by Fork()).
 func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
+	// leafWorkChanBuffer is the channel buffer size for each leaf worker.
+	// A small buffer allows one commit to be queued while another is being processed.
+	const leafWorkChanBuffer = 2
+
 	workers := make([]*leafWorker, w)
 
 	for i := range w {
 		worker := &leafWorker{
-			workChan: make(chan leafWork, 2),
+			workChan: make(chan leafWork, leafWorkChanBuffer),
 		}
 
 		worker.leaves = make([]analyze.HistoryAnalyzer, len(leaves))
@@ -317,6 +321,7 @@ func startLeafWorkers(workers []*leafWorker) (*sync.WaitGroup, []error) {
 
 					// Drain remaining work to prevent deadlock.
 					for range worker.workChan {
+						continue
 					}
 
 					return

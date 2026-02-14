@@ -15,11 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
-
-// ---------------------------------------------------------------------------
-// Unified model types
-// ---------------------------------------------------------------------------
 
 // UnifiedModelVersion is the schema version for converted run outputs.
 const UnifiedModelVersion = "codefang.run.v1"
@@ -91,10 +88,6 @@ func ParseUnifiedModelJSON(data []byte) (UnifiedModel, error) {
 	return model, nil
 }
 
-// ---------------------------------------------------------------------------
-// Sentinel errors for format resolution and input conversion
-// ---------------------------------------------------------------------------
-
 // InputFormatAuto is the default input format that triggers extension-based detection.
 const InputFormatAuto = "auto"
 
@@ -112,10 +105,6 @@ var (
 	// ErrLegacyBinaryCount indicates a binary envelope count mismatch.
 	ErrLegacyBinaryCount = errors.New("legacy binary envelope count mismatch")
 )
-
-// ---------------------------------------------------------------------------
-// Format resolution
-// ---------------------------------------------------------------------------
 
 // ResolveFormats determines the output formats for static and history phases based on
 // the user-provided format string and whether each phase is active.
@@ -162,10 +151,6 @@ func staticOutputFormats() []string {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Input format resolution
-// ---------------------------------------------------------------------------
-
 // ResolveInputFormat determines the input format from the provided path and explicit format hint.
 // When the format is empty or InputFormatAuto, the extension of inputPath is used to detect the format.
 func ResolveInputFormat(inputPath, inputFormat string) (string, error) {
@@ -188,10 +173,6 @@ func ResolveInputFormat(inputPath, inputFormat string) (string, error) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Ordered run IDs
-// ---------------------------------------------------------------------------
-
 // OrderedRunIDs splits the provided analyzer IDs by mode via the registry and returns
 // them in static-first, history-second order.
 func OrderedRunIDs(registry *Registry, ids []string) ([]string, error) {
@@ -206,10 +187,6 @@ func OrderedRunIDs(registry *Registry, ids []string) ([]string, error) {
 
 	return ordered, nil
 }
-
-// ---------------------------------------------------------------------------
-// Input model decoding
-// ---------------------------------------------------------------------------
 
 // DecodeInputModel dispatches input decoding based on the inputFormat.
 func DecodeInputModel(
@@ -319,16 +296,12 @@ func DecodeBinaryInputModel(
 	return NewUnifiedModel(results), nil
 }
 
-// ---------------------------------------------------------------------------
-// Output writing
-// ---------------------------------------------------------------------------
-
 // PlotRenderer is a function that renders a UnifiedModel as a plot to the given writer.
 // It is provided by the renderer package to avoid import cycles.
 type PlotRenderer func(model UnifiedModel, writer io.Writer) error
 
 // plotRendererFn holds the registered plot renderer. Nil until set via RegisterPlotRenderer.
-var plotRendererFn PlotRenderer //nolint:gochecknoglobals // package-level registration, set once
+var plotRendererFn PlotRenderer
 
 // RegisterPlotRenderer sets the package-level plot renderer used by WriteConvertedOutput.
 // It is intended to be called from the renderer package's init function.
@@ -340,7 +313,7 @@ func RegisterPlotRenderer(fn PlotRenderer) {
 type SectionRendererFunc func(report Report) ([]plotpage.Section, error)
 
 // plotSectionRenderers maps analyzer IDs to their plot section generators.
-var plotSectionRenderers = make(map[string]SectionRendererFunc) //nolint:gochecknoglobals // package-level registration
+var plotSectionRenderers = make(map[string]SectionRendererFunc)
 
 // RegisterPlotSections registers a plot section renderer for the given analyzer ID.
 func RegisterPlotSections(analyzerID string, fn SectionRendererFunc) {
@@ -396,10 +369,6 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Binary envelope helpers (inlined from reportutil to avoid import cycles)
-// ---------------------------------------------------------------------------
-
 const (
 	binaryMagic      = "CFB1"
 	binaryHeaderSize = 8
@@ -422,7 +391,7 @@ func encodeBinaryEnvelope(value any, writer io.Writer) error {
 
 	header := make([]byte, binaryHeaderSize)
 	copy(header[:4], binaryMagic)
-	binary.LittleEndian.PutUint32(header[4:], uint32(len(payload))) //nolint:gosec // bounded by MaxUint32 check above
+	binary.LittleEndian.PutUint32(header[4:], safeconv.MustIntToUint32(len(payload)))
 
 	_, err = writer.Write(header)
 	if err != nil {

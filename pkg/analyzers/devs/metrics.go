@@ -16,7 +16,7 @@ var (
 	ErrInvalidPeopleDict = errors.New("devs: invalid ReversedPeopleDict in report")
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // TickData is the raw input data for devs metrics computation.
 type TickData struct {
@@ -108,7 +108,7 @@ type AggregateData struct {
 	AnalysisPeriodTicks int `json:"analysis_period_ticks" yaml:"analysis_period_ticks"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // DevelopersMetric computes per-developer statistics.
 type DevelopersMetric struct {
@@ -532,7 +532,7 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	// Compute in dependency order
+	// Compute in dependency order.
 	devMetric := NewDevelopersMetric()
 	developers := devMetric.Compute(input)
 

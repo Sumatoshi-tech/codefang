@@ -14,11 +14,14 @@ import (
 // ErrParentNotFound is returned when the requested parent commit is not found.
 var ErrParentNotFound = errors.New("parent commit not found")
 
+// errTestCommitNoTree is returned when attempting to get a tree from a test commit.
+var errTestCommitNoTree = errors.New("get commit tree: test commit has no tree")
+
 // Commit wraps a libgit2 commit.
 type Commit struct {
 	commit   *git2go.Commit
 	repo     *Repository
-	testHash *Hash // used for testing when commit is nil
+	testHash *Hash // used for testing when commit is nil.
 }
 
 // NewCommitForTest creates a Commit with the given hash for testing.
@@ -124,7 +127,7 @@ func (c *Commit) TreeHash() Hash {
 // Tree returns the tree associated with this commit. Error when commit is a test double (nil internal).
 func (c *Commit) Tree() (*Tree, error) {
 	if c.commit == nil {
-		return nil, errors.New("get commit tree: test commit has no tree")
+		return nil, errTestCommitNoTree
 	}
 
 	tree, err := c.commit.Tree()

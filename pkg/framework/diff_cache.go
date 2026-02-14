@@ -30,8 +30,8 @@ type diffCacheEntry struct {
 type DiffCache struct {
 	mu         sync.RWMutex
 	entries    map[DiffKey]*diffCacheEntry
-	head       *diffCacheEntry // Most recently used
-	tail       *diffCacheEntry // Least recently used
+	head       *diffCacheEntry // Most recently used.
+	tail       *diffCacheEntry // Least recently used.
 	maxEntries int
 	hits       atomic.Int64
 	misses     atomic.Int64
@@ -72,7 +72,7 @@ func (c *DiffCache) Put(key DiffKey, diff plumbing.FileDiffData) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if already exists
+	// Check if already exists.
 	if entry, exists := c.entries[key]; exists {
 		entry.diff = diff
 		c.moveToFront(entry)
@@ -80,7 +80,7 @@ func (c *DiffCache) Put(key DiffKey, diff plumbing.FileDiffData) {
 		return
 	}
 
-	// Create new entry
+	// Create new entry.
 	entry := &diffCacheEntry{
 		key:  key,
 		diff: diff,
@@ -89,7 +89,7 @@ func (c *DiffCache) Put(key DiffKey, diff plumbing.FileDiffData) {
 	c.entries[key] = entry
 	c.addToFront(entry)
 
-	// Evict if over capacity
+	// Evict if over capacity.
 	for len(c.entries) > c.maxEntries {
 		c.evictLRU()
 	}

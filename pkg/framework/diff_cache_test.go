@@ -41,12 +41,12 @@ func TestDiffCache_GetPut(t *testing.T) {
 	key := makeDiffKey(1, 2)
 	diff := makeTestFileDiff()
 
-	// Get on empty cache returns nil, false
+	// Get on empty cache returns nil, false.
 	got, found := cache.Get(key)
 	assert.False(t, found)
 	assert.Equal(t, plumbing.FileDiffData{}, got)
 
-	// Put and Get
+	// Put and Get.
 	cache.Put(key, diff)
 	got, found = cache.Get(key)
 	require.True(t, found)
@@ -58,10 +58,10 @@ func TestDiffCache_GetPut(t *testing.T) {
 func TestDiffCache_LRUEviction(t *testing.T) {
 	t.Parallel()
 
-	// Cache with max 50 entries
+	// Cache with max 50 entries.
 	cache := framework.NewDiffCache(50)
 
-	// Add 60 entries
+	// Add 60 entries.
 	for i := range 60 {
 		key := makeDiffKey(byte(i), byte(i+100))
 		cache.Put(key, makeTestFileDiff())
@@ -70,12 +70,12 @@ func TestDiffCache_LRUEviction(t *testing.T) {
 	stats := cache.Stats()
 	assert.LessOrEqual(t, stats.Entries, 50)
 
-	// First entries should be evicted
+	// First entries should be evicted.
 	key0 := makeDiffKey(0, 100)
 	_, found := cache.Get(key0)
 	assert.False(t, found, "first entry should be evicted")
 
-	// Last entries should still be present
+	// Last entries should still be present.
 	key59 := makeDiffKey(59, 159)
 	_, found = cache.Get(key59)
 	assert.True(t, found, "last entry should still be present")
@@ -91,9 +91,9 @@ func TestDiffCache_Stats(t *testing.T) {
 
 	cache.Put(key1, makeTestFileDiff())
 
-	// One hit, one miss
-	cache.Get(key1) // hit
-	cache.Get(key2) // miss
+	// One hit, one miss.
+	cache.Get(key1) // hit.
+	cache.Get(key2) // miss.
 
 	stats := cache.Stats()
 	assert.Equal(t, int64(1), stats.Hits)
@@ -131,7 +131,7 @@ func TestDiffCache_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 
-	// Just verify no panics and stats are reasonable
+	// Just verify no panics and stats are reasonable.
 	stats := cache.Stats()
 	assert.Positive(t, stats.Entries)
 }

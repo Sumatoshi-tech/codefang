@@ -9,6 +9,8 @@ import (
 )
 
 func TestCommitStreamer(t *testing.T) {
+	t.Parallel()
+
 	streamer := framework.NewCommitStreamer()
 
 	if streamer.BatchSize != 10 {
@@ -21,13 +23,15 @@ func TestCommitStreamer(t *testing.T) {
 }
 
 func TestCommitStreamerStreamEmpty(t *testing.T) {
+	t.Parallel()
+
 	streamer := framework.NewCommitStreamer()
 	ctx := context.Background()
 
-	// Stream empty commits slice
+	// Stream empty commits slice.
 	ch := streamer.Stream(ctx, []*gitlib.Commit{})
 
-	// Should get no batches
+	// Should get no batches.
 	count := 0
 	for range ch {
 		count++
@@ -39,6 +43,8 @@ func TestCommitStreamerStreamEmpty(t *testing.T) {
 }
 
 func TestDefaultCoordinatorConfig(t *testing.T) {
+	t.Parallel()
+
 	config := framework.DefaultCoordinatorConfig()
 
 	if config.CommitBatchSize != 100 {
@@ -63,6 +69,8 @@ func TestDefaultCoordinatorConfig(t *testing.T) {
 }
 
 func TestCommitBatch(t *testing.T) {
+	t.Parallel()
+
 	batch := framework.CommitBatch{
 		StartIndex: 10,
 		BatchID:    5,
@@ -78,6 +86,8 @@ func TestCommitBatch(t *testing.T) {
 }
 
 func TestBlobData(t *testing.T) {
+	t.Parallel()
+
 	data := framework.BlobData{
 		Index:     42,
 		BlobCache: make(map[gitlib.Hash]*gitlib.CachedBlob),
@@ -93,6 +103,8 @@ func TestBlobData(t *testing.T) {
 }
 
 func TestCommitData(t *testing.T) {
+	t.Parallel()
+
 	data := framework.CommitData{
 		Index:     42,
 		BlobCache: make(map[gitlib.Hash]*gitlib.CachedBlob),

@@ -1,4 +1,4 @@
-package shotness //nolint:testpackage // testing internal implementation.
+package shotness
 
 import (
 	"bytes"
@@ -81,7 +81,7 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Add some state to original
+	// Add some state to original.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
@@ -96,11 +96,11 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Forks should have empty independent maps (not inherit parent state)
+	// Forks should have empty independent maps (not inherit parent state).
 	require.Empty(t, fork1.nodes, "fork should have empty nodes map")
 	require.Empty(t, fork2.nodes, "fork should have empty nodes map")
 
-	// Modifying one fork should not affect the other
+	// Modifying one fork should not affect the other.
 	fork1.nodes["newFunc"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "newFunc", File: "a.go"},
 		Count:   1,
@@ -124,7 +124,7 @@ func TestFork_SharesDependencies(t *testing.T) {
 	fork1, ok := forks[0].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Config should be shared
+	// Config should be shared.
 	require.Equal(t, s.DSLStruct, fork1.DSLStruct)
 	require.Equal(t, s.DSLName, fork1.DSLName)
 }
@@ -135,14 +135,14 @@ func TestMerge_CombinesNodes(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has a node
+	// Original has a node.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
 		Couples: map[string]int{},
 	}
 
-	// Create a branch with different node
+	// Create a branch with different node.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.nodes["func2"] = &nodeShotness{
@@ -153,7 +153,7 @@ func TestMerge_CombinesNodes(t *testing.T) {
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have both nodes
+	// Should have both nodes.
 	require.Len(t, s.nodes, 2)
 	require.NotNil(t, s.nodes["func1"])
 	require.NotNil(t, s.nodes["func2"])
@@ -167,14 +167,14 @@ func TestMerge_SumsNodeCounts(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has a node with count 5
+	// Original has a node with count 5.
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
 		Couples: map[string]int{},
 	}
 
-	// Branch has same node with count 3
+	// Branch has same node with count 3.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.nodes["func1"] = &nodeShotness{
@@ -185,7 +185,7 @@ func TestMerge_SumsNodeCounts(t *testing.T) {
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Counts should be summed
+	// Counts should be summed.
 	require.Equal(t, 8, s.nodes["func1"].Count)
 }
 
@@ -211,7 +211,7 @@ func TestMerge_CombinesCouples(t *testing.T) {
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Couples should be summed
+	// Couples should be summed.
 	require.Equal(t, 6, s.nodes["func1"].Couples["func2"])
 	require.Equal(t, 1, s.nodes["func1"].Couples["func3"])
 }
@@ -225,7 +225,7 @@ func TestMerge_CombinesMerges(t *testing.T) {
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 
-	// Add merges to branch
+	// Add merges to branch.
 	hash1 := [20]byte{1, 2, 3}
 	hash2 := [20]byte{4, 5, 6}
 	branch.merges[hash1] = true
@@ -256,14 +256,16 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := s.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure
+	// Should have computed metrics structure.
 	assert.Contains(t, result, "node_hotness")
 	assert.Contains(t, result, "node_coupling")
 	assert.Contains(t, result, "hotspot_nodes")
@@ -288,11 +290,12 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := s.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys)
+	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "node_hotness:")
 	assert.Contains(t, output, "node_coupling:")
 	assert.Contains(t, output, "hotspot_nodes:")

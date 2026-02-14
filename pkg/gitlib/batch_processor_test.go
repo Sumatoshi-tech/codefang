@@ -10,6 +10,8 @@ import (
 )
 
 func TestNewDiffStreamer_ZeroBatchSize(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -26,6 +28,8 @@ func TestNewDiffStreamer_ZeroBatchSize(t *testing.T) {
 }
 
 func TestBatchProcessor_NewBatchProcessor(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -43,6 +47,8 @@ func TestBatchProcessor_NewBatchProcessor(t *testing.T) {
 }
 
 func TestBatchProcessor_LoadBlobs(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -54,7 +60,7 @@ func TestBatchProcessor_LoadBlobs(t *testing.T) {
 
 	defer repo.Free()
 
-	// Get blob hash from first commit
+	// Get blob hash from first commit.
 	commit, err := repo.LookupCommit(firstHash)
 	require.NoError(t, err)
 	tree, err := commit.Tree()
@@ -76,6 +82,8 @@ func TestBatchProcessor_LoadBlobs(t *testing.T) {
 }
 
 func TestBatchProcessor_LoadBlobsEmpty(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -93,6 +101,8 @@ func TestBatchProcessor_LoadBlobsEmpty(t *testing.T) {
 }
 
 func TestBatchProcessor_LoadBlobsAsCached(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -125,6 +135,8 @@ func TestBatchProcessor_LoadBlobsAsCached(t *testing.T) {
 }
 
 func TestBatchProcessor_ProcessCommitBlobs(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -159,6 +171,8 @@ func TestBatchProcessor_ProcessCommitBlobs(t *testing.T) {
 }
 
 func TestBatchProcessor_ProcessCommitDiffs(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -198,6 +212,8 @@ func TestBatchProcessor_ProcessCommitDiffs(t *testing.T) {
 }
 
 func TestBatchProcessor_ComputeDiffs(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -237,6 +253,8 @@ func TestBatchProcessor_ComputeDiffs(t *testing.T) {
 }
 
 func TestBlobStreamer_Stream(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -284,6 +302,8 @@ func TestBlobStreamer_Stream(t *testing.T) {
 }
 
 func TestDiffStreamer_Stream(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 

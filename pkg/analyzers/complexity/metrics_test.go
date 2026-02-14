@@ -233,7 +233,7 @@ func TestFunctionComplexityMetric_Compute(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 3)
-	// Should be sorted by cyclomatic complexity descending
+	// Should be sorted by cyclomatic complexity descending.
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, 15, result[0].CyclomaticComplexity)
 	assert.Equal(t, testFunctionName, result[1].Name)
@@ -257,7 +257,7 @@ func TestFunctionComplexityMetric_ComplexityDensity(t *testing.T) {
 	assert.InDelta(t, 0.0, result[1].ComplexityDensity, 0.001)
 }
 
-// --- ComplexityDistributionMetric Tests ---
+// --- ComplexityDistributionMetric Tests ---.
 
 func TestComplexityDistributionMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -287,12 +287,12 @@ func TestComplexityDistributionMetric_Compute(t *testing.T) {
 	t.Parallel()
 
 	functions := []FunctionData{
-		{Name: "simple1", CyclomaticComplexity: 1},    // Simple (<=5)
-		{Name: "simple2", CyclomaticComplexity: 5},    // Simple (<=5)
-		{Name: "moderate1", CyclomaticComplexity: 6},  // Moderate (6-10)
-		{Name: "moderate2", CyclomaticComplexity: 10}, // Moderate (6-10)
-		{Name: "complex1", CyclomaticComplexity: 11},  // Complex (>10)
-		{Name: "complex2", CyclomaticComplexity: 20},  // Complex (>10)
+		{Name: "simple1", CyclomaticComplexity: 1},    // Simple (<=5).
+		{Name: "simple2", CyclomaticComplexity: 5},    // Simple (<=5).
+		{Name: "moderate1", CyclomaticComplexity: 6},  // Moderate (6-10).
+		{Name: "moderate2", CyclomaticComplexity: 10}, // Moderate (6-10).
+		{Name: "complex1", CyclomaticComplexity: 11},  // Complex (>10).
+		{Name: "complex2", CyclomaticComplexity: 20},  // Complex (>10).
 	}
 	metric := NewDistributionMetric()
 	input := makeTestReportData(functions)
@@ -304,7 +304,7 @@ func TestComplexityDistributionMetric_Compute(t *testing.T) {
 	assert.Equal(t, 2, result.Complex)
 }
 
-// --- HighRiskFunctionMetric Tests ---
+// --- HighRiskFunctionMetric Tests ---.
 
 func TestHighRiskFunctionMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -331,7 +331,7 @@ func TestHighRiskFunctionMetric_Empty(t *testing.T) {
 func TestHighRiskFunctionMetric_NoHighRisk(t *testing.T) {
 	t.Parallel()
 
-	// Functions below all high thresholds
+	// Functions below all high thresholds.
 	functions := []FunctionData{
 		{
 			Name:                 testFunctionName,
@@ -417,13 +417,13 @@ func TestHighRiskFunctionMetric_SortedByRisk(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 2)
-	// Critical should come first
+	// Critical should come first.
 	assert.Equal(t, "critical_risk", result[0].Name)
 	assert.Equal(t, "CRITICAL", result[0].RiskLevel)
 	assert.Equal(t, "medium_risk", result[1].Name)
 }
 
-// --- ComplexityAggregateMetric Tests ---
+// --- ComplexityAggregateMetric Tests ---.
 
 func TestComplexityAggregateMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -527,7 +527,7 @@ func TestComplexityAggregateMetric_HealthScore(t *testing.T) {
 	}
 }
 
-// --- riskPriority Tests ---
+// --- riskPriority Tests ---.
 
 func TestRiskPriority(t *testing.T) {
 	t.Parallel()
@@ -540,7 +540,7 @@ func TestRiskPriority(t *testing.T) {
 		{"HIGH", 1},
 		{"MEDIUM", 2},
 		{"LOW", 3},
-		{"UNKNOWN", 3}, // default case
+		{"UNKNOWN", 3}, // default case.
 	}
 
 	for _, tt := range tests {
@@ -554,7 +554,7 @@ func TestRiskPriority(t *testing.T) {
 	}
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
 	t.Parallel()
@@ -614,29 +614,29 @@ func TestComputeAllMetrics_FullReport(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// FunctionComplexity - sorted by cyclomatic desc
+	// FunctionComplexity - sorted by cyclomatic desc.
 	require.Len(t, result.FunctionComplexity, 3)
 	assert.Equal(t, "complex_func", result.FunctionComplexity[0].Name)
 	assert.Equal(t, "moderate_func", result.FunctionComplexity[1].Name)
 	assert.Equal(t, "simple_func", result.FunctionComplexity[2].Name)
 
-	// Distribution
-	assert.Equal(t, 1, result.Distribution.Simple)   // simple_func (3)
-	assert.Equal(t, 1, result.Distribution.Moderate) // moderate_func (8)
-	assert.Equal(t, 1, result.Distribution.Complex)  // complex_func (15)
+	// Distribution.
+	assert.Equal(t, 1, result.Distribution.Simple)   // simple_func (3).
+	assert.Equal(t, 1, result.Distribution.Moderate) // moderate_func (8).
+	assert.Equal(t, 1, result.Distribution.Complex)  // complex_func (15).
 
-	// HighRiskFunctions - only complex_func exceeds thresholds
+	// HighRiskFunctions - only complex_func exceeds thresholds.
 	require.Len(t, result.HighRiskFunctions, 1)
 	assert.Equal(t, "complex_func", result.HighRiskFunctions[0].Name)
 	assert.Equal(t, "CRITICAL", result.HighRiskFunctions[0].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalFunctions)
 	assert.InDelta(t, testAverageComplexity, result.Aggregate.AverageComplexity, 0.001)
 	assert.Equal(t, testMessage, result.Aggregate.Message)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()

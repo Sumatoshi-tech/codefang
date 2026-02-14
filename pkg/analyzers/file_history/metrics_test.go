@@ -28,21 +28,25 @@ const (
 func testHash(s string) gitlib.Hash {
 	var h gitlib.Hash
 	copy(h[:], s)
+
 	return h
 }
 
 // Helper function to create test hashes.
 func testHashes(count int) []gitlib.Hash {
 	hashes := make([]gitlib.Hash, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		hashes[i] = testHash(string(rune('a' + i)))
 	}
+
 	return hashes
 }
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -52,6 +56,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_WithFiles(t *testing.T) {
+	t.Parallel()
+
 	files := map[string]FileHistory{
 		testFile1: {
 			People: map[int]pkgplumbing.LineStats{
@@ -77,9 +83,11 @@ func TestParseReportData_WithFiles(t *testing.T) {
 	assert.Equal(t, 100, fh.People[testDevID1].Added)
 }
 
-// --- FileChurnMetric Tests ---
+// --- FileChurnMetric Tests ---.
 
 func TestNewFileChurnMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileChurnMetric()
 
 	assert.Equal(t, "file_churn", m.Name())
@@ -89,6 +97,8 @@ func TestNewFileChurnMetric_Metadata(t *testing.T) {
 }
 
 func TestFileChurnMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileChurnMetric()
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
@@ -98,6 +108,8 @@ func TestFileChurnMetric_Empty(t *testing.T) {
 }
 
 func TestFileChurnMetric_SingleFile(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileChurnMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
@@ -120,25 +132,27 @@ func TestFileChurnMetric_SingleFile(t *testing.T) {
 	assert.Equal(t, 150, result[0].TotalAdded)  // 100 + 50
 	assert.Equal(t, 30, result[0].TotalRemoved) // 20 + 10
 	assert.Equal(t, 45, result[0].TotalChanged) // 30 + 15
-	// ChurnScore = 10 + (150+30+45)/100 = 10 + 2.25 = 12.25
+	// ChurnScore = 10 + (150+30+45)/100 = 10 + 2.25 = 12.25.
 	assert.InDelta(t, 12.25, result[0].ChurnScore, floatDelta)
 }
 
 func TestFileChurnMetric_SortedByChurnScore(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileChurnMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
 			testFile1: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {Added: 10}},
-				Hashes: testHashes(5), // Low churn
+				Hashes: testHashes(5), // Low churn.
 			},
 			testFile2: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {Added: 1000}},
-				Hashes: testHashes(20), // High churn
+				Hashes: testHashes(20), // High churn.
 			},
 			testFile3: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {Added: 100}},
-				Hashes: testHashes(10), // Medium churn
+				Hashes: testHashes(10), // Medium churn.
 			},
 		},
 	}
@@ -146,15 +160,17 @@ func TestFileChurnMetric_SortedByChurnScore(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by churn score descending
+	// Sorted by churn score descending.
 	assert.Equal(t, testFile2, result[0].Path) // 20 + 10 = 30
 	assert.Equal(t, testFile3, result[1].Path) // 10 + 1 = 11
 	assert.Equal(t, testFile1, result[2].Path) // 5 + 0.1 = 5.1
 }
 
-// --- FileContributorMetric Tests ---
+// --- FileContributorMetric Tests ---.
 
 func TestNewFileContributorMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileContributorMetric()
 
 	assert.Equal(t, "file_contributors", m.Name())
@@ -164,6 +180,8 @@ func TestNewFileContributorMetric_Metadata(t *testing.T) {
 }
 
 func TestFileContributorMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileContributorMetric()
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
@@ -173,13 +191,15 @@ func TestFileContributorMetric_Empty(t *testing.T) {
 }
 
 func TestFileContributorMetric_SingleFile(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileContributorMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
 			testFile1: {
 				People: map[int]pkgplumbing.LineStats{
-					testDevID1: {Added: 50, Changed: 20},  // 70 total
-					testDevID2: {Added: 100, Changed: 30}, // 130 total - top
+					testDevID1: {Added: 50, Changed: 20},  // 70 total.
+					testDevID2: {Added: 100, Changed: 30}, // 130 total - top.
 				},
 				Hashes: testHashes(5),
 			},
@@ -196,6 +216,8 @@ func TestFileContributorMetric_SingleFile(t *testing.T) {
 }
 
 func TestFileContributorMetric_NoContributors(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileContributorMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
@@ -213,9 +235,11 @@ func TestFileContributorMetric_NoContributors(t *testing.T) {
 	assert.Equal(t, 0, result[0].TopContributorLines)
 }
 
-// --- HotspotMetric Tests ---
+// --- HotspotMetric Tests ---.
 
 func TestNewHotspotMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotMetric()
 
 	assert.Equal(t, "hotspots", m.Name())
@@ -225,6 +249,8 @@ func TestNewHotspotMetric_Metadata(t *testing.T) {
 }
 
 func TestHotspotMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotMetric()
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
@@ -234,12 +260,14 @@ func TestHotspotMetric_Empty(t *testing.T) {
 }
 
 func TestHotspotMetric_BelowThreshold(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
 			testFile1: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {}},
-				Hashes: testHashes(10), // Below HotspotThresholdMedium (15)
+				Hashes: testHashes(10), // Below HotspotThresholdMedium (15).
 			},
 		},
 	}
@@ -250,6 +278,8 @@ func TestHotspotMetric_BelowThreshold(t *testing.T) {
 }
 
 func TestHotspotMetric_RiskLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		commitCount int
@@ -265,6 +295,8 @@ func TestHotspotMetric_RiskLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewHotspotMetric()
 			input := &ReportData{
 				Files: map[string]FileHistory{
@@ -285,20 +317,22 @@ func TestHotspotMetric_RiskLevels(t *testing.T) {
 }
 
 func TestHotspotMetric_SortedByRiskThenCommitCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
 			testFile1: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {}},
-				Hashes: testHashes(20), // MEDIUM
+				Hashes: testHashes(20), // MEDIUM.
 			},
 			testFile2: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {}},
-				Hashes: testHashes(55), // CRITICAL
+				Hashes: testHashes(55), // CRITICAL.
 			},
 			testFile3: {
 				People: map[int]pkgplumbing.LineStats{testDevID1: {}},
-				Hashes: testHashes(35), // HIGH
+				Hashes: testHashes(35), // HIGH.
 			},
 		},
 	}
@@ -306,15 +340,17 @@ func TestHotspotMetric_SortedByRiskThenCommitCount(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by risk first (critical > high > medium)
+	// Sorted by risk first (critical > high > medium).
 	assert.Equal(t, RiskCritical, result[0].RiskLevel)
 	assert.Equal(t, RiskHigh, result[1].RiskLevel)
 	assert.Equal(t, RiskMedium, result[2].RiskLevel)
 }
 
-// --- riskPriority Tests ---
+// --- riskPriority Tests ---.
 
 func TestRiskPriority(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		level    string
 		expected int
@@ -329,15 +365,19 @@ func TestRiskPriority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.level, func(t *testing.T) {
+			t.Parallel()
+
 			result := riskPriority(tt.level)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- FileHistoryAggregateMetric Tests ---
+// --- FileHistoryAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "file_history_aggregate", m.Name())
@@ -347,6 +387,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestFileHistoryAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
@@ -361,6 +403,8 @@ func TestFileHistoryAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestFileHistoryAggregateMetric_WithData(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Files: map[string]FileHistory{
@@ -369,14 +413,14 @@ func TestFileHistoryAggregateMetric_WithData(t *testing.T) {
 					testDevID1: {},
 					testDevID2: {},
 				},
-				Hashes: testHashes(20), // High churn
+				Hashes: testHashes(20), // High churn.
 			},
 			testFile2: {
 				People: map[int]pkgplumbing.LineStats{
 					testDevID1: {},
 					testDevID3: {},
 				},
-				Hashes: testHashes(10), // Not high churn
+				Hashes: testHashes(10), // Not high churn.
 			},
 		},
 	}
@@ -385,15 +429,17 @@ func TestFileHistoryAggregateMetric_WithData(t *testing.T) {
 
 	assert.Equal(t, 2, result.TotalFiles)
 	assert.Equal(t, 30, result.TotalCommits)                          // 20 + 10
-	assert.Equal(t, 3, result.TotalContributors)                      // devID1, devID2, devID3 (unique)
+	assert.Equal(t, 3, result.TotalContributors)                      // devID1, devID2, devID3 (unique).
 	assert.InDelta(t, 15.0, result.AvgCommitsPerFile, floatDelta)     // 30/2
-	assert.InDelta(t, 2.0, result.AvgContributorsPerFile, floatDelta) // 4/2 (2 per file)
-	assert.Equal(t, 1, result.HighChurnFiles)                         // Only file1 >= 15 commits
+	assert.InDelta(t, 2.0, result.AvgContributorsPerFile, floatDelta) // 4/2 (2 per file).
+	assert.Equal(t, 1, result.HighChurnFiles)                         // Only file1 >= 15 commits.
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -405,9 +451,11 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 	assert.Equal(t, 0, result.Aggregate.TotalFiles)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	name := m.AnalyzerName()
@@ -416,6 +464,8 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FileChurn: []FileChurnData{{Path: "test.go"}},
 	}
@@ -426,6 +476,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FileChurn: []FileChurnData{{Path: "test.go"}},
 	}
@@ -436,19 +488,21 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	files := map[string]FileHistory{
 		testFile1: {
 			People: map[int]pkgplumbing.LineStats{
 				testDevID1: {Added: 100, Removed: 10, Changed: 20},
 				testDevID2: {Added: 50, Removed: 5, Changed: 10},
 			},
-			Hashes: testHashes(35), // HIGH risk (>= 30)
+			Hashes: testHashes(35), // HIGH risk (>= 30).
 		},
 		testFile2: {
 			People: map[int]pkgplumbing.LineStats{
 				testDevID1: {Added: 20},
 			},
-			Hashes: testHashes(5), // Below threshold
+			Hashes: testHashes(5), // Below threshold.
 		},
 	}
 
@@ -460,19 +514,19 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// FileChurn
+	// FileChurn.
 	require.Len(t, result.FileChurn, 2)
 
-	// FileContributors
+	// FileContributors.
 	require.Len(t, result.FileContributors, 2)
 
-	// Hotspots - only file1 has >= 15 commits
+	// Hotspots - only file1 has >= 15 commits.
 	require.Len(t, result.Hotspots, 1)
 	assert.Equal(t, testFile1, result.Hotspots[0].Path)
 	assert.Equal(t, RiskHigh, result.Hotspots[0].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 2, result.Aggregate.TotalFiles)
 	assert.Equal(t, 40, result.Aggregate.TotalCommits)     // 35 + 5
-	assert.Equal(t, 2, result.Aggregate.TotalContributors) // devID1, devID2
+	assert.Equal(t, 2, result.Aggregate.TotalContributors) // devID1, devID2.
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+var errStopAt2 = errors.New("stop at 2")
+
 // testRepo wraps a test repository for integration testing.
 type testRepo struct {
 	t       *testing.T
@@ -50,11 +52,11 @@ func (tr *testRepo) createFile(name, content string) {
 	dir := filepath.Dir(path)
 
 	if dir != tr.path {
-		err := os.MkdirAll(dir, 0o755)
+		err := os.MkdirAll(dir, 0o750)
 		require.NoError(tr.t, err)
 	}
 
-	err := os.WriteFile(path, []byte(content), 0o644)
+	err := os.WriteFile(path, []byte(content), 0o600)
 	require.NoError(tr.t, err)
 }
 
@@ -123,14 +125,17 @@ func (tr *testRepo) createMergeCommit(message string, firstParent, secondParent 
 
 	parent1, err := tr.native.LookupCommit(firstParent.ToOid())
 	require.NoError(tr.t, err)
+
 	defer parent1.Free()
 
 	parent2, err := tr.native.LookupCommit(secondParent.ToOid())
 	require.NoError(tr.t, err)
+
 	defer parent2.Free()
 
 	tree, err := parent1.Tree()
 	require.NoError(tr.t, err)
+
 	defer tree.Free()
 
 	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
@@ -146,6 +151,7 @@ func (tr *testRepo) commitToRef(refName, message string, parent gitlib.Hash) git
 
 	index, err := tr.native.Index()
 	require.NoError(tr.t, err)
+
 	defer index.Free()
 
 	err = index.AddAll([]string{"*"}, git2go.IndexAddDefault, nil)
@@ -157,18 +163,23 @@ func (tr *testRepo) commitToRef(refName, message string, parent gitlib.Hash) git
 	require.NoError(tr.t, err)
 	tree, err := tr.native.LookupTree(treeID)
 	require.NoError(tr.t, err)
+
 	defer tree.Free()
 
 	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
+
 	var parents []*git2go.Commit
+
 	if !parent.IsZero() {
 		p, lookupErr := tr.native.LookupCommit(parent.ToOid())
 		require.NoError(tr.t, lookupErr)
+
 		parents = append(parents, p)
 	}
 
 	oid, err := tr.native.CreateCommit(refName, sig, sig, message, tree, parents...)
 	require.NoError(tr.t, err)
+
 	for _, p := range parents {
 		p.Free()
 	}
@@ -179,6 +190,8 @@ func (tr *testRepo) commitToRef(refName, message string, parent gitlib.Hash) git
 // Repository Tests.
 
 func TestOpenRepository(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -195,6 +208,8 @@ func TestOpenRepository(t *testing.T) {
 }
 
 func TestOpenRepositoryNotFound(t *testing.T) {
+	t.Parallel()
+
 	repo, err := gitlib.OpenRepository("/nonexistent/path/to/repo")
 
 	assert.Nil(t, repo)
@@ -203,6 +218,8 @@ func TestOpenRepositoryNotFound(t *testing.T) {
 }
 
 func TestRepositoryHead(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -220,6 +237,8 @@ func TestRepositoryHead(t *testing.T) {
 }
 
 func TestRepositoryFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -237,6 +256,8 @@ func TestRepositoryFree(t *testing.T) {
 // Commit Tests.
 
 func TestLookupCommit(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -262,6 +283,8 @@ func TestLookupCommit(t *testing.T) {
 }
 
 func TestLookupCommitNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -281,6 +304,8 @@ func TestLookupCommitNotFound(t *testing.T) {
 }
 
 func TestCommitParent(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -312,6 +337,8 @@ func TestCommitParent(t *testing.T) {
 }
 
 func TestCommitParentNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -338,6 +365,8 @@ func TestCommitParentNotFound(t *testing.T) {
 // Tree Tests.
 
 func TestCommitTree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -365,6 +394,8 @@ func TestCommitTree(t *testing.T) {
 }
 
 func TestTreeEntry(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -396,6 +427,8 @@ func TestTreeEntry(t *testing.T) {
 }
 
 func TestTreeEntryByPath(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -425,6 +458,8 @@ func TestTreeEntryByPath(t *testing.T) {
 }
 
 func TestTreeEntryByPathNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -453,6 +488,8 @@ func TestTreeEntryByPathNotFound(t *testing.T) {
 }
 
 func TestTreeEntryByIndexOutOfBounds(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -481,6 +518,8 @@ func TestTreeEntryByIndexOutOfBounds(t *testing.T) {
 // File Tests.
 
 func TestCommitFiles(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -522,6 +561,8 @@ func TestCommitFiles(t *testing.T) {
 }
 
 func TestCommitFile(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -550,6 +591,8 @@ func TestCommitFile(t *testing.T) {
 }
 
 func TestCommitFileNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -573,6 +616,8 @@ func TestCommitFileNotFound(t *testing.T) {
 }
 
 func TestFileReader(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -604,6 +649,8 @@ func TestFileReader(t *testing.T) {
 }
 
 func TestFileBlob(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -636,6 +683,8 @@ func TestFileBlob(t *testing.T) {
 // Blob Tests.
 
 func TestLookupBlob(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -667,6 +716,8 @@ func TestLookupBlob(t *testing.T) {
 }
 
 func TestLookupBlobNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -688,6 +739,8 @@ func TestLookupBlobNotFound(t *testing.T) {
 // CachedBlob Tests.
 
 func TestCachedBlobFromRepo(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -717,6 +770,8 @@ func TestCachedBlobFromRepo(t *testing.T) {
 }
 
 func TestCachedBlobCountLines(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -745,6 +800,8 @@ func TestCachedBlobCountLines(t *testing.T) {
 }
 
 func TestCachedBlobIsBinary(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -771,6 +828,8 @@ func TestCachedBlobIsBinary(t *testing.T) {
 }
 
 func TestCachedBlobReader(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -803,6 +862,8 @@ func TestCachedBlobReader(t *testing.T) {
 // Diff Tests.
 
 func TestDiffTreeToTree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -855,6 +916,8 @@ func TestDiffTreeToTree(t *testing.T) {
 }
 
 func TestDiffStats(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -907,6 +970,8 @@ func TestDiffStats(t *testing.T) {
 // TreeDiff (Changes) Tests.
 
 func TestTreeDiff(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -974,6 +1039,8 @@ func TestTreeDiff(t *testing.T) {
 }
 
 func TestInitialTreeChanges(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1007,6 +1074,8 @@ func TestInitialTreeChanges(t *testing.T) {
 }
 
 func TestInitialTreeChangesNilTree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1026,6 +1095,8 @@ func TestInitialTreeChangesNilTree(t *testing.T) {
 // RevWalk Tests.
 
 func TestRevWalk(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1054,6 +1125,8 @@ func TestRevWalk(t *testing.T) {
 }
 
 func TestRevWalkPushHead(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1082,6 +1155,8 @@ func TestRevWalkPushHead(t *testing.T) {
 }
 
 func TestRevWalkIterate(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1122,6 +1197,8 @@ func TestRevWalkIterate(t *testing.T) {
 // Log Tests.
 
 func TestRepositoryLog(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1159,6 +1236,8 @@ func TestRepositoryLog(t *testing.T) {
 // without SimplifyFirstParent, topological+filter gave interleaved order causing
 // "internal integrity error src X != Y".
 func TestLogFirstParent(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1170,6 +1249,7 @@ func TestLogFirstParent(t *testing.T) {
 
 	repo, err := gitlib.OpenRepository(tr.path)
 	require.NoError(t, err)
+
 	defer repo.Free()
 
 	// Without FirstParent: we may see M, B, A (branch commits interleaved).
@@ -1189,10 +1269,12 @@ func TestLogFirstParent(t *testing.T) {
 	assert.NotContains(t, fpHashes, hashB, "first-parent must exclude branch commit")
 	assert.Less(t, len(fpHashes), len(fullHashes), "first-parent should have fewer commits")
 	// Verify order: each commit's predecessor must be its first parent.
-	for i := 0; i < len(fpHashes)-1; i++ {
+	for i := range len(fpHashes) - 1 {
 		currCommit, lookupErr := repo.LookupCommit(fpHashes[i])
 		require.NoError(t, lookupErr)
+
 		prevHash := fpHashes[i+1]
+
 		require.NotZero(t, currCommit.NumParents(), "commit must have parent")
 		require.Equal(t, prevHash, currCommit.ParentHash(0), "predecessor must be first parent")
 		currCommit.Free()
@@ -1201,13 +1283,17 @@ func TestLogFirstParent(t *testing.T) {
 
 func collectIterHashes(t *testing.T, iter *gitlib.CommitIter) []gitlib.Hash {
 	t.Helper()
+
 	var hashes []gitlib.Hash
+
 	for {
 		commit, err := iter.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		require.NoError(t, err)
+
 		hashes = append(hashes, commit.Hash())
 		commit.Free()
 	}
@@ -1218,6 +1304,8 @@ func collectIterHashes(t *testing.T, iter *gitlib.CommitIter) []gitlib.Hash {
 // FileIter ForEach Tests.
 
 func TestFileIterForEach(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1251,6 +1339,8 @@ func TestFileIterForEach(t *testing.T) {
 }
 
 func TestFileIterForEachError(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1272,7 +1362,7 @@ func TestFileIterForEachError(t *testing.T) {
 	iter, err := commit.Files()
 	require.NoError(t, err)
 
-	expectedErr := errors.New("stop at 2")
+	expectedErr := errStopAt2
 	count := 0
 
 	err = iter.ForEach(func(_ *gitlib.File) error {
@@ -1289,6 +1379,8 @@ func TestFileIterForEachError(t *testing.T) {
 }
 
 func TestTreeFilesMethod(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1334,6 +1426,8 @@ func TestTreeFilesMethod(t *testing.T) {
 // Additional Coverage Tests.
 
 func TestBlobReader(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1366,6 +1460,8 @@ func TestBlobReader(t *testing.T) {
 }
 
 func TestCommitIterClose(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1388,6 +1484,8 @@ func TestCommitIterClose(t *testing.T) {
 }
 
 func TestFileIterClose(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1422,6 +1520,8 @@ func TestFileIterClose(t *testing.T) {
 }
 
 func TestDiffForEach(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1466,7 +1566,7 @@ func TestDiffForEach(t *testing.T) {
 	err = diff.ForEach(func(_ gitlib.DiffDelta, _ float64) (git2go.DiffForEachHunkCallback, error) {
 		deltaCount++
 
-		return nil, nil //nolint:nilnil // Test callback.
+		return nil, nil // Test callback: nil hunk-callback means skip hunk processing.
 	}, git2go.DiffDetailFiles)
 
 	require.NoError(t, err)
@@ -1474,6 +1574,8 @@ func TestDiffForEach(t *testing.T) {
 }
 
 func TestDiffDelta(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1525,6 +1627,8 @@ func TestDiffDelta(t *testing.T) {
 }
 
 func TestCachedBlobCountLinesNoNewline(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1554,6 +1658,8 @@ func TestCachedBlobCountLinesNoNewline(t *testing.T) {
 }
 
 func TestCachedBlobEmpty(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1584,6 +1690,8 @@ func TestCachedBlobEmpty(t *testing.T) {
 }
 
 func TestLookupTree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1615,6 +1723,8 @@ func TestLookupTree(t *testing.T) {
 }
 
 func TestLookupTreeNotFound(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1634,6 +1744,8 @@ func TestLookupTreeNotFound(t *testing.T) {
 }
 
 func TestRevWalkPushInvalid(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1657,6 +1769,8 @@ func TestRevWalkPushInvalid(t *testing.T) {
 }
 
 func TestCommitIterNext(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1693,6 +1807,8 @@ func TestCommitIterNext(t *testing.T) {
 }
 
 func TestTreeFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1718,6 +1834,8 @@ func TestTreeFree(t *testing.T) {
 }
 
 func TestCommitFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1738,6 +1856,8 @@ func TestCommitFree(t *testing.T) {
 }
 
 func TestRevWalkFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1758,6 +1878,8 @@ func TestRevWalkFree(t *testing.T) {
 }
 
 func TestDiffFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1801,6 +1923,8 @@ func TestDiffFree(t *testing.T) {
 }
 
 func TestRepositoryLogWithSince(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -1856,6 +1980,8 @@ func TestRepositoryLogWithSince(t *testing.T) {
 }
 
 func TestFileContentsError(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -1883,6 +2009,8 @@ func TestFileContentsError(t *testing.T) {
 }
 
 func TestFileBlobMethod(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -1913,6 +2041,8 @@ func TestFileBlobMethod(t *testing.T) {
 }
 
 func TestTreeDiffRename(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -1957,6 +2087,8 @@ func TestTreeDiffRename(t *testing.T) {
 }
 
 func TestTreeDiffNilTrees(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -1977,6 +2109,8 @@ func TestTreeDiffNilTrees(t *testing.T) {
 
 // TestTreeDiffSameTreeOID verifies TreeDiff returns empty when both trees have the same OID (skip path).
 func TestTreeDiffSameTreeOID(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -1985,14 +2119,17 @@ func TestTreeDiffSameTreeOID(t *testing.T) {
 
 	repo, err := gitlib.OpenRepository(tr.path)
 	require.NoError(t, err)
+
 	defer repo.Free()
 
 	commit, err := repo.LookupCommit(hash)
 	require.NoError(t, err)
+
 	defer commit.Free()
 
 	tree, err := commit.Tree()
 	require.NoError(t, err)
+
 	defer tree.Free()
 
 	// Same tree OID: must skip libgit2 diff and return empty changes.
@@ -2002,6 +2139,8 @@ func TestTreeDiffSameTreeOID(t *testing.T) {
 }
 
 func TestCommitIterForEachError(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2023,7 +2162,7 @@ func TestCommitIterForEachError(t *testing.T) {
 	iter, err := repo.Log(&gitlib.LogOptions{})
 	require.NoError(t, err)
 
-	expectedErr := errors.New("stop at 2")
+	expectedErr := errStopAt2
 	count := 0
 
 	err = iter.ForEach(func(_ *gitlib.Commit) error {
@@ -2040,6 +2179,8 @@ func TestCommitIterForEachError(t *testing.T) {
 }
 
 func TestCachedBlobBinary(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2072,6 +2213,8 @@ func TestCachedBlobBinary(t *testing.T) {
 }
 
 func TestRevWalkSorting(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2096,6 +2239,8 @@ func TestRevWalkSorting(t *testing.T) {
 }
 
 func TestDiffTreeToTreeOneNil(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2130,6 +2275,8 @@ func TestDiffTreeToTreeOneNil(t *testing.T) {
 }
 
 func TestInitialTreeChangesWithSubdirectory(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2160,6 +2307,8 @@ func TestInitialTreeChangesWithSubdirectory(t *testing.T) {
 }
 
 func TestFileReaderClose(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2189,6 +2338,8 @@ func TestFileReaderClose(t *testing.T) {
 }
 
 func TestTreeFilesNestedStructure(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 
 	defer tr.cleanup()
@@ -2219,6 +2370,8 @@ func TestTreeFilesNestedStructure(t *testing.T) {
 }
 
 func TestDiffStatsFree(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 

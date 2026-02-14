@@ -46,7 +46,7 @@ func (s *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		Merges: make([]string, 0, len(s.merges)),
 	}
 
-	// Convert nodes to serializable form
+	// Convert nodes to serializable form.
 	for key, ns := range s.nodes {
 		state.Nodes[key] = nodeCheckpoint{
 			Couples: ns.Couples,
@@ -55,7 +55,7 @@ func (s *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		}
 	}
 
-	// Convert merge hashes to strings
+	// Convert merge hashes to strings.
 	for hash := range s.merges {
 		state.Merges = append(state.Merges, hash.String())
 	}
@@ -65,7 +65,7 @@ func (s *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (s *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	// Restore nodes
+	// Restore nodes.
 	s.nodes = make(map[string]*nodeShotness, len(state.Nodes))
 
 	for key, nc := range state.Nodes {
@@ -76,14 +76,14 @@ func (s *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 		}
 	}
 
-	// Restore merges
+	// Restore merges.
 	s.merges = make(map[gitlib.Hash]bool, len(state.Merges))
 
 	for _, hashStr := range state.Merges {
 		s.merges[gitlib.NewHash(hashStr)] = true
 	}
 
-	// Rebuild files map from nodes
+	// Rebuild files map from nodes.
 	s.rebuildFilesMap()
 }
 
@@ -99,13 +99,13 @@ const (
 func (s *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(shBaseOverheadBytes)
 
-	// Count nodes
+	// Count nodes.
 	for _, ns := range s.nodes {
 		size += int64(bytesPerNode)
 		size += int64(len(ns.Couples) * bytesPerCouple)
 	}
 
-	// Count merge entries
+	// Count merge entries.
 	size += int64(len(s.merges) * bytesPerMergeHash)
 
 	return size

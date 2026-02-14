@@ -11,7 +11,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 )
 
-//nolint:gochecknoglobals // test table data.
 var distanceTests = []struct {
 	first  string
 	second string

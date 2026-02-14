@@ -1,4 +1,4 @@
-package terminal //nolint:testpackage // testing internal implementation.
+package terminal
 
 import (
 	"strings"
@@ -8,6 +8,7 @@ import (
 const (
 	testDefaultWidth = 80
 	testCustomWidth  = 120
+	testInputHello   = "hello"
 )
 
 func TestDetectWidth_Default(t *testing.T) {
@@ -161,7 +162,7 @@ func TestTruncateWithEllipsis_Short(t *testing.T) {
 
 	const maxWidth = 10
 
-	input := "hello"
+	input := testInputHello
 
 	result := TruncateWithEllipsis(input, maxWidth)
 	if result != input {
@@ -174,7 +175,7 @@ func TestTruncateWithEllipsis_Exact(t *testing.T) {
 
 	const maxWidth = 5
 
-	input := "hello"
+	input := testInputHello
 
 	result := TruncateWithEllipsis(input, maxWidth)
 	if result != input {
@@ -201,7 +202,7 @@ func TestTruncateWithEllipsis_TooSmall(t *testing.T) {
 
 	const maxWidth = 2
 
-	input := "hello"
+	input := testInputHello
 	result := TruncateWithEllipsis(input, maxWidth)
 
 	expected := ".."
@@ -295,14 +296,14 @@ func TestColorize_Enabled(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Width: testDefaultWidth, NoColor: false}
-	result := cfg.Colorize("hello", ColorGreen)
+	result := cfg.Colorize(testInputHello, ColorGreen)
 
 	// Should contain ANSI escape codes.
 	if !strings.Contains(result, "\033[") {
 		t.Errorf("Colorize with color enabled should contain ANSI codes, got %q", result)
 	}
 
-	if !strings.Contains(result, "hello") {
+	if !strings.Contains(result, testInputHello) {
 		t.Errorf("Colorize should contain original text, got %q", result)
 	}
 }
@@ -311,15 +312,15 @@ func TestColorize_Disabled(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Width: testDefaultWidth, NoColor: true}
-	result := cfg.Colorize("hello", ColorGreen)
+	result := cfg.Colorize(testInputHello, ColorGreen)
 
 	// Should NOT contain ANSI escape codes.
 	if strings.Contains(result, "\033[") {
 		t.Errorf("Colorize with NoColor should not contain ANSI codes, got %q", result)
 	}
 
-	if result != "hello" {
-		t.Errorf("Colorize with NoColor = %q, want %q", result, "hello")
+	if result != testInputHello {
+		t.Errorf("Colorize with NoColor = %q, want %q", result, testInputHello)
 	}
 }
 

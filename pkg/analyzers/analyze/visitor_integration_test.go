@@ -28,7 +28,7 @@ func (m *MockVisitorAnalyzer) ListConfigurationOptions() []pipeline.Configuratio
 func (m *MockVisitorAnalyzer) Configure(_ map[string]any) error                         { return nil }
 func (m *MockVisitorAnalyzer) Analyze(_ *node.Node) (analyze.Report, error) {
 	// Legacy analyze shouldn't be called if visitor is used.
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 func (m *MockVisitorAnalyzer) Thresholds() analyze.Thresholds { return nil }
 

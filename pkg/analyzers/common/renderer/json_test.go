@@ -1,4 +1,4 @@
-package renderer //nolint:testpackage // testing internal implementation.
+package renderer
 
 import (
 	"encoding/json"
@@ -12,10 +12,10 @@ import (
 
 // jsonMockSection implements analyze.ReportSection for JSON tests.
 type jsonMockSection struct {
-	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	metrics                   []analyze.Metric
-	distribution              []analyze.DistributionItem
-	issues                    []analyze.Issue
+	analyze.BaseReportSection
+	metrics      []analyze.Metric
+	distribution []analyze.DistributionItem
+	issues       []analyze.Issue
 }
 
 func (m *jsonMockSection) KeyMetrics() []analyze.Metric             { return m.metrics }

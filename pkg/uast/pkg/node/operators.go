@@ -58,7 +58,6 @@ func (registry *OperatorRegistry) Handle(callNode *CallNode) (QueryFunc, error) 
 	return handler(callNode)
 }
 
-//nolint:gochecknoglobals // Singleton operator registry.
 var globalOperatorRegistry = NewOperatorRegistry()
 
 // logicalCombiner defines how to combine two boolean results.

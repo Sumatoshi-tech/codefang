@@ -14,9 +14,6 @@ import (
 
 // TicksSinceStart computes relative time ticks for each commit since the start.
 type TicksSinceStart struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	tick0        *time.Time
 	commits      map[int][]gitlib.Hash
 	remote       string
@@ -156,7 +153,7 @@ func FloorTime(t time.Time, d time.Duration) time.Time {
 
 // Finalize completes the analysis and returns the result.
 func (t *TicksSinceStart) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

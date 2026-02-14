@@ -32,7 +32,8 @@ const (
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctionsData = errors.New("invalid halstead report: expected []map[string]any for functions")
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the halstead plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("static/halstead", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).generateSections(report)
 	})

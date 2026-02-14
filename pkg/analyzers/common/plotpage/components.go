@@ -476,7 +476,7 @@ func (t *Table) WithStriped(striped bool) *Table {
 
 // Render writes the table HTML.
 func (t *Table) Render(w io.Writer) error {
-	// Convert string rows to template.HTML to allow raw HTML in cells
+	// Convert string rows to template.HTML to allow raw HTML in cells.
 	htmlRows := make([][]template.HTML, len(t.Rows))
 	for i, row := range t.Rows {
 		htmlRows[i] = make([]template.HTML, len(row))

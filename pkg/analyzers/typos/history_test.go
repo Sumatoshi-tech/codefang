@@ -1,4 +1,4 @@
-package typos //nolint:testpackage // testing internal implementation.
+package typos
 
 import (
 	"bytes"
@@ -159,7 +159,7 @@ func TestHistoryAnalyzer_Merge_CombinesTypos(t *testing.T) {
 	h.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
 
 	// Parent should now have all typos from branches.
-	require.Len(t, h.typos, 4) // 1 original + 2 from branch1 + 1 from branch2
+	require.Len(t, h.typos, 4) // 1 original + 2 from branch1 + 1 from branch2.
 	require.Equal(t, "parent", h.typos[0].Wrong)
 	require.Equal(t, "typo1", h.typos[1].Wrong)
 	require.Equal(t, "typo2", h.typos[2].Wrong)
@@ -228,7 +228,7 @@ func TestHistoryAnalyzer_ForkMerge_RoundTrip(t *testing.T) {
 	require.Contains(t, wrongValues, "branch2typo")
 }
 
-// --- Serialize Tests ---
+// --- Serialize Tests ---.
 
 func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 	t.Parallel()
@@ -241,16 +241,18 @@ func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 	report := analyze.Report{"typos": typos}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatJSON, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.TypoList, 2)
 	assert.Equal(t, 2, result.Aggregate.TotalTypos)
 }
@@ -262,12 +264,14 @@ func TestHistoryAnalyzer_Serialize_JSON_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatJSON, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -286,16 +290,18 @@ func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
 	report := analyze.Report{"typos": typos}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.TypoList, 2)
 	assert.Equal(t, 2, result.Aggregate.TotalTypos)
 }
@@ -307,12 +313,14 @@ func TestHistoryAnalyzer_Serialize_YAML_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -330,6 +338,7 @@ func TestHistoryAnalyzer_Serialize_YAML_ContainsExpectedFields(t *testing.T) {
 	report := analyze.Report{"typos": typos}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
 
 	require.NoError(t, err)
@@ -348,6 +357,7 @@ func TestHistoryAnalyzer_Serialize_DefaultFormat(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, "", &buf)
 	require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 }

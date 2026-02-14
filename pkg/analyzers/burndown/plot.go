@@ -41,6 +41,7 @@ func (b *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 	params := extractParams(report)
 	title := "Code Burndown History"
 	desc := "Visualizes code survival over time"
+
 	if params != nil {
 		title = fmt.Sprintf("Burndown: %s", params.projectName)
 		desc = fmt.Sprintf("Granularity %d, sampling %d", params.granularity, params.sampling)
@@ -280,6 +281,7 @@ func (b *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error
 	if params == nil {
 		return nil, ErrInvalidReport
 	}
+
 	if len(params.globalHistory) == 0 {
 		return createEmptyBurndown(), nil
 	}
@@ -295,6 +297,7 @@ func (b *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error
 func buildXLabels(params *burndownParams) []string {
 	n := len(params.globalHistory)
 	points := max((n-1)*interpolationFactor+1, 1)
+
 	labels := make([]string, points)
 	for i := range points {
 		subIdx := float64(i) / float64(interpolationFactor)
@@ -316,13 +319,16 @@ func getColorPalette() []string {
 
 func computeMaxLines(history DenseHistory) int64 {
 	var maxLines int64
+
 	for _, sample := range history {
 		var sum int64
+
 		for _, v := range sample {
 			if v > 0 {
 				sum += v
 			}
 		}
+
 		if sum > maxLines {
 			maxLines = sum
 		}
@@ -363,8 +369,10 @@ func createLineChart(xLabels []string, params *burndownParams, co *plotpage.Char
 func addSeries(line *charts.Line, params *burndownParams) {
 	if agg := aggregateByYear(params); agg != nil {
 		addYearSeries(line, agg)
+
 		return
 	}
+
 	addBandSeries(line, params)
 }
 
@@ -437,8 +445,10 @@ func interpolatePoint(values []float64, idx, n int) float64 {
 	if subIdx >= float64(n-1) {
 		return values[n-1]
 	}
+
 	lo := int(subIdx)
 	frac := subIdx - float64(lo)
+
 	val := values[lo]*(1-frac) + values[lo+1]*frac
 	if val < 0 {
 		return 0
@@ -462,6 +472,7 @@ func aggregateByYear(params *burndownParams) *yearAgg {
 	startTime := computeStartTime(params, numSamples)
 
 	bandWeights, yearSet := computeBandWeights(params, numBands, startTime)
+
 	years := sortedYears(yearSet)
 	if len(years) < minYearsForAggregation {
 		return nil
@@ -499,6 +510,7 @@ func computeBandWeights(
 
 	for bandIdx := range numBands {
 		weights := computeSingleBandWeights(params, bandIdx, startTime)
+
 		bandWeights[bandIdx] = weights
 		for _, w := range weights {
 			yearSet[w.year] = true
@@ -514,6 +526,7 @@ func computeSingleBandWeights(params *burndownParams, bandIdx int, startTime tim
 	bandEnd := bandStart.Add(bandDur)
 
 	var weights []yearWeight
+
 	for year := bandStart.Year(); year <= bandEnd.Year(); year++ {
 		if w := computeYearWeight(year, bandStart, bandEnd, bandDur, startTime.Location()); w > 0 {
 			weights = append(weights, yearWeight{year, w})
@@ -531,6 +544,7 @@ func computeYearWeight(year int, bandStart, bandEnd time.Time, bandDur time.Dura
 	if yearStart.After(start) {
 		start = yearStart
 	}
+
 	if yearEnd.Before(end) {
 		end = yearEnd
 	}
@@ -547,6 +561,7 @@ func sortedYears(yearSet map[int]bool) []int {
 	for y := range yearSet {
 		years = append(years, y)
 	}
+
 	sort.Ints(years)
 
 	return years
@@ -568,6 +583,7 @@ func computeYearData(params *burndownParams, bandWeights [][]yearWeight, years [
 			if val <= 0 {
 				continue
 			}
+
 			for _, w := range bandWeights[bandIdx] {
 				data[yearIdx[w.year]][sampleIdx] += float64(val) * w.weight
 			}
@@ -590,6 +606,7 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 	if maxMonths >= monthsPerYear && !params.endTime.IsZero() {
 		return strconv.Itoa(params.endTime.Add(-ageDur).Year())
 	}
+
 	if maxMonths >= monthsPerYear {
 		if y := ageMonths / monthsPerYear; y > 0 {
 			return fmt.Sprintf("%dy", y)
@@ -599,7 +616,8 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 	return fmt.Sprintf("%dmo", ageMonths)
 }
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the burndown plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/burndown", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

@@ -1,4 +1,4 @@
-package node //nolint:testpackage // Tests need access to internal types.
+package node
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 )
+
+const testMyFunction = "my_function"
 
 // StringifyAST is a test helper that converts a DSLNode to a string representation.
 func stringifyAST(n DSLNode) string {
@@ -521,7 +523,7 @@ func TestPropertyAccess(t *testing.T) {
 	nd := &Node{
 		Type: "Function",
 		Props: map[string]string{
-			"name": "my_function",
+			"name": testMyFunction,
 		},
 	}
 
@@ -544,11 +546,11 @@ func TestPropertyAccess(t *testing.T) {
 		t.Fatalf("Expected result, got empty")
 	}
 
-	if result[0].Type != "Literal" {
+	if result[0].Type != Type(LiteralType) {
 		t.Errorf("Expected Literal node, got %s", result[0].Type)
 	}
 
-	if result[0].Token != "my_function" {
+	if result[0].Token != testMyFunction {
 		t.Errorf("Expected token 'my_function', got '%s'", result[0].Token)
 	}
 }
@@ -561,9 +563,9 @@ func TestDebugFunctionNameQuery(t *testing.T) {
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
-			"name": "my_function",
+			"name": testMyFunction,
 		},
-		Token: "my_function", // Also set as token.
+		Token: testMyFunction, // Also set as token.
 	}
 
 	// Test the full query: filter(.type == "Function") |> map(.name).
@@ -586,11 +588,11 @@ func TestDebugFunctionNameQuery(t *testing.T) {
 		t.Fatalf("Expected result, got empty")
 	}
 
-	if result[0].Type != "Literal" {
+	if result[0].Type != Type(LiteralType) {
 		t.Errorf("Expected Literal node, got %s", result[0].Type)
 	}
 
-	if result[0].Token != "my_function" {
+	if result[0].Token != testMyFunction {
 		t.Errorf("Expected token 'my_function', got '%s'", result[0].Token)
 	}
 }
@@ -603,13 +605,13 @@ func TestDebugMapFunction(t *testing.T) {
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
-			"name": "my_function",
+			"name": testMyFunction,
 		},
-		Token: "my_function",
+		Token: testMyFunction,
 		Children: []*Node{
 			{
 				Type:  "Identifier",
-				Token: "my_function",
+				Token: testMyFunction,
 				Roles: []Role{"Name"},
 			},
 		},
@@ -636,11 +638,11 @@ func TestDebugMapFunction(t *testing.T) {
 		t.Fatalf("Expected result, got empty")
 	}
 
-	if result[0].Type != "Literal" {
+	if result[0].Type != Type(LiteralType) {
 		t.Errorf("Expected Literal node, got %s", result[0].Type)
 	}
 
-	if result[0].Token != "my_function" {
+	if result[0].Token != testMyFunction {
 		t.Errorf("Expected token 'my_function', got '%s'", result[0].Token)
 	}
 }
@@ -652,9 +654,9 @@ func TestDebugFilterPart(t *testing.T) {
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
-			"name": "my_function",
+			"name": testMyFunction,
 		},
-		Token: "my_function",
+		Token: testMyFunction,
 	}
 
 	// Test just the filter part.
@@ -685,9 +687,9 @@ func TestDebugMapPart(t *testing.T) {
 		Type:  "Function",
 		Roles: []Role{"Function", "Declaration"},
 		Props: map[string]string{
-			"name": "my_function",
+			"name": testMyFunction,
 		},
-		Token: "my_function",
+		Token: testMyFunction,
 	}
 
 	// Test just the map part.
@@ -1053,14 +1055,14 @@ func TestDSLParser_ComplexQueries(t *testing.T) {
 		// Complex logical expressions.
 		{
 			`.type == "Function" && .roles has "Exported" && .name != ""`,
-			//nolint:dupword // Repeated Call(&&,) is correct AST representation.
-			"Call(&&, Call(&&, Call(==, Field(type), Literal(Function)), " +
+			"Call(&&, " +
+				"Call(&&, Call(==, Field(type), Literal(Function)), " +
 				"Call(has, Field(roles), Literal(Exported))), Call(!=, Field(name), Literal()))",
 		},
 		{
 			`.type == "Function" || .type == "Method" || .type == "Constructor"`,
-			//nolint:dupword // Repeated Call(||,) is correct AST representation.
-			"Call(||, Call(||, Call(==, Field(type), Literal(Function)), " +
+			"Call(||, " +
+				"Call(||, Call(==, Field(type), Literal(Function)), " +
 				"Call(==, Field(type), Literal(Method))), Call(==, Field(type), Literal(Constructor)))",
 		},
 
@@ -1625,7 +1627,7 @@ func TestDSLParser_RFilter_PipelineWithRFilter(t *testing.T) {
 			var foundValues []string
 
 			for _, nd := range result {
-				if nd.Type == "Literal" {
+				if nd.Type == Type(LiteralType) {
 					foundValues = append(foundValues, nd.Token)
 				}
 			}

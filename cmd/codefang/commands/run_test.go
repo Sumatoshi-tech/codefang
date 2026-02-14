@@ -14,11 +14,17 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
+
+func TestMain(m *testing.M) {
+	renderer.RegisterPlotRenderer()
+	os.Exit(m.Run())
+}
 
 type stubStaticRunAnalyzer struct {
 	descriptor analyze.Descriptor
@@ -84,6 +90,7 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 		func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
 			staticCalled = true
 			staticFormat = format
+
 			require.Equal(t, []string{"static/complexity"}, ids)
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
@@ -91,6 +98,7 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 		func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 			historyCalled = true
 			historyFormat = format
+
 			require.Equal(t, []string{"history/devs"}, ids)
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
@@ -115,10 +123,12 @@ func TestRunCommand_StaticOnly(t *testing.T) {
 	command := newRunCommandWithDeps(
 		func(_ string, ids []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
+
 			return nil
 		},
 		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			historyCalled = true
+
 			return nil
 		},
 		stubRunRegistry,
@@ -163,6 +173,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 	t.Parallel()
 
 	var historySilent bool
+
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			t.Fatal("static executor should not be called")
@@ -171,6 +182,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 		},
 		func(_ string, ids []string, format string, silent bool, _ HistoryRunOptions, _ io.Writer) error {
 			historySilent = silent
+
 			require.Equal(t, []string{"history/devs"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -231,6 +243,7 @@ func TestRunCommand_ForwardsCommitSelectionFlags(t *testing.T) {
 		},
 		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
+
 			return nil
 		},
 		stubRunRegistry,
@@ -263,6 +276,7 @@ func TestRunCommand_ForwardsProfilingFlags(t *testing.T) {
 		},
 		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
+
 			return nil
 		},
 		stubRunRegistry,
@@ -291,6 +305,7 @@ func TestRunCommand_ForwardsResourceTuningFlags(t *testing.T) {
 		},
 		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
+
 			return nil
 		},
 		stubRunRegistry,
@@ -329,6 +344,7 @@ func TestRunCommand_ForwardsCheckpointFlags(t *testing.T) {
 		},
 		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
+
 			return nil
 		},
 		stubRunRegistry,
@@ -363,6 +379,7 @@ func TestRunCommand_CheckpointDefaultsPreserved(t *testing.T) {
 		},
 		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
+
 			return nil
 		},
 		stubRunRegistry,
@@ -423,6 +440,7 @@ func TestRunCommand_GlobStaticAnalyzers(t *testing.T) {
 	t.Parallel()
 
 	var historyCalled bool
+
 	command := newRunCommandWithDeps(
 		func(_ string, ids []string, format string, _ bool, _ bool, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
@@ -458,6 +476,7 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 		func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
 			staticCalled = true
 			staticFormat = format
+
 			require.Equal(t, []string{"static/complexity"}, ids)
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
@@ -465,6 +484,7 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 		func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 			historyCalled = true
 			historyFormat = format
+
 			require.Equal(t, []string{"history/devs"}, ids)
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
@@ -577,6 +597,7 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 
 	var raw bytes.Buffer
 	require.NoError(t, defaultStaticAnalyzers()[0].FormatReportBinary(analyze.Report{}, &raw))
+
 	testPipeline := buildPipeline(nil)
 	require.NoError(t, testPipeline.Leaves["devs"].Serialize(analyze.Report{}, analyze.FormatBinary, &raw))
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
@@ -584,10 +605,12 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
+
 			return nil
 		},
 		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
+
 			return nil
 		},
 		stubRunRegistry,
@@ -635,10 +658,12 @@ func TestRunCommand_ConvertInput_JSONToPlot(t *testing.T) {
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
+
 			return nil
 		},
 		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
+
 			return nil
 		},
 		stubRunRegistry,
@@ -673,10 +698,12 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
+
 			return nil
 		},
 		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
+
 			return nil
 		},
 		stubRunRegistry,
@@ -761,12 +788,14 @@ func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
 			command := newRunCommandWithDeps(
 				func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
 					staticFormat = format
+
 					require.Equal(t, []string{"static/complexity"}, ids)
 
 					return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
 				},
 				func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 					historyFormat = format
+
 					require.Equal(t, []string{"history/devs"}, ids)
 
 					return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
@@ -833,7 +862,7 @@ func decodeMixedOutputToUnifiedModel(t *testing.T, format string, output []byte)
 
 // -------------------------------------------------------------------
 // Pipeline assembly tests
-// -------------------------------------------------------------------
+// -------------------------------------------------------------------.
 
 func TestPipelineDependencyCompleteness(t *testing.T) {
 	t.Parallel()
@@ -904,6 +933,7 @@ func TestAllAnalyzersSerializeJSON(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
+
 			err := analyzer.Serialize(analyze.Report{}, analyze.FormatJSON, &buf)
 			require.NoError(t, err)
 			require.Contains(t, buf.String(), "{")
@@ -921,7 +951,9 @@ func TestAllAnalyzersSerializeYAML(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
-			_ = analyzer.Serialize(analyze.Report{}, analyze.FormatYAML, &buf) //nolint:errcheck // testing YAML serialization doesn't panic
+
+			err := analyzer.Serialize(analyze.Report{}, analyze.FormatYAML, &buf)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -936,6 +968,7 @@ func TestAllAnalyzersSerializeBinary(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
+
 			err := analyzer.Serialize(analyze.Report{}, analyze.FormatBinary, &buf)
 			require.NoError(t, err)
 			require.NotZero(t, buf.Len())
@@ -953,6 +986,7 @@ func TestAllAnalyzersRejectUnsupportedFormat(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
+
 			err := analyzer.Serialize(analyze.Report{}, "text", &buf)
 			require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 		})

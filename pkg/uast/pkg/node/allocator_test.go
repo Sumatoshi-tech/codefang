@@ -1,4 +1,4 @@
-package node //nolint:testpackage // Tests need access to internal types.
+package node
 
 import "testing"
 
@@ -26,7 +26,7 @@ func TestAllocator_PutNode_Reuses(t *testing.T) {
 
 	alloc := &Allocator{}
 	n := alloc.GetNode()
-	n.Type = "Function"
+	n.Type = UASTFunction
 	n.Token = "hello"
 
 	alloc.PutNode(n)
@@ -87,9 +87,9 @@ func TestAllocator_NewNode_FieldsSet(t *testing.T) {
 	alloc := &Allocator{}
 	roles := []Role{"Declaration"}
 	pos := alloc.NewPositions(1, 1, 0, 5, 1, 40)
-	n := alloc.NewNode("", "Function", "hello", roles, pos, nil)
+	n := alloc.NewNode("", UASTFunction, "hello", roles, pos, nil)
 
-	if n.Type != "Function" {
+	if n.Type != UASTFunction {
 		t.Errorf("expected Type=Function, got %q", n.Type)
 	}
 
@@ -127,7 +127,7 @@ func TestAllocator_ReleaseTree(t *testing.T) {
 	alloc := &Allocator{}
 
 	child := alloc.NewNode("", "Identifier", "x", nil, alloc.NewPositions(2, 1, 10, 2, 2, 11), nil)
-	parent := alloc.NewNode("", "Function", "f", nil, alloc.NewPositions(1, 1, 0, 3, 1, 20), nil)
+	parent := alloc.NewNode("", UASTFunction, "f", nil, alloc.NewPositions(1, 1, 0, 3, 1, 20), nil)
 	parent.Children = []*Node{child}
 
 	alloc.ReleaseTree(parent)

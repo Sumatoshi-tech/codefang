@@ -1,7 +1,6 @@
 package halstead
 
 import (
-	"errors"
 	"fmt"
 	"io"
 
@@ -217,7 +216,7 @@ func (h *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs Halstead analysis on the UAST.
 func (h *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
+		return nil, analyze.ErrNilRootNode
 	}
 
 	functions := h.findFunctions(root)

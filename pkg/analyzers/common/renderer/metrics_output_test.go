@@ -44,21 +44,25 @@ func (m *mockMetricsOutput) ToYAML() any {
 const testJSONValue = 42
 
 func TestMetricsOutput_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockMetricsOutput{name: testAnalyzerName}
 
-	// Verify interface compliance
+	// Verify interface compliance.
 	var _ MetricsOutput = mock
 
 	assert.Equal(t, testAnalyzerName, mock.AnalyzerName())
 }
 
 func TestMetricsOutput_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockMetricsOutput{
 		name:     testAnalyzerName,
 		jsonData: mockJSONData{Value: testJSONValue},
 	}
 
-	// Verify interface compliance
+	// Verify interface compliance.
 	var _ MetricsOutput = mock
 
 	result := mock.ToJSON()
@@ -70,12 +74,14 @@ func TestMetricsOutput_ToJSON(t *testing.T) {
 const testOutputText = "test-output-value"
 
 func TestMetricsOutput_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockMetricsOutput{
 		name:       testAnalyzerName,
 		outputData: mockOutputData{Text: testOutputText},
 	}
 
-	// Verify interface compliance
+	// Verify interface compliance.
 	var _ MetricsOutput = mock
 
 	result := mock.ToYAML()
@@ -87,6 +93,8 @@ func TestMetricsOutput_ToYAML(t *testing.T) {
 }
 
 func TestRenderMetricsJSON(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockMetricsOutput{
 		name:     testAnalyzerName,
 		jsonData: mockJSONData{Value: testJSONValue},
@@ -99,6 +107,8 @@ func TestRenderMetricsJSON(t *testing.T) {
 }
 
 func TestRenderMetricsJSON_NilInput(t *testing.T) {
+	t.Parallel()
+
 	result, err := RenderMetricsJSON(nil)
 
 	require.Error(t, err)
@@ -106,6 +116,8 @@ func TestRenderMetricsJSON_NilInput(t *testing.T) {
 }
 
 func TestRenderMetricsYAML(t *testing.T) {
+	t.Parallel()
+
 	mock := &mockMetricsOutput{
 		name:       testAnalyzerName,
 		outputData: mockOutputData{Text: testOutputText},
@@ -118,6 +130,8 @@ func TestRenderMetricsYAML(t *testing.T) {
 }
 
 func TestRenderMetricsYAML_NilInput(t *testing.T) {
+	t.Parallel()
+
 	result, err := RenderMetricsYAML(nil)
 
 	require.Error(t, err)

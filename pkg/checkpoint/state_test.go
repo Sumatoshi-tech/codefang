@@ -9,6 +9,8 @@ import (
 )
 
 func TestStreamingState_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	state := StreamingState{
 		TotalCommits:     100000,
 		ProcessedCommits: 50000,
@@ -22,6 +24,7 @@ func TestStreamingState_JSONRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var restored StreamingState
+
 	err = json.Unmarshal(data, &restored)
 	require.NoError(t, err)
 
@@ -29,6 +32,8 @@ func TestStreamingState_JSONRoundTrip(t *testing.T) {
 }
 
 func TestMetadata_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	meta := Metadata{
 		Version:        1,
 		RepoPath:       "/home/user/repo",
@@ -42,6 +47,7 @@ func TestMetadata_JSONRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var restored Metadata
+
 	err = json.Unmarshal(data, &restored)
 	require.NoError(t, err)
 
@@ -52,6 +58,8 @@ func TestMetadata_JSONRoundTrip(t *testing.T) {
 }
 
 func TestMetadata_CreatedAt(t *testing.T) {
+	t.Parallel()
+
 	meta := Metadata{
 		Version:   1,
 		CreatedAt: "2026-02-05T12:00:00Z",
@@ -61,6 +69,7 @@ func TestMetadata_CreatedAt(t *testing.T) {
 	require.NoError(t, err)
 
 	var restored Metadata
+
 	err = json.Unmarshal(data, &restored)
 	require.NoError(t, err)
 

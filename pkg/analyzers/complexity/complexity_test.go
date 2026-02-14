@@ -1,4 +1,4 @@
-package complexity //nolint:testpackage // testing internal implementation.
+package complexity
 
 import (
 	"bytes"
@@ -239,7 +239,7 @@ func TestCognitiveComplexityCalculator_NestedStructures(t *testing.T) {
 	}
 }
 
-// --- FormatReportJSON/YAML Tests ---
+// --- FormatReportJSON/YAML Tests ---.
 
 func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	t.Parallel()
@@ -267,14 +267,16 @@ func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportJSON(report, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Contains(t, result, "function_complexity")
 	assert.Contains(t, result, "distribution")
 	assert.Contains(t, result, "high_risk_functions")
@@ -307,6 +309,7 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportYAML(report, &buf)
 	require.NoError(t, err)
 

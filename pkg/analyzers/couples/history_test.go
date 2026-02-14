@@ -1,4 +1,4 @@
-package couples //nolint:testpackage // testing internal implementation.
+package couples
 
 import (
 	"bytes"
@@ -228,14 +228,16 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := c.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure
+	// Should have computed metrics structure.
 	assert.Contains(t, result, "file_coupling")
 	assert.Contains(t, result, "developer_coupling")
 	assert.Contains(t, result, "file_ownership")
@@ -260,11 +262,12 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := c.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys)
+	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "file_coupling:")
 	assert.Contains(t, output, "developer_coupling:")
 	assert.Contains(t, output, "file_ownership:")
@@ -286,6 +289,7 @@ func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := c.Serialize(report, analyze.FormatBinary, &buf)
 	require.NoError(t, err)
 
@@ -321,26 +325,26 @@ func TestHistoryAnalyzer_Misc(t *testing.T) {
 func TestMerge_CombinesFileCouplings(t *testing.T) {
 	t.Parallel()
 
-	// Create main analyzer
+	// Create main analyzer.
 	main := &HistoryAnalyzer{PeopleNumber: 1}
 	require.NoError(t, main.Initialize(nil))
 	main.files["a.go"] = map[string]int{"b.go": 2}
 	main.files["b.go"] = map[string]int{"a.go": 2}
 
-	// Create branch with additional couplings
+	// Create branch with additional couplings.
 	branch := &HistoryAnalyzer{PeopleNumber: 1}
 	require.NoError(t, branch.Initialize(nil))
 	branch.files["a.go"] = map[string]int{"b.go": 3, "c.go": 1}
 	branch.files["c.go"] = map[string]int{"a.go": 1}
 
-	// Merge
+	// Merge.
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Verify: a.go -> b.go should be 2 + 3 = 5
+	// Verify: a.go -> b.go should be 2 + 3 = 5.
 	assert.Equal(t, 5, main.files["a.go"]["b.go"], "file coupling should sum")
-	// Verify: a.go -> c.go should be 0 + 1 = 1
+	// Verify: a.go -> c.go should be 0 + 1 = 1.
 	assert.Equal(t, 1, main.files["a.go"]["c.go"], "new coupling should be added")
-	// Verify: c.go -> a.go should be 0 + 1 = 1
+	// Verify: c.go -> a.go should be 0 + 1 = 1.
 	assert.Equal(t, 1, main.files["c.go"]["a.go"], "new file should be added")
 }
 

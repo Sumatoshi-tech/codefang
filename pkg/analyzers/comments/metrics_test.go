@@ -31,9 +31,11 @@ const (
 	floatDelta = 0.01
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -46,6 +48,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"total_comments":         testTotalComments,
 		"good_comments":          testGoodComments,
@@ -73,6 +77,8 @@ func TestParseReportData_AllFields(t *testing.T) {
 }
 
 func TestParseReportData_WithComments(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"comments": []map[string]any{
 			{
@@ -97,7 +103,7 @@ func TestParseReportData_WithComments(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Comments, 2)
 
-	// First comment - all fields
+	// First comment - all fields.
 	c1 := result.Comments[0]
 	assert.Equal(t, 10, c1.LineNumber)
 	assert.Equal(t, "good", c1.Quality)
@@ -108,13 +114,15 @@ func TestParseReportData_WithComments(t *testing.T) {
 	assert.Equal(t, testRecommendation, c1.Recommendation)
 	assert.InDelta(t, testCommentScore, c1.Score, floatDelta)
 
-	// Second comment - minimal fields
+	// Second comment - minimal fields.
 	c2 := result.Comments[1]
 	assert.Equal(t, 20, c2.LineNumber)
 	assert.Equal(t, "bad", c2.Quality)
 }
 
 func TestParseReportData_WithFunctions(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"functions": []map[string]any{
 			{
@@ -137,7 +145,7 @@ func TestParseReportData_WithFunctions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Functions, 2)
 
-	// First function - all fields
+	// First function - all fields.
 	fn1 := result.Functions[0]
 	assert.Equal(t, testFunctionName1, fn1.Name)
 	assert.True(t, fn1.HasComment)
@@ -145,16 +153,18 @@ func TestParseReportData_WithFunctions(t *testing.T) {
 	assert.InDelta(t, testCommentScore, fn1.CommentScore, floatDelta)
 	assert.Equal(t, "docstring", fn1.CommentType)
 
-	// Second function - minimal fields
+	// Second function - minimal fields.
 	fn2 := result.Functions[1]
 	assert.Equal(t, testFunctionName2, fn2.Name)
 	assert.False(t, fn2.HasComment)
 	assert.True(t, fn2.NeedsComment)
 }
 
-// --- CommentQualityMetric Tests ---
+// --- CommentQualityMetric Tests ---.
 
 func TestNewCommentQualityMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewCommentQualityMetric()
 
 	assert.Equal(t, "comment_quality", m.Name())
@@ -164,6 +174,8 @@ func TestNewCommentQualityMetric_Metadata(t *testing.T) {
 }
 
 func TestCommentQualityMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewCommentQualityMetric()
 	input := &ReportData{}
 
@@ -173,6 +185,8 @@ func TestCommentQualityMetric_Empty(t *testing.T) {
 }
 
 func TestCommentQualityMetric_SingleComment(t *testing.T) {
+	t.Parallel()
+
 	m := NewCommentQualityMetric()
 	input := &ReportData{
 		Comments: []CommentData{
@@ -199,6 +213,8 @@ func TestCommentQualityMetric_SingleComment(t *testing.T) {
 }
 
 func TestCommentQualityMetric_SortedByLineNumber(t *testing.T) {
+	t.Parallel()
+
 	m := NewCommentQualityMetric()
 	input := &ReportData{
 		Comments: []CommentData{
@@ -216,9 +232,11 @@ func TestCommentQualityMetric_SortedByLineNumber(t *testing.T) {
 	assert.Equal(t, 50, result[2].LineNumber)
 }
 
-// --- FunctionDocumentationMetric Tests ---
+// --- FunctionDocumentationMetric Tests ---.
 
 func TestNewFunctionDocumentationMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionDocumentationMetric()
 
 	assert.Equal(t, "function_documentation", m.Name())
@@ -228,6 +246,8 @@ func TestNewFunctionDocumentationMetric_Metadata(t *testing.T) {
 }
 
 func TestFunctionDocumentationMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionDocumentationMetric()
 	input := &ReportData{}
 
@@ -237,6 +257,8 @@ func TestFunctionDocumentationMetric_Empty(t *testing.T) {
 }
 
 func TestFunctionDocumentationMetric_DocumentationStatuses(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		hasComment     bool
@@ -254,6 +276,8 @@ func TestFunctionDocumentationMetric_DocumentationStatuses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewFunctionDocumentationMetric()
 			input := &ReportData{
 				Functions: []FunctionCommentData{
@@ -277,6 +301,8 @@ func TestFunctionDocumentationMetric_DocumentationStatuses(t *testing.T) {
 }
 
 func TestFunctionDocumentationMetric_SortedByScoreAscending(t *testing.T) {
+	t.Parallel()
+
 	m := NewFunctionDocumentationMetric()
 	input := &ReportData{
 		Functions: []FunctionCommentData{
@@ -289,15 +315,17 @@ func TestFunctionDocumentationMetric_SortedByScoreAscending(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by score ascending (worst first)
+	// Sorted by score ascending (worst first).
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, testFunctionName3, result[1].Name)
 	assert.Equal(t, testFunctionName1, result[2].Name)
 }
 
-// --- UndocumentedFunctionMetric Tests ---
+// --- UndocumentedFunctionMetric Tests ---.
 
 func TestNewUndocumentedFunctionMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewUndocumentedFunctionMetric()
 
 	assert.Equal(t, "undocumented_functions", m.Name())
@@ -307,6 +335,8 @@ func TestNewUndocumentedFunctionMetric_Metadata(t *testing.T) {
 }
 
 func TestUndocumentedFunctionMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewUndocumentedFunctionMetric()
 	input := &ReportData{}
 
@@ -316,6 +346,8 @@ func TestUndocumentedFunctionMetric_Empty(t *testing.T) {
 }
 
 func TestUndocumentedFunctionMetric_AllDocumented(t *testing.T) {
+	t.Parallel()
+
 	m := NewUndocumentedFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionCommentData{
@@ -330,6 +362,8 @@ func TestUndocumentedFunctionMetric_AllDocumented(t *testing.T) {
 }
 
 func TestUndocumentedFunctionMetric_RiskLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		needsComment bool
@@ -341,6 +375,8 @@ func TestUndocumentedFunctionMetric_RiskLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewUndocumentedFunctionMetric()
 			input := &ReportData{
 				Functions: []FunctionCommentData{
@@ -363,26 +399,30 @@ func TestUndocumentedFunctionMetric_RiskLevels(t *testing.T) {
 }
 
 func TestUndocumentedFunctionMetric_SortedByRisk(t *testing.T) {
+	t.Parallel()
+
 	m := NewUndocumentedFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionCommentData{
-			{Name: testFunctionName1, HasComment: false, NeedsComment: false}, // MEDIUM
-			{Name: testFunctionName2, HasComment: false, NeedsComment: true},  // HIGH
-			{Name: testFunctionName3, HasComment: false, NeedsComment: false}, // MEDIUM
+			{Name: testFunctionName1, HasComment: false, NeedsComment: false}, // MEDIUM.
+			{Name: testFunctionName2, HasComment: false, NeedsComment: true},  // HIGH.
+			{Name: testFunctionName3, HasComment: false, NeedsComment: false}, // MEDIUM.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// HIGH risk first
+	// HIGH risk first.
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, "HIGH", result[0].RiskLevel)
 }
 
-// --- riskPriority Tests ---
+// --- riskPriority Tests ---.
 
 func TestRiskPriority(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		level    string
 		expected int
@@ -396,15 +436,19 @@ func TestRiskPriority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.level, func(t *testing.T) {
+			t.Parallel()
+
 			result := riskPriority(tt.level)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- CommentsAggregateMetric Tests ---
+// --- CommentsAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "comments_aggregate", m.Name())
@@ -414,6 +458,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestCommentsAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -425,6 +471,8 @@ func TestCommentsAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestCommentsAggregateMetric_AllFields(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		TotalComments:         testTotalComments,
@@ -449,11 +497,13 @@ func TestCommentsAggregateMetric_AllFields(t *testing.T) {
 	assert.InDelta(t, testGoodCommentsRatio, result.GoodCommentsRatio, floatDelta)
 	assert.InDelta(t, testDocCoverage, result.DocumentationCoverage, floatDelta)
 	assert.Equal(t, testMessage, result.Message)
-	// Health score = OverallScore * 100
+	// Health score = OverallScore * 100.
 	assert.InDelta(t, testOverallScore*100, result.HealthScore, floatDelta)
 }
 
 func TestCommentsAggregateMetric_HealthScoreCalculation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		overallScore float64
@@ -468,6 +518,8 @@ func TestCommentsAggregateMetric_HealthScoreCalculation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewAggregateMetric()
 			input := &ReportData{
 				OverallScore: tt.overallScore,
@@ -480,9 +532,11 @@ func TestCommentsAggregateMetric_HealthScoreCalculation(t *testing.T) {
 	}
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -495,6 +549,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"total_comments":         testTotalComments,
 		"good_comments":          testGoodComments,
@@ -520,37 +576,41 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// CommentQuality - sorted by line number
+	// CommentQuality - sorted by line number.
 	require.Len(t, result.CommentQuality, 2)
 	assert.Equal(t, 10, result.CommentQuality[0].LineNumber)
 	assert.Equal(t, 20, result.CommentQuality[1].LineNumber)
 
-	// FunctionDocumentation - sorted by score ascending
+	// FunctionDocumentation - sorted by score ascending.
 	require.Len(t, result.FunctionDocumentation, 3)
-	// Undocumented functions have score 0, so they come first
+	// Undocumented functions have score 0, so they come first.
 	assert.False(t, result.FunctionDocumentation[0].IsDocumented)
 
-	// UndocumentedFunctions - only functions without comments
+	// UndocumentedFunctions - only functions without comments.
 	require.Len(t, result.UndocumentedFunctions, 2)
-	// HIGH risk first (needs_comment = true)
+	// HIGH risk first (needs_comment = true).
 	assert.Equal(t, testFunctionName2, result.UndocumentedFunctions[0].Name)
 	assert.Equal(t, "HIGH", result.UndocumentedFunctions[0].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, testTotalComments, result.Aggregate.TotalComments)
 	assert.Equal(t, testMessage, result.Aggregate.Message)
 	assert.InDelta(t, testOverallScore*100, result.Aggregate.HealthScore, floatDelta)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	assert.Equal(t, "comments", m.AnalyzerName())
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		CommentQuality: []CommentQualityData{
 			{LineNumber: 10, Quality: "good"},
@@ -564,6 +624,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		CommentQuality: []CommentQualityData{
 			{LineNumber: 10, Quality: "good"},

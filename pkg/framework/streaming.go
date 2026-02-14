@@ -333,6 +333,7 @@ func startPrefetch(repoPath string, config CoordinatorConfig, commits []*gitlib.
 
 	go func() {
 		ch <- prefetchPipeline(repoPath, config, commits)
+
 		close(ch)
 	}()
 

@@ -13,7 +13,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
 )
 
-// Checkpoint Save Benchmarks
+// Checkpoint Save Benchmarks.
 
 func BenchmarkCheckpointSave_Burndown(b *testing.B) {
 	dir := b.TempDir()
@@ -28,10 +28,9 @@ func BenchmarkCheckpointSave_Burndown(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -48,10 +47,9 @@ func BenchmarkCheckpointSave_Devs(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -68,10 +66,9 @@ func BenchmarkCheckpointSave_Couples(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -88,10 +85,9 @@ func BenchmarkCheckpointSave_FileHistory(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -108,10 +104,9 @@ func BenchmarkCheckpointSave_Shotness(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -128,10 +123,9 @@ func BenchmarkCheckpointSave_Sentiment(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -148,10 +142,9 @@ func BenchmarkCheckpointSave_Imports(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -168,10 +161,9 @@ func BenchmarkCheckpointSave_Typos(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -179,7 +171,7 @@ func BenchmarkCheckpointSave_Typos(b *testing.B) {
 	}
 }
 
-// Checkpoint Load Benchmarks
+// Checkpoint Load Benchmarks.
 
 func BenchmarkCheckpointLoad_Burndown(b *testing.B) {
 	dir := b.TempDir()
@@ -199,10 +191,9 @@ func BenchmarkCheckpointLoad_Burndown(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &burndown.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -226,10 +217,9 @@ func BenchmarkCheckpointLoad_Devs(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &devs.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -253,10 +243,9 @@ func BenchmarkCheckpointLoad_Couples(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &couples.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -280,10 +269,9 @@ func BenchmarkCheckpointLoad_FileHistory(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &filehistory.Analyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -307,10 +295,9 @@ func BenchmarkCheckpointLoad_Shotness(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &shotness.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -334,10 +321,9 @@ func BenchmarkCheckpointLoad_Sentiment(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &sentiment.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -361,10 +347,9 @@ func BenchmarkCheckpointLoad_Imports(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &imports.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -388,10 +373,9 @@ func BenchmarkCheckpointLoad_Typos(b *testing.B) {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &typos.HistoryAnalyzer{}
 
 		err = loaded.LoadCheckpoint(dir)
@@ -401,7 +385,7 @@ func BenchmarkCheckpointLoad_Typos(b *testing.B) {
 	}
 }
 
-// Hibernate Benchmarks
+// Hibernate Benchmarks.
 
 func BenchmarkHibernate_Burndown(b *testing.B) {
 	analyzer := &burndown.HistoryAnalyzer{
@@ -415,10 +399,9 @@ func BenchmarkHibernate_Burndown(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -439,10 +422,9 @@ func BenchmarkHibernate_Devs(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -463,10 +445,9 @@ func BenchmarkHibernate_Couples(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -487,10 +468,9 @@ func BenchmarkHibernate_FileHistory(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -511,10 +491,9 @@ func BenchmarkHibernate_Shotness(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -535,10 +514,9 @@ func BenchmarkHibernate_Sentiment(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -559,10 +537,9 @@ func BenchmarkHibernate_Imports(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -583,10 +560,9 @@ func BenchmarkHibernate_Typos(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = analyzer.Hibernate()
 		if err != nil {
 			b.Fatalf("Hibernate failed: %v", err)
@@ -599,7 +575,7 @@ func BenchmarkHibernate_Typos(b *testing.B) {
 	}
 }
 
-// Fork/Merge Benchmarks
+// Fork/Merge Benchmarks.
 
 func BenchmarkFork_Devs(b *testing.B) {
 	const numForks = 4
@@ -611,10 +587,9 @@ func BenchmarkFork_Devs(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -631,10 +606,9 @@ func BenchmarkMerge_Devs(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }
@@ -649,10 +623,9 @@ func BenchmarkFork_Couples(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -669,10 +642,9 @@ func BenchmarkMerge_Couples(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }
@@ -687,10 +659,9 @@ func BenchmarkFork_Sentiment(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -707,10 +678,9 @@ func BenchmarkMerge_Sentiment(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }
@@ -725,10 +695,9 @@ func BenchmarkFork_Shotness(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -745,10 +714,9 @@ func BenchmarkMerge_Shotness(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }
@@ -763,10 +731,9 @@ func BenchmarkFork_Typos(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -783,10 +750,9 @@ func BenchmarkMerge_Typos(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }
@@ -801,10 +767,9 @@ func BenchmarkFork_Imports(b *testing.B) {
 		b.Fatalf("Initialize failed: %v", err)
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = analyzer.Fork(numForks)
 	}
 }
@@ -821,10 +786,9 @@ func BenchmarkMerge_Imports(b *testing.B) {
 
 	forks := analyzer.Fork(numForks)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		analyzer.Merge(forks)
 	}
 }

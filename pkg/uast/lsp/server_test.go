@@ -1,10 +1,12 @@
-package lsp //nolint:testpackage // Tests unexported helpers: extractWordAtPosition, isWordChar, splitLines, completionItem.
+package lsp
 
 import (
 	"testing"
 
 	protocol "github.com/tliron/glsp/protocol_3_16"
 )
+
+const testDocumentURI = "file:///test.uastmap"
 
 func TestNewDocumentStore(t *testing.T) {
 	t.Parallel()
@@ -25,7 +27,7 @@ func TestDocumentStore_SetAndGet(t *testing.T) {
 
 	store := NewDocumentStore()
 
-	uri := "file:///test.uastmap"
+	uri := testDocumentURI
 	content := "test content"
 
 	// Set document.
@@ -58,7 +60,7 @@ func TestDocumentStore_Delete(t *testing.T) {
 
 	store := NewDocumentStore()
 
-	uri := "file:///test.uastmap"
+	uri := testDocumentURI
 	content := "test content"
 
 	// Set and then delete.
@@ -77,7 +79,7 @@ func TestDocumentStore_Update(t *testing.T) {
 
 	store := NewDocumentStore()
 
-	uri := "file:///test.uastmap"
+	uri := testDocumentURI
 	content1 := "initial content"
 	content2 := "updated content"
 

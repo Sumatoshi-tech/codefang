@@ -16,6 +16,8 @@ type testState struct {
 }
 
 func TestJSONCodec_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	codec := NewJSONCodec()
 
 	original := testState{
@@ -52,6 +54,8 @@ func TestJSONCodec_RoundTrip(t *testing.T) {
 }
 
 func TestJSONCodec_Extension(t *testing.T) {
+	t.Parallel()
+
 	codec := NewJSONCodec()
 	if ext := codec.Extension(); ext != ".json" {
 		t.Errorf("Extension() = %q, want %q", ext, ".json")
@@ -59,6 +63,8 @@ func TestJSONCodec_Extension(t *testing.T) {
 }
 
 func TestCompactJSONCodec_NoIndent(t *testing.T) {
+	t.Parallel()
+
 	codec := NewCompactJSONCodec()
 
 	state := testState{Name: "compact", Count: 1}
@@ -78,6 +84,8 @@ func TestCompactJSONCodec_NoIndent(t *testing.T) {
 }
 
 func TestGobCodec_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	codec := NewGobCodec()
 
 	original := testState{
@@ -110,6 +118,8 @@ func TestGobCodec_RoundTrip(t *testing.T) {
 }
 
 func TestGobCodec_Extension(t *testing.T) {
+	t.Parallel()
+
 	codec := NewGobCodec()
 	if ext := codec.Extension(); ext != ".gob" {
 		t.Errorf("Extension() = %q, want %q", ext, ".gob")
@@ -117,6 +127,8 @@ func TestGobCodec_Extension(t *testing.T) {
 }
 
 func TestSaveState_JSON(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	codec := NewJSONCodec()
 
@@ -129,6 +141,7 @@ func TestSaveState_JSON(t *testing.T) {
 
 	// Verify file was created.
 	path := filepath.Join(dir, "test_state.json")
+
 	_, statErr := os.Stat(path)
 	if os.IsNotExist(statErr) {
 		t.Errorf("Checkpoint file not created at %s", path)
@@ -136,6 +149,8 @@ func TestSaveState_JSON(t *testing.T) {
 }
 
 func TestLoadState_JSON(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	codec := NewJSONCodec()
 
@@ -163,6 +178,8 @@ func TestLoadState_JSON(t *testing.T) {
 }
 
 func TestSaveState_Gob(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	codec := NewGobCodec()
 
@@ -174,6 +191,7 @@ func TestSaveState_Gob(t *testing.T) {
 	}
 
 	path := filepath.Join(dir, "gob_state.gob")
+
 	_, statErr := os.Stat(path)
 	if os.IsNotExist(statErr) {
 		t.Errorf("Checkpoint file not created at %s", path)
@@ -181,6 +199,8 @@ func TestSaveState_Gob(t *testing.T) {
 }
 
 func TestLoadState_Gob(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	codec := NewGobCodec()
 
@@ -204,6 +224,8 @@ func TestLoadState_Gob(t *testing.T) {
 }
 
 func TestLoadState_FileNotFound(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	codec := NewJSONCodec()
 
@@ -216,6 +238,8 @@ func TestLoadState_FileNotFound(t *testing.T) {
 }
 
 func TestSaveState_InvalidDirectory(t *testing.T) {
+	t.Parallel()
+
 	codec := NewJSONCodec()
 	state := testState{Name: "test"}
 

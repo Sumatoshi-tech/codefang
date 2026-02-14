@@ -31,7 +31,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add comment data
+	// Add comment data.
 	original.commentsByTick[0] = []string{"comment 1", "comment 2"}
 	original.commentsByTick[1] = []string{"comment 3"}
 
@@ -67,7 +67,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add multiple ticks with comments
+	// Add multiple ticks with comments.
 	original.commentsByTick[0] = []string{"tick 0 comment 1", "tick 0 comment 2"}
 	original.commentsByTick[5] = []string{"tick 5 comment"}
 	original.commentsByTick[10] = []string{"tick 10 a", "tick 10 b", "tick 10 c"}
@@ -77,7 +77,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	restored := &HistoryAnalyzer{}
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
-	// Verify all ticks
+	// Verify all ticks.
 	require.Len(t, restored.commentsByTick, 3)
 
 	require.Len(t, restored.commentsByTick[0], 2)

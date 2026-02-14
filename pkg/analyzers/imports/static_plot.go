@@ -18,7 +18,8 @@ const (
 	importsCategoryHeight = "420px"
 )
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the imports plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("static/imports", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).generateStaticSections(report), nil
 	})

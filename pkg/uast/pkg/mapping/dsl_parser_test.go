@@ -1,4 +1,4 @@
-package mapping //nolint:testpackage // Tests use internal type switches.
+package mapping
 
 import (
 	"context"
@@ -10,11 +10,21 @@ import (
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
 )
 
+const (
+	testFuncDeclRule     = "function_declaration"
+	testFunctionUASTType = "Function"
+	testChildIdentifier  = "child:identifier"
+	testBaseExpression   = "base_expression"
+	testFunctionBase     = "function_base"
+)
+
 func containsStringSlice(slice []string, s string) bool {
 	return slices.Contains(slice, s)
 }
 
 func TestMatchPattern(t *testing.T) {
+	t.Parallel()
+
 	pm := NewPatternMatcher(nil) // Legacy stub.
 
 	_, err := pm.MatchPattern(nil, nil, nil)
@@ -24,6 +34,8 @@ func TestMatchPattern(t *testing.T) {
 }
 
 func TestParseMappingRule(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration name: (identifier) @name body: (block) @body) => uast(
@@ -57,11 +69,11 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
 	}
 
 	rule := rules[0]
-	if rule.Name != "function_declaration" {
+	if rule.Name != testFuncDeclRule {
 		t.Errorf("expected rule name 'function_declaration', got '%s'", rule.Name)
 	}
 
-	if rule.UASTSpec.Type != "Function" {
+	if rule.UASTSpec.Type != testFunctionUASTType {
 		t.Errorf("expected UAST type 'Function', got '%s'", rule.UASTSpec.Type)
 	}
 
@@ -79,6 +91,8 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
 }
 
 func TestParseMappingRule_MultiRoles(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 base_rule <- (base_node) => uast(
@@ -116,6 +130,8 @@ base_rule <- (base_node) => uast(
 }
 
 func TestParseMappingRule_InheritanceAndConditions(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 base_rule <- (base_node) => uast(
@@ -174,6 +190,8 @@ inherited_rule <- (inherited_node) => uast(
 }
 
 func TestPatternMatcher_CompileAndCache(t *testing.T) {
+	t.Parallel()
+
 	pm := NewPatternMatcher(nil) // Legacy stub.
 
 	_, err := pm.CompileAndCache("(identifier) @id")
@@ -188,6 +206,8 @@ func TestPatternMatcher_CompileAndCache(t *testing.T) {
 }
 
 func TestPatternMatcher_RealGoFunctionMatch(t *testing.T) {
+	t.Parallel()
+
 	langPtr := gositter.GetLanguage()
 	if langPtr == nil {
 		t.Skip("Go language parser not available")
@@ -235,6 +255,8 @@ func Hello() {}`)
 }
 
 func TestLoadMappings_Valid(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration name: (identifier) @name body: (block) @body) => uast(
@@ -254,7 +276,7 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
 		t.Fatalf("expected 1 rule, got %d", len(rules))
 	}
 
-	if rules[0].Name != "function_declaration" {
+	if rules[0].Name != testFuncDeclRule {
 		t.Errorf("expected rule name 'function_declaration', got '%s'", rules[0].Name)
 	}
 
@@ -268,6 +290,8 @@ function_declaration <- (function_declaration name: (identifier) @name body: (bl
 }
 
 func TestLoadMappings_Invalid(t *testing.T) {
+	t.Parallel()
+
 	input := `function_declaration <- (function_declaration) => uast()` // Missing fields.
 	parser := &Parser{}
 
@@ -278,6 +302,8 @@ func TestLoadMappings_Invalid(t *testing.T) {
 }
 
 func TestParseLanguageDeclaration_WithFiles(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "cmake", extensions: ".cmake", files: "CMakeLists.txt"]
 
 cmake_list_file <- (cmake_list_file) => uast(type: "CMakeListFile")`
@@ -314,6 +340,8 @@ cmake_list_file <- (cmake_list_file) => uast(type: "CMakeListFile")`
 }
 
 func TestParseLanguageDeclaration_WithMultipleFiles(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "dockerfile", extensions: ".dockerfile", files: "Dockerfile", "dockerfile"]
 
 dockerfile_instruction <- (dockerfile_instruction) => uast(type: "Instruction")`
@@ -353,6 +381,8 @@ dockerfile_instruction <- (dockerfile_instruction) => uast(type: "Instruction")`
 }
 
 func TestParseLanguageDeclaration_ExtensionsOnly(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration) => uast(type: "Function")`
@@ -385,6 +415,8 @@ function_declaration <- (function_declaration) => uast(type: "Function")`
 }
 
 func TestParseLanguageDeclaration_FilesOnly(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "gosum", files: "go.sum"]
 
 checksum <- (checksum) => uast(type: "Checksum")`
@@ -417,6 +449,8 @@ checksum <- (checksum) => uast(type: "Checksum")`
 }
 
 func TestParseLanguageDeclaration_Gotmpl(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "gotmpl", extensions: ".gotmpl", ".go.tmpl"]
 
 function_call <- (function_call) => uast(type: "Function")`
@@ -456,6 +490,8 @@ function_call <- (function_call) => uast(type: "Function")`
 }
 
 func TestParseLanguageDeclaration_WithRules(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "javascript", extensions: ".js", ".jsx", ".mjs"]
 
 function_declaration <- (function_declaration name: (identifier) @name body: (block) @body) => uast(
@@ -504,11 +540,11 @@ variable_declaration <- (variable_declaration name: (identifier) @name) => uast(
 	}
 
 	// Check first rule.
-	if rules[0].Name != "function_declaration" {
+	if rules[0].Name != testFuncDeclRule {
 		t.Errorf("expected first rule name 'function_declaration', got '%s'", rules[0].Name)
 	}
 
-	if rules[0].UASTSpec.Type != "Function" {
+	if rules[0].UASTSpec.Type != testFunctionUASTType {
 		t.Errorf("expected first rule type 'Function', got '%s'", rules[0].UASTSpec.Type)
 	}
 
@@ -523,6 +559,8 @@ variable_declaration <- (variable_declaration name: (identifier) @name) => uast(
 }
 
 func TestParseLanguageDeclaration_MissingDeclaration(t *testing.T) {
+	t.Parallel()
+
 	input := `function_declaration <- (function_declaration) => uast(type: "Function")`
 	parser := &Parser{}
 
@@ -537,6 +575,8 @@ func TestParseLanguageDeclaration_MissingDeclaration(t *testing.T) {
 }
 
 func TestParseMappingRule_ChildrenDeduplication(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 complex_node <- (complex_node field1: (child1) @c1 (child2) @c2 (child1) @c1) => uast(type: "Complex", children: @c1, @c2)`
@@ -567,6 +607,8 @@ complex_node <- (complex_node field1: (child1) @c1 (child2) @c2 (child1) @c1) =>
 }
 
 func TestParseMappingRule_InheritanceAndConditions_Advanced(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 base_rule <- (base_node) => uast(
@@ -610,6 +652,8 @@ child_rule <- (child_node) => uast(
 
 // Tests for advanced token extraction features.
 func TestParseMappingRule_TokenExtractionStrategies(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 self_token <- (identifier) => uast(
@@ -654,7 +698,7 @@ descendant_token <- (complex_expression) => uast(
 
 	// Test child token extraction.
 	childRule := rules[1]
-	if childRule.UASTSpec.Token != "child:identifier" {
+	if childRule.UASTSpec.Token != testChildIdentifier {
 		t.Errorf("expected child token extraction, got '%s'", childRule.UASTSpec.Token)
 	}
 
@@ -667,6 +711,8 @@ descendant_token <- (complex_expression) => uast(
 
 // Tests for property mapping.
 func TestParseMappingRule_PropertyMapping(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration name: (identifier) @name params: (parameter_list) @params body: (block) @body) => uast(
@@ -716,6 +762,8 @@ function_declaration <- (function_declaration name: (identifier) @name params: (
 
 // Tests for real-world Go language mapping examples.
 func TestParseMappingRule_GoLanguageMapping(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_declaration <- (function_declaration name: (identifier) @name params: (parameter_list) @params body: (block) @body) => uast(
@@ -769,11 +817,11 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
 
 	// Test function declaration.
 	funcRule := rules[0]
-	if funcRule.Name != "function_declaration" {
+	if funcRule.Name != testFuncDeclRule {
 		t.Errorf("expected function_declaration rule, got '%s'", funcRule.Name)
 	}
 
-	if funcRule.UASTSpec.Type != "Function" {
+	if funcRule.UASTSpec.Type != testFunctionUASTType {
 		t.Errorf("expected Function type, got '%s'", funcRule.UASTSpec.Type)
 	}
 
@@ -787,7 +835,7 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
 		t.Errorf("expected method_declaration rule, got '%s'", methodRule.Name)
 	}
 
-	if methodRule.Extends != "function_declaration" {
+	if methodRule.Extends != testFuncDeclRule {
 		t.Errorf("expected inheritance from function_declaration, got '%s'", methodRule.Extends)
 	}
 
@@ -835,6 +883,8 @@ if_statement <- (if_statement condition: (expression) @cond consequence: (block)
 
 // Tests for Python mapping examples.
 func TestParseMappingRule_PythonMapping(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "python", extensions: ".py", ".pyw", ".pyi"]
 
 function_definition <- (function_definition name: (identifier) @name parameters: (parameters) @params body: (block) @body) => uast(
@@ -878,7 +928,7 @@ comparison_expression <- (comparison_expression left: (expression) @left operato
 		t.Errorf("expected function_definition rule, got '%s'", funcDefRule.Name)
 	}
 
-	if funcDefRule.UASTSpec.Type != "Function" {
+	if funcDefRule.UASTSpec.Type != testFunctionUASTType {
 		t.Errorf("expected Function type, got '%s'", funcDefRule.UASTSpec.Type)
 	}
 
@@ -901,7 +951,7 @@ comparison_expression <- (comparison_expression left: (expression) @left operato
 
 	// Test base expression.
 	baseRule := rules[2]
-	if baseRule.Name != "base_expression" {
+	if baseRule.Name != testBaseExpression {
 		t.Errorf("expected base_expression rule, got '%s'", baseRule.Name)
 	}
 
@@ -915,13 +965,15 @@ comparison_expression <- (comparison_expression left: (expression) @left operato
 		t.Errorf("expected comparison_expression rule, got '%s'", compRule.Name)
 	}
 
-	if compRule.Extends != "base_expression" {
+	if compRule.Extends != testBaseExpression {
 		t.Errorf("expected inheritance from base_expression, got '%s'", compRule.Extends)
 	}
 }
 
 // Tests for recipes and best practices.
 func TestParseMappingRule_LanguageAgnosticFunctionMapping(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "multilang", extensions: ".go", ".js", ".ts"]
 
 function_base <- (function_declaration name: (identifier) @name body: (block) @body) => uast(
@@ -966,7 +1018,7 @@ js_function <- (function_declaration name: (identifier) @name params: (formal_pa
 
 	// Test base function pattern.
 	baseRule := rules[0]
-	if baseRule.Name != "function_base" {
+	if baseRule.Name != testFunctionBase {
 		t.Errorf("expected function_base rule, got '%s'", baseRule.Name)
 	}
 
@@ -983,7 +1035,7 @@ js_function <- (function_declaration name: (identifier) @name params: (formal_pa
 		t.Errorf("expected go_function rule, got '%s'", goRule.Name)
 	}
 
-	if goRule.Extends != "function_base" {
+	if goRule.Extends != testFunctionBase {
 		t.Errorf("expected inheritance from function_base, got '%s'", goRule.Extends)
 	}
 
@@ -993,13 +1045,15 @@ js_function <- (function_declaration name: (identifier) @name params: (formal_pa
 		t.Errorf("expected js_function rule, got '%s'", jsRule.Name)
 	}
 
-	if jsRule.Extends != "function_base" {
+	if jsRule.Extends != testFunctionBase {
 		t.Errorf("expected inheritance from function_base, got '%s'", jsRule.Extends)
 	}
 }
 
 // Tests for conditional type mapping.
 func TestParseMappingRule_ConditionalTypeMapping(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 expression <- (expression) => uast(
@@ -1071,6 +1125,8 @@ logical_expression <- (binary_expression left: (expression) @left operator: (log
 
 // Tests for advanced token extraction recipes.
 func TestParseMappingRule_AdvancedTokenExtraction(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 function_call <- (call_expression function: (identifier) @func) => uast(
@@ -1113,11 +1169,11 @@ typed_variable <- (variable_declaration name: (identifier) @name type: (type_ann
 		t.Errorf("expected function_call rule, got '%s'", callRule.Name)
 	}
 
-	if callRule.UASTSpec.Token != "child:identifier" {
+	if callRule.UASTSpec.Token != testChildIdentifier {
 		t.Errorf("expected child:identifier token, got '%s'", callRule.UASTSpec.Token)
 	}
 
-	if callRule.UASTSpec.Props["function"] != "child:identifier" {
+	if callRule.UASTSpec.Props["function"] != testChildIdentifier {
 		t.Errorf("expected function property, got '%s'", callRule.UASTSpec.Props["function"])
 	}
 
@@ -1134,6 +1190,8 @@ typed_variable <- (variable_declaration name: (identifier) @name type: (type_ann
 
 // Tests for error handling and validation recipes.
 func TestParseMappingRule_ErrorHandlingAndValidation(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 safe_property <- (object_property key: (property_identifier) @key value: (expression) @value) => uast(
@@ -1192,6 +1250,8 @@ conditional_role <- (identifier) => uast(
 
 // Tests for complex inheritance chains.
 func TestParseMappingRule_ComplexInheritanceChain(t *testing.T) {
+	t.Parallel()
+
 	input := `[language "go", extensions: ".go"]
 
 base_expression <- (expression) => uast(
@@ -1232,7 +1292,7 @@ arithmetic_expression <- (arithmetic_expression left: (expression) @left op: (ar
 
 	// Test base expression.
 	baseRule := rules[0]
-	if baseRule.Name != "base_expression" {
+	if baseRule.Name != testBaseExpression {
 		t.Errorf("expected base_expression rule, got '%s'", baseRule.Name)
 	}
 
@@ -1242,7 +1302,7 @@ arithmetic_expression <- (arithmetic_expression left: (expression) @left op: (ar
 		t.Errorf("expected binary_expression rule, got '%s'", binaryRule.Name)
 	}
 
-	if binaryRule.Extends != "base_expression" {
+	if binaryRule.Extends != testBaseExpression {
 		t.Errorf("expected inheritance from base_expression, got '%s'", binaryRule.Extends)
 	}
 

@@ -200,7 +200,8 @@ func createSentimentChart(labels []string, data []opts.LineData, co *plotpage.Ch
 	return line
 }
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the sentiment plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/sentiment", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

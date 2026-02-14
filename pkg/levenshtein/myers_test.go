@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license.
 
-package levenshtein //nolint:testpackage // white-box test for distanceMyers64.
+package levenshtein
 
 import (
 	"strings"
 	"testing"
 )
 
-//nolint:gochecknoglobals // test table data.
 var myersTestCases = []struct {
 	s1     string
 	s2     string

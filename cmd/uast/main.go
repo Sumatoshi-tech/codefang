@@ -14,9 +14,9 @@ import (
 const formatJSON = "json"
 
 var (
-	cfgFile string //nolint:gochecknoglobals // CLI flag variable
-	verbose bool   //nolint:gochecknoglobals // CLI flag variable
-	quiet   bool   //nolint:gochecknoglobals // CLI flag variable
+	cfgFile string
+	verbose bool
+	quiet   bool
 )
 
 func main() {

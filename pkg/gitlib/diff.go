@@ -163,7 +163,7 @@ func DiffBlobs(oldBlob, newBlob *Blob, oldPath, newPath string) (*BlobDiffResult
 // DiffBlobsFromCache computes a line-level diff using cached blob data.
 // Falls back to simple line counting if blobs aren't available.
 func DiffBlobsFromCache(oldData, newData []byte) *BlobDiffResult {
-	// Fast path: count lines in each
+	// Fast path: count lines in each.
 	oldLines := countLines(oldData)
 	newLines := countLines(newData)
 
@@ -187,7 +187,7 @@ func countLines(data []byte) int {
 
 	count := strings.Count(string(data), "\n")
 
-	// If file doesn't end with newline, add 1
+	// If file doesn't end with newline, add 1.
 	if len(data) > 0 && data[len(data)-1] != '\n' {
 		count++
 	}

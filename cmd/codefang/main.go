@@ -12,11 +12,13 @@ import (
 )
 
 var (
-	verbose bool //nolint:gochecknoglobals // CLI flag variable
-	quiet   bool //nolint:gochecknoglobals // CLI flag variable
+	verbose bool
+	quiet   bool
 )
 
 func main() {
+	version.InitBinaryVersion()
+
 	rootCmd := &cobra.Command{
 		Use:   "codefang",
 		Short: "Codefang Code Analysis - Unified code analysis tool",

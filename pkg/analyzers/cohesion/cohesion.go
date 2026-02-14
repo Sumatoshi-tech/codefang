@@ -2,7 +2,6 @@ package cohesion
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 
@@ -98,7 +97,7 @@ func (c *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs cohesion analysis on the UAST.
 func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
+		return nil, analyze.ErrNilRootNode
 	}
 
 	functions, err := c.findFunctions(root)
@@ -306,8 +305,6 @@ func (c *Analyzer) getSizeAssessment(lineCount int) string {
 }
 
 // findFunctions finds all functions using the generic traverser.
-//
-//nolint:unparam // parameter is needed for interface compliance.
 func (c *Analyzer) findFunctions(root *node.Node) ([]Function, error) {
 	functionNodes := c.traverser.FindNodesByRoles(root, []string{"Function"})
 	typeNodes := c.traverser.FindNodesByType(root, []string{"Function", "Method"})

@@ -1,0 +1,103 @@
+name: Action Self-Test
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "Dockerfile"
+      - "action.yml"
+      - "entrypoint.sh"
+      - ".github/workflows/action-test.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "Dockerfile"
+      - "action.yml"
+      - "entrypoint.sh"
+      - ".github/workflows/action-test.yml"
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Build Docker image
+        run: docker build -t codefang:test .
+
+      - name: Verify codefang binary
+        run: docker run --rm codefang:test --help
+
+      - name: Verify uast binary
+        run: docker run --rm --entrypoint uast codefang:test --help
+
+      - name: Run static analysis in container
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" \
+            --user "$(id -u):$(id -g)" \
+            codefang:test run -a static/complexity --format json --silent /workspace
+
+  action-test:
+    name: Action Integration Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Run Codefang Action (static analysis)
+        id: analysis
+        uses: ./
+        with:
+          analyzers: "static/*"
+          path: "."
+          format: "json"
+          fail-on-error: "false"
+
+      - name: Verify action outputs
+        run: |
+          echo "Pass: ${{ steps.analysis.outputs.pass }}"
+          echo "Report length: $(echo '${{ steps.analysis.outputs.report }}' | wc -c)"
+
+          if [ -z "${{ steps.analysis.outputs.pass }}" ]; then
+            echo "ERROR: pass output is empty"
+            exit 1
+          fi
+
+          if [ -z "${{ steps.analysis.outputs.report }}" ]; then
+            echo "ERROR: report output is empty"
+            exit 1
+          fi
+
+          echo "Action outputs verified successfully."
+
+  action-fail-test:
+    name: Action Fail-on-Error Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Run Codefang Action (should pass)
+        uses: ./
+        with:
+          analyzers: "static/complexity"
+          path: "."
+          format: "json"
+          fail-on-error: "false"

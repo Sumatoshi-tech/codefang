@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
@@ -30,6 +31,17 @@ const leafWorkerDivisor = 3
 // minLeafWorkers is the minimum number of leaf workers when enabled.
 const minLeafWorkers = 4
 
+// defaultCommitBatchSize is the default number of commits to process per batch.
+const defaultCommitBatchSize = 100
+
+// defaultBlobArenaBytes is the default arena size for blob loading (4 MB).
+// Smaller arenas reduce GC pressure and improve cache locality.
+const defaultBlobArenaBytes = 4 * 1024 * 1024
+
+// minMemInfoFields is the minimum number of space-separated fields expected
+// in a /proc/meminfo line (e.g. "MemTotal: 16384 kB" has 3 fields).
+const minMemInfoFields = 2
+
 // defaultMemoryLimitBytes is the default soft memory limit (14 GiB).
 // This caps peak memory usage while leaving headroom for the OS.
 // Go's GC becomes aggressive as heap approaches this limit, preventing OOM.
@@ -38,6 +50,9 @@ const defaultMemoryLimitBytes = uint64(14 * 1024 * 1024 * 1024)
 // memoryLimitRatio is the fraction of system memory to use as the soft limit.
 // Go's runtime GC becomes aggressive as heap approaches this limit.
 const memoryLimitRatio = 75
+
+// percentDivisor converts percentage ratios (e.g. 60, 75) to fractions.
+const percentDivisor = 100
 
 const (
 	procMemInfoPath = "/proc/meminfo"
@@ -88,6 +103,10 @@ type CoordinatorConfig struct {
 	// BallastSize reserves bytes in a long-lived slice to smooth GC behavior.
 	// Set to 0 to disable ballast allocation.
 	BallastSize int64
+
+	// WorkerTimeout is the maximum time to wait for a worker response before
+	// considering it stalled. Set to 0 to disable the watchdog.
+	WorkerTimeout time.Duration
 }
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
@@ -95,25 +114,23 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 	// Use 60% of CPU cores for optimal performance.
 	// Testing on kubernetes repo (135k commits) showed that using all CPU cores
 	// causes contention and degrades performance by ~17% compared to 60%.
-	workers := max(runtime.NumCPU()*optimalWorkerRatio/100, 1)
+	workers := max(runtime.NumCPU()*optimalWorkerRatio/percentDivisor, 1)
 
-	uastWorkers := max(runtime.NumCPU()*uastPipelineWorkerRatio/100, 1)
+	uastWorkers := max(runtime.NumCPU()*uastPipelineWorkerRatio/percentDivisor, 1)
 	leafWorkers := max(runtime.NumCPU()/leafWorkerDivisor, minLeafWorkers)
 
 	return CoordinatorConfig{
 		BatchConfig:         gitlib.DefaultBatchConfig(),
-		CommitBatchSize:     100,
+		CommitBatchSize:     defaultCommitBatchSize,
 		Workers:             workers,
-		BufferSize:          workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed
+		BufferSize:          workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed.
 		BlobCacheSize:       DefaultGlobalCacheSize,
 		DiffCacheSize:       DefaultDiffCacheSize,
 		UASTPipelineWorkers: uastWorkers,
 		LeafWorkers:         leafWorkers,
-		// 4MB arena size balances performance and memory usage.
-		// Smaller arenas reduce GC pressure and improve cache locality.
-		BlobArenaSize: 4 * 1024 * 1024,
-		GCPercent:     0,
-		BallastSize:   0,
+		BlobArenaSize:       defaultBlobArenaBytes,
+		GCPercent:           0,
+		BallastSize:         0,
 	}
 }
 
@@ -129,12 +146,12 @@ type Coordinator struct {
 	blobCache      *GlobalBlobCache
 	diffCache      *DiffCache
 
-	// Workers
+	// Workers.
 	seqWorker   *gitlib.Worker
 	poolWorkers []*gitlib.Worker
 	poolRepos   []*gitlib.Repository
 
-	// Channels
+	// Channels.
 	seqRequests  chan gitlib.WorkerRequest
 	poolRequests chan gitlib.WorkerRequest
 }
@@ -156,15 +173,15 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 	seqChan := make(chan gitlib.WorkerRequest, config.BufferSize)
 	poolChan := make(chan gitlib.WorkerRequest, config.BufferSize*config.Workers)
 
-	// Sequential worker uses the main repo (for commit stream + tree diffs)
+	// Sequential worker uses the main repo (for commit stream + tree diffs).
 	seqWorker := gitlib.NewWorker(repo, seqChan)
 
-	// Pool workers use NEW repo handles
+	// Pool workers use NEW repo handles.
 	poolWorkers := make([]*gitlib.Worker, config.Workers)
 	poolRepos := make([]*gitlib.Repository, config.Workers)
 
 	for i := range config.Workers {
-		// Clone repo handle
+		// Clone repo handle.
 		newRepo, err := gitlib.OpenRepository(repo.Path())
 		if err != nil {
 			panic(fmt.Errorf("failed to open repo for worker: %w", err))
@@ -174,13 +191,13 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		poolWorkers[i] = gitlib.NewWorker(newRepo, poolChan)
 	}
 
-	// Create blob cache if configured
+	// Create blob cache if configured.
 	var blobCache *GlobalBlobCache
 	if config.BlobCacheSize > 0 {
 		blobCache = NewGlobalBlobCache(config.BlobCacheSize)
 	}
 
-	// Create diff cache if configured
+	// Create diff cache if configured.
 	var diffCache *DiffCache
 	if config.DiffCacheSize > 0 {
 		diffCache = NewDiffCache(config.DiffCacheSize)
@@ -193,6 +210,7 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 
 	// Create UAST pipeline if workers are configured.
 	var uastPipeline *UASTPipeline
+
 	if config.UASTPipelineWorkers > 0 {
 		parser, err := uast.NewParser()
 		if err == nil {
@@ -242,7 +260,7 @@ func resolveMemoryLimit(totalMemoryBytes uint64) uint64 {
 		return defaultMemoryLimitBytes
 	}
 
-	systemBased := totalMemoryBytes * memoryLimitRatio / 100
+	systemBased := totalMemoryBytes * memoryLimitRatio / percentDivisor
 
 	return min(systemBased, defaultMemoryLimitBytes)
 }
@@ -283,7 +301,7 @@ func parseMemTotalBytes(memInfo []byte) uint64 {
 		}
 
 		fields := bytes.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) < minMemInfoFields {
 			return 0
 		}
 
@@ -293,7 +311,7 @@ func parseMemTotalBytes(memInfo []byte) uint64 {
 		}
 
 		unit := memTotalUnitKiB
-		if len(fields) > 2 {
+		if len(fields) > minMemInfoFields {
 			unit = string(fields[2])
 		}
 
@@ -314,14 +332,14 @@ func scaleBytesByUnit(value uint64, unit string) uint64 {
 
 // Process runs the full pipeline on a slice of commits.
 func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-chan CommitData {
-	// Start all workers
+	// Start all workers.
 	c.seqWorker.Start()
 
 	for _, w := range c.poolWorkers {
 		w.Start()
 	}
 
-	// Pipeline: Commits -> Blobs -> Diffs -> [UAST]
+	// Pipeline: Commits -> Blobs -> Diffs -> [UAST].
 	commitChan := c.commitStreamer.Stream(ctx, commits)
 	blobChan := c.blobPipeline.Process(ctx, commitChan)
 	diffChan := c.diffPipeline.Process(ctx, blobChan)
@@ -334,13 +352,13 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 		dataChan = diffChan
 	}
 
-	// Ensure workers stop when pipeline is done
+	// Ensure workers stop when pipeline is done.
 	finalChan := make(chan CommitData)
 
 	go func() {
 		defer close(finalChan)
 
-		// Wait for all data to pass through
+		// Wait for all data to pass through.
 		for data := range dataChan {
 			select {
 			case finalChan <- data:
@@ -350,7 +368,7 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 		}
 
 		// Cleanup
-		// Close request channels to stop workers
+		// Close request channels to stop workers.
 		close(c.seqRequests)
 		close(c.poolRequests)
 
@@ -360,7 +378,7 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 			w.Stop()
 		}
 
-		// Free pool repos
+		// Free pool repos.
 		for _, r := range c.poolRepos {
 			r.Free()
 		}

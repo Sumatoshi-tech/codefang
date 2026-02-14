@@ -17,6 +17,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -27,9 +28,6 @@ const (
 
 // HistoryAnalyzer tracks comment sentiment across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	UAST             *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
 	commentsByTick   map[int][]string
@@ -185,7 +183,7 @@ func groupCommentsByLine(extracted []*node.Node) (grouped map[int][]*node.Node, 
 			continue
 		}
 
-		lineno := int(n.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		lineno := safeconv.MustUintToInt(n.Pos.StartLine)
 		lines[lineno] = append(lines[lineno], n)
 	}
 
@@ -211,8 +209,8 @@ func mergeAdjacentComments(lines map[int][]*node.Node, lineNums []int) []string 
 
 		maxEnd := line
 		for _, n := range lineNodes {
-			if n.Pos != nil && maxEnd < int(n.Pos.EndLine) { //nolint:gosec // security concern is acceptable here.
-				maxEnd = int(n.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
+			if n.Pos != nil && maxEnd < safeconv.MustUintToInt(n.Pos.EndLine) {
+				maxEnd = safeconv.MustUintToInt(n.Pos.EndLine)
 			}
 
 			token := strings.TrimSpace(n.Token)
@@ -305,9 +303,9 @@ func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			Ticks:            &plumbing.TicksSinceStart{},
 			MinCommentLength: s.MinCommentLength,
 			Gap:              s.Gap,
-			commitsByTick:    s.commitsByTick, // shared read-only
+			commitsByTick:    s.commitsByTick, // shared read-only.
 		}
-		// Initialize independent state for each fork
+		// Initialize independent state for each fork.
 		clone.commentsByTick = make(map[int][]string)
 
 		res[i] = clone

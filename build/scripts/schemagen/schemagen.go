@@ -104,6 +104,7 @@ func generateSchema(name string, v any) *Schema {
 
 func structToProperties(t reflect.Type, defs map[string]*Schema) (map[string]*Schema, []string) {
 	props := make(map[string]*Schema)
+
 	var required []string
 
 	for i := 0; i < t.NumField(); i++ {
@@ -171,6 +172,7 @@ func typeToSchema(t reflect.Type, defs map[string]*Schema) *Schema {
 		defName := t.Name()
 		if defName == "" {
 			props, required := structToProperties(t, defs)
+
 			return &Schema{Type: "object", Properties: props, Required: required}
 		}
 

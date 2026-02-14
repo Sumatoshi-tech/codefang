@@ -17,15 +17,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/levenshtein"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
 // HistoryAnalyzer detects typo-fix identifier pairs across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	UAST                   *plumbing.UASTChangesAnalyzer
 	FileDiff               *plumbing.FileDiffAnalyzer
 	BlobCache              *plumbing.BlobCacheAnalyzer
@@ -127,8 +125,6 @@ type typoCandidateResult struct {
 
 // findTypoCandidates scans the diff edits and identifies line pairs where the before/after
 // lines are within the maximum allowed Levenshtein distance, indicating a potential typo fix.
-//
-//nolint:gocognit // complexity is inherent to diff-based line pair matching with distance calculation.
 func (t *HistoryAnalyzer) findTypoCandidates(
 	diffs []diffmatchpatch.Diff,
 	linesBefore, linesAfter [][]byte,
@@ -152,19 +148,11 @@ func (t *HistoryAnalyzer) findTypoCandidates(
 			removedSize = size
 		case diffmatchpatch.DiffInsert:
 			if size == removedSize {
-				for i := range size {
-					lb := lineNumBefore - size + i
-					la := lineNumAfter + i
-
-					if lb < len(linesBefore) && la < len(linesAfter) {
-						dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
-						if dist <= t.MaximumAllowedDistance {
-							candidates = append(candidates, candidate{lb, la})
-							focusedLinesBefore[lb] = true
-							focusedLinesAfter[la] = true
-						}
-					}
-				}
+				candidates = t.matchDeleteInsertPairs(
+					lineNumBefore, lineNumAfter, size,
+					linesBefore, linesAfter,
+					candidates, focusedLinesBefore, focusedLinesAfter,
+				)
 			}
 
 			lineNumAfter += size
@@ -181,6 +169,32 @@ func (t *HistoryAnalyzer) findTypoCandidates(
 		focusedLinesBefore: focusedLinesBefore,
 		focusedLinesAfter:  focusedLinesAfter,
 	}
+}
+
+// matchDeleteInsertPairs checks each line pair in a delete/insert hunk for typo candidates.
+func (t *HistoryAnalyzer) matchDeleteInsertPairs(
+	lineNumBefore, lineNumAfter, size int,
+	linesBefore, linesAfter [][]byte,
+	candidates []candidate,
+	focusedBefore, focusedAfter map[int]bool,
+) []candidate {
+	for i := range size {
+		lb := lineNumBefore - size + i
+		la := lineNumAfter + i
+
+		if lb >= len(linesBefore) || la >= len(linesAfter) {
+			continue
+		}
+
+		dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
+		if dist <= t.MaximumAllowedDistance {
+			candidates = append(candidates, candidate{lb, la})
+			focusedBefore[lb] = true
+			focusedAfter[la] = true
+		}
+	}
+
+	return candidates
 }
 
 // matchTypoIdentifiers extracts identifiers from the before/after UAST nodes that fall on
@@ -224,8 +238,8 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 
 	identifiers := extractIdentifiers(root)
 	for _, id := range identifiers {
-		if id.Pos != nil && focusedLines[int(id.Pos.StartLine)-1] { //nolint:gosec // security concern is acceptable here.
-			line := int(id.Pos.StartLine) - 1 //nolint:gosec // security concern is acceptable here.
+		if id.Pos != nil && focusedLines[safeconv.MustUintToInt(id.Pos.StartLine)-1] {
+			line := safeconv.MustUintToInt(id.Pos.StartLine) - 1
 			result[line] = append(result[line], id)
 		}
 	}

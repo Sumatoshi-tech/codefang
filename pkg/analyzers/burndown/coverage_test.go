@@ -1,4 +1,4 @@
-package burndown //nolint:testpackage // testing internal implementation.
+package burndown
 
 import (
 	"testing"

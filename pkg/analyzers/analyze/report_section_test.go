@@ -1,4 +1,4 @@
-package analyze //nolint:testpackage // testing internal implementation.
+package analyze
 
 import "testing"
 

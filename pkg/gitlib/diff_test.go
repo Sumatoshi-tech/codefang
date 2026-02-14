@@ -9,7 +9,9 @@ import (
 )
 
 func TestDiffBlobsFromCache(t *testing.T) {
-	// Covers DiffBlobsFromCache and countLines
+	t.Parallel()
+
+	// Covers DiffBlobsFromCache and countLines.
 	oldData := []byte("line1\nline2\n")
 	newData := []byte("line1\nline2\nline3\n")
 	result := gitlib.DiffBlobsFromCache(oldData, newData)
@@ -24,6 +26,8 @@ func TestDiffBlobsFromCache(t *testing.T) {
 }
 
 func TestDiffBlobsFromCache_EmptyOld(t *testing.T) {
+	t.Parallel()
+
 	result := gitlib.DiffBlobsFromCache(nil, []byte("a\nb\n"))
 	require.NotNil(t, result)
 	require.Equal(t, 0, result.OldLines)
@@ -31,6 +35,8 @@ func TestDiffBlobsFromCache_EmptyOld(t *testing.T) {
 }
 
 func TestDiffBlobsFromCache_EmptyNew(t *testing.T) {
+	t.Parallel()
+
 	result := gitlib.DiffBlobsFromCache([]byte("x\n"), nil)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.OldLines)
@@ -38,6 +44,8 @@ func TestDiffBlobsFromCache_EmptyNew(t *testing.T) {
 }
 
 func TestDiffBlobs(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -51,7 +59,7 @@ func TestDiffBlobs(t *testing.T) {
 
 	defer repo.Free()
 
-	// Get blob hashes from both commits
+	// Get blob hashes from both commits.
 	commit1, err := repo.LookupCommit(firstHash)
 	require.NoError(t, err)
 	tree1, err := commit1.Tree()

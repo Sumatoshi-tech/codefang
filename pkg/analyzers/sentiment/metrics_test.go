@@ -28,12 +28,15 @@ const (
 func testHash(s string) gitlib.Hash {
 	var h gitlib.Hash
 	copy(h[:], s)
+
 	return h
 }
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -45,6 +48,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	emotions := map[int]float32{0: testSentimentPositive, 1: testSentimentNegative}
 	comments := map[int][]string{0: {testComment1}, 1: {testComment2}}
 	commits := map[int][]gitlib.Hash{0: {testHash("abc")}, 1: {testHash("def")}}
@@ -66,9 +71,11 @@ func TestParseReportData_AllFields(t *testing.T) {
 	assert.Equal(t, []string{testComment1}, result.CommentsByTick[0])
 }
 
-// --- classifySentiment Tests ---
+// --- classifySentiment Tests ---.
 
 func TestClassifySentiment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		sentiment float32
@@ -86,15 +93,19 @@ func TestClassifySentiment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := classifySentiment(tt.sentiment)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- SentimentTimeSeriesMetric Tests ---
+// --- SentimentTimeSeriesMetric Tests ---.
 
 func TestNewTimeSeriesMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewTimeSeriesMetric()
 
 	assert.Equal(t, "sentiment_time_series", m.Name())
@@ -104,6 +115,8 @@ func TestNewTimeSeriesMetric_Metadata(t *testing.T) {
 }
 
 func TestSentimentTimeSeriesMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewTimeSeriesMetric()
 	input := &ReportData{}
 
@@ -113,6 +126,8 @@ func TestSentimentTimeSeriesMetric_Empty(t *testing.T) {
 }
 
 func TestSentimentTimeSeriesMetric_SingleTick(t *testing.T) {
+	t.Parallel()
+
 	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentPositive},
@@ -131,6 +146,8 @@ func TestSentimentTimeSeriesMetric_SingleTick(t *testing.T) {
 }
 
 func TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick(t *testing.T) {
+	t.Parallel()
+
 	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
@@ -143,22 +160,24 @@ func TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by tick
+	// Sorted by tick.
 	assert.Equal(t, 0, result[0].Tick)
 	assert.Equal(t, 1, result[1].Tick)
 	assert.Equal(t, 2, result[2].Tick)
 
-	// Classifications
+	// Classifications.
 	assert.Equal(t, "positive", result[0].Classification)
 	assert.Equal(t, "negative", result[1].Classification)
 	assert.Equal(t, "neutral", result[2].Classification)
 }
 
 func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
+	t.Parallel()
+
 	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentNeutral},
-		// No comments or commits for tick 0
+		// No comments or commits for tick 0.
 	}
 
 	result := m.Compute(input)
@@ -168,9 +187,11 @@ func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
 	assert.Equal(t, 0, result[0].CommitCount)
 }
 
-// --- SentimentTrendMetric Tests ---
+// --- SentimentTrendMetric Tests ---.
 
 func TestNewTrendMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewTrendMetric()
 
 	assert.Equal(t, "sentiment_trend", m.Name())
@@ -180,6 +201,8 @@ func TestNewTrendMetric_Metadata(t *testing.T) {
 }
 
 func TestSentimentTrendMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewTrendMetric()
 	input := &ReportData{}
 
@@ -191,6 +214,8 @@ func TestSentimentTrendMetric_Empty(t *testing.T) {
 }
 
 func TestSentimentTrendMetric_SingleTick(t *testing.T) {
+	t.Parallel()
+
 	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentNeutral},
@@ -204,6 +229,8 @@ func TestSentimentTrendMetric_SingleTick(t *testing.T) {
 }
 
 func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		startSentiment float32
@@ -213,11 +240,13 @@ func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
 		{"improving", 0.3, 0.8, "improving"},
 		{"declining", 0.8, 0.3, "declining"},
 		{"stable_same", 0.5, 0.5, "stable"},
-		{"stable_small_change", 0.5, 0.55, "stable"}, // Within 0.1 threshold
+		{"stable_small_change", 0.5, 0.55, "stable"}, // Within 0.1 threshold.
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewTrendMetric()
 			input := &ReportData{
 				EmotionsByTick: map[int]float32{
@@ -236,21 +265,25 @@ func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
 }
 
 func TestSentimentTrendMetric_ChangePercent(t *testing.T) {
+	t.Parallel()
+
 	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: 0.5,
-			1: 0.75, // 50% increase
+			1: 0.75, // 50% increase.
 		},
 	}
 
 	result := m.Compute(input)
 
-	// Change = (0.75 - 0.5) / 0.5 * 100 = 50%
+	// Change = (0.75 - 0.5) / 0.5 * 100 = 50%.
 	assert.InDelta(t, 50.0, result.ChangePercent, floatDelta)
 }
 
 func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
+	t.Parallel()
+
 	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
@@ -261,13 +294,15 @@ func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
 
 	result := m.Compute(input)
 
-	// Change percent should be 0 when start is 0 (avoid division by zero)
+	// Change percent should be 0 when start is 0 (avoid division by zero).
 	assert.InDelta(t, 0.0, result.ChangePercent, floatDelta)
 }
 
-// --- LowSentimentPeriodMetric Tests ---
+// --- LowSentimentPeriodMetric Tests ---.
 
 func TestNewLowSentimentPeriodMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewLowSentimentPeriodMetric()
 
 	assert.Equal(t, "low_sentiment_periods", m.Name())
@@ -277,6 +312,8 @@ func TestNewLowSentimentPeriodMetric_Metadata(t *testing.T) {
 }
 
 func TestLowSentimentPeriodMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{}
 
@@ -286,6 +323,8 @@ func TestLowSentimentPeriodMetric_Empty(t *testing.T) {
 }
 
 func TestLowSentimentPeriodMetric_NoLowSentiment(t *testing.T) {
+	t.Parallel()
+
 	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
@@ -300,6 +339,8 @@ func TestLowSentimentPeriodMetric_NoLowSentiment(t *testing.T) {
 }
 
 func TestLowSentimentPeriodMetric_RiskLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		sentiment    float32
@@ -313,6 +354,8 @@ func TestLowSentimentPeriodMetric_RiskLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewLowSentimentPeriodMetric()
 			input := &ReportData{
 				EmotionsByTick: map[int]float32{0: tt.sentiment},
@@ -330,27 +373,31 @@ func TestLowSentimentPeriodMetric_RiskLevels(t *testing.T) {
 }
 
 func TestLowSentimentPeriodMetric_SortedBySentiment(t *testing.T) {
+	t.Parallel()
+
 	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
-			0: 0.3, // MEDIUM
-			1: 0.1, // HIGH - worst
-			2: 0.2, // HIGH
+			0: 0.3, // MEDIUM.
+			1: 0.1, // HIGH - worst.
+			2: 0.2, // HIGH.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by sentiment ascending (worst first)
+	// Sorted by sentiment ascending (worst first).
 	assert.InDelta(t, 0.1, result[0].Sentiment, floatDelta)
 	assert.InDelta(t, 0.2, result[1].Sentiment, floatDelta)
 	assert.InDelta(t, 0.3, result[2].Sentiment, floatDelta)
 }
 
-// --- SentimentAggregateMetric Tests ---
+// --- SentimentAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "sentiment_aggregate", m.Name())
@@ -360,6 +407,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestSentimentAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -375,12 +424,14 @@ func TestSentimentAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
-			0: testSentimentPositive, // positive
-			1: testSentimentNeutral,  // neutral
-			2: testSentimentNegative, // negative
+			0: testSentimentPositive, // positive.
+			1: testSentimentNeutral,  // neutral.
+			2: testSentimentNegative, // negative.
 		},
 		CommentsByTick: map[int][]string{
 			0: {testComment1, testComment2},
@@ -407,9 +458,11 @@ func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
 	assert.Equal(t, 1, result.NegativeTicks)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -421,9 +474,11 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 	assert.Equal(t, 0, result.Aggregate.TotalTicks)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	metrics := &ComputedMetrics{}
 
 	name := metrics.AnalyzerName()
@@ -432,6 +487,8 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	metrics := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalTicks:       5,
@@ -445,6 +502,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	metrics := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalTicks:       5,
@@ -458,6 +517,8 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	emotions := map[int]float32{
 		0: testSentimentPositive,
 		1: testSentimentNegative,
@@ -481,19 +542,19 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// TimeSeries
+	// TimeSeries.
 	require.Len(t, result.TimeSeries, 3)
 
-	// Trend
+	// Trend.
 	assert.Equal(t, 0, result.Trend.StartTick)
 	assert.Equal(t, 2, result.Trend.EndTick)
 	assert.Equal(t, "declining", result.Trend.TrendDirection) // 0.8 -> 0.5
 
-	// LowSentimentPeriods - only tick 1 with 0.3 sentiment
+	// LowSentimentPeriods - only tick 1 with 0.3 sentiment.
 	require.Len(t, result.LowSentimentPeriods, 1)
 	assert.Equal(t, 1, result.LowSentimentPeriods[0].Tick)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalTicks)
 	assert.Equal(t, 1, result.Aggregate.PositiveTicks)
 	assert.Equal(t, 1, result.Aggregate.NeutralTicks)

@@ -1,11 +1,14 @@
-package node //nolint:testpackage // Tests need access to internal types.
+package node
 
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
+
+const testHelloToken = "hello"
 
 func TestNodeEdgeCases(t *testing.T) {
 	t.Parallel()
@@ -72,13 +75,13 @@ func TestNodeFind(t *testing.T) {
 
 			found := tree.Find(tt.predicate)
 
-			var got []string //nolint:prealloc // nil slice needed for DeepEqual comparison.
+			got := make([]string, 0, len(found))
 
 			for _, n := range found {
 				got = append(got, n.ID)
 			}
 
-			if !reflect.DeepEqual(got, tt.expectIDs) {
+			if !slices.Equal(got, tt.expectIDs) {
 				t.Errorf("Find: got %v, want %v", got, tt.expectIDs)
 			}
 		})
@@ -235,7 +238,7 @@ func TestFindDSL_BasicAndMembership(t *testing.T) {
 		Children: []*Node{
 			{Type: "Function", Roles: []Role{"Declaration"}, Token: "foo"},
 			{Type: "Function", Roles: []Role{"Private"}, Token: "bar"},
-			{Type: "String", Token: "hello"},
+			{Type: "String", Token: testHelloToken},
 		},
 	}
 
@@ -246,7 +249,7 @@ func TestFindDSL_BasicAndMembership(t *testing.T) {
 	}{
 		{"all exported functions", "filter(.type == \"Function\" && .roles has \"Declaration\")", []string{"foo"}},
 		{"all functions", "filter(.type == \"Function\")", []string{"foo", "bar"}},
-		{"all strings", "filter(.type == \"String\")", []string{"hello"}},
+		{"all strings", "filter(.type == \"String\")", []string{testHelloToken}},
 	}
 
 	for _, tt := range tests {
@@ -466,8 +469,8 @@ func TestTransform_Mutation(t *testing.T) {
 		return true
 	})
 
-	if got := root.Children[0].Token; got != "hello" {
-		t.Errorf("Transform did not mutate string: got %q, want %q", got, "hello")
+	if got := root.Children[0].Token; got != testHelloToken {
+		t.Errorf("Transform did not mutate string: got %q, want %q", got, testHelloToken)
 	}
 }
 
@@ -1012,6 +1015,7 @@ func TestDSLMapFilterPipeline(t *testing.T) {
 // Total nodes = (branching^(depth+1) - 1) / (branching - 1) for branching > 1.
 func buildBenchTree(branching, depth int) *Node {
 	root := New("", "Root", "root", nil, NewPositions(1, 1, 0, 1, 10, 10), nil)
+
 	if depth > 0 {
 		for idx := range branching {
 			child := buildBenchTreeRecursive(branching, depth-1, idx)
@@ -1024,6 +1028,7 @@ func buildBenchTree(branching, depth int) *Node {
 
 func buildBenchTreeRecursive(branching, depth, index int) *Node {
 	nd := New("", Type(fmt.Sprintf("Node_%d", index)), "", nil, NewPositions(1, 1, 0, 1, 1, 1), nil)
+
 	if depth > 0 {
 		for idx := range branching {
 			child := buildBenchTreeRecursive(branching, depth-1, idx)
@@ -1065,7 +1070,7 @@ func TestReleaseTree_NilRoot(t *testing.T) {
 
 const (
 	benchTreeBranching = 4
-	benchTreeDepth     = 4 // 4^0 + 4^1 + 4^2 + 4^3 + 4^4 = 1 + 4 + 16 + 64 + 256 = 341 nodes
+	benchTreeDepth     = 4 // 4^0 + 4^1 + 4^2 + 4^3 + 4^4 = 1 + 4 + 16 + 64 + 256 = 341 nodes.
 )
 
 func BenchmarkReleaseTree(b *testing.B) {

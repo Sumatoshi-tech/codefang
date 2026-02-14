@@ -1,4 +1,4 @@
-package complexity //nolint:testpackage // testing internal implementation.
+package complexity
 
 import (
 	"testing"

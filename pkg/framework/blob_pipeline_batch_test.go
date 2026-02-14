@@ -10,6 +10,8 @@ import (
 )
 
 func TestBlobPipeline_CrossCommitBatching(t *testing.T) {
+	t.Parallel()
+
 	// Setup channels.
 	seqCh := make(chan gitlib.WorkerRequest, 10)
 	poolCh := make(chan gitlib.WorkerRequest, 10)

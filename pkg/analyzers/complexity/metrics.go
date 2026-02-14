@@ -7,7 +7,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for complexity metrics computation.
 type ReportData struct {
@@ -130,7 +130,7 @@ func parseFunctionData(fn map[string]any) FunctionData {
 	return fd
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // FunctionComplexityData contains detailed complexity for a function.
 type FunctionComplexityData struct {
@@ -172,7 +172,7 @@ type AggregateData struct {
 	Message             string  `json:"message"              yaml:"message"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // FunctionComplexityMetric computes per-function complexity data.
 type FunctionComplexityMetric struct {
@@ -235,7 +235,7 @@ func (m *FunctionComplexityMetric) Compute(input *ReportData) []FunctionComplexi
 		})
 	}
 
-	// Sort by cyclomatic complexity descending
+	// Sort by cyclomatic complexity descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].CyclomaticComplexity > result[j].CyclomaticComplexity
 	})
@@ -364,7 +364,7 @@ func (m *HighRiskFunctionMetric) Compute(input *ReportData) []HighRiskFunctionDa
 		})
 	}
 
-	// Sort by risk level
+	// Sort by risk level.
 	sort.Slice(result, func(i, j int) bool {
 		return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
 	})
@@ -445,7 +445,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the complexity analyzer.
 type ComputedMetrics struct {

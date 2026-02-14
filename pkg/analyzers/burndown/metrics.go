@@ -200,6 +200,7 @@ func sumPositiveValues(values []int64) int64 {
 
 func computeSurvivalSample(index int, sample []int64, peakLines int64) SurvivalData {
 	breakdown := make([]int64, len(sample))
+
 	var total int64
 
 	for j, v := range sample {
@@ -252,9 +253,11 @@ func (m *FileSurvivalMetric) Compute(input FileSurvivalInput) []FileSurvivalData
 	result := make([]FileSurvivalData, 0, len(input.FileOwnership))
 
 	for path, ownership := range input.FileOwnership {
-		var currentLines int64
-		var topOwnerID int
-		var topOwnerLines int
+		var (
+			currentLines  int64
+			topOwnerID    int
+			topOwnerLines int
+		)
 
 		for devID, lines := range ownership {
 			currentLines += int64(lines)
@@ -396,6 +399,7 @@ func (m *InteractionMetric) Compute(input InteractionInput) []InteractionData {
 
 func computeAuthorInteractions(authorID int, row []int64, names []string) []InteractionData {
 	authorName := getName(authorID, names)
+
 	var result []InteractionData
 
 	for modifierIdx, lines := range row {
@@ -482,11 +486,13 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 
 	for _, sample := range input.GlobalHistory {
 		var total int64
+
 		for _, v := range sample {
 			if v > 0 {
 				total += v
 			}
 		}
+
 		if total > agg.TotalPeakLines {
 			agg.TotalPeakLines = total
 		}
@@ -515,7 +521,7 @@ type ComputedMetrics struct {
 	Interaction       []InteractionData       `json:"interactions"       yaml:"interactions"`
 }
 
-// --- MetricsOutput Interface Implementation ---
+// --- MetricsOutput Interface Implementation ---.
 
 const analyzerNameBurndown = "burndown"
 

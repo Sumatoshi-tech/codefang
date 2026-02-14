@@ -1,4 +1,4 @@
-package analyze //nolint:testpackage // testing internal implementation.
+package analyze
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
+
+var errAnalysisFailed = errors.New("analysis failed")
 
 // mockAnalyzer implements StaticAnalyzer for testing.
 type mockAnalyzer struct {
@@ -201,7 +203,7 @@ func TestRunAnalyzer_NotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent analyzer")
 	}
 
-	expectedMsg := "no registered analyzer with name=nonexistent"
+	expectedMsg := "no registered analyzer with name: nonexistent"
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
 	}
@@ -210,7 +212,7 @@ func TestRunAnalyzer_NotFound(t *testing.T) {
 func TestRunAnalyzer_AnalyzerError(t *testing.T) {
 	t.Parallel()
 
-	expectedErr := errors.New("analysis failed")
+	expectedErr := errAnalysisFailed
 	analyzer := &mockAnalyzer{
 		name: "failing-analyzer",
 		analyzeFunc: func(_ *node.Node) (Report, error) {
@@ -293,7 +295,7 @@ func TestRunAnalyzers_PartialFailure(t *testing.T) {
 	failingAnalyzer := &mockAnalyzer{
 		name: "failing",
 		analyzeFunc: func(_ *node.Node) (Report, error) {
-			return nil, errors.New("analysis failed")
+			return nil, errAnalysisFailed
 		},
 	}
 

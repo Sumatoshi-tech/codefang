@@ -62,7 +62,7 @@ type BlobResult struct {
 	IsBinary  bool
 	LineCount int
 	Error     error
-	KeepAlive interface{}
+	KeepAlive any
 }
 
 // DiffOpType represents the type of diff operation.
@@ -74,6 +74,9 @@ const (
 	DiffOpInsert DiffOpType = 1
 	DiffOpDelete DiffOpType = 2
 )
+
+// bufferGrowthFactor is the multiplier used when growing internal CGO buffers.
+const bufferGrowthFactor = 2
 
 // DiffOp represents a single diff operation.
 type DiffOp struct {
@@ -113,18 +116,19 @@ func (b *CGOBridge) BatchLoadBlobsArena(hashes []Hash, arena []byte) []BlobResul
 		for i := range results {
 			results[i].Error = ErrRepositoryPointer
 		}
+
 		return results
 	}
 
 	// Ensure internal buffers are sufficient
 	if cap(b.requestBuf) < count {
-		b.requestBuf = make([]C.cf_blob_request, count, count*2) // Grow with some headroom
+		b.requestBuf = make([]C.cf_blob_request, count, count*bufferGrowthFactor) // Grow with some headroom
 	} else {
 		b.requestBuf = b.requestBuf[:count]
 	}
 
 	if cap(b.resultBuf) < count {
-		b.resultBuf = make([]C.cf_blob_arena_result, count, count*2)
+		b.resultBuf = make([]C.cf_blob_arena_result, count, count*bufferGrowthFactor)
 	} else {
 		b.resultBuf = b.resultBuf[:count]
 	}
@@ -164,11 +168,12 @@ func (b *CGOBridge) BatchLoadBlobsArena(hashes []Hash, arena []byte) []BlobResul
 	for i, cRes := range b.resultBuf {
 		results[i].Hash = hashes[i]
 
-		if cRes.error == C.CF_ERR_ARENA_FULL {
+		switch {
+		case cRes.error == C.CF_ERR_ARENA_FULL:
 			results[i].Error = ErrArenaFull
-		} else if cRes.error != C.CF_OK {
+		case cRes.error != C.CF_OK:
 			results[i].Error = cgoBlobError(int(cRes.error))
-		} else {
+		default:
 			results[i].Size = int64(cRes.size)
 			results[i].IsBinary = cRes.is_binary != 0
 			results[i].LineCount = int(cRes.line_count)
@@ -320,8 +325,8 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 	cChanges := (*[1 << 30]C.cf_change)(unsafe.Pointer(cResult.changes))[:cResult.count:cResult.count]
 
 	const (
-		FileModeCommit = 0160000
-		FileModeTree   = 0040000
+		fileModeCommit = 0o160000
+		fileModeTree   = 0o040000
 	)
 
 	for i := range int(cResult.count) {
@@ -333,8 +338,8 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 		// Exception: If one side is blob and other is not (TypeChange), we might want it?
 		// But status is usually TYPECHANGE for that.
 		// If status is MODIFIED, modes usually match or compatible (exec vs non-exec).
-		if cChange.old_mode == FileModeCommit || cChange.old_mode == FileModeTree ||
-			cChange.new_mode == FileModeCommit || cChange.new_mode == FileModeTree {
+		if cChange.old_mode == fileModeCommit || cChange.old_mode == fileModeTree ||
+			cChange.new_mode == fileModeCommit || cChange.new_mode == fileModeTree {
 			continue
 		}
 

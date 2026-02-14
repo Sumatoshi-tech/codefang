@@ -10,12 +10,16 @@ import (
 )
 
 func TestErrBinaryExists(t *testing.T) {
+	t.Parallel()
+
 	// Verify the error sentinel is accessible.
 	require.Error(t, gitlib.ErrBinary)
 	assert.Equal(t, "binary", gitlib.ErrBinary.Error())
 }
 
 func TestCachedBlob_CountLines_Caching(t *testing.T) {
+	t.Parallel()
+
 	// Test that CountLines caches the result and returns same value on repeated calls.
 	blob := gitlib.NewCachedBlobForTest([]byte("line1\nline2\nline3\n"))
 
@@ -34,6 +38,8 @@ func TestCachedBlob_CountLines_Caching(t *testing.T) {
 }
 
 func TestCachedBlob_CountLines_BinaryCaching(t *testing.T) {
+	t.Parallel()
+
 	// Test that binary detection is also cached.
 	blob := gitlib.NewCachedBlobForTest([]byte("binary\x00data"))
 
@@ -49,6 +55,8 @@ func TestCachedBlob_CountLines_BinaryCaching(t *testing.T) {
 }
 
 func TestCachedBlob_CountLines_EmptyBlob(t *testing.T) {
+	t.Parallel()
+
 	blob := gitlib.NewCachedBlobForTest([]byte{})
 
 	count, err := blob.CountLines()
@@ -57,6 +65,8 @@ func TestCachedBlob_CountLines_EmptyBlob(t *testing.T) {
 }
 
 func TestCachedBlob_CountLines_NoTrailingNewline(t *testing.T) {
+	t.Parallel()
+
 	blob := gitlib.NewCachedBlobForTest([]byte("line1\nline2"))
 
 	count, err := blob.CountLines()
@@ -65,6 +75,8 @@ func TestCachedBlob_CountLines_NoTrailingNewline(t *testing.T) {
 }
 
 func TestCachedBlob_CountLines_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	// Test that concurrent CountLines calls are safe and return consistent results.
 	blob := gitlib.NewCachedBlobForTest([]byte("line1\nline2\nline3\nline4\nline5\n"))
 

@@ -1,4 +1,4 @@
-package sentiment //nolint:testpackage // testing internal implementation.
+package sentiment
 
 import (
 	"bytes"
@@ -188,15 +188,11 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 		t.Fatalf("expected 1 merged comment, got %d", len(comments))
 	}
 
-	if comments[0] != "Line 1 is good\nLine 2 is nice" {
-		// Newlines might be replaced by spaces in filtered output?
-		// WhitespaceRE.ReplaceAllString(comment, " ") replaces newlines with space.
-		// "Line 1 is good\nLine 2 is nice" -> "Line 1 is good Line 2 is nice".
-		if comments[0] == "Line 1 is good Line 2 is nice" { //nolint:revive // empty block is intentional.
-			// Accept.
-		} else {
-			t.Errorf("expected merged content, got %q", comments[0])
-		}
+	if comments[0] != "Line 1 is good\nLine 2 is nice" &&
+		comments[0] != "Line 1 is good Line 2 is nice" {
+		// Newlines might be replaced by spaces in filtered output via
+		// WhitespaceRE.ReplaceAllString(comment, " "), so both forms are valid.
+		t.Errorf("expected merged content, got %q", comments[0])
 	}
 }
 
@@ -232,14 +228,16 @@ func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := s.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Contains(t, result, "time_series")
 	assert.Contains(t, result, "trend")
 	assert.Contains(t, result, "low_sentiment_periods")
@@ -258,6 +256,7 @@ func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := s.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
@@ -280,6 +279,7 @@ func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 
 	// Unsupported format should return validation error.
 	var buf bytes.Buffer
+
 	err := s.Serialize(report, "unknown", &buf)
 	require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 }
@@ -311,7 +311,7 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	}
 	require.NoError(t, s.Initialize(nil))
 
-	// Add some state to original
+	// Add some state to original.
 	s.commentsByTick[0] = []string{"original comment"}
 
 	forks := s.Fork(2)
@@ -322,11 +322,11 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Forks should have empty independent maps (not inherit parent state)
+	// Forks should have empty independent maps (not inherit parent state).
 	require.Empty(t, fork1.commentsByTick, "fork should have empty commentsByTick map")
 	require.Empty(t, fork2.commentsByTick, "fork should have empty commentsByTick map")
 
-	// Modifying one fork should not affect the other
+	// Modifying one fork should not affect the other.
 	fork1.commentsByTick[1] = []string{"fork1 comment"}
 
 	require.Len(t, fork1.commentsByTick, 1)
@@ -346,7 +346,7 @@ func TestFork_SharesConfig(t *testing.T) {
 	fork1, ok := forks[0].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Config should be shared
+	// Config should be shared.
 	require.Equal(t, s.MinCommentLength, fork1.MinCommentLength)
 	require.InDelta(t, s.Gap, fork1.Gap, 0.001)
 }
@@ -357,17 +357,17 @@ func TestMerge_CombinesCommentsByTick(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has comments at tick 0
+	// Original has comments at tick 0.
 	s.commentsByTick[0] = []string{"original comment"}
 
-	// Create a branch with comments at different tick
+	// Create a branch with comments at different tick.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.commentsByTick[1] = []string{"branch comment"}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have both ticks
+	// Should have both ticks.
 	require.Len(t, s.commentsByTick, 2)
 	require.Len(t, s.commentsByTick[0], 1)
 	require.Len(t, s.commentsByTick[1], 1)
@@ -381,17 +381,17 @@ func TestMerge_AppendsCommentsAtSameTick(t *testing.T) {
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has comments at tick 0
+	// Original has comments at tick 0.
 	s.commentsByTick[0] = []string{"comment 1"}
 
-	// Branch also has comments at tick 0
+	// Branch also has comments at tick 0.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.commentsByTick[0] = []string{"comment 2", "comment 3"}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have all comments at tick 0
+	// Should have all comments at tick 0.
 	require.Len(t, s.commentsByTick[0], 3)
 	require.Contains(t, s.commentsByTick[0], "comment 1")
 	require.Contains(t, s.commentsByTick[0], "comment 2")
@@ -407,25 +407,25 @@ func TestForkMerge_RoundTrip(t *testing.T) {
 	}
 	require.NoError(t, s.Initialize(nil))
 
-	// Fork
+	// Fork.
 	forks := s.Fork(2)
 	fork1, ok := forks[0].(*HistoryAnalyzer)
 	require.True(t, ok)
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Each fork adds different comments
+	// Each fork adds different comments.
 	fork1.commentsByTick[0] = []string{"fork1 tick0 comment"}
 	fork1.commentsByTick[1] = []string{"fork1 tick1 comment"}
 	fork2.commentsByTick[0] = []string{"fork2 tick0 comment"}
 	fork2.commentsByTick[2] = []string{"fork2 tick2 comment"}
 
-	// Merge
+	// Merge.
 	s.Merge(forks)
 
-	// Verify all comments are merged
+	// Verify all comments are merged.
 	require.Len(t, s.commentsByTick, 3)
-	require.Len(t, s.commentsByTick[0], 2) // from both forks
-	require.Len(t, s.commentsByTick[1], 1) // from fork1
-	require.Len(t, s.commentsByTick[2], 1) // from fork2
+	require.Len(t, s.commentsByTick[0], 2) // from both forks.
+	require.Len(t, s.commentsByTick[1], 1) // from fork1.
+	require.Len(t, s.commentsByTick[2], 1) // from fork2.
 }

@@ -29,15 +29,17 @@ import (
 func TestMetricsOutput_InterfaceCompliance_HistoryAnalyzers(t *testing.T) {
 	t.Parallel()
 
-	// Compile-time interface compliance checks
-	var _ renderer.MetricsOutput = (*devs.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*burndown.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*filehistory.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*couples.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*shotness.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*sentiment.ComputedMetrics)(nil)
+	// Compile-time interface compliance checks.
+	var (
+		_ renderer.MetricsOutput = (*devs.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*burndown.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*filehistory.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*couples.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*shotness.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*sentiment.ComputedMetrics)(nil)
+	)
 
-	// Runtime verification
+	// Runtime verification.
 	tests := []struct {
 		name     string
 		metrics  renderer.MetricsOutput
@@ -65,15 +67,17 @@ func TestMetricsOutput_InterfaceCompliance_HistoryAnalyzers(t *testing.T) {
 func TestMetricsOutput_InterfaceCompliance_StaticAnalyzers(t *testing.T) {
 	t.Parallel()
 
-	// Compile-time interface compliance checks
-	var _ renderer.MetricsOutput = (*complexity.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*cohesion.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*halstead.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*comments.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*imports.ComputedMetrics)(nil)
-	var _ renderer.MetricsOutput = (*typos.ComputedMetrics)(nil)
+	// Compile-time interface compliance checks.
+	var (
+		_ renderer.MetricsOutput = (*complexity.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*cohesion.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*halstead.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*comments.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*imports.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*typos.ComputedMetrics)(nil)
+	)
 
-	// Runtime verification
+	// Runtime verification.
 	tests := []struct {
 		name     string
 		metrics  renderer.MetricsOutput
@@ -149,6 +153,7 @@ func TestJSONOutputStructure_HistoryAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 
 			var result map[string]any
+
 			err = json.Unmarshal(data, &result)
 			require.NoError(t, err)
 
@@ -207,6 +212,7 @@ func TestJSONOutputStructure_StaticAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 
 			var result map[string]any
+
 			err = json.Unmarshal(data, &result)
 			require.NoError(t, err)
 
@@ -268,6 +274,7 @@ func TestYAMLOutputStructure_HistoryAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 
 			var result map[string]any
+
 			err = yaml.Unmarshal(data, &result)
 			require.NoError(t, err)
 
@@ -326,6 +333,7 @@ func TestYAMLOutputStructure_StaticAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 
 			var result map[string]any
+
 			err = yaml.Unmarshal(data, &result)
 			require.NoError(t, err)
 
@@ -365,8 +373,9 @@ func TestRenderMetricsJSON_AllAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotEmpty(t, data)
 
-			// Verify it's valid JSON
+			// Verify it's valid JSON.
 			var result map[string]any
+
 			err = json.Unmarshal(data, &result)
 			require.NoError(t, err)
 		})
@@ -399,8 +408,9 @@ func TestRenderMetricsYAML_AllAnalyzers(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotEmpty(t, data)
 
-			// Verify it's valid YAML
+			// Verify it's valid YAML.
 			var result map[string]any
+
 			err = yaml.Unmarshal(data, &result)
 			require.NoError(t, err)
 		})
@@ -432,23 +442,25 @@ func TestJSONYAMLConsistency_AllAnalyzers(t *testing.T) {
 		t.Run(m.AnalyzerName(), func(t *testing.T) {
 			t.Parallel()
 
-			// Marshal to JSON
+			// Marshal to JSON.
 			jsonData, err := json.Marshal(m.ToJSON())
 			require.NoError(t, err)
 
 			var jsonResult map[string]any
+
 			err = json.Unmarshal(jsonData, &jsonResult)
 			require.NoError(t, err)
 
-			// Marshal to YAML
+			// Marshal to YAML.
 			yamlData, err := yaml.Marshal(m.ToYAML())
 			require.NoError(t, err)
 
 			var yamlResult map[string]any
+
 			err = yaml.Unmarshal(yamlData, &yamlResult)
 			require.NoError(t, err)
 
-			// Verify same top-level keys
+			// Verify same top-level keys.
 			jsonKeys := make([]string, 0, len(jsonResult))
 			for k := range jsonResult {
 				jsonKeys = append(jsonKeys, k)

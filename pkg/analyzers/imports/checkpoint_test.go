@@ -31,7 +31,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add import data
+	// Add import data.
 	original.imports[0] = map[string]map[string]map[int]int64{
 		"go": {
 			"fmt": {0: 5, 1: 3},
@@ -78,7 +78,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	original := &HistoryAnalyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add complex import data
+	// Add complex import data.
 	original.imports[0] = map[string]map[string]map[int]int64{
 		"go": {
 			"fmt":     {0: 10, 1: 5, 2: 3},
@@ -106,10 +106,10 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	restored := &HistoryAnalyzer{}
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
-	// Verify all authors
+	// Verify all authors.
 	require.Len(t, restored.imports, 3)
 
-	// Verify author 0
+	// Verify author 0.
 	require.Equal(t, int64(10), restored.imports[0]["go"]["fmt"][0])
 	require.Equal(t, int64(5), restored.imports[0]["go"]["fmt"][1])
 	require.Equal(t, int64(3), restored.imports[0]["go"]["fmt"][2])
@@ -117,11 +117,11 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	require.Equal(t, int64(2), restored.imports[0]["go"]["strings"][1])
 	require.Equal(t, int64(4), restored.imports[0]["rust"]["std::io"][0])
 
-	// Verify author 1
+	// Verify author 1.
 	require.Equal(t, int64(15), restored.imports[1]["python"]["os"][0])
 	require.Equal(t, int64(8), restored.imports[1]["python"]["sys"][0])
 	require.Equal(t, int64(4), restored.imports[1]["python"]["sys"][1])
 
-	// Verify author 2
+	// Verify author 2.
 	require.Equal(t, int64(20), restored.imports[2]["javascript"]["lodash"][0])
 }

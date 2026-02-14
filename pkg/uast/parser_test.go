@@ -1,4 +1,4 @@
-package uast //nolint:testpackage // Tests need access to internal parser methods.
+package uast
 
 import (
 	"fmt"
@@ -7,6 +7,12 @@ import (
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
+)
+
+const (
+	testGoFunctionType   = "go:function"
+	testFunctionDecl     = "FunctionDecl"
+	testUASTFunctionType = "Function"
 )
 
 // Test helper functions for generating test content.
@@ -33,6 +39,8 @@ func generateVeryLargeGoFile() []byte {
 }
 
 func TestNewParser_CreatesParser(t *testing.T) {
+	t.Parallel()
+
 	// Create a parser.
 	p, err := NewParser()
 	if err != nil {
@@ -45,6 +53,8 @@ func TestNewParser_CreatesParser(t *testing.T) {
 }
 
 func TestParser_Parse(t *testing.T) {
+	t.Parallel()
+
 	p, err := NewParser()
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
@@ -70,6 +80,8 @@ func TestParser_Parse(t *testing.T) {
 }
 
 func TestIntegration_GoFunctionUAST_SPEC(t *testing.T) {
+	t.Parallel()
+
 	src := []byte(`package main
 func add(a, b int) int { return a + b }`)
 
@@ -98,7 +110,7 @@ func add(a, b int) int { return a + b }`)
 	var fn *node.Node
 
 	for _, child := range root.Children {
-		if child.Type == "go:function" || child.Type == "Function" || child.Type == "FunctionDecl" {
+		if child.Type == testGoFunctionType || child.Type == testUASTFunctionType || child.Type == testFunctionDecl {
 			fn = child
 
 			break
@@ -110,12 +122,12 @@ func add(a, b int) int { return a + b }`)
 	}
 
 	// Check canonical type.
-	if fn.Type != "go:function" && fn.Type != "Function" && fn.Type != "FunctionDecl" {
+	if fn.Type != testGoFunctionType && fn.Type != testUASTFunctionType && fn.Type != testFunctionDecl {
 		t.Errorf("Function node has wrong type: got %q", fn.Type)
 	}
 
 	// Check roles.
-	wantRoles := map[string]bool{"Function": true, "Declaration": true}
+	wantRoles := map[string]bool{testUASTFunctionType: true, "Declaration": true}
 
 	for _, r := range fn.Roles {
 		delete(wantRoles, string(r))
@@ -137,6 +149,8 @@ func add(a, b int) int { return a + b }`)
 }
 
 func TestDSL_E2E_GoIntegration(t *testing.T) {
+	t.Parallel()
+
 	goCode := `package main
 func hello() {}
 func world() {}`
@@ -178,7 +192,7 @@ func world() {}`
 		got = append(got, n.Token)
 	}
 
-	want := []string{"Function", "Function"}
+	want := []string{testUASTFunctionType, testUASTFunctionType}
 
 	if len(got) != len(want) {
 		t.Errorf("got %v, want %v", got, want)
@@ -194,6 +208,8 @@ func world() {}`
 }
 
 func TestDSL_E2E_GoComplexProgram(t *testing.T) {
+	t.Parallel()
+
 	goCode := `package main
 
 import "fmt"
@@ -227,7 +243,7 @@ func main() {
 
 	// Find all function and method nodes.
 	functionNodes := uastRoot.Find(func(n *node.Node) bool {
-		return n.Type == "Function" || n.Type == "go:function" || n.Type == "FunctionDecl" || n.Type == "Method"
+		return n.Type == testUASTFunctionType || n.Type == testGoFunctionType || n.Type == testFunctionDecl || n.Type == "Method"
 	})
 
 	if len(functionNodes) < 2 {
@@ -258,8 +274,6 @@ func main() {
 }
 
 // DSL Query Efficiency Instrumentation Helpers (migrated).
-//
-//nolint:gochecknoglobals // Test instrumentation counters.
 var (
 	filterCallCount    int
 	mapCallCount       int
@@ -292,6 +306,8 @@ func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
 }
 
 func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -330,6 +346,8 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			resetDSLCounters()
 
 			results, findErr := instrumentedFindDSL(nd, tc.query)
@@ -355,7 +373,6 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	}
 }
 
-//nolint:gochecknoglobals // Test instrumentation counters.
 var (
 	iterationCount       int
 	maxStackDepthReached int
@@ -381,6 +398,8 @@ func instrumentedPostOrder(nd *node.Node, fn func(*node.Node)) {
 }
 
 func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -416,6 +435,8 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 		}
 
 		t.Run(tc.name+"/PreOrderEfficiency", func(t *testing.T) {
+			t.Parallel()
+
 			resetOperationCounters()
 
 			count := 0
@@ -446,6 +467,8 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 		})
 
 		t.Run(tc.name+"/PostOrderEfficiency", func(t *testing.T) {
+			t.Parallel()
+
 			resetOperationCounters()
 
 			count := 0
@@ -477,6 +500,8 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 }
 
 func TestParserWithCustomMap(t *testing.T) {
+	t.Parallel()
+
 	// Create a simple custom UAST mapping for testing.
 	customMaps := map[string]Map{
 		"custom_json": {
@@ -588,6 +613,8 @@ true <- (true) => uast(
 }
 
 func TestParserWithMultipleCustomMaps(t *testing.T) {
+	t.Parallel()
+
 	// Create multiple custom UAST mappings.
 	customMaps := map[string]Map{
 		"custom_json1": {
@@ -695,6 +722,8 @@ string <- (string) => uast(
 }
 
 func TestParserCustomMapPriority(t *testing.T) {
+	t.Parallel()
+
 	// Create a custom UAST mapping that overrides the built-in JSON parser.
 	customMaps := map[string]Map{
 		"custom_json": {
@@ -804,6 +833,8 @@ true <- (true) => uast(
 
 // TestParser_GetEmbeddedMappings tests the GetEmbeddedMappings method.
 func TestParser_GetEmbeddedMappings(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -840,6 +871,8 @@ func TestParser_GetEmbeddedMappings(t *testing.T) {
 
 // TestParser_GetEmbeddedMappingsList tests the GetEmbeddedMappingsList method.
 func TestParser_GetEmbeddedMappingsList(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -877,6 +910,8 @@ func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 
 // TestParser_GetMapping tests the GetMapping method.
 func TestParser_GetMapping(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -884,6 +919,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test retrieving existing language mapping.
 	t.Run("existing language", func(t *testing.T) {
+		t.Parallel()
+
 		mapping, mapErr := parser.GetMapping("go")
 		if mapErr != nil {
 			t.Fatalf("Failed to get 'go' mapping: %v", mapErr)
@@ -909,6 +946,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test error case for non-existent language.
 	t.Run("non-existent language", func(t *testing.T) {
+		t.Parallel()
+
 		_, mapErr := parser.GetMapping("nonexistent_language_xyz")
 		if mapErr == nil {
 			t.Error("Expected error for non-existent language")
@@ -921,6 +960,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test retrieving another language.
 	t.Run("python mapping", func(t *testing.T) {
+		t.Parallel()
+
 		mapping, mapErr := parser.GetMapping("python")
 		if mapErr != nil {
 			t.Fatalf("Failed to get 'python' mapping: %v", mapErr)

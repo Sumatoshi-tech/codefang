@@ -126,7 +126,18 @@ type RunCommand struct {
 
 // NewRunCommand creates the unified run command.
 func NewRunCommand() *cobra.Command {
+	burndown.RegisterPlotSections()
+	cohesion.RegisterPlotSections()
+	comments.RegisterPlotSections()
+	complexity.RegisterPlotSections()
+	couples.RegisterPlotSections()
+	filehistory.RegisterPlotSections()
+	halstead.RegisterPlotSections()
+	imports.RegisterPlotSections()
+	sentiment.RegisterPlotSections()
+	shotness.RegisterPlotSections()
 	typos.RegisterPlotSections()
+	renderer.RegisterPlotRenderer()
 
 	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry)
 }
@@ -449,12 +460,20 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 	}
 
 	if cmd.Flags().Changed("checkpoint") {
-		v, _ := cmd.Flags().GetBool("checkpoint") //nolint:errcheck // flag is registered; GetBool won't fail
+		v, err := cmd.Flags().GetBool("checkpoint")
+		if err != nil {
+			return opts // flag is registered; GetBool should not fail.
+		}
+
 		opts.Checkpoint = &v
 	}
 
 	if cmd.Flags().Changed("resume") {
-		v, _ := cmd.Flags().GetBool("resume") //nolint:errcheck // flag is registered; GetBool won't fail
+		v, err := cmd.Flags().GetBool("resume")
+		if err != nil {
+			return opts // flag is registered; GetBool should not fail.
+		}
+
 		opts.Resume = &v
 	}
 

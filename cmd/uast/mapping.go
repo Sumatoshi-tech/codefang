@@ -12,6 +12,7 @@ import (
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
 
@@ -255,15 +256,15 @@ func convertTreeSitterNodeToJSON(tsNode sitter.Node, source []byte) map[string]a
 	result := map[string]any{
 		"type": tsNode.Type(),
 		"start_pos": map[string]int{
-			"row":    int(tsNode.StartPoint().Row),    //nolint:gosec // tree-sitter coordinates fit in int
-			"column": int(tsNode.StartPoint().Column), //nolint:gosec // tree-sitter coordinates fit in int
+			"row":    safeconv.MustUintToInt(tsNode.StartPoint().Row),
+			"column": safeconv.MustUintToInt(tsNode.StartPoint().Column),
 		},
 		"end_pos": map[string]int{
-			"row":    int(tsNode.EndPoint().Row),    //nolint:gosec // tree-sitter coordinates fit in int
-			"column": int(tsNode.EndPoint().Column), //nolint:gosec // tree-sitter coordinates fit in int
+			"row":    safeconv.MustUintToInt(tsNode.EndPoint().Row),
+			"column": safeconv.MustUintToInt(tsNode.EndPoint().Column),
 		},
-		"start_byte": int(tsNode.StartByte()), //nolint:gosec // tree-sitter byte offsets fit in int
-		"end_byte":   int(tsNode.EndByte()),   //nolint:gosec // tree-sitter byte offsets fit in int
+		"start_byte": safeconv.MustUintToInt(tsNode.StartByte()),
+		"end_byte":   safeconv.MustUintToInt(tsNode.EndByte()),
 	}
 
 	if tsNode.IsNamed() {
