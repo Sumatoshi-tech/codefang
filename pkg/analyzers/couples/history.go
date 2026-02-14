@@ -22,9 +22,11 @@ const (
 	readBufferSize = 32 * 1024 // 32KB read buffer.
 )
 
+// ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
+var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
+
 // HistoryAnalyzer identifies co-change coupling between files and developers.
 type HistoryAnalyzer struct {
-	l                  interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
 	Identity           *plumbing.IdentityDetector
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	files              map[string]map[string]int
@@ -84,7 +86,7 @@ func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
 
 		rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
 		if !ok {
-			return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
+			return ErrInvalidReversedPeopleDict
 		}
 
 		c.reversedPeopleDict = rpd
@@ -116,7 +118,7 @@ func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
 		return
 	}
 
-	// Grow people slice
+	// Grow people slice.
 	newPeople := make([]map[string]int, minSize)
 	copy(newPeople, c.people)
 
@@ -126,7 +128,7 @@ func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
 
 	c.people = newPeople
 
-	// Grow peopleCommits slice
+	// Grow peopleCommits slice.
 	newPeopleCommits := make([]int, minSize)
 	copy(newPeopleCommits, c.peopleCommits)
 	c.peopleCommits = newPeopleCommits
@@ -168,39 +170,45 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	return nil
 }
 
-// processTreeChanges processes the tree diff changes and returns the list of files that form the coupling context.
-//
-//nolint:gocognit // complexity is inherent to multi-action change processing with merge mode.
+// processTreeChanges processes the tree diff changes and returns the list of files
+// that form the coupling context.
 func (c *HistoryAnalyzer) processTreeChanges(
 	treeDiff gitlib.Changes, mergeMode bool, author int,
 ) []string {
 	context := make([]string, 0, len(treeDiff))
 
 	for _, change := range treeDiff {
-		action := change.Action
+		context = c.processOneChange(change, mergeMode, author, context)
+	}
 
-		toName := change.To.Name
-		fromName := change.From.Name
+	return context
+}
 
-		switch action {
-		case gitlib.Insert:
-			if !mergeMode || c.files[toName] == nil {
-				context = append(context, toName)
-				c.people[author][toName]++
-			}
-		case gitlib.Delete:
-			if !mergeMode {
-				c.people[author][fromName]++
-			}
-		case gitlib.Modify:
-			if fromName != toName {
-				*c.renames = append(*c.renames, rename{ToName: toName, FromName: fromName})
-			}
+// processOneChange handles a single tree change and returns the updated context.
+func (c *HistoryAnalyzer) processOneChange(
+	change *gitlib.Change, mergeMode bool, author int, context []string,
+) []string {
+	toName := change.To.Name
+	fromName := change.From.Name
 
-			if !mergeMode || c.files[toName] == nil {
-				context = append(context, toName)
-				c.people[author][toName]++
-			}
+	switch change.Action {
+	case gitlib.Insert:
+		if !mergeMode || c.files[toName] == nil {
+			context = append(context, toName)
+			c.people[author][toName]++
+		}
+	case gitlib.Delete:
+		if !mergeMode {
+			c.people[author][fromName]++
+		}
+	case gitlib.Modify:
+		if fromName != toName {
+			*c.renames = append(*c.renames, rename{ToName: toName, FromName: fromName})
+		}
+
+		if !mergeMode || c.files[toName] == nil {
+			context = append(context, toName)
+			c.people[author][toName]++
 		}
 	}
 
@@ -411,7 +419,7 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			PeopleNumber:       c.PeopleNumber,
 			reversedPeopleDict: c.reversedPeopleDict,
 		}
-		// Initialize independent state for each fork
+		// Initialize independent state for each fork.
 		clone.files = make(map[string]map[string]int)
 		clone.renames = &[]rename{}
 		clone.merges = make(map[gitlib.Hash]bool)
@@ -604,12 +612,14 @@ func (c *HistoryAnalyzer) collectTreeFiles(files map[string]bool) {
 		return
 	}
 
-	//nolint:errcheck // best-effort enumeration; errors are intentionally ignored
-	tree.Files().ForEach(func(fobj *gitlib.File) error {
+	err := tree.Files().ForEach(func(fobj *gitlib.File) error {
 		files[fobj.Name] = true
 
 		return nil
 	})
+	if err != nil {
+		return
+	}
 }
 
 func (c *HistoryAnalyzer) propagateRenames(

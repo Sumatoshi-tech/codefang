@@ -1,4 +1,4 @@
-package burndown //nolint:testpackage // testing internal implementation.
+package burndown
 
 import (
 	"bytes"
@@ -86,14 +86,16 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := b.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure
+	// Should have computed metrics structure.
 	assert.Contains(t, result, "aggregate")
 	assert.Contains(t, result, "global_survival")
 	assert.Contains(t, result, "file_survival")
@@ -117,11 +119,12 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := b.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys)
+	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "aggregate:")
 	assert.Contains(t, output, "global_survival:")
 	assert.Contains(t, output, "file_survival:")
@@ -129,7 +132,7 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	assert.Contains(t, output, "interactions:")
 }
 
-// --- Fork/Merge Tests ---
+// --- Fork/Merge Tests ---.
 
 func TestHistoryAnalyzer_Fork_CreatesIndependentCopies(t *testing.T) {
 	t.Parallel()

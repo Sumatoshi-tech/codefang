@@ -26,12 +26,15 @@ const (
 func testHash(s string) gitlib.Hash {
 	var h gitlib.Hash
 	copy(h[:], s)
+
 	return h
 }
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -41,6 +44,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_WithTypos(t *testing.T) {
+	t.Parallel()
+
 	typos := []Typo{
 		{Wrong: testWrong1, Correct: testCorrect1, File: testFile1, Line: testLine1, Commit: testHash("abc123")},
 		{Wrong: testWrong2, Correct: testCorrect2, File: testFile2, Line: testLine2, Commit: testHash("def456")},
@@ -61,9 +66,11 @@ func TestParseReportData_WithTypos(t *testing.T) {
 	assert.Equal(t, testLine1, result.Typos[0].Line)
 }
 
-// --- TypoListMetric Tests ---
+// --- TypoListMetric Tests ---.
 
 func TestNewTypoListMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoListMetric()
 
 	assert.Equal(t, "typo_list", m.Name())
@@ -73,6 +80,8 @@ func TestNewTypoListMetric_Metadata(t *testing.T) {
 }
 
 func TestTypoListMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoListMetric()
 	input := &ReportData{}
 
@@ -82,6 +91,8 @@ func TestTypoListMetric_Empty(t *testing.T) {
 }
 
 func TestTypoListMetric_SingleTypo(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoListMetric()
 	hash := testHash("abc12345")
 	input := &ReportData{
@@ -101,6 +112,8 @@ func TestTypoListMetric_SingleTypo(t *testing.T) {
 }
 
 func TestTypoListMetric_MultipleTypos(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoListMetric()
 	input := &ReportData{
 		Typos: []Typo{
@@ -116,9 +129,11 @@ func TestTypoListMetric_MultipleTypos(t *testing.T) {
 	assert.Equal(t, testWrong2, result[1].Wrong)
 }
 
-// --- TypoPatternMetric Tests ---
+// --- TypoPatternMetric Tests ---.
 
 func TestNewTypoPatternMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoPatternMetric()
 
 	assert.Equal(t, "typo_patterns", m.Name())
@@ -128,6 +143,8 @@ func TestNewTypoPatternMetric_Metadata(t *testing.T) {
 }
 
 func TestTypoPatternMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoPatternMetric()
 	input := &ReportData{}
 
@@ -137,6 +154,8 @@ func TestTypoPatternMetric_Empty(t *testing.T) {
 }
 
 func TestTypoPatternMetric_SingleOccurrence_Excluded(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoPatternMetric()
 	input := &ReportData{
 		Typos: []Typo{
@@ -146,36 +165,40 @@ func TestTypoPatternMetric_SingleOccurrence_Excluded(t *testing.T) {
 
 	result := m.Compute(input)
 
-	// Single occurrence is excluded (only freq > 1)
+	// Single occurrence is excluded (only freq > 1).
 	assert.Empty(t, result)
 }
 
 func TestTypoPatternMetric_MultipleOccurrences(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoPatternMetric()
 	input := &ReportData{
 		Typos: []Typo{
 			{Wrong: testWrong1, Correct: testCorrect1, File: testFile1},
-			{Wrong: testWrong1, Correct: testCorrect1, File: testFile2}, // Same pattern
-			{Wrong: testWrong2, Correct: testCorrect2, File: testFile1}, // Different pattern, once
+			{Wrong: testWrong1, Correct: testCorrect1, File: testFile2}, // Same pattern.
+			{Wrong: testWrong2, Correct: testCorrect2, File: testFile1}, // Different pattern, once.
 		},
 	}
 
 	result := m.Compute(input)
 
-	require.Len(t, result, 1) // Only the repeated pattern
+	require.Len(t, result, 1) // Only the repeated pattern.
 	assert.Equal(t, testWrong1, result[0].Wrong)
 	assert.Equal(t, testCorrect1, result[0].Correct)
 	assert.Equal(t, 2, result[0].Frequency)
 }
 
 func TestTypoPatternMetric_SortedByFrequency(t *testing.T) {
+	t.Parallel()
+
 	m := NewTypoPatternMetric()
 	input := &ReportData{
 		Typos: []Typo{
-			// Pattern 1: 2 occurrences
+			// Pattern 1: 2 occurrences.
 			{Wrong: testWrong1, Correct: testCorrect1},
 			{Wrong: testWrong1, Correct: testCorrect1},
-			// Pattern 2: 3 occurrences
+			// Pattern 2: 3 occurrences.
 			{Wrong: testWrong2, Correct: testCorrect2},
 			{Wrong: testWrong2, Correct: testCorrect2},
 			{Wrong: testWrong2, Correct: testCorrect2},
@@ -185,16 +208,18 @@ func TestTypoPatternMetric_SortedByFrequency(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
-	// Sorted by frequency descending
+	// Sorted by frequency descending.
 	assert.Equal(t, testWrong2, result[0].Wrong)
 	assert.Equal(t, 3, result[0].Frequency)
 	assert.Equal(t, testWrong1, result[1].Wrong)
 	assert.Equal(t, 2, result[1].Frequency)
 }
 
-// --- FileTypoMetric Tests ---
+// --- FileTypoMetric Tests ---.
 
 func TestNewFileTypoMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileTypoMetric()
 
 	assert.Equal(t, "file_typos", m.Name())
@@ -204,6 +229,8 @@ func TestNewFileTypoMetric_Metadata(t *testing.T) {
 }
 
 func TestFileTypoMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileTypoMetric()
 	input := &ReportData{}
 
@@ -213,6 +240,8 @@ func TestFileTypoMetric_Empty(t *testing.T) {
 }
 
 func TestFileTypoMetric_SingleFile(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileTypoMetric()
 	input := &ReportData{
 		Typos: []Typo{
@@ -230,6 +259,8 @@ func TestFileTypoMetric_SingleFile(t *testing.T) {
 }
 
 func TestFileTypoMetric_MultipleFiles_SortedByCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileTypoMetric()
 	input := &ReportData{
 		Typos: []Typo{
@@ -243,16 +274,18 @@ func TestFileTypoMetric_MultipleFiles_SortedByCount(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
-	// Sorted by typo count descending
+	// Sorted by typo count descending.
 	assert.Equal(t, testFile2, result[0].File)
 	assert.Equal(t, 3, result[0].TypoCount)
 	assert.Equal(t, testFile1, result[1].File)
 	assert.Equal(t, 1, result[1].TypoCount)
 }
 
-// --- TyposAggregateMetric Tests ---
+// --- TyposAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "typos_aggregate", m.Name())
@@ -262,6 +295,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestTyposAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -274,28 +309,32 @@ func TestTyposAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestTyposAggregateMetric_WithData(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	hash1 := testHash("abc")
 	hash2 := testHash("def")
 	input := &ReportData{
 		Typos: []Typo{
 			{Wrong: testWrong1, Correct: testCorrect1, File: testFile1, Commit: hash1},
-			{Wrong: testWrong1, Correct: testCorrect1, File: testFile2, Commit: hash1}, // Same pattern, different file, same commit
-			{Wrong: testWrong2, Correct: testCorrect2, File: testFile1, Commit: hash2}, // Different pattern, same file, different commit
+			{Wrong: testWrong1, Correct: testCorrect1, File: testFile2, Commit: hash1}, // Same pattern, different file, same commit.
+			{Wrong: testWrong2, Correct: testCorrect2, File: testFile1, Commit: hash2}, // Different pattern, same file, different commit.
 		},
 	}
 
 	result := m.Compute(input)
 
 	assert.Equal(t, 3, result.TotalTypos)
-	assert.Equal(t, 2, result.UniquePatterns)  // 2 unique patterns
-	assert.Equal(t, 2, result.AffectedFiles)   // 2 unique files
-	assert.Equal(t, 2, result.AffectedCommits) // 2 unique commits
+	assert.Equal(t, 2, result.UniquePatterns)  // 2 unique patterns.
+	assert.Equal(t, 2, result.AffectedFiles)   // 2 unique files.
+	assert.Equal(t, 2, result.AffectedCommits) // 2 unique commits.
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -308,6 +347,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	typos := []Typo{
 		{Wrong: testWrong1, Correct: testCorrect1, File: testFile1, Line: testLine1, Commit: testHash("abc")},
 		{Wrong: testWrong1, Correct: testCorrect1, File: testFile2, Line: testLine2, Commit: testHash("def")},
@@ -322,33 +363,37 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// TypoList
+	// TypoList.
 	require.Len(t, result.TypoList, 3)
 
-	// Patterns - only testWrong1 has freq > 1
+	// Patterns - only testWrong1 has freq > 1.
 	require.Len(t, result.Patterns, 1)
 	assert.Equal(t, testWrong1, result.Patterns[0].Wrong)
 	assert.Equal(t, 2, result.Patterns[0].Frequency)
 
-	// FileTypos
+	// FileTypos.
 	require.Len(t, result.FileTypos, 2)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalTypos)
 	assert.Equal(t, 2, result.Aggregate.UniquePatterns)
 	assert.Equal(t, 2, result.Aggregate.AffectedFiles)
 	assert.Equal(t, 3, result.Aggregate.AffectedCommits)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	assert.Equal(t, "typos", m.AnalyzerName())
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		TypoList: []TypoData{
 			{Wrong: testWrong1, Correct: testCorrect1},
@@ -362,6 +407,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		TypoList: []TypoData{
 			{Wrong: testWrong1, Correct: testCorrect1},

@@ -18,15 +18,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
 // HistoryAnalyzer measures co-change frequency of code entities across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	FileDiff  *plumbing.FileDiffAnalyzer
 	UAST      *plumbing.UASTChangesAnalyzer
 	nodes     map[string]*nodeShotness
@@ -215,8 +213,6 @@ func (s *HistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[strin
 }
 
 // handleModification processes a file modification, including renames and diff-based node tracking.
-//
-//nolint:gocognit,cyclop,gocyclo // complexity is inherent to coordinating rename, diff, and node tracking logic.
 func (s *HistoryAnalyzer) handleModification(
 	change uast.Change,
 	diffs map[string]pkgplumbing.FileDiffData,
@@ -233,20 +229,28 @@ func (s *HistoryAnalyzer) handleModification(
 		return
 	}
 
-	reversedNodesBefore := reverseNodeMap(nodesBefore)
-
 	nodesAfter, err := s.extractNodes(change.After)
 	if err != nil {
 		return
 	}
-
-	reversedNodesAfter := reverseNodeMap(nodesAfter)
 
 	diff, ok := diffs[toName]
 	if !ok {
 		return
 	}
 
+	s.applyDiffEdits(toName, nodesBefore, nodesAfter, diff, allNodes)
+}
+
+// applyDiffEdits walks the diff edits and records which nodes were touched.
+func (s *HistoryAnalyzer) applyDiffEdits(
+	toName string,
+	nodesBefore, nodesAfter map[string]*node.Node,
+	diff pkgplumbing.FileDiffData,
+	allNodes map[string]bool,
+) {
+	reversedNodesBefore := reverseNodeMap(nodesBefore)
+	reversedNodesAfter := reverseNodeMap(nodesAfter)
 	line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
 	line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
 
@@ -254,34 +258,36 @@ func (s *HistoryAnalyzer) handleModification(
 
 	for _, edit := range diff.Diffs {
 		size := utf8.RuneCountInString(edit.Text)
+
 		switch edit.Type {
 		case diffmatchpatch.DiffDelete:
-			for l := lineNumBefore; l < lineNumBefore+size; l++ {
-				if l < len(line2nodeBefore) {
-					for _, n := range line2nodeBefore[l] {
-						if id, idOK := reversedNodesBefore[n.ID]; idOK {
-							s.addNode(id, n, toName, allNodes)
-						}
-					}
-				}
-			}
-
+			s.recordTouchedNodes(line2nodeBefore, reversedNodesBefore, lineNumBefore, size, toName, allNodes)
 			lineNumBefore += size
 		case diffmatchpatch.DiffInsert:
-			for l := lineNumAfter; l < lineNumAfter+size; l++ {
-				if l < len(line2nodeAfter) {
-					for _, n := range line2nodeAfter[l] {
-						if id, idOK := reversedNodesAfter[n.ID]; idOK {
-							s.addNode(id, n, toName, allNodes)
-						}
-					}
-				}
-			}
-
+			s.recordTouchedNodes(line2nodeAfter, reversedNodesAfter, lineNumAfter, size, toName, allNodes)
 			lineNumAfter += size
 		case diffmatchpatch.DiffEqual:
 			lineNumBefore += size
 			lineNumAfter += size
+		}
+	}
+}
+
+// recordTouchedNodes marks nodes touched by a diff hunk spanning [startLine, startLine+size).
+func (s *HistoryAnalyzer) recordTouchedNodes(
+	line2node [][]*node.Node,
+	reversed map[string]string,
+	startLine, size int,
+	fileName string,
+	allNodes map[string]bool,
+) {
+	for l := startLine; l < startLine+size; l++ {
+		if l < len(line2node) {
+			for _, n := range line2node[l] {
+				if id, ok := reversed[n.ID]; ok {
+					s.addNode(id, n, fileName, allNodes)
+				}
+			}
 		}
 	}
 }
@@ -339,7 +345,7 @@ func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
 			continue
 		}
 
-		startLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		startLine := safeconv.MustUintToInt(pos.StartLine)
 
 		endLine := resolveEndLine(uastNode, pos)
 
@@ -364,19 +370,19 @@ func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
 // Otherwise, the function walks the node's children to find the maximum line.
 func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
 	if pos.EndLine > pos.StartLine {
-		return int(pos.EndLine) //nolint:gosec // security concern is acceptable here.
+		return safeconv.MustUintToInt(pos.EndLine)
 	}
 
-	endLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+	endLine := safeconv.MustUintToInt(pos.StartLine)
 
 	uastNode.VisitPreOrder(func(child *node.Node) {
 		if child.Pos == nil {
 			return
 		}
 
-		candidate := int(child.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		candidate := safeconv.MustUintToInt(child.Pos.StartLine)
 		if child.Pos.EndLine > child.Pos.StartLine {
-			candidate = int(child.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
+			candidate = safeconv.MustUintToInt(child.Pos.EndLine)
 		}
 
 		if candidate > endLine {
@@ -462,7 +468,7 @@ func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			DSLStruct: s.DSLStruct,
 			DSLName:   s.DSLName,
 		}
-		// Initialize independent state for each fork
+		// Initialize independent state for each fork.
 		clone.nodes = make(map[string]*nodeShotness)
 		clone.files = make(map[string]map[string]*nodeShotness)
 		clone.merges = make(map[gitlib.Hash]bool)
@@ -485,7 +491,7 @@ func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 		s.mergeMerges(other.merges)
 	}
 
-	// Rebuild files map from merged nodes
+	// Rebuild files map from merged nodes.
 	s.rebuildFilesMap()
 }
 
@@ -501,10 +507,10 @@ func (s *HistoryAnalyzer) mergeNodes(other map[string]*nodeShotness) {
 
 			maps.Copy(s.nodes[key].Couples, otherNode.Couples)
 		} else {
-			// Sum counts
+			// Sum counts.
 			s.nodes[key].Count += otherNode.Count
 
-			// Sum couples
+			// Sum couples.
 			for ck, cv := range otherNode.Couples {
 				s.nodes[key].Couples[ck] += cv
 			}

@@ -39,7 +39,7 @@ const ScoreLabelInfo = "Info"
 
 // ReportSection provides a standardized structure for analyzer reports.
 // Analyzers implement this to enable unified rendering.
-type ReportSection interface { //nolint:interfacebloat // interface methods are all needed.
+type ReportSection interface {
 	// SectionTitle returns the display title (e.g., "COMPLEXITY").
 	SectionTitle() string
 

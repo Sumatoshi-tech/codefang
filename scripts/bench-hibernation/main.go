@@ -36,6 +36,7 @@ func main() {
 	uastPipelineWorkers := flag.Int("uast-pipeline-workers", 0, "UAST pipeline workers (0 = default, -1 = disable)")
 	leafWorkers := flag.Int("leaf-workers", 0, "Leaf analyzer workers (0 = default, -1 = disable)")
 	cpuProfile := flag.Bool("cpu-profile", false, "Write CPU profile to profile-dir/cpu.prof")
+
 	flag.Parse()
 
 	if *repoPath == "" {
@@ -52,15 +53,19 @@ func main() {
 
 	if *cpuProfile {
 		cpuPath := filepath.Join(*profileDir, "cpu.prof")
+
 		cpuFile, cpuErr := os.Create(cpuPath)
 		if cpuErr != nil {
 			log.Fatalf("create cpu profile: %v", cpuErr)
 		}
 		defer cpuFile.Close()
+
 		if startErr := pprof.StartCPUProfile(cpuFile); startErr != nil {
 			log.Fatalf("start cpu profile: %v", startErr)
 		}
+
 		defer pprof.StopCPUProfile()
+
 		log.Printf("CPU profiling enabled -> %s", cpuPath)
 	}
 
@@ -76,6 +81,7 @@ func main() {
 	allAnalyzers, coreCount := buildPipeline(repo, *analyzerName)
 
 	config := framework.DefaultCoordinatorConfig()
+
 	if *uastPipelineWorkers != 0 {
 		if *uastPipelineWorkers < 0 {
 			config.UASTPipelineWorkers = 0
@@ -105,6 +111,7 @@ func main() {
 
 	// Collect hibernatables.
 	var hibernatables []streaming.Hibernatable
+
 	for _, a := range allAnalyzers {
 		if h, ok := a.(streaming.Hibernatable); ok {
 			hibernatables = append(hibernatables, h)
@@ -125,6 +132,7 @@ func main() {
 	takeSnapshot := func(label string) {
 		runtime.GC()
 		runtime.GC()
+
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 		snapshots = append(snapshots, heapSnapshot{
@@ -141,13 +149,17 @@ func main() {
 	writeHeapProfile := func(name string) {
 		runtime.GC()
 		runtime.GC()
+
 		path := filepath.Join(*profileDir, name)
+
 		f, ferr := os.Create(path)
 		if ferr != nil {
 			log.Printf("warning: create heap profile %s: %v", path, ferr)
+
 			return
 		}
 		defer f.Close()
+
 		if perr := pprof.WriteHeapProfile(f); perr != nil {
 			log.Printf("warning: write heap profile %s: %v", path, perr)
 		}
@@ -206,6 +218,7 @@ func main() {
 	fmt.Println("=== Heap Memory Timeline ===")
 	fmt.Printf("%-45s %10s %10s %10s\n", "Phase", "InUse(MB)", "Sys(MB)", "Idle(MB)")
 	fmt.Println("---------------------------------------------+----------+----------+----------")
+
 	for _, s := range snapshots {
 		fmt.Printf("%-45s %10.1f %10.1f %10.1f\n",
 			s.label, float64(s.heapInUse)/1e6, float64(s.heapSys)/1e6, float64(s.heapIdle)/1e6)
@@ -214,8 +227,10 @@ func main() {
 	// Compute hibernation deltas.
 	fmt.Println()
 	fmt.Println("=== Hibernation Memory Deltas ===")
+
 	for i := 0; i+1 < len(snapshots); i++ {
 		curr := snapshots[i]
+
 		next := snapshots[i+1]
 		if contains(curr.label, "before_hibernate") && contains(next.label, "after_hibernate") {
 			delta := float64(curr.heapInUse) - float64(next.heapInUse)
@@ -281,6 +296,7 @@ func findSubstring(s, sub string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -291,10 +307,12 @@ type chunkBounds struct {
 
 func planChunks(total, chunkSize int) []chunkBounds {
 	var chunks []chunkBounds
+
 	for start := 0; start < total; start += chunkSize {
 		end := min(start+chunkSize, total)
 		chunks = append(chunks, chunkBounds{start: start, end: end})
 	}
+
 	return chunks
 }
 
@@ -306,19 +324,24 @@ func loadCommits(repo *gitlib.Repository, limit int) []*gitlib.Commit {
 	defer iter.Close()
 
 	var commits []*gitlib.Commit
+
 	for {
 		c, nerr := iter.Next()
 		if nerr != nil {
 			break
 		}
+
 		if limit > 0 && len(commits) >= limit {
 			c.Free()
+
 			break
 		}
+
 		commits = append(commits, c)
 	}
 
 	// Reverse to oldest-first.
 	slices.Reverse(commits)
+
 	return commits
 }

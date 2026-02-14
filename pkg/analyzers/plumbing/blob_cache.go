@@ -16,13 +16,10 @@ import (
 
 // BlobCacheAnalyzer loads and caches file blobs for each commit.
 type BlobCacheAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Errorf(format string, args ...any)
-	}
 	TreeDiff                *TreeDiffAnalyzer
 	Repository              *gitlib.Repository
-	cache                   map[gitlib.Hash]*gitlib.CachedBlob
-	Cache                   map[gitlib.Hash]*gitlib.CachedBlob //nolint:revive // intentional naming matches internal cache field.
+	previousCache           map[gitlib.Hash]*gitlib.CachedBlob
+	Cache                   map[gitlib.Hash]*gitlib.CachedBlob
 	FailOnMissingSubmodules bool
 	Goroutines              int
 	repos                   []*gitlib.Repository
@@ -95,7 +92,7 @@ func (b *BlobCacheAnalyzer) Configure(facts map[string]any) error {
 // Initialize prepares the analyzer for processing commits.
 func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
 	b.Repository = repo
-	b.cache = map[gitlib.Hash]*gitlib.CachedBlob{}
+	b.previousCache = map[gitlib.Hash]*gitlib.CachedBlob{}
 
 	if b.Goroutines <= 0 {
 		b.Goroutines = runtime.NumCPU()
@@ -125,16 +122,16 @@ func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
 
 // Consume processes a single commit with the provided dependency results.
 func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
-	// Check if the runtime pipeline has already populated the cache
+	// Check if the runtime pipeline has already populated the cache.
 	if ctx != nil && ctx.BlobCache != nil {
-		// Use the pre-populated cache from the runtime pipeline
-		b.cache = ctx.BlobCache
+		// Use the pre-populated cache from the runtime pipeline.
+		b.previousCache = ctx.BlobCache
 		b.Cache = ctx.BlobCache
 
 		return nil
 	}
 
-	// Fall back to traditional blob loading
+	// Fall back to traditional blob loading.
 	changes := b.TreeDiff.Changes
 
 	return b.consumeParallel(changes)
@@ -196,7 +193,7 @@ func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 		wg.Wait()
 	}
 
-	b.cache = newCache
+	b.previousCache = newCache
 	b.Cache = cache
 
 	return nil
@@ -227,9 +224,9 @@ func (b *BlobCacheAnalyzer) handleDelete(
 	hash := change.From.Hash
 
 	// Check if we have it cached.
-	// NOTE: b.cache read is safe here because it's read-only during Consume phase
-	// and updated only at the end.
-	existing, exists := b.cache[hash]
+	// NOTE: b.previousCache read is safe here because it's read-only during Consume
+	// phase and updated only at the end.
+	existing, exists := b.previousCache[hash]
 
 	if exists {
 		cache[hash] = existing
@@ -264,7 +261,7 @@ func (b *BlobCacheAnalyzer) handleModify(
 	// Handle "from" side (old version).
 	fromHash := change.From.Hash
 
-	existing, exists := b.cache[fromHash]
+	existing, exists := b.previousCache[fromHash]
 
 	if exists {
 		cache[fromHash] = existing
@@ -291,7 +288,7 @@ func (b *BlobCacheAnalyzer) Finalize() (analyze.Report, error) {
 		}
 	}
 
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -301,8 +298,8 @@ func (b *BlobCacheAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	for i := range n {
 		clone := *b
 		// Deep copy cache.
-		clone.cache = map[gitlib.Hash]*gitlib.CachedBlob{}
-		maps.Copy(clone.cache, b.cache)
+		clone.previousCache = map[gitlib.Hash]*gitlib.CachedBlob{}
+		maps.Copy(clone.previousCache, b.previousCache)
 
 		res[i] = &clone
 	}

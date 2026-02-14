@@ -1,4 +1,4 @@
-package cohesion //nolint:testpackage // testing internal implementation.
+package cohesion
 
 import (
 	"testing"

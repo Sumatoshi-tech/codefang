@@ -9,6 +9,8 @@ import (
 )
 
 func TestCoordinator_ProcessEmptyCommits(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -42,6 +44,8 @@ func TestCoordinator_ProcessEmptyCommits(t *testing.T) {
 }
 
 func TestCoordinator_ProcessSingleCommit(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -92,6 +96,8 @@ func TestCoordinator_ProcessSingleCommit(t *testing.T) {
 }
 
 func TestCoordinator_ProcessTwoCommitsWithModification(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -146,6 +152,8 @@ func TestCoordinator_ProcessTwoCommitsWithModification(t *testing.T) {
 }
 
 func TestCoordinator_NewCoordinatorNormalizesConfig(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -185,6 +193,8 @@ func TestCoordinator_NewCoordinatorNormalizesConfig(t *testing.T) {
 }
 
 func TestCoordinator_ProcessThreeCommits(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -239,6 +249,8 @@ func TestCoordinator_ProcessThreeCommits(t *testing.T) {
 }
 
 func TestCoordinator_ProcessContextCancel(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -283,6 +295,8 @@ func TestCoordinator_ProcessContextCancel(t *testing.T) {
 }
 
 func TestCoordinator_ProcessSingle(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 

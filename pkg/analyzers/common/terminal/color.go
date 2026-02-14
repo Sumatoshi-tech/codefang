@@ -39,7 +39,9 @@ func (c Config) Colorize(text string, color Color) string {
 
 	var code string
 
-	switch color { //nolint:exhaustive // not all cases need handling.
+	switch color {
+	case ColorNone:
+		return text
 	case ColorGreen:
 		code = ansiGreen
 	case ColorYellow:
@@ -50,8 +52,6 @@ func (c Config) Colorize(text string, color Color) string {
 		code = ansiBlue
 	case ColorGray:
 		code = ansiGray
-	default:
-		return text
 	}
 
 	return fmt.Sprintf("%s%s%s", code, text, ansiReset)

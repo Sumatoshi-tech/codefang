@@ -48,12 +48,12 @@ func (c *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		ReversedPeopleDict: c.reversedPeopleDict,
 	}
 
-	// Convert renames pointer to slice
+	// Convert renames pointer to slice.
 	if c.renames != nil {
 		state.Renames = *c.renames
 	}
 
-	// Convert merge hashes to strings
+	// Convert merge hashes to strings.
 	for hash := range c.merges {
 		state.Merges = append(state.Merges, hash.String())
 	}
@@ -69,10 +69,10 @@ func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 	c.PeopleNumber = state.PeopleNumber
 	c.reversedPeopleDict = state.ReversedPeopleDict
 
-	// Convert renames slice to pointer
+	// Convert renames slice to pointer.
 	c.renames = &state.Renames
 
-	// Convert merge hash strings back to hashes
+	// Convert merge hash strings back to hashes.
 	c.merges = make(map[gitlib.Hash]bool, len(state.Merges))
 	for _, hashStr := range state.Merges {
 		c.merges[gitlib.NewHash(hashStr)] = true
@@ -94,28 +94,28 @@ const (
 func (c *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(baseOverheadBytes)
 
-	// Count file pairs
+	// Count file pairs.
 	for _, couplings := range c.files {
 		size += int64(len(couplings) * bytesPerFilePair)
 	}
 
-	// Count person-file entries
+	// Count person-file entries.
 	for _, files := range c.people {
 		size += int64(len(files) * bytesPerPersonFile)
 	}
 
-	// Count merge entries
+	// Count merge entries.
 	size += int64(len(c.merges) * bytesPerMerge)
 
-	// Count rename entries
+	// Count rename entries.
 	if c.renames != nil {
 		size += int64(len(*c.renames) * bytesPerRename)
 	}
 
-	// Count people entries
+	// Count people entries.
 	size += int64(len(c.reversedPeopleDict) * bytesPerPerson)
 
-	// Count peopleCommits entries
+	// Count peopleCommits entries.
 	size += int64(len(c.peopleCommits) * bytesPerPeopleCommit)
 
 	return size

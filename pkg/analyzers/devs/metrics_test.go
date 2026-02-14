@@ -26,7 +26,7 @@ const (
 	testTickSize     = 24 * time.Hour
 )
 
-// --- ParseTickData Tests ---
+// --- ParseTickData Tests ---.
 
 func TestParseTickData_Valid(t *testing.T) {
 	t.Parallel()
@@ -99,7 +99,7 @@ func TestParseTickData_MissingTickSize_DefaultsTo24Hours(t *testing.T) {
 	assert.Equal(t, defaultTickHours*time.Hour, data.TickSize)
 }
 
-// --- DevelopersMetric Tests ---
+// --- DevelopersMetric Tests ---.
 
 func TestDevelopersMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -164,8 +164,8 @@ func TestDevelopersMetric_MultipleDevelopers_SortedByCommits(t *testing.T) {
 	input := &TickData{
 		Ticks: map[int]map[int]*DevTick{
 			0: {
-				0: {Commits: 5},  // Alice - fewer commits
-				1: {Commits: 15}, // Bob - more commits
+				0: {Commits: 5},  // Alice - fewer commits.
+				1: {Commits: 15}, // Bob - more commits.
 			},
 		},
 		Names: []string{testDevName1, testDevName2},
@@ -174,7 +174,7 @@ func TestDevelopersMetric_MultipleDevelopers_SortedByCommits(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 2)
-	// Sorted by commits descending
+	// Sorted by commits descending.
 	assert.Equal(t, testDevName2, result[0].Name)
 	assert.Equal(t, 15, result[0].Commits)
 	assert.Equal(t, testDevName1, result[1].Name)
@@ -265,7 +265,7 @@ func TestDevelopersMetric_ChangedField(t *testing.T) {
 	assert.Equal(t, 25, result[0].Changed)
 }
 
-// --- LanguagesMetric Tests ---
+// --- LanguagesMetric Tests ---.
 
 func TestLanguagesMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -324,7 +324,7 @@ func TestLanguagesMetric_MultipleLanguages_SortedByTotalLines(t *testing.T) {
 	result := metric.Compute(developers)
 
 	require.Len(t, result, 2)
-	// Sorted by TotalLines descending
+	// Sorted by TotalLines descending.
 	assert.Equal(t, testLangPython, result[0].Name)
 	assert.Equal(t, 150, result[0].TotalLines)
 	assert.Equal(t, testLangGo, result[1].Name)
@@ -366,7 +366,7 @@ func TestLanguagesMetric_MultipleContributors(t *testing.T) {
 	assert.Equal(t, 40, result[0].Contributors[1])
 }
 
-// --- BusFactorMetric Tests ---
+// --- BusFactorMetric Tests ---.
 
 func TestBusFactorMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -476,9 +476,9 @@ func TestBusFactorMetric_SortedByRiskPriority(t *testing.T) {
 	metric := NewBusFactorMetric()
 	input := BusFactorInput{
 		Languages: []LanguageData{
-			{Name: testLangGo, TotalLines: 100, Contributors: map[int]int{0: 50, 1: 50}},    // LOW
-			{Name: testLangPython, TotalLines: 100, Contributors: map[int]int{0: 95, 1: 5}}, // CRITICAL
-			{Name: "JavaScript", TotalLines: 100, Contributors: map[int]int{0: 70, 1: 30}},  // MEDIUM
+			{Name: testLangGo, TotalLines: 100, Contributors: map[int]int{0: 50, 1: 50}},    // LOW.
+			{Name: testLangPython, TotalLines: 100, Contributors: map[int]int{0: 95, 1: 5}}, // CRITICAL.
+			{Name: "JavaScript", TotalLines: 100, Contributors: map[int]int{0: 70, 1: 30}},  // MEDIUM.
 		},
 		Names: []string{testDevName1, testDevName2},
 	}
@@ -491,7 +491,7 @@ func TestBusFactorMetric_SortedByRiskPriority(t *testing.T) {
 	assert.Equal(t, RiskLow, result[2].RiskLevel)
 }
 
-// --- ActivityMetric Tests ---
+// --- ActivityMetric Tests ---.
 
 func TestActivityMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -549,13 +549,13 @@ func TestActivityMetric_MultipleTicks(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 3)
-	// Should be sorted by tick
+	// Should be sorted by tick.
 	assert.Equal(t, 0, result[0].Tick)
 	assert.Equal(t, 5, result[1].Tick)
 	assert.Equal(t, 10, result[2].Tick)
 }
 
-// --- ChurnMetric Tests ---
+// --- ChurnMetric Tests ---.
 
 func TestChurnMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -601,7 +601,7 @@ func TestChurnMetric_SingleTick(t *testing.T) {
 	assert.Equal(t, 100, result[0].Net)
 }
 
-// --- AggregateMetric Tests ---
+// --- AggregateMetric Tests ---.
 
 func TestAggregateMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -642,8 +642,8 @@ func TestAggregateMetric_Compute(t *testing.T) {
 		Ticks: map[int]map[int]*DevTick{
 			0:  {0: {Commits: 5}},
 			5:  {0: {Commits: 5}},
-			8:  {1: {Commits: 5}}, // Recent (8 >= 10*0.7=7)
-			10: {0: {Commits: 3}}, // Recent
+			8:  {1: {Commits: 5}}, // Recent (8 >= 10*0.7=7).
+			10: {0: {Commits: 3}}, // Recent.
 		},
 	}
 
@@ -654,11 +654,11 @@ func TestAggregateMetric_Compute(t *testing.T) {
 	assert.Equal(t, 50, result.TotalLinesRemoved)
 	assert.Equal(t, 2, result.TotalDevelopers)
 	assert.Equal(t, 10, result.AnalysisPeriodTicks)
-	// Both devs active in recent period (tick >= 7)
+	// Both devs active in recent period (tick >= 7).
 	assert.Equal(t, 2, result.ActiveDevelopers)
 }
 
-// --- riskPriority Tests ---
+// --- riskPriority Tests ---.
 
 func TestRiskPriority(t *testing.T) {
 	t.Parallel()
@@ -685,7 +685,7 @@ func TestRiskPriority(t *testing.T) {
 	}
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_InvalidReport(t *testing.T) {
 	t.Parallel()
@@ -720,7 +720,7 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	// Verify all metrics computed
+	// Verify all metrics computed.
 	assert.NotEmpty(t, result.Developers)
 	assert.NotEmpty(t, result.Languages)
 	assert.NotEmpty(t, result.BusFactor)
@@ -729,7 +729,7 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 	assert.Equal(t, 5, result.Aggregate.TotalCommits)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 const expectedAnalyzerName = "devs"
 
@@ -752,7 +752,7 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 
 	result := metrics.ToJSON()
 
-	// Should return the metrics struct itself
+	// Should return the metrics struct itself.
 	got, ok := result.(*ComputedMetrics)
 	require.True(t, ok, "ToJSON should return *ComputedMetrics")
 	assert.Equal(t, testCommits, got.Aggregate.TotalCommits)
@@ -767,7 +767,7 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 
 	result := metrics.ToYAML()
 
-	// Should return the metrics struct itself
+	// Should return the metrics struct itself.
 	got, ok := result.(*ComputedMetrics)
 	require.True(t, ok, "ToYAML should return *ComputedMetrics")
 	assert.Equal(t, testCommits, got.Aggregate.TotalCommits)
@@ -778,6 +778,6 @@ func TestComputedMetrics_ImplementsMetricsOutput(t *testing.T) {
 
 	metrics := &ComputedMetrics{}
 
-	// Compile-time interface compliance check
+	// Compile-time interface compliance check.
 	var _ renderer.MetricsOutput = metrics
 }

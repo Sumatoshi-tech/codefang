@@ -28,7 +28,7 @@ type CachedBlob struct {
 	lineCountOnce sync.Once
 
 	// KeepAlive holds a reference to the underlying storage if data is mmapped or unsafe.
-	keepAlive interface{}
+	keepAlive any
 }
 
 // NewCachedBlobForTest creates a CachedBlob with the given data for testing purposes.
@@ -89,7 +89,7 @@ func (b *CachedBlob) Clone() *CachedBlob {
 		hash:      b.hash,
 		size:      b.size,
 		Data:      dataCopy,
-		lineCount: b.lineCount, // Preserve cached line count
+		lineCount: b.lineCount, // Preserve cached line count.
 		// lineCountOnce is zero value (fresh), but if lineCount is set, we might want to ensure it's not recomputed.
 		// But sync.Once cannot be easily copied in "done" state.
 		// If lineCount is non-zero (or -1), we can set a completed Once?

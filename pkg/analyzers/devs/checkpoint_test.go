@@ -10,6 +10,8 @@ import (
 )
 
 func TestSaveCheckpoint_EmptyState(t *testing.T) {
+	t.Parallel()
+
 	// Create a temporary directory for the checkpoint.
 	dir := t.TempDir()
 
@@ -24,6 +26,7 @@ func TestSaveCheckpoint_EmptyState(t *testing.T) {
 
 	// Verify the checkpoint file was created.
 	checkpointPath := filepath.Join(dir, checkpointBasename+".json")
+
 	_, statErr := os.Stat(checkpointPath)
 	if os.IsNotExist(statErr) {
 		t.Fatalf("checkpoint file not created at %s", checkpointPath)
@@ -31,10 +34,13 @@ func TestSaveCheckpoint_EmptyState(t *testing.T) {
 }
 
 func TestLoadCheckpoint_EmptyState(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Save an empty checkpoint first.
 	original := &HistoryAnalyzer{}
+
 	err := original.SaveCheckpoint(dir)
 	if err != nil {
 		t.Fatalf("SaveCheckpoint failed: %v", err)
@@ -42,6 +48,7 @@ func TestLoadCheckpoint_EmptyState(t *testing.T) {
 
 	// Load into a new analyzer.
 	loaded := &HistoryAnalyzer{}
+
 	err = loaded.LoadCheckpoint(dir)
 	if err != nil {
 		t.Fatalf("LoadCheckpoint failed: %v", err)
@@ -49,6 +56,8 @@ func TestLoadCheckpoint_EmptyState(t *testing.T) {
 }
 
 func TestCheckpointSize_EmptyState(t *testing.T) {
+	t.Parallel()
+
 	analyzer := &HistoryAnalyzer{}
 
 	size := analyzer.CheckpointSize()
@@ -60,23 +69,27 @@ func TestCheckpointSize_EmptyState(t *testing.T) {
 }
 
 func TestSaveCheckpoint_InvalidDirectory(t *testing.T) {
+	t.Parallel()
+
 	// Use a path that doesn't exist and can't be created.
 	invalidDir := "/nonexistent/path/that/does/not/exist"
 
 	analyzer := &HistoryAnalyzer{}
-	err := analyzer.SaveCheckpoint(invalidDir)
 
+	err := analyzer.SaveCheckpoint(invalidDir)
 	if err == nil {
 		t.Fatal("SaveCheckpoint should fail with invalid directory")
 	}
 }
 
 func TestCheckpointRoundTrip_WithTicks(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Create an analyzer with populated ticks data.
 	original := &HistoryAnalyzer{
-		ticks: map[int]map[int]*DevTick{
+		tickData: map[int]map[int]*DevTick{
 			0: {
 				1: {
 					LineStats: plumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
@@ -97,24 +110,25 @@ func TestCheckpointRoundTrip_WithTicks(t *testing.T) {
 
 	// Load into a new analyzer.
 	loaded := &HistoryAnalyzer{}
+
 	err = loaded.LoadCheckpoint(dir)
 	if err != nil {
 		t.Fatalf("LoadCheckpoint failed: %v", err)
 	}
 
 	// Verify ticks were restored.
-	if len(loaded.ticks) != 1 {
-		t.Fatalf("loaded.ticks has %d entries, want 1", len(loaded.ticks))
+	if len(loaded.tickData) != 1 {
+		t.Fatalf("loaded.tickData has %d entries, want 1", len(loaded.tickData))
 	}
 
-	tick0 := loaded.ticks[0]
+	tick0 := loaded.tickData[0]
 	if tick0 == nil {
-		t.Fatal("loaded.ticks[0] is nil")
+		t.Fatal("loaded.tickData[0] is nil")
 	}
 
 	dev1 := tick0[1]
 	if dev1 == nil {
-		t.Fatal("loaded.ticks[0][1] is nil")
+		t.Fatal("loaded.tickData[0][1] is nil")
 	}
 
 	if dev1.Commits != 5 {
@@ -127,6 +141,8 @@ func TestCheckpointRoundTrip_WithTicks(t *testing.T) {
 }
 
 func TestCheckpointRoundTrip_WithMerges(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Create an analyzer with merges data.
@@ -134,7 +150,7 @@ func TestCheckpointRoundTrip_WithMerges(t *testing.T) {
 	hash2 := gitlib.NewHash("fedcba9876543210fedcba9876543210fedcba98")
 
 	original := &HistoryAnalyzer{
-		ticks: map[int]map[int]*DevTick{},
+		tickData: map[int]map[int]*DevTick{},
 		merges: map[gitlib.Hash]bool{
 			hash1: true,
 			hash2: true,
@@ -149,6 +165,7 @@ func TestCheckpointRoundTrip_WithMerges(t *testing.T) {
 
 	// Load into a new analyzer.
 	loaded := &HistoryAnalyzer{}
+
 	err = loaded.LoadCheckpoint(dir)
 	if err != nil {
 		t.Fatalf("LoadCheckpoint failed: %v", err)
@@ -169,40 +186,47 @@ func TestCheckpointRoundTrip_WithMerges(t *testing.T) {
 }
 
 func TestLoadCheckpoint_FileNotFound(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	analyzer := &HistoryAnalyzer{}
-	err := analyzer.LoadCheckpoint(dir)
 
+	err := analyzer.LoadCheckpoint(dir)
 	if err == nil {
 		t.Fatal("LoadCheckpoint should fail when file doesn't exist")
 	}
 }
 
 func TestLoadCheckpoint_CorruptedFile(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Write corrupted JSON to checkpoint file.
 	checkpointPath := filepath.Join(dir, checkpointBasename+".json")
+
 	err := os.WriteFile(checkpointPath, []byte("not valid json{{{"), 0o600)
 	if err != nil {
 		t.Fatalf("failed to write corrupted file: %v", err)
 	}
 
 	analyzer := &HistoryAnalyzer{}
-	err = analyzer.LoadCheckpoint(dir)
 
+	err = analyzer.LoadCheckpoint(dir)
 	if err == nil {
 		t.Fatal("LoadCheckpoint should fail on corrupted file")
 	}
 }
 
 func TestCheckpointSize_Accuracy(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Create analyzer with realistic data.
 	analyzer := &HistoryAnalyzer{
-		ticks: map[int]map[int]*DevTick{
+		tickData: map[int]map[int]*DevTick{
 			0: {
 				1: {
 					LineStats: plumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
@@ -248,10 +272,12 @@ func TestCheckpointSize_Accuracy(t *testing.T) {
 
 	// Get actual file size.
 	checkpointPath := filepath.Join(dir, checkpointBasename+".json")
+
 	info, err := os.Stat(checkpointPath)
 	if err != nil {
 		t.Fatalf("failed to stat checkpoint file: %v", err)
 	}
+
 	actualSize := info.Size()
 
 	// Verify estimate is within 2x of actual.
@@ -265,9 +291,9 @@ func TestCheckpointSize_Accuracy(t *testing.T) {
 // createRealisticAnalyzer creates an analyzer with data similar to a real 10k commit analysis.
 func createRealisticAnalyzer(numTicks, numDevs, numMerges int) *HistoryAnalyzer {
 	ticks := make(map[int]map[int]*DevTick, numTicks)
-	for tick := 0; tick < numTicks; tick++ {
+	for tick := range numTicks {
 		ticks[tick] = make(map[int]*DevTick, numDevs)
-		for dev := 0; dev < numDevs; dev++ {
+		for dev := range numDevs {
 			ticks[tick][dev] = &DevTick{
 				LineStats: plumbing.LineStats{
 					Added:   100 + tick*10 + dev,
@@ -284,25 +310,24 @@ func createRealisticAnalyzer(numTicks, numDevs, numMerges int) *HistoryAnalyzer 
 	}
 
 	merges := make(map[gitlib.Hash]bool, numMerges)
-	for i := 0; i < numMerges; i++ {
+	for range numMerges {
 		hash := gitlib.NewHash("0123456789abcdef0123456789abcdef01234567")
 		merges[hash] = true
 	}
 
 	return &HistoryAnalyzer{
-		ticks:  ticks,
-		merges: merges,
+		tickData: ticks,
+		merges:   merges,
 	}
 }
 
 // BenchmarkCheckpointSave benchmarks checkpoint save operation with realistic data.
 func BenchmarkCheckpointSave(b *testing.B) {
 	dir := b.TempDir()
-	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges
+	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges.
 	analyzer := createRealisticAnalyzer(300, 50, 100)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
@@ -313,18 +338,18 @@ func BenchmarkCheckpointSave(b *testing.B) {
 // BenchmarkCheckpointLoad benchmarks checkpoint load operation with realistic data.
 func BenchmarkCheckpointLoad(b *testing.B) {
 	dir := b.TempDir()
-	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges
+	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges.
 	analyzer := createRealisticAnalyzer(300, 50, 100)
 
-	// Save once to create the file
+	// Save once to create the file.
 	err := analyzer.SaveCheckpoint(dir)
 	if err != nil {
 		b.Fatalf("SaveCheckpoint failed: %v", err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		loaded := &HistoryAnalyzer{}
+
 		loadErr := loaded.LoadCheckpoint(dir)
 		if loadErr != nil {
 			b.Fatalf("LoadCheckpoint failed: %v", loadErr)
@@ -335,17 +360,17 @@ func BenchmarkCheckpointLoad(b *testing.B) {
 // BenchmarkCheckpointRoundTrip benchmarks full save+load cycle.
 func BenchmarkCheckpointRoundTrip(b *testing.B) {
 	dir := b.TempDir()
-	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges
+	// Simulate ~300 ticks (1 year of daily data), 50 developers, 100 merges.
 	analyzer := createRealisticAnalyzer(300, 50, 100)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := analyzer.SaveCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("SaveCheckpoint failed: %v", err)
 		}
 
 		loaded := &HistoryAnalyzer{}
+
 		err = loaded.LoadCheckpoint(dir)
 		if err != nil {
 			b.Fatalf("LoadCheckpoint failed: %v", err)

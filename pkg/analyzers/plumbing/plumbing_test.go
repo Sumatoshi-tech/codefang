@@ -1,4 +1,4 @@
-package plumbing //nolint:testpackage // testing internal implementation.
+package plumbing
 
 import (
 	"testing"

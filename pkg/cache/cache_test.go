@@ -11,6 +11,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+var errComputeFailed = errors.New("compute failed")
+
 func TestHashSet_AddContains(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +131,7 @@ func TestBlobCache_GetOrCompute(t *testing.T) {
 
 	compute := func() (int, error) {
 		computeCount++
+
 		return 42, nil
 	}
 
@@ -151,7 +154,7 @@ func TestBlobCache_GetOrCompute_Error(t *testing.T) {
 	cache := NewBlobCache[int]()
 
 	hash := gitlib.Hash{0x01, 0x02, 0x03}
-	expectedErr := errors.New("compute failed")
+	expectedErr := errComputeFailed
 
 	compute := func() (int, error) {
 		return 0, expectedErr

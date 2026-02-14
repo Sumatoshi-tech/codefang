@@ -64,7 +64,7 @@ func (d *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		Merges: make([]string, 0, len(d.merges)),
 	}
 
-	for tick, devTicks := range d.ticks {
+	for tick, devTicks := range d.tickData {
 		state.Ticks[tick] = make(map[int]*serializableDevTick)
 
 		for devID, devTick := range devTicks {
@@ -104,13 +104,13 @@ func convertDevTickToSerializable(dt *DevTick) *serializableDevTick {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (d *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	d.ticks = make(map[int]map[int]*DevTick)
+	d.tickData = make(map[int]map[int]*DevTick)
 
 	for tick, devTicks := range state.Ticks {
-		d.ticks[tick] = make(map[int]*DevTick)
+		d.tickData[tick] = make(map[int]*DevTick)
 
 		for devID, sdt := range devTicks {
-			d.ticks[tick][devID] = convertSerializableToDevTick(sdt)
+			d.tickData[tick][devID] = convertSerializableToDevTick(sdt)
 		}
 	}
 
@@ -146,7 +146,7 @@ func (d *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(baseOverheadBytes)
 
 	// Count tick entries.
-	for _, devTicks := range d.ticks {
+	for _, devTicks := range d.tickData {
 		size += int64(len(devTicks) * bytesPerTick)
 	}
 

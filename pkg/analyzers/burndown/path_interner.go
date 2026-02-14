@@ -31,12 +31,15 @@ func NewPathInterner() *PathInterner {
 func (pi *PathInterner) Intern(path string) PathID {
 	pi.mu.Lock()
 	defer pi.mu.Unlock()
+
 	if id, ok := pi.ids[path]; ok {
 		return id
 	}
+
 	id := PathID(len(pi.rev))
 	pi.rev = append(pi.rev, path)
 	pi.ids[path] = id
+
 	return id
 }
 
@@ -44,9 +47,11 @@ func (pi *PathInterner) Intern(path string) PathID {
 func (pi *PathInterner) Lookup(id PathID) string {
 	pi.mu.Lock()
 	defer pi.mu.Unlock()
+
 	if int(id) >= len(pi.rev) {
 		panic("PathID out of range")
 	}
+
 	return pi.rev[id]
 }
 
@@ -54,5 +59,6 @@ func (pi *PathInterner) Lookup(id PathID) string {
 func (pi *PathInterner) Len() int {
 	pi.mu.Lock()
 	defer pi.mu.Unlock()
+
 	return len(pi.rev)
 }

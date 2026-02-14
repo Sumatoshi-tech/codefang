@@ -185,7 +185,7 @@ func parseFunctionComment(fn map[string]any) FunctionCommentData {
 	return fd
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // CommentQualityData contains quality assessment for a comment.
 type CommentQualityData struct {
@@ -259,7 +259,7 @@ func (m *CommentQualityMetric) Compute(input *ReportData) []CommentQualityData {
 		})
 	}
 
-	// Sort by line number
+	// Sort by line number.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].LineNumber < result[j].LineNumber
 	})
@@ -325,7 +325,7 @@ func (m *FunctionDocumentationMetric) Compute(input *ReportData) []FunctionDocum
 		})
 	}
 
-	// Sort by documentation score ascending (worst first)
+	// Sort by documentation score ascending (worst first).
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].DocumentationScore < result[j].DocumentationScore
 	})
@@ -374,7 +374,7 @@ func (m *UndocumentedFunctionMetric) Compute(input *ReportData) []UndocumentedFu
 		})
 	}
 
-	// Sort by risk level
+	// Sort by risk level.
 	sort.Slice(result, func(i, j int) bool {
 		return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
 	})

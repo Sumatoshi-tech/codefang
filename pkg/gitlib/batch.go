@@ -16,15 +16,15 @@ const (
 // BatchConfig configures batch processing parameters.
 type BatchConfig struct {
 	// BlobBatchSize is the number of blobs to load per batch.
-	// Default: 100
+	// Default: 100.
 	BlobBatchSize int
 
 	// DiffBatchSize is the number of diffs to compute per batch.
-	// Default: 50
+	// Default: 50.
 	DiffBatchSize int
 
 	// Workers is the number of parallel workers for processing.
-	// Default: 1 (sequential processing within gitlib)
+	// Default: 1 (sequential processing within gitlib).
 	Workers int
 }
 
@@ -335,7 +335,7 @@ func (p *BatchProcessor) LoadBlobsAsCached(hashes []Hash) []*CachedBlob {
 // ProcessCommitBlobs loads all blobs needed for a set of changes.
 // Returns a map from hash to cached blob.
 func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlob {
-	// Collect unique hashes
+	// Collect unique hashes.
 	hashSet := make(map[Hash]bool)
 
 	for _, change := range changes {
@@ -350,17 +350,17 @@ func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlo
 		}
 	}
 
-	// Convert to slice
+	// Convert to slice.
 	hashes := make([]Hash, 0, len(hashSet))
 
 	for h := range hashSet {
 		hashes = append(hashes, h)
 	}
 
-	// Load all blobs
+	// Load all blobs.
 	cached := p.LoadBlobsAsCached(hashes)
 
-	// Build result map
+	// Build result map.
 	result := make(map[Hash]*CachedBlob, len(hashes))
 
 	for i, h := range hashes {
@@ -375,7 +375,7 @@ func (p *BatchProcessor) ProcessCommitBlobs(changes Changes) map[Hash]*CachedBlo
 // ProcessCommitDiffs computes all diffs for modified files in a set of changes.
 // Returns a map from file path to diff result.
 func (p *BatchProcessor) ProcessCommitDiffs(changes Changes) map[string]DiffResult {
-	// Collect diff requests for Modify actions
+	// Collect diff requests for Modify actions.
 	var requests []DiffRequest
 
 	var paths []string
@@ -396,10 +396,10 @@ func (p *BatchProcessor) ProcessCommitDiffs(changes Changes) map[string]DiffResu
 		return nil
 	}
 
-	// Compute diffs
+	// Compute diffs.
 	results := p.ComputeDiffs(requests)
 
-	// Build result map
+	// Build result map.
 	resultMap := make(map[string]DiffResult, len(paths))
 
 	for i, path := range paths {

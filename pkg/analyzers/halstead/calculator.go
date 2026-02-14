@@ -53,7 +53,7 @@ type halsteadMetrics interface {
 	halsteadDerivedSetter
 }
 
-// Implement interface for Metrics
+// Implement interface for Metrics.
 func (m *Metrics) getDistinctOperators() int    { return m.DistinctOperators }
 func (m *Metrics) getDistinctOperands() int     { return m.DistinctOperands }
 func (m *Metrics) getTotalOperators() int       { return m.TotalOperators }
@@ -67,7 +67,7 @@ func (m *Metrics) setEffort(v float64)          { m.Effort = v }
 func (m *Metrics) setTimeToProgram(v float64)   { m.TimeToProgram = v }
 func (m *Metrics) setDeliveredBugs(v float64)   { m.DeliveredBugs = v }
 
-// Implement interface for FunctionHalsteadMetrics
+// Implement interface for FunctionHalsteadMetrics.
 func (m *FunctionHalsteadMetrics) getDistinctOperators() int    { return m.DistinctOperators }
 func (m *FunctionHalsteadMetrics) getDistinctOperands() int     { return m.DistinctOperands }
 func (m *FunctionHalsteadMetrics) getTotalOperators() int       { return m.TotalOperators }

@@ -10,6 +10,8 @@ import (
 )
 
 func TestDiffPipeline_CrossCommitBatching(t *testing.T) {
+	t.Parallel()
+
 	// Setup channels.
 	poolCh := make(chan gitlib.WorkerRequest, 10)
 

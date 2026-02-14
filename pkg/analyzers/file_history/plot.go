@@ -156,7 +156,11 @@ func extractFileChurnFromBinary(report analyze.Report) (items []fileChurnItem, e
 			continue
 		}
 
-		filePath, _ := m["path"].(string) //nolint:errcheck // type assertion, not error
+		filePath, ok := m["path"].(string)
+		if !ok {
+			continue
+		}
+
 		count := fileHistoryToInt(m["commit_count"])
 
 		if filePath != "" {
@@ -210,7 +214,8 @@ func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOp
 	return bar
 }
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the file-history plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/file-history", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).GenerateSections(report)
 	})

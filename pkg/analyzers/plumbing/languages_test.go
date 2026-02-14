@@ -1,4 +1,4 @@
-package plumbing //nolint:testpackage // testing internal implementation.
+package plumbing
 
 import (
 	"testing"
@@ -16,55 +16,55 @@ func TestLanguageByExtension_CommonExtensions(t *testing.T) {
 		filename string
 		expected string
 	}{
-		// Go
+		// Go.
 		{"main.go", "Go"},
 		{"pkg/util/helper.go", "Go"},
-		// Python
+		// Python.
 		{"script.py", "Python"},
 		{"app/models.py", "Python"},
-		// JavaScript
+		// JavaScript.
 		{"index.js", "JavaScript"},
 		{"src/app.js", "JavaScript"},
-		// TypeScript
+		// TypeScript.
 		{"component.ts", "TypeScript"},
 		{"src/types.ts", "TypeScript"},
-		// TSX
+		// TSX.
 		{"Component.tsx", "TSX"},
-		// JSX
+		// JSX.
 		{"Component.jsx", "JavaScript"},
-		// Rust
+		// Rust.
 		{"main.rs", "Rust"},
 		{"lib.rs", "Rust"},
-		// Java
+		// Java.
 		{"Main.java", "Java"},
-		// C
+		// C.
 		{"main.c", "C"},
 		{"util.h", "C"},
-		// C++
+		// C++.
 		{"main.cpp", "C++"},
 		{"util.hpp", "C++"},
 		{"main.cc", "C++"},
-		// Ruby
+		// Ruby.
 		{"app.rb", "Ruby"},
-		// PHP
+		// PHP.
 		{"index.php", "PHP"},
-		// Shell
+		// Shell.
 		{"script.sh", "Shell"},
 		{"deploy.bash", "Shell"},
-		// YAML
+		// YAML.
 		{"config.yaml", "YAML"},
 		{"deploy.yml", "YAML"},
-		// JSON
+		// JSON.
 		{"package.json", "JSON"},
-		// Markdown
+		// Markdown.
 		{"README.md", "Markdown"},
-		// SQL
+		// SQL.
 		{"query.sql", "SQL"},
-		// Kotlin
+		// Kotlin.
 		{"Main.kt", "Kotlin"},
-		// Swift
+		// Swift.
 		{"App.swift", "Swift"},
-		// Scala
+		// Scala.
 		{"Main.scala", "Scala"},
 	}
 

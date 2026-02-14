@@ -793,7 +793,7 @@ func (c *Analyzer) getComplexityAssessment(complexity int, thresholds map[string
 	}
 }
 
-// getCognitiveAssessment returns an assessment with emoji for cognitive complexity //nolint:goconst // message string used inline.
+// getCognitiveAssessment returns an assessment with emoji for cognitive complexity.
 func (c *Analyzer) getCognitiveAssessment(complexity int) string {
 	if complexity <= complexityThresholdHigh {
 		return "🟢 Low"

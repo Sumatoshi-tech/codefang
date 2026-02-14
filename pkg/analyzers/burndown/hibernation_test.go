@@ -7,21 +7,25 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 )
 
-func TestHistoryAnalyzer_ImplementsHibernatable(_ *testing.T) {
+func TestHistoryAnalyzer_ImplementsHibernatable(t *testing.T) {
+	t.Parallel()
+
 	var _ streaming.Hibernatable = (*HistoryAnalyzer)(nil)
 }
 
 func TestHibernate_ClearsShardTrackingMaps(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
-	// Populate tracking maps
+	// Populate tracking maps.
 	for i, shard := range analyzer.shards {
 		shard.mergedByID[PathID(i)] = true
 		shard.mergedByID[PathID(i+100)] = true
 		shard.deletionsByID[PathID(i)] = true
 	}
 
-	// Verify maps have data
+	// Verify maps have data.
 	for _, shard := range analyzer.shards {
 		if len(shard.mergedByID) == 0 {
 			t.Fatal("test setup: mergedByID should have data")
@@ -37,7 +41,7 @@ func TestHibernate_ClearsShardTrackingMaps(t *testing.T) {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	// Verify tracking maps are cleared
+	// Verify tracking maps are cleared.
 	for i, shard := range analyzer.shards {
 		if len(shard.mergedByID) != 0 {
 			t.Errorf("shard[%d].mergedByID not cleared: got %d entries", i, len(shard.mergedByID))
@@ -50,9 +54,11 @@ func TestHibernate_ClearsShardTrackingMaps(t *testing.T) {
 }
 
 func TestHibernate_PreservesHistoryData(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
-	// Add history data
+	// Add history data.
 	analyzer.globalHistory[1] = map[int]int64{0: 100}
 	analyzer.shards[0].globalHistory[1] = map[int]int64{0: 50}
 	analyzer.shards[0].activeIDs = []PathID{1, 2, 3}
@@ -62,7 +68,7 @@ func TestHibernate_PreservesHistoryData(t *testing.T) {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	// Verify history data is preserved
+	// Verify history data is preserved.
 	if analyzer.globalHistory[1][0] != 100 {
 		t.Error("globalHistory was modified")
 	}
@@ -77,9 +83,11 @@ func TestHibernate_PreservesHistoryData(t *testing.T) {
 }
 
 func TestBoot_InitializesNilMaps(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
-	// Set maps to nil
+	// Set maps to nil.
 	for _, shard := range analyzer.shards {
 		shard.mergedByID = nil
 		shard.deletionsByID = nil
@@ -90,7 +98,7 @@ func TestBoot_InitializesNilMaps(t *testing.T) {
 		t.Fatalf("Boot() failed: %v", err)
 	}
 
-	// Verify maps are initialized
+	// Verify maps are initialized.
 	for i, shard := range analyzer.shards {
 		if shard.mergedByID == nil {
 			t.Errorf("shard[%d].mergedByID is nil after Boot()", i)
@@ -103,9 +111,11 @@ func TestBoot_InitializesNilMaps(t *testing.T) {
 }
 
 func TestBoot_PreservesExistingMaps(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
-	// Add data to maps
+	// Add data to maps.
 	analyzer.shards[0].mergedByID[PathID(42)] = true
 	analyzer.shards[0].deletionsByID[PathID(99)] = true
 
@@ -114,7 +124,7 @@ func TestBoot_PreservesExistingMaps(t *testing.T) {
 		t.Fatalf("Boot() failed: %v", err)
 	}
 
-	// Verify existing data is preserved
+	// Verify existing data is preserved.
 	if !analyzer.shards[0].mergedByID[PathID(42)] {
 		t.Error("existing mergedByID entry was lost")
 	}
@@ -125,26 +135,28 @@ func TestBoot_PreservesExistingMaps(t *testing.T) {
 }
 
 func TestHibernate_Boot_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
-	// Setup: add history and tracking data
+	// Setup: add history and tracking data.
 	analyzer.globalHistory[1] = map[int]int64{0: 100}
 	analyzer.shards[0].activeIDs = []PathID{1, 2, 3}
 	analyzer.shards[0].mergedByID[PathID(1)] = true
 
-	// Hibernate
+	// Hibernate.
 	err := analyzer.Hibernate()
 	if err != nil {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	// Boot
+	// Boot.
 	err = analyzer.Boot()
 	if err != nil {
 		t.Fatalf("Boot() failed: %v", err)
 	}
 
-	// Verify history survived
+	// Verify history survived.
 	if analyzer.globalHistory[1][0] != 100 {
 		t.Error("globalHistory not preserved after round trip")
 	}
@@ -153,7 +165,7 @@ func TestHibernate_Boot_RoundTrip(t *testing.T) {
 		t.Error("activeIDs not preserved after round trip")
 	}
 
-	// Verify tracking maps are ready for new data
+	// Verify tracking maps are ready for new data.
 	if analyzer.shards[0].mergedByID == nil {
 		t.Error("mergedByID should be ready after round trip")
 	}
@@ -184,10 +196,12 @@ func createAnalyzerWithShards(numShards int) *HistoryAnalyzer {
 }
 
 func TestHibernate_CompactsFileTimelines(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
 	// Create a file with multiple segments that can be compacted.
-	file := burndown.NewFile(1, 100) // tick 1, 100 lines
+	file := burndown.NewFile(1, 100) // tick 1, 100 lines.
 
 	// Make some updates that create segments.
 	file.Update(1, 50, 10, 0) // Insert 10 lines at position 50, same tick.
@@ -228,10 +242,12 @@ func TestHibernate_CompactsFileTimelines(t *testing.T) {
 }
 
 func TestHibernate_PreservesFileState(t *testing.T) {
+	t.Parallel()
+
 	analyzer := createAnalyzerWithShards(shardCount)
 
 	// Create a file with known state.
-	file := burndown.NewFile(1, 50) // tick 1, 50 lines
+	file := burndown.NewFile(1, 50) // tick 1, 50 lines.
 	lenBefore := file.Len()
 
 	id := analyzer.pathInterner.Intern("preserve.go")
@@ -260,12 +276,14 @@ func TestHibernate_PreservesFileState(t *testing.T) {
 
 // BenchmarkHibernate measures hibernation performance with realistic shard data.
 func BenchmarkHibernate(b *testing.B) {
-	const numShards = 8
-	const entriesPerShard = 5000
+	const (
+		numShards       = 8
+		entriesPerShard = 5000
+	)
 
 	analyzer := createAnalyzerWithShards(numShards)
 
-	// Populate tracking maps
+	// Populate tracking maps.
 	for _, shard := range analyzer.shards {
 		for i := range entriesPerShard {
 			shard.mergedByID[PathID(i)] = true
@@ -273,16 +291,15 @@ func BenchmarkHibernate(b *testing.B) {
 		}
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		err := analyzer.Hibernate()
 		if err != nil {
 			b.Fatal(err)
 		}
 
-		// Re-populate for next iteration
+		// Re-populate for next iteration.
 		for _, shard := range analyzer.shards {
 			for i := range entriesPerShard {
 				shard.mergedByID[PathID(i)] = true
@@ -298,11 +315,10 @@ func BenchmarkBoot(b *testing.B) {
 
 	analyzer := createAnalyzerWithShards(numShards)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
-		// Set to nil to simulate post-hibernate state
+	for b.Loop() {
+		// Set to nil to simulate post-hibernate state.
 		for _, shard := range analyzer.shards {
 			shard.mergedByID = nil
 			shard.deletionsByID = nil

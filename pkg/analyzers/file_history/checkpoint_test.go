@@ -71,7 +71,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	original := &Analyzer{}
 	require.NoError(t, original.Initialize(nil))
 
-	// Add multiple files with various state
+	// Add multiple files with various state.
 	original.files["main.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{
 			0: {Added: 100, Removed: 50, Changed: 25},
@@ -94,7 +94,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	restored := &Analyzer{}
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
-	// Verify files
+	// Verify files.
 	require.Len(t, restored.files, 2)
 
 	mainFile := restored.files["main.go"]
@@ -108,6 +108,6 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	require.NotNil(t, utilFile)
 	require.Equal(t, 200, utilFile.People[2].Added)
 
-	// Verify merges
+	// Verify merges.
 	require.Len(t, restored.merges, 2)
 }

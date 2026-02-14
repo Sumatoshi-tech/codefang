@@ -11,6 +11,8 @@ import (
 )
 
 func TestBlobReaderViaBlob(t *testing.T) {
+	t.Parallel()
+
 	repo := setupTestRepo(t)
 	defer repo.Free()
 
@@ -33,6 +35,8 @@ func TestBlobReaderViaBlob(t *testing.T) {
 }
 
 func TestBlobContents(t *testing.T) {
+	t.Parallel()
+
 	repo := setupTestRepo(t)
 	defer repo.Free()
 
@@ -53,6 +57,8 @@ func TestBlobContents(t *testing.T) {
 }
 
 func TestBlobHash(t *testing.T) {
+	t.Parallel()
+
 	repo := setupTestRepo(t)
 	defer repo.Free()
 
@@ -72,6 +78,8 @@ func TestBlobHash(t *testing.T) {
 }
 
 func TestBlobFree(t *testing.T) {
+	t.Parallel()
+
 	repo := setupTestRepo(t)
 	defer repo.Free()
 

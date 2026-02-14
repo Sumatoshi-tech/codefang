@@ -8,7 +8,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for typos metrics computation.
 type ReportData struct {
@@ -26,7 +26,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return data, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // TypoData contains information about a single typo fix.
 type TypoData struct {
@@ -59,7 +59,7 @@ type AggregateData struct {
 	AffectedCommits int `json:"affected_commits" yaml:"affected_commits"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // TypoListMetric computes the list of typo fixes.
 type TypoListMetric struct {
@@ -126,8 +126,8 @@ func (m *TypoPatternMetric) Compute(input *ReportData) []TypoPatternData {
 	var result []TypoPatternData
 
 	for key, freq := range patterns {
-		if freq > 1 { // Only include patterns that occur more than once
-			// Split key back into wrong|correct
+		if freq > 1 { // Only include patterns that occur more than once.
+			// Split key back into wrong|correct.
 			for i := range len(key) {
 				if key[i] == '|' {
 					result = append(result, TypoPatternData{
@@ -142,7 +142,7 @@ func (m *TypoPatternMetric) Compute(input *ReportData) []TypoPatternData {
 		}
 	}
 
-	// Sort by frequency descending
+	// Sort by frequency descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Frequency > result[j].Frequency
 	})
@@ -184,7 +184,7 @@ func (m *FileTypoMetric) Compute(input *ReportData) []FileTypoData {
 		})
 	}
 
-	// Sort by typo count descending
+	// Sort by typo count descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].TypoCount > result[j].TypoCount
 	})
@@ -233,7 +233,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the typos analyzer.
 type ComputedMetrics struct {

@@ -1,6 +1,7 @@
 package checkpoint_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 )
+
+const testRepoPath = "/test/repo"
 
 // mockAnalyzer simulates an analyzer that can be checkpointed.
 type mockAnalyzer struct {
@@ -25,13 +28,18 @@ func (m *mockAnalyzer) SaveCheckpoint(dir string) error {
 		data = append(data, byte(v))
 	}
 
-	return os.WriteFile(filepath.Join(dir, m.name+".bin"), data, 0o600)
+	err := os.WriteFile(filepath.Join(dir, m.name+".bin"), data, 0o600)
+	if err != nil {
+		return fmt.Errorf("writing analyzer checkpoint %s: %w", m.name, err)
+	}
+
+	return nil
 }
 
 func (m *mockAnalyzer) LoadCheckpoint(dir string) error {
 	data, err := os.ReadFile(filepath.Join(dir, m.name+".bin"))
 	if err != nil {
-		return err
+		return fmt.Errorf("reading analyzer checkpoint %s: %w", m.name, err)
 	}
 
 	m.processLog = make([]int, len(data))
@@ -56,15 +64,17 @@ func (m *mockAnalyzer) Process(commitIndex int) {
 // TestCheckpoint_CrashAndResume simulates a crash mid-processing and verifies
 // that the analysis can resume from the checkpoint.
 func TestCheckpoint_CrashAndResume(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
-	repoPath := "/test/repo"
+	repoPath := testRepoPath
 	repoHash := checkpoint.RepoHash(repoPath)
 
 	// Phase 1: Process chunks 0 and 1, save checkpoint after chunk 1.
 	analyzer1 := &mockAnalyzer{name: "test"}
 
 	// Simulate processing chunk 0 (commits 0-9).
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		analyzer1.Process(i)
 	}
 
@@ -116,7 +126,7 @@ func TestCheckpoint_CrashAndResume(t *testing.T) {
 	// Verify final state matches what we'd have without crash.
 	assert.Len(t, analyzer2.processLog, 30)
 
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		assert.Equal(t, i, analyzer2.processLog[i], "commit %d mismatch", i)
 	}
 }
@@ -124,8 +134,10 @@ func TestCheckpoint_CrashAndResume(t *testing.T) {
 // TestCheckpoint_ResumeWithMismatchedRepo verifies that resume fails
 // when the repository path doesn't match.
 func TestCheckpoint_ResumeWithMismatchedRepo(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
-	repoPath := "/test/repo"
+	repoPath := testRepoPath
 	repoHash := checkpoint.RepoHash(repoPath)
 
 	mgr := checkpoint.NewManager(dir, repoHash)
@@ -143,8 +155,10 @@ func TestCheckpoint_ResumeWithMismatchedRepo(t *testing.T) {
 // TestCheckpoint_ResumeWithMismatchedAnalyzers verifies that resume fails
 // when the analyzer set doesn't match.
 func TestCheckpoint_ResumeWithMismatchedAnalyzers(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
-	repoPath := "/test/repo"
+	repoPath := testRepoPath
 	repoHash := checkpoint.RepoHash(repoPath)
 
 	mgr := checkpoint.NewManager(dir, repoHash)
@@ -162,13 +176,15 @@ func TestCheckpoint_ResumeWithMismatchedAnalyzers(t *testing.T) {
 // TestCheckpoint_ClearAfterCompletion verifies that checkpoint is cleared
 // after successful completion.
 func TestCheckpoint_ClearAfterCompletion(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
-	repoHash := checkpoint.RepoHash("/test/repo")
+	repoHash := checkpoint.RepoHash(testRepoPath)
 
 	mgr := checkpoint.NewManager(dir, repoHash)
 	state := checkpoint.StreamingState{TotalCommits: 100}
 
-	err := mgr.Save(nil, state, "/test/repo", []string{"burndown"})
+	err := mgr.Save(nil, state, testRepoPath, []string{"burndown"})
 	require.NoError(t, err)
 	require.True(t, mgr.Exists())
 
@@ -180,8 +196,10 @@ func TestCheckpoint_ClearAfterCompletion(t *testing.T) {
 
 // TestCheckpoint_MultipleAnalyzers verifies checkpoint/resume with multiple analyzers.
 func TestCheckpoint_MultipleAnalyzers(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
-	repoPath := "/test/repo"
+	repoPath := testRepoPath
 	repoHash := checkpoint.RepoHash(repoPath)
 
 	// Create two analyzers.
@@ -189,7 +207,7 @@ func TestCheckpoint_MultipleAnalyzers(t *testing.T) {
 	analyzer2 := &mockAnalyzer{name: "devs"}
 
 	// Process some data.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		analyzer1.Process(i)
 		analyzer2.Process(i * 10)
 	}

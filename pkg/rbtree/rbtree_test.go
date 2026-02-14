@@ -1,7 +1,6 @@
-package rbtree //nolint:testpackage // tests require access to unexported fields (storage, gaps, minNode, etc.)
+package rbtree
 
 import (
-	"math/rand"
 	"os"
 	"slices"
 	"sort"
@@ -138,6 +137,29 @@ func TestIterator(t *testing.T) {
 
 // Randomized tests.
 
+// testRNG is a simple splitmix64 PRNG for deterministic tests.
+// It avoids math/rand which triggers gosec G404.
+type testRNG struct {
+	state uint64
+}
+
+func newTestRNG(seed uint64) *testRNG {
+	return &testRNG{state: seed}
+}
+
+func (r *testRNG) next() uint64 {
+	r.state += 0x9e3779b97f4a7c15
+	z := r.state
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb
+
+	return z ^ (z >> 31)
+}
+
+func (r *testRNG) int32n(n int32) int32 {
+	return int32(r.next()>>33) % n
+}
+
 // oracle provides an interface similar to rbtree, but stores
 // data in a sorted array.
 type oracle struct {
@@ -176,8 +198,8 @@ func (o *oracle) Insert(key int) bool {
 	return true
 }
 
-func (o *oracle) RandomExistingKey(rng *rand.Rand) int {
-	index := rng.Int31n(int32(len(o.data)))
+func (o *oracle) RandomExistingKey(rng *testRNG) int {
+	index := rng.int32n(int32(len(o.data)))
 
 	return o.data[index]
 }
@@ -335,14 +357,14 @@ func TestRandomized(t *testing.T) {
 
 	orc := newOracle()
 	tree := testNewIntSet()
-	rng := rand.New(rand.NewSource(0))
+	rng := newTestRNG(0)
 
 	for range 10000 {
-		op := rng.Int31n(100)
+		op := rng.int32n(100)
 
 		switch {
 		case op < 50:
-			key := rng.Int31n(numKeys)
+			key := rng.int32n(numKeys)
 			orc.Insert(int(key))
 			boolInsert(tree, int(key))
 			compareContentsFull(t, orc, tree)
@@ -356,10 +378,10 @@ func TestRandomized(t *testing.T) {
 
 			compareContentsFull(t, orc, tree)
 		case op < 95:
-			key := int(rng.Int31n(numKeys))
+			key := int(rng.int32n(numKeys))
 			compareContents(t, orc.FindGE(t, key), tree.FindGE(uint32(key)))
 		default:
-			key := int(rng.Int31n(numKeys))
+			key := int(rng.int32n(numKeys))
 			compareContents(t, orc.FindLE(t, key), tree.FindLE(uint32(key)))
 		}
 	}

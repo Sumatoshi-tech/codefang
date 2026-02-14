@@ -2,7 +2,6 @@ package comments
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -98,7 +97,7 @@ func (c *Analyzer) Thresholds() analyze.Thresholds {
 // Analyze performs comment analysis using default configuration.
 func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
+		return nil, analyze.ErrNilRootNode
 	}
 
 	comments := c.findComments(root)

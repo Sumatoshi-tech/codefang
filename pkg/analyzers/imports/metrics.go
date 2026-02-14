@@ -15,7 +15,7 @@ const (
 	longPathThreshold     = 5
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for imports metrics computation.
 type ReportData struct {
@@ -70,7 +70,7 @@ func extractImportPaths(items any) []string {
 	return paths
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // ImportData contains information about a single import.
 type ImportData struct {
@@ -101,7 +101,7 @@ type AggregateData struct {
 	ExternalRatio   float64 `json:"external_ratio"   yaml:"external_ratio"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // ImportListMetric computes categorized import list.
 type ImportListMetric struct {
@@ -135,7 +135,7 @@ func (m *ImportListMetric) Compute(input *ReportData) []ImportData {
 		})
 	}
 
-	// Sort by category then path
+	// Sort by category then path.
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Category != result[j].Category {
 			return result[i].Category < result[j].Category
@@ -175,14 +175,14 @@ func isExternalImport(imp string) bool {
 }
 
 func isStandardLibrary(imp string) bool {
-	// Common standard library prefixes across languages
+	// Common standard library prefixes across languages.
 	stdlibs := []string{
-		// Go
+		// Go.
 		"fmt", "os", "io", "net", "http", "encoding", "sync", "context", "time",
 		"strings", "bytes", "bufio", "path", "filepath", "regexp", "sort", "math",
-		// Python
+		// Python.
 		"sys", "typing", "collections", "itertools", "functools", "json", "re",
-		// JavaScript/Node
+		// JavaScript/Node.
 		"fs", "path", "util", "events", "stream", "crypto", "http", "https",
 	}
 
@@ -225,7 +225,7 @@ func (m *ImportCategoryMetric) Compute(input *ReportData) []ImportCategoryData {
 		})
 	}
 
-	// Sort by count descending
+	// Sort by count descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Count > result[j].Count
 	})
@@ -314,7 +314,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 			agg.InternalImports++
 		}
 
-		// Extract base package
+		// Extract base package.
 		base := strings.Split(imp, "/")[0]
 		packages[base] = true
 	}
@@ -328,7 +328,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the imports analyzer.
 type ComputedMetrics struct {

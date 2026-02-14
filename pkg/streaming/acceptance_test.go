@@ -26,13 +26,18 @@ import (
 //
 // This is the acceptance test for Feature 2.1 (Chunk Orchestrator).
 func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
-	const numCommits = 500
-	const chunkSize = 100
+	t.Parallel()
+
+	const (
+		numCommits = 500
+		chunkSize  = 100
+	)
 
 	repoPath := createSyntheticRepo(t, numCommits)
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err, "OpenRepository")
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -63,7 +68,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 		return all, leaf
 	}
 
-	// --- Non-streaming baseline ---
+	// --- Non-streaming baseline ---.
 	baselineAnalyzers, baselineLeaf := buildPipeline()
 	runner1 := framework.NewRunner(libRepo, repoPath, baselineAnalyzers...)
 	baselineResults, err := runner1.Run(commits)
@@ -71,7 +76,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 	baselineYAML := serializeReport(t, baselineLeaf, baselineResults[baselineLeaf])
 	require.NotEmpty(t, baselineYAML, "baseline report should not be empty")
 
-	// --- Streaming mode ---
+	// --- Streaming mode ---.
 	streamAnalyzers, streamLeaf := buildPipeline()
 	runner2 := framework.NewRunner(libRepo, repoPath, streamAnalyzers...)
 
@@ -105,7 +110,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 	require.NoError(t, err, "streaming Finalize")
 	streamYAML := serializeReport(t, streamLeaf, streamResults[streamLeaf])
 
-	// --- Compare ---
+	// --- Compare ---.
 	require.YAMLEq(t, baselineYAML, streamYAML,
 		"streaming output must be identical to non-streaming baseline")
 }
@@ -137,14 +142,16 @@ func createSyntheticRepo(t *testing.T, numCommits int) string {
 
 	repo, err := git2go.InitRepository(dir, false)
 	require.NoError(t, err, "InitRepository")
+
 	defer repo.Free()
 
 	writeFile := func(name, content string) {
 		t.Helper()
+
 		p := filepath.Join(dir, name)
 
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o750))
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
 	}
 
 	commit := func(message string) {
@@ -152,6 +159,7 @@ func createSyntheticRepo(t *testing.T, numCommits int) string {
 
 		index, indexErr := repo.Index()
 		require.NoError(t, indexErr, "Index")
+
 		defer index.Free()
 
 		require.NoError(t, index.AddAll([]string{"*"}, git2go.IndexAddDefault, nil))
@@ -162,6 +170,7 @@ func createSyntheticRepo(t *testing.T, numCommits int) string {
 
 		tree, lookupErr := repo.LookupTree(treeID)
 		require.NoError(t, lookupErr, "LookupTree")
+
 		defer tree.Free()
 
 		sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
@@ -223,6 +232,7 @@ func collectAllCommits(t *testing.T, repo *gitlib.Repository) []*gitlib.Commit {
 
 	iter, err := repo.Log(&gitlib.LogOptions{})
 	require.NoError(t, err, "Log")
+
 	defer iter.Close()
 
 	var commits []*gitlib.Commit

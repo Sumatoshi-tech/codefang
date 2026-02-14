@@ -17,9 +17,6 @@ import (
 
 // IdentityDetector maps commit authors to canonical developer identities.
 type IdentityDetector struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	PeopleDict         map[string]int
 	PeopleDictPath     string
 	ReversedPeopleDict []string
@@ -73,8 +70,7 @@ func (d *IdentityDetector) ListConfigurationOptions() []pipeline.ConfigurationOp
 		Type:        pipeline.PathConfigurationOption,
 		Default:     ""}, {
 		Name: ConfigIdentityDetectorExactSignatures,
-		//nolint:misspell // spelling is intentional.
-		Description: "Disable separate name/email matching. This will lead to considerbly more " +
+		Description: "Disable separate name/email matching. This will lead to considerably more " +
 			"identities and should not be normally used.",
 		Flag:    "exact-signatures",
 		Type:    pipeline.BoolConfigurationOption,
@@ -336,7 +332,7 @@ func (d *IdentityDetector) Finalize() (analyze.Report, error) {
 		d.dictFinalized = true
 	}
 
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

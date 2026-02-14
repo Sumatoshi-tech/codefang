@@ -21,9 +21,11 @@ const (
 	floatDelta = 0.01
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -38,6 +40,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"PeopleMatrix":       []map[int]int64{{0: 10, 1: 5}, {0: 5, 1: 8}},
 		"PeopleFiles":        [][]int{{0, 1}, {1, 2}},
@@ -62,9 +66,11 @@ func TestParseReportData_AllFields(t *testing.T) {
 	assert.Equal(t, []string{testDev1, testDev2}, result.ReversedPeopleDict)
 }
 
-// --- FileCouplingMetric Tests ---
+// --- FileCouplingMetric Tests ---.
 
 func TestNewFileCouplingMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 
 	assert.Equal(t, "file_coupling", m.Name())
@@ -74,6 +80,8 @@ func TestNewFileCouplingMetric_Metadata(t *testing.T) {
 }
 
 func TestFileCouplingMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 	input := &ReportData{}
 
@@ -83,12 +91,14 @@ func TestFileCouplingMetric_Empty(t *testing.T) {
 }
 
 func TestFileCouplingMetric_SinglePair(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 	input := &ReportData{
 		Files: []string{testFile1, testFile2},
 		FilesMatrix: []map[int]int64{
-			{0: 10, 1: 5}, // file1 self=10, coupled with file2=5
-			{0: 5, 1: 8},  // file2 self=8, coupled with file1=5
+			{0: 10, 1: 5}, // file1 self=10, coupled with file2=5.
+			{0: 5, 1: 8},  // file2 self=8, coupled with file1=5.
 		},
 	}
 
@@ -98,38 +108,42 @@ func TestFileCouplingMetric_SinglePair(t *testing.T) {
 	assert.Equal(t, testFile1, result[0].File1)
 	assert.Equal(t, testFile2, result[0].File2)
 	assert.Equal(t, int64(5), result[0].CoChanges)
-	// Strength = 5 / max(5, 10) = 5/10 = 0.5
+	// Strength = 5 / max(5, 10) = 5/10 = 0.5.
 	assert.InDelta(t, 0.5, result[0].Strength, floatDelta)
 }
 
 func TestFileCouplingMetric_MultiplePairs_SortedByCoChanges(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 	input := &ReportData{
 		Files: []string{testFile1, testFile2, testFile3},
 		FilesMatrix: []map[int]int64{
-			{0: 10, 1: 3, 2: 8}, // file1
-			{0: 3, 1: 5, 2: 2},  // file2
-			{0: 8, 1: 2, 2: 6},  // file3
+			{0: 10, 1: 3, 2: 8}, // file1.
+			{0: 3, 1: 5, 2: 2},  // file2.
+			{0: 8, 1: 2, 2: 6},  // file3.
 		},
 	}
 
 	result := m.Compute(input)
 
-	require.Len(t, result, 3) // 3 unique pairs
-	// Should be sorted by CoChanges descending
-	assert.Equal(t, int64(8), result[0].CoChanges) // file1-file3
-	assert.Equal(t, int64(3), result[1].CoChanges) // file1-file2
-	assert.Equal(t, int64(2), result[2].CoChanges) // file2-file3
+	require.Len(t, result, 3) // 3 unique pairs.
+	// Should be sorted by CoChanges descending.
+	assert.Equal(t, int64(8), result[0].CoChanges) // file1-file3.
+	assert.Equal(t, int64(3), result[1].CoChanges) // file1-file2.
+	assert.Equal(t, int64(2), result[2].CoChanges) // file2-file3.
 }
 
 func TestFileCouplingMetric_SkipsZeroCoChanges(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 	input := &ReportData{
 		Files: []string{testFile1, testFile2, testFile3},
 		FilesMatrix: []map[int]int64{
-			{0: 10, 1: 5}, // file1-file2 = 5, file1-file3 = 0 (not present)
-			{0: 5, 1: 8},  // file2
-			{0: 0, 1: 0},  // file3 - no coupling
+			{0: 10, 1: 5}, // file1-file2 = 5, file1-file3 = 0 (not present).
+			{0: 5, 1: 8},  // file2.
+			{0: 0, 1: 0},  // file3 - no coupling.
 		},
 	}
 
@@ -141,23 +155,27 @@ func TestFileCouplingMetric_SkipsZeroCoChanges(t *testing.T) {
 }
 
 func TestFileCouplingMetric_OutOfBoundsIndex(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileCouplingMetric()
 	input := &ReportData{
-		Files: []string{testFile1}, // Only 1 file
+		Files: []string{testFile1}, // Only 1 file.
 		FilesMatrix: []map[int]int64{
-			{0: 10, 1: 5, 5: 3}, // References indices beyond Files array
+			{0: 10, 1: 5, 5: 3}, // References indices beyond Files array.
 		},
 	}
 
 	result := m.Compute(input)
 
-	// Should not crash and should skip invalid indices
+	// Should not crash and should skip invalid indices.
 	assert.Empty(t, result)
 }
 
-// --- DeveloperCouplingMetric Tests ---
+// --- DeveloperCouplingMetric Tests ---.
 
 func TestNewDeveloperCouplingMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 
 	assert.Equal(t, "developer_coupling", m.Name())
@@ -167,6 +185,8 @@ func TestNewDeveloperCouplingMetric_Metadata(t *testing.T) {
 }
 
 func TestDeveloperCouplingMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 	input := &ReportData{}
 
@@ -176,12 +196,14 @@ func TestDeveloperCouplingMetric_Empty(t *testing.T) {
 }
 
 func TestDeveloperCouplingMetric_SinglePair(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 	input := &ReportData{
 		ReversedPeopleDict: []string{testDev1, testDev2},
 		PeopleMatrix: []map[int]int64{
-			{0: 20, 1: 10}, // dev1 self=20, shared with dev2=10
-			{0: 10, 1: 15}, // dev2 self=15
+			{0: 20, 1: 10}, // dev1 self=20, shared with dev2=10.
+			{0: 10, 1: 15}, // dev2 self=15.
 		},
 	}
 
@@ -191,36 +213,40 @@ func TestDeveloperCouplingMetric_SinglePair(t *testing.T) {
 	assert.Equal(t, testDev1, result[0].Developer1)
 	assert.Equal(t, testDev2, result[0].Developer2)
 	assert.Equal(t, int64(10), result[0].SharedFiles)
-	// Strength = 10 / max(10, 20) = 0.5
+	// Strength = 10 / max(10, 20) = 0.5.
 	assert.InDelta(t, 0.5, result[0].Strength, floatDelta)
 }
 
 func TestDeveloperCouplingMetric_MultiplePairs_SortedBySharedFiles(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 	input := &ReportData{
 		ReversedPeopleDict: []string{testDev1, testDev2, testDev3},
 		PeopleMatrix: []map[int]int64{
-			{0: 20, 1: 5, 2: 15}, // dev1
-			{0: 5, 1: 10, 2: 3},  // dev2
-			{0: 15, 1: 3, 2: 12}, // dev3
+			{0: 20, 1: 5, 2: 15}, // dev1.
+			{0: 5, 1: 10, 2: 3},  // dev2.
+			{0: 15, 1: 3, 2: 12}, // dev3.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Should be sorted by SharedFiles descending
-	assert.Equal(t, int64(15), result[0].SharedFiles) // dev1-dev3
-	assert.Equal(t, int64(5), result[1].SharedFiles)  // dev1-dev2
-	assert.Equal(t, int64(3), result[2].SharedFiles)  // dev2-dev3
+	// Should be sorted by SharedFiles descending.
+	assert.Equal(t, int64(15), result[0].SharedFiles) // dev1-dev3.
+	assert.Equal(t, int64(5), result[1].SharedFiles)  // dev1-dev2.
+	assert.Equal(t, int64(3), result[2].SharedFiles)  // dev2-dev3.
 }
 
 func TestDeveloperCouplingMetric_MissingDictEntry(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 	input := &ReportData{
-		ReversedPeopleDict: []string{testDev1}, // Only 1 dev in dict
+		ReversedPeopleDict: []string{testDev1}, // Only 1 dev in dict.
 		PeopleMatrix: []map[int]int64{
-			{0: 20, 1: 10}, // References dev index 1 which is beyond dict
+			{0: 20, 1: 10}, // References dev index 1 which is beyond dict.
 			{0: 10, 1: 15},
 		},
 	}
@@ -229,15 +255,17 @@ func TestDeveloperCouplingMetric_MissingDictEntry(t *testing.T) {
 
 	require.Len(t, result, 1)
 	assert.Equal(t, testDev1, result[0].Developer1)
-	assert.Empty(t, result[0].Developer2) // Missing from dict
+	assert.Empty(t, result[0].Developer2) // Missing from dict.
 }
 
 func TestDeveloperCouplingMetric_SkipsZeroSharedChanges(t *testing.T) {
+	t.Parallel()
+
 	m := NewDeveloperCouplingMetric()
 	input := &ReportData{
 		ReversedPeopleDict: []string{testDev1, testDev2},
 		PeopleMatrix: []map[int]int64{
-			{0: 20}, // No shared changes with dev2
+			{0: 20}, // No shared changes with dev2.
 			{1: 15},
 		},
 	}
@@ -247,9 +275,11 @@ func TestDeveloperCouplingMetric_SkipsZeroSharedChanges(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-// --- FileOwnershipMetric Tests ---
+// --- FileOwnershipMetric Tests ---.
 
 func TestNewFileOwnershipMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 
 	assert.Equal(t, "file_ownership", m.Name())
@@ -259,6 +289,8 @@ func TestNewFileOwnershipMetric_Metadata(t *testing.T) {
 }
 
 func TestFileOwnershipMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 	input := &ReportData{}
 
@@ -268,11 +300,13 @@ func TestFileOwnershipMetric_Empty(t *testing.T) {
 }
 
 func TestFileOwnershipMetric_SingleFile(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 	input := &ReportData{
 		Files:       []string{testFile1},
 		FilesLines:  []int{100},
-		PeopleFiles: [][]int{{0}}, // dev0 touched file0
+		PeopleFiles: [][]int{{0}}, // dev0 touched file0.
 	}
 
 	result := m.Compute(input)
@@ -284,61 +318,69 @@ func TestFileOwnershipMetric_SingleFile(t *testing.T) {
 }
 
 func TestFileOwnershipMetric_MultipleContributors(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 	input := &ReportData{
 		Files:      []string{testFile1, testFile2},
 		FilesLines: []int{100, 200},
 		PeopleFiles: [][]int{
-			{0, 1}, // dev0 touched file0, file1
-			{0},    // dev1 touched file0
-			{1},    // dev2 touched file1
+			{0, 1}, // dev0 touched file0, file1.
+			{0},    // dev1 touched file0.
+			{1},    // dev2 touched file1.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
-	// file0 - touched by dev0 and dev1
+	// file0 - touched by dev0 and dev1.
 	assert.Equal(t, testFile1, result[0].File)
 	assert.Equal(t, 100, result[0].Lines)
 	assert.Equal(t, 2, result[0].Contributors)
-	// file1 - touched by dev0 and dev2
+	// file1 - touched by dev0 and dev2.
 	assert.Equal(t, testFile2, result[1].File)
 	assert.Equal(t, 200, result[1].Lines)
 	assert.Equal(t, 2, result[1].Contributors)
 }
 
 func TestFileOwnershipMetric_MissingFilesLines(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 	input := &ReportData{
 		Files:      []string{testFile1, testFile2},
-		FilesLines: []int{100}, // Only 1 entry for 2 files
+		FilesLines: []int{100}, // Only 1 entry for 2 files.
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
 	assert.Equal(t, 100, result[0].Lines)
-	assert.Equal(t, 0, result[1].Lines) // Missing, defaults to 0
+	assert.Equal(t, 0, result[1].Lines) // Missing, defaults to 0.
 }
 
 func TestFileOwnershipMetric_OutOfBoundsFileIndex(t *testing.T) {
+	t.Parallel()
+
 	m := NewFileOwnershipMetric()
 	input := &ReportData{
 		Files:       []string{testFile1},
 		FilesLines:  []int{100},
-		PeopleFiles: [][]int{{0, 5}}, // Index 5 is out of bounds
+		PeopleFiles: [][]int{{0, 5}}, // Index 5 is out of bounds.
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 1, result[0].Contributors) // Only valid index counted
+	assert.Equal(t, 1, result[0].Contributors) // Only valid index counted.
 }
 
-// --- CouplesAggregateMetric Tests ---
+// --- CouplesAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "couples_aggregate", m.Name())
@@ -348,6 +390,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestCouplesAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -361,6 +405,8 @@ func TestCouplesAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestCouplesAggregateMetric_WithData(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Files:              []string{testFile1, testFile2, testFile3},
@@ -368,7 +414,7 @@ func TestCouplesAggregateMetric_WithData(t *testing.T) {
 		FilesMatrix: []map[int]int64{
 			{0: 10, 1: 15, 2: 5}, // file1: coupled with file2=15, file3=5
 			{0: 15, 1: 8, 2: 3},  // file2: coupled with file3=3
-			{0: 5, 1: 3, 2: 6},   // file3
+			{0: 5, 1: 3, 2: 6},   // file3.
 		},
 	}
 
@@ -376,33 +422,37 @@ func TestCouplesAggregateMetric_WithData(t *testing.T) {
 
 	assert.Equal(t, 3, result.TotalFiles)
 	assert.Equal(t, 2, result.TotalDevelopers)
-	// Total co-changes = 15 + 5 + 3 = 23 (upper triangle only)
+	// Total co-changes = 15 + 5 + 3 = 23 (upper triangle only).
 	assert.Equal(t, int64(23), result.TotalCoChanges)
-	// 3 pairs with non-zero changes
+	// 3 pairs with non-zero changes.
 	assert.InDelta(t, 23.0/3.0, result.AvgCouplingStrength, floatDelta)
-	// Highly coupled pairs (>= 10): 15 only
+	// Highly coupled pairs (>= 10): 15 only.
 	assert.Equal(t, 1, result.HighlyCoupledPairs)
 }
 
 func TestCouplesAggregateMetric_HighlyCoupledThreshold(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Files: []string{testFile1, testFile2},
 		FilesMatrix: []map[int]int64{
-			{0: 10, 1: 10}, // Exactly at threshold
+			{0: 10, 1: 10}, // Exactly at threshold.
 			{0: 10, 1: 5},
 		},
 	}
 
 	result := m.Compute(input)
 
-	// 10 is exactly at threshold CouplingThresholdHigh
+	// 10 is exactly at threshold CouplingThresholdHigh.
 	assert.Equal(t, 1, result.HighlyCoupledPairs)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -415,6 +465,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{
 		"Files":              []string{testFile1, testFile2},
 		"FilesLines":         []int{100, 200},
@@ -437,29 +489,31 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// FileCoupling
+	// FileCoupling.
 	require.Len(t, result.FileCoupling, 1)
 	assert.Equal(t, testFile1, result.FileCoupling[0].File1)
 	assert.Equal(t, testFile2, result.FileCoupling[0].File2)
 
-	// DeveloperCoupling
+	// DeveloperCoupling.
 	require.Len(t, result.DeveloperCoupling, 1)
 	assert.Equal(t, testDev1, result.DeveloperCoupling[0].Developer1)
 	assert.Equal(t, testDev2, result.DeveloperCoupling[0].Developer2)
 
-	// FileOwnership
+	// FileOwnership.
 	require.Len(t, result.FileOwnership, 2)
 	assert.Equal(t, testFile1, result.FileOwnership[0].File)
 	assert.Equal(t, 2, result.FileOwnership[0].Contributors)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 2, result.Aggregate.TotalFiles)
 	assert.Equal(t, 2, result.Aggregate.TotalDevelopers)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	name := m.AnalyzerName()
@@ -468,6 +522,8 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FileCoupling: []FileCouplingData{{File1: "a.go", File2: "b.go"}},
 	}
@@ -478,6 +534,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		FileCoupling: []FileCouplingData{{File1: "a.go", File2: "b.go"}},
 	}

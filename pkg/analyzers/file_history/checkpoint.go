@@ -46,7 +46,7 @@ func (h *Analyzer) buildCheckpointState() *checkpointState {
 		Merges: make([]string, 0, len(h.merges)),
 	}
 
-	// Convert files to serializable form
+	// Convert files to serializable form.
 	for name, fh := range h.files {
 		cp := fileHistoryCheckpoint{
 			People: fh.People,
@@ -60,7 +60,7 @@ func (h *Analyzer) buildCheckpointState() *checkpointState {
 		state.Files[name] = cp
 	}
 
-	// Convert merge hashes to strings
+	// Convert merge hashes to strings.
 	for hash := range h.merges {
 		state.Merges = append(state.Merges, hash.String())
 	}
@@ -70,7 +70,7 @@ func (h *Analyzer) buildCheckpointState() *checkpointState {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (h *Analyzer) restoreFromCheckpoint(state *checkpointState) {
-	// Restore files
+	// Restore files.
 	h.files = make(map[string]*FileHistory, len(state.Files))
 	for name, cp := range state.Files {
 		fh := &FileHistory{
@@ -85,7 +85,7 @@ func (h *Analyzer) restoreFromCheckpoint(state *checkpointState) {
 		h.files[name] = fh
 	}
 
-	// Restore merges
+	// Restore merges.
 	h.merges = make(map[gitlib.Hash]bool, len(state.Merges))
 	for _, hashStr := range state.Merges {
 		h.merges[gitlib.NewHash(hashStr)] = true
@@ -105,20 +105,20 @@ const (
 func (h *Analyzer) CheckpointSize() int64 {
 	size := int64(fhBaseOverheadBytes)
 
-	// Count file entries
+	// Count file entries.
 	for _, fh := range h.files {
 		size += int64(bytesPerFileEntry)
 
-		// Count person stats
+		// Count person stats.
 		if fh.People != nil {
 			size += int64(len(fh.People) * bytesPerPersonStats)
 		}
 
-		// Count hashes
+		// Count hashes.
 		size += int64(len(fh.Hashes) * bytesPerHash)
 	}
 
-	// Count merge entries
+	// Count merge entries.
 	size += int64(len(h.merges) * bytesPerMergeEntry)
 
 	return size

@@ -37,6 +37,12 @@ const (
 // Strings longer than this are unlikely to repeat within a single file.
 const maxInternLen = 32
 
+// Initial capacities for per-parse data structures.
+const (
+	initialInternerCapacity    = 128 // initial capacity for per-parse string interner.
+	initialBatchChildrenBuffer = 32  // small reusable child batch buffer per parse.
+)
+
 // DSLParser implements the UAST LanguageParser interface using DSL-based mappings.
 type DSLParser struct {
 	reader          io.Reader
@@ -47,8 +53,8 @@ type DSLParser struct {
 	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
 	symbolNames     []string
-	internedTypes   map[string]node.Type // pre-interned Type values from DSL rules
-	internedRoles   map[string]node.Role // pre-interned Role values from DSL rules
+	internedTypes   map[string]node.Type // pre-interned Type values from DSL rules.
+	internedRoles   map[string]node.Role // pre-interned Role values from DSL rules.
 	tsParserPool    sync.Pool
 	IncludeUnmapped bool
 }
@@ -92,7 +98,9 @@ func (parser *DSLParser) initializeLanguage() error {
 
 	func() {
 		defer func() {
-			_ = recover() //nolint:errcheck // recover() returns any, not error
+			if r := recover(); r != nil {
+				lang = nil
+			}
 		}()
 
 		lang = forest.GetLanguage(parser.langInfo.Name)
@@ -241,8 +249,8 @@ func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *par
 		symbolNames:     parser.symbolNames,
 		internedTypes:   parser.internedTypes,
 		internedRoles:   parser.internedRoles,
-		interner:        make(map[string]string, 128),  //nolint:mnd // initial capacity for per-parse string interner
-		batchChildren:   make([]batchChildInfo, 0, 32), //nolint:mnd // small reusable child batch buffer per parse
+		interner:        make(map[string]string, initialInternerCapacity),
+		batchChildren:   make([]batchChildInfo, 0, initialBatchChildrenBuffer),
 		patternMatcher:  parser.patternMatcher,
 		includeUnmapped: parser.IncludeUnmapped,
 	}

@@ -26,7 +26,7 @@ func makeTestHash(b byte) gitlib.Hash {
 func TestLRUBlobCache_GetPut(t *testing.T) {
 	t.Parallel()
 
-	c := cache.NewLRUBlobCache(1024) // 1KB cache
+	c := cache.NewLRUBlobCache(1024) // 1KB cache.
 
 	hash := makeTestHash(1)
 	blob := makeTestBlob([]byte("hello world"))

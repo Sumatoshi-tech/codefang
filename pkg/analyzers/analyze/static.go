@@ -150,8 +150,8 @@ func (svc *StaticService) fileWorker(
 	if parserErr != nil {
 		state.setError(fmt.Errorf("create worker parser: %w", parserErr))
 
-		//nolint:revive // drain channel intentionally
 		for range fileChan {
+			continue // Drain remaining items so senders don't block.
 		}
 
 		return

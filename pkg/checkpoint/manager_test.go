@@ -11,6 +11,8 @@ import (
 )
 
 func TestManager_New(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -21,6 +23,8 @@ func TestManager_New(t *testing.T) {
 }
 
 func TestManager_CheckpointDir(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 	expected := filepath.Join(dir, "abc123")
@@ -28,6 +32,8 @@ func TestManager_CheckpointDir(t *testing.T) {
 }
 
 func TestManager_MetadataPath(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 	expected := filepath.Join(dir, "abc123", "checkpoint.json")
@@ -35,6 +41,8 @@ func TestManager_MetadataPath(t *testing.T) {
 }
 
 func TestManager_Exists_NoCheckpoint(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -42,12 +50,14 @@ func TestManager_Exists_NoCheckpoint(t *testing.T) {
 }
 
 func TestManager_Exists_WithCheckpoint(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
 	// Create checkpoint directory and metadata file.
 	cpDir := m.CheckpointDir()
-	err := os.MkdirAll(cpDir, 0o755)
+	err := os.MkdirAll(cpDir, 0o750)
 	require.NoError(t, err)
 
 	err = os.WriteFile(m.MetadataPath(), []byte(`{"version":1}`), 0o600)
@@ -57,12 +67,14 @@ func TestManager_Exists_WithCheckpoint(t *testing.T) {
 }
 
 func TestManager_Clear(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
 	// Create checkpoint directory with files.
 	cpDir := m.CheckpointDir()
-	err := os.MkdirAll(cpDir, 0o755)
+	err := os.MkdirAll(cpDir, 0o750)
 	require.NoError(t, err)
 
 	err = os.WriteFile(m.MetadataPath(), []byte(`{"version":1}`), 0o600)
@@ -78,6 +90,8 @@ func TestManager_Clear(t *testing.T) {
 }
 
 func TestManager_Clear_NonExistent(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -87,6 +101,8 @@ func TestManager_Clear_NonExistent(t *testing.T) {
 }
 
 func TestManager_SaveLoad_Metadata(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -118,6 +134,8 @@ func TestManager_SaveLoad_Metadata(t *testing.T) {
 }
 
 func TestManager_SaveLoad_Checkpointables(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -145,11 +163,15 @@ func TestManager_SaveLoad_Checkpointables(t *testing.T) {
 }
 
 func TestManager_DefaultValues(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, 7*24*time.Hour, DefaultMaxAge)
 	assert.Equal(t, 1<<30, DefaultMaxSize) // 1GB.
 }
 
 func TestManager_Validate_Success(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -168,6 +190,8 @@ func TestManager_Validate_Success(t *testing.T) {
 }
 
 func TestManager_Validate_WrongRepo(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -182,6 +206,8 @@ func TestManager_Validate_WrongRepo(t *testing.T) {
 }
 
 func TestManager_Validate_WrongAnalyzers(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -196,6 +222,8 @@ func TestManager_Validate_WrongAnalyzers(t *testing.T) {
 }
 
 func TestManager_Validate_NoCheckpoint(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	m := NewManager(dir, "abc123")
 
@@ -204,12 +232,16 @@ func TestManager_Validate_NoCheckpoint(t *testing.T) {
 }
 
 func TestDefaultDir(t *testing.T) {
+	t.Parallel()
+
 	dir := DefaultDir()
 	assert.Contains(t, dir, ".codefang")
 	assert.Contains(t, dir, "checkpoints")
 }
 
 func TestRepoHash(t *testing.T) {
+	t.Parallel()
+
 	hash := RepoHash("/path/to/repo")
 	assert.Len(t, hash, 16) // 8 bytes hex = 16 chars.
 
@@ -223,6 +255,8 @@ func TestRepoHash(t *testing.T) {
 }
 
 func TestManager_Save_ErrorOnMkdir(t *testing.T) {
+	t.Parallel()
+
 	// Use a path that can't be created (file instead of dir).
 	tmpFile, err := os.CreateTemp(t.TempDir(), "checkpoint-test")
 	require.NoError(t, err)

@@ -47,6 +47,7 @@ func TestGenerateDashboard(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := GenerateDashboard(report, &buf)
 	if err != nil {
 		t.Fatalf("GenerateDashboard failed: %v", err)
@@ -54,7 +55,7 @@ func TestGenerateDashboard(t *testing.T) {
 
 	output := buf.String()
 
-	// Check for main dashboard elements
+	// Check for main dashboard elements.
 	checks := []struct {
 		name     string
 		contains string
@@ -89,6 +90,7 @@ func TestGenerateDashboard_EmptyData(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := GenerateDashboard(report, &buf)
 	if err != nil {
 		t.Fatalf("GenerateDashboard with empty data failed: %v", err)
@@ -109,6 +111,7 @@ func TestGenerateDashboard_InvalidTicks(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := GenerateDashboard(report, &buf)
 	if err == nil {
 		t.Error("expected error for invalid ticks")
@@ -124,6 +127,7 @@ func TestGenerateDashboard_InvalidPeopleDict(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := GenerateDashboard(report, &buf)
 	if err == nil {
 		t.Error("expected error for invalid people dict")
@@ -170,38 +174,44 @@ func TestNewDashboardData(t *testing.T) {
 		t.Fatalf("newDashboardData failed: %v", err)
 	}
 
-	// Check developers via metrics
+	// Check developers via metrics.
 	if len(data.Metrics.Developers) != 2 {
 		t.Errorf("expected 2 developers, got %d", len(data.Metrics.Developers))
 	}
 
-	// Find Alice (should have 8 commits total)
+	// Find Alice (should have 8 commits total).
 	var alice *DeveloperData
+
 	for i := range data.Metrics.Developers {
 		if data.Metrics.Developers[i].Name == "Alice" {
 			alice = &data.Metrics.Developers[i]
+
 			break
 		}
 	}
+
 	if alice == nil {
 		t.Fatal("Alice not found in developers")
 	}
+
 	if alice.Commits != 8 {
 		t.Errorf("expected Alice to have 8 commits, got %d", alice.Commits)
 	}
+
 	if alice.Added != 150 {
 		t.Errorf("expected Alice to have 150 added lines, got %d", alice.Added)
 	}
 
-	// Check languages
+	// Check languages.
 	if len(data.Metrics.Languages) == 0 {
 		t.Error("expected language data")
 	}
 
-	// Check aggregates
+	// Check aggregates.
 	if data.Metrics.Aggregate.TotalCommits != 10 {
 		t.Errorf("expected 10 total commits, got %d", data.Metrics.Aggregate.TotalCommits)
 	}
+
 	if data.Metrics.Aggregate.TotalDevelopers != 2 {
 		t.Errorf("expected 2 total developers, got %d", data.Metrics.Aggregate.TotalDevelopers)
 	}
@@ -238,27 +248,31 @@ func TestBusFactorCalculation(t *testing.T) {
 		t.Fatalf("newDashboardData failed: %v", err)
 	}
 
-	// Check bus factor entries
+	// Check bus factor entries.
 	if len(data.Metrics.BusFactor) == 0 {
 		t.Fatal("expected bus factor entries")
 	}
 
-	// Find Go entry
+	// Find Go entry.
 	var goEntry *BusFactorData
+
 	for i := range data.Metrics.BusFactor {
 		if data.Metrics.BusFactor[i].Language == "Go" {
 			goEntry = &data.Metrics.BusFactor[i]
+
 			break
 		}
 	}
+
 	if goEntry == nil {
 		t.Fatal("Go language not found in bus factor entries")
 	}
 
-	// Hero Developer should have ~95% ownership -> CRITICAL risk
+	// Hero Developer should have ~95% ownership -> CRITICAL risk.
 	if goEntry.RiskLevel != "CRITICAL" {
 		t.Errorf("expected CRITICAL risk for Go, got %s (primary: %.1f%%)", goEntry.RiskLevel, goEntry.PrimaryPct)
 	}
+
 	if goEntry.PrimaryDevName != "Hero Developer" {
 		t.Errorf("expected Hero Developer as primary, got %s", goEntry.PrimaryDevName)
 	}
@@ -278,6 +292,7 @@ func TestAnonymizeNames(t *testing.T) {
 		if !strings.HasPrefix(name, "Developer-") {
 			t.Errorf("expected anonymized name, got %s", name)
 		}
+
 		if strings.Contains(name, "John") || strings.Contains(name, "Jane") || strings.Contains(name, "Bob") {
 			t.Errorf("original name leaked in anonymized output: %s", name)
 		}
@@ -306,16 +321,19 @@ func TestGenerateIdentityAudit(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
 
-	// Should be sorted by commit count (Alice: 15, Bob: 5)
+	// Should be sorted by commit count (Alice: 15, Bob: 5).
 	if entries[0].CanonicalName != "Alice" {
 		t.Errorf("expected Alice first, got %s", entries[0].CanonicalName)
 	}
+
 	if entries[0].CommitCount != 15 {
 		t.Errorf("expected 15 commits for Alice, got %d", entries[0].CommitCount)
 	}
+
 	if entries[1].CanonicalName != "Bob" {
 		t.Errorf("expected Bob second, got %s", entries[1].CanonicalName)
 	}
+
 	if entries[1].CommitCount != 5 {
 		t.Errorf("expected 5 commits for Bob, got %d", entries[1].CommitCount)
 	}
@@ -370,15 +388,15 @@ func TestFormatSignedNumber(t *testing.T) {
 func TestAnonymousID(t *testing.T) {
 	t.Parallel()
 
-	// First 26 should be single letters A-Z
-	for i := 0; i < 26; i++ {
+	// First 26 should be single letters A-Z.
+	for i := range 26 {
 		id := anonymousID(i)
 		if len(id) != 1 {
 			t.Errorf("expected single letter for index %d, got %s", i, id)
 		}
 	}
 
-	// Beyond 26 should be two letters
+	// Beyond 26 should be two letters.
 	id := anonymousID(26)
 	if len(id) != 2 {
 		t.Errorf("expected two letters for index 26, got %s", id)

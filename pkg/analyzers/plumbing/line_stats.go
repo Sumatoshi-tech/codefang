@@ -23,11 +23,6 @@ type LinesStatsCalculator struct {
 
 	// Output.
 	LineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats
-
-	// Internal. //nolint:unused // used via reflection or external caller.
-	l interface { //nolint:unused // acknowledged.
-		Warnf(format string, args ...any)
-	}
 }
 
 // Name returns the name of the analyzer.
@@ -190,7 +185,7 @@ func computeDiffLineStats(diffs []diffmatchpatch.Diff) (added, removed, changed 
 
 // Finalize completes the analysis and returns the result.
 func (l *LinesStatsCalculator) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

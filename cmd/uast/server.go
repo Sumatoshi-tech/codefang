@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,13 @@ import (
 
 // minMappingURLParts is the minimum URL path parts for a mapping request.
 const minMappingURLParts = 3
+
+// Server timeout constants for the development HTTP server.
+const (
+	serverReadTimeout  = 30 * time.Second
+	serverWriteTimeout = 60 * time.Second
+	serverIdleTimeout  = 120 * time.Second
+)
 
 // ParseRequest holds the request body for the parse API endpoint.
 type ParseRequest struct {
@@ -87,7 +95,14 @@ func startServer(port, staticDir string) {
 		fmt.Fprintf(os.Stdout, "Serving static files from: %s\n", staticDir)
 	}
 
-	log.Fatal(http.ListenAndServe(":"+port, nil)) //nolint:gosec // dev server, timeouts not required
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  serverReadTimeout,
+		WriteTimeout: serverWriteTimeout,
+		IdleTimeout:  serverIdleTimeout,
+	}
+
+	log.Fatal(server.ListenAndServe())
 }
 
 // writeJSON encodes the given value as JSON and writes it to the response writer.

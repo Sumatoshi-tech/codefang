@@ -9,6 +9,8 @@ import (
 )
 
 func TestCommitStreamer_NewCommitStreamer(t *testing.T) {
+	t.Parallel()
+
 	streamer := framework.NewCommitStreamer()
 	if streamer.BatchSize != 10 {
 		t.Errorf("BatchSize = %d, want 10", streamer.BatchSize)
@@ -20,6 +22,8 @@ func TestCommitStreamer_NewCommitStreamer(t *testing.T) {
 }
 
 func TestCommitStreamer_StreamEmpty(t *testing.T) {
+	t.Parallel()
+
 	streamer := framework.NewCommitStreamer()
 	ctx := context.Background()
 	ch := streamer.Stream(ctx, []*gitlib.Commit{})
@@ -35,6 +39,8 @@ func TestCommitStreamer_StreamEmpty(t *testing.T) {
 }
 
 func TestCommitStreamer_StreamBatches(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -85,6 +91,8 @@ func TestCommitStreamer_StreamBatches(t *testing.T) {
 }
 
 func TestCommitStreamer_StreamFromIterator(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -123,6 +131,8 @@ func TestCommitStreamer_StreamFromIterator(t *testing.T) {
 }
 
 func TestCommitStreamer_StreamSingle(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -159,6 +169,8 @@ func TestCommitStreamer_StreamSingle(t *testing.T) {
 }
 
 func TestCommitStreamer_StreamContextCancel(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 

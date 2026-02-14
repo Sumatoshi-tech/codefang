@@ -1,4 +1,4 @@
-package halstead //nolint:testpackage // testing internal implementation.
+package halstead
 
 import (
 	"bytes"
@@ -439,7 +439,7 @@ func TestAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	// which should properly merge the operators and operands from both functions.
 }
 
-// --- FormatReportJSON Tests ---
+// --- FormatReportJSON Tests ---.
 
 func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	t.Parallel()
@@ -457,16 +457,18 @@ func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportJSON(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.FunctionHalstead, 2)
 	assert.Equal(t, 2, result.Aggregate.TotalFunctions)
 }
@@ -478,12 +480,14 @@ func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportJSON(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid JSON
+	// Verify output is valid JSON.
 	var result ComputedMetrics
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -491,7 +495,7 @@ func TestAnalyzer_FormatReportJSON_Empty(t *testing.T) {
 	assert.Equal(t, 0, result.Aggregate.TotalFunctions)
 }
 
-// --- FormatReportYAML Tests ---
+// --- FormatReportYAML Tests ---.
 
 func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	t.Parallel()
@@ -509,16 +513,18 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Verify metrics structure
+	// Verify metrics structure.
 	assert.Len(t, result.FunctionHalstead, 2)
 	assert.Equal(t, 2, result.Aggregate.TotalFunctions)
 }
@@ -530,12 +536,14 @@ func TestAnalyzer_FormatReportYAML_Empty(t *testing.T) {
 	report := analyze.Report{}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)
 
-	// Verify output is valid YAML
+	// Verify output is valid YAML.
 	var result ComputedMetrics
+
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
@@ -556,6 +564,7 @@ func TestAnalyzer_FormatReportYAML_ContainsExpectedFields(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportYAML(report, &buf)
 
 	require.NoError(t, err)

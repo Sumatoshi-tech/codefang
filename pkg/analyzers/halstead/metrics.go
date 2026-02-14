@@ -7,7 +7,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for Halstead metrics computation.
 type ReportData struct {
@@ -180,7 +180,7 @@ func parseFunctionData(fn map[string]any) FunctionData {
 	return fd
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // FunctionHalsteadData contains Halstead metrics for a function.
 type FunctionHalsteadData struct {
@@ -230,7 +230,7 @@ type AggregateData struct {
 	Message           string  `json:"message"            yaml:"message"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // FunctionHalsteadMetric computes per-function Halstead data.
 type FunctionHalsteadMetric struct {
@@ -306,7 +306,7 @@ func (m *FunctionHalsteadMetric) Compute(input *ReportData) []FunctionHalsteadDa
 		})
 	}
 
-	// Sort by volume descending
+	// Sort by volume descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Volume > result[j].Volume
 	})
@@ -409,7 +409,7 @@ func (m *HighEffortFunctionMetric) Compute(input *ReportData) []HighEffortFuncti
 		})
 	}
 
-	// Sort by volume descending
+	// Sort by volume descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Volume > result[j].Volume
 	})
@@ -463,7 +463,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the Halstead analyzer.
 type ComputedMetrics struct {

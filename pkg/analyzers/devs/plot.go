@@ -98,7 +98,11 @@ func reconstructTicksFromBinary(report analyze.Report) (map[int]map[int]*DevTick
 		devMap := make(map[int]*DevTick, len(byDev))
 
 		for devIDStr, commits := range byDev {
-			devID, _ := strconv.Atoi(devIDStr) //nolint:errcheck // invalid keys default to 0
+			devID, err := strconv.Atoi(devIDStr)
+			if err != nil {
+				continue // skip entries with non-numeric developer IDs.
+			}
+
 			devMap[devID] = &DevTick{Commits: toInt(commits)}
 		}
 
@@ -144,7 +148,11 @@ func extractNamesFromBinary(report analyze.Report) []string {
 		}
 
 		id := toInt(entry["id"])
-		name, _ := entry["name"].(string) //nolint:errcheck // type assertion, not error
+
+		name, ok := entry["name"].(string)
+		if !ok {
+			continue
+		}
 
 		if id >= 0 && id < len(names) {
 			names[id] = name

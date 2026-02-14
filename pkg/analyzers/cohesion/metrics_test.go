@@ -21,7 +21,7 @@ const (
 	testFuncCohesion   = 0.8
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
 	t.Parallel()
@@ -75,7 +75,7 @@ func TestParseReportData_WithFunctions(t *testing.T) {
 	assert.InDelta(t, 0.9, data.Functions[0].Cohesion, 0.01)
 }
 
-// --- FunctionCohesionMetric Tests ---
+// --- FunctionCohesionMetric Tests ---.
 
 func TestFunctionCohesionMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -114,7 +114,7 @@ func TestFunctionCohesionMetric_Compute(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by cohesion ascending (worst first)
+	// Sorted by cohesion ascending (worst first).
 	assert.Equal(t, testFunctionName3, result[0].Name)
 	assert.Equal(t, "Poor", result[0].QualityLevel)
 	assert.Equal(t, testFunctionName2, result[1].Name)
@@ -123,7 +123,7 @@ func TestFunctionCohesionMetric_Compute(t *testing.T) {
 	assert.Equal(t, "Excellent", result[2].QualityLevel)
 }
 
-// --- classifyCohesionQuality Tests ---
+// --- classifyCohesionQuality Tests ---.
 
 func TestClassifyCohesionQuality(t *testing.T) {
 	t.Parallel()
@@ -154,7 +154,7 @@ func TestClassifyCohesionQuality(t *testing.T) {
 	}
 }
 
-// --- CohesionDistributionMetric Tests ---
+// --- CohesionDistributionMetric Tests ---.
 
 func TestCohesionDistributionMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -186,12 +186,12 @@ func TestCohesionDistributionMetric_Compute(t *testing.T) {
 	metric := NewDistributionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Cohesion: 0.9},  // Excellent
-			{Cohesion: 0.85}, // Excellent
-			{Cohesion: 0.7},  // Good
-			{Cohesion: 0.5},  // Fair
-			{Cohesion: 0.4},  // Fair
-			{Cohesion: 0.1},  // Poor
+			{Cohesion: 0.9},  // Excellent.
+			{Cohesion: 0.85}, // Excellent.
+			{Cohesion: 0.7},  // Good.
+			{Cohesion: 0.5},  // Fair.
+			{Cohesion: 0.4},  // Fair.
+			{Cohesion: 0.1},  // Poor.
 		},
 	}
 
@@ -203,7 +203,7 @@ func TestCohesionDistributionMetric_Compute(t *testing.T) {
 	assert.Equal(t, 1, result.Poor)
 }
 
-// --- LowCohesionFunctionMetric Tests ---
+// --- LowCohesionFunctionMetric Tests ---.
 
 func TestLowCohesionFunctionMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -248,7 +248,7 @@ func TestLowCohesionFunctionMetric_MediumRisk(t *testing.T) {
 	metric := NewLowCohesionFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Name: testFunctionName1, Cohesion: 0.4}, // Fair but below Good
+			{Name: testFunctionName1, Cohesion: 0.4}, // Fair but below Good.
 		},
 	}
 
@@ -265,7 +265,7 @@ func TestLowCohesionFunctionMetric_HighRisk(t *testing.T) {
 	metric := NewLowCohesionFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Name: testFunctionName1, Cohesion: 0.1}, // Poor
+			{Name: testFunctionName1, Cohesion: 0.1}, // Poor.
 		},
 	}
 
@@ -291,13 +291,13 @@ func TestLowCohesionFunctionMetric_SortedByCohesion(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by cohesion ascending
+	// Sorted by cohesion ascending.
 	assert.Equal(t, testFunctionName2, result[0].Name)
 	assert.Equal(t, testFunctionName1, result[1].Name)
 	assert.Equal(t, testFunctionName3, result[2].Name)
 }
 
-// --- CohesionAggregateMetric Tests ---
+// --- CohesionAggregateMetric Tests ---.
 
 func TestCohesionAggregateMetric_Metadata(t *testing.T) {
 	t.Parallel()
@@ -331,7 +331,7 @@ func TestCohesionAggregateMetric_Compute(t *testing.T) {
 	assert.Equal(t, testMessage, result.Message)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
 	t.Parallel()
@@ -368,7 +368,7 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 	assert.Equal(t, 1, result.Distribution.Poor)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()

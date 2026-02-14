@@ -158,7 +158,6 @@ func (srv *Server) didClose(_ *glsp.Context, params *protocol.DidCloseTextDocume
 	return nil
 }
 
-//nolint:gochecknoglobals // LSP completion and hover data are package-level constants by design.
 var (
 	mappingDSLKeywords = []protocol.CompletionItem{
 		completionItem("<-", protocol.CompletionItemKindKeyword, "Pattern assignment"),
@@ -211,7 +210,7 @@ func (srv *Server) hover(_ *glsp.Context, params *protocol.HoverParams) (*protoc
 
 	text, ok := srv.store.Get(uri)
 	if !ok {
-		return nil, nil //nolint:nilnil // LSP protocol expects nil hover when no document found.
+		return nil, nil // LSP protocol expects nil hover when no document found.
 	}
 
 	word := extractWordAtPosition(text, int(pos.Line), int(pos.Character))
@@ -225,7 +224,7 @@ func (srv *Server) hover(_ *glsp.Context, params *protocol.HoverParams) (*protoc
 		}, nil
 	}
 
-	return nil, nil //nolint:nilnil // LSP protocol expects nil hover when no docs available.
+	return nil, nil // LSP protocol expects nil hover when no docs available.
 }
 
 // extractWordAtPosition returns the word at the given line/character in the text.

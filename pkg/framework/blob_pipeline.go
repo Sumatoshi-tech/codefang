@@ -51,6 +51,7 @@ func NewBlobPipelineWithCache(
 	if bufferSize <= 0 {
 		bufferSize = 1
 	}
+
 	if workerCount <= 0 {
 		workerCount = 1
 	}
@@ -66,16 +67,16 @@ func NewBlobPipelineWithCache(
 }
 
 type batchBlobState struct {
-	respChans []chan gitlib.BlobBatchResponse // Slice of response channels for sharded requests
+	respChans []chan gitlib.BlobBatchResponse // Slice of response channels for sharded requests.
 	results   map[gitlib.Hash]*gitlib.CachedBlob
 	once      sync.Once
 }
 
 type blobJob struct {
 	data       BlobData
-	neededHash []gitlib.Hash                      // Hashes this job specifically needs
-	cacheHits  map[gitlib.Hash]*gitlib.CachedBlob // Blobs already found in global cache
-	batchState *batchBlobState                    // Shared state for the batch request
+	neededHash []gitlib.Hash                      // Hashes this job specifically needs.
+	cacheHits  map[gitlib.Hash]*gitlib.CachedBlob // Blobs already found in global cache.
+	batchState *batchBlobState                    // Shared state for the batch request.
 }
 
 // Process receives commit batches and outputs blob data.
@@ -113,7 +114,7 @@ func (p *BlobPipeline) runProducer(ctx context.Context, commits <-chan CommitBat
 func (p *BlobPipeline) processBatch(
 	ctx context.Context, batch CommitBatch, previousHash gitlib.Hash, jobs chan<- blobJob,
 ) gitlib.Hash {
-	// First pass: Dispatch all tree diffs in parallel to the worker pool
+	// First pass: Dispatch all tree diffs in parallel to the worker pool.
 	type treeDiffJob struct {
 		index    int
 		commit   *gitlib.Commit
@@ -127,6 +128,7 @@ func (p *BlobPipeline) processBatch(
 
 		// With first-parent walk, previous in stream equals parent; diff base must match burndown state.
 		var prevHash gitlib.Hash
+
 		switch {
 		case commit.NumParents() > 0:
 			prevHash = commit.ParentHash(0)
@@ -142,7 +144,7 @@ func (p *BlobPipeline) processBatch(
 			Response:           respChan,
 		}
 
-		// Send to POOL workers for parallelism
+		// Send to POOL workers for parallelism.
 		select {
 		case p.PoolWorkerChan <- req:
 		case <-ctx.Done():
@@ -156,15 +158,16 @@ func (p *BlobPipeline) processBatch(
 		}
 	}
 
-	// Collect Tree Diffs
+	// Collect Tree Diffs.
 	batchJobs := make([]blobJob, len(batch.Commits))
 	allNeededHashes := make(map[gitlib.Hash]bool)
+
 	var lastCommitHash gitlib.Hash
 
 	for i, job := range diffJobs {
 		resp := <-job.respChan
 
-		// Helper to free tree if we don't need it (we don't pass it forward anymore)
+		// Helper to free tree if we don't need it (we don't pass it forward anymore).
 		if resp.CurrentTree != nil {
 			resp.CurrentTree.Free()
 		}
@@ -180,6 +183,7 @@ func (p *BlobPipeline) processBatch(
 
 		if resp.Error == nil {
 			hashes := p.collectBlobHashes(resp.Changes)
+
 			bJob.neededHash = hashes
 			for _, h := range hashes {
 				allNeededHashes[h] = true
@@ -190,14 +194,16 @@ func (p *BlobPipeline) processBatch(
 		lastCommitHash = job.commit.Hash()
 	}
 
-	// Identify missing blobs across the entire batch
+	// Identify missing blobs across the entire batch.
 	uniqueHashes := make([]gitlib.Hash, 0, len(allNeededHashes))
 	for h := range allNeededHashes {
 		uniqueHashes = append(uniqueHashes, h)
 	}
 
-	var missingHashes []gitlib.Hash
-	var globalCacheHits map[gitlib.Hash]*gitlib.CachedBlob
+	var (
+		missingHashes   []gitlib.Hash
+		globalCacheHits map[gitlib.Hash]*gitlib.CachedBlob
+	)
 
 	if p.BlobCache != nil && len(uniqueHashes) > 0 {
 		globalCacheHits, missingHashes = p.BlobCache.GetMulti(uniqueHashes)
@@ -206,14 +212,14 @@ func (p *BlobPipeline) processBatch(
 		globalCacheHits = make(map[gitlib.Hash]*gitlib.CachedBlob)
 	}
 
-	// Prepare shared batch state
+	// Prepare shared batch state.
 	batchState := &batchBlobState{
 		results: make(map[gitlib.Hash]*gitlib.CachedBlob),
 	}
 
-	// Determine sharding
+	// Determine sharding.
 	var chunkCount = 1
-	if p.WorkerCount > 1 && len(missingHashes) > p.WorkerCount*2 { // Shard if enough items
+	if p.WorkerCount > 1 && len(missingHashes) > p.WorkerCount*2 { // Shard if enough items.
 		chunkCount = p.WorkerCount
 	}
 
@@ -223,7 +229,7 @@ func (p *BlobPipeline) processBatch(
 		chunks[idx] = append(chunks[idx], h)
 	}
 
-	// Fire batch requests
+	// Fire batch requests.
 	for _, chunk := range chunks {
 		if len(chunk) == 0 {
 			continue
@@ -248,11 +254,11 @@ func (p *BlobPipeline) processBatch(
 		}
 	}
 
-	// Second pass: Dispatch jobs
+	// Second pass: Dispatch jobs.
 	for i := range batchJobs {
 		job := batchJobs[i]
 
-		// Assign cache hits relevant to this job
+		// Assign cache hits relevant to this job.
 		job.cacheHits = make(map[gitlib.Hash]*gitlib.CachedBlob)
 		for _, h := range job.neededHash {
 			if blob, ok := globalCacheHits[h]; ok {
@@ -285,6 +291,7 @@ func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out
 
 		if job.data.Error != nil {
 			out <- job.data
+
 			continue
 		}
 
@@ -302,26 +309,28 @@ func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out
 
 // collectBlobResponse waits for and collects the blob response.
 func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bool {
-	// Initialize cache with hits we already have
+	// Initialize cache with hits we already have.
 	cache := make(map[gitlib.Hash]*gitlib.CachedBlob)
 	maps.Copy(cache, job.cacheHits)
 
-	// If no batch request was needed, we are done
+	// If no batch request was needed, we are done.
 	if job.batchState == nil || len(job.batchState.respChans) == 0 {
 		job.data.BlobCache = cache
+
 		return true
 	}
 
-	// Ensure batch request is processed exactly once
+	// Ensure batch request is processed exactly once.
 	var success = true
+
 	job.batchState.once.Do(func() {
-		// New blobs to add to global cache
+		// New blobs to add to global cache.
 		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
 
 		for _, ch := range job.batchState.respChans {
 			select {
 			case resp := <-ch:
-				// So we can just use resp.Blobs
+				// So we can just use resp.Blobs.
 				for _, blob := range resp.Blobs {
 					if blob != nil {
 						// We need the hash. CachedBlob has Hash() method?
@@ -332,11 +341,12 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 				}
 			case <-ctx.Done():
 				success = false
+
 				return
 			}
 		}
 
-		// Store new blobs in global cache
+		// Store new blobs in global cache.
 		if p.BlobCache != nil && len(allNewBlobs) > 0 {
 			p.BlobCache.PutMulti(allNewBlobs)
 		}
@@ -346,9 +356,9 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 		return false
 	}
 
-	// Now grab from shared results what this job needs
+	// Now grab from shared results what this job needs.
 	for _, h := range job.neededHash {
-		// If it wasn't in cacheHits, check shared results
+		// If it wasn't in cacheHits, check shared results.
 		if _, ok := cache[h]; !ok {
 			if blob, found := job.batchState.results[h]; found {
 				cache[h] = blob
@@ -357,9 +367,11 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	}
 
 	job.data.BlobCache = cache
+
 	return true
 }
 
+// File mode constants for git tree entries.
 const (
 	FileModeCommit = 0o160000
 	FileModeTree   = 0o040000

@@ -9,7 +9,7 @@ import (
 // Hibernate compresses the analyzer's state to reduce memory usage.
 // Releases the UAST parser which is memory-heavy but can be recreated.
 func (h *HistoryAnalyzer) Hibernate() error {
-	// Release parser to free memory - it will be recreated in Boot
+	// Release parser to free memory - it will be recreated in Boot.
 	h.parser = nil
 
 	return nil
@@ -18,7 +18,7 @@ func (h *HistoryAnalyzer) Hibernate() error {
 // Boot restores the analyzer from hibernated state.
 // Recreates the UAST parser for the next chunk.
 func (h *HistoryAnalyzer) Boot() error {
-	// Recreate parser if needed
+	// Recreate parser if needed.
 	if h.parser == nil {
 		var err error
 

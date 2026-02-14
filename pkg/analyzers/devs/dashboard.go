@@ -37,7 +37,7 @@ const (
 // DashboardData wraps ComputedMetrics with rendering-specific data.
 type DashboardData struct {
 	Metrics      *ComputedMetrics
-	TopLanguages []string // Top N language names for radar chart
+	TopLanguages []string // Top N language names for radar chart.
 }
 
 // GenerateDashboard creates the developer analytics dashboard HTML.

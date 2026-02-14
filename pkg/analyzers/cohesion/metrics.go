@@ -7,7 +7,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for cohesion metrics computation.
 type ReportData struct {
@@ -49,7 +49,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 		data.Message = v
 	}
 
-	// Parse functions
+	// Parse functions.
 	if functions, ok := report["functions"].([]map[string]any); ok {
 		data.Functions = make([]FunctionData, 0, len(functions))
 
@@ -71,7 +71,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return data, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // FunctionCohesionData contains cohesion data for a function.
 type FunctionCohesionData struct {
@@ -106,7 +106,7 @@ type AggregateData struct {
 	Message          string  `json:"message"           yaml:"message"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // FunctionCohesionMetric computes per-function cohesion data.
 type FunctionCohesionMetric struct {
@@ -150,7 +150,7 @@ func (m *FunctionCohesionMetric) Compute(input *ReportData) []FunctionCohesionDa
 		})
 	}
 
-	// Sort by cohesion ascending (worst first)
+	// Sort by cohesion ascending (worst first).
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Cohesion < result[j].Cohesion
 	})
@@ -254,7 +254,7 @@ func (m *LowCohesionFunctionMetric) Compute(input *ReportData) []LowCohesionFunc
 		})
 	}
 
-	// Sort by cohesion ascending (worst first)
+	// Sort by cohesion ascending (worst first).
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Cohesion < result[j].Cohesion
 	})
@@ -296,7 +296,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the cohesion analyzer.
 type ComputedMetrics struct {

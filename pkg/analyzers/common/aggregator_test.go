@@ -1,9 +1,14 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+)
+
+const (
+	testAnalyzerName = "test_analyzer"
+	testCustomValue  = "custom_value"
 )
 
 func TestNewAggregator(t *testing.T) {
@@ -20,7 +25,7 @@ func TestNewAggregator(t *testing.T) {
 	}
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score", "complexity"},
 		[]string{"total_items"},
 		"items",
@@ -33,7 +38,7 @@ func TestNewAggregator(t *testing.T) {
 		t.Fatal("NewAggregator returned nil")
 	}
 
-	if aggregator.analyzerName != "test_analyzer" {
+	if aggregator.analyzerName != testAnalyzerName {
 		t.Errorf("expected analyzer name 'test_analyzer', got '%s'", aggregator.analyzerName)
 	}
 
@@ -70,7 +75,7 @@ func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -85,7 +90,7 @@ func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
 
 	// With nil emptyResultBuilder, should use default empty result.
 	result := aggregator.GetResult()
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 }
@@ -94,7 +99,7 @@ func TestAggregator_Aggregate_SingleReport(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -124,7 +129,7 @@ func TestAggregator_Aggregate_MultipleReports(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -155,7 +160,7 @@ func TestAggregator_Aggregate_NilReports(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -181,7 +186,7 @@ func TestAggregator_GetResult_Empty(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -197,7 +202,7 @@ func TestAggregator_GetResult_Empty(t *testing.T) {
 	}
 
 	// Should return empty result from resultBuilder.
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 }
@@ -207,12 +212,12 @@ func TestAggregator_GetResult_WithCustomEmptyBuilder(t *testing.T) {
 
 	emptyResultBuilder := func() analyze.Report {
 		return analyze.Report{
-			"custom_field": "custom_value",
+			"custom_field": testCustomValue,
 		}
 	}
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -223,7 +228,7 @@ func TestAggregator_GetResult_WithCustomEmptyBuilder(t *testing.T) {
 
 	result := aggregator.GetResult()
 
-	if result["custom_field"] != "custom_value" {
+	if result["custom_field"] != testCustomValue {
 		t.Errorf("expected custom empty result, got %v", result)
 	}
 }
@@ -240,7 +245,7 @@ func TestAggregator_GetResult_WithData(t *testing.T) {
 	}
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -266,7 +271,7 @@ func TestAggregator_GetResult_WithData(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
@@ -280,7 +285,7 @@ func TestAggregator_GetResult_WithoutMessageBuilder(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -306,7 +311,7 @@ func TestAggregator_GetMetricsProcessor(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -326,7 +331,7 @@ func TestAggregator_GetDataCollector(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",
@@ -346,7 +351,7 @@ func TestAggregator_GetResultBuilder(t *testing.T) {
 	t.Parallel()
 
 	aggregator := NewAggregator(
-		"test_analyzer",
+		testAnalyzerName,
 		[]string{"score"},
 		[]string{"count"},
 		"items",

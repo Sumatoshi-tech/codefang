@@ -11,10 +11,12 @@ import (
 func TestDoubleBufferMemoryBudget_HalvesBudget(t *testing.T) {
 	t.Parallel()
 
-	// 2 GiB budget: (2 GiB - 400 MiB overhead) / 2 + 400 MiB = ~1.2 GiB
-	const budget = int64(2 * 1024 * 1024 * 1024)
-	const overhead = int64(streaming.BaseOverhead)
-	const want = (budget-overhead)/2 + overhead
+	// 2 GiB budget: (2 GiB - 400 MiB overhead) / 2 + 400 MiB = ~1.2 GiB.
+	const (
+		budget   = int64(2 * 1024 * 1024 * 1024)
+		overhead = int64(streaming.BaseOverhead)
+		want     = (budget-overhead)/2 + overhead
+	)
 
 	got := doubleBufferMemoryBudget(budget)
 	if got != want {
@@ -47,8 +49,10 @@ func TestCanDoubleBuffer_EnoughBudgetMultipleChunks(t *testing.T) {
 	t.Parallel()
 
 	// 2 GiB budget, 3 chunks: double-buffering is allowed.
-	const budget = int64(2 * 1024 * 1024 * 1024)
-	const chunks = 3
+	const (
+		budget = int64(2 * 1024 * 1024 * 1024)
+		chunks = 3
+	)
 
 	if !canDoubleBuffer(budget, chunks) {
 		t.Fatal("canDoubleBuffer should return true for sufficient budget and multiple chunks")
@@ -59,8 +63,10 @@ func TestCanDoubleBuffer_SingleChunk(t *testing.T) {
 	t.Parallel()
 
 	// Even with large budget, single chunk means no double-buffering needed.
-	const budget = int64(4 * 1024 * 1024 * 1024)
-	const chunks = 1
+	const (
+		budget = int64(4 * 1024 * 1024 * 1024)
+		chunks = 1
+	)
 
 	if canDoubleBuffer(budget, chunks) {
 		t.Fatal("canDoubleBuffer should return false for single chunk")
@@ -82,8 +88,10 @@ func TestCanDoubleBuffer_BudgetBelowThreshold(t *testing.T) {
 	t.Parallel()
 
 	// Budget below minimum threshold: no double-buffering.
-	const budget = int64(streaming.BaseOverhead + 1)
-	const chunks = 3
+	const (
+		budget = int64(streaming.BaseOverhead + 1)
+		chunks = 3
+	)
 
 	if canDoubleBuffer(budget, chunks) {
 		t.Fatal("canDoubleBuffer should return false when budget is below minimum threshold")
@@ -244,8 +252,8 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 
 	// Sequential run.
 	seqRunner := NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
-	seqReports, seqErr := seqRunner.Run(commits)
 
+	seqReports, seqErr := seqRunner.Run(commits)
 	if seqErr != nil {
 		t.Fatalf("sequential Run: %v", seqErr)
 	}
@@ -286,8 +294,10 @@ func TestPlanChunksWithDoubleBuffer_EnabledForLargeRepo(t *testing.T) {
 	t.Parallel()
 
 	// 2 GiB budget, 2000 commits: should enable double-buffering.
-	const budget = int64(2 * 1024 * 1024 * 1024)
-	const commitCount = 2000
+	const (
+		budget      = int64(2 * 1024 * 1024 * 1024)
+		commitCount = 2000
+	)
 
 	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget)
 	if !enabled {
@@ -313,8 +323,10 @@ func TestPlanChunksWithDoubleBuffer_DisabledForSmallRepo(t *testing.T) {
 	t.Parallel()
 
 	// 2 GiB budget, 100 commits: single chunk, no double-buffering.
-	const budget = int64(2 * 1024 * 1024 * 1024)
-	const commitCount = 100
+	const (
+		budget      = int64(2 * 1024 * 1024 * 1024)
+		commitCount = 100
+	)
 
 	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget)
 	if enabled {

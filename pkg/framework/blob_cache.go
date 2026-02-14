@@ -15,12 +15,12 @@ const DefaultGlobalCacheSize = 256 * 1024 * 1024
 type GlobalBlobCache struct {
 	mu          sync.RWMutex
 	entries     map[gitlib.Hash]*cacheEntry
-	head        *cacheEntry // Most recently used
-	tail        *cacheEntry // Least recently used
+	head        *cacheEntry // Most recently used.
+	tail        *cacheEntry // Least recently used.
 	maxSize     int64
 	currentSize int64
 
-	// Metrics (atomic for lock-free reads)
+	// Metrics (atomic for lock-free reads).
 	hits   atomic.Int64
 	misses atomic.Int64
 }
@@ -72,7 +72,7 @@ func (c *GlobalBlobCache) Put(hash gitlib.Hash, blob *gitlib.CachedBlob) {
 
 	blobSize := int64(len(blob.Data))
 
-	// Don't cache blobs larger than the entire cache
+	// Don't cache blobs larger than the entire cache.
 	if blobSize > c.maxSize {
 		return
 	}
@@ -80,20 +80,20 @@ func (c *GlobalBlobCache) Put(hash gitlib.Hash, blob *gitlib.CachedBlob) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if already exists
+	// Check if already exists.
 	if entry, ok := c.entries[hash]; ok {
 		c.moveToFront(entry)
 
 		return
 	}
 
-	// Evict entries until we have room
+	// Evict entries until we have room.
 	for c.currentSize+blobSize > c.maxSize && c.tail != nil {
 		c.evictLRU()
 	}
 
 	// Add new entry
-	// Clone the blob to ensure data is detached from any large arena
+	// Clone the blob to ensure data is detached from any large arena.
 	safeBlob := blob.Clone()
 
 	entry := &cacheEntry{
@@ -143,24 +143,24 @@ func (c *GlobalBlobCache) PutMulti(blobs map[gitlib.Hash]*gitlib.CachedBlob) {
 
 		blobSize := int64(len(blob.Data))
 
-		// Skip blobs larger than entire cache
+		// Skip blobs larger than entire cache.
 		if blobSize > c.maxSize {
 			continue
 		}
 
-		// Skip if already exists
+		// Skip if already exists.
 		if entry, ok := c.entries[hash]; ok {
 			c.moveToFront(entry)
 
 			continue
 		}
 
-		// Evict entries until we have room
+		// Evict entries until we have room.
 		for c.currentSize+blobSize > c.maxSize && c.tail != nil {
 			c.evictLRU()
 		}
 
-		// Add new entry
+		// Add new entry.
 		safeBlob := blob.Clone()
 
 		entry := &cacheEntry{

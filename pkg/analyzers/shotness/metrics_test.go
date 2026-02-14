@@ -21,9 +21,11 @@ const (
 	floatDelta = 0.01
 )
 
-// --- ParseReportData Tests ---
+// --- ParseReportData Tests ---.
 
 func TestParseReportData_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ParseReportData(report)
@@ -34,6 +36,8 @@ func TestParseReportData_Empty(t *testing.T) {
 }
 
 func TestParseReportData_AllFields(t *testing.T) {
+	t.Parallel()
+
 	nodes := []NodeSummary{
 		{Name: testNodeName1, Type: testNodeType, File: testFile1},
 		{Name: testNodeName2, Type: testNodeType, File: testFile2},
@@ -59,9 +63,11 @@ func TestParseReportData_AllFields(t *testing.T) {
 	assert.Equal(t, testFile1, result.Nodes[0].File)
 }
 
-// --- NodeHotnessMetric Tests ---
+// --- NodeHotnessMetric Tests ---.
 
 func TestNewNodeHotnessMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 
 	assert.Equal(t, "node_hotness", m.Name())
@@ -71,6 +77,8 @@ func TestNewNodeHotnessMetric_Metadata(t *testing.T) {
 }
 
 func TestNodeHotnessMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{}
 
@@ -80,6 +88,8 @@ func TestNodeHotnessMetric_Empty(t *testing.T) {
 }
 
 func TestNodeHotnessMetric_SingleNode(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -97,11 +107,13 @@ func TestNodeHotnessMetric_SingleNode(t *testing.T) {
 	assert.Equal(t, testNodeType, result[0].Type)
 	assert.Equal(t, testFile1, result[0].File)
 	assert.Equal(t, 15, result[0].ChangeCount)
-	assert.Equal(t, 0, result[0].CoupledNodes)                 // No other nodes
-	assert.InDelta(t, 1.0, result[0].HotnessScore, floatDelta) // max=15, self=15
+	assert.Equal(t, 0, result[0].CoupledNodes)                 // No other nodes.
+	assert.InDelta(t, 1.0, result[0].HotnessScore, floatDelta) // max=15, self=15.
 }
 
 func TestNodeHotnessMetric_MultipleNodes_SortedByChangeCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -119,7 +131,7 @@ func TestNodeHotnessMetric_MultipleNodes_SortedByChangeCount(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by change count descending
+	// Sorted by change count descending.
 	assert.Equal(t, testNodeName2, result[0].Name)
 	assert.Equal(t, 20, result[0].ChangeCount)
 	assert.Equal(t, testNodeName3, result[1].Name)
@@ -129,23 +141,27 @@ func TestNodeHotnessMetric_MultipleNodes_SortedByChangeCount(t *testing.T) {
 }
 
 func TestNodeHotnessMetric_CoupledNodesCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
 			{Name: testNodeName1, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 10, 1: 3, 2: 5}, // Self + 2 coupled nodes
+			{0: 10, 1: 3, 2: 5}, // Self + 2 coupled nodes.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 2, result[0].CoupledNodes) // 3 entries minus self
+	assert.Equal(t, 2, result[0].CoupledNodes) // 3 entries minus self.
 }
 
 func TestNodeHotnessMetric_HotnessScoreNormalized(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -153,21 +169,23 @@ func TestNodeHotnessMetric_HotnessScoreNormalized(t *testing.T) {
 			{Name: testNodeName2, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 20}, // max changes
-			{1: 10}, // half of max
+			{0: 20}, // max changes.
+			{1: 10}, // half of max.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
-	// node1 has score 1.0 (20/20)
+	// node1 has score 1.0 (20/20).
 	assert.InDelta(t, 1.0, result[0].HotnessScore, floatDelta)
-	// node2 has score 0.5 (10/20)
+	// node2 has score 0.5 (10/20).
 	assert.InDelta(t, 0.5, result[1].HotnessScore, floatDelta)
 }
 
 func TestNodeHotnessMetric_OutOfBoundsCounter(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeHotnessMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -175,20 +193,22 @@ func TestNodeHotnessMetric_OutOfBoundsCounter(t *testing.T) {
 			{Name: testNodeName2, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 10}, // Only 1 counter for 2 nodes
+			{0: 10}, // Only 1 counter for 2 nodes.
 		},
 	}
 
 	result := m.Compute(input)
 
-	// Should only process nodes with corresponding counters
+	// Should only process nodes with corresponding counters.
 	require.Len(t, result, 1)
 	assert.Equal(t, testNodeName1, result[0].Name)
 }
 
-// --- NodeCouplingMetric Tests ---
+// --- NodeCouplingMetric Tests ---.
 
 func TestNewNodeCouplingMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 
 	assert.Equal(t, "node_coupling", m.Name())
@@ -198,6 +218,8 @@ func TestNewNodeCouplingMetric_Metadata(t *testing.T) {
 }
 
 func TestNodeCouplingMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 	input := &ReportData{}
 
@@ -207,6 +229,8 @@ func TestNodeCouplingMetric_Empty(t *testing.T) {
 }
 
 func TestNodeCouplingMetric_SinglePair(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -214,7 +238,7 @@ func TestNodeCouplingMetric_SinglePair(t *testing.T) {
 			{Name: testNodeName2, Type: testNodeType, File: testFile2},
 		},
 		Counters: []map[int]int{
-			{0: 10, 1: 5}, // node1-node2 coupled with 5 changes
+			{0: 10, 1: 5}, // node1-node2 coupled with 5 changes.
 			{0: 5, 1: 8},
 		},
 	}
@@ -230,6 +254,8 @@ func TestNodeCouplingMetric_SinglePair(t *testing.T) {
 }
 
 func TestNodeCouplingMetric_MultiplePairs_SortedByCoChanges(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -238,8 +264,8 @@ func TestNodeCouplingMetric_MultiplePairs_SortedByCoChanges(t *testing.T) {
 			{Name: testNodeName3, Type: testNodeType, File: testFile2},
 		},
 		Counters: []map[int]int{
-			{0: 10, 1: 3, 2: 8}, // node1-node2=3, node1-node3=8
-			{0: 3, 1: 5, 2: 2},  // node2-node3=2
+			{0: 10, 1: 3, 2: 8}, // co-occurrence: node1 with node2 is 3, node1 with node3 is 8.
+			{0: 3, 1: 5, 2: 2},  // co-occurrence: node2 with node3 is 2.
 			{0: 8, 1: 2, 2: 6},
 		},
 	}
@@ -247,13 +273,15 @@ func TestNodeCouplingMetric_MultiplePairs_SortedByCoChanges(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 3)
-	// Sorted by CoChanges descending
-	assert.Equal(t, 8, result[0].CoChanges) // node1-node3
-	assert.Equal(t, 3, result[1].CoChanges) // node1-node2
-	assert.Equal(t, 2, result[2].CoChanges) // node2-node3
+	// Sorted by CoChanges descending.
+	assert.Equal(t, 8, result[0].CoChanges) // node1-node3.
+	assert.Equal(t, 3, result[1].CoChanges) // node1-node2.
+	assert.Equal(t, 2, result[2].CoChanges) // node2-node3.
 }
 
 func TestNodeCouplingMetric_SkipsZeroCoChanges(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -261,7 +289,7 @@ func TestNodeCouplingMetric_SkipsZeroCoChanges(t *testing.T) {
 			{Name: testNodeName2, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 10}, // No coupling with node2
+			{0: 10}, // No coupling with node2.
 			{1: 8},
 		},
 	}
@@ -272,24 +300,28 @@ func TestNodeCouplingMetric_SkipsZeroCoChanges(t *testing.T) {
 }
 
 func TestNodeCouplingMetric_OutOfBoundsNodeIndex(t *testing.T) {
+	t.Parallel()
+
 	m := NewNodeCouplingMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
 			{Name: testNodeName1, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 10, 5: 3}, // Index 5 is out of bounds
+			{0: 10, 5: 3}, // Index 5 is out of bounds.
 		},
 	}
 
 	result := m.Compute(input)
 
-	assert.Empty(t, result) // No valid pairs
+	assert.Empty(t, result) // No valid pairs.
 }
 
-// --- HotspotNodeMetric Tests ---
+// --- HotspotNodeMetric Tests ---.
 
 func TestNewHotspotNodeMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotNodeMetric()
 
 	assert.Equal(t, "hotspot_nodes", m.Name())
@@ -299,6 +331,8 @@ func TestNewHotspotNodeMetric_Metadata(t *testing.T) {
 }
 
 func TestHotspotNodeMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotNodeMetric()
 	input := &ReportData{}
 
@@ -308,13 +342,15 @@ func TestHotspotNodeMetric_Empty(t *testing.T) {
 }
 
 func TestHotspotNodeMetric_BelowThreshold(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotNodeMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
 			{Name: testNodeName1, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 5}, // Below HotspotThresholdMedium (10)
+			{0: 5}, // Below HotspotThresholdMedium (10).
 		},
 	}
 
@@ -324,6 +360,8 @@ func TestHotspotNodeMetric_BelowThreshold(t *testing.T) {
 }
 
 func TestHotspotNodeMetric_RiskLevels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		changeCount int
@@ -337,6 +375,8 @@ func TestHotspotNodeMetric_RiskLevels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m := NewHotspotNodeMetric()
 			input := &ReportData{
 				Nodes: []NodeSummary{
@@ -358,6 +398,8 @@ func TestHotspotNodeMetric_RiskLevels(t *testing.T) {
 }
 
 func TestHotspotNodeMetric_SortedByChangeCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewHotspotNodeMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -366,25 +408,27 @@ func TestHotspotNodeMetric_SortedByChangeCount(t *testing.T) {
 			{Name: testNodeName3, Type: testNodeType, File: testFile2},
 		},
 		Counters: []map[int]int{
-			{0: 15}, // MEDIUM
-			{1: 30}, // HIGH
-			{2: 5},  // Below threshold - excluded
+			{0: 15}, // MEDIUM.
+			{1: 30}, // HIGH.
+			{2: 5},  // Below threshold - excluded.
 		},
 	}
 
 	result := m.Compute(input)
 
 	require.Len(t, result, 2)
-	// Sorted by change count descending
+	// Sorted by change count descending.
 	assert.Equal(t, testNodeName2, result[0].Name)
 	assert.Equal(t, "HIGH", result[0].RiskLevel)
 	assert.Equal(t, testNodeName1, result[1].Name)
 	assert.Equal(t, "MEDIUM", result[1].RiskLevel)
 }
 
-// --- ShotnessAggregateMetric Tests ---
+// --- ShotnessAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 
 	assert.Equal(t, "shotness_aggregate", m.Name())
@@ -394,6 +438,8 @@ func TestNewAggregateMetric_Metadata(t *testing.T) {
 }
 
 func TestShotnessAggregateMetric_Empty(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
@@ -407,6 +453,8 @@ func TestShotnessAggregateMetric_Empty(t *testing.T) {
 }
 
 func TestShotnessAggregateMetric_WithData(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -415,26 +463,28 @@ func TestShotnessAggregateMetric_WithData(t *testing.T) {
 			{Name: testNodeName3, Type: testNodeType, File: testFile2},
 		},
 		Counters: []map[int]int{
-			{0: 25, 1: 5}, // self=25 (hot), coupled with node2
-			{0: 5, 1: 10}, // self=10 (hot, at boundary)
-			{2: 5},        // self=5 (not hot)
+			{0: 25, 1: 5}, // self=25 (hot), coupled with node2.
+			{0: 5, 1: 10}, // self=10 (hot, at boundary).
+			{2: 5},        // self=5 (not hot).
 		},
 	}
 
 	result := m.Compute(input)
 
 	assert.Equal(t, 3, result.TotalNodes)
-	// Total changes = 25 + 10 + 5 = 40
+	// Total changes = 25 + 10 + 5 = 40.
 	assert.Equal(t, 40, result.TotalChanges)
-	// Couplings: node1-node2 (counted from both sides, divided by 2)
+	// Couplings: node1-node2 (counted from both sides, divided by 2).
 	assert.GreaterOrEqual(t, result.TotalCouplings, 0)
-	// Avg = 40/3 = 13.33
+	// Avg = 40/3 = 13.33.
 	assert.InDelta(t, 40.0/3.0, result.AvgChangesPerNode, floatDelta)
-	// Hot nodes (>=10): node1 (25) and node2 (10) = 2
+	// Hot nodes (>=10): node1 (25) and node2 (10) = 2.
 	assert.Equal(t, 2, result.HotNodes)
 }
 
 func TestShotnessAggregateMetric_CouplingCount(t *testing.T) {
+	t.Parallel()
+
 	m := NewAggregateMetric()
 	input := &ReportData{
 		Nodes: []NodeSummary{
@@ -442,20 +492,22 @@ func TestShotnessAggregateMetric_CouplingCount(t *testing.T) {
 			{Name: testNodeName2, Type: testNodeType, File: testFile1},
 		},
 		Counters: []map[int]int{
-			{0: 10, 1: 5}, // 1 coupling (node1-node2)
-			{0: 5, 1: 8},  // Same coupling counted again
+			{0: 10, 1: 5}, // 1 coupling (node1-node2).
+			{0: 5, 1: 8},  // Same coupling counted again.
 		},
 	}
 
 	result := m.Compute(input)
 
-	// Each coupling is counted twice (once from each side), then divided by 2
+	// Each coupling is counted twice (once from each side), then divided by 2.
 	assert.Equal(t, 1, result.TotalCouplings)
 }
 
-// --- ComputeAllMetrics Tests ---
+// --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
+	t.Parallel()
+
 	report := analyze.Report{}
 
 	result, err := ComputeAllMetrics(report)
@@ -468,6 +520,8 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
+	t.Parallel()
+
 	nodes := []NodeSummary{
 		{Name: testNodeName1, Type: testNodeType, File: testFile1},
 		{Name: testNodeName2, Type: testNodeType, File: testFile2},
@@ -486,26 +540,28 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// NodeHotness
+	// NodeHotness.
 	require.Len(t, result.NodeHotness, 2)
 
-	// NodeCoupling
+	// NodeCoupling.
 	require.Len(t, result.NodeCoupling, 1)
 	assert.Equal(t, 10, result.NodeCoupling[0].CoChanges)
 
-	// HotspotNodes
+	// HotspotNodes.
 	require.Len(t, result.HotspotNodes, 2)
 	assert.Equal(t, "HIGH", result.HotspotNodes[0].RiskLevel)
 	assert.Equal(t, "MEDIUM", result.HotspotNodes[1].RiskLevel)
 
-	// Aggregate
+	// Aggregate.
 	assert.Equal(t, 2, result.Aggregate.TotalNodes)
 	assert.Equal(t, 40, result.Aggregate.TotalChanges)
 }
 
-// --- MetricsOutput Interface Tests ---
+// --- MetricsOutput Interface Tests ---.
 
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{}
 
 	name := m.AnalyzerName()
@@ -514,6 +570,8 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 }
 
 func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		NodeHotness: []NodeHotnessData{{Name: "testFunc"}},
 	}
@@ -524,6 +582,8 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
 	m := &ComputedMetrics{
 		NodeHotness: []NodeHotnessData{{Name: "testFunc"}},
 	}

@@ -1,4 +1,4 @@
-package uast //nolint:testpackage // Tests need access to internal parser and test runner.
+package uast
 
 import (
 	"bytes"
@@ -20,6 +20,14 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/spec"
+)
+
+var (
+	errNoProviderForLanguage = errors.New("no provider found for language")
+	errTreeSitterNoRoot      = errors.New("tree-sitter: no root node")
+	errNodeIsNil             = errors.New("node is nil")
+	errValidationFailed      = errors.New("UAST validation failed")
+	errInvalidTestFileFormat = errors.New("invalid test file format")
 )
 
 //go:embed language_tests/**/*.yaml
@@ -103,7 +111,7 @@ func (tr *TestRunner) DumpRawAST(language, input, filename string) error {
 
 	provider, exists := tr.parser.loader.LanguageParser(ext)
 	if !exists {
-		return fmt.Errorf("no provider found for language: %s", language)
+		return fmt.Errorf("%w: %s", errNoProviderForLanguage, language)
 	}
 
 	// Try to get raw tree-sitter AST if it's a DSL provider.
@@ -125,7 +133,12 @@ func (tr *TestRunner) DumpRawAST(language, input, filename string) error {
 		return fmt.Errorf("failed to marshal raw AST: %w", err)
 	}
 
-	return os.WriteFile(filename, data, 0o644)
+	err = os.WriteFile(filename, data, 0o600)
+	if err != nil {
+		return fmt.Errorf("writing raw AST to %s: %w", filename, err)
+	}
+
+	return nil
 }
 
 // DumpRawTreeSitterAST dumps the actual tree-sitter AST before mapping.
@@ -140,7 +153,7 @@ func (tr *TestRunner) DumpRawTreeSitterAST(provider *DSLParser, input, filename 
 
 	root := tree.RootNode()
 	if root.IsNull() {
-		return errors.New("tree-sitter: no root node")
+		return errTreeSitterNoRoot
 	}
 
 	// Convert tree-sitter node to raw AST structure.
@@ -151,7 +164,12 @@ func (tr *TestRunner) DumpRawTreeSitterAST(provider *DSLParser, input, filename 
 		return fmt.Errorf("failed to marshal raw AST: %w", err)
 	}
 
-	return os.WriteFile(filename, data, 0o644)
+	err = os.WriteFile(filename, data, 0o600)
+	if err != nil {
+		return fmt.Errorf("writing raw tree-sitter AST to %s: %w", filename, err)
+	}
+
+	return nil
 }
 
 // convertNodeToRawAST converts a UAST node to raw AST structure.
@@ -218,7 +236,7 @@ func convertTreeSitterNodeToRawAST(nd sitter.Node) RawAST {
 // ValidateUAST validates a UAST node against the schema.
 func (tr *TestRunner) ValidateUAST(nd *node.Node, testName string) error {
 	if nd == nil {
-		return errors.New("node is nil")
+		return errNodeIsNil
 	}
 
 	// Convert node to map for validation.
@@ -352,7 +370,7 @@ func (tr *TestRunner) ValidateUAST(nd *node.Node, testName string) error {
 		"",
 	)
 
-	return fmt.Errorf("%s", strings.Join(errorMsgs, "\n"))
+	return fmt.Errorf("%w: %s", errValidationFailed, strings.Join(errorMsgs, "\n"))
 }
 
 // calculateCompliance calculates compliance percentage.
@@ -549,6 +567,8 @@ func (tr *TestRunner) RunTestSuite(t *testing.T, language, suitePath string) {
 	// Run parse tests.
 	for _, tc := range suite.ParseCases {
 		t.Run(fmt.Sprintf("Parse_%s_%s", testName, tc.Name), func(t *testing.T) {
+			t.Parallel()
+
 			tr.RunParseTest(t, language, testName, tc, suitePath)
 		})
 	}
@@ -556,6 +576,8 @@ func (tr *TestRunner) RunTestSuite(t *testing.T, language, suitePath string) {
 	// Run query tests.
 	for _, tc := range suite.QueryCases {
 		t.Run(fmt.Sprintf("Query_%s_%s", testName, tc.Name), func(t *testing.T) {
+			t.Parallel()
+
 			tr.RunQueryTest(t, language, testName, tc, suitePath)
 		})
 	}
@@ -583,7 +605,7 @@ func DiscoverTestSuites() ([]LanguageTestSuite, error) {
 
 		pathParts := strings.Split(relPath, string(filepath.Separator))
 		if len(pathParts) != 2 {
-			return fmt.Errorf("invalid test file format: %s", relPath)
+			return fmt.Errorf("%w: %s", errInvalidTestFileFormat, relPath)
 		}
 
 		language := pathParts[0]
@@ -591,7 +613,7 @@ func DiscoverTestSuites() ([]LanguageTestSuite, error) {
 
 		parts := strings.Split(strings.TrimSuffix(filename, ".yaml"), "-")
 		if len(parts) < 2 {
-			return fmt.Errorf("invalid test file format: %s", relPath)
+			return fmt.Errorf("%w: %s", errInvalidTestFileFormat, relPath)
 		}
 
 		suite := parts[0]
@@ -605,8 +627,11 @@ func DiscoverTestSuites() ([]LanguageTestSuite, error) {
 
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("walking language test directory: %w", err)
+	}
 
-	return suites, err
+	return suites, nil
 }
 
 // Helper functions.
@@ -786,6 +811,8 @@ func compareUAST(actual, expected map[string]any) bool {
 // Test functions.
 
 func TestAllLanguageTests(t *testing.T) {
+	t.Parallel()
+
 	suites, err := DiscoverTestSuites()
 	if err != nil {
 		t.Fatalf("Failed to discover test suites: %v", err)
@@ -802,6 +829,8 @@ func TestAllLanguageTests(t *testing.T) {
 
 	for _, suite := range suites {
 		t.Run(fmt.Sprintf("%s_%s_%s", suite.Language, suite.Suite, suite.Test), func(t *testing.T) {
+			t.Parallel()
+
 			runner.RunTestSuite(t, suite.Language, suite.Path)
 		})
 	}

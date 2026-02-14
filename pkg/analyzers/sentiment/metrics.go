@@ -8,7 +8,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for sentiment metrics computation.
 type ReportData struct {
@@ -36,7 +36,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return data, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // TimeSeriesData contains sentiment data for a time period.
 type TimeSeriesData struct {
@@ -76,7 +76,7 @@ type AggregateData struct {
 	NegativeTicks    int     `json:"negative_ticks"    yaml:"negative_ticks"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // TimeSeriesMetric computes sentiment time series.
 type TimeSeriesMetric struct {
@@ -124,7 +124,7 @@ func classifyTrendDirection(startSentiment, endSentiment float32) string {
 
 // Compute calculates sentiment time series data.
 func (m *TimeSeriesMetric) Compute(input *ReportData) []TimeSeriesData {
-	// Get sorted ticks
+	// Get sorted ticks.
 	ticks := make([]int, 0, len(input.EmotionsByTick))
 
 	for tick := range input.EmotionsByTick {
@@ -272,7 +272,7 @@ func (m *LowSentimentPeriodMetric) Compute(input *ReportData) []LowSentimentPeri
 		})
 	}
 
-	// Sort by sentiment ascending (worst first)
+	// Sort by sentiment ascending (worst first).
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Sentiment < result[j].Sentiment
 	})
@@ -336,7 +336,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the sentiment analyzer.
 type ComputedMetrics struct {

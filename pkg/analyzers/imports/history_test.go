@@ -1,4 +1,4 @@
-package imports //nolint:testpackage // testing internal implementation.
+package imports
 
 import (
 	"testing"
@@ -75,7 +75,7 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	}
 	require.NoError(t, h.Initialize(nil))
 
-	// Add some import data
+	// Add some import data.
 	h.imports[0] = map[string]map[string]map[int]int64{
 		"go": {
 			"fmt": {0: 5},
@@ -90,11 +90,11 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Forks should have empty independent maps
+	// Forks should have empty independent maps.
 	require.Empty(t, fork1.imports, "fork should have empty imports map")
 	require.Empty(t, fork2.imports, "fork should have empty imports map")
 
-	// Modifying one fork should not affect the other
+	// Modifying one fork should not affect the other.
 	fork1.imports[1] = map[string]map[string]map[int]int64{
 		"python": {"os": {0: 1}},
 	}
@@ -117,7 +117,7 @@ func TestFork_SharesConfig(t *testing.T) {
 	fork1, ok := forks[0].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Config should be shared
+	// Config should be shared.
 	require.Equal(t, h.Goroutines, fork1.Goroutines)
 	require.Equal(t, h.MaxFileSize, fork1.MaxFileSize)
 	require.Equal(t, h.reversedPeopleDict, fork1.reversedPeopleDict)
@@ -129,12 +129,12 @@ func TestMerge_CombinesImports(t *testing.T) {
 	h := &HistoryAnalyzer{}
 	require.NoError(t, h.Initialize(nil))
 
-	// Original has imports for author 0
+	// Original has imports for author 0.
 	h.imports[0] = map[string]map[string]map[int]int64{
 		"go": {"fmt": {0: 5}},
 	}
 
-	// Branch has imports for author 1
+	// Branch has imports for author 1.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.imports[1] = map[string]map[string]map[int]int64{
@@ -143,7 +143,7 @@ func TestMerge_CombinesImports(t *testing.T) {
 
 	h.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have both authors
+	// Should have both authors.
 	require.Len(t, h.imports, 2)
 	require.Equal(t, int64(5), h.imports[0]["go"]["fmt"][0])
 	require.Equal(t, int64(3), h.imports[1]["python"]["os"][0])
@@ -155,12 +155,12 @@ func TestMerge_SumsImportCounts(t *testing.T) {
 	h := &HistoryAnalyzer{}
 	require.NoError(t, h.Initialize(nil))
 
-	// Original has imports
+	// Original has imports.
 	h.imports[0] = map[string]map[string]map[int]int64{
 		"go": {"fmt": {0: 5, 1: 2}},
 	}
 
-	// Branch has same import with different counts
+	// Branch has same import with different counts.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
 	branch.imports[0] = map[string]map[string]map[int]int64{
@@ -169,10 +169,10 @@ func TestMerge_SumsImportCounts(t *testing.T) {
 
 	h.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Counts should be summed
+	// Counts should be summed.
 	require.Equal(t, int64(8), h.imports[0]["go"]["fmt"][0]) // 5 + 3
-	require.Equal(t, int64(2), h.imports[0]["go"]["fmt"][1]) // original only
-	require.Equal(t, int64(1), h.imports[0]["go"]["fmt"][2]) // branch only
+	require.Equal(t, int64(2), h.imports[0]["go"]["fmt"][1]) // original only.
+	require.Equal(t, int64(1), h.imports[0]["go"]["fmt"][2]) // branch only.
 }
 
 func TestForkMerge_RoundTrip(t *testing.T) {
@@ -184,14 +184,14 @@ func TestForkMerge_RoundTrip(t *testing.T) {
 	}
 	require.NoError(t, h.Initialize(nil))
 
-	// Fork
+	// Fork.
 	forks := h.Fork(2)
 	fork1, ok := forks[0].(*HistoryAnalyzer)
 	require.True(t, ok)
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Each fork adds different imports
+	// Each fork adds different imports.
 	fork1.imports[0] = map[string]map[string]map[int]int64{
 		"go": {"fmt": {0: 5}},
 	}
@@ -199,10 +199,10 @@ func TestForkMerge_RoundTrip(t *testing.T) {
 		"go": {"fmt": {0: 3}, "os": {0: 2}},
 	}
 
-	// Merge
+	// Merge.
 	h.Merge(forks)
 
-	// Verify imports are merged
+	// Verify imports are merged.
 	require.Equal(t, int64(8), h.imports[0]["go"]["fmt"][0]) // 5 + 3
 	require.Equal(t, int64(2), h.imports[0]["go"]["os"][0])
 }

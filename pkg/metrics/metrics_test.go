@@ -40,6 +40,8 @@ func newTestMetric() *testMetric {
 }
 
 func TestMetricMeta_Name(t *testing.T) {
+	t.Parallel()
+
 	meta := MetricMeta{
 		MetricName: testMetricName,
 	}
@@ -48,6 +50,8 @@ func TestMetricMeta_Name(t *testing.T) {
 }
 
 func TestMetricMeta_DisplayName(t *testing.T) {
+	t.Parallel()
+
 	meta := MetricMeta{
 		MetricDisplayName: testMetricDisplayName,
 	}
@@ -56,6 +60,8 @@ func TestMetricMeta_DisplayName(t *testing.T) {
 }
 
 func TestMetricMeta_Description(t *testing.T) {
+	t.Parallel()
+
 	meta := MetricMeta{
 		MetricDescription: testMetricDescription,
 	}
@@ -64,6 +70,8 @@ func TestMetricMeta_Description(t *testing.T) {
 }
 
 func TestMetricMeta_Type(t *testing.T) {
+	t.Parallel()
+
 	meta := MetricMeta{
 		MetricType: testMetricType,
 	}
@@ -72,6 +80,8 @@ func TestMetricMeta_Type(t *testing.T) {
 }
 
 func TestNewRegistry(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 
 	assert.NotNil(t, registry)
@@ -79,6 +89,8 @@ func TestNewRegistry(t *testing.T) {
 }
 
 func TestRegistry_Names_Empty(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 
 	names := registry.Names()
@@ -87,6 +99,8 @@ func TestRegistry_Names_Empty(t *testing.T) {
 }
 
 func TestRegistry_Register(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 	metric := newTestMetric()
 
@@ -96,6 +110,8 @@ func TestRegistry_Register(t *testing.T) {
 }
 
 func TestRegistry_Get_Found(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 	metric := newTestMetric()
 	Register(registry, metric)
@@ -107,6 +123,8 @@ func TestRegistry_Get_Found(t *testing.T) {
 }
 
 func TestRegistry_Get_NotFound(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 
 	retrieved, found := registry.Get("nonexistent_metric")
@@ -116,6 +134,8 @@ func TestRegistry_Get_NotFound(t *testing.T) {
 }
 
 func TestRegistry_Names(t *testing.T) {
+	t.Parallel()
+
 	registry := NewRegistry()
 	metric1 := newTestMetric()
 	metric2 := &testMetric{
@@ -123,6 +143,7 @@ func TestRegistry_Names(t *testing.T) {
 			MetricName: testMetricName2,
 		},
 	}
+
 	Register(registry, metric1)
 	Register(registry, metric2)
 
@@ -134,6 +155,8 @@ func TestRegistry_Names(t *testing.T) {
 }
 
 func TestMetric_Compute(t *testing.T) {
+	t.Parallel()
+
 	metric := newTestMetric()
 
 	result := metric.Compute(testInputValue)
@@ -143,6 +166,8 @@ func TestMetric_Compute(t *testing.T) {
 }
 
 func TestRiskLevel_Constants(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, RiskCritical, RiskLevel("CRITICAL"))
 	assert.Equal(t, RiskHigh, RiskLevel("HIGH"))
 	assert.Equal(t, RiskMedium, RiskLevel("MEDIUM"))
@@ -150,6 +175,8 @@ func TestRiskLevel_Constants(t *testing.T) {
 }
 
 func TestTimeSeriesPoint_Fields(t *testing.T) {
+	t.Parallel()
+
 	point := TimeSeriesPoint{
 		Tick:  testInputValue,
 		Value: float64(testInputValue),
@@ -160,6 +187,8 @@ func TestTimeSeriesPoint_Fields(t *testing.T) {
 }
 
 func TestRiskResult_Fields(t *testing.T) {
+	t.Parallel()
+
 	result := RiskResult{
 		Value:     testInputValue,
 		Level:     RiskHigh,

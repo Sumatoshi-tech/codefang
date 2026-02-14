@@ -11,7 +11,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+var errInjectedDiff = errors.New("injected diff error")
+
 func TestDiffPipeline_NewDiffPipeline(t *testing.T) {
+	t.Parallel()
+
 	ch := make(chan gitlib.WorkerRequest, 1)
 
 	p := framework.NewDiffPipeline(ch, 5)
@@ -29,6 +33,8 @@ func TestDiffPipeline_NewDiffPipeline(t *testing.T) {
 }
 
 func TestDiffPipeline_NewDiffPipelineZeroBufferSize(t *testing.T) {
+	t.Parallel()
+
 	ch := make(chan gitlib.WorkerRequest, 1)
 
 	p := framework.NewDiffPipeline(ch, 0)
@@ -44,6 +50,8 @@ func TestDiffPipeline_NewDiffPipelineZeroBufferSize(t *testing.T) {
 // TestDiffPipeline_Process_GoFallbackWhenDiffErrors exercises FileDiffFromGoDiffForTest by
 // using a mock worker that returns an error for the C diff, so the pipeline falls back to Go.
 func TestDiffPipeline_Process_GoFallbackWhenDiffErrors(t *testing.T) {
+	t.Parallel()
+
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()
 
@@ -182,7 +190,7 @@ func startMockDiffWorker() chan gitlib.WorkerRequest {
 			if r, ok := req.(gitlib.DiffBatchRequest); ok {
 				results := make([]gitlib.DiffResult, len(r.Requests))
 				for i := range results {
-					results[i].Error = errors.New("injected diff error")
+					results[i].Error = errInjectedDiff
 				}
 
 				r.Response <- gitlib.DiffBatchResponse{Results: results}
@@ -255,6 +263,8 @@ func validateDiffResults(t *testing.T, results []framework.CommitData) {
 
 // TestDiffPipeline_fileDiffFromGoDiff_sameContent covers the equal-content branch.
 func TestDiffPipeline_fileDiffFromGoDiff_sameContent(t *testing.T) {
+	t.Parallel()
+
 	// Use a real repo to obtain *CachedBlob (we need two blobs with same content).
 	repo := framework.NewTestRepo(t)
 	defer repo.Close()

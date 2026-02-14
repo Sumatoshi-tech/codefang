@@ -7,7 +7,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
-// --- Input Data Types ---
+// --- Input Data Types ---.
 
 // ReportData is the parsed input data for shotness metrics computation.
 type ReportData struct {
@@ -30,7 +30,7 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 	return data, nil
 }
 
-// --- Output Data Types ---
+// --- Output Data Types ---.
 
 // NodeHotnessData contains hotness information for a code node.
 type NodeHotnessData struct {
@@ -69,7 +69,7 @@ type AggregateData struct {
 	HotNodes          int     `json:"hot_nodes"            yaml:"hot_nodes"`
 }
 
-// --- Metric Implementations ---
+// --- Metric Implementations ---.
 
 // NodeHotnessMetric computes per-node hotness data.
 type NodeHotnessMetric struct {
@@ -93,7 +93,7 @@ func NewNodeHotnessMetric() *NodeHotnessMetric {
 func (m *NodeHotnessMetric) Compute(input *ReportData) []NodeHotnessData {
 	result := make([]NodeHotnessData, 0, len(input.Nodes))
 
-	// Find max change count for normalization
+	// Find max change count for normalization.
 	var maxChanges int
 	for i, counters := range input.Counters {
 		if selfCount, ok := counters[i]; ok && selfCount > maxChanges {
@@ -113,7 +113,7 @@ func (m *NodeHotnessMetric) Compute(input *ReportData) []NodeHotnessData {
 			changeCount = selfCount
 		}
 
-		coupledNodes := len(counters) - 1 // Exclude self
+		coupledNodes := len(counters) - 1 // Exclude self.
 
 		var hotnessScore float64
 		if maxChanges > 0 {
@@ -130,7 +130,7 @@ func (m *NodeHotnessMetric) Compute(input *ReportData) []NodeHotnessData {
 		})
 	}
 
-	// Sort by change count descending
+	// Sort by change count descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ChangeCount > result[j].ChangeCount
 	})
@@ -169,7 +169,7 @@ func (m *NodeCouplingMetric) Compute(input *ReportData) []NodeCouplingData {
 
 		for j, coChanges := range counters {
 			if j <= i || j >= len(input.Nodes) {
-				continue // Skip self and lower triangle
+				continue // Skip self and lower triangle.
 			}
 
 			if coChanges == 0 {
@@ -188,7 +188,7 @@ func (m *NodeCouplingMetric) Compute(input *ReportData) []NodeCouplingData {
 		}
 	}
 
-	// Sort by co-changes descending
+	// Sort by co-changes descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].CoChanges > result[j].CoChanges
 	})
@@ -252,7 +252,7 @@ func (m *HotspotNodeMetric) Compute(input *ReportData) []HotspotNodeData {
 
 		riskLevel := classifyChangeRisk(changeCount)
 		if riskLevel == "" {
-			continue // Skip low-risk nodes
+			continue // Skip low-risk nodes.
 		}
 
 		result = append(result, HotspotNodeData{
@@ -264,7 +264,7 @@ func (m *HotspotNodeMetric) Compute(input *ReportData) []HotspotNodeData {
 		})
 	}
 
-	// Sort by change count descending
+	// Sort by change count descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ChangeCount > result[j].ChangeCount
 	})
@@ -306,7 +306,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 			}
 		}
 
-		// Count couplings (non-self entries)
+		// Count couplings (non-self entries).
 		for j := range counters {
 			if j != i {
 				totalCouplings++
@@ -315,7 +315,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	}
 
 	agg.TotalChanges = totalChanges
-	agg.TotalCouplings = totalCouplings / couplingDivisor // Divide by 2 since counted twice
+	agg.TotalCouplings = totalCouplings / couplingDivisor // Divide by 2 since counted twice.
 	agg.HotNodes = hotNodes
 
 	if agg.TotalNodes > 0 {
@@ -325,7 +325,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	return agg
 }
 
-// --- Computed Metrics ---
+// --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the shotness analyzer.
 type ComputedMetrics struct {

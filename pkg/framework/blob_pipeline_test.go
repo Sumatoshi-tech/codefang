@@ -8,6 +8,8 @@ import (
 )
 
 func TestBlobPipeline_NewBlobPipeline(t *testing.T) {
+	t.Parallel()
+
 	seqCh := make(chan gitlib.WorkerRequest, 1)
 	poolCh := make(chan gitlib.WorkerRequest, 1)
 
@@ -30,6 +32,8 @@ func TestBlobPipeline_NewBlobPipeline(t *testing.T) {
 }
 
 func TestBlobPipeline_NewBlobPipelineZeroBufferSize(t *testing.T) {
+	t.Parallel()
+
 	seqCh := make(chan gitlib.WorkerRequest, 1)
 	poolCh := make(chan gitlib.WorkerRequest, 1)
 

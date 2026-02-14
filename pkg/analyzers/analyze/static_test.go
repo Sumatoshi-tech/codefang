@@ -24,7 +24,7 @@ func TestShouldSkipFolderNode_PermissionDeniedDirectory(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	blockedDir := filepath.Join(tmpDir, "blocked")
-	require.NoError(t, os.Mkdir(blockedDir, 0o755))
+	require.NoError(t, os.Mkdir(blockedDir, 0o750))
 
 	entries, err := os.ReadDir(tmpDir)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestShouldSkipFolderNode_NotExistDirectory(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	missingDir := filepath.Join(tmpDir, "missing")
-	require.NoError(t, os.Mkdir(missingDir, 0o755))
+	require.NoError(t, os.Mkdir(missingDir, 0o750))
 
 	entries, err := os.ReadDir(tmpDir)
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestShouldSkipFolderNode_NilParser(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	blockedDir := filepath.Join(tmpDir, "blocked")
-	require.NoError(t, os.Mkdir(blockedDir, 0o755))
+	require.NoError(t, os.Mkdir(blockedDir, 0o750))
 
 	entries, err := os.ReadDir(tmpDir)
 	require.NoError(t, err)
@@ -105,6 +105,8 @@ func TestShouldSkipFolderNode_NilParser(t *testing.T) {
 }
 
 func TestStaticService_AnalyzeFolder_SkipsPermissionDeniedDirectory(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("permission mode semantics differ on windows")
 	}
@@ -117,14 +119,15 @@ func TestStaticService_AnalyzeFolder_SkipsPermissionDeniedDirectory(t *testing.T
 	)
 
 	blockedDir := filepath.Join(tmpDir, "blocked")
-	require.NoError(t, os.Mkdir(blockedDir, 0o755))
+	require.NoError(t, os.Mkdir(blockedDir, 0o750))
 	require.NoError(
 		t,
 		os.WriteFile(filepath.Join(blockedDir, "blocked.go"), []byte("package blocked\n"), 0o600),
 	)
 	require.NoError(t, os.Chmod(blockedDir, 0o000))
+
 	defer func() {
-		require.NoError(t, os.Chmod(blockedDir, 0o755))
+		require.NoError(t, os.Chmod(blockedDir, 0o750))
 	}()
 
 	svc := analyze.NewStaticService(testStaticAnalyzers())

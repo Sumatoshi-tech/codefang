@@ -1,4 +1,4 @@
-package comments //nolint:testpackage // testing internal implementation.
+package comments
 
 import (
 	"testing"

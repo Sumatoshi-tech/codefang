@@ -50,12 +50,12 @@ func (r *TestRepo) CreateFile(name, content string) {
 
 	p := filepath.Join(r.path, name)
 
-	err := os.MkdirAll(filepath.Dir(p), 0o755)
+	err := os.MkdirAll(filepath.Dir(p), 0o750)
 	if err != nil {
 		r.t.Fatalf("MkdirAll: %v", err)
 	}
 
-	err = os.WriteFile(p, []byte(content), 0o644)
+	err = os.WriteFile(p, []byte(content), 0o600)
 	if err != nil {
 		r.t.Fatalf("WriteFile: %v", err)
 	}
@@ -132,6 +132,7 @@ func (r *TestRepo) CommitToRef(refName, message string, parent gitlib.Hash) gitl
 	if addErr != nil {
 		r.t.Fatalf("AddAll: %v", addErr)
 	}
+
 	writeErr := index.Write()
 	if writeErr != nil {
 		r.t.Fatalf("Index.Write: %v", writeErr)
@@ -141,6 +142,7 @@ func (r *TestRepo) CommitToRef(refName, message string, parent gitlib.Hash) gitl
 	if writeTreeErr != nil {
 		r.t.Fatalf("WriteTree: %v", writeTreeErr)
 	}
+
 	tree, lookupTreeErr := r.repo.LookupTree(treeID)
 	if lookupTreeErr != nil {
 		r.t.Fatalf("LookupTree: %v", lookupTreeErr)
@@ -148,12 +150,15 @@ func (r *TestRepo) CommitToRef(refName, message string, parent gitlib.Hash) gitl
 	defer tree.Free()
 
 	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
+
 	var parents []*git2go.Commit
+
 	if !parent.IsZero() {
 		p, lookupErr := r.repo.LookupCommit(parent.ToOid())
 		if lookupErr != nil {
 			r.t.Fatalf("LookupCommit parent: %v", lookupErr)
 		}
+
 		parents = append(parents, p)
 	}
 
@@ -161,6 +166,7 @@ func (r *TestRepo) CommitToRef(refName, message string, parent gitlib.Hash) gitl
 	if err != nil {
 		r.t.Fatalf("CreateCommit: %v", err)
 	}
+
 	for _, p := range parents {
 		p.Free()
 	}
@@ -191,6 +197,7 @@ func (r *TestRepo) CreateMergeCommit(message string, firstParent, secondParent g
 	defer tree.Free()
 
 	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: time.Now()}
+
 	oid, err := r.repo.CreateCommit("HEAD", sig, sig, message, tree, parent1, parent2)
 	if err != nil {
 		r.t.Fatalf("CreateCommit: %v", err)

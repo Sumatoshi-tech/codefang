@@ -17,7 +17,7 @@ func (d *HistoryAnalyzer) Hibernate() error {
 // Boot restores the analyzer from hibernated state.
 // Re-initializes the merges map for the next chunk.
 func (d *HistoryAnalyzer) Boot() error {
-	// Ensure merges map is ready for new chunk
+	// Ensure merges map is ready for new chunk.
 	if d.merges == nil {
 		d.merges = make(map[gitlib.Hash]bool)
 	}

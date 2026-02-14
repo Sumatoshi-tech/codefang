@@ -36,7 +36,8 @@ func ParseUnifiedModelJSON(data []byte) (UnifiedModel, error) {
 	return analyze.ParseUnifiedModelJSON(data)
 }
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotRenderer registers the unified model plot renderer with the analyze package.
+func RegisterPlotRenderer() {
 	analyze.RegisterPlotRenderer(RenderUnifiedModelPlot)
 }
 

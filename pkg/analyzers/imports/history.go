@@ -27,15 +27,26 @@ const (
 	defaultTickHours        = 24
 )
 
+// ErrParserNotInitialized indicates that the UAST parser was not initialized.
+var ErrParserNotInitialized = errors.New("parser not initialized")
+
+// ErrUnsupportedLanguage indicates that the language is not supported for import extraction.
+var ErrUnsupportedLanguage = errors.New("unsupported language")
+
+// ErrInvalidImportsMap indicates a type assertion failure for the imports map.
+var ErrInvalidImportsMap = errors.New("expected Map for imports")
+
+// ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
+var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
+
+// ErrInvalidTickSize indicates a type assertion failure for tickSize.
+var ErrInvalidTickSize = errors.New("expected time.Duration for tickSize")
+
 // Map maps file paths to their import lists.
 type Map = map[int]map[string]map[string]map[int]int64
 
 // HistoryAnalyzer tracks import usage across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-		Errorf(format string, args ...any)
-	}
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	BlobCache          *plumbing.BlobCacheAnalyzer
 	Identity           *plumbing.IdentityDetector
@@ -141,12 +152,12 @@ func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
-		return nil, errors.New("parser not initialized") //nolint:err113 // simple guard, no sentinel needed
+		return nil, ErrParserNotInitialized
 	}
 
 	// Check if supported.
 	if !h.parser.IsSupported(name) {
-		return nil, fmt.Errorf("unsupported language for %s", name) //nolint:err113 // dynamic error is acceptable here.
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedLanguage, name)
 	}
 
 	// Parse.
@@ -335,9 +346,9 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			TickSize:           h.TickSize,
 			Goroutines:         h.Goroutines,
 			MaxFileSize:        h.MaxFileSize,
-			parser:             h.parser, // Parser is thread-safe for reads
+			parser:             h.parser, // Parser is thread-safe for reads.
 		}
-		// Initialize independent state for each fork
+		// Initialize independent state for each fork.
 		clone.imports = Map{}
 
 		forks[i] = clone
@@ -426,17 +437,21 @@ func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 func (h *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
 	imports, ok := result["imports"].(Map)
 	if !ok {
-		return errors.New("expected Map for imports") //nolint:err113 // descriptive error for type assertion failure.
+		if len(result) == 0 {
+			return nil
+		}
+
+		return ErrInvalidImportsMap
 	}
 
 	reversedPeopleDict, ok := result["author_index"].([]string)
 	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
+		return ErrInvalidReversedPeopleDict
 	}
 
 	tickSize, ok := result["tick_size"].(time.Duration)
 	if !ok {
-		return errors.New("expected time.Duration for tickSize") //nolint:err113 // descriptive error for type assertion failure.
+		return ErrInvalidTickSize
 	}
 
 	devs := make([]int, 0, len(imports))

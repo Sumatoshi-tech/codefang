@@ -1,4 +1,4 @@
-package burndown //nolint:testpackage // testing internal implementation.
+package burndown
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ func TestBandLabel(t *testing.T) {
 	makeParams := func(granularity int, numBands int, endTime time.Time) *burndownParams {
 		history := make(DenseHistory, 1)
 		history[0] = make([]int64, numBands)
+
 		return &burndownParams{
 			globalHistory: history,
 			granularity:   granularity,
@@ -69,6 +70,7 @@ func TestGenerateChart_WithData(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
+
 	renderer := render.NewChartRender(chart)
 	err = renderer.Render(&buf)
 	require.NoError(t, err)
@@ -86,12 +88,14 @@ func TestGenerateChart_YearAggregation(t *testing.T) {
 	// 48 samples, sampling 30 = span ~4 years. EndTime Jan 2025.
 	// At sample 0: repo start (~2021). At sample 47: endTime (2025).
 	endTime := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+
 	globalHistory := make(DenseHistory, 48)
 	for i := range 48 {
-		sample := make([]int64, 48) // 48 bands = monthly for 4 years
+		sample := make([]int64, 48) // 48 bands = monthly for 4 years.
 		for b := range 48 {
 			sample[b] = int64(100 * (b + 1))
 		}
+
 		globalHistory[i] = sample
 	}
 
@@ -110,9 +114,11 @@ func TestGenerateChart_YearAggregation(t *testing.T) {
 	require.NotNil(t, chart)
 
 	var buf bytes.Buffer
+
 	renderer := render.NewChartRender(chart)
 	err = renderer.Render(&buf)
 	require.NoError(t, err)
+
 	html := buf.String()
 	require.Contains(t, html, "codefang x ", "title should use project name")
 	require.Contains(t, html, "2021", "legend should show year 2021")

@@ -10,7 +10,7 @@ func (c *HistoryAnalyzer) Hibernate() error {
 	// within a chunk. Between chunks, we won't see same commits.
 	c.merges = make(map[gitlib.Hash]bool)
 
-	// Clear lastCommit reference to allow GC
+	// Clear lastCommit reference to allow GC.
 	c.lastCommit = nil
 
 	return nil
@@ -19,7 +19,7 @@ func (c *HistoryAnalyzer) Hibernate() error {
 // Boot restores the analyzer from hibernated state.
 // Re-initializes the merges map for the next chunk.
 func (c *HistoryAnalyzer) Boot() error {
-	// Ensure merges map is ready for new chunk
+	// Ensure merges map is ready for new chunk.
 	if c.merges == nil {
 		c.merges = make(map[gitlib.Hash]bool)
 	}

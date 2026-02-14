@@ -16,13 +16,13 @@ var templateFS embed.FS
 var logoPNG []byte
 
 var (
-	templates     *template.Template //nolint:gochecknoglobals // singleton pattern for templates
-	templatesOnce sync.Once          //nolint:gochecknoglobals // singleton pattern for templates
-	errTemplates  error              //nolint:gochecknoglobals // singleton pattern for templates
+	templates     *template.Template
+	templatesOnce sync.Once
+	errTemplates  error
 )
 
 // funcMap provides template function helpers.
-var funcMap = template.FuncMap{ //nolint:gochecknoglobals // constant function map for templates
+var funcMap = template.FuncMap{
 	"odd": func(i int) bool {
 		return i%2 == 1
 	},

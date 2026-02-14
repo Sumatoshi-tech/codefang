@@ -18,7 +18,6 @@ import (
 
 // TreeDiffAnalyzer computes tree-level diffs between commits.
 type TreeDiffAnalyzer struct {
-	l              interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
 	NameFilter     *regexp.Regexp
 	Languages      map[string]bool
 	previousTree   *gitlib.Tree
@@ -40,8 +39,11 @@ const (
 	allLanguages               = "all"
 )
 
+// ErrInvalidSkipFiles indicates a type assertion failure for SkipFiles configuration.
+var ErrInvalidSkipFiles = errors.New("expected []string for SkipFiles")
+
 // defaultBlacklistedPrefixes: path prefixes only (e.g. vendor/). No language-specific filenames.
-var defaultBlacklistedPrefixes = []string{ //nolint:gochecknoglobals // global is needed for registration.
+var defaultBlacklistedPrefixes = []string{
 	"vendor/",
 	"vendors/",
 }
@@ -111,7 +113,7 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTreeDiffEnableBlacklist].(bool); exists && val {
 		skipFiles, ok := facts[ConfigTreeDiffBlacklistedPrefixes].([]string)
 		if !ok {
-			return errors.New("expected []string for SkipFiles") //nolint:err113 // descriptive error for type assertion failure.
+			return ErrInvalidSkipFiles
 		}
 
 		t.SkipFiles = skipFiles
@@ -308,7 +310,7 @@ func (t *TreeDiffAnalyzer) Finalize() (analyze.Report, error) {
 		t.previousTree = nil
 	}
 
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

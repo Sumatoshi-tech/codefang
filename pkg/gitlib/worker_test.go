@@ -9,6 +9,8 @@ import (
 )
 
 func TestWorker_TreeDiffInitial(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -40,6 +42,8 @@ func TestWorker_TreeDiffInitial(t *testing.T) {
 }
 
 func TestWorker_TreeDiffTwoCommits(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -57,7 +61,7 @@ func TestWorker_TreeDiffTwoCommits(t *testing.T) {
 	worker := gitlib.NewWorker(repo, reqCh)
 	worker.Start()
 
-	// Initial
+	// Initial.
 	respCh := make(chan gitlib.TreeDiffResponse, 1)
 	reqCh <- gitlib.TreeDiffRequest{PreviousTree: nil, CommitHash: firstHash, Response: respCh}
 
@@ -67,7 +71,7 @@ func TestWorker_TreeDiffTwoCommits(t *testing.T) {
 	firstTree := resp.CurrentTree
 	defer firstTree.Free()
 
-	// Second commit vs first
+	// Second commit vs first.
 	respCh2 := make(chan gitlib.TreeDiffResponse, 1)
 	reqCh <- gitlib.TreeDiffRequest{PreviousTree: firstTree, CommitHash: secondHash, Response: respCh2}
 
@@ -81,6 +85,8 @@ func TestWorker_TreeDiffTwoCommits(t *testing.T) {
 }
 
 func TestWorker_BlobBatchRequest(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -129,6 +135,8 @@ func TestWorker_BlobBatchRequest(t *testing.T) {
 }
 
 func TestWorker_BlobBatchRequestEmpty(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -156,6 +164,8 @@ func TestWorker_BlobBatchRequestEmpty(t *testing.T) {
 }
 
 func TestWorker_TreeDiffRequestInvalidHash(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -185,6 +195,8 @@ func TestWorker_TreeDiffRequestInvalidHash(t *testing.T) {
 }
 
 func TestWorker_DiffBatchRequest(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -202,7 +214,7 @@ func TestWorker_DiffBatchRequest(t *testing.T) {
 	worker := gitlib.NewWorker(repo, reqCh)
 	worker.Start()
 
-	// Get first tree
+	// Get first tree.
 	respCh1 := make(chan gitlib.TreeDiffResponse, 1)
 	reqCh <- gitlib.TreeDiffRequest{PreviousTree: nil, CommitHash: firstHash, Response: respCh1}
 
@@ -212,7 +224,7 @@ func TestWorker_DiffBatchRequest(t *testing.T) {
 	firstTree := resp1.CurrentTree
 	defer firstTree.Free()
 
-	// Get changes to find blob hashes
+	// Get changes to find blob hashes.
 	respCh := make(chan gitlib.TreeDiffResponse, 1)
 	reqCh <- gitlib.TreeDiffRequest{PreviousTree: firstTree, CommitHash: secondHash, Response: respCh}
 
@@ -238,6 +250,8 @@ func TestWorker_DiffBatchRequest(t *testing.T) {
 
 // TestCGOBridge_BatchLoadBlobsInvalidHash triggers C lookup failure and covers cgoBlobError.
 func TestCGOBridge_BatchLoadBlobsInvalidHash(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -258,6 +272,8 @@ func TestCGOBridge_BatchLoadBlobsInvalidHash(t *testing.T) {
 
 // TestCGOBridge_BatchDiffBlobsInvalidHash triggers C diff lookup failure and covers cgoDiffError.
 func TestCGOBridge_BatchDiffBlobsInvalidHash(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -284,6 +300,8 @@ func TestCGOBridge_BatchDiffBlobsInvalidHash(t *testing.T) {
 
 // TestCGOBridge_TreeDiffSameHash verifies TreeDiff returns empty when both tree hashes are equal (skip path).
 func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -292,10 +310,12 @@ func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
 
 	repo, err := gitlib.OpenRepository(tr.path)
 	require.NoError(t, err)
+
 	defer repo.Free()
 
 	commit, err := repo.LookupCommit(hash)
 	require.NoError(t, err)
+
 	defer commit.Free()
 
 	treeHash := commit.TreeHash()

@@ -27,9 +27,9 @@ type Timeline interface {
 	// Validate panics if invariants are violated.
 	Validate()
 	// CloneShallow returns a shallow copy of the timeline.
-	CloneShallow() Timeline
+	CloneShallow() *treapTimeline
 	// CloneDeep returns a deep copy of the timeline.
-	CloneDeep() Timeline
+	CloneDeep() *treapTimeline
 	// Erase clears all nodes (for Delete).
 	Erase()
 	// Flatten returns line→time as a slice (for Merge).

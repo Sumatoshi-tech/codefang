@@ -28,6 +28,17 @@ import (
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
+// Sentinel errors for burndown analysis.
+var (
+	errPeopleNumberNegative    = errors.New("PeopleNumber is negative")
+	errReversedPeopleDictType  = errors.New("expected []string for reversedPeopleDict")
+	errMissingBlob             = errors.New("missing blob")
+	errFileAlreadyExists       = errors.New("file already exists")
+	errFileNotExist            = errors.New("file does not exist")
+	errUnexpectedBinary        = errors.New("previous version unexpectedly became binary")
+	errInternalIntegritySource = errors.New("internal integrity error src mismatch")
+)
+
 // Configuration constants for burndown analysis.
 const (
 	// TickSizeThresholdHigh is the maximum tick size in hours for burndown granularity.
@@ -52,11 +63,6 @@ type Shard struct {
 
 // HistoryAnalyzer tracks line survival rates across commit history.
 type HistoryAnalyzer struct {
-	l interface {
-		Warnf(format string, args ...any)
-		Errorf(format string, args ...any)
-		Infof(format string, args ...any)
-	}
 	BlobCache            *plumbing.BlobCacheAnalyzer
 	pathInterner         *PathInterner
 	renames              map[string]string          // from → to.
@@ -279,14 +285,14 @@ func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 	}
 
 	if val < 0 {
-		return fmt.Errorf("PeopleNumber is negative: %d", val)
+		return fmt.Errorf("%w: %d", errPeopleNumberNegative, val)
 	}
 
 	b.PeopleNumber = val
 
 	rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
 	if !ok {
-		return errors.New("expected []string for reversedPeopleDict")
+		return errReversedPeopleDictType
 	}
 
 	b.reversedPeopleDict = rpd
@@ -320,7 +326,7 @@ func (b *HistoryAnalyzer) Initialize(repository *gitlib.Repository) error {
 	b.globalHistory = sparseHistory{}
 
 	if b.PeopleNumber < 0 {
-		return fmt.Errorf("PeopleNumber is negative: %d", b.PeopleNumber)
+		return fmt.Errorf("%w: %d", errPeopleNumberNegative, b.PeopleNumber)
 	}
 
 	b.peopleHistories = make([]sparseHistory, b.PeopleNumber)
@@ -381,11 +387,14 @@ func (b *HistoryAnalyzer) ensureCapacity(shard *Shard, id PathID) {
 	if n <= len(shard.filesByID) {
 		return
 	}
+
 	if cap(shard.filesByID) >= n {
 		shard.filesByID = shard.filesByID[:n]
 		shard.fileHistoriesByID = shard.fileHistoriesByID[:n]
+
 		return
 	}
+
 	newFiles := make([]*burndown.File, n)
 	copy(newFiles, shard.filesByID)
 	shard.filesByID = newFiles
@@ -401,6 +410,7 @@ func (b *HistoryAnalyzer) removeActiveID(shard *Shard, id PathID) {
 			last := len(shard.activeIDs) - 1
 			shard.activeIDs[i] = shard.activeIDs[last]
 			shard.activeIDs = shard.activeIDs[:last]
+
 			return
 		}
 	}
@@ -827,6 +837,7 @@ func (b *HistoryAnalyzer) Hibernate() error {
 func (b *HistoryAnalyzer) Boot() error {
 	for _, shard := range b.shards {
 		shard.mu.Lock()
+
 		if shard.mergedByID == nil {
 			shard.mergedByID = make(map[PathID]bool)
 		}
@@ -834,6 +845,7 @@ func (b *HistoryAnalyzer) Boot() error {
 		if shard.deletionsByID == nil {
 			shard.deletionsByID = make(map[PathID]bool)
 		}
+
 		shard.mu.Unlock()
 	}
 
@@ -854,6 +866,7 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	if b.repository != nil && b.repository.Path() != "" {
 		projectName = filepath.Base(b.repository.Path())
 	}
+
 	report := analyze.Report{
 		"GlobalHistory":      globalHistory,
 		"FileHistories":      fileHistories,
@@ -869,6 +882,7 @@ func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	if !b.lastCommitTime.IsZero() {
 		report["EndTime"] = b.lastCommitTime
 	}
+
 	return report, nil
 }
 
@@ -952,6 +966,7 @@ func (b *HistoryAnalyzer) collectFileHistories(lastTick int) (histories map[stri
 			if int(id) >= len(shard.fileHistoriesByID) || int(id) >= len(shard.filesByID) {
 				continue
 			}
+
 			history := shard.fileHistoriesByID[id]
 			if len(history) == 0 {
 				continue
@@ -959,10 +974,12 @@ func (b *HistoryAnalyzer) collectFileHistories(lastTick int) (histories map[stri
 
 			key := b.pathInterner.Lookup(id)
 			fileHistories[key], _ = b.groupSparseHistory(history, lastTick)
+
 			file := shard.filesByID[id]
 			if file == nil {
 				continue
 			}
+
 			previousLine := 0
 			previousAuthor := identity.AuthorMissing
 			ownership := map[int]int{}
@@ -976,7 +993,7 @@ func (b *HistoryAnalyzer) collectFileHistories(lastTick int) (histories map[stri
 
 				previousLine = line
 
-				previousAuthor, _ = b.unpackPersonWithTick(int(value)) //nolint:unconvert // conversion is needed for type safety.
+				previousAuthor, _ = b.unpackPersonWithTick(value)
 				if previousAuthor == identity.AuthorMissing {
 					previousAuthor = -1
 				}
@@ -1018,9 +1035,10 @@ func (b *HistoryAnalyzer) buildPeopleMatrix() DenseHistory {
 		peopleMatrix[i] = mrow
 
 		for key, val := range row {
-			if key == identity.AuthorMissing { //nolint:staticcheck // QF1003 is acceptable.
+			switch key {
+			case identity.AuthorMissing:
 				key = -1
-			} else if key == authorSelf {
+			case authorSelf:
 				key = -keyValue
 			}
 
@@ -1205,11 +1223,13 @@ func (b *HistoryAnalyzer) updateMatrix(shard *Shard, currentTime, previousTime, 
 }
 
 func (b *HistoryAnalyzer) createUpdaters(shard *Shard, pathID PathID) []burndown.Updater {
-	updaters := make([]burndown.Updater, 1)
+	const maxUpdaters = 4 // global + file + author + matrix.
 
-	updaters[0] = func(currentTime, previousTime, delta int) {
+	updaters := make([]burndown.Updater, 0, maxUpdaters)
+
+	updaters = append(updaters, func(currentTime, previousTime, delta int) {
 		b.updateGlobal(shard, currentTime, previousTime, delta)
-	}
+	})
 
 	if b.TrackFiles {
 		history := shard.fileHistoriesByID[pathID]
@@ -1218,13 +1238,13 @@ func (b *HistoryAnalyzer) createUpdaters(shard *Shard, pathID PathID) []burndown
 			shard.fileHistoriesByID[pathID] = history
 		}
 
-		updaters = append(updaters, func(currentTime, previousTime, delta int) { //nolint:makezero // zero-length init is intentional.
+		updaters = append(updaters, func(currentTime, previousTime, delta int) {
 			b.updateFile(history, currentTime, previousTime, delta)
 		})
 	}
 
 	if b.PeopleNumber > 0 {
-		updaters = append(updaters, func(currentTime, previousTime, delta int) { //nolint:makezero // zero-length init is intentional.
+		updaters = append(updaters, func(currentTime, previousTime, delta int) {
 			b.updateAuthor(shard, currentTime, previousTime, delta)
 		}, func(currentTime, previousTime, delta int) {
 			b.updateMatrix(shard, currentTime, previousTime, delta)
@@ -1235,15 +1255,15 @@ func (b *HistoryAnalyzer) createUpdaters(shard *Shard, pathID PathID) []burndown
 }
 
 func (b *HistoryAnalyzer) newFile(
-	shard *Shard, _ gitlib.Hash, pathID PathID, author int, tick int, size int,
-) (*burndown.File, error) { //nolint:unparam // short name is clear in context.
+	shard *Shard, pathID PathID, author int, tick int, size int,
+) *burndown.File {
 	updaters := b.createUpdaters(shard, pathID)
 
 	if b.PeopleNumber > 0 {
 		tick = b.packPersonWithTick(author, tick)
 	}
 
-	return burndown.NewFile(tick, size, updaters...), nil
+	return burndown.NewFile(tick, size, updaters...)
 }
 
 func (b *HistoryAnalyzer) handleInsertion(
@@ -1251,27 +1271,23 @@ func (b *HistoryAnalyzer) handleInsertion(
 ) error {
 	blob := cache[change.To.Hash]
 	if blob == nil {
-		return fmt.Errorf("missing blob for insertion %s (%s)", change.To.Name, change.To.Hash)
+		return fmt.Errorf("%w for insertion %s (%s)", errMissingBlob, change.To.Name, change.To.Hash)
 	}
 
 	lines, err := blob.CountLines()
 	if err != nil {
-		return nil //nolint:nilerr // nil error return is intentional.
+		return nil
 	}
 
 	name := change.To.Name
 	id := b.pathInterner.Intern(name)
 	b.ensureCapacity(shard, id)
+
 	if shard.filesByID[id] != nil {
-		return fmt.Errorf("file %s already exists", name)
+		return fmt.Errorf("%w: %s", errFileAlreadyExists, name)
 	}
 
-	var hash gitlib.Hash
-	if !b.isMerge {
-		hash = blob.Hash()
-	}
-
-	file, err := b.newFile(shard, hash, id, author, b.tick, lines)
+	file := b.newFile(shard, id, author, b.tick, lines)
 	shard.filesByID[id] = file
 	shard.activeIDs = append(shard.activeIDs, id)
 
@@ -1281,7 +1297,7 @@ func (b *HistoryAnalyzer) handleInsertion(
 		shard.mergedByID[id] = true
 	}
 
-	return err
+	return nil
 }
 
 func (b *HistoryAnalyzer) handleDeletion(
@@ -1296,6 +1312,7 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	id := b.pathInterner.Intern(name)
 	b.ensureCapacity(shard, id)
+
 	file := shard.filesByID[id]
 	if file == nil {
 		return nil
@@ -1303,12 +1320,12 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	blob := cache[change.From.Hash]
 	if blob == nil {
-		return fmt.Errorf("missing blob for deletion %s (%s)", name, change.From.Hash)
+		return fmt.Errorf("%w for deletion %s (%s)", errMissingBlob, name, change.From.Hash)
 	}
 
 	lines, err := blob.CountLines()
 	if err != nil {
-		return fmt.Errorf("previous version of %s unexpectedly became binary", name)
+		return fmt.Errorf("%w: %s", errUnexpectedBinary, name)
 	}
 
 	tick := b.tick
@@ -1322,6 +1339,7 @@ func (b *HistoryAnalyzer) handleDeletion(
 
 	file.Update(b.packPersonWithTick(author, tick), 0, 0, lines)
 	file.Delete()
+
 	shard.filesByID[id] = nil
 	shard.fileHistoriesByID[id] = nil
 	b.removeActiveID(shard, id)
@@ -1337,16 +1355,19 @@ func (b *HistoryAnalyzer) handleDeletion(
 		oldTo := b.renames[head]
 		if oldTo != "" {
 			delete(b.renamesReverse[oldTo], head)
+
 			if len(b.renamesReverse[oldTo]) == 0 {
 				delete(b.renamesReverse, oldTo)
 			}
 		}
+
 		b.renames[head] = ""
 
 		for child := range b.renamesReverse[head] {
 			stack = append(stack, child)
-			b.renames[child] = "" // clear so when child is popped we don't use stale oldTo
+			b.renames[child] = "" // clear so when child is popped we don't use stale oldTo.
 		}
+
 		delete(b.renamesReverse, head)
 	}
 
@@ -1366,6 +1387,7 @@ func (b *HistoryAnalyzer) handleModification(
 	// This method handles modification WITHOUT rename (checked in Consume).
 	id := b.pathInterner.Intern(change.From.Name)
 	b.ensureCapacity(shard, id)
+
 	if b.isMerge {
 		shard.mergedByID[id] = true
 	}
@@ -1377,12 +1399,14 @@ func (b *HistoryAnalyzer) handleModification(
 
 	blobFrom := cache[change.From.Hash]
 	if blobFrom == nil {
-		return fmt.Errorf("missing blobFrom for modification %s (%s)", change.From.Name, change.From.Hash)
+		return fmt.Errorf("%w: blobFrom for modification %s (%s)", errMissingBlob, change.From.Name, change.From.Hash)
 	}
+
 	_, errFrom := blobFrom.CountLines()
+
 	blobTo := cache[change.To.Hash]
 	if blobTo == nil {
-		return fmt.Errorf("missing blobTo for modification %s (%s)", change.To.Name, change.To.Hash)
+		return fmt.Errorf("%w: blobTo for modification %s (%s)", errMissingBlob, change.To.Name, change.To.Hash)
 	}
 
 	_, errTo := blobTo.CountLines()
@@ -1393,13 +1417,13 @@ func (b *HistoryAnalyzer) handleModification(
 
 		return b.handleDeletion(shard, change, author, cache)
 	} else if errFrom != nil {
-		return nil //nolint:nilerr // nil error return is intentional.
+		return nil
 	}
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		return fmt.Errorf("%s: internal integrity error src %d != %d",
-			change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
+		return fmt.Errorf("%w: %s src %d != %d",
+			errInternalIntegritySource, change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
 	}
 
 	b.applyDiffs(file, thisDiffs, author)
@@ -1439,12 +1463,14 @@ func (b *HistoryAnalyzer) handleModificationRename(
 
 	blobFrom := cache[change.From.Hash]
 	if blobFrom == nil {
-		return fmt.Errorf("missing blobFrom for rename %s (%s)", change.From.Name, change.From.Hash)
+		return fmt.Errorf("%w: blobFrom for rename %s (%s)", errMissingBlob, change.From.Name, change.From.Hash)
 	}
+
 	_, errFrom := blobFrom.CountLines()
+
 	blobTo := cache[change.To.Hash]
 	if blobTo == nil {
-		return fmt.Errorf("missing blobTo for rename %s (%s)", change.To.Name, change.To.Hash)
+		return fmt.Errorf("%w: blobTo for rename %s (%s)", errMissingBlob, change.To.Name, change.To.Hash)
 	}
 
 	_, errTo := blobTo.CountLines()
@@ -1462,13 +1488,13 @@ func (b *HistoryAnalyzer) handleModificationRename(
 
 		return b.handleDeletion(shardTo, change, author, cache)
 	} else if errFrom != nil {
-		return nil //nolint:nilerr // nil error return is intentional.
+		return nil
 	}
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		return fmt.Errorf("%s: internal integrity error src %d != %d",
-			change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
+		return fmt.Errorf("%w: %s src %d != %d",
+			errInternalIntegritySource, change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
 	}
 
 	b.applyDiffs(file, thisDiffs, author)
@@ -1551,6 +1577,7 @@ func (b *HistoryAnalyzer) applyDiffs(
 func (b *HistoryAnalyzer) migrateFileHistory(shardFrom, shardTo *Shard, fromID, toID PathID) {
 	b.ensureCapacity(shardFrom, fromID)
 	b.ensureCapacity(shardTo, toID)
+
 	history := shardFrom.fileHistoriesByID[fromID]
 	if history == nil {
 		history = sparseHistory{}
@@ -1572,7 +1599,7 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 
 	file := shardFrom.filesByID[fromID]
 	if file == nil {
-		return fmt.Errorf("file %s > %s does not exist", from, to)
+		return fmt.Errorf("%w: %s > %s", errFileNotExist, from, to)
 	}
 
 	shardTo := b.getShard(to)
@@ -1593,6 +1620,7 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 		shardTo.activeIDs = append(shardTo.activeIDs, toID)
 
 		file.Delete()
+
 		shardFrom.filesByID[fromID] = nil
 		b.removeActiveID(shardFrom, fromID)
 	}
@@ -1604,16 +1632,20 @@ func (b *HistoryAnalyzer) handleRename(from, to string) error {
 	delete(shardTo.deletionsByID, toID)
 
 	b.GlobalMu.Lock()
+
 	if oldTo := b.renames[from]; oldTo != "" {
 		delete(b.renamesReverse[oldTo], from)
+
 		if len(b.renamesReverse[oldTo]) == 0 {
 			delete(b.renamesReverse, oldTo)
 		}
 	}
+
 	b.renames[from] = to
 	if b.renamesReverse[to] == nil {
 		b.renamesReverse[to] = map[string]bool{}
 	}
+
 	b.renamesReverse[to][from] = true
 	b.GlobalMu.Unlock()
 

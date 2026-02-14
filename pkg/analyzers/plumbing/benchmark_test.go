@@ -1,6 +1,7 @@
 package plumbing_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,10 +14,15 @@ import (
 )
 
 func runCmdWithDir(dir string, args ...string) error {
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.CommandContext(context.Background(), args[0], args[1:]...)
 	cmd.Dir = dir
 
-	return cmd.Run()
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("running command %q: %w", args[0], err)
+	}
+
+	return nil
 }
 
 func runCmd(args ...string) error {
@@ -36,19 +42,19 @@ func setupBenchmarkRepo(tb testing.TB, fileCount int) (*gitlib.Repository, *gitl
 		tb.Fatal(err)
 	}
 
-	// Create files
+	// Create files.
 	for i := range fileCount {
 		name := filepath.Join(dir, fmt.Sprintf("file_%d.txt", i))
-		// Write some content to force blob creation
+		// Write some content to force blob creation.
 		content := fmt.Sprintf("content for file %d\nline 2\nline 3", i)
 
-		err = os.WriteFile(name, []byte(content), 0o644)
+		err = os.WriteFile(name, []byte(content), 0o600)
 		if err != nil {
 			tb.Fatal(err)
 		}
 	}
 
-	// Add and commit
+	// Add and commit.
 	err = runCmdWithDir(dir, "git", "add", ".")
 	if err != nil {
 		tb.Fatal(err)
@@ -86,7 +92,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 	defer repo.Free()
 	defer commit.Free()
 
-	// Construct changes manually by walking the tree
+	// Construct changes manually by walking the tree.
 	tree, err := commit.Tree()
 	if err != nil {
 		b.Fatal(err)
@@ -108,7 +114,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 
 	ctx := &analyze.Context{Commit: commit}
 
-	// Define scenarios
+	// Define scenarios.
 	concurrencyLevels := []int{1, 2, 4, 8, 16}
 
 	for _, n := range concurrencyLevels {
@@ -135,7 +141,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 				}
 			}
 
-			// Cleanup extra repos (skip 0 as it is the main repo managed by defer)
+			// Cleanup extra repos (skip 0 as it is the main repo managed by defer).
 			for i := 1; i < len(bc.Repos()); i++ {
 				if bc.Repos()[i] != nil {
 					bc.Repos()[i].Free()

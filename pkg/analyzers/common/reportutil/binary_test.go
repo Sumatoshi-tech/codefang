@@ -17,6 +17,7 @@ func TestEncodeDecodeBinaryEnvelope_RoundTrip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := EncodeBinaryEnvelope(input, &buf)
 	require.NoError(t, err)
 

@@ -58,6 +58,7 @@ func TestRenderUnifiedModelPlot(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
+
 	err := RenderUnifiedModelPlot(model, &buf)
 	require.NoError(t, err)
 	require.Contains(t, buf.String(), "<!doctype html>")

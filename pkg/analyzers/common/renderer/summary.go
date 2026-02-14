@@ -18,11 +18,23 @@ const (
 	SummaryStatusCol      = "Status"
 	SummaryAnalyzerWidth  = 16
 	SummaryScoreWidth     = 7
+	summaryFixedParts     = 4 // header, blank, column headers, separator.
 )
 
 // ExecutiveSummary holds data for the executive summary report.
 type ExecutiveSummary struct {
 	Sections []analyze.ReportSection
+}
+
+// NewExecutiveSummary creates an ExecutiveSummary from report sections.
+func NewExecutiveSummary(sections []analyze.ReportSection) *ExecutiveSummary {
+	if sections == nil {
+		sections = []analyze.ReportSection{}
+	}
+
+	return &ExecutiveSummary{
+		Sections: sections,
+	}
 }
 
 // OverallScore returns the average score of all scored sections.
@@ -60,7 +72,7 @@ func (s *ExecutiveSummary) OverallScoreLabel() string {
 
 // RenderSummary produces the executive summary output.
 func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
-	parts := make([]string, 0, 4+len(summary.Sections)) //nolint:mnd // 4 fixed parts: header, blank, column headers, separator.
+	parts := make([]string, 0, summaryFixedParts+len(summary.Sections))
 
 	// Header with title and overall score.
 	title := r.config.Colorize(SummaryTitle, terminal.ColorBlue)
@@ -107,15 +119,4 @@ func (r *SectionRenderer) RenderSummary(summary *ExecutiveSummary) string {
 	}
 
 	return strings.Join(parts, "\n")
-}
-
-// NewExecutiveSummary creates an ExecutiveSummary from report sections.
-func NewExecutiveSummary(sections []analyze.ReportSection) *ExecutiveSummary { //nolint:funcorder // function order is intentional.
-	if sections == nil {
-		sections = []analyze.ReportSection{}
-	}
-
-	return &ExecutiveSummary{
-		Sections: sections,
-	}
 }

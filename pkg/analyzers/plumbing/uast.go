@@ -17,15 +17,12 @@ import (
 // UASTChangesAnalyzer extracts UAST-level changes between commits.
 // It uses lazy parsing - changes are only parsed when Changes() is called.
 type UASTChangesAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	TreeDiff   *TreeDiffAnalyzer
 	BlobCache  *BlobCacheAnalyzer
 	Goroutines int
 	parser     *uast.Parser
 	changes    []uast.Change
-	parsed     bool // tracks whether parsing was done for current commit
+	parsed     bool // tracks whether parsing was done for current commit.
 }
 
 const (
@@ -292,7 +289,7 @@ func (c *UASTChangesAnalyzer) TransferChanges() []uast.Change {
 
 // Finalize completes the analysis and returns the result.
 func (c *UASTChangesAnalyzer) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

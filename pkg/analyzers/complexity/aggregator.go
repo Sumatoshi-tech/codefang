@@ -15,9 +15,9 @@ const msgGoodComplexity = "Good complexity - functions have reasonable complexit
 
 // Aggregator aggregates results from multiple complexity analyses.
 type Aggregator struct {
-	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	detailedFunctions  []map[string]any
-	maxComplexity      int
+	*common.Aggregator
+	detailedFunctions []map[string]any
+	maxComplexity     int
 }
 
 // NewAggregator creates a new Aggregator.

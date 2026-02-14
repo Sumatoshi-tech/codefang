@@ -22,7 +22,8 @@ const (
 // ErrInvalidFunctions indicates the report doesn't contain expected functions data.
 var ErrInvalidFunctions = errors.New("invalid cohesion report: expected []map[string]any for functions")
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the cohesion plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("static/cohesion", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).generateSections(report)
 	})

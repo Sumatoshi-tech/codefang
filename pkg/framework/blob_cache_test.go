@@ -26,16 +26,16 @@ func makeTestHash(b byte) gitlib.Hash {
 func TestGlobalBlobCache_GetPut(t *testing.T) {
 	t.Parallel()
 
-	cache := framework.NewGlobalBlobCache(1024) // 1KB cache
+	cache := framework.NewGlobalBlobCache(1024) // 1KB cache.
 
 	hash := makeTestHash(1)
 	blob := makeTestBlob([]byte("hello world"))
 
-	// Get on empty cache returns nil
+	// Get on empty cache returns nil.
 	got := cache.Get(hash)
 	assert.Nil(t, got)
 
-	// Put and Get
+	// Put and Get.
 	cache.Put(hash, blob)
 	got = cache.Get(hash)
 	require.NotNil(t, got)
@@ -45,10 +45,10 @@ func TestGlobalBlobCache_GetPut(t *testing.T) {
 func TestGlobalBlobCache_LRUEviction(t *testing.T) {
 	t.Parallel()
 
-	// Cache with 100 bytes max
+	// Cache with 100 bytes max.
 	cache := framework.NewGlobalBlobCache(100)
 
-	// Add 3 blobs of 40 bytes each (120 bytes total, exceeds limit)
+	// Add 3 blobs of 40 bytes each (120 bytes total, exceeds limit).
 	hash1 := makeTestHash(1)
 	hash2 := makeTestHash(2)
 	hash3 := makeTestHash(3)
@@ -60,18 +60,18 @@ func TestGlobalBlobCache_LRUEviction(t *testing.T) {
 	cache.Put(hash1, blob1)
 	cache.Put(hash2, blob2)
 
-	// Both should be in cache (80 bytes < 100)
+	// Both should be in cache (80 bytes < 100).
 	assert.NotNil(t, cache.Get(hash1))
 	assert.NotNil(t, cache.Get(hash2))
 
 	// Adding third blob should evict hash1 (LRU after accessing hash2 above)
 	// Actually, after Get(hash1), Get(hash2), hash1 is most recent, hash2 is LRU
-	// Let's re-access to make hash2 most recent
+	// Let's re-access to make hash2 most recent.
 	cache.Get(hash2)
 
 	cache.Put(hash3, blob3)
 
-	// hash1 should be evicted (it was LRU)
+	// hash1 should be evicted (it was LRU).
 	assert.Nil(t, cache.Get(hash1), "hash1 should be evicted")
 	assert.NotNil(t, cache.Get(hash2), "hash2 should still be in cache")
 	assert.NotNil(t, cache.Get(hash3), "hash3 should be in cache")
@@ -80,14 +80,14 @@ func TestGlobalBlobCache_LRUEviction(t *testing.T) {
 func TestGlobalBlobCache_SkipLargeBlobs(t *testing.T) {
 	t.Parallel()
 
-	cache := framework.NewGlobalBlobCache(100) // 100 bytes max
+	cache := framework.NewGlobalBlobCache(100) // 100 bytes max.
 
 	hash := makeTestHash(1)
-	blob := makeTestBlob(make([]byte, 200)) // 200 bytes > max
+	blob := makeTestBlob(make([]byte, 200)) // 200 bytes > max.
 
 	cache.Put(hash, blob)
 
-	// Should not be cached
+	// Should not be cached.
 	assert.Nil(t, cache.Get(hash))
 }
 
@@ -98,7 +98,7 @@ func TestGlobalBlobCache_NilBlob(t *testing.T) {
 
 	hash := makeTestHash(1)
 
-	// Should not panic
+	// Should not panic.
 	cache.Put(hash, nil)
 
 	assert.Nil(t, cache.Get(hash))
@@ -113,7 +113,7 @@ func TestGlobalBlobCache_DuplicatePut(t *testing.T) {
 	blob := makeTestBlob([]byte("data"))
 
 	cache.Put(hash, blob)
-	cache.Put(hash, blob) // Duplicate
+	cache.Put(hash, blob) // Duplicate.
 
 	stats := cache.Stats()
 	assert.Equal(t, 1, stats.Entries)
@@ -177,9 +177,9 @@ func TestGlobalBlobCache_Stats(t *testing.T) {
 
 	cache.Put(hash1, blob)
 
-	// One hit, one miss
-	cache.Get(hash1) // hit
-	cache.Get(hash2) // miss
+	// One hit, one miss.
+	cache.Get(hash1) // hit.
+	cache.Get(hash2) // miss.
 
 	stats := cache.Stats()
 	assert.Equal(t, int64(1), stats.Hits)
@@ -211,7 +211,7 @@ func TestGlobalBlobCache_Clear(t *testing.T) {
 func TestGlobalBlobCache_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
-	cache := framework.NewGlobalBlobCache(10 * 1024) // 10KB
+	cache := framework.NewGlobalBlobCache(10 * 1024) // 10KB.
 
 	const goroutines = 50
 
@@ -237,7 +237,7 @@ func TestGlobalBlobCache_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 
-	// Just verify no panics and stats are reasonable
+	// Just verify no panics and stats are reasonable.
 	stats := cache.Stats()
 	assert.Positive(t, stats.Entries)
 	assert.LessOrEqual(t, stats.CurrentSize, stats.MaxSize)

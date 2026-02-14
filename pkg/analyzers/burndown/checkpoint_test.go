@@ -8,6 +8,8 @@ import (
 )
 
 func TestHistoryAnalyzer_CheckpointRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	// Create analyzer with some state.
@@ -111,6 +113,8 @@ func TestHistoryAnalyzer_CheckpointRoundTrip(t *testing.T) {
 }
 
 func TestHistoryAnalyzer_CheckpointSize(t *testing.T) {
+	t.Parallel()
+
 	analyzer := &HistoryAnalyzer{
 		pathInterner:  NewPathInterner(),
 		globalHistory: make(sparseHistory),
@@ -130,7 +134,9 @@ func TestHistoryAnalyzer_CheckpointSize(t *testing.T) {
 	assert.Positive(t, size)
 }
 
-func TestHistoryAnalyzer_Checkpointable(_ *testing.T) {
+func TestHistoryAnalyzer_Checkpointable(t *testing.T) {
+	t.Parallel()
+
 	// Verify HistoryAnalyzer implements Checkpointable interface.
 	var analyzer interface {
 		SaveCheckpoint(dir string) error

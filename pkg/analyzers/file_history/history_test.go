@@ -1,4 +1,4 @@
-package filehistory //nolint:testpackage // testing internal implementation.
+package filehistory
 
 import (
 	"bytes"
@@ -207,7 +207,7 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
-	// Should contain metrics structure keys
+	// Should contain metrics structure keys.
 	assert.Contains(t, buf.String(), "file_churn:")
 	assert.Contains(t, buf.String(), "aggregate:")
 
@@ -245,14 +245,16 @@ func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
 	var result map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure
+	// Should have computed metrics structure.
 	assert.Contains(t, result, "file_churn")
 	assert.Contains(t, result, "file_contributors")
 	assert.Contains(t, result, "hotspots")
@@ -280,11 +282,12 @@ func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys)
+	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "file_churn:")
 	assert.Contains(t, output, "file_contributors:")
 	assert.Contains(t, output, "hotspots:")
@@ -327,7 +330,7 @@ func TestAnalyzer_Misc(t *testing.T) {
 	c1, ok := clones[0].(*Analyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
-	// After fix: clones should have empty files (independent state)
+	// After fix: clones should have empty files (independent state).
 	if len(c1.files) != 0 {
 		t.Error("expected 0 files in clone (independent copy)")
 	}
@@ -347,12 +350,12 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	c2, ok := clones[1].(*Analyzer)
 	require.True(t, ok, "type assertion failed for c2")
 
-	// Modify c1's state
+	// Modify c1's state.
 	c1.files["test.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 10}},
 	}
 
-	// c2 should not be affected
+	// c2 should not be affected.
 	require.Empty(t, c2.files, "clones should have independent state")
 }
 
@@ -375,7 +378,7 @@ func TestMerge_CombinesFiles(t *testing.T) {
 
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Main should have both files
+	// Main should have both files.
 	require.Len(t, main.files, 2)
 	require.NotNil(t, main.files["a.go"])
 	require.NotNil(t, main.files["b.go"])
@@ -398,7 +401,7 @@ func TestMerge_CombinesPeopleStats(t *testing.T) {
 
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Stats should be summed
+	// Stats should be summed.
 	stats := main.files["test.go"].People[0]
 	require.Equal(t, 8, stats.Added)
 	require.Equal(t, 3, stats.Removed)
@@ -417,7 +420,7 @@ func TestMerge_CombinesMerges(t *testing.T) {
 
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Both merges should be present
+	// Both merges should be present.
 	require.Len(t, main.merges, 2)
 	require.True(t, main.merges[gitlib.NewHash("abc123")])
 	require.True(t, main.merges[gitlib.NewHash("def456")])

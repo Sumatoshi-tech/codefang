@@ -24,9 +24,6 @@ const (
 
 // FileDiffAnalyzer computes file-level diffs for each commit.
 type FileDiffAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	TreeDiff         *TreeDiffAnalyzer
 	BlobCache        *BlobCacheAnalyzer
 	FileDiffs        map[string]pkgplumbing.FileDiffData
@@ -139,15 +136,15 @@ const parallelThreshold = 1
 
 // Consume processes a single commit with the provided dependency results.
 func (f *FileDiffAnalyzer) Consume(ctx *analyze.Context) error {
-	// Check if the runtime pipeline has already computed diffs
+	// Check if the runtime pipeline has already computed diffs.
 	if ctx != nil && ctx.FileDiffs != nil {
-		// Use the pre-computed diffs from the runtime pipeline
+		// Use the pre-computed diffs from the runtime pipeline.
 		f.FileDiffs = ctx.FileDiffs
 
 		return nil
 	}
 
-	// Fall back to traditional diff computation
+	// Fall back to traditional diff computation.
 	cache := f.BlobCache.Cache
 	treeDiff := f.TreeDiff.Changes
 
@@ -260,19 +257,19 @@ func (f *FileDiffAnalyzer) processChange(
 		return
 	}
 
-	// Fast path: if content is identical (same hash or same bytes), no diff needed
+	// Fast path: if content is identical (same hash or same bytes), no diff needed.
 	if change.From.Hash == change.To.Hash {
 		return
 	}
 
-	// Skip binary files - they can't be meaningfully diffed
+	// Skip binary files - they can't be meaningfully diffed.
 	if blobFrom.IsBinary() || blobTo.IsBinary() {
 		return
 	}
 
 	strFrom, strTo := string(blobFrom.Data), string(blobTo.Data)
 
-	// Another fast path: if strings are identical, no diff needed
+	// Another fast path: if strings are identical, no diff needed.
 	if strFrom == strTo {
 		lineCount := strings.Count(strFrom, "\n")
 		if strFrom != "" && strFrom[len(strFrom)-1] != '\n' {
@@ -330,7 +327,7 @@ func stripWhitespace(str string, ignoreWhitespace bool) string {
 
 // Finalize completes the analysis and returns the result.
 func (f *FileDiffAnalyzer) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

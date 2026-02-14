@@ -1,4 +1,4 @@
-package imports //nolint:testpackage // testing internal implementation.
+package imports
 
 import (
 	"testing"

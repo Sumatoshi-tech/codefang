@@ -80,10 +80,8 @@ func convertNodeByRule(n *node32, rule, buffer string) DSLNode {
 
 type nodeConverter func(*node32, string) DSLNode
 
-//nolint:gochecknoglobals // Package-level lookup table for rule converters.
 var ruleConverters map[string]nodeConverter
 
-//nolint:gochecknoinits // Initializes the ruleConverters lookup table.
 func init() {
 	ruleConverters = map[string]nodeConverter{
 		"Query":       convertPipelineNode,
@@ -207,7 +205,6 @@ func extractNodeText(node *node32, buffer string) string {
 	return buffer[node.begin:node.end]
 }
 
-//nolint:iface // Returns DSLNode by design.
 func convertFieldAccessNode(n *node32, buffer string) DSLNode {
 	var fields []string
 
@@ -242,7 +239,6 @@ func convertLiteralNode(n *node32, buffer string) DSLNode {
 	return nil
 }
 
-//nolint:iface // Returns DSLNode by design.
 func convertStringNode(n *node32, buffer string) DSLNode {
 	val := buffer[n.begin:n.end]
 
@@ -265,12 +261,10 @@ func convertNumberBooleanNode(n *node32, buffer string) DSLNode {
 	return createLiteralFromNode(n, buffer)
 }
 
-//nolint:iface // Returns DSLNode by design.
-func createLiteralFromNode(n *node32, buffer string) DSLNode {
+func createLiteralFromNode(n *node32, buffer string) *LiteralNode {
 	return &LiteralNode{Value: buffer[n.begin:n.end]}
 }
 
-//nolint:iface // Returns DSLNode by design.
 func convertComparisonNode(n *node32, buffer string) DSLNode {
 	left, right, op := extractComparisonParts(n, buffer)
 	left = wrapAsLiteralIfNeeded(left)
@@ -410,7 +404,6 @@ func foldAndExprArgs(args []DSLNode) DSLNode {
 	return cur
 }
 
-//nolint:iface // Returns DSLNode by design.
 func convertMembershipNode(n *node32, buffer string) DSLNode {
 	left, right := extractMembershipParts(n, buffer)
 
@@ -465,8 +458,7 @@ func convertNotExprNode(exprNode *node32, buffer string) DSLNode {
 	return convertNormalExpression(exprNode, buffer)
 }
 
-//nolint:iface // Returns DSLNode by design.
-func convertNotExpression(n *node32, buffer string) DSLNode {
+func convertNotExpression(n *node32, buffer string) *CallNode {
 	child := findPrimaryExpression(n, buffer)
 
 	if child != nil {

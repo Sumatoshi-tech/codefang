@@ -1,4 +1,4 @@
-package cohesion //nolint:testpackage // testing internal implementation.
+package cohesion
 
 import (
 	"bytes"
@@ -616,7 +616,7 @@ func TestAnalyzer_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
@@ -698,6 +698,8 @@ func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel //
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			cohesion := analyzer.calculateFunctionLevelCohesion(tc.function)
 
 			if cohesion < tc.expectedMin || cohesion > tc.expectedMax {
@@ -983,7 +985,7 @@ func createBenchmarkResults() map[string]analyze.Report {
 	return results
 }
 
-// --- FormatReportYAML Test ---
+// --- FormatReportYAML Test ---.
 
 func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	t.Parallel()
@@ -1002,6 +1004,7 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
+
 	err := analyzer.FormatReportYAML(report, &buf)
 	require.NoError(t, err)
 

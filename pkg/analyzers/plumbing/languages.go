@@ -17,12 +17,10 @@ import (
 
 // extensionToLanguage maps common file extensions to their programming languages.
 // This provides O(1) lookup for unambiguous extensions, avoiding expensive content analysis.
-//
-//nolint:gochecknoglobals // package-level lookup table for performance.
 var extensionToLanguage = map[string]string{
-	// Go
+	// Go.
 	".go": "Go",
-	// Python
+	// Python.
 	".py":   "Python",
 	".pyw":  "Python",
 	".pyi":  "Python",
@@ -30,7 +28,7 @@ var extensionToLanguage = map[string]string{
 	".pxd":  "Python",
 	".gyp":  "Python",
 	".gypi": "Python",
-	// JavaScript
+	// JavaScript.
 	".js":     "JavaScript",
 	".mjs":    "JavaScript",
 	".cjs":    "JavaScript",
@@ -40,25 +38,25 @@ var extensionToLanguage = map[string]string{
 	".jsm":    "JavaScript",
 	".vue":    "Vue",
 	".svelte": "Svelte",
-	// TypeScript
+	// TypeScript.
 	".ts":  "TypeScript",
 	".mts": "TypeScript",
 	".cts": "TypeScript",
 	".tsx": "TSX",
-	// Rust
+	// Rust.
 	".rs": "Rust",
-	// Java
+	// Java.
 	".java": "Java",
-	// Kotlin
+	// Kotlin.
 	".kt":  "Kotlin",
 	".kts": "Kotlin",
-	// Scala
+	// Scala.
 	".scala": "Scala",
 	".sc":    "Scala",
-	// C
+	// C.
 	".c": "C",
 	".h": "C",
-	// C++
+	// C++.
 	".cpp": "C++",
 	".hpp": "C++",
 	".cc":  "C++",
@@ -71,10 +69,10 @@ var extensionToLanguage = map[string]string{
 	".inl": "C++",
 	".tcc": "C++",
 	".tpp": "C++",
-	// C#
+	// C#.
 	".cs":  "C#",
 	".csx": "C#",
-	// Ruby
+	// Ruby.
 	".rb":       "Ruby",
 	".rake":     "Ruby",
 	".gemspec":  "Ruby",
@@ -83,7 +81,7 @@ var extensionToLanguage = map[string]string{
 	".podspec":  "Ruby",
 	".thor":     "Ruby",
 	".jbuilder": "Ruby",
-	// PHP
+	// PHP.
 	".php":   "PHP",
 	".php3":  "PHP",
 	".php4":  "PHP",
@@ -91,7 +89,7 @@ var extensionToLanguage = map[string]string{
 	".php7":  "PHP",
 	".phps":  "PHP",
 	".phtml": "PHP",
-	// Shell
+	// Shell.
 	".sh":   "Shell",
 	".bash": "Shell",
 	".zsh":  "Shell",
@@ -99,57 +97,57 @@ var extensionToLanguage = map[string]string{
 	".csh":  "Shell",
 	".tcsh": "Shell",
 	".fish": "Shell",
-	// PowerShell
+	// PowerShell.
 	".ps1":  "PowerShell",
 	".psm1": "PowerShell",
 	".psd1": "PowerShell",
-	// Perl
+	// Perl.
 	".pl":  "Perl",
 	".pm":  "Perl",
 	".pod": "Perl",
 	".t":   "Perl",
-	// Lua
+	// Lua.
 	".lua": "Lua",
-	// R
+	// R.
 	".r":   "R",
 	".R":   "R",
 	".rmd": "RMarkdown",
 	".Rmd": "RMarkdown",
-	// Swift
+	// Swift.
 	".swift": "Swift",
-	// Objective-C
+	// Objective-C.
 	".m":  "Objective-C",
 	".mm": "Objective-C++",
-	// Dart
+	// Dart.
 	".dart": "Dart",
-	// Elixir
+	// Elixir.
 	".ex":   "Elixir",
 	".exs":  "Elixir",
 	".eex":  "Elixir",
 	".leex": "Elixir",
 	".heex": "Elixir",
-	// Erlang
+	// Erlang.
 	".erl": "Erlang",
 	".hrl": "Erlang",
-	// Haskell
+	// Haskell.
 	".hs":  "Haskell",
 	".lhs": "Haskell",
-	// Clojure
+	// Clojure.
 	".clj":  "Clojure",
 	".cljs": "ClojureScript",
 	".cljc": "Clojure",
 	".edn":  "Clojure",
-	// F#
+	// F#.
 	".fs":       "F#",
 	".fsi":      "F#",
 	".fsx":      "F#",
 	".fsscript": "F#",
-	// OCaml
+	// OCaml.
 	".ml":  "OCaml",
 	".mli": "OCaml",
 	".mll": "OCaml",
 	".mly": "OCaml",
-	// Data formats
+	// Data formats.
 	".json":  "JSON",
 	".json5": "JSON5",
 	".yaml":  "YAML",
@@ -158,12 +156,12 @@ var extensionToLanguage = map[string]string{
 	".xml":   "XML",
 	".csv":   "CSV",
 	".tsv":   "TSV",
-	// Config
+	// Config.
 	".ini":  "INI",
 	".cfg":  "INI",
 	".conf": "INI",
 	".env":  "Dotenv",
-	// Markup
+	// Markup.
 	".html":  "HTML",
 	".htm":   "HTML",
 	".xhtml": "HTML",
@@ -172,7 +170,7 @@ var extensionToLanguage = map[string]string{
 	".sass":  "Sass",
 	".less":  "Less",
 	".styl":  "Stylus",
-	// Documentation
+	// Documentation.
 	".md":       "Markdown",
 	".markdown": "Markdown",
 	".rst":      "reStructuredText",
@@ -180,49 +178,49 @@ var extensionToLanguage = map[string]string{
 	".latex":    "TeX",
 	".adoc":     "AsciiDoc",
 	".asciidoc": "AsciiDoc",
-	// SQL
+	// SQL.
 	".sql":   "SQL",
 	".psql":  "SQL",
 	".mysql": "SQL",
 	".pgsql": "SQL",
-	// GraphQL
+	// GraphQL.
 	".graphql": "GraphQL",
 	".gql":     "GraphQL",
-	// Protocol Buffers
+	// Protocol Buffers.
 	".proto": "Protocol Buffer",
-	// Thrift
+	// Thrift.
 	".thrift": "Thrift",
-	// WebAssembly
+	// WebAssembly.
 	".wat":  "WebAssembly",
 	".wast": "WebAssembly",
-	// Assembly
+	// Assembly.
 	".asm": "Assembly",
 	".s":   "Assembly",
 	".S":   "Assembly",
-	// Zig
+	// Zig.
 	".zig": "Zig",
-	// Nim
+	// Nim.
 	".nim":    "Nim",
 	".nims":   "Nim",
 	".nimble": "Nim",
-	// Julia
+	// Julia.
 	".jl": "Julia",
-	// V
+	// V.
 	".v": "V",
-	// Crystal
+	// Crystal.
 	".cr": "Crystal",
-	// Groovy
+	// Groovy.
 	".groovy": "Groovy",
 	".gradle": "Groovy",
 	".gvy":    "Groovy",
-	// Dockerfile
+	// Dockerfile.
 	".dockerfile": "Dockerfile",
-	// Makefile extensions
+	// Makefile extensions.
 	".mk":  "Makefile",
 	".mak": "Makefile",
-	// CMake
+	// CMake.
 	".cmake": "CMake",
-	// Terraform
+	// Terraform.
 	".tf":     "HCL",
 	".tfvars": "HCL",
 	".hcl":    "HCL",
@@ -248,12 +246,7 @@ type LanguagesDetectionAnalyzer struct {
 
 	// Output (private, use Languages() accessor).
 	languages map[gitlib.Hash]string
-	parsed    bool // tracks whether detection was done for current commit
-
-	// Internal. //nolint:unused // used via reflection or external caller.
-	l interface { //nolint:unused // acknowledged.
-		Warnf(format string, args ...any)
-	}
+	parsed    bool // tracks whether detection was done for current commit.
 }
 
 const (
@@ -302,7 +295,7 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 // Consume resets state for the new commit. Detection is deferred until Languages() is called.
 func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
-	// Reset state for new commit - detection is lazy
+	// Reset state for new commit - detection is lazy.
 	l.languages = nil
 	l.parsed = false
 
@@ -376,7 +369,7 @@ func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Ha
 
 // Finalize completes the analysis and returns the result.
 func (l *LanguagesDetectionAnalyzer) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

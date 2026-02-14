@@ -118,7 +118,7 @@ func (w *Worker) handle(req WorkerRequest) {
 		// Assuming it has one or relies on git2go.
 
 		commitTree, err := commit.Tree()
-		// Safe to free commit now as tree is independent object in libgit2
+		// Safe to free commit now as tree is independent object in libgit2.
 		commit.Free()
 
 		if err != nil {
@@ -128,6 +128,7 @@ func (w *Worker) handle(req WorkerRequest) {
 		}
 
 		var changes Changes
+
 		switch {
 		case typedReq.PreviousTree != nil:
 			changes, err = TreeDiff(w.repo, typedReq.PreviousTree, commitTree)
@@ -139,16 +140,20 @@ func (w *Worker) handle(req WorkerRequest) {
 			currCommit, lookupErr := w.repo.LookupCommit(currHash)
 			if lookupErr != nil {
 				typedReq.Response <- TreeDiffResponse{Error: lookupErr}
+
 				return
 			}
+
 			currTreeHash := currCommit.TreeHash()
 			currCommit.Free()
 
 			prevCommit, lookupErr := w.repo.LookupCommit(prevHash)
 			if lookupErr != nil {
 				typedReq.Response <- TreeDiffResponse{Error: lookupErr}
+
 				return
 			}
+
 			prevTreeHash := prevCommit.TreeHash()
 			prevCommit.Free()
 
@@ -168,14 +173,14 @@ func (w *Worker) handle(req WorkerRequest) {
 	case BlobBatchRequest:
 		var results []BlobResult
 
-		// Use Arena loading if provided (zero-copy efficiency)
+		// Use Arena loading if provided (zero-copy efficiency).
 		if typedReq.Arena != nil {
 			results = w.bridge.BatchLoadBlobsArena(typedReq.Hashes, typedReq.Arena)
 
-			// Handle arena overflow by falling back to standard load
+			// Handle arena overflow by falling back to standard load.
 			for i := range results {
 				if errors.Is(results[i].Error, ErrArenaFull) {
-					// Fallback to standard allocation for this single blob
+					// Fallback to standard allocation for this single blob.
 					fallbackRes := w.bridge.BatchLoadBlobs([]Hash{results[i].Hash})
 					if len(fallbackRes) == 1 {
 						results[i] = fallbackRes[0]

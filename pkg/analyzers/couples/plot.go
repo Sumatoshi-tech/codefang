@@ -304,7 +304,8 @@ func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, c
 	return hm
 }
 
-func init() { //nolint:gochecknoinits // registration pattern
+// RegisterPlotSections registers the couples plot section renderer with the analyze package.
+func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/couples", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&HistoryAnalyzer{}).GenerateSections(report)
 	})

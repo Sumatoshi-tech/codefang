@@ -1,4 +1,4 @@
-package reportutil //nolint:testpackage // testing internal implementation.
+package reportutil
 
 import (
 	"testing"

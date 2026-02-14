@@ -51,7 +51,7 @@ func TestSolveForBudget_LargeBudget(t *testing.T) {
 func TestSolveForBudget_TooSmall(t *testing.T) {
 	t.Parallel()
 
-	const tinyBudget = 64 * MiB // Below MinimumBudget
+	const tinyBudget = 64 * MiB // Below MinimumBudget.
 
 	_, err := SolveForBudget(tinyBudget)
 
