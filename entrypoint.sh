@@ -30,8 +30,13 @@ fi
 
 # Write outputs for GitHub Actions
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    # Write report to a file to avoid exceeding GitHub expression memory limits
+    REPORT_FILE="${RUNNER_TEMP:-/tmp}/codefang-report.${FORMAT}"
+    echo "$REPORT" > "$REPORT_FILE"
+
     {
         echo "pass=$PASS"
+        echo "report-file=$REPORT_FILE"
         echo "report<<CODEFANG_EOF"
         echo "$REPORT"
         echo "CODEFANG_EOF"
