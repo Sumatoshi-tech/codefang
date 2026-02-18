@@ -1,6 +1,9 @@
 package framework
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -121,7 +124,7 @@ func TestPrefetchedChunk_CollectsData(t *testing.T) {
 	}
 
 	config := DefaultCoordinatorConfig()
-	pf := prefetchPipeline(repo.Path(), config, commits)
+	pf := prefetchPipeline(context.Background(), repo.Path(), config, commits, nil)
 
 	if pf.err != nil {
 		t.Fatalf("prefetchPipeline error: %v", pf.err)
@@ -156,7 +159,7 @@ func TestStartPrefetch_ReturnsChannelWithResult(t *testing.T) {
 	commits := CollectCommits(t, libRepo, 0)
 	config := DefaultCoordinatorConfig()
 
-	resultCh := startPrefetch(repo.Path(), config, commits)
+	resultCh := startPrefetch(context.Background(), repo.Path(), config, commits, nil)
 
 	pf := <-resultCh
 	if pf.err != nil {
@@ -192,7 +195,7 @@ func TestRunner_ProcessChunkFromData(t *testing.T) {
 
 	// Prefetch pipeline data.
 	config := DefaultCoordinatorConfig()
-	pf := prefetchPipeline(repo.Path(), config, commits)
+	pf := prefetchPipeline(context.Background(), repo.Path(), config, commits, nil)
 
 	if pf.err != nil {
 		t.Fatalf("prefetchPipeline error: %v", pf.err)
@@ -206,7 +209,7 @@ func TestRunner_ProcessChunkFromData(t *testing.T) {
 		t.Fatalf("Initialize: %v", initErr)
 	}
 
-	processErr := runner.ProcessChunkFromData(pf.data, 0)
+	_, processErr := runner.ProcessChunkFromData(context.Background(), pf.data, 0, 0)
 	if processErr != nil {
 		t.Fatalf("ProcessChunkFromData: %v", processErr)
 	}
@@ -253,7 +256,7 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 	// Sequential run.
 	seqRunner := NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
 
-	seqReports, seqErr := seqRunner.Run(commits)
+	seqReports, seqErr := seqRunner.Run(context.Background(), commits)
 	if seqErr != nil {
 		t.Fatalf("sequential Run: %v", seqErr)
 	}
@@ -272,7 +275,8 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 		t.Fatalf("Initialize: %v", dbInitErr)
 	}
 
-	dbErr := processChunksDoubleBuffered(
+	_, dbErr := processChunksDoubleBuffered(
+		context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)),
 		dbRunner, commits, chunks, nil, nil, nil, repo.Path(), nil, 0,
 	)
 	if dbErr != nil {
@@ -293,13 +297,14 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 func TestPlanChunksWithDoubleBuffer_EnabledForLargeRepo(t *testing.T) {
 	t.Parallel()
 
-	// 2 GiB budget, 2000 commits: should enable double-buffering.
+	// 2 GiB budget, 10000 commits: with default 500 KiB growth, chunk size caps
+	// at 3000, so 10000 commits produces 4 chunks — enough for double-buffering.
 	const (
 		budget      = int64(2 * 1024 * 1024 * 1024)
-		commitCount = 2000
+		commitCount = 10000
 	)
 
-	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget)
+	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget, 0, 0)
 	if !enabled {
 		t.Fatal("expected double-buffering to be enabled")
 	}
@@ -328,7 +333,7 @@ func TestPlanChunksWithDoubleBuffer_DisabledForSmallRepo(t *testing.T) {
 		commitCount = 100
 	)
 
-	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget)
+	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget, 0, 0)
 	if enabled {
 		t.Fatal("expected double-buffering to be disabled for single chunk")
 	}
@@ -395,4 +400,34 @@ func TestCanResumeWithCheckpoint(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStreamingConfig_LoggerFallback(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil returns discard logger", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := StreamingConfig{}
+		logger := cfg.logger()
+
+		if logger == nil {
+			t.Fatal("logger() should never return nil")
+		}
+
+		// Discard logger should not panic on write.
+		logger.Info("test message")
+	})
+
+	t.Run("set logger is returned", func(t *testing.T) {
+		t.Parallel()
+
+		want := slog.New(slog.NewTextHandler(io.Discard, nil))
+		cfg := StreamingConfig{Logger: want}
+
+		got := cfg.logger()
+		if got != want {
+			t.Fatal("logger() should return the configured logger")
+		}
+	})
 }

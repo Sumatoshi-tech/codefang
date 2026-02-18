@@ -7,8 +7,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// DefaultGlobalCacheSize is the default maximum memory size for the global blob cache (256 MB).
-const DefaultGlobalCacheSize = 256 * 1024 * 1024
+// DefaultGlobalCacheSize is the default maximum memory size for the global blob cache (128 MB).
+const DefaultGlobalCacheSize = 128 * 1024 * 1024
 
 // GlobalBlobCache provides a cross-commit LRU cache for blob data.
 // It tracks memory usage and evicts least recently used entries when the limit is exceeded.
@@ -188,6 +188,12 @@ func (c *GlobalBlobCache) Stats() CacheStats {
 		MaxSize:     c.maxSize,
 	}
 }
+
+// CacheHits returns the total cache hit count (atomic, lock-free).
+func (c *GlobalBlobCache) CacheHits() int64 { return c.hits.Load() }
+
+// CacheMisses returns the total cache miss count (atomic, lock-free).
+func (c *GlobalBlobCache) CacheMisses() int64 { return c.misses.Load() }
 
 // CacheStats holds cache performance metrics.
 type CacheStats struct {

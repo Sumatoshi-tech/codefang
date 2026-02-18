@@ -61,7 +61,7 @@ func TestBatchProcessor_LoadBlobs(t *testing.T) {
 	defer repo.Free()
 
 	// Get blob hash from first commit.
-	commit, err := repo.LookupCommit(firstHash)
+	commit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 	tree, err := commit.Tree()
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestBatchProcessor_LoadBlobsAsCached(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(firstHash)
+	commit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 	tree, err := commit.Tree()
 	require.NoError(t, err)
@@ -150,15 +150,15 @@ func TestBatchProcessor_ProcessCommitBlobs(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 	firstTree, err := firstCommit.Tree()
 	require.NoError(t, err)
 	secondTree, err := secondCommit.Tree()
 	require.NoError(t, err)
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	firstTree.Free()
 	secondTree.Free()
@@ -186,15 +186,15 @@ func TestBatchProcessor_ProcessCommitDiffs(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 	firstTree, err := firstCommit.Tree()
 	require.NoError(t, err)
 	secondTree, err := secondCommit.Tree()
 	require.NoError(t, err)
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	firstTree.Free()
 	secondTree.Free()
@@ -227,15 +227,15 @@ func TestBatchProcessor_ComputeDiffs(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 	firstTree, err := firstCommit.Tree()
 	require.NoError(t, err)
 	secondTree, err := secondCommit.Tree()
 	require.NoError(t, err)
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	firstTree.Free()
 	secondTree.Free()
@@ -266,7 +266,7 @@ func TestBlobStreamer_Stream(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(firstHash)
+	commit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 	tree, err := commit.Tree()
 	require.NoError(t, err)
@@ -317,15 +317,15 @@ func TestDiffStreamer_Stream(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 	firstTree, err := firstCommit.Tree()
 	require.NoError(t, err)
 	secondTree, err := secondCommit.Tree()
 	require.NoError(t, err)
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	firstTree.Free()
 	secondTree.Free()

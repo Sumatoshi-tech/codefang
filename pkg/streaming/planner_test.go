@@ -10,24 +10,24 @@ import (
 func TestPlanner_SmallRepo_SingleChunk(t *testing.T) {
 	t.Parallel()
 
-	// 400 commits fits in a single chunk (MaxChunkSize=500).
+	// 100 commits fits in a single chunk.
 	p := Planner{
-		TotalCommits: 400,
+		TotalCommits: 100,
 		MemoryBudget: 2000 * mib,
 	}
 	chunks := p.Plan()
 	require.Len(t, chunks, 1)
 	assert.Equal(t, 0, chunks[0].Start)
-	assert.Equal(t, 400, chunks[0].End)
+	assert.Equal(t, 100, chunks[0].End)
 }
 
 func TestPlanner_LargeRepo_MultipleChunks(t *testing.T) {
 	t.Parallel()
 
-	// 100k commits with 2GiB budget.
+	// 100k commits with 2GiB budget and default growth (500 KiB/commit).
 	// Available for state = 2048MiB - 400MiB overhead = 1648MiB
-	// At 500KiB per commit, can fit ~3296 commits per chunk → clamped to MaxChunkSize=500
-	// So 100k commits / 500 = 200 chunks.
+	// Effective growth = 500 KiB * 1.5 (safety margin) = 750 KiB/commit.
+	// Can fit 2250 commits → 100k/2250 = 45 chunks.
 	p := Planner{
 		TotalCommits: 100000,
 		MemoryBudget: 2048 * mib,
@@ -61,7 +61,7 @@ func TestPlanner_ChunkSizeRespectsBounds(t *testing.T) {
 
 	// Very tight budget should use MinChunkSize.
 	// BaseOverhead=400MiB, so 410MiB leaves 10MiB for state.
-	// At 500KiB/commit, that's 20 commits → clamped to MinChunkSize=200.
+	// Effective growth = 500 KiB * 1.5 = 750 KiB → 13 commits → clamped to MinChunkSize=50.
 	p := Planner{
 		TotalCommits: 100000,
 		MemoryBudget: 410 * mib,
@@ -85,13 +85,69 @@ func TestPlanner_NoBudget_UsesMaxChunkSize(t *testing.T) {
 	t.Parallel()
 
 	p := Planner{
-		TotalCommits: 50000,
+		TotalCommits: 15000,
 		MemoryBudget: 0, // No budget constraint.
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
 
-	// Without budget, should use MaxChunkSize (500)
-	// 50k commits / 500 max = 100 chunks.
-	assert.Len(t, chunks, 100)
+	// Without budget, should use MaxChunkSize (3000).
+	// 15k commits / 3000 max = 5 chunks.
+	assert.Len(t, chunks, 5)
+}
+
+func TestPlanner_AggregateGrowthPerCommit(t *testing.T) {
+	t.Parallel()
+
+	// 1 MiB/commit declared with 2 GiB budget.
+	// Available = 2048 - 400 = 1648 MiB.
+	// Effective growth = 1 MiB * 1.5 (safety margin) = 1.5 MiB/commit.
+	// At 1.5 MiB/commit → 1098 commits per chunk.
+	p := Planner{
+		TotalCommits:             100000,
+		MemoryBudget:             2048 * mib,
+		AggregateGrowthPerCommit: 1 * mib,
+	}
+	chunks := p.Plan()
+	require.NotEmpty(t, chunks)
+
+	// 100k / 1098 ≈ 92 chunks.
+	chunkSize := chunks[0].End - chunks[0].Start
+	assert.Equal(t, 1098, chunkSize)
+	assert.Len(t, chunks, 92)
+}
+
+func TestPlanner_HighGrowthRate_SmallChunks(t *testing.T) {
+	t.Parallel()
+
+	// 10 MiB/commit declared with 2 GiB budget — simulates all heavy analyzers.
+	// Available = 2048 - 400 = 1648 MiB.
+	// Effective growth = 10 MiB * 1.5 = 15 MiB/commit → 109 commits per chunk.
+	p := Planner{
+		TotalCommits:             100000,
+		MemoryBudget:             2048 * mib,
+		AggregateGrowthPerCommit: 10 * mib,
+	}
+	chunks := p.Plan()
+	require.NotEmpty(t, chunks)
+
+	chunkSize := chunks[0].End - chunks[0].Start
+	assert.Equal(t, 109, chunkSize)
+}
+
+func TestPlanner_LowGrowthRate_HitsMaxCap(t *testing.T) {
+	t.Parallel()
+
+	// 50 KiB/commit (e.g. devs only) with 2 GiB budget.
+	// Available = 1648 MiB. Effective = 75 KiB → 22489 commits → capped to MaxChunkSize=3000.
+	p := Planner{
+		TotalCommits:             100000,
+		MemoryBudget:             2048 * mib,
+		AggregateGrowthPerCommit: 50 * kib,
+	}
+	chunks := p.Plan()
+	require.NotEmpty(t, chunks)
+
+	chunkSize := chunks[0].End - chunks[0].Start
+	assert.Equal(t, MaxChunkSize, chunkSize)
 }

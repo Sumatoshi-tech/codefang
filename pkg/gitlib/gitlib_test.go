@@ -1,6 +1,7 @@
 package gitlib_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -269,7 +270,7 @@ func TestLookupCommit(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -297,7 +298,7 @@ func TestLookupCommitNotFound(t *testing.T) {
 	defer repo.Free()
 
 	invalidHash := gitlib.NewHash("1234567890123456789012345678901234567890")
-	commit, err := repo.LookupCommit(invalidHash)
+	commit, err := repo.LookupCommit(context.Background(), invalidHash)
 
 	assert.Nil(t, commit)
 	assert.Error(t, err)
@@ -320,7 +321,7 @@ func TestCommitParent(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(secondHash)
+	commit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -350,7 +351,7 @@ func TestCommitParentNotFound(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -378,7 +379,7 @@ func TestCommitTree(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -407,7 +408,7 @@ func TestTreeEntry(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -440,7 +441,7 @@ func TestTreeEntryByPath(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -471,7 +472,7 @@ func TestTreeEntryByPathNotFound(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -501,7 +502,7 @@ func TestTreeEntryByIndexOutOfBounds(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -533,7 +534,7 @@ func TestCommitFiles(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -574,7 +575,7 @@ func TestCommitFile(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -604,7 +605,7 @@ func TestCommitFileNotFound(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -630,7 +631,7 @@ func TestFileReader(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -663,7 +664,7 @@ func TestFileBlob(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -696,7 +697,7 @@ func TestLookupBlob(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -704,7 +705,7 @@ func TestLookupBlob(t *testing.T) {
 	file, err := commit.File("blob.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	defer blob.Free()
@@ -730,7 +731,7 @@ func TestLookupBlobNotFound(t *testing.T) {
 	defer repo.Free()
 
 	invalidHash := gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	blob, err := repo.LookupBlob(invalidHash)
+	blob, err := repo.LookupBlob(context.Background(), invalidHash)
 
 	assert.Nil(t, blob)
 	assert.Error(t, err)
@@ -753,7 +754,7 @@ func TestCachedBlobFromRepo(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -761,7 +762,7 @@ func TestCachedBlobFromRepo(t *testing.T) {
 	file, err := commit.File("cached.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	assert.Equal(t, file.Hash, cached.Hash())
@@ -783,7 +784,7 @@ func TestCachedBlobCountLines(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -791,7 +792,7 @@ func TestCachedBlobCountLines(t *testing.T) {
 	file, err := commit.File("lines.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	lines, err := cached.CountLines()
@@ -813,7 +814,7 @@ func TestCachedBlobIsBinary(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -821,7 +822,7 @@ func TestCachedBlobIsBinary(t *testing.T) {
 	file, err := commit.File("text.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	assert.False(t, cached.IsBinary())
@@ -842,7 +843,7 @@ func TestCachedBlobReader(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -850,7 +851,7 @@ func TestCachedBlobReader(t *testing.T) {
 	file, err := commit.File("readable.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	reader := cached.Reader()
@@ -884,12 +885,12 @@ func TestDiffTreeToTree(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -932,12 +933,12 @@ func TestDiffStats(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -990,12 +991,12 @@ func TestTreeDiff(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -1010,7 +1011,7 @@ func TestTreeDiff(t *testing.T) {
 
 	defer secondTree.Free()
 
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	assert.Len(t, changes, 3)
 
@@ -1054,7 +1055,7 @@ func TestInitialTreeChanges(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1064,7 +1065,7 @@ func TestInitialTreeChanges(t *testing.T) {
 
 	defer tree.Free()
 
-	changes, err := gitlib.InitialTreeChanges(repo, tree)
+	changes, err := gitlib.InitialTreeChanges(context.Background(), repo, tree)
 	require.NoError(t, err)
 	assert.Len(t, changes, 3)
 
@@ -1087,7 +1088,7 @@ func TestInitialTreeChangesNilTree(t *testing.T) {
 
 	defer repo.Free()
 
-	changes, err := gitlib.InitialTreeChanges(repo, nil)
+	changes, err := gitlib.InitialTreeChanges(context.Background(), repo, nil)
 	require.NoError(t, err)
 	assert.Empty(t, changes)
 }
@@ -1270,7 +1271,7 @@ func TestLogFirstParent(t *testing.T) {
 	assert.Less(t, len(fpHashes), len(fullHashes), "first-parent should have fewer commits")
 	// Verify order: each commit's predecessor must be its first parent.
 	for i := range len(fpHashes) - 1 {
-		currCommit, lookupErr := repo.LookupCommit(fpHashes[i])
+		currCommit, lookupErr := repo.LookupCommit(context.Background(), fpHashes[i])
 		require.NoError(t, lookupErr)
 
 		prevHash := fpHashes[i+1]
@@ -1318,7 +1319,7 @@ func TestFileIterForEach(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1354,7 +1355,7 @@ func TestFileIterForEachError(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1393,7 +1394,7 @@ func TestTreeFilesMethod(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1440,7 +1441,7 @@ func TestBlobReader(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1448,7 +1449,7 @@ func TestBlobReader(t *testing.T) {
 	file, err := commit.File("reader.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	defer blob.Free()
@@ -1497,7 +1498,7 @@ func TestFileIterClose(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1536,12 +1537,12 @@ func TestDiffForEach(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -1590,12 +1591,12 @@ func TestDiffDelta(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -1641,7 +1642,7 @@ func TestCachedBlobCountLinesNoNewline(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1649,7 +1650,7 @@ func TestCachedBlobCountLinesNoNewline(t *testing.T) {
 	file, err := commit.File("no_newline.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	lines, err := cached.CountLines()
@@ -1671,7 +1672,7 @@ func TestCachedBlobEmpty(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1679,7 +1680,7 @@ func TestCachedBlobEmpty(t *testing.T) {
 	file, err := commit.File("empty.txt")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	lines, err := cached.CountLines()
@@ -1703,7 +1704,7 @@ func TestLookupTree(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1820,7 +1821,7 @@ func TestTreeFree(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -1847,7 +1848,7 @@ func TestCommitFree(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	// Free multiple times should be safe.
@@ -1894,12 +1895,12 @@ func TestDiffFree(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -1994,7 +1995,7 @@ func TestFileContentsError(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2024,7 +2025,7 @@ func TestFileBlobMethod(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2060,12 +2061,12 @@ func TestTreeDiffRename(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()
@@ -2080,7 +2081,7 @@ func TestTreeDiffRename(t *testing.T) {
 
 	defer secondTree.Free()
 
-	changes, err := gitlib.TreeDiff(repo, firstTree, secondTree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, firstTree, secondTree)
 	require.NoError(t, err)
 	// May be delete+insert or rename depending on libgit2 detection.
 	assert.NotEmpty(t, changes)
@@ -2102,7 +2103,7 @@ func TestTreeDiffNilTrees(t *testing.T) {
 	defer repo.Free()
 
 	// Both nil - should produce empty changes.
-	changes, err := gitlib.TreeDiff(repo, nil, nil)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, changes)
 }
@@ -2122,7 +2123,7 @@ func TestTreeDiffSameTreeOID(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(hash)
+	commit, err := repo.LookupCommit(context.Background(), hash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2133,7 +2134,7 @@ func TestTreeDiffSameTreeOID(t *testing.T) {
 	defer tree.Free()
 
 	// Same tree OID: must skip libgit2 diff and return empty changes.
-	changes, err := gitlib.TreeDiff(repo, tree, tree)
+	changes, err := gitlib.TreeDiff(context.Background(), repo, tree, tree)
 	require.NoError(t, err)
 	assert.Empty(t, changes)
 }
@@ -2194,7 +2195,7 @@ func TestCachedBlobBinary(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2202,7 +2203,7 @@ func TestCachedBlobBinary(t *testing.T) {
 	file, err := commit.File("binary.bin")
 	require.NoError(t, err)
 
-	cached, err := gitlib.NewCachedBlobFromRepo(repo, file.Hash)
+	cached, err := gitlib.NewCachedBlobFromRepo(context.Background(), repo, file.Hash)
 	require.NoError(t, err)
 
 	assert.True(t, cached.IsBinary())
@@ -2253,7 +2254,7 @@ func TestDiffTreeToTreeOneNil(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2291,7 +2292,7 @@ func TestInitialTreeChangesWithSubdirectory(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2301,7 +2302,7 @@ func TestInitialTreeChangesWithSubdirectory(t *testing.T) {
 
 	defer tree.Free()
 
-	changes, err := gitlib.InitialTreeChanges(repo, tree)
+	changes, err := gitlib.InitialTreeChanges(context.Background(), repo, tree)
 	require.NoError(t, err)
 	assert.Len(t, changes, 3)
 }
@@ -2321,7 +2322,7 @@ func TestFileReaderClose(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2354,7 +2355,7 @@ func TestTreeFilesNestedStructure(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(commitHash)
+	commit, err := repo.LookupCommit(context.Background(), commitHash)
 	require.NoError(t, err)
 
 	defer commit.Free()
@@ -2386,12 +2387,12 @@ func TestDiffStatsFree(t *testing.T) {
 
 	defer repo.Free()
 
-	firstCommit, err := repo.LookupCommit(firstHash)
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 
 	defer firstCommit.Free()
 
-	secondCommit, err := repo.LookupCommit(secondHash)
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 
 	defer secondCommit.Free()

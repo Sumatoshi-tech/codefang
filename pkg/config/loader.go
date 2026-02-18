@@ -106,6 +106,9 @@ func applyDefaults(viperCfg *viper.Viper) {
 
 	viperCfg.SetDefault("history.typos.max_distance", DefaultTyposMaxDistance)
 
+	viperCfg.SetDefault("history.anomaly.threshold", DefaultAnomalyThreshold)
+	viperCfg.SetDefault("history.anomaly.window_size", DefaultAnomalyWindowSize)
+
 	viperCfg.SetDefault("checkpoint.enabled", DefaultCheckpointEnabled)
 	viperCfg.SetDefault("checkpoint.dir", DefaultCheckpointDir)
 	viperCfg.SetDefault("checkpoint.resume", DefaultCheckpointResume)
@@ -122,6 +125,7 @@ func (c *Config) ApplyToFacts(facts map[string]any) {
 	c.applySentimentFacts(facts)
 	c.applyShotnessFacts(facts)
 	c.applyTyposFacts(facts)
+	c.applyAnomalyFacts(facts)
 }
 
 func (c *Config) applyBurndownFacts(facts map[string]any) {
@@ -191,5 +195,15 @@ func (c *Config) applyShotnessFacts(facts map[string]any) {
 func (c *Config) applyTyposFacts(facts map[string]any) {
 	if c.History.Typos.MaxDistance > 0 {
 		facts["TyposDatasetBuilder.MaximumAllowedDistance"] = c.History.Typos.MaxDistance
+	}
+}
+
+func (c *Config) applyAnomalyFacts(facts map[string]any) {
+	if c.History.Anomaly.Threshold > 0 {
+		facts["TemporalAnomaly.Threshold"] = float32(c.History.Anomaly.Threshold)
+	}
+
+	if c.History.Anomaly.WindowSize > 0 {
+		facts["TemporalAnomaly.WindowSize"] = c.History.Anomaly.WindowSize
 	}
 }

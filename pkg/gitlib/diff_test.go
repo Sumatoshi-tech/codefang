@@ -1,6 +1,7 @@
 package gitlib_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func TestDiffBlobs(t *testing.T) {
 	defer repo.Free()
 
 	// Get blob hashes from both commits.
-	commit1, err := repo.LookupCommit(firstHash)
+	commit1, err := repo.LookupCommit(context.Background(), firstHash)
 	require.NoError(t, err)
 	tree1, err := commit1.Tree()
 	require.NoError(t, err)
@@ -72,7 +73,7 @@ func TestDiffBlobs(t *testing.T) {
 	tree1.Free()
 	commit1.Free()
 
-	commit2, err := repo.LookupCommit(secondHash)
+	commit2, err := repo.LookupCommit(context.Background(), secondHash)
 	require.NoError(t, err)
 	tree2, err := commit2.Tree()
 	require.NoError(t, err)
@@ -84,12 +85,12 @@ func TestDiffBlobs(t *testing.T) {
 	tree2.Free()
 	commit2.Free()
 
-	oldBlob, err := repo.LookupBlob(hash1)
+	oldBlob, err := repo.LookupBlob(context.Background(), hash1)
 	require.NoError(t, err)
 
 	defer oldBlob.Free()
 
-	newBlob, err := repo.LookupBlob(hash2)
+	newBlob, err := repo.LookupBlob(context.Background(), hash2)
 	require.NoError(t, err)
 
 	defer newBlob.Free()

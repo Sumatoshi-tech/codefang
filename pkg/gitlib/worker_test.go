@@ -1,6 +1,7 @@
 package gitlib_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -313,7 +314,7 @@ func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
 
 	defer repo.Free()
 
-	commit, err := repo.LookupCommit(hash)
+	commit, err := repo.LookupCommit(context.Background(), hash)
 	require.NoError(t, err)
 
 	defer commit.Free()

@@ -3,6 +3,7 @@ package typos
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -248,10 +249,10 @@ func collectIdentifiersOnLines(root *node.Node, focusedLines map[int]bool) map[i
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit.Hash()
+func (t *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	commit := ac.Commit.Hash()
 
-	changes := t.UAST.Changes()
+	changes := t.UAST.Changes(ctx)
 	cache := t.BlobCache.Cache
 	diffs := t.FileDiff.FileDiffs
 

@@ -1,6 +1,7 @@
 package uast
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -61,19 +62,19 @@ func TestParser_Parse(t *testing.T) {
 	}
 
 	// Test with a supported file.
-	_, err = p.Parse("foo.go", []byte("package main"))
+	_, err = p.Parse(context.Background(), "foo.go", []byte("package main"))
 	if err != nil {
 		t.Logf("parse error (expected for mock): %v", err)
 	}
 
 	// Test with empty filename.
-	_, err = p.Parse("", []byte(""))
+	_, err = p.Parse(context.Background(), "", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for empty filename")
 	}
 
 	// Test with unsupported language.
-	_, err = p.Parse("foo.xyz", []byte(""))
+	_, err = p.Parse(context.Background(), "foo.xyz", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for unsupported language")
 	}
@@ -90,7 +91,7 @@ func add(a, b int) int { return a + b }`)
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	root, err := parser.Parse("main.go", src)
+	root, err := parser.Parse(context.Background(), "main.go", src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -160,7 +161,7 @@ func world() {}`
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	uastRoot, err := parser.Parse("main.go", []byte(goCode))
+	uastRoot, err := parser.Parse(context.Background(), "main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -232,7 +233,7 @@ func main() {
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	uastRoot, err := parser.Parse("main.go", []byte(goCode))
+	uastRoot, err := parser.Parse(context.Background(), "main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -340,7 +341,7 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		nd, parseErr := parser.Parse(tc.name+".go", tc.content)
+		nd, parseErr := parser.Parse(context.Background(), tc.name+".go", tc.content)
 		if parseErr != nil {
 			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
@@ -429,7 +430,7 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		root, parseErr := parser.Parse(tc.name+".go", tc.content)
+		root, parseErr := parser.Parse(context.Background(), tc.name+".go", tc.content)
 		if parseErr != nil {
 			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
@@ -814,7 +815,7 @@ true <- (true) => uast(
 	// Parse some JSON content.
 	content := []byte(`{"name": "test", "value": 42}`)
 
-	nd, parseErr := parserInstance.Parse(filename, content)
+	nd, parseErr := parserInstance.Parse(context.Background(), filename, content)
 	if parseErr != nil {
 		t.Fatalf("Failed to parse JSON: %v", parseErr)
 	}

@@ -2,9 +2,11 @@
 package sentiment
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -30,7 +32,7 @@ const (
 type HistoryAnalyzer struct {
 	UAST             *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
-	commentsByTick   map[int][]string
+	commentsByCommit map[string][]string // per-commit comments keyed by hash hex.
 	commitsByTick    map[int][]gitlib.Hash
 	MinCommentLength int
 	Gap              float32
@@ -138,16 +140,15 @@ func (s *HistoryAnalyzer) validate() {
 
 // Initialize prepares the analyzer for processing commits.
 func (s *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
-	s.commentsByTick = map[int][]string{}
+	s.commentsByCommit = map[string][]string{}
 	s.validate()
 
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (s *HistoryAnalyzer) Consume(_ *analyze.Context) error {
-	changes := s.UAST.Changes()
-	tick := s.Ticks.Tick
+func (s *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	changes := s.UAST.Changes(ctx)
 
 	var commentNodes []*node.Node
 
@@ -158,7 +159,12 @@ func (s *HistoryAnalyzer) Consume(_ *analyze.Context) error {
 	}
 
 	comments := s.mergeComments(commentNodes)
-	s.commentsByTick[tick] = append(s.commentsByTick[tick], comments...)
+
+	// Per-commit storage keyed by commit hash.
+	if ac != nil && ac.Commit != nil {
+		hashStr := ac.Commit.Hash().String()
+		s.commentsByCommit[hashStr] = append(s.commentsByCommit[hashStr], comments...)
+	}
 
 	return nil
 }
@@ -278,18 +284,9 @@ func (s *HistoryAnalyzer) mergeComments(extracted []*node.Node) []string {
 
 // Finalize completes the analysis and returns the result.
 func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
-	emotions := map[int]float32{}
-	// Sentiment analysis logic (placeholders).
-	for tick, comments := range s.commentsByTick {
-		if len(comments) > 0 {
-			emotions[tick] = 0.5 // Mock value.
-		}
-	}
-
 	return analyze.Report{
-		"emotions_by_tick": emotions,
-		"comments_by_tick": s.commentsByTick,
-		"commits_by_tick":  s.commitsByTick,
+		"comments_by_commit": s.commentsByCommit,
+		"commits_by_tick":    s.commitsByTick,
 	}, nil
 }
 
@@ -304,9 +301,8 @@ func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			MinCommentLength: s.MinCommentLength,
 			Gap:              s.Gap,
 			commitsByTick:    s.commitsByTick, // shared read-only.
+			commentsByCommit: make(map[string][]string),
 		}
-		// Initialize independent state for each fork.
-		clone.commentsByTick = make(map[int][]string)
 
 		res[i] = clone
 	}
@@ -322,7 +318,8 @@ func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 			continue
 		}
 
-		s.mergeCommentsByTick(other.commentsByTick)
+		// Per-commit data: each fork processes distinct commits.
+		maps.Copy(s.commentsByCommit, other.commentsByCommit)
 	}
 }
 
@@ -361,13 +358,6 @@ func (s *HistoryAnalyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
 	for _, ch := range ss.UASTChanges {
 		node.ReleaseTree(ch.Before)
 		node.ReleaseTree(ch.After)
-	}
-}
-
-// mergeCommentsByTick combines comments from another analyzer.
-func (s *HistoryAnalyzer) mergeCommentsByTick(other map[int][]string) {
-	for tick, comments := range other {
-		s.commentsByTick[tick] = append(s.commentsByTick[tick], comments...)
 	}
 }
 

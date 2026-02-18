@@ -4,9 +4,110 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/anomaly"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
+
+// mockSentimentValue is a placeholder sentiment score used until
+// real NLP-based sentiment analysis is implemented.
+const mockSentimentValue = 0.5
+
+// RegisterTimeSeriesExtractor registers the sentiment analyzer's time series
+// extractor with the anomaly package for cross-analyzer anomaly detection.
+func RegisterTimeSeriesExtractor() {
+	anomaly.RegisterTimeSeriesExtractor("sentiment", extractTimeSeries)
+}
+
+// RegisterTickExtractor registers the sentiment analyzer's per-commit extractor
+// with the unified time-series output system.
+func RegisterTickExtractor() {
+	analyze.RegisterTickExtractor("sentiment", extractCommitTimeSeries)
+}
+
+// extractCommitTimeSeries extracts per-commit sentiment data from the report.
+func extractCommitTimeSeries(report analyze.Report) map[string]any {
+	commentsByCommit, ok := report["comments_by_commit"].(map[string][]string)
+	if !ok || len(commentsByCommit) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commentsByCommit))
+
+	for hash, comments := range commentsByCommit {
+		entry := map[string]any{
+			"comment_count": len(comments),
+		}
+		if len(comments) > 0 {
+			entry["sentiment"] = mockSentimentValue
+		}
+
+		result[hash] = entry
+	}
+
+	return result
+}
+
+func extractTimeSeries(report analyze.Report) (ticks []int, dimensions map[string][]float64) {
+	data, err := ParseReportData(report)
+	if err != nil || len(data.EmotionsByTick) == 0 {
+		return nil, nil
+	}
+
+	ticks = sortedEmotionTicks(data.EmotionsByTick)
+	dimensions = map[string][]float64{
+		"sentiment": make([]float64, len(ticks)),
+	}
+
+	for i, tick := range ticks {
+		dimensions["sentiment"][i] = float64(data.EmotionsByTick[tick])
+	}
+
+	return ticks, dimensions
+}
+
+func sortedEmotionTicks(m map[int]float32) []int {
+	ticks := make([]int, 0, len(m))
+
+	for tick := range m {
+		ticks = append(ticks, tick)
+	}
+
+	sort.Ints(ticks)
+
+	return ticks
+}
+
+// AggregateCommitsToTicks groups per-commit comment data into per-tick
+// comments and emotions by merging all commits belonging to each tick.
+func AggregateCommitsToTicks(
+	commentsByCommit map[string][]string,
+	commitsByTick map[int][]gitlib.Hash,
+) (commentsByTick map[int][]string, emotionsByTick map[int]float32) {
+	if len(commentsByCommit) == 0 || len(commitsByTick) == 0 {
+		return nil, nil
+	}
+
+	cbt := make(map[int][]string, len(commitsByTick))
+	ebt := make(map[int]float32, len(commitsByTick))
+
+	for tick, hashes := range commitsByTick {
+		for _, hash := range hashes {
+			comments, ok := commentsByCommit[hash.String()]
+			if !ok {
+				continue
+			}
+
+			cbt[tick] = append(cbt[tick], comments...)
+		}
+
+		if len(cbt[tick]) > 0 {
+			ebt[tick] = mockSentimentValue
+		}
+	}
+
+	return cbt, ebt
+}
 
 // --- Input Data Types ---.
 
@@ -18,19 +119,33 @@ type ReportData struct {
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
+// It prefers per-commit data aggregated to ticks when available,
+// falling back to direct per-tick data for backward compatibility.
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
+	if v, ok := report["commits_by_tick"].(map[int][]gitlib.Hash); ok {
+		data.CommitsByTick = v
+	}
+
+	// Try per-commit path first (canonical).
+	commentsByCommit, hasCommit := report["comments_by_commit"].(map[string][]string)
+
+	if hasCommit && len(commentsByCommit) > 0 && len(data.CommitsByTick) > 0 {
+		data.CommentsByTick, data.EmotionsByTick = AggregateCommitsToTicks(
+			commentsByCommit, data.CommitsByTick,
+		)
+
+		return data, nil
+	}
+
+	// Fall back to direct per-tick data (backward compat).
 	if v, ok := report["emotions_by_tick"].(map[int]float32); ok {
 		data.EmotionsByTick = v
 	}
 
 	if v, ok := report["comments_by_tick"].(map[int][]string); ok {
 		data.CommentsByTick = v
-	}
-
-	if v, ok := report["commits_by_tick"].(map[int][]gitlib.Hash); ok {
-		data.CommitsByTick = v
 	}
 
 	return data, nil

@@ -7,8 +7,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// DefaultLRUCacheSize is the default maximum memory size for the LRU blob cache (1 GB).
-const DefaultLRUCacheSize = 1024 * 1024 * 1024
+// DefaultLRUCacheSize is the default maximum memory size for the LRU blob cache (256 MB).
+const DefaultLRUCacheSize = 256 * 1024 * 1024
 
 // bytesPerKB is the number of bytes in a kilobyte.
 const bytesPerKB = 1024.0

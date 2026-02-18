@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,7 +107,7 @@ func parseStdin(lang, output, format string, writer io.Writer) error {
 		filename = "stdin." + lang
 	}
 
-	parsedNode, err := parser.Parse(filename, code)
+	parsedNode, err := parser.Parse(context.Background(), filename, code)
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
@@ -134,7 +135,7 @@ func ParseFile(file, lang, output, format string, writer io.Writer) error {
 		filename = strings.TrimSuffix(file, ext) + "." + lang
 	}
 
-	parsedNode, err := parser.Parse(filename, code)
+	parsedNode, err := parser.Parse(context.Background(), filename, code)
 	if err != nil {
 		return fmt.Errorf("parse error in %s: %w", file, err)
 	}

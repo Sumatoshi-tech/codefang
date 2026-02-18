@@ -97,6 +97,30 @@ func TestREDMetrics_TrackInflight(t *testing.T) {
 	require.NotNil(t, inflight)
 }
 
+func TestREDMetrics_HistogramBuckets_Extended(t *testing.T) {
+	t.Parallel()
+
+	red, reader := setupTestMeter(t)
+	ctx := context.Background()
+
+	red.RecordRequest(ctx, "cli.run", "ok", time.Second)
+
+	rm := collectMetrics(t, reader)
+
+	reqDuration := findMetric(rm, "codefang.request.duration.seconds")
+	require.NotNil(t, reqDuration)
+
+	hist, ok := reqDuration.Data.(metricdata.Histogram[float64])
+	require.True(t, ok, "expected Histogram data type")
+	require.NotEmpty(t, hist.DataPoints)
+
+	bounds := hist.DataPoints[0].Bounds
+
+	// Verify explicit boundaries match the expected set for long-running analysis.
+	expectedBounds := []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600}
+	assert.Equal(t, expectedBounds, bounds, "histogram should use custom bucket boundaries")
+}
+
 func TestNewREDMetrics_WithNilMeter(t *testing.T) {
 	t.Parallel()
 	// Should not panic with a no-op meter.

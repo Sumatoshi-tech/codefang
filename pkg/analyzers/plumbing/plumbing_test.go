@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -141,7 +142,7 @@ func TestTreeDiff_filterChanges_prefixBlacklist(t *testing.T) {
 		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "vendor/foo.go", Hash: hash}},
 		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "pkg/bar.go", Hash: hash}},
 	}
-	filtered := td.filterChanges(changes)
+	filtered := td.filterChanges(context.Background(), changes)
 	require.Len(t, filtered, 1)
 	require.Equal(t, "pkg/bar.go", filtered[0].To.Name)
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -16,6 +17,40 @@ var (
 	ErrInvalidPeopleDict = errors.New("devs: invalid ReversedPeopleDict in report")
 )
 
+// RegisterTickExtractor registers the devs analyzer's per-commit extractor
+// with the unified time-series output system.
+func RegisterTickExtractor() {
+	analyze.RegisterTickExtractor("devs", extractCommitTimeSeries)
+}
+
+// extractCommitTimeSeries extracts per-commit dev stats from the report.
+func extractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitData, ok := report["CommitDevData"].(map[string]*CommitDevData)
+	if !ok || len(commitData) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitData))
+
+	for hash, cdd := range commitData {
+		entry := map[string]any{
+			"commits":       cdd.Commits,
+			"lines_added":   cdd.Added,
+			"lines_removed": cdd.Removed,
+			"lines_changed": cdd.Changed,
+			"net_change":    cdd.Added - cdd.Removed,
+			"author_id":     cdd.AuthorID,
+		}
+		if len(cdd.Languages) > 0 {
+			entry["languages"] = cdd.Languages
+		}
+
+		result[hash] = entry
+	}
+
+	return result
+}
+
 // --- Input Data Types ---.
 
 // TickData is the raw input data for devs metrics computation.
@@ -25,13 +60,64 @@ type TickData struct {
 	TickSize time.Duration
 }
 
-// ParseTickData extracts TickData from an analyzer report.
-func ParseTickData(report analyze.Report) (*TickData, error) {
-	ticks, ok := report["Ticks"].(map[int]map[int]*DevTick)
-	if !ok {
-		return nil, ErrInvalidTicks
+// AggregateCommitsToTicks builds per-tick per-developer data from per-commit
+// data grouped by the commits_by_tick mapping.
+func AggregateCommitsToTicks(
+	commitDevData map[string]*CommitDevData,
+	commitsByTick map[int][]gitlib.Hash,
+) map[int]map[int]*DevTick {
+	if len(commitDevData) == 0 || len(commitsByTick) == 0 {
+		return nil
 	}
 
+	result := make(map[int]map[int]*DevTick, len(commitsByTick))
+
+	for tick, hashes := range commitsByTick {
+		devTicks := aggregateDevTickFromCommits(hashes, commitDevData)
+		if len(devTicks) > 0 {
+			result[tick] = devTicks
+		}
+	}
+
+	return result
+}
+
+// aggregateDevTickFromCommits merges commit-level dev data into per-author DevTick entries for a single tick.
+func aggregateDevTickFromCommits(hashes []gitlib.Hash, commitDevData map[string]*CommitDevData) map[int]*DevTick {
+	devTicks := make(map[int]*DevTick)
+
+	for _, hash := range hashes {
+		cdd, ok := commitDevData[hash.String()]
+		if !ok {
+			continue
+		}
+
+		dt := devTicks[cdd.AuthorID]
+		if dt == nil {
+			dt = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
+			devTicks[cdd.AuthorID] = dt
+		}
+
+		dt.Commits += cdd.Commits
+		dt.Added += cdd.Added
+		dt.Removed += cdd.Removed
+		dt.Changed += cdd.Changed
+
+		for lang, stats := range cdd.Languages {
+			ls := dt.Languages[lang]
+			dt.Languages[lang] = pkgplumbing.LineStats{
+				Added:   ls.Added + stats.Added,
+				Removed: ls.Removed + stats.Removed,
+				Changed: ls.Changed + stats.Changed,
+			}
+		}
+	}
+
+	return devTicks
+}
+
+// ParseTickData extracts TickData from an analyzer report.
+func ParseTickData(report analyze.Report) (*TickData, error) {
 	names, ok := report["ReversedPeopleDict"].([]string)
 	if !ok {
 		return nil, ErrInvalidPeopleDict
@@ -40,6 +126,27 @@ func ParseTickData(report analyze.Report) (*TickData, error) {
 	tickSize, ok := report["TickSize"].(time.Duration)
 	if !ok || tickSize == 0 {
 		tickSize = defaultTickHours * time.Hour
+	}
+
+	// Prefer per-commit aggregation (canonical path).
+	commitDevData, hasCommit := report["CommitDevData"].(map[string]*CommitDevData)
+	commitsByTick, hasTicks := report["CommitsByTick"].(map[int][]gitlib.Hash)
+
+	var ticks map[int]map[int]*DevTick
+
+	if hasCommit && hasTicks && len(commitDevData) > 0 {
+		ticks = AggregateCommitsToTicks(commitDevData, commitsByTick)
+	}
+
+	// Fall back to pre-aggregated per-tick data (backward compat).
+	if len(ticks) == 0 {
+		var tickOK bool
+
+		ticks, tickOK = report["Ticks"].(map[int]map[int]*DevTick)
+
+		if !tickOK {
+			return nil, ErrInvalidTicks
+		}
 	}
 
 	return &TickData{

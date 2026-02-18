@@ -26,3 +26,10 @@ func (h *Analyzer) Boot() error {
 
 	return nil
 }
+
+// stateGrowthPerCommit is the estimated per-commit memory growth in bytes
+// for the file-history analyzer (per-file history with developer stats).
+const stateGrowthPerCommit = 50 * 1024
+
+// StateGrowthPerCommit returns the estimated per-commit memory growth in bytes.
+func (h *Analyzer) StateGrowthPerCommit() int64 { return stateGrowthPerCommit }

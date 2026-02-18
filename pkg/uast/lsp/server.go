@@ -3,7 +3,8 @@
 package lsp
 
 import (
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 	"sync"
 
@@ -55,11 +56,15 @@ func (ds *DocumentStore) Delete(uri string) {
 type Server struct {
 	store   *DocumentStore
 	handler protocol.Handler
+	logger  *slog.Logger
 }
 
 // NewServer creates a new mapping DSL LSP server with default handlers.
 func NewServer() *Server {
-	srv := &Server{store: NewDocumentStore()}
+	srv := &Server{
+		store:  NewDocumentStore(),
+		logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
 
 	srv.handler = protocol.Handler{
 		Initialize:             srv.initialize,
@@ -83,7 +88,7 @@ func (srv *Server) Run() {
 
 	err := lspServer.RunStdio()
 	if err != nil {
-		log.Printf("LSP server error: %v", err)
+		srv.logger.Error("LSP server error", "error", err)
 	}
 }
 

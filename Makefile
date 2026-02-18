@@ -445,6 +445,59 @@ deps-update-all:
 		--sitter-forest-ref "$(SITTER_FOREST_REF)" \
 		--sitter-forest-go-ref "$(SITTER_FOREST_GO_REF)"
 
+# =============================================================================
+# OpenTelemetry local development stack
+# =============================================================================
+
+OTEL_COMPOSE := dev/docker-compose.otel.yml
+
+# Detect compose command: docker compose (plugin) > docker-compose (standalone) > podman compose.
+COMPOSE_CMD := $(shell \
+	if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then \
+		echo "docker compose"; \
+	elif command -v docker-compose >/dev/null 2>&1; then \
+		echo "docker-compose"; \
+	elif command -v podman-compose >/dev/null 2>&1; then \
+		echo "podman-compose"; \
+	elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then \
+		echo "podman compose"; \
+	fi \
+)
+
+# Start local OTel stack (Jaeger + Collector + Prometheus).
+.PHONY: otel-up
+otel-up:
+ifeq ($(COMPOSE_CMD),)
+	$(error No compose tool found. Install one of: docker-compose, podman-compose, or the docker compose plugin)
+endif
+	@echo "Starting OTel development stack ($(COMPOSE_CMD))..."
+	$(COMPOSE_CMD) -f $(OTEL_COMPOSE) up -d
+	@echo "Jaeger UI:   http://localhost:16686"
+	@echo "Prometheus:  http://localhost:9090"
+	@echo "OTLP gRPC:   localhost:4317"
+
+# Stop local OTel stack.
+.PHONY: otel-down
+otel-down:
+ifeq ($(COMPOSE_CMD),)
+	$(error No compose tool found. Install one of: docker-compose, podman-compose, or the docker compose plugin)
+endif
+	$(COMPOSE_CMD) -f $(OTEL_COMPOSE) down
+
+# Run a demo analysis with tracing enabled against the local OTel stack.
+# Usage: make demo [DEMO_REPO=.] [DEMO_ANALYZER=static/complexity]
+DEMO_REPO ?= .
+DEMO_ANALYZER ?= static/complexity
+.PHONY: demo
+demo: all otel-up
+	OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317 \
+	${GOBIN}/codefang run --debug-trace -a $(DEMO_ANALYZER) $(DEMO_REPO)
+	@echo "View trace at http://localhost:16686"
+
+# =============================================================================
+# libgit2 targets for fast history analysis
+# =============================================================================
+
 # Build libgit2 as a static library (vendored in third_party/libgit2)
 .PHONY: libgit2
 libgit2: $(LIBGIT2_INSTALL)/lib64/libgit2.a

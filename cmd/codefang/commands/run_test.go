@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -9,14 +10,18 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -66,12 +71,12 @@ func (s *stubHistoryRunAnalyzer) Descriptor() analyze.Descriptor { return s.desc
 func (s *stubHistoryRunAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return nil
 }
-func (s *stubHistoryRunAnalyzer) Configure(_ map[string]any) error      { return nil }
-func (s *stubHistoryRunAnalyzer) Initialize(_ *gitlib.Repository) error { return nil }
-func (s *stubHistoryRunAnalyzer) Consume(_ *analyze.Context) error      { return nil }
-func (s *stubHistoryRunAnalyzer) Finalize() (analyze.Report, error)     { return analyze.Report{}, nil }
-func (s *stubHistoryRunAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer  { return nil }
-func (s *stubHistoryRunAnalyzer) Merge(_ []analyze.HistoryAnalyzer)     {}
+func (s *stubHistoryRunAnalyzer) Configure(_ map[string]any) error                    { return nil }
+func (s *stubHistoryRunAnalyzer) Initialize(_ *gitlib.Repository) error               { return nil }
+func (s *stubHistoryRunAnalyzer) Consume(_ context.Context, _ *analyze.Context) error { return nil }
+func (s *stubHistoryRunAnalyzer) Finalize() (analyze.Report, error)                   { return analyze.Report{}, nil }
+func (s *stubHistoryRunAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer                { return nil }
+func (s *stubHistoryRunAnalyzer) Merge(_ []analyze.HistoryAnalyzer)                   {}
 func (s *stubHistoryRunAnalyzer) Serialize(_ analyze.Report, _ string, _ io.Writer) error {
 	return nil
 }
@@ -95,7 +100,7 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
 		},
-		func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
+		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 			historyCalled = true
 			historyFormat = format
 
@@ -104,6 +109,7 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"-a", "static/complexity,history/devs", "--path", ".", "--format", "bin"})
@@ -126,12 +132,13 @@ func TestRunCommand_StaticOnly(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			historyCalled = true
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"-a", "static/complexity"})
@@ -150,12 +157,13 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called")
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var errOut bytes.Buffer
@@ -180,7 +188,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, ids []string, format string, silent bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, ids []string, format string, silent bool, _ HistoryRunOptions, _ io.Writer) error {
 			historySilent = silent
 
 			require.Equal(t, []string{"history/devs"}, ids)
@@ -189,6 +197,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var errOut bytes.Buffer
@@ -212,12 +221,13 @@ func TestRunCommand_ForwardsHistoryRuntimeOptions(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{
@@ -241,12 +251,13 @@ func TestRunCommand_ForwardsCommitSelectionFlags(t *testing.T) {
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{
@@ -274,12 +285,13 @@ func TestRunCommand_ForwardsProfilingFlags(t *testing.T) {
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{
@@ -303,12 +315,13 @@ func TestRunCommand_ForwardsResourceTuningFlags(t *testing.T) {
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{
@@ -342,12 +355,13 @@ func TestRunCommand_ForwardsCheckpointFlags(t *testing.T) {
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{
@@ -377,12 +391,13 @@ func TestRunCommand_CheckpointDefaultsPreserved(t *testing.T) {
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOptions = opts
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"-a", "history/devs"})
@@ -403,12 +418,13 @@ func TestRunCommand_ProgressOutput_Quiet(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called")
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.PersistentFlags().BoolP("quiet", "q", false, "suppress output")
@@ -427,8 +443,11 @@ func TestRunCommand_UnknownAnalyzer(t *testing.T) {
 
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error { return nil },
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"-a", "unknown/id"})
@@ -448,12 +467,13 @@ func TestRunCommand_GlobStaticAnalyzers(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			historyCalled = true
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"--analyzers", "static/*", "--format", "json"})
@@ -481,7 +501,7 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
 		},
-		func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
+		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 			historyCalled = true
 			historyFormat = format
 
@@ -490,6 +510,7 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"--analyzers", "*", "--format", "json"})
@@ -506,8 +527,11 @@ func TestRunCommand_GlobUnknownPattern(t *testing.T) {
 
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error { return nil },
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"--analyzers", "static/unknown*"})
@@ -520,8 +544,11 @@ func TestRunCommand_GlobInvalidPattern(t *testing.T) {
 
 	command := newRunCommandWithDeps(
 		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error { return nil },
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	command.SetArgs([]string{"--analyzers", "[bad"})
@@ -608,12 +635,13 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var out bytes.Buffer
@@ -661,12 +689,13 @@ func TestRunCommand_ConvertInput_JSONToPlot(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var out bytes.Buffer
@@ -701,12 +730,13 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 
 			return nil
 		},
-		func(_ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			t.Fatal("history executor should not be called in conversion mode")
 
 			return nil
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var out bytes.Buffer
@@ -741,7 +771,7 @@ func TestRunCommand_MixedPlotRendersCombinedPage(t *testing.T) {
 
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
 		},
-		func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
+		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 			historyFormat = format
 			require.Equal(t, analyze.FormatBinary, format)
 			require.Equal(t, []string{"history/devs"}, ids)
@@ -749,6 +779,7 @@ func TestRunCommand_MixedPlotRendersCombinedPage(t *testing.T) {
 			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
 		},
 		stubRunRegistry,
+		noopObservabilityInit,
 	)
 
 	var out bytes.Buffer
@@ -793,7 +824,7 @@ func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
 
 					return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
 				},
-				func(_ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
+				func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
 					historyFormat = format
 
 					require.Equal(t, []string{"history/devs"}, ids)
@@ -801,6 +832,7 @@ func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
 					return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
 				},
 				stubRunRegistry,
+				noopObservabilityInit,
 			)
 
 			var out bytes.Buffer
@@ -1002,6 +1034,140 @@ func TestFormatConstants(t *testing.T) {
 	require.Equal(t, "plot", analyze.FormatPlot)
 }
 
+func TestRunCommand_DebugTraceFlag_Accepted(t *testing.T) {
+	t.Parallel()
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		noopObservabilityInit,
+	)
+
+	command.SetArgs([]string{"-a", "static/complexity", "--debug-trace"})
+
+	err := command.Execute()
+	require.NoError(t, err)
+}
+
+func TestRunCommand_CreatesRootSpan(t *testing.T) {
+	t.Parallel()
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+
+	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		func(_ observability.Config) (observability.Providers, error) {
+			return observability.Providers{
+				Tracer:   tp.Tracer("codefang"),
+				Shutdown: func(_ context.Context) error { return nil },
+			}, nil
+		},
+	)
+
+	command.SetArgs([]string{"-a", "static/complexity"})
+
+	err := command.Execute()
+	require.NoError(t, err)
+
+	spans := exporter.GetSpans()
+	require.NotEmpty(t, spans, "root span should be exported")
+
+	var found bool
+
+	for _, span := range spans {
+		if span.Name == "codefang.run" {
+			found = true
+
+			break
+		}
+	}
+
+	require.True(t, found, "root span 'codefang.run' should exist")
+}
+
+func TestRunCommand_ShutdownCalledOnExit(t *testing.T) {
+	t.Parallel()
+
+	var shutdownCalled bool
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		func(_ observability.Config) (observability.Providers, error) {
+			return observability.Providers{
+				Shutdown: func(_ context.Context) error {
+					shutdownCalled = true
+
+					return nil
+				},
+			}, nil
+		},
+	)
+
+	command.SetArgs([]string{"-a", "static/complexity"})
+
+	err := command.Execute()
+	require.NoError(t, err)
+	require.True(t, shutdownCalled, "providers.Shutdown must be called on exit")
+}
+
+func TestRunCommand_InitializesObservability(t *testing.T) {
+	t.Parallel()
+
+	var (
+		initCalled bool
+		seenCfg    observability.Config
+	)
+
+	captureInit := func(cfg observability.Config) (observability.Providers, error) {
+		initCalled = true
+		seenCfg = cfg
+
+		return observability.Providers{
+			Shutdown: func(_ context.Context) error { return nil },
+		}, nil
+	}
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		captureInit,
+	)
+
+	command.SetArgs([]string{"-a", "static/complexity", "--debug-trace"})
+
+	err := command.Execute()
+	require.NoError(t, err)
+	require.True(t, initCalled, "observability.Init should be called")
+	require.Equal(t, observability.ModeCLI, seenCfg.Mode)
+	require.True(t, seenCfg.DebugTrace, "DebugTrace should be true when --debug-trace is set")
+	require.NotEmpty(t, seenCfg.ServiceVersion, "ServiceVersion should be set")
+}
+
 func stubRunRegistry() (*analyze.Registry, error) {
 	staticAnalyzers := []analyze.StaticAnalyzer{
 		&stubStaticRunAnalyzer{
@@ -1024,4 +1190,90 @@ func stubRunRegistry() (*analyze.Registry, error) {
 	}
 
 	return analyze.NewRegistry(staticAnalyzers, historyAnalyzers)
+}
+
+func noopObservabilityInit(_ observability.Config) (observability.Providers, error) {
+	return observability.Providers{
+		Shutdown: func(_ context.Context) error { return nil },
+	}, nil
+}
+
+func TestDurationClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"fast", 5 * time.Second, durationClassFast},
+		{"normal", 30 * time.Second, durationClassNormal},
+		{"slow", 2 * time.Minute, durationClassSlow},
+		{"zero is fast", 0, durationClassFast},
+		{"boundary fast", durationClassFastLimit - 1, durationClassFast},
+		{"boundary normal", durationClassNormalLimit - 1, durationClassNormal},
+		{"exact fast limit", durationClassFastLimit, durationClassNormal},
+		{"exact normal limit", durationClassNormalLimit, durationClassSlow},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := durationClass(tt.d)
+			if got != tt.want {
+				t.Fatalf("durationClass(%v) = %q, want %q", tt.d, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunCommand_RootSpanAttributes(t *testing.T) {
+	t.Parallel()
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+
+	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		func(_ observability.Config) (observability.Providers, error) {
+			return observability.Providers{
+				Tracer:   tp.Tracer("codefang"),
+				Shutdown: func(_ context.Context) error { return nil },
+			}, nil
+		},
+	)
+
+	command.SetArgs([]string{"-a", "static/complexity"})
+
+	err := command.Execute()
+	require.NoError(t, err)
+
+	spans := exporter.GetSpans()
+
+	var rootAttrs map[string]any
+
+	for _, span := range spans {
+		if span.Name != "codefang.run" {
+			continue
+		}
+
+		rootAttrs = make(map[string]any, len(span.Attributes))
+		for _, attr := range span.Attributes {
+			rootAttrs[string(attr.Key)] = attr.Value.AsInterface()
+		}
+	}
+
+	require.NotNil(t, rootAttrs, "root span should exist")
+	require.Contains(t, rootAttrs, "error", "root span should have error attribute")
+	require.Equal(t, false, rootAttrs["error"], "error should be false on success")
+	require.Contains(t, rootAttrs, "codefang.duration_class", "root span should have duration_class")
 }

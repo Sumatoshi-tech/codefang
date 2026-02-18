@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -135,11 +136,11 @@ func (f *FileDiffAnalyzer) Initialize(repo *gitlib.Repository) error {
 const parallelThreshold = 1
 
 // Consume processes a single commit with the provided dependency results.
-func (f *FileDiffAnalyzer) Consume(ctx *analyze.Context) error {
+func (f *FileDiffAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
 	// Check if the runtime pipeline has already computed diffs.
-	if ctx != nil && ctx.FileDiffs != nil {
+	if ac != nil && ac.FileDiffs != nil {
 		// Use the pre-computed diffs from the runtime pipeline.
-		f.FileDiffs = ctx.FileDiffs
+		f.FileDiffs = ac.FileDiffs
 
 		return nil
 	}

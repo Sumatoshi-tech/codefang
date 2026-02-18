@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -138,8 +139,8 @@ func (c *Commit) Tree() (*Tree, error) {
 	return &Tree{tree: tree, repo: c.repo}, nil
 }
 
-// Files returns an iterator over all files in the commit's tree.
-func (c *Commit) Files() (*FileIter, error) {
+// FilesContext returns an iterator over all files in the commit's tree, accepting a context for tracing.
+func (c *Commit) FilesContext(_ context.Context) (*FileIter, error) {
 	tree, err := c.Tree()
 	if err != nil {
 		return nil, err
@@ -155,6 +156,11 @@ func (c *Commit) Files() (*FileIter, error) {
 	tree.Free()
 
 	return &FileIter{files: files, idx: 0}, nil
+}
+
+// Files returns an iterator over all files in the commit's tree.
+func (c *Commit) Files() (*FileIter, error) {
+	return c.FilesContext(context.Background())
 }
 
 // File returns a specific file from the commit's tree.

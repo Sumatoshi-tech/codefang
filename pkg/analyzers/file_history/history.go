@@ -2,6 +2,7 @@
 package filehistory
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -174,14 +175,14 @@ func (h *Analyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pkgplumbi
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *Analyzer) Consume(ctx *analyze.Context) error {
-	if !h.shouldConsumeCommit(ctx) {
+func (h *Analyzer) Consume(_ context.Context, ac *analyze.Context) error {
+	if !h.shouldConsumeCommit(ac) {
 		return nil
 	}
 
-	h.lastCommit = ctx.Commit
+	h.lastCommit = ac.Commit
 
-	err := h.processFileChanges(h.TreeDiff.Changes, ctx.Commit)
+	err := h.processFileChanges(h.TreeDiff.Changes, ac.Commit)
 	if err != nil {
 		return err
 	}

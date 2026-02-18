@@ -16,6 +16,10 @@ const (
 
 	// FormatCompact is the single-line-per-analyzer static analysis output format.
 	FormatCompact = "compact"
+
+	// FormatTimeSeries is the unified time-series output format that merges
+	// all history analyzer data into a single JSON array keyed by commit.
+	FormatTimeSeries = "timeseries"
 )
 
 var (
@@ -35,7 +39,7 @@ func NormalizeFormat(format string) string {
 
 // UniversalFormats returns the canonical output formats supported by all analyzers.
 func UniversalFormats() []string {
-	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary}
+	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary, FormatTimeSeries}
 }
 
 // ValidateFormat checks whether a format is in the provided support list.

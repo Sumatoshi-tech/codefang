@@ -51,12 +51,12 @@ const defaultMemoryBudgetRatio = 50
 // percentDenominator is the divisor for converting a percentage ratio to a fraction.
 const percentDenominator = 100
 
-// defaultMemoryBudgetCap is the maximum auto-detected memory budget (4 GiB).
+// defaultMemoryBudgetCap is the maximum auto-detected memory budget (2 GiB).
 // This forces chunking on large repos, which bounds peak memory usage.
-const defaultMemoryBudgetCap = int64(4 * 1024 * 1024 * 1024)
+const defaultMemoryBudgetCap = int64(2 * 1024 * 1024 * 1024)
 
 // DefaultMemoryBudget returns a sensible memory budget based on available system memory.
-// Returns min(50% of total RAM, 4 GiB), or 0 if detection fails.
+// Returns min(50% of total RAM, 2 GiB), or 0 if detection fails.
 func DefaultMemoryBudget() int64 {
 	total := detectTotalMemoryBytes()
 	if total == 0 {

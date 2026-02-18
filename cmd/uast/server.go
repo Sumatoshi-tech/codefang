@@ -1,9 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,7 +12,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -71,47 +74,84 @@ func serverCmd() *cobra.Command {
 	return cmd
 }
 
+// newServerMux creates the HTTP mux with all API routes wrapped in tracing middleware.
+func newServerMux(tracer trace.Tracer) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/parse", handleParse)
+	mux.HandleFunc("/api/query", handleQuery)
+	mux.HandleFunc("/api/mappings", handleGetMappingsList)
+	mux.HandleFunc("/api/mappings/", handleGetMapping)
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	return observability.HTTPMiddleware(tracer, logger, mux)
+}
+
 func startServer(port, staticDir string) {
-	// API endpoints.
-	http.HandleFunc("/api/parse", handleParse)
-	http.HandleFunc("/api/query", handleQuery)
-	http.HandleFunc("/api/mappings", handleGetMappingsList)
-	http.HandleFunc("/api/mappings/", handleGetMapping)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	cfg := observability.DefaultConfig()
+	cfg.OTLPEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	cfg.OTLPHeaders = observability.ParseOTLPHeaders(os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"))
+
+	providers, initErr := observability.Init(cfg)
+	if initErr != nil {
+		logger.Error("observability init failed", "error", initErr)
+
+		return
+	}
+
+	defer func() {
+		shutdownErr := providers.Shutdown(context.Background())
+		if shutdownErr != nil {
+			logger.Warn("observability shutdown failed", "error", shutdownErr)
+		}
+	}()
+
+	handler := newServerMux(providers.Tracer)
 
 	// Serve static files if directory is provided.
 	if staticDir != "" {
-		http.HandleFunc("/", func(responseWriter http.ResponseWriter, request *http.Request) {
+		mux := http.NewServeMux()
+		mux.Handle("/api/", handler)
+		mux.HandleFunc("/", func(responseWriter http.ResponseWriter, request *http.Request) {
 			if request.URL.Path == "/" {
 				http.ServeFile(responseWriter, request, filepath.Join(staticDir, "index.html"))
 			} else {
 				http.ServeFile(responseWriter, request, filepath.Join(staticDir, request.URL.Path[1:]))
 			}
 		})
+
+		handler = mux
 	}
 
-	fmt.Fprintf(os.Stdout, "UAST Development Server starting on http://localhost:%s\n", port)
+	logger.Info("UAST Development Server starting", "addr", "http://localhost:"+port)
 
 	if staticDir != "" {
-		fmt.Fprintf(os.Stdout, "Serving static files from: %s\n", staticDir)
+		logger.Info("serving static files", "dir", staticDir)
 	}
 
 	server := &http.Server{
 		Addr:         ":" + port,
+		Handler:      handler,
 		ReadTimeout:  serverReadTimeout,
 		WriteTimeout: serverWriteTimeout,
 		IdleTimeout:  serverIdleTimeout,
 	}
 
-	log.Fatal(server.ListenAndServe())
+	err := server.ListenAndServe()
+	if err != nil {
+		logger.Error("server failed", "error", err)
+	}
 }
 
 // writeJSON encodes the given value as JSON and writes it to the response writer.
-func writeJSON(responseWriter http.ResponseWriter, value any) {
+func writeJSON(ctx context.Context, responseWriter http.ResponseWriter, value any) {
 	responseWriter.Header().Set("Content-Type", "application/json")
 
 	encodeErr := json.NewEncoder(responseWriter).Encode(value)
 	if encodeErr != nil {
-		log.Printf("failed to encode JSON response: %v", encodeErr)
+		slog.Default().ErrorContext(ctx, "failed to encode JSON response", "error", encodeErr)
 	}
 }
 
@@ -137,7 +177,7 @@ func handleParse(responseWriter http.ResponseWriter, request *http.Request) {
 	parser, err := uast.NewParser()
 	if err != nil {
 		response.Error = fmt.Sprintf("Failed to initialize parser: %v", err)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
@@ -151,10 +191,10 @@ func handleParse(responseWriter http.ResponseWriter, request *http.Request) {
 	filename := fmt.Sprintf("input.%s", getFileExtension(req.Language))
 
 	// Parse the code.
-	parsedNode, parseErr := parser.Parse(filename, []byte(req.Code))
+	parsedNode, parseErr := parser.Parse(request.Context(), filename, []byte(req.Code))
 	if parseErr != nil {
 		response.Error = fmt.Sprintf("Parse error: %v", parseErr)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
@@ -168,13 +208,13 @@ func handleParse(responseWriter http.ResponseWriter, request *http.Request) {
 	jsonData, marshalErr := json.MarshalIndent(nodeMap, "", "  ")
 	if marshalErr != nil {
 		response.Error = fmt.Sprintf("Failed to marshal UAST: %v", marshalErr)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
 
 	response.UAST = string(jsonData)
-	writeJSON(responseWriter, response)
+	writeJSON(request.Context(), responseWriter, response)
 }
 
 func handleQuery(responseWriter http.ResponseWriter, request *http.Request) {
@@ -201,7 +241,7 @@ func handleQuery(responseWriter http.ResponseWriter, request *http.Request) {
 	unmarshalErr := json.Unmarshal([]byte(req.UAST), &parsedNode)
 	if unmarshalErr != nil {
 		response.Error = fmt.Sprintf("Failed to parse UAST JSON: %v", unmarshalErr)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
@@ -210,7 +250,7 @@ func handleQuery(responseWriter http.ResponseWriter, request *http.Request) {
 	results, err := parsedNode.FindDSL(req.Query)
 	if err != nil {
 		response.Error = fmt.Sprintf("Query error: %v", err)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
@@ -221,13 +261,13 @@ func handleQuery(responseWriter http.ResponseWriter, request *http.Request) {
 	jsonData, marshalErr := json.MarshalIndent(resultsMap, "", "  ")
 	if marshalErr != nil {
 		response.Error = fmt.Sprintf("Failed to marshal results: %v", marshalErr)
-		writeJSON(responseWriter, response)
+		writeJSON(request.Context(), responseWriter, response)
 
 		return
 	}
 
 	response.Results = string(jsonData)
-	writeJSON(responseWriter, response)
+	writeJSON(request.Context(), responseWriter, response)
 }
 
 func handleGetMappingsList(responseWriter http.ResponseWriter, request *http.Request) {
@@ -258,7 +298,7 @@ func handleGetMappingsList(responseWriter http.ResponseWriter, request *http.Req
 
 	_, writeErr := responseWriter.Write(jsonData)
 	if writeErr != nil {
-		log.Printf("failed to write response: %v", writeErr)
+		slog.Default().ErrorContext(request.Context(), "failed to write response", "error", writeErr)
 	}
 }
 
@@ -306,7 +346,7 @@ func handleGetMapping(responseWriter http.ResponseWriter, request *http.Request)
 
 	_, writeErr := responseWriter.Write(jsonData)
 	if writeErr != nil {
-		log.Printf("failed to write response: %v", writeErr)
+		slog.Default().ErrorContext(request.Context(), "failed to write response", "error", writeErr)
 	}
 }
 

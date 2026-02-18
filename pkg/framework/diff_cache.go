@@ -105,6 +105,12 @@ func (c *DiffCache) Clear() {
 	c.tail = nil
 }
 
+// CacheHits returns the total cache hit count (atomic, lock-free).
+func (c *DiffCache) CacheHits() int64 { return c.hits.Load() }
+
+// CacheMisses returns the total cache miss count (atomic, lock-free).
+func (c *DiffCache) CacheMisses() int64 { return c.misses.Load() }
+
 // DiffCacheStats holds statistics about diff cache usage.
 type DiffCacheStats struct {
 	Hits       int64

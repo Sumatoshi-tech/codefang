@@ -13,6 +13,13 @@ pkg/analyzers/analyze/report_section_test.go:mockReportSection.Distribution
 pkg/analyzers/analyze/report_section_test.go:mockReportSection.TopIssues
 pkg/analyzers/analyze/report_section_test.go:mockReportSection.AllIssues
 
+# CacheStatsProvider interface (observability.CacheStatsProvider)
+# Called via interface at runtime; wired in cmd/codefang/commands/run.go
+pkg/framework/blob_cache.go:GlobalBlobCache.CacheHits
+pkg/framework/blob_cache.go:GlobalBlobCache.CacheMisses
+pkg/framework/diff_cache.go:DiffCache.CacheHits
+pkg/framework/diff_cache.go:DiffCache.CacheMisses
+
 # Auto-generated parser code (pigeon PEG parser)
 # These functions are generated and cannot be modified
 pkg/uast/pkg/mapping/mapping.peg.go:Pretty

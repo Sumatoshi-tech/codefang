@@ -139,6 +139,7 @@ func (p *BlobPipeline) processBatch(
 		}
 
 		req := gitlib.TreeDiffRequest{
+			Ctx:                ctx,
 			PreviousCommitHash: prevHash,
 			CommitHash:         commit.Hash(),
 			Response:           respChan,
@@ -240,6 +241,7 @@ func (p *BlobPipeline) processBatch(
 		arena := make([]byte, p.ArenaSize)
 
 		req := gitlib.BlobBatchRequest{
+			Ctx:    ctx,
 			Hashes: chunk,
 			Arena:  arena,
 		}

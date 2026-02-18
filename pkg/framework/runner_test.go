@@ -1,6 +1,7 @@
 package framework_test
 
 import (
+	"context"
 	"io"
 	"runtime/debug"
 	"testing"
@@ -33,7 +34,7 @@ func (s *stubLeaf) ListConfigurationOptions() []pipeline.ConfigurationOption { r
 func (s *stubLeaf) Configure(_ map[string]any) error                         { return nil }
 
 func (s *stubLeaf) Initialize(_ *gitlib.Repository) error { return nil }
-func (s *stubLeaf) Consume(_ *analyze.Context) error {
+func (s *stubLeaf) Consume(_ context.Context, _ *analyze.Context) error {
 	s.consumed++
 
 	return nil
@@ -101,7 +102,7 @@ func TestRunner_RunEmptyCommits(t *testing.T) {
 
 	r := framework.NewRunner(libRepo, repo.Path(), &plumbing.TreeDiffAnalyzer{})
 
-	reports, err := r.Run(nil)
+	reports, err := r.Run(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestRunner_RunSingleCommit(t *testing.T) {
 
 	r := framework.NewRunner(libRepo, repo.Path(), &plumbing.TreeDiffAnalyzer{})
 
-	reports, err := r.Run(commits)
+	reports, err := r.Run(context.Background(), commits)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestRunner_AppliesExplicitGCPercent(t *testing.T) {
 
 	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
 
-	_, runErr := runner.Run(commits)
+	_, runErr := runner.Run(context.Background(), commits)
 	if runErr != nil {
 		t.Fatalf("Run: %v", runErr)
 	}
@@ -249,7 +250,7 @@ func TestRunner_AppliesBallastSize(t *testing.T) {
 
 	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
 
-	_, runErr := runner.Run(commits)
+	_, runErr := runner.Run(context.Background(), commits)
 	if runErr != nil {
 		t.Fatalf("Run: %v", runErr)
 	}
@@ -263,15 +264,15 @@ func TestRunner_AppliesBallastSize(t *testing.T) {
 	}
 }
 
-func TestResolveMemoryLimit_CappedAt14GiB(t *testing.T) {
+func TestResolveMemoryLimit_CappedAt4GiB(t *testing.T) {
 	t.Parallel()
 
 	const totalRAM = uint64(64 * 1024 * 1024 * 1024) // 64 GiB.
 
 	got := framework.ResolveMemoryLimitForTest(totalRAM)
 
-	// 75% of 64 GiB = 48 GiB, but capped at 14 GiB.
-	const want = uint64(14 * 1024 * 1024 * 1024)
+	// 75% of 64 GiB = 48 GiB, but capped at 4 GiB.
+	const want = uint64(4 * 1024 * 1024 * 1024)
 	if got != want {
 		t.Fatalf("memory limit = %d, want %d", got, want)
 	}
@@ -280,12 +281,12 @@ func TestResolveMemoryLimit_CappedAt14GiB(t *testing.T) {
 func TestResolveMemoryLimit_SmallSystem(t *testing.T) {
 	t.Parallel()
 
-	const totalRAM = uint64(8 * 1024 * 1024 * 1024) // 8 GiB.
+	const totalRAM = uint64(4 * 1024 * 1024 * 1024) // 4 GiB.
 
 	got := framework.ResolveMemoryLimitForTest(totalRAM)
 
-	// 75% of 8 GiB = 6 GiB, which is less than the 14 GiB cap.
-	const want = uint64(6 * 1024 * 1024 * 1024)
+	// 75% of 4 GiB = 3 GiB, which is less than the 4 GiB cap.
+	const want = uint64(3 * 1024 * 1024 * 1024)
 	if got != want {
 		t.Fatalf("memory limit = %d, want %d", got, want)
 	}
@@ -296,8 +297,8 @@ func TestResolveMemoryLimit_UnknownSystem(t *testing.T) {
 
 	got := framework.ResolveMemoryLimitForTest(0)
 
-	// Falls back to 14 GiB default.
-	const want = uint64(14 * 1024 * 1024 * 1024)
+	// Falls back to 4 GiB default.
+	const want = uint64(4 * 1024 * 1024 * 1024)
 	if got != want {
 		t.Fatalf("memory limit = %d, want %d", got, want)
 	}

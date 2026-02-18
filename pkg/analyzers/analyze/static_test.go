@@ -2,6 +2,7 @@ package analyze_test
 
 import (
 	"bytes"
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -131,7 +132,7 @@ func TestStaticService_AnalyzeFolder_SkipsPermissionDeniedDirectory(t *testing.T
 	}()
 
 	svc := analyze.NewStaticService(testStaticAnalyzers())
-	results, err := svc.AnalyzeFolder(tmpDir, []string{"complexity"})
+	results, err := svc.AnalyzeFolder(context.Background(), tmpDir, []string{"complexity"})
 	require.NoError(t, err)
 	require.Contains(t, results, "complexity")
 }
@@ -143,7 +144,7 @@ func TestAllStaticAnalyzers_UniversalOutputFormats(t *testing.T) {
 	require.NoError(t, err)
 
 	source := []byte("package main\nimport \"fmt\"\n// main prints output.\nfunc main(){\n// inline comment\nfmt.Println(\"x\")\n}\n")
-	root, err := parser.Parse("main.go", source)
+	root, err := parser.Parse(context.Background(), "main.go", source)
 	require.NoError(t, err)
 
 	for _, analyzer := range testStaticAnalyzers() {

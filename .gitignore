@@ -78,8 +78,12 @@ identity.test
 instructions/
 specs/
 
+# MkDocs build output
+build/
+
 # Editor/IDE configs
 .cursor/
 .vscode/
 coverage.out
 profiles/
+.promptkit

@@ -2,7 +2,7 @@ package framework
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -37,15 +37,19 @@ func MaybeStartCPUProfile(path string) (func(), error) {
 }
 
 // MaybeWriteHeapProfile writes a heap profile to the given file.
-// No-op if path is empty.
-func MaybeWriteHeapProfile(path string) {
+// No-op if path is empty. Uses the provided logger for error reporting.
+func MaybeWriteHeapProfile(path string, logger *slog.Logger) {
 	if path == "" {
 		return
 	}
 
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	profileFile, err := os.Create(path)
 	if err != nil {
-		log.Printf("could not create heap profile: %v", err)
+		logger.Error("could not create heap profile", "path", path, "error", err)
 
 		return
 	}
@@ -55,6 +59,6 @@ func MaybeWriteHeapProfile(path string) {
 
 	writeErr := pprof.WriteHeapProfile(profileFile)
 	if writeErr != nil {
-		log.Printf("could not write heap profile: %v", writeErr)
+		logger.Error("could not write heap profile", "path", path, "error", writeErr)
 	}
 }

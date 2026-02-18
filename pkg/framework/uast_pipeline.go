@@ -52,7 +52,7 @@ func (p *UASTPipeline) Process(ctx context.Context, diffs <-chan CommitData) <-c
 
 	go p.dispatch(ctx, diffs, slots, jobs)
 
-	wg := p.startWorkers(jobs)
+	wg := p.startWorkers(ctx, jobs)
 
 	go p.emit(ctx, slots, out, wg)
 
@@ -94,7 +94,7 @@ func (p *UASTPipeline) dispatch(ctx context.Context, diffs <-chan CommitData, sl
 }
 
 // startWorkers launches worker goroutines that parse UAST for each commit.
-func (p *UASTPipeline) startWorkers(jobs <-chan *uastSlot) *sync.WaitGroup {
+func (p *UASTPipeline) startWorkers(ctx context.Context, jobs <-chan *uastSlot) *sync.WaitGroup {
 	var wg sync.WaitGroup
 
 	wg.Add(p.Workers)
@@ -104,7 +104,7 @@ func (p *UASTPipeline) startWorkers(jobs <-chan *uastSlot) *sync.WaitGroup {
 			defer wg.Done()
 
 			for slot := range jobs {
-				slot.data.UASTChanges = p.parseCommitChanges(slot.data.Changes, slot.data.BlobCache)
+				slot.data.UASTChanges = p.parseCommitChanges(ctx, slot.data.Changes, slot.data.BlobCache)
 				close(slot.done)
 			}
 		}()
@@ -141,6 +141,7 @@ const intraCommitParallelThreshold = 4
 // parseCommitChanges parses UAST for all file changes in a commit.
 // For commits with many files, parsing is done in parallel across files.
 func (p *UASTPipeline) parseCommitChanges(
+	ctx context.Context,
 	changes gitlib.Changes,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) []uast.Change {
@@ -149,22 +150,23 @@ func (p *UASTPipeline) parseCommitChanges(
 	}
 
 	if len(changes) <= intraCommitParallelThreshold {
-		return p.parseCommitSequential(changes, cache)
+		return p.parseCommitSequential(ctx, changes, cache)
 	}
 
-	return p.parseCommitParallel(changes, cache)
+	return p.parseCommitParallel(ctx, changes, cache)
 }
 
 // parseCommitSequential parses files one at a time within a commit.
 func (p *UASTPipeline) parseCommitSequential(
+	ctx context.Context,
 	changes gitlib.Changes,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) []uast.Change {
 	var result []uast.Change
 
 	for _, change := range changes {
-		before := p.parseBlob(change.From.Hash, change.From.Name, cache, change.Action, true)
-		after := p.parseBlob(change.To.Hash, change.To.Name, cache, change.Action, false)
+		before := p.parseBlob(ctx, change.From.Hash, change.From.Name, cache, change.Action, true)
+		after := p.parseBlob(ctx, change.To.Hash, change.To.Name, cache, change.Action, false)
 
 		if before != nil || after != nil {
 			result = append(result, uast.Change{
@@ -188,6 +190,7 @@ type uastFileResult struct {
 // parseCommitParallel parses files in parallel within a single commit.
 // Uses a bounded goroutine pool to avoid excessive concurrency.
 func (p *UASTPipeline) parseCommitParallel(
+	ctx context.Context,
 	changes gitlib.Changes,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) []uast.Change {
@@ -209,8 +212,8 @@ func (p *UASTPipeline) parseCommitParallel(
 			defer wg.Done()
 
 			for change := range jobs {
-				before := p.parseBlob(change.From.Hash, change.From.Name, cache, change.Action, true)
-				after := p.parseBlob(change.To.Hash, change.To.Name, cache, change.Action, false)
+				before := p.parseBlob(ctx, change.From.Hash, change.From.Name, cache, change.Action, true)
+				after := p.parseBlob(ctx, change.To.Hash, change.To.Name, cache, change.Action, false)
 
 				if before != nil || after != nil {
 					results <- uastFileResult{before, after, change}
@@ -242,6 +245,7 @@ func (p *UASTPipeline) parseCommitParallel(
 // parseBlob parses a single blob into a UAST node if the file is supported.
 // isBefore indicates whether this is the "before" (old) or "after" (new) version.
 func (p *UASTPipeline) parseBlob(
+	ctx context.Context,
 	hash gitlib.Hash,
 	filename string,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
@@ -266,7 +270,7 @@ func (p *UASTPipeline) parseBlob(
 		return nil
 	}
 
-	parsed, err := p.Parser.Parse(filename, blob.Data)
+	parsed, err := p.Parser.Parse(ctx, filename, blob.Data)
 	if err != nil {
 		return nil
 	}

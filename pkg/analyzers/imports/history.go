@@ -1,6 +1,7 @@
 package imports
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,7 +151,7 @@ func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
+func (h *HistoryAnalyzer) extractImports(ctx context.Context, name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
 		return nil, ErrParserNotInitialized
 	}
@@ -161,7 +162,7 @@ func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel
 	}
 
 	// Parse.
-	root, err := h.parser.Parse(name, data)
+	root, err := h.parser.Parse(ctx, name, data)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +185,7 @@ func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel
 // extractImportsParallel spins up a worker pool to parse changed files in
 // parallel and returns per-blob import results.
 func (h *HistoryAnalyzer) extractImportsParallel(
+	ctx context.Context,
 	changes gitlib.Changes,
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) map[gitlib.Hash]importmodel.File {
@@ -201,7 +203,7 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 		go func() {
 			defer wg.Done()
 
-			h.processImportJobs(jobs, cache, &mu, extracted)
+			h.processImportJobs(ctx, jobs, cache, &mu, extracted)
 		}()
 	}
 
@@ -214,6 +216,7 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 // processImportJobs reads changes from the jobs channel, extracts imports from
 // each blob, and stores results in the extracted map under lock.
 func (h *HistoryAnalyzer) processImportJobs(
+	ctx context.Context,
 	jobs <-chan *gitlib.Change,
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 	mu *sync.Mutex,
@@ -225,7 +228,7 @@ func (h *HistoryAnalyzer) processImportJobs(
 			continue
 		}
 
-		file, err := h.extractImports(change.To.Name, blob.Data)
+		file, err := h.extractImports(ctx, change.To.Name, blob.Data)
 		if err != nil {
 			continue
 		}
@@ -284,8 +287,8 @@ func (h *HistoryAnalyzer) aggregateImports(
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *HistoryAnalyzer) Consume(_ *analyze.Context) error {
-	extracted := h.extractImportsParallel(h.TreeDiff.Changes, h.BlobCache.Cache)
+func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) error {
+	extracted := h.extractImportsParallel(ctx, h.TreeDiff.Changes, h.BlobCache.Cache)
 	h.aggregateImports(extracted, h.Identity.AuthorID, h.Ticks.Tick)
 
 	return nil

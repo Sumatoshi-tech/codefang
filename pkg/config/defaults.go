@@ -55,6 +55,12 @@ const (
 	DefaultTyposMaxDistance = 4
 )
 
+// Anomaly analyzer defaults.
+const (
+	DefaultAnomalyThreshold  = 2.0
+	DefaultAnomalyWindowSize = 20
+)
+
 // Checkpoint defaults.
 const (
 	DefaultCheckpointEnabled   = true

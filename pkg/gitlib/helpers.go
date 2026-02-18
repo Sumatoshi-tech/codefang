@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -87,7 +88,7 @@ func loadHeadCommit(repository *Repository) ([]*Commit, error) {
 		return nil, fmt.Errorf("failed to get HEAD: %w", err)
 	}
 
-	commit, err := repository.LookupCommit(headHash)
+	commit, err := repository.LookupCommit(context.Background(), headHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get commit: %w", err)
 	}

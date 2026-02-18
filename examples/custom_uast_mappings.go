@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -100,7 +101,7 @@ true <- (true) => uast(
 	}`)
 
 	// Parse the content.
-	node, err := parser.Parse(filename, content)
+	node, err := parser.Parse(context.Background(), filename, content)
 	if err != nil {
 		logger.Error("Failed to parse file", "file", filename, "error", err)
 		os.Exit(1)

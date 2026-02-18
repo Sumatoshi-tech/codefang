@@ -1,6 +1,7 @@
 package analyze_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -65,7 +66,7 @@ func (s *stubHistoryAnalyzer) ListConfigurationOptions() []pipeline.Configuratio
 }
 func (s *stubHistoryAnalyzer) Configure(_ map[string]any) error                        { return nil }
 func (s *stubHistoryAnalyzer) Initialize(_ *gitlib.Repository) error                   { return nil }
-func (s *stubHistoryAnalyzer) Consume(_ *analyze.Context) error                        { return nil }
+func (s *stubHistoryAnalyzer) Consume(_ context.Context, _ *analyze.Context) error     { return nil }
 func (s *stubHistoryAnalyzer) Finalize() (analyze.Report, error)                       { return analyze.Report{}, nil }
 func (s *stubHistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer                    { return nil }
 func (s *stubHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer)                       {}

@@ -358,6 +358,8 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 		}
 
 		return nil
+	case FormatTimeSeries:
+		return writeConvertedTimeSeries(model, writer)
 	case FormatPlot:
 		if plotRendererFn == nil {
 			return fmt.Errorf("%w: plot renderer not registered", ErrUnsupportedFormat)
@@ -443,4 +445,21 @@ func decodeBinaryEnvelopes(data []byte) ([][]byte, error) {
 	}
 
 	return payloads, nil
+}
+
+// writeConvertedTimeSeries builds merged timeseries from a unified model's
+// history reports and writes the result to the writer.
+func writeConvertedTimeSeries(model UnifiedModel, writer io.Writer) error {
+	reports := make(map[string]Report, len(model.Analyzers))
+
+	for _, ar := range model.Analyzers {
+		if ar.Mode == ModeHistory {
+			reports[ar.ID] = ar.Report
+		}
+	}
+
+	commitMeta := buildCommitMetaFromReports(reports)
+	ts := BuildMergedTimeSeries(reports, commitMeta, 0)
+
+	return WriteMergedTimeSeries(ts, writer)
 }

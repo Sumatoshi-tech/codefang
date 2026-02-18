@@ -26,3 +26,10 @@ func (c *HistoryAnalyzer) Boot() error {
 
 	return nil
 }
+
+// stateGrowthPerCommit is the estimated per-commit memory growth in bytes
+// for the couples analyzer (file coupling matrix, developer-file maps).
+const stateGrowthPerCommit = 100 * 1024
+
+// StateGrowthPerCommit returns the estimated per-commit memory growth in bytes.
+func (c *HistoryAnalyzer) StateGrowthPerCommit() int64 { return stateGrowthPerCommit }

@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"context"
 	"fmt"
 
 	git2go "github.com/libgit2/git2go/v34"
@@ -42,8 +43,8 @@ func (t *Tree) EntryByPath(path string) (*TreeEntry, error) {
 	return &TreeEntry{entry: entry}, nil
 }
 
-// Files returns an iterator over all files in the tree.
-func (t *Tree) Files() *FileIter {
+// FilesContext returns an iterator over all files in the tree, accepting a context for tracing.
+func (t *Tree) FilesContext(_ context.Context) *FileIter {
 	files, err := TreeFiles(t.repo, t)
 	if err != nil {
 		// Return empty iterator on error.
@@ -51,6 +52,11 @@ func (t *Tree) Files() *FileIter {
 	}
 
 	return &FileIter{files: files, idx: 0}
+}
+
+// Files returns an iterator over all files in the tree.
+func (t *Tree) Files() *FileIter {
+	return t.FilesContext(context.Background())
 }
 
 // Free releases the tree resources.

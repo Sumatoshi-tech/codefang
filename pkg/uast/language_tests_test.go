@@ -120,7 +120,7 @@ func (tr *TestRunner) DumpRawAST(language, input, filename string) error {
 	}
 
 	// Fallback to UAST conversion for non-tree-sitter providers.
-	nd, err := provider.Parse("test."+getLanguageFileExtension(language), []byte(input))
+	nd, err := provider.Parse(context.Background(), "test."+getLanguageFileExtension(language), []byte(input))
 	if err != nil {
 		return fmt.Errorf("failed to parse input: %w", err)
 	}
@@ -464,7 +464,7 @@ func (tr *TestRunner) RunParseTest(t *testing.T, language, testName string, tc P
 	}
 
 	// Parse the input.
-	nd, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
+	nd, err := tr.parser.Parse(context.Background(), fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
 	if err != nil {
 		t.Errorf("Parse failed: %v", err)
 
@@ -512,7 +512,7 @@ func (tr *TestRunner) RunQueryTest(t *testing.T, language, testName string, tc Q
 	}
 
 	// Parse the input.
-	nd, err := tr.parser.Parse(fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
+	nd, err := tr.parser.Parse(context.Background(), fmt.Sprintf("test.%s", getLanguageFileExtension(language)), []byte(tc.Input))
 	if err != nil {
 		t.Errorf("Parse failed: %v", err)
 

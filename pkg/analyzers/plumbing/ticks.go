@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -101,9 +102,9 @@ func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TicksSinceStart) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
-	index := ctx.Index
+func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) error {
+	commit := ac.Commit
+	index := ac.Index
 
 	if index == 0 {
 		tick0 := commit.Committer().When

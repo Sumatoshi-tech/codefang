@@ -2,6 +2,7 @@ package filehistory
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"insert",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit1}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit1}))
 
 	if len(h.files) != 1 {
 		t.Errorf("expected 1 file, got %d", len(h.files))
@@ -76,7 +77,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"modify",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit2}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit2}))
 
 	if len(fh.Hashes) != 2 {
 		t.Errorf("expected 2 commits, got %d", len(fh.Hashes))
@@ -103,7 +104,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"rename",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit3}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit3}))
 
 	if _, ok := h.files["test.txt"]; ok {
 		t.Error("test.txt should be gone")
@@ -134,7 +135,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"delete",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit4}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit4}))
 
 	if _, ok := h.files["renamed.txt"]; !ok {
 		t.Error("renamed.txt should still exist in history")
@@ -165,7 +166,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	)
 
 	// First call should consume.
-	err := h.Consume(&analyze.Context{Commit: commit})
+	err := h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume failed: %v", err)
 	}
@@ -175,7 +176,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	}
 
 	// Second call for same commit should not process again.
-	err = h.Consume(&analyze.Context{Commit: commit})
+	err = h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume 2 failed: %v", err)
 	}

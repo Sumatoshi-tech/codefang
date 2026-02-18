@@ -1,6 +1,7 @@
 package uast
 
 import (
+	"context"
 	"os"
 	"slices"
 	"strings"
@@ -73,7 +74,7 @@ func Hello() {
 }`)
 
 	// Parse the source code.
-	uastNode, err := p.Parse("test.go", source)
+	uastNode, err := p.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -122,7 +123,7 @@ func Hello() {
 }`)
 
 	// Parse the source code.
-	uastNode, err := loader.Parse("test.go", source)
+	uastNode, err := loader.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -169,7 +170,7 @@ source_file <- (source_file) => uast(
 	source := []byte(`package main
 func Hello() {}`)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -237,7 +238,7 @@ source_file <- (source_file) => uast(
 func Hello() {}
 func World() {}`)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -304,7 +305,7 @@ source_file <- (source_file) => uast(
 func Hello() {}
 func World() {}`)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -359,7 +360,7 @@ source_file <- (source_file) => uast(
 	source := []byte(`package main
 var x int`)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -417,7 +418,7 @@ func Allowed() {}
 func Blocked() {}
 func AlsoBlocked() {}`)
 
-	uastNode, parseErr := provider.Parse("test.go", source)
+	uastNode, parseErr := provider.Parse(context.Background(), "test.go", source)
 	if parseErr != nil {
 		t.Fatalf("Failed to parse: %v", parseErr)
 	}
@@ -478,7 +479,7 @@ source_file <- (source_file) => uast(
 func Hello() {}
 func World() {}`)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -550,7 +551,7 @@ func TestE2E_MappingGenerationAndParsing(t *testing.T) {
 		t.Fatalf("Failed to load DSL: %v", loadErr)
 	}
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse Go source with generated mapping: %v", err)
 	}
@@ -656,7 +657,7 @@ func Add(a int, b int) int {
 var x int = 42
 `)
 
-	uastNode, err := provider.Parse("test.go", source)
+	uastNode, err := provider.Parse(context.Background(), "test.go", source)
 	if err != nil {
 		t.Fatalf("Failed to parse source code: %v", err)
 	}
@@ -806,7 +807,7 @@ func World() {
 }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -911,7 +912,7 @@ type Foo struct {
 }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -1001,7 +1002,7 @@ type Foo struct {
 }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -1112,7 +1113,7 @@ func f8() { fmt.Println("8") }
 func f9() { fmt.Println("9") }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -1214,7 +1215,7 @@ func Hello() {}
 func World() {}
 `)
 
-	uastNode, parseErr := parser.Parse("test.go", source)
+	uastNode, parseErr := parser.Parse(context.Background(), "test.go", source)
 	if parseErr != nil {
 		t.Fatalf("Failed to parse: %v", parseErr)
 	}
@@ -1306,7 +1307,7 @@ type Foo struct {
 }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -1388,7 +1389,7 @@ func Hello(a int) int {
 }
 `)
 
-	tree, err := parser.parseTSTree(source)
+	tree, err := parser.parseTSTree(context.Background(), source)
 	if err != nil {
 		t.Fatalf("Failed to parse tree: %v", err)
 	}
@@ -1480,7 +1481,7 @@ func World() {}
 		t.Fatalf("Failed to load DSL: %v", loadErr)
 	}
 
-	uastNode, parseErr := provider.Parse("test.go", []byte(goSource))
+	uastNode, parseErr := provider.Parse(context.Background(), "test.go", []byte(goSource))
 	if parseErr != nil {
 		t.Fatalf("Failed to parse: %v", parseErr)
 	}

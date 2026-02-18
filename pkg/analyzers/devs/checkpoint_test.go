@@ -1,6 +1,7 @@
 package devs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,21 +83,22 @@ func TestSaveCheckpoint_InvalidDirectory(t *testing.T) {
 	}
 }
 
-func TestCheckpointRoundTrip_WithTicks(t *testing.T) {
+func TestCheckpointRoundTrip_WithCommitData(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 
-	// Create an analyzer with populated ticks data.
+	// Create an analyzer with populated commit data.
 	original := &HistoryAnalyzer{
-		tickData: map[int]map[int]*DevTick{
-			0: {
-				1: {
-					LineStats: plumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
-					Commits:   5,
-					Languages: map[string]plumbing.LineStats{
-						"go": {Added: 80, Removed: 15, Changed: 8},
-					},
+		commitDevData: map[string]*CommitDevData{
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+				Commits:  5,
+				Added:    100,
+				Removed:  20,
+				Changed:  10,
+				AuthorID: 1,
+				Languages: map[string]plumbing.LineStats{
+					"go": {Added: 80, Removed: 15, Changed: 8},
 				},
 			},
 		},
@@ -116,27 +118,26 @@ func TestCheckpointRoundTrip_WithTicks(t *testing.T) {
 		t.Fatalf("LoadCheckpoint failed: %v", err)
 	}
 
-	// Verify ticks were restored.
-	if len(loaded.tickData) != 1 {
-		t.Fatalf("loaded.tickData has %d entries, want 1", len(loaded.tickData))
+	// Verify commit data was restored.
+	if len(loaded.commitDevData) != 1 {
+		t.Fatalf("loaded.commitDevData has %d entries, want 1", len(loaded.commitDevData))
 	}
 
-	tick0 := loaded.tickData[0]
-	if tick0 == nil {
-		t.Fatal("loaded.tickData[0] is nil")
+	cdd := loaded.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+	if cdd == nil {
+		t.Fatal("loaded.commitDevData entry is nil")
 	}
 
-	dev1 := tick0[1]
-	if dev1 == nil {
-		t.Fatal("loaded.tickData[0][1] is nil")
+	if cdd.Commits != 5 {
+		t.Errorf("cdd.Commits = %d, want 5", cdd.Commits)
 	}
 
-	if dev1.Commits != 5 {
-		t.Errorf("dev1.Commits = %d, want 5", dev1.Commits)
+	if cdd.Added != 100 {
+		t.Errorf("cdd.Added = %d, want 100", cdd.Added)
 	}
 
-	if dev1.Added != 100 {
-		t.Errorf("dev1.Added = %d, want 100", dev1.Added)
+	if cdd.AuthorID != 1 {
+		t.Errorf("cdd.AuthorID = %d, want 1", cdd.AuthorID)
 	}
 }
 
@@ -150,7 +151,7 @@ func TestCheckpointRoundTrip_WithMerges(t *testing.T) {
 	hash2 := gitlib.NewHash("fedcba9876543210fedcba9876543210fedcba98")
 
 	original := &HistoryAnalyzer{
-		tickData: map[int]map[int]*DevTick{},
+		commitDevData: map[string]*CommitDevData{},
 		merges: map[gitlib.Hash]bool{
 			hash1: true,
 			hash2: true,
@@ -226,31 +227,24 @@ func TestCheckpointSize_Accuracy(t *testing.T) {
 
 	// Create analyzer with realistic data.
 	analyzer := &HistoryAnalyzer{
-		tickData: map[int]map[int]*DevTick{
-			0: {
-				1: {
-					LineStats: plumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
-					Commits:   5,
-					Languages: map[string]plumbing.LineStats{
-						"go":     {Added: 80, Removed: 15, Changed: 8},
-						"python": {Added: 20, Removed: 5, Changed: 2},
-					},
-				},
-				2: {
-					LineStats: plumbing.LineStats{Added: 50, Removed: 10, Changed: 5},
-					Commits:   3,
-					Languages: map[string]plumbing.LineStats{
-						"go": {Added: 50, Removed: 10, Changed: 5},
-					},
+		commitDevData: map[string]*CommitDevData{
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+				Commits: 5, Added: 100, Removed: 20, Changed: 10, AuthorID: 1,
+				Languages: map[string]plumbing.LineStats{
+					"go":     {Added: 80, Removed: 15, Changed: 8},
+					"python": {Added: 20, Removed: 5, Changed: 2},
 				},
 			},
-			1: {
-				1: {
-					LineStats: plumbing.LineStats{Added: 200, Removed: 40, Changed: 20},
-					Commits:   10,
-					Languages: map[string]plumbing.LineStats{
-						"go": {Added: 200, Removed: 40, Changed: 20},
-					},
+			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+				Commits: 3, Added: 50, Removed: 10, Changed: 5, AuthorID: 2,
+				Languages: map[string]plumbing.LineStats{
+					"go": {Added: 50, Removed: 10, Changed: 5},
+				},
+			},
+			"cccccccccccccccccccccccccccccccccccccccc": {
+				Commits: 10, Added: 200, Removed: 40, Changed: 20, AuthorID: 1,
+				Languages: map[string]plumbing.LineStats{
+					"go": {Added: 200, Removed: 40, Changed: 20},
 				},
 			},
 		},
@@ -290,17 +284,17 @@ func TestCheckpointSize_Accuracy(t *testing.T) {
 
 // createRealisticAnalyzer creates an analyzer with data similar to a real 10k commit analysis.
 func createRealisticAnalyzer(numTicks, numDevs, numMerges int) *HistoryAnalyzer {
-	ticks := make(map[int]map[int]*DevTick, numTicks)
+	commits := make(map[string]*CommitDevData, numTicks*numDevs)
+
 	for tick := range numTicks {
-		ticks[tick] = make(map[int]*DevTick, numDevs)
 		for dev := range numDevs {
-			ticks[tick][dev] = &DevTick{
-				LineStats: plumbing.LineStats{
-					Added:   100 + tick*10 + dev,
-					Removed: 20 + tick + dev,
-					Changed: 10 + tick + dev,
-				},
-				Commits: 5 + tick%10,
+			hash := fmt.Sprintf("%020d%020d", tick, dev)
+			commits[hash] = &CommitDevData{
+				Commits:  5 + tick%10,
+				Added:    100 + tick*10 + dev,
+				Removed:  20 + tick + dev,
+				Changed:  10 + tick + dev,
+				AuthorID: dev,
 				Languages: map[string]plumbing.LineStats{
 					"go":     {Added: 80, Removed: 15, Changed: 8},
 					"python": {Added: 20, Removed: 5, Changed: 2},
@@ -316,8 +310,8 @@ func createRealisticAnalyzer(numTicks, numDevs, numMerges int) *HistoryAnalyzer 
 	}
 
 	return &HistoryAnalyzer{
-		tickData: ticks,
-		merges:   merges,
+		commitDevData: commits,
+		merges:        merges,
 	}
 }
 

@@ -130,7 +130,7 @@ func runMCPPipeline(
 		return nil, fmt.Errorf("process commits: %w", err)
 	}
 
-	err = runner.ProcessChunkFromData(ctx, commitData, 0)
+	_, err = runner.ProcessChunkFromData(ctx, commitData, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline execution: %w", err)
 	}

@@ -171,8 +171,8 @@ func (parser *DSLParser) Extensions() []string {
 }
 
 // Parse parses the given file content and returns the root UAST node.
-func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
-	tree, err := parser.parseTSTree(content)
+func (parser *DSLParser) Parse(ctx context.Context, _ string, content []byte) (*node.Node, error) {
+	tree, err := parser.parseTSTree(ctx, content)
 	if err != nil {
 		return nil, err
 	}
@@ -183,15 +183,15 @@ func (parser *DSLParser) Parse(_ string, content []byte) (*node.Node, error) {
 		return nil, errNoRootNode
 	}
 
-	ctx := parser.newParseContext(tree, content)
-	canonical := ctx.toCanonicalNode(root, "")
+	pctx := parser.newParseContext(tree, content)
+	canonical := pctx.toCanonicalNode(root, "")
 
 	return canonical, nil
 }
 
 // parseTSTree parses source bytes into a tree-sitter Tree.
 // The caller is responsible for calling tree.Close().
-func (parser *DSLParser) parseTSTree(content []byte) (*sitter.Tree, error) {
+func (parser *DSLParser) parseTSTree(ctx context.Context, content []byte) (*sitter.Tree, error) {
 	tsParser, ok := parser.tsParserPool.Get().(*sitter.Parser)
 	if !ok {
 		return nil, errPoolType
@@ -199,7 +199,7 @@ func (parser *DSLParser) parseTSTree(content []byte) (*sitter.Tree, error) {
 
 	defer parser.tsParserPool.Put(tsParser)
 
-	tree, err := tsParser.ParseString(context.Background(), nil, content)
+	tree, err := tsParser.ParseString(ctx, nil, content)
 	if err != nil {
 		return nil, fmt.Errorf("dsl parser: failed to parse: %w", err)
 	}

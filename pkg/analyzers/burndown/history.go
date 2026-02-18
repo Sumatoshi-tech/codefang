@@ -2,6 +2,7 @@
 package burndown
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -417,10 +418,10 @@ func (b *HistoryAnalyzer) removeActiveID(shard *Shard, id PathID) {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (b *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
 	author := b.Identity.AuthorID
 	tick := b.Ticks.Tick
-	isMerge := ctx.IsMerge
+	isMerge := ac.IsMerge
 	b.isMerge = isMerge
 
 	if !isMerge {
@@ -452,7 +453,7 @@ func (b *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	}
 
 	b.tick = tick
-	b.lastCommitTime = ctx.Time
+	b.lastCommitTime = ac.Time
 
 	return nil
 }
@@ -851,6 +852,16 @@ func (b *HistoryAnalyzer) Boot() error {
 
 	return nil
 }
+
+// stateGrowthPerCommit is the estimated per-commit memory growth in bytes
+// for the burndown analyzer (per-line ownership maps, file timelines, history matrices).
+// Burndown is the heaviest analyzer — large repos with many files per commit
+// (e.g. kubernetes) can reach 6-8 MiB/commit of accumulated state including
+// per-line ownership maps, file timelines, and transient diff allocations.
+const stateGrowthPerCommit = 8 * 1024 * 1024
+
+// StateGrowthPerCommit returns the estimated per-commit memory growth in bytes.
+func (b *HistoryAnalyzer) StateGrowthPerCommit() int64 { return stateGrowthPerCommit }
 
 // Finalize completes the analysis and returns the result.
 func (b *HistoryAnalyzer) Finalize() (analyze.Report, error) {
