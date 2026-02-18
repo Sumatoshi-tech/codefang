@@ -67,16 +67,19 @@ jobs:
           fail-on-error: "false"
 
       - name: Verify action outputs
+        env:
+          ACTION_PASS: ${{ steps.analysis.outputs.pass }}
+          ACTION_REPORT: ${{ steps.analysis.outputs.report }}
         run: |
-          echo "Pass: ${{ steps.analysis.outputs.pass }}"
-          echo "Report length: $(echo '${{ steps.analysis.outputs.report }}' | wc -c)"
+          echo "Pass: $ACTION_PASS"
+          echo "Report length: $(echo "$ACTION_REPORT" | wc -c)"
 
-          if [ -z "${{ steps.analysis.outputs.pass }}" ]; then
+          if [ -z "$ACTION_PASS" ]; then
             echo "ERROR: pass output is empty"
             exit 1
           fi
 
-          if [ -z "${{ steps.analysis.outputs.report }}" ]; then
+          if [ -z "$ACTION_REPORT" ]; then
             echo "ERROR: report output is empty"
             exit 1
           fi
