@@ -1,7 +1,6 @@
 package anomaly
 
 import (
-	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,14 +11,7 @@ import (
 
 func TestEnrichFromReports_Basic(t *testing.T) {
 	t.Parallel()
-
-	// Save and restore global state.
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
-
-	t.Cleanup(func() {
-		timeSeriesExtractors = original
-	})
+	withIsolatedRegistry(t)
 
 	// Register a test extractor with a spike at tick 4.
 	RegisterTimeSeriesExtractor("test-source", func(_ analyze.Report) ([]int, map[string][]float64) {
@@ -69,16 +61,7 @@ func TestEnrichFromReports_Basic(t *testing.T) {
 
 func TestEnrichFromReports_NoMatchingExtractors(t *testing.T) {
 	t.Parallel()
-
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
-
-	t.Cleanup(func() {
-		timeSeriesExtractors = original
-	})
-
-	// Clear extractors.
-	timeSeriesExtractors = make(map[string]TimeSeriesExtractor)
+	withIsolatedRegistry(t)
 
 	anomalyReport := analyze.Report{
 		"anomalies": []Record{},
@@ -97,13 +80,7 @@ func TestEnrichFromReports_NoMatchingExtractors(t *testing.T) {
 
 func TestEnrichFromReports_ExtractorReturnsNil(t *testing.T) {
 	t.Parallel()
-
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
-
-	t.Cleanup(func() {
-		timeSeriesExtractors = original
-	})
+	withIsolatedRegistry(t)
 
 	RegisterTimeSeriesExtractor("empty-source", func(_ analyze.Report) ([]int, map[string][]float64) {
 		return nil, nil
@@ -124,13 +101,7 @@ func TestEnrichFromReports_ExtractorReturnsNil(t *testing.T) {
 
 func TestEnrichFromReports_MultipleDimensions(t *testing.T) {
 	t.Parallel()
-
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
-
-	t.Cleanup(func() {
-		timeSeriesExtractors = original
-	})
+	withIsolatedRegistry(t)
 
 	RegisterTimeSeriesExtractor("multi-dim", func(_ analyze.Report) ([]int, map[string][]float64) {
 		return []int{0, 1, 2, 3, 4}, map[string][]float64{
@@ -161,13 +132,7 @@ func TestEnrichFromReports_MultipleDimensions(t *testing.T) {
 
 func TestEnrichFromReports_NoAnomalies(t *testing.T) {
 	t.Parallel()
-
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
-
-	t.Cleanup(func() {
-		timeSeriesExtractors = original
-	})
+	withIsolatedRegistry(t)
 
 	// All values are identical -- no anomalies possible.
 	RegisterTimeSeriesExtractor("stable", func(_ analyze.Report) ([]int, map[string][]float64) {

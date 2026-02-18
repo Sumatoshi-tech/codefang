@@ -1,0 +1,43 @@
+# Host-built libgit2 artifacts — must be rebuilt inside the container
+# against the container's glibc to avoid symbol mismatches.
+third_party/libgit2/build
+third_party/libgit2/install
+
+# Build outputs
+build/bin
+build/
+
+# Git and editor metadata
+.git
+.gitignore
+.idea
+.cursor
+.vscode
+.promptkit
+
+# Documentation site
+site/
+
+# Test artifacts
+*.rawast.json
+coverage.txt
+coverage.out
+test/
+temp_repo/
+playwright-report/
+test-results/
+
+# Node / Python
+node_modules/
+python/dist
+python/build
+**/__pycache__
+**/*.egg-info
+
+# Dev files
+dev/
+profiles/
+instructions/
+specs/
+debug/
+*.log
