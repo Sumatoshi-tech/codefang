@@ -27,7 +27,7 @@ RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 zlib1g git && \
+    ca-certificates libssl3 zlib1g libgomp1 git && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/build/bin/codefang /usr/local/bin/codefang
