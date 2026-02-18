@@ -542,7 +542,7 @@ linters:
         linters: [funlen]
 
       # Build script template generation is inherently long but cannot be split.
-      - path: build/scripts/
+      - path: tools/
         linters: [funlen]
 
       # Cross-function span lifecycle pattern; spancheck false positive.
