@@ -31,6 +31,8 @@ inputs:
 outputs:
   report:
     description: "Analysis report content"
+  report-file:
+    description: "Path to the report file (use this instead of report output for large reports)"
   pass:
     description: "Whether analysis passed without errors (true/false)"
 

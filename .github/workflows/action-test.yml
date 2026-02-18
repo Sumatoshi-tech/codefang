@@ -69,18 +69,25 @@ jobs:
       - name: Verify action outputs
         env:
           ACTION_PASS: ${{ steps.analysis.outputs.pass }}
-          ACTION_REPORT: ${{ steps.analysis.outputs.report }}
+          ACTION_REPORT_FILE: ${{ steps.analysis.outputs.report-file }}
         run: |
           echo "Pass: $ACTION_PASS"
-          echo "Report length: $(echo "$ACTION_REPORT" | wc -c)"
 
           if [ -z "$ACTION_PASS" ]; then
             echo "ERROR: pass output is empty"
             exit 1
           fi
 
-          if [ -z "$ACTION_REPORT" ]; then
-            echo "ERROR: report output is empty"
+          if [ -z "$ACTION_REPORT_FILE" ] || [ ! -f "$ACTION_REPORT_FILE" ]; then
+            echo "ERROR: report file not found at '$ACTION_REPORT_FILE'"
+            exit 1
+          fi
+
+          echo "Report file: $ACTION_REPORT_FILE"
+          echo "Report length: $(wc -c < "$ACTION_REPORT_FILE")"
+
+          if [ ! -s "$ACTION_REPORT_FILE" ]; then
+            echo "ERROR: report file is empty"
             exit 1
           fi
 
