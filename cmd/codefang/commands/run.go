@@ -3,17 +3,25 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"runtime"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/anomaly"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/comments"
@@ -25,6 +33,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/quality"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
@@ -32,7 +41,9 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
 type staticExecutor func(
@@ -44,9 +55,14 @@ type staticExecutor func(
 	writer io.Writer,
 ) error
 
-type historyExecutor func(path string, analyzerIDs []string, format string, silent bool, opts HistoryRunOptions, writer io.Writer) error
+type historyExecutor func(
+	ctx context.Context, path string, analyzerIDs []string, format string,
+	silent bool, opts HistoryRunOptions, writer io.Writer,
+) error
 
 type registryProvider func() (*analyze.Registry, error)
+
+type observabilityInitFunc func(cfg observability.Config) (observability.Providers, error)
 
 // HistoryRunOptions holds all history pipeline runtime options.
 type HistoryRunOptions struct {
@@ -73,13 +89,15 @@ type HistoryRunOptions struct {
 	CheckpointDir   string
 	Resume          *bool
 	ClearCheckpoint bool
+
+	DebugTrace bool
 }
 
 var (
 	// ErrNoAnalyzersSelected is returned when no analyzer IDs match the selection.
 	ErrNoAnalyzersSelected = errors.New(
 		"no analyzers selected. Use -a flag, e.g.: -a burndown,couples\n" +
-			"Available: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
+			"Available: anomaly, burndown, couples, devs, file-history, imports, quality, sentiment, shotness, typos",
 	)
 	// ErrUnknownAnalyzer indicates a requested analyzer ID is not in the registry.
 	ErrUnknownAnalyzer = errors.New("unknown analyzer")
@@ -100,6 +118,8 @@ type RunCommand struct {
 	noColor     bool
 	path        string
 
+	debugTrace bool
+
 	cpuprofile  string
 	heapprofile string
 
@@ -119,13 +139,15 @@ type RunCommand struct {
 	checkpointDir   string
 	clearCheckpoint bool
 
-	staticExec  staticExecutor
-	historyExec historyExecutor
-	registryFn  registryProvider
+	staticExec        staticExecutor
+	historyExec       historyExecutor
+	registryFn        registryProvider
+	observabilityInit observabilityInitFunc
 }
 
 // NewRunCommand creates the unified run command.
 func NewRunCommand() *cobra.Command {
+	anomaly.RegisterPlotSections()
 	burndown.RegisterPlotSections()
 	cohesion.RegisterPlotSections()
 	comments.RegisterPlotSections()
@@ -134,24 +156,35 @@ func NewRunCommand() *cobra.Command {
 	filehistory.RegisterPlotSections()
 	halstead.RegisterPlotSections()
 	imports.RegisterPlotSections()
+	quality.RegisterPlotSections()
 	sentiment.RegisterPlotSections()
 	shotness.RegisterPlotSections()
 	typos.RegisterPlotSections()
+
+	quality.RegisterTimeSeriesExtractor()
+	sentiment.RegisterTimeSeriesExtractor()
 	renderer.RegisterPlotRenderer()
 
-	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry)
+	anomaly.RegisterTickExtractor()
+	devs.RegisterTickExtractor()
+	quality.RegisterTickExtractor()
+	sentiment.RegisterTickExtractor()
+
+	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry, observability.Init)
 }
 
 func newRunCommandWithDeps(
 	staticExec staticExecutor,
 	historyExec historyExecutor,
 	registryFn registryProvider,
+	otelInit observabilityInitFunc,
 ) *cobra.Command {
 	rc := &RunCommand{
-		format:      analyze.FormatJSON,
-		staticExec:  staticExec,
-		historyExec: historyExec,
-		registryFn:  registryFn,
+		format:            analyze.FormatJSON,
+		staticExec:        staticExec,
+		historyExec:       historyExec,
+		registryFn:        registryFn,
+		observabilityInit: otelInit,
 	}
 
 	cmd := &cobra.Command{
@@ -164,7 +197,7 @@ func newRunCommandWithDeps(
 
 	cmd.Flags().StringSliceVarP(&rc.analyzerIDs, "analyzers", "a", nil,
 		"Analyzer IDs or glob patterns (example: static/complexity,history/*,*)")
-	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON, "Output format: json, text, compact, yaml, plot, bin")
+	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON, "Output format: json, text, compact, yaml, plot, bin, timeseries")
 	cmd.Flags().StringVar(&rc.inputPath, "input", "", "Input report path for cross-format conversion")
 	cmd.Flags().StringVar(&rc.inputFormat, "input-format", analyze.InputFormatAuto, "Input format: auto, json, bin")
 	cmd.Flags().IntVar(&rc.gogc, "gogc", 0, "GC percent for history pipeline (0 = auto, >0 = exact)")
@@ -173,6 +206,8 @@ func newRunCommandWithDeps(
 	cmd.Flags().BoolVar(&rc.silent, "silent", false, "Disable progress output")
 	cmd.Flags().BoolVar(&rc.noColor, "no-color", false, "Disable colored static output")
 	cmd.Flags().StringVarP(&rc.path, "path", "p", ".", "Folder/repository path to analyze")
+
+	cmd.Flags().BoolVar(&rc.debugTrace, "debug-trace", false, "Enable 100% trace sampling for debugging")
 
 	cmd.Flags().StringVar(&rc.cpuprofile, "cpuprofile", "", "Write CPU profile to file")
 	cmd.Flags().StringVar(&rc.heapprofile, "heapprofile", "", "Write heap profile to file")
@@ -200,7 +235,43 @@ func newRunCommandWithDeps(
 	return cmd
 }
 
-func (rc *RunCommand) run(cmd *cobra.Command, args []string) error {
+func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
+	providers, err := rc.initObservability()
+	if err != nil {
+		return fmt.Errorf("init observability: %w", err)
+	}
+
+	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	defer func() {
+		shutdownErr := providers.Shutdown(ctx)
+		if shutdownErr != nil && providers.Logger != nil {
+			providers.Logger.Warn("observability shutdown failed", "error", shutdownErr)
+		}
+	}()
+
+	if providers.Tracer != nil {
+		var rootSpan trace.Span
+
+		ctx, rootSpan = providers.Tracer.Start(ctx, "codefang.run")
+
+		start := time.Now()
+
+		defer func() {
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+
+			rootSpan.SetAttributes(
+				attribute.Bool("error", runResult != nil),
+				attribute.String("codefang.duration_class", durationClass(time.Since(start))),
+				attribute.String("codefang.format", rc.format),
+				attribute.Int64("codefang.memory_sys_mb", int64(m.Sys/bytesPerMiB)),
+			)
+			rootSpan.End()
+		}()
+	}
+
 	path := rc.resolvePath(args)
 	silent := rc.isSilent(cmd)
 	progressWriter := cmd.ErrOrStderr()
@@ -217,21 +288,72 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	rc.progressf(silent, progressWriter, "selected analyzers: total=%d", len(ids))
-
-	if rc.inputPath != "" {
-		err = rc.runInputConversion(cmd.OutOrStdout(), registry, ids, silent, progressWriter)
-	} else {
-		err = rc.runDirect(path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
+	// Enrich root span with run parameters after resolution.
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("codefang.path", path),
+			attribute.Int("codefang.analyzers", len(ids)),
+			attribute.Int("codefang.limit", rc.limit),
+		)
 	}
 
-	if err != nil {
-		return err
+	rc.progressf(silent, progressWriter, "selected analyzers: total=%d", len(ids))
+
+	var runErr error
+
+	if rc.inputPath != "" {
+		runErr = rc.runInputConversion(cmd.OutOrStdout(), registry, ids, silent, progressWriter)
+	} else {
+		runErr = rc.runDirect(ctx, path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
+	}
+
+	if runErr != nil {
+		return runErr
 	}
 
 	rc.progressf(silent, progressWriter, "run completed")
 
 	return nil
+}
+
+func (rc *RunCommand) initObservability() (observability.Providers, error) {
+	cfg := observability.DefaultConfig()
+	cfg.ServiceVersion = version.Version
+	cfg.OTLPEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	cfg.OTLPHeaders = observability.ParseOTLPHeaders(os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"))
+	cfg.OTLPInsecure = os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") == "true"
+	cfg.Mode = observability.ModeCLI
+	cfg.DebugTrace = rc.debugTrace
+
+	return rc.observabilityInit(cfg)
+}
+
+// bytesPerMiB is used to convert bytes to mebibytes.
+const bytesPerMiB = 1024 * 1024
+
+// Duration class thresholds for tail-sampling support.
+const (
+	durationClassFastLimit   = 10 * time.Second
+	durationClassNormalLimit = 60 * time.Second
+)
+
+// Duration class label values.
+const (
+	durationClassFast   = "fast"
+	durationClassNormal = "normal"
+	durationClassSlow   = "slow"
+)
+
+// durationClass returns a coarse duration label for tail-sampling filters.
+func durationClass(d time.Duration) string {
+	switch {
+	case d < durationClassFastLimit:
+		return durationClassFast
+	case d < durationClassNormalLimit:
+		return durationClassNormal
+	default:
+		return durationClassSlow
+	}
 }
 
 func (rc *RunCommand) resolvePath(args []string) string {
@@ -281,6 +403,7 @@ func (rc *RunCommand) runInputConversion(
 }
 
 func (rc *RunCommand) runDirect(
+	ctx context.Context,
 	path string,
 	ids []string,
 	registry *analyze.Registry,
@@ -310,7 +433,7 @@ func (rc *RunCommand) runDirect(
 	if len(staticIDs) > 0 && len(historyIDs) > 0 {
 		rc.progressf(silent, progressWriter, "mixed run detected: rendering combined output")
 
-		return rc.renderCombinedDirect(path, staticIDs, historyIDs, registry, staticFormat, silent, progressWriter, writer, cmd)
+		return rc.renderCombinedDirect(ctx, path, staticIDs, historyIDs, registry, staticFormat, silent, progressWriter, writer, cmd)
 	}
 
 	err = rc.runStaticPhase(path, staticIDs, staticFormat, silent, progressWriter, writer)
@@ -318,7 +441,7 @@ func (rc *RunCommand) runDirect(
 		return err
 	}
 
-	return rc.runHistoryPhase(path, historyIDs, historyFormat, silent, progressWriter, writer, cmd)
+	return rc.runHistoryPhase(ctx, path, historyIDs, historyFormat, silent, progressWriter, writer, cmd)
 }
 
 func (rc *RunCommand) runStaticPhase(
@@ -348,6 +471,7 @@ func (rc *RunCommand) runStaticPhase(
 }
 
 func (rc *RunCommand) runHistoryPhase(
+	ctx context.Context,
 	path string,
 	historyIDs []string,
 	historyFormat string,
@@ -366,7 +490,7 @@ func (rc *RunCommand) runHistoryPhase(
 
 	opts := rc.buildHistoryRunOptions(cmd)
 
-	err := rc.historyExec(path, historyIDs, historyFormat, silent, opts, writer)
+	err := rc.historyExec(ctx, path, historyIDs, historyFormat, silent, opts, writer)
 	if err != nil {
 		return err
 	}
@@ -377,6 +501,7 @@ func (rc *RunCommand) runHistoryPhase(
 }
 
 func (rc *RunCommand) renderCombinedDirect(
+	ctx context.Context,
 	path string,
 	staticIDs []string,
 	historyIDs []string,
@@ -406,7 +531,7 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	opts := rc.buildHistoryRunOptions(cmd)
 
-	err = rc.historyExec(path, historyIDs, analyze.FormatBinary, silent, opts, &raw)
+	err = rc.historyExec(ctx, path, historyIDs, analyze.FormatBinary, silent, opts, &raw)
 	if err != nil {
 		return fmt.Errorf("render combined history phase: %w", err)
 	}
@@ -457,6 +582,7 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 		MemoryBudget:    rc.memoryBudget,
 		CheckpointDir:   rc.checkpointDir,
 		ClearCheckpoint: rc.clearCheckpoint,
+		DebugTrace:      rc.debugTrace,
 	}
 
 	if cmd.Flags().Changed("checkpoint") {
@@ -495,10 +621,13 @@ func runStaticAnalyzers(
 	service := analyze.NewStaticService(defaultStaticAnalyzers())
 	service.Renderer = renderer.NewDefaultStaticRenderer()
 
-	return service.RunAndFormat(path, analyzerIDs, format, verbose, noColor, writer)
+	return service.RunAndFormat(context.Background(), path, analyzerIDs, format, verbose, noColor, writer)
 }
 
-func runHistoryAnalyzers(path string, analyzerIDs []string, format string, silent bool, opts HistoryRunOptions, writer io.Writer) error {
+func runHistoryAnalyzers(
+	ctx context.Context, path string, analyzerIDs []string, format string,
+	silent bool, opts HistoryRunOptions, writer io.Writer,
+) error {
 	restoreLogger := suppressStandardLogger(silent)
 	defer restoreLogger()
 
@@ -508,29 +637,61 @@ func runHistoryAnalyzers(path string, analyzerIDs []string, format string, silen
 	}
 
 	defer stopProfiler()
-	defer framework.MaybeWriteHeapProfile(opts.HeapProfile)
+	defer framework.MaybeWriteHeapProfile(opts.HeapProfile, nil)
+
+	result, err := initHistoryPipeline(ctx, path, analyzerIDs, format, opts)
+	if err != nil {
+		return err
+	}
+	defer result.repository.Free()
+
+	return executeHistoryPipeline(
+		ctx, result.pipeline, path, result.selectedLeaves, result.facts,
+		result.commits, result.analyzerKeys, result.format, opts, result.repository, writer,
+	)
+}
+
+// initResult holds the outputs of the init phase.
+type initResult struct {
+	pipeline       *historyPipeline
+	repository     *gitlib.Repository
+	commits        []*gitlib.Commit
+	selectedLeaves []analyze.HistoryAnalyzer
+	analyzerKeys   []string
+	facts          map[string]any
+	format         string
+}
+
+// initHistoryPipeline performs the initialization phase: builds the pipeline,
+// resolves analyzers, loads the repository and commits. Emits a codefang.init span.
+func initHistoryPipeline(
+	ctx context.Context, path string, analyzerIDs []string, format string, opts HistoryRunOptions,
+) (initResult, error) {
+	tr := otel.Tracer("codefang")
+	_, initSpan := tr.Start(ctx, "codefang.init")
+
+	defer initSpan.End()
 
 	pl := buildPipeline(nil)
 
 	analyzerKeys, err := analyze.HistoryKeysByID(pl.Leaves, analyzerIDs)
 	if err != nil {
-		return err
+		return initResult{}, err
 	}
 
 	if len(analyzerKeys) == 0 {
-		return ErrNoAnalyzersSelected
+		return initResult{}, ErrNoAnalyzersSelected
 	}
 
 	normalizedFormat, err := analyze.ValidateUniversalFormat(format)
 	if err != nil {
-		return err
+		return initResult{}, err
 	}
 
 	repository, err := gitlib.LoadRepository(path)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrRepositoryLoad, path)
+		return initResult{}, fmt.Errorf("%w: %s", ErrRepositoryLoad, path)
 	}
-	defer repository.Free()
 
 	pl = buildPipeline(repository)
 
@@ -538,6 +699,7 @@ func runHistoryAnalyzers(path string, analyzerIDs []string, format string, silen
 		opts.FirstParent = true
 	}
 
+	//nolint:contextcheck // LoadCommits API doesn't accept context yet.
 	commits, err := gitlib.LoadCommits(repository, gitlib.CommitLoadOptions{
 		Limit:       opts.Limit,
 		FirstParent: opts.FirstParent,
@@ -545,20 +707,38 @@ func runHistoryAnalyzers(path string, analyzerIDs []string, format string, silen
 		Since:       opts.Since,
 	})
 	if err != nil {
-		return err
+		repository.Free()
+
+		return initResult{}, err
 	}
 
 	facts := buildFacts(pl)
 
 	selectedLeaves, err := selectLeaves(pl.Leaves, analyzerKeys, facts)
 	if err != nil {
-		return err
+		repository.Free()
+
+		return initResult{}, err
 	}
 
-	return executeHistoryPipeline(pl, path, selectedLeaves, facts, commits, analyzerKeys, normalizedFormat, opts, repository, writer)
+	initSpan.SetAttributes(
+		attribute.Int("init.commits", len(commits)),
+		attribute.Int("init.analyzers", len(analyzerKeys)),
+	)
+
+	return initResult{
+		pipeline:       pl,
+		repository:     repository,
+		commits:        commits,
+		selectedLeaves: selectedLeaves,
+		analyzerKeys:   analyzerKeys,
+		facts:          facts,
+		format:         normalizedFormat,
+	}, nil
 }
 
 func executeHistoryPipeline(
+	ctx context.Context,
 	pl *historyPipeline,
 	path string,
 	selectedLeaves []analyze.HistoryAnalyzer,
@@ -601,17 +781,122 @@ func executeHistoryPipeline(
 	runner := framework.NewRunnerWithConfig(repository, path, coordConfig, allAnalyzers...)
 	runner.CoreCount = len(pl.Core)
 
-	results, err := framework.RunStreaming(runner, commits, allAnalyzers, framework.StreamingConfig{
-		MemBudget:     memBudget,
-		Checkpoint:    buildCheckpointParams(opts),
-		RepoPath:      path,
-		AnalyzerNames: analyzerKeys,
+	red, analysisMetrics, metricsErr := createRunMetrics()
+	if metricsErr != nil {
+		return metricsErr
+	}
+
+	done := red.TrackInflight(ctx, "cli.run")
+	runStart := time.Now()
+
+	results, err := framework.RunStreaming(ctx, runner, commits, allAnalyzers, framework.StreamingConfig{
+		MemBudget:       memBudget,
+		Checkpoint:      buildCheckpointParams(opts),
+		RepoPath:        path,
+		AnalyzerNames:   analyzerKeys,
+		DebugTrace:      opts.DebugTrace,
+		AnalysisMetrics: analysisMetrics,
 	})
+
+	recordRunCompletion(ctx, red, done, runStart, err)
+
 	if err != nil {
 		return fmt.Errorf("pipeline execution failed: %w", err)
 	}
 
-	return analyze.OutputHistoryResults(selectedLeaves, results, normalizedFormat, writer)
+	enrichAnomalyReport(selectedLeaves, results)
+
+	tr := otel.Tracer("codefang")
+	_, reportSpan := tr.Start(ctx, "codefang.report",
+		trace.WithAttributes(
+			attribute.String("report.format", normalizedFormat),
+			attribute.Int("report.analyzers", len(selectedLeaves)),
+		))
+
+	reportErr := analyze.OutputHistoryResults(selectedLeaves, results, normalizedFormat, writer)
+
+	reportSpan.End()
+
+	return reportErr
+}
+
+// createRunMetrics creates RED and analysis metric instruments using the global meter.
+func createRunMetrics() (*observability.REDMetrics, *observability.AnalysisMetrics, error) {
+	meter := otel.Meter("codefang")
+
+	red, err := observability.NewREDMetrics(meter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create RED metrics: %w", err)
+	}
+
+	analysis, err := observability.NewAnalysisMetrics(meter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create analysis metrics: %w", err)
+	}
+
+	return red, analysis, nil
+}
+
+// recordRunCompletion records RED metrics for a completed (or failed) CLI run
+// and decrements the in-flight gauge.
+func recordRunCompletion(ctx context.Context, red *observability.REDMetrics, done func(), start time.Time, runErr error) {
+	duration := time.Since(start)
+
+	done()
+
+	status := "ok"
+	if runErr != nil {
+		status = "error"
+	}
+
+	red.RecordRequest(ctx, "cli.run", status, duration)
+}
+
+// enrichAnomalyReport runs cross-analyzer anomaly detection on time series
+// from other analyzers and injects results into the anomaly report.
+func enrichAnomalyReport(
+	leaves []analyze.HistoryAnalyzer,
+	results map[analyze.HistoryAnalyzer]analyze.Report,
+) {
+	var anomalyAnalyzer *anomaly.HistoryAnalyzer
+
+	var anomalyReport analyze.Report
+
+	for _, leaf := range leaves {
+		if a, ok := leaf.(*anomaly.HistoryAnalyzer); ok {
+			anomalyAnalyzer = a
+			anomalyReport = results[leaf]
+
+			break
+		}
+	}
+
+	if anomalyAnalyzer == nil || anomalyReport == nil {
+		return
+	}
+
+	otherReports := make(map[string]analyze.Report)
+
+	for _, leaf := range leaves {
+		if leaf == anomalyAnalyzer {
+			continue
+		}
+
+		if rep := results[leaf]; rep != nil {
+			otherReports[leaf.Flag()] = rep
+		}
+	}
+
+	if len(otherReports) == 0 {
+		return
+	}
+
+	anomaly.EnrichFromReports(
+		anomalyReport,
+		otherReports,
+		anomalyAnalyzer.WindowSize,
+		float64(anomalyAnalyzer.Threshold),
+	)
 }
 
 func selectLeaves(
@@ -625,7 +910,7 @@ func selectLeaves(
 		leaf, found := leaves[name]
 		if !found {
 			return nil, fmt.Errorf(
-				"%w: %s\nAvailable: burndown, couples, devs, file-history, imports, sentiment, shotness, typos",
+				"%w: %s\nAvailable: anomaly, burndown, couples, devs, file-history, imports, quality, sentiment, shotness, typos",
 				ErrUnknownAnalyzer, name,
 			)
 		}
@@ -822,6 +1107,10 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline {
 			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, uastChanges,
 		},
 		Leaves: map[string]analyze.HistoryAnalyzer{
+			"anomaly": &anomaly.HistoryAnalyzer{
+				TreeDiff: treeDiff, Ticks: ticks, LineStats: lineStats,
+				Languages: langDetect, Identity: identity,
+			},
 			"burndown": &burndown.HistoryAnalyzer{
 				BlobCache: blobCache, Ticks: ticks, Identity: identity, FileDiff: fileDiff, TreeDiff: treeDiff,
 			},
@@ -833,6 +1122,7 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline {
 			"imports": &imports.HistoryAnalyzer{
 				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
 			},
+			"quality":   &quality.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
 			"sentiment": &sentiment.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
 			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UAST: uastChanges},
 			"typos": &typos.HistoryAnalyzer{
@@ -846,11 +1136,13 @@ func defaultHistoryLeaves() []analyze.HistoryAnalyzer {
 	leaves := buildPipeline(nil).Leaves
 
 	return []analyze.HistoryAnalyzer{
+		leaves["anomaly"],
 		leaves["burndown"],
 		leaves["couples"],
 		leaves["devs"],
 		leaves["file-history"],
 		leaves["imports"],
+		leaves["quality"],
 		leaves["sentiment"],
 		leaves["shotness"],
 		leaves["typos"],

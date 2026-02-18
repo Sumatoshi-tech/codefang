@@ -2,6 +2,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -121,12 +122,12 @@ func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
+func (b *BlobCacheAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
 	// Check if the runtime pipeline has already populated the cache.
-	if ctx != nil && ctx.BlobCache != nil {
+	if ac != nil && ac.BlobCache != nil {
 		// Use the pre-populated cache from the runtime pipeline.
-		b.previousCache = ctx.BlobCache
-		b.Cache = ctx.BlobCache
+		b.previousCache = ac.BlobCache
+		b.Cache = ac.BlobCache
 
 		return nil
 	}
@@ -134,11 +135,11 @@ func (b *BlobCacheAnalyzer) Consume(ctx *analyze.Context) error {
 	// Fall back to traditional blob loading.
 	changes := b.TreeDiff.Changes
 
-	return b.consumeParallel(changes)
+	return b.consumeParallel(ctx, changes)
 }
 
 // consumeParallel is the original parallel blob loading implementation.
-func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
+func (b *BlobCacheAnalyzer) consumeParallel(ctx context.Context, changes []*gitlib.Change) error {
 	cache := map[gitlib.Hash]*gitlib.CachedBlob{}
 	newCache := map[gitlib.Hash]*gitlib.CachedBlob{}
 
@@ -152,11 +153,11 @@ func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 		for _, change := range changes {
 			switch change.Action {
 			case gitlib.Insert:
-				b.handleInsert(repo, change, localCache, localNewCache)
+				b.handleInsert(ctx, repo, change, localCache, localNewCache)
 			case gitlib.Delete:
-				b.handleDelete(repo, change, localCache)
+				b.handleDelete(ctx, repo, change, localCache)
 			case gitlib.Modify:
-				b.handleModify(repo, change, localCache, localNewCache)
+				b.handleModify(ctx, repo, change, localCache, localNewCache)
 			}
 		}
 
@@ -200,6 +201,7 @@ func (b *BlobCacheAnalyzer) consumeParallel(changes []*gitlib.Change) error {
 }
 
 func (b *BlobCacheAnalyzer) handleInsert(
+	ctx context.Context,
 	repo *gitlib.Repository,
 	change *gitlib.Change,
 	cache, newCache map[gitlib.Hash]*gitlib.CachedBlob,
@@ -210,13 +212,14 @@ func (b *BlobCacheAnalyzer) handleInsert(
 	cache[hash] = &gitlib.CachedBlob{}
 	newCache[hash] = &gitlib.CachedBlob{}
 	// Try to load the blob.
-	blob, err := gitlib.NewCachedBlobFromRepo(repo, hash)
+	blob, err := gitlib.NewCachedBlobFromRepo(ctx, repo, hash)
 	if err == nil {
 		cache[hash] = blob
 		newCache[hash] = blob
 	}
 }
 func (b *BlobCacheAnalyzer) handleDelete(
+	ctx context.Context,
 	repo *gitlib.Repository,
 	change *gitlib.Change,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
@@ -237,12 +240,13 @@ func (b *BlobCacheAnalyzer) handleDelete(
 	// Initialize with empty blob.
 	cache[hash] = &gitlib.CachedBlob{}
 	// Try to load the blob.
-	blob, err := gitlib.NewCachedBlobFromRepo(repo, hash)
+	blob, err := gitlib.NewCachedBlobFromRepo(ctx, repo, hash)
 	if err == nil {
 		cache[hash] = blob
 	}
 }
 func (b *BlobCacheAnalyzer) handleModify(
+	ctx context.Context,
 	repo *gitlib.Repository,
 	change *gitlib.Change,
 	cache, newCache map[gitlib.Hash]*gitlib.CachedBlob,
@@ -252,7 +256,7 @@ func (b *BlobCacheAnalyzer) handleModify(
 	cache[toHash] = &gitlib.CachedBlob{}
 	newCache[toHash] = &gitlib.CachedBlob{}
 
-	blob, err := gitlib.NewCachedBlobFromRepo(repo, toHash)
+	blob, err := gitlib.NewCachedBlobFromRepo(ctx, repo, toHash)
 	if err == nil {
 		cache[toHash] = blob
 		newCache[toHash] = blob
@@ -271,7 +275,7 @@ func (b *BlobCacheAnalyzer) handleModify(
 
 	cache[fromHash] = &gitlib.CachedBlob{}
 
-	blob, err = gitlib.NewCachedBlobFromRepo(repo, fromHash)
+	blob, err = gitlib.NewCachedBlobFromRepo(ctx, repo, fromHash)
 	if err == nil {
 		cache[fromHash] = blob
 	}

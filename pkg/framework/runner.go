@@ -6,10 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 )
 
 // ErrNotParallelizable is returned when a leaf analyzer does not implement [analyze.Parallelizable].
@@ -23,6 +29,10 @@ type Runner struct {
 	Analyzers []analyze.HistoryAnalyzer
 	Config    CoordinatorConfig
 
+	// Tracer is the OTel tracer for creating pipeline spans.
+	// When nil, falls back to otel.Tracer("codefang").
+	Tracer trace.Tracer
+
 	// CoreCount is the number of leading analyzers in the Analyzers slice that are
 	// core (plumbing) analyzers. These run sequentially. Analyzers after CoreCount
 	// are leaf analyzers that can be parallelized via Fork/Merge.
@@ -32,6 +42,9 @@ type Runner struct {
 	runtimeTuningOnce sync.Once
 	runtimeBallast    []byte
 }
+
+// tracerName is the default OTel tracer name for the framework package.
+const tracerName = "codefang"
 
 // NewRunner creates a new Runner for the given repository and analyzers.
 // Uses DefaultCoordinatorConfig(). Use NewRunnerWithConfig for custom configuration.
@@ -54,8 +67,17 @@ func NewRunnerWithConfig(
 	}
 }
 
+// tracer returns the configured tracer, falling back to the global provider.
+func (runner *Runner) tracer() trace.Tracer {
+	if runner.Tracer != nil {
+		return runner.Tracer
+	}
+
+	return otel.Tracer(tracerName)
+}
+
 // Run executes all analyzers over the given commits: initialize, consume each commit via pipeline, then finalize.
-func (runner *Runner) Run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+func (runner *Runner) Run(ctx context.Context, commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
 	for _, a := range runner.Analyzers {
 		err := a.Initialize(runner.Repo)
 		if err != nil {
@@ -78,12 +100,12 @@ func (runner *Runner) Run(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer
 		return reports, nil
 	}
 
-	return runner.runInternal(commits)
+	return runner.runInternal(ctx, commits)
 }
 
 // runInternal uses the Coordinator to process commits (batch blob + batch diff in C), then feeds analyzers.
-func (runner *Runner) runInternal(commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
-	processErr := runner.processCommits(commits, 0)
+func (runner *Runner) runInternal(ctx context.Context, commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	_, processErr := runner.processCommits(ctx, commits, 0, 0)
 	if processErr != nil {
 		return nil, processErr
 	}
@@ -118,8 +140,9 @@ func (runner *Runner) Initialize() error {
 // Use this for streaming mode where Initialize is called once at start
 // and Finalize once at end.
 // The indexOffset is added to the commit index to maintain correct ordering across chunks.
-func (runner *Runner) ProcessChunk(commits []*gitlib.Commit, indexOffset int) error {
-	return runner.processCommits(commits, indexOffset)
+// chunkIndex is the zero-based chunk number used for span naming.
+func (runner *Runner) ProcessChunk(ctx context.Context, commits []*gitlib.Commit, indexOffset, chunkIndex int) (PipelineStats, error) {
+	return runner.processCommits(ctx, commits, indexOffset, chunkIndex)
 }
 
 // Finalize finalizes all analyzers and returns their reports.
@@ -141,31 +164,55 @@ func (runner *Runner) Finalize() (map[analyze.HistoryAnalyzer]analyze.Report, er
 // ProcessChunkFromData consumes pre-fetched CommitData through analyzers,
 // bypassing Coordinator creation. Used by double-buffered chunk pipelining
 // where the pipeline has already run and collected data.
-func (runner *Runner) ProcessChunkFromData(data []CommitData, indexOffset int) error {
+// Returns zero PipelineStats since the real stats come from the prefetch Coordinator.
+func (runner *Runner) ProcessChunkFromData(ctx context.Context, data []CommitData, indexOffset, chunkIndex int) (PipelineStats, error) {
+	ctx, span := runner.tracer().Start(ctx, "codefang.chunk",
+		trace.WithAttributes(
+			attribute.Int("chunk.index", chunkIndex),
+			attribute.Int("chunk.size", len(data)),
+			attribute.Int("chunk.offset", indexOffset),
+		))
+
 	runner.runtimeTuningOnce.Do(func() {
 		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
 	})
 
+	analyzerDurations := make([]time.Duration, len(runner.Analyzers))
+
 	for _, cd := range data {
 		if cd.Error != nil {
-			return cd.Error
+			observability.RecordSpanError(span, cd.Error, observability.ErrTypeDependencyUnavailable, observability.ErrSourceDependency)
+			span.End()
+
+			return PipelineStats{}, cd.Error
 		}
 
 		analyzeCtx := buildAnalyzeContext(cd, indexOffset)
 
-		for _, a := range runner.Analyzers {
-			err := a.Consume(analyzeCtx)
+		for i, a := range runner.Analyzers {
+			start := time.Now()
+
+			err := a.Consume(ctx, analyzeCtx)
+
+			analyzerDurations[i] += time.Since(start)
+
 			if err != nil {
-				return err
+				observability.RecordSpanError(span, err, observability.ErrTypeInternal, observability.ErrSourceServer)
+				span.End()
+
+				return PipelineStats{}, err
 			}
 		}
 	}
 
-	return nil
+	span.End()
+	runner.emitAnalyzerSpans(ctx, analyzerDurations)
+
+	return PipelineStats{}, nil
 }
 
 // processCommits processes commits through the pipeline without Initialize/Finalize.
-func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) error {
+func (runner *Runner) processCommits(ctx context.Context, commits []*gitlib.Commit, indexOffset, chunkIndex int) (PipelineStats, error) {
 	runner.runtimeTuningOnce.Do(func() {
 		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
 	})
@@ -174,11 +221,11 @@ func (runner *Runner) processCommits(commits []*gitlib.Commit, indexOffset int) 
 	if w > 0 && runner.CoreCount > 0 && runner.CoreCount < len(runner.Analyzers) {
 		cpuHeavy, lightweight, serialLeaves := runner.splitLeaves()
 		if len(cpuHeavy) > 0 {
-			return runner.processCommitsHybrid(commits, indexOffset, cpuHeavy, lightweight, serialLeaves)
+			return runner.processCommitsHybrid(ctx, commits, indexOffset, chunkIndex, cpuHeavy, lightweight, serialLeaves)
 		}
 	}
 
-	return runner.processCommitsSerial(commits, indexOffset)
+	return runner.processCommitsSerial(ctx, commits, indexOffset, chunkIndex)
 }
 
 // splitLeaves partitions leaf analyzers into three groups:
@@ -205,54 +252,71 @@ func (runner *Runner) splitLeaves() (cpuHeavy, lightweight, serial []analyze.His
 }
 
 // processCommitsSerial is the original serial consumption path.
-func (runner *Runner) processCommitsSerial(commits []*gitlib.Commit, indexOffset int) error {
-	ctx := context.Background()
+func (runner *Runner) processCommitsSerial(
+	ctx context.Context, commits []*gitlib.Commit, indexOffset, chunkIndex int,
+) (PipelineStats, error) {
+	ctx, span := runner.tracer().Start(ctx, "codefang.chunk",
+		trace.WithAttributes(
+			attribute.Int("chunk.index", chunkIndex),
+			attribute.Int("chunk.size", len(commits)),
+			attribute.Int("chunk.offset", indexOffset),
+		))
+
 	coordinator := NewCoordinator(runner.Repo, runner.Config)
 	dataChan := coordinator.Process(ctx, commits)
 
+	analyzerDurations := make([]time.Duration, len(runner.Analyzers))
+
 	for data := range dataChan {
 		if data.Error != nil {
-			return data.Error
+			observability.RecordSpanError(span, data.Error, observability.ErrTypeDependencyUnavailable, observability.ErrSourceDependency)
+			span.End()
+
+			return PipelineStats{}, data.Error
 		}
 
-		commit := data.Commit
-		analyzeCtx := &analyze.Context{
-			Commit:      commit,
-			Index:       data.Index + indexOffset,
-			Time:        commit.Committer().When,
-			IsMerge:     commit.NumParents() > 1,
-			Changes:     data.Changes,
-			BlobCache:   data.BlobCache,
-			FileDiffs:   data.FileDiffs,
-			UASTChanges: data.UASTChanges,
-		}
+		analyzeCtx := buildAnalyzeContext(data, indexOffset)
 
-		for _, a := range runner.Analyzers {
-			err := a.Consume(analyzeCtx)
+		for i, a := range runner.Analyzers {
+			start := time.Now()
+
+			err := a.Consume(ctx, analyzeCtx)
+
+			analyzerDurations[i] += time.Since(start)
+
 			if err != nil {
-				return err
+				observability.RecordSpanError(span, err, observability.ErrTypeInternal, observability.ErrSourceServer)
+				span.End()
+
+				return PipelineStats{}, err
 			}
 		}
 	}
 
-	return nil
+	pStats := coordinator.Stats()
+	setPipelineAttributes(span, pStats)
+	span.End()
+	runner.emitAnalyzerSpans(ctx, analyzerDurations)
+
+	return pStats, nil
 }
 
-// leafWork holds an opaque plumbing snapshot and context for one commit.
+// leafWork holds an opaque plumbing snapshot and analyze context for one commit.
 type leafWork struct {
-	ctx      *analyze.Context
-	snapshot analyze.PlumbingSnapshot
+	analyzeCtx *analyze.Context
+	snapshot   analyze.PlumbingSnapshot
 }
 
 // leafWorker holds forked leaf analyzers for one worker goroutine.
 type leafWorker struct {
-	leaves   []analyze.HistoryAnalyzer
-	workChan chan leafWork
+	leaves    []analyze.HistoryAnalyzer
+	workChan  chan leafWork
+	durations []time.Duration // Accumulated per-leaf-analyzer durations.
 }
 
 // processWork applies the plumbing snapshot, runs leaf Consume(), then releases snapshot resources.
-func (w *leafWorker) processWork(work leafWork) error {
-	for _, leaf := range w.leaves {
+func (w *leafWorker) processWork(ctx context.Context, work leafWork) error {
+	for i, leaf := range w.leaves {
 		p, ok := leaf.(analyze.Parallelizable)
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrNotParallelizable, leaf.Name())
@@ -260,7 +324,12 @@ func (w *leafWorker) processWork(work leafWork) error {
 
 		p.ApplySnapshot(work.snapshot)
 
-		consumeErr := leaf.Consume(work.ctx)
+		start := time.Now()
+
+		consumeErr := leaf.Consume(ctx, work.analyzeCtx)
+
+		w.durations[i] += time.Since(start)
+
 		if consumeErr != nil {
 			return consumeErr
 		}
@@ -283,7 +352,8 @@ func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
 
 	for i := range w {
 		worker := &leafWorker{
-			workChan: make(chan leafWork, leafWorkChanBuffer),
+			workChan:  make(chan leafWork, leafWorkChanBuffer),
+			durations: make([]time.Duration, len(leaves)),
 		}
 
 		worker.leaves = make([]analyze.HistoryAnalyzer, len(leaves))
@@ -301,7 +371,7 @@ func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
 
 // startLeafWorkers launches goroutines that drain work channels and returns
 // a WaitGroup and an error slice (one per worker).
-func startLeafWorkers(workers []*leafWorker) (*sync.WaitGroup, []error) {
+func startLeafWorkers(ctx context.Context, workers []*leafWorker) (*sync.WaitGroup, []error) {
 	numWorkers := len(workers)
 
 	var wg sync.WaitGroup
@@ -315,7 +385,7 @@ func startLeafWorkers(workers []*leafWorker) (*sync.WaitGroup, []error) {
 			defer wg.Done()
 
 			for work := range worker.workChan {
-				processErr := worker.processWork(work)
+				processErr := worker.processWork(ctx, work)
 				if processErr != nil {
 					workerErrors[workerIdx] = processErr
 
@@ -444,18 +514,6 @@ func collectSnapshotters(leaves []analyze.HistoryAnalyzer) ([]analyze.Paralleliz
 	return snapshotters, nil
 }
 
-// consumeAnalyzers runs Consume on each analyzer sequentially, returning the first error.
-func consumeAnalyzers(analyzers []analyze.HistoryAnalyzer, analyzeCtx *analyze.Context) error {
-	for _, a := range analyzers {
-		err := a.Consume(analyzeCtx)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // buildAnalyzeContext creates an analyze.Context from pipeline commit data.
 func buildAnalyzeContext(data CommitData, indexOffset int) *analyze.Context {
 	commit := data.Commit
@@ -477,11 +535,18 @@ func buildAnalyzeContext(data CommitData, indexOffset int) *analyze.Context {
 //   - cpuHeavy leaves are dispatched to W workers via Fork/Merge.
 //   - lightweight and serial leaves run on the main goroutine.
 func (runner *Runner) processCommitsHybrid(
+	ctx context.Context,
 	commits []*gitlib.Commit,
-	indexOffset int,
+	indexOffset, chunkIndex int,
 	cpuHeavy, lightweight, serialLeaves []analyze.HistoryAnalyzer,
-) error {
-	ctx := context.Background()
+) (PipelineStats, error) {
+	ctx, span := runner.tracer().Start(ctx, "codefang.chunk",
+		trace.WithAttributes(
+			attribute.Int("chunk.index", chunkIndex),
+			attribute.Int("chunk.size", len(commits)),
+			attribute.Int("chunk.offset", indexOffset),
+		))
+
 	coordinator := NewCoordinator(runner.Repo, runner.Config)
 	dataChan := coordinator.Process(ctx, commits)
 
@@ -489,7 +554,7 @@ func (runner *Runner) processCommitsHybrid(
 
 	numWorkers := runner.Config.LeafWorkers
 	workers := newLeafWorkers(cpuHeavy, numWorkers)
-	wg, workerErrors := startLeafWorkers(workers)
+	wg, workerErrors := startLeafWorkers(ctx, workers)
 
 	// Collect snapshotters from both cpuHeavy and lightweight leaves so the
 	// composite snapshot captures all plumbing fields (e.g. UASTChanges from
@@ -500,7 +565,9 @@ func (runner *Runner) processCommitsHybrid(
 
 	snapshotters, snapErr := collectSnapshotters(allParallel)
 	if snapErr != nil {
-		return snapErr
+		span.End()
+
+		return PipelineStats{}, snapErr
 	}
 
 	// Combine lightweight and serial leaves into one main-goroutine group.
@@ -508,25 +575,42 @@ func (runner *Runner) processCommitsHybrid(
 	mainLeaves = append(mainLeaves, lightweight...)
 	mainLeaves = append(mainLeaves, serialLeaves...)
 
-	loopErr := runner.hybridCommitLoop(dataChan, indexOffset, core, mainLeaves, snapshotters, workers, numWorkers, wg)
+	coreDurations, mainDurations, loopErr := runner.hybridCommitLoop(
+		ctx, dataChan, indexOffset, core, mainLeaves, snapshotters, workers, numWorkers, wg)
 	if loopErr != nil {
-		return loopErr
+		span.End()
+
+		return PipelineStats{}, loopErr
 	}
 
 	for _, workerErr := range workerErrors {
 		if workerErr != nil {
-			return workerErr
+			span.End()
+
+			return PipelineStats{}, workerErr
 		}
 	}
 
 	mergeLeafResults(cpuHeavy, workers)
 
-	return nil
+	pStats := coordinator.Stats()
+	setPipelineAttributes(span, pStats)
+	span.End()
+
+	// Core durations are not emitted as spans (infrastructure).
+	_ = coreDurations
+
+	// Emit per-analyzer spans for leaf analyzers.
+	runner.emitHybridAnalyzerSpans(ctx, mainLeaves, mainDurations, cpuHeavy, workers)
+
+	return pStats, nil
 }
 
 // hybridCommitLoop iterates over pipeline data, dispatching work to parallel workers
 // and running core/serial analyzers on the main goroutine.
+// Returns accumulated durations for core and main-goroutine leaf analyzers.
 func (runner *Runner) hybridCommitLoop(
+	ctx context.Context,
 	dataChan <-chan CommitData,
 	indexOffset int,
 	core, serialLeaves []analyze.HistoryAnalyzer,
@@ -534,43 +618,60 @@ func (runner *Runner) hybridCommitLoop(
 	workers []*leafWorker,
 	numWorkers int,
 	wg *sync.WaitGroup,
-) error {
+) (coreDurations, mainDurations []time.Duration, err error) {
+	coreDurations = make([]time.Duration, len(core))
+	mainDurations = make([]time.Duration, len(serialLeaves))
+
 	var commitIdx int
 
 	for data := range dataChan {
 		if data.Error != nil {
 			closeWorkersAndWait(workers, wg)
 
-			return data.Error
+			return nil, nil, data.Error
 		}
 
 		analyzeCtx := buildAnalyzeContext(data, indexOffset)
 
 		// Run core (plumbing) analyzers sequentially.
-		err := consumeAnalyzers(core, analyzeCtx)
-		if err != nil {
-			closeWorkersAndWait(workers, wg)
+		for i, a := range core {
+			start := time.Now()
 
-			return err
+			coreErr := a.Consume(ctx, analyzeCtx)
+
+			coreDurations[i] += time.Since(start)
+
+			if coreErr != nil {
+				closeWorkersAndWait(workers, wg)
+
+				return nil, nil, coreErr
+			}
 		}
 
 		// Snapshot plumbing state for parallel workers before serial leaves mutate anything.
 		// Build a composite snapshot from ALL parallel leaves so every plumbing field
 		// (Changes, BlobCache, FileDiffs, UAST, Tick, AuthorID, etc.) is captured.
 		work := leafWork{
-			ctx:      analyzeCtx,
-			snapshot: buildCompositeSnapshot(snapshotters),
+			analyzeCtx: analyzeCtx,
+			snapshot:   buildCompositeSnapshot(snapshotters),
 		}
 
 		// Dispatch parallel leaves to a worker.
 		workers[commitIdx%numWorkers].workChan <- work
 
 		// Run serial leaves on the main goroutine.
-		err = consumeAnalyzers(serialLeaves, analyzeCtx)
-		if err != nil {
-			closeWorkersAndWait(workers, wg)
+		for i, a := range serialLeaves {
+			start := time.Now()
 
-			return err
+			leafErr := a.Consume(ctx, analyzeCtx)
+
+			mainDurations[i] += time.Since(start)
+
+			if leafErr != nil {
+				closeWorkersAndWait(workers, wg)
+
+				return nil, nil, leafErr
+			}
 		}
 
 		commitIdx++
@@ -579,5 +680,66 @@ func (runner *Runner) hybridCommitLoop(
 	// Close all work channels to signal workers to finish.
 	closeWorkersAndWait(workers, wg)
 
-	return nil
+	return coreDurations, mainDurations, nil
+}
+
+// setPipelineAttributes sets pipeline timing and cache stats as attributes on a chunk span.
+func setPipelineAttributes(span trace.Span, ps PipelineStats) {
+	span.SetAttributes(
+		attribute.Int64("pipeline.blob_ms", ps.BlobDuration.Milliseconds()),
+		attribute.Int64("pipeline.diff_ms", ps.DiffDuration.Milliseconds()),
+		attribute.Int64("pipeline.uast_ms", ps.UASTDuration.Milliseconds()),
+		attribute.Int64("cache.blob.hits", ps.BlobCacheHits),
+		attribute.Int64("cache.blob.misses", ps.BlobCacheMisses),
+		attribute.Int64("cache.diff.hits", ps.DiffCacheHits),
+		attribute.Int64("cache.diff.misses", ps.DiffCacheMisses),
+	)
+}
+
+// emitAnalyzerSpans creates per-analyzer child spans with accumulated durations.
+// Only leaf analyzers (index >= CoreCount) get spans; core analyzers are infrastructure.
+func (runner *Runner) emitAnalyzerSpans(ctx context.Context, durations []time.Duration) {
+	tr := runner.tracer()
+	now := time.Now()
+
+	for i, a := range runner.Analyzers {
+		if i < runner.CoreCount {
+			continue
+		}
+
+		_, aSpan := tr.Start(ctx, "codefang.analyzer."+a.Name(),
+			trace.WithTimestamp(now.Add(-durations[i])))
+		aSpan.End(trace.WithTimestamp(now))
+	}
+}
+
+// emitHybridAnalyzerSpans creates per-analyzer spans for hybrid mode where
+// main-goroutine leaves and worker leaves have separate duration tracking.
+func (runner *Runner) emitHybridAnalyzerSpans(
+	ctx context.Context,
+	mainLeaves []analyze.HistoryAnalyzer, mainDurations []time.Duration,
+	cpuHeavy []analyze.HistoryAnalyzer, workers []*leafWorker,
+) {
+	tr := runner.tracer()
+	now := time.Now()
+
+	// Main-goroutine leaves (lightweight + serial).
+	for i, leaf := range mainLeaves {
+		_, aSpan := tr.Start(ctx, "codefang.analyzer."+leaf.Name(),
+			trace.WithTimestamp(now.Add(-mainDurations[i])))
+		aSpan.End(trace.WithTimestamp(now))
+	}
+
+	// CPU-heavy leaves: sum durations across all workers.
+	for leafIdx, leaf := range cpuHeavy {
+		var total time.Duration
+
+		for _, worker := range workers {
+			total += worker.durations[leafIdx]
+		}
+
+		_, aSpan := tr.Start(ctx, "codefang.analyzer."+leaf.Name(),
+			trace.WithTimestamp(now.Add(-total)))
+		aSpan.End(trace.WithTimestamp(now))
+	}
 }

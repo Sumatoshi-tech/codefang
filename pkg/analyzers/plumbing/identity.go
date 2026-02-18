@@ -2,6 +2,7 @@ package plumbing
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,8 +132,8 @@ func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
+func (d *IdentityDetector) Consume(_ context.Context, ac *analyze.Context) error {
+	commit := ac.Commit
 	signature := commit.Author()
 
 	var (

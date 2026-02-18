@@ -103,7 +103,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 
 		// Only fire CGO request if there are actual diff requests.
 		if len(currentBatchReqs) > 0 {
-			req := gitlib.DiffBatchRequest{Requests: currentBatchReqs}
+			req := gitlib.DiffBatchRequest{Ctx: ctx, Requests: currentBatchReqs}
 			respChan := make(chan gitlib.DiffBatchResponse, 1)
 			req.Response = respChan
 

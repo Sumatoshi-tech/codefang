@@ -13,17 +13,17 @@ func TestHibernate_PreservesComments(t *testing.T) {
 	require.NoError(t, s.Initialize(nil))
 
 	// Add comment data.
-	s.commentsByTick[0] = []string{"comment 1", "comment 2"}
-	s.commentsByTick[1] = []string{"comment 3"}
+	s.commentsByCommit["aaa"] = []string{"comment 1", "comment 2"}
+	s.commentsByCommit["bbb"] = []string{"comment 3"}
 
 	err := s.Hibernate()
 	require.NoError(t, err)
 
 	// Comments must be preserved (no temporary state to clear).
-	require.Len(t, s.commentsByTick, 2)
-	require.Len(t, s.commentsByTick[0], 2)
-	require.Len(t, s.commentsByTick[1], 1)
-	require.Equal(t, "comment 1", s.commentsByTick[0][0])
+	require.Len(t, s.commentsByCommit, 2)
+	require.Len(t, s.commentsByCommit["aaa"], 2)
+	require.Len(t, s.commentsByCommit["bbb"], 1)
+	require.Equal(t, "comment 1", s.commentsByCommit["aaa"][0])
 }
 
 func TestBoot_NoError(t *testing.T) {
@@ -43,8 +43,8 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	require.NoError(t, s.Initialize(nil))
 
 	// Set up state.
-	s.commentsByTick[0] = []string{"preserved comment"}
-	s.commentsByTick[5] = []string{"another preserved"}
+	s.commentsByCommit["aaa"] = []string{"preserved comment"}
+	s.commentsByCommit["bbb"] = []string{"another preserved"}
 
 	// Hibernate.
 	require.NoError(t, s.Hibernate())
@@ -53,7 +53,7 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	require.NoError(t, s.Boot())
 
 	// State unchanged.
-	require.Len(t, s.commentsByTick, 2)
-	require.Equal(t, "preserved comment", s.commentsByTick[0][0])
-	require.Equal(t, "another preserved", s.commentsByTick[5][0])
+	require.Len(t, s.commentsByCommit, 2)
+	require.Equal(t, "preserved comment", s.commentsByCommit["aaa"][0])
+	require.Equal(t, "another preserved", s.commentsByCommit["bbb"][0])
 }

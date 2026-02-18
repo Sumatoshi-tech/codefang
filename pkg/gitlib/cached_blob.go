@@ -2,6 +2,7 @@ package gitlib
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -50,8 +51,8 @@ func NewCachedBlobWithHashForTest(hash Hash, data []byte) *CachedBlob {
 }
 
 // NewCachedBlobFromRepo loads and caches a blob from the repository.
-func NewCachedBlobFromRepo(repo *Repository, blobHash Hash) (*CachedBlob, error) {
-	blob, err := repo.LookupBlob(blobHash)
+func NewCachedBlobFromRepo(ctx context.Context, repo *Repository, blobHash Hash) (*CachedBlob, error) {
+	blob, err := repo.LookupBlob(ctx, blobHash)
 	if err != nil {
 		return nil, fmt.Errorf("looking up blob %s: %w", blobHash.String(), err)
 	}

@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,18 +151,18 @@ func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
-	if ctx != nil && ctx.Changes != nil {
-		t.Changes = t.filterChanges(ctx.Changes)
+func (t *TreeDiffAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	if ac != nil && ac.Changes != nil {
+		t.Changes = t.filterChanges(ctx, ac.Changes)
 
 		return nil
 	}
 
-	return t.computeTreeDiff(ctx.Commit)
+	return t.computeTreeDiff(ctx, ac.Commit)
 }
 
 // computeTreeDiff performs traditional tree diff computation as a fallback.
-func (t *TreeDiffAnalyzer) computeTreeDiff(commit analyze.CommitLike) error {
+func (t *TreeDiffAnalyzer) computeTreeDiff(ctx context.Context, commit analyze.CommitLike) error {
 	tree, err := commit.Tree()
 	if err != nil {
 		return fmt.Errorf("consume: %w", err)
@@ -169,7 +170,7 @@ func (t *TreeDiffAnalyzer) computeTreeDiff(commit analyze.CommitLike) error {
 
 	t.ensurePreviousTree(commit)
 
-	changes, err := t.diffTrees(tree)
+	changes, err := t.diffTrees(ctx, tree)
 	if err != nil {
 		return err
 	}
@@ -180,7 +181,7 @@ func (t *TreeDiffAnalyzer) computeTreeDiff(commit analyze.CommitLike) error {
 
 	t.previousTree = tree
 	t.previousCommit = commit.Hash()
-	t.Changes = t.filterChanges(changes)
+	t.Changes = t.filterChanges(ctx, changes)
 
 	return nil
 }
@@ -205,9 +206,9 @@ func (t *TreeDiffAnalyzer) ensurePreviousTree(commit analyze.CommitLike) {
 }
 
 // diffTrees computes the diff between previous tree and current tree.
-func (t *TreeDiffAnalyzer) diffTrees(tree *gitlib.Tree) (gitlib.Changes, error) {
+func (t *TreeDiffAnalyzer) diffTrees(ctx context.Context, tree *gitlib.Tree) (gitlib.Changes, error) {
 	if t.previousTree != nil {
-		changes, err := gitlib.TreeDiff(t.Repository, t.previousTree, tree)
+		changes, err := gitlib.TreeDiff(ctx, t.Repository, t.previousTree, tree)
 		if err != nil {
 			return nil, fmt.Errorf("consume: %w", err)
 		}
@@ -215,14 +216,14 @@ func (t *TreeDiffAnalyzer) diffTrees(tree *gitlib.Tree) (gitlib.Changes, error) 
 		return changes, nil
 	}
 
-	return gitlib.InitialTreeChanges(t.Repository, tree)
+	return gitlib.InitialTreeChanges(ctx, t.Repository, tree)
 }
 
-func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes {
+func (t *TreeDiffAnalyzer) filterChanges(ctx context.Context, changes gitlib.Changes) gitlib.Changes {
 	filtered := make(gitlib.Changes, 0, len(changes))
 
 	for _, change := range changes {
-		if t.shouldIncludeChange(change) {
+		if t.shouldIncludeChange(ctx, change) {
 			filtered = append(filtered, change)
 		}
 	}
@@ -230,7 +231,7 @@ func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes 
 	return filtered
 }
 
-func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
+func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitlib.Change) bool {
 	var name string
 
 	var hash gitlib.Hash
@@ -267,7 +268,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 
 	// Check language filter.
 	if !t.Languages[allLanguages] {
-		pass, err := t.checkLanguage(name, hash)
+		pass, err := t.checkLanguage(ctx, name, hash)
 		if err != nil || !pass {
 			return false
 		}
@@ -276,7 +277,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 	return true
 }
 
-func (t *TreeDiffAnalyzer) checkLanguage(fileName string, hash gitlib.Hash) (bool, error) {
+func (t *TreeDiffAnalyzer) checkLanguage(ctx context.Context, fileName string, hash gitlib.Hash) (bool, error) {
 	if t.Languages[allLanguages] {
 		return true, nil
 	}
@@ -284,7 +285,7 @@ func (t *TreeDiffAnalyzer) checkLanguage(fileName string, hash gitlib.Hash) (boo
 	lang := enry.GetLanguage(path.Base(fileName), nil)
 	if lang == "" {
 		// Try to detect from content.
-		blob, err := t.Repository.LookupBlob(hash)
+		blob, err := t.Repository.LookupBlob(ctx, hash)
 		if err == nil {
 			defer blob.Free()
 

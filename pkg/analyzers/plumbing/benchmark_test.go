@@ -75,7 +75,7 @@ func setupBenchmarkRepo(tb testing.TB, fileCount int) (*gitlib.Repository, *gitl
 		tb.Fatal(err)
 	}
 
-	commit, err := repo.LookupCommit(head)
+	commit, err := repo.LookupCommit(context.Background(), head)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 		})
 	}
 
-	ctx := &analyze.Context{Commit: commit}
+	analyzeCtx := &analyze.Context{Commit: commit}
 
 	// Define scenarios.
 	concurrencyLevels := []int{1, 2, 4, 8, 16}
@@ -135,7 +135,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				consumeErr := bc.Consume(ctx)
+				consumeErr := bc.Consume(context.Background(), analyzeCtx)
 				if consumeErr != nil {
 					b.Fatal(consumeErr)
 				}

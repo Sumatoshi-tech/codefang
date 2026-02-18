@@ -35,27 +35,28 @@ func TestHibernate_ClearsMergesMap(t *testing.T) {
 	}
 }
 
-func TestHibernate_PreservesTicksData(t *testing.T) {
+func TestHibernate_PreservesCommitData(t *testing.T) {
 	t.Parallel()
 
 	analyzer := createAnalyzerWithState()
 
-	// Capture ticks state before hibernate.
-	ticksBefore := len(analyzer.tickData)
-	commitsBefore := analyzer.tickData[0][1].Commits
+	// Capture commit data state before hibernate.
+	countBefore := len(analyzer.commitDevData)
+	commitsBefore := analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].Commits
 
 	err := analyzer.Hibernate()
 	if err != nil {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	// Verify ticks data is preserved.
-	if len(analyzer.tickData) != ticksBefore {
-		t.Errorf("ticks count changed: got %d, want %d", len(analyzer.tickData), ticksBefore)
+	// Verify commit data is preserved.
+	if len(analyzer.commitDevData) != countBefore {
+		t.Errorf("commitDevData count changed: got %d, want %d", len(analyzer.commitDevData), countBefore)
 	}
 
-	if analyzer.tickData[0][1].Commits != commitsBefore {
-		t.Errorf("commits changed: got %d, want %d", analyzer.tickData[0][1].Commits, commitsBefore)
+	if analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].Commits != commitsBefore {
+		t.Errorf("commits changed: got %d, want %d",
+			analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].Commits, commitsBefore)
 	}
 }
 
@@ -63,8 +64,8 @@ func TestBoot_InitializesMergesMap(t *testing.T) {
 	t.Parallel()
 
 	analyzer := &HistoryAnalyzer{
-		tickData: make(map[int]map[int]*DevTick),
-		merges:   nil, // Simulate nil state.
+		commitDevData: make(map[string]*CommitDevData),
+		merges:        nil, // Simulate nil state.
 	}
 
 	err := analyzer.Boot()
@@ -83,7 +84,7 @@ func TestBoot_PreservesExistingMerges(t *testing.T) {
 
 	hash := gitlib.NewHash("0123456789abcdef0123456789abcdef01234567")
 	analyzer := &HistoryAnalyzer{
-		tickData: make(map[int]map[int]*DevTick),
+		commitDevData: make(map[string]*CommitDevData),
 		merges: map[gitlib.Hash]bool{
 			hash: true,
 		},
@@ -105,9 +106,9 @@ func TestHibernate_Boot_RoundTrip(t *testing.T) {
 
 	analyzer := createAnalyzerWithState()
 
-	// Capture original ticks state.
-	originalTicks := analyzer.tickData[0][1].Commits
-	originalAdded := analyzer.tickData[0][1].Added
+	// Capture original commit data state.
+	originalCommits := analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].Commits
+	originalAdded := analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"].Added
 
 	// Hibernate clears merges.
 	err := analyzer.Hibernate()
@@ -121,15 +122,14 @@ func TestHibernate_Boot_RoundTrip(t *testing.T) {
 		t.Fatalf("Boot() failed: %v", err)
 	}
 
-	// Verify ticks data survived round trip.
-	if analyzer.tickData[0][1].Commits != originalTicks {
-		t.Errorf("commits changed after round trip: got %d, want %d",
-			analyzer.tickData[0][1].Commits, originalTicks)
+	// Verify commit data survived round trip.
+	cdd := analyzer.commitDevData["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+	if cdd.Commits != originalCommits {
+		t.Errorf("commits changed after round trip: got %d, want %d", cdd.Commits, originalCommits)
 	}
 
-	if analyzer.tickData[0][1].Added != originalAdded {
-		t.Errorf("added changed after round trip: got %d, want %d",
-			analyzer.tickData[0][1].Added, originalAdded)
+	if cdd.Added != originalAdded {
+		t.Errorf("added changed after round trip: got %d, want %d", cdd.Added, originalAdded)
 	}
 
 	// Verify merges map is ready for new entries.
@@ -145,8 +145,8 @@ func TestHibernate_MemoryReduction(t *testing.T) {
 	const mergeCount = 1000
 
 	analyzer := &HistoryAnalyzer{
-		tickData: make(map[int]map[int]*DevTick),
-		merges:   make(map[gitlib.Hash]bool, mergeCount),
+		commitDevData: make(map[string]*CommitDevData),
+		merges:        make(map[gitlib.Hash]bool, mergeCount),
 	}
 
 	// Populate merges with test data.
@@ -178,8 +178,8 @@ func BenchmarkHibernate(b *testing.B) {
 	const mergeCount = 10000 // Simulate large repo with many merges.
 
 	analyzer := &HistoryAnalyzer{
-		tickData: make(map[int]map[int]*DevTick),
-		merges:   make(map[gitlib.Hash]bool, mergeCount),
+		commitDevData: make(map[string]*CommitDevData),
+		merges:        make(map[gitlib.Hash]bool, mergeCount),
 	}
 
 	// Populate merges.
@@ -204,8 +204,8 @@ func BenchmarkHibernate(b *testing.B) {
 // BenchmarkBoot measures boot performance.
 func BenchmarkBoot(b *testing.B) {
 	analyzer := &HistoryAnalyzer{
-		tickData: make(map[int]map[int]*DevTick),
-		merges:   nil,
+		commitDevData: make(map[string]*CommitDevData),
+		merges:        nil,
 	}
 
 	b.ReportAllocs()
@@ -222,14 +222,15 @@ func BenchmarkBoot(b *testing.B) {
 
 func createAnalyzerWithState() *HistoryAnalyzer {
 	return &HistoryAnalyzer{
-		tickData: map[int]map[int]*DevTick{
-			0: {
-				1: {
-					LineStats: plumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
-					Commits:   5,
-					Languages: map[string]plumbing.LineStats{
-						"go": {Added: 80, Removed: 15, Changed: 8},
-					},
+		commitDevData: map[string]*CommitDevData{
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+				Commits:  5,
+				Added:    100,
+				Removed:  20,
+				Changed:  10,
+				AuthorID: 1,
+				Languages: map[string]plumbing.LineStats{
+					"go": {Added: 80, Removed: 15, Changed: 8},
 				},
 			},
 		},

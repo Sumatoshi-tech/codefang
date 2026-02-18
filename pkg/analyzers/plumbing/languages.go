@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -294,7 +295,7 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume resets state for the new commit. Detection is deferred until Languages() is called.
-func (l *LanguagesDetectionAnalyzer) Consume(_ *analyze.Context) error {
+func (l *LanguagesDetectionAnalyzer) Consume(_ context.Context, _ *analyze.Context) error {
 	// Reset state for new commit - detection is lazy.
 	l.languages = nil
 	l.parsed = false

@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,10 +66,10 @@ func (l *LinesStatsCalculator) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
+func (l *LinesStatsCalculator) Consume(_ context.Context, ac *analyze.Context) error {
 	result := map[gitlib.ChangeEntry]pkgplumbing.LineStats{}
 
-	if ctx.IsMerge {
+	if ac.IsMerge {
 		l.LineStats = result
 
 		return nil

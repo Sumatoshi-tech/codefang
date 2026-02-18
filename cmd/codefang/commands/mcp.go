@@ -66,6 +66,7 @@ func initMCPObservability(debug bool) (observability.Providers, error) {
 	cfg.ServiceVersion = version.Version
 	cfg.OTLPEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	cfg.OTLPHeaders = observability.ParseOTLPHeaders(os.Getenv("OTEL_EXPORTER_OTLP_HEADERS"))
+	cfg.OTLPInsecure = os.Getenv("OTEL_EXPORTER_OTLP_INSECURE") == "true"
 	cfg.Mode = observability.ModeMCP
 	cfg.LogJSON = true
 

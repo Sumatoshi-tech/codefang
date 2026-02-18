@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/go-echarts/go-echarts/v2/components"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
@@ -31,6 +33,10 @@ func OutputHistoryResults(
 ) error {
 	if writer == nil {
 		writer = os.Stdout
+	}
+
+	if format == FormatTimeSeries {
+		return outputMergedTimeSeries(leaves, results, writer)
 	}
 
 	rawOutput := format == FormatJSON || format == FormatPlot || format == FormatBinary
@@ -59,6 +65,67 @@ func OutputHistoryResults(
 	}
 
 	return nil
+}
+
+// outputMergedTimeSeries builds and writes a unified time-series from all analyzer reports.
+func outputMergedTimeSeries(
+	leaves []HistoryAnalyzer,
+	results map[HistoryAnalyzer]Report,
+	writer io.Writer,
+) error {
+	reports := make(map[string]Report, len(leaves))
+	for _, leaf := range leaves {
+		if res := results[leaf]; res != nil {
+			reports[leaf.Flag()] = res
+		}
+	}
+
+	// Build commit metadata from commitsByTick (available in most reports).
+	commitMeta := buildCommitMetaFromReports(reports)
+
+	ts := BuildMergedTimeSeries(reports, commitMeta, 0)
+
+	return WriteMergedTimeSeries(ts, writer)
+}
+
+// buildCommitMetaFromReports extracts an ordered list of CommitMeta from
+// the commitsByTick data present in analyzer reports.
+func buildCommitMetaFromReports(reports map[string]Report) []CommitMeta {
+	// Try to find commitsByTick from any report.
+	var commitsByTick map[int][]gitlib.Hash
+
+	for _, report := range reports {
+		if cbt, ok := report["commits_by_tick"].(map[int][]gitlib.Hash); ok && len(cbt) > 0 {
+			commitsByTick = cbt
+
+			break
+		}
+	}
+
+	if len(commitsByTick) == 0 {
+		return nil
+	}
+
+	// Sort ticks to get chronological order.
+	ticks := make([]int, 0, len(commitsByTick))
+	for tick := range commitsByTick {
+		ticks = append(ticks, tick)
+	}
+
+	sort.Ints(ticks)
+
+	var meta []CommitMeta
+
+	for _, tick := range ticks {
+		for _, hash := range commitsByTick[tick] {
+			meta = append(meta, CommitMeta{
+				Hash: hash.String(),
+				Tick: tick,
+			})
+		}
+	}
+
+	return meta
 }
 
 func outputCombinedPlot(

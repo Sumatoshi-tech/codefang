@@ -22,6 +22,9 @@ const (
 	testSentimentVeryLow  = 0.1
 
 	floatDelta = 0.01
+
+	testHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	testHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
 // Helper function to create test hash.
@@ -456,6 +459,78 @@ func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
 	assert.Equal(t, 1, result.PositiveTicks)
 	assert.Equal(t, 1, result.NeutralTicks)
 	assert.Equal(t, 1, result.NegativeTicks)
+}
+
+// --- AggregateCommitsToTicks Tests ---.
+
+func TestAggregateCommitsToTicks_SingleCommitPerTick(t *testing.T) {
+	t.Parallel()
+
+	commentsByCommit := map[string][]string{
+		testHashA: {"comment 1", "comment 2"},
+		testHashB: {"comment 3"},
+	}
+	commitsByTick := map[int][]gitlib.Hash{
+		0: {gitlib.NewHash(testHashA)},
+		1: {gitlib.NewHash(testHashB)},
+	}
+
+	cbt, ebt := AggregateCommitsToTicks(commentsByCommit, commitsByTick)
+
+	require.Len(t, cbt, 2)
+	assert.Len(t, cbt[0], 2)
+	assert.Len(t, cbt[1], 1)
+	assert.InDelta(t, mockSentimentValue, ebt[0], floatDelta)
+	assert.InDelta(t, mockSentimentValue, ebt[1], floatDelta)
+}
+
+func TestAggregateCommitsToTicks_MultipleCommitsPerTick(t *testing.T) {
+	t.Parallel()
+
+	commentsByCommit := map[string][]string{
+		testHashA: {"comment 1"},
+		testHashB: {"comment 2", "comment 3"},
+	}
+	commitsByTick := map[int][]gitlib.Hash{
+		0: {gitlib.NewHash(testHashA), gitlib.NewHash(testHashB)},
+	}
+
+	cbt, ebt := AggregateCommitsToTicks(commentsByCommit, commitsByTick)
+
+	require.Len(t, cbt, 1)
+	assert.Len(t, cbt[0], 3)
+	assert.InDelta(t, mockSentimentValue, ebt[0], floatDelta)
+}
+
+func TestAggregateCommitsToTicks_Empty(t *testing.T) {
+	t.Parallel()
+
+	cbt, ebt := AggregateCommitsToTicks(nil, nil)
+
+	assert.Nil(t, cbt)
+	assert.Nil(t, ebt)
+}
+
+func TestComputeAllMetrics_FromCommitData(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"comments_by_commit": map[string][]string{
+			testHashA: {"good work on this", "nice refactor here"},
+			testHashB: {"this code is broken"},
+		},
+		"commits_by_tick": map[int][]gitlib.Hash{
+			0: {gitlib.NewHash(testHashA)},
+			1: {gitlib.NewHash(testHashB)},
+		},
+	}
+
+	result, err := ComputeAllMetrics(report)
+	require.NoError(t, err)
+
+	assert.Len(t, result.TimeSeries, 2)
+	assert.Equal(t, 2, result.Aggregate.TotalTicks)
+	assert.Equal(t, 3, result.Aggregate.TotalComments)
 }
 
 // --- ComputeAllMetrics Tests ---.

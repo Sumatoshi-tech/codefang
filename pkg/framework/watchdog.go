@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -33,6 +36,7 @@ const (
 type Watchdog struct {
 	mu sync.Mutex
 
+	span     trace.Span
 	repoPath string
 	config   CoordinatorConfig
 	timeout  time.Duration
@@ -53,6 +57,7 @@ type Watchdog struct {
 
 // WatchdogConfig holds parameters for creating a Watchdog.
 type WatchdogConfig struct {
+	Span         trace.Span
 	RepoPath     string
 	Config       CoordinatorConfig
 	PoolRepos    []*gitlib.Repository
@@ -73,7 +78,10 @@ func NewWatchdog(cfg WatchdogConfig) *Watchdog {
 		lg = slog.Default()
 	}
 
+	span := cfg.Span
+
 	return &Watchdog{
+		span:         span,
 		repoPath:     cfg.RepoPath,
 		config:       cfg.Config,
 		timeout:      cfg.Config.WorkerTimeout,
@@ -143,6 +151,13 @@ func (wd *Watchdog) handleStall(reqType string) {
 		slog.Duration("timeout", wd.timeout),
 	)
 
+	if wd.span != nil {
+		wd.span.AddEvent("worker.stall_detected", trace.WithAttributes(
+			attribute.String("request_type", reqType),
+			attribute.Int("stall_count", wd.stalledCount),
+		))
+	}
+
 	wd.recreateOneWorker()
 }
 
@@ -178,6 +193,12 @@ func (wd *Watchdog) recreateOneWorker() {
 	wd.logger.Info("worker recreated",
 		slog.Int("worker_index", idx),
 	)
+
+	if wd.span != nil {
+		wd.span.AddEvent("worker.recreated", trace.WithAttributes(
+			attribute.Int("worker_index", idx),
+		))
+	}
 }
 
 // BackoffDuration returns the backoff duration for the given retry attempt (0-indexed).

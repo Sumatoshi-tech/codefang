@@ -494,7 +494,7 @@ func BenchmarkToCanonicalNode_Small(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, err := parser.Parse("test.go", source)
+		_, err := parser.Parse(context.Background(), "test.go", source)
 		if err != nil {
 			b.Fatalf("Parse failed: %v", err)
 		}
@@ -507,7 +507,7 @@ func BenchmarkToCanonicalNode_Large_WarmCache(b *testing.B) {
 	source := []byte(largeGoSource)
 
 	// Warm up the pattern cache by parsing once before timing.
-	_, err := parser.Parse("warmup.go", source)
+	_, err := parser.Parse(context.Background(), "warmup.go", source)
 	if err != nil {
 		b.Fatalf("Warmup parse failed: %v", err)
 	}
@@ -515,7 +515,7 @@ func BenchmarkToCanonicalNode_Large_WarmCache(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, parseErr := parser.Parse("test.go", source)
+		_, parseErr := parser.Parse(context.Background(), "test.go", source)
 		if parseErr != nil {
 			b.Fatalf("Parse failed: %v", parseErr)
 		}
@@ -536,7 +536,7 @@ func BenchmarkToCanonicalNode_Medium(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, err := parser.Parse("test.go", source)
+		_, err := parser.Parse(context.Background(), "test.go", source)
 		if err != nil {
 			b.Fatalf("Parse failed: %v", err)
 		}
@@ -551,7 +551,7 @@ func BenchmarkToCanonicalNode_Large(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_, err := parser.Parse("test.go", source)
+		_, err := parser.Parse(context.Background(), "test.go", source)
 		if err != nil {
 			b.Fatalf("Parse failed: %v", err)
 		}

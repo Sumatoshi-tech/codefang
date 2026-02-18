@@ -2,6 +2,7 @@ package streaming_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +72,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 	// --- Non-streaming baseline ---.
 	baselineAnalyzers, baselineLeaf := buildPipeline()
 	runner1 := framework.NewRunner(libRepo, repoPath, baselineAnalyzers...)
-	baselineResults, err := runner1.Run(commits)
+	baselineResults, err := runner1.Run(context.Background(), commits)
 	require.NoError(t, err, "non-streaming Run")
 	baselineYAML := serializeReport(t, baselineLeaf, baselineResults[baselineLeaf])
 	require.NotEmpty(t, baselineYAML, "baseline report should not be empty")
@@ -102,8 +103,8 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, runner2.ProcessChunk(commits[chunk.start:chunk.end], chunk.start),
-			"ProcessChunk %d", i)
+		_, processErr := runner2.ProcessChunk(context.Background(), commits[chunk.start:chunk.end], chunk.start, i)
+		require.NoError(t, processErr, "ProcessChunk %d", i)
 	}
 
 	streamResults, err := runner2.Finalize()

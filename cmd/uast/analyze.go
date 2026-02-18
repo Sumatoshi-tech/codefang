@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,7 +68,7 @@ func runAnalyze(files []string, output, format string) error {
 			return fmt.Errorf("failed to read file %s: %w", file, err)
 		}
 
-		parsedNode, err := parser.Parse(file, code)
+		parsedNode, err := parser.Parse(context.Background(), file, code)
 		if err != nil {
 			return fmt.Errorf("parse error in %s: %w", file, err)
 		}

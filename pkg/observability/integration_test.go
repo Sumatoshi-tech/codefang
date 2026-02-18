@@ -27,17 +27,17 @@ func TestEndToEnd_TraceExported(t *testing.T) {
 
 	tracer := tp.Tracer("codefang")
 
-	// Simulate a pipeline: root span with child spans.
+	// Simulate a pipeline: root span with child phase spans.
 	ctx, rootSpan := tracer.Start(context.Background(), "codefang.run")
 
-	_, blobSpan := tracer.Start(ctx, "codefang.pipeline.blob")
-	blobSpan.End()
+	_, initSpan := tracer.Start(ctx, "codefang.init")
+	initSpan.End()
 
-	_, diffSpan := tracer.Start(ctx, "codefang.pipeline.diff")
-	diffSpan.End()
+	_, analysisSpan := tracer.Start(ctx, "codefang.analysis")
+	analysisSpan.End()
 
-	_, uastSpan := tracer.Start(ctx, "codefang.pipeline.uast")
-	uastSpan.End()
+	_, reportSpan := tracer.Start(ctx, "codefang.report")
+	reportSpan.End()
 
 	rootSpan.End()
 
@@ -59,11 +59,11 @@ func TestEndToEnd_TraceExported(t *testing.T) {
 	}
 
 	assert.Contains(t, spanNames, "codefang.run")
-	assert.Contains(t, spanNames, "codefang.pipeline.blob")
-	assert.Contains(t, spanNames, "codefang.pipeline.diff")
-	assert.Contains(t, spanNames, "codefang.pipeline.uast")
+	assert.Contains(t, spanNames, "codefang.init")
+	assert.Contains(t, spanNames, "codefang.analysis")
+	assert.Contains(t, spanNames, "codefang.report")
 
-	// Verify parent-child relationship: blob/diff/uast have root as parent.
+	// Verify parent-child relationship: init/analysis/report have root as parent.
 	rootSpanID := spans[3].SpanContext.SpanID()
 	for _, span := range spans[:3] {
 		assert.Equal(t, rootSpanID, span.Parent.SpanID(),
@@ -130,7 +130,7 @@ func TestEndToEnd_MiddlewareProducesSpans(t *testing.T) {
 		rw.WriteHeader(http.StatusOK)
 	})
 
-	mw := observability.HTTPMiddleware(tracer, inner)
+	mw := observability.HTTPMiddleware(tracer, discardLogger, inner)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", http.NoBody)
 	rec := httptest.NewRecorder()

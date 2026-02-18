@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,7 +142,7 @@ func parseFileForQuery(file string) (*node.Node, error) {
 		return nil, fmt.Errorf("failed to read file %s: %w", file, readErr)
 	}
 
-	parsedNode, parseErr := parser.Parse(file, code)
+	parsedNode, parseErr := parser.Parse(context.Background(), file, code)
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse error in %s: %w", file, parseErr)
 	}
@@ -211,7 +212,7 @@ func loadInteractiveInputFromFile(input string) (*node.Node, error) {
 			return nil, fmt.Errorf("failed to read file %s: %w", input, readErr)
 		}
 
-		parsedNode, parseErr := parser.Parse(input, code)
+		parsedNode, parseErr := parser.Parse(context.Background(), input, code)
 		if parseErr != nil {
 			return nil, fmt.Errorf("parse error in %s: %w", input, parseErr)
 		}
@@ -249,7 +250,7 @@ func loadInteractiveInputFromStdin() (*node.Node, error) {
 		return nil, fmt.Errorf("failed to initialize parser: %w", err)
 	}
 
-	parsedNode, err := parser.Parse("stdin.go", code)
+	parsedNode, err := parser.Parse(context.Background(), "stdin.go", code)
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}

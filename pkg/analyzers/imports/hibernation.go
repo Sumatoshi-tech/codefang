@@ -30,3 +30,10 @@ func (h *HistoryAnalyzer) Boot() error {
 
 	return nil
 }
+
+// stateGrowthPerCommit is the estimated per-commit memory growth in bytes
+// for the imports analyzer (author-language-import-tick maps).
+const stateGrowthPerCommit = 50 * 1024
+
+// StateGrowthPerCommit returns the estimated per-commit memory growth in bytes.
+func (h *HistoryAnalyzer) StateGrowthPerCommit() int64 { return stateGrowthPerCommit }

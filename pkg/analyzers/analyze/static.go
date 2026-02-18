@@ -49,7 +49,7 @@ func NewStaticService(analyzers []StaticAnalyzer) *StaticService {
 
 // AnalyzeFolder runs static analyzers for supported files in a folder tree.
 // Files are discovered sequentially, then analyzed in parallel using a worker pool.
-func (svc *StaticService) AnalyzeFolder(rootPath string, analyzerList []string) (map[string]Report, error) {
+func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, analyzerList []string) (map[string]Report, error) {
 	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
 	aggregators := svc.initAggregators(analyzersToRun)
 
@@ -58,7 +58,7 @@ func (svc *StaticService) AnalyzeFolder(rootPath string, analyzerList []string) 
 		return nil, err
 	}
 
-	err = svc.analyzeFilesParallel(files, analyzersToRun, aggregators)
+	err = svc.analyzeFilesParallel(ctx, files, analyzersToRun, aggregators)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +110,7 @@ func (ws *workerState) setError(err error) {
 
 // analyzeFilesParallel processes files using a pool of workers, each with its own parser.
 func (svc *StaticService) analyzeFilesParallel(
+	ctx context.Context,
 	files []string,
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
@@ -123,7 +124,7 @@ func (svc *StaticService) analyzeFilesParallel(
 	wg.Add(numWorkers)
 
 	for range numWorkers {
-		go svc.fileWorker(&wg, fileChan, analyzersToRun, aggregators, state)
+		go svc.fileWorker(ctx, &wg, fileChan, analyzersToRun, aggregators, state)
 	}
 
 	for _, filePath := range files {
@@ -138,6 +139,7 @@ func (svc *StaticService) analyzeFilesParallel(
 
 // fileWorker is the body of each parallel file analysis goroutine.
 func (svc *StaticService) fileWorker(
+	ctx context.Context,
 	wg *sync.WaitGroup,
 	fileChan <-chan string,
 	analyzersToRun []string,
@@ -158,7 +160,7 @@ func (svc *StaticService) fileWorker(
 	}
 
 	for filePath := range fileChan {
-		stopped := svc.processFile(filePath, parser, analyzersToRun, aggregators, state)
+		stopped := svc.processFile(ctx, filePath, parser, analyzersToRun, aggregators, state)
 		if stopped {
 			return
 		}
@@ -168,13 +170,14 @@ func (svc *StaticService) fileWorker(
 // processFile analyzes a single file and aggregates the results.
 // Returns true if the worker should stop due to a fatal error.
 func (svc *StaticService) processFile(
+	ctx context.Context,
 	filePath string,
 	parser *uast.Parser,
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
 	state *workerState,
 ) bool {
-	reportMap, analyzeErr := svc.analyzeFile(filePath, parser, analyzersToRun)
+	reportMap, analyzeErr := svc.analyzeFile(ctx, filePath, parser, analyzersToRun)
 	if analyzeErr != nil {
 		if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
 			return false
@@ -225,18 +228,20 @@ func ShouldSkipFolderNode(path string, entry os.DirEntry, walkErr error, parser 
 	return false, nil
 }
 
-func (svc *StaticService) analyzeFile(path string, parser *uast.Parser, analyzersToRun []string) (map[string]Report, error) {
+func (svc *StaticService) analyzeFile(
+	ctx context.Context, path string, parser *uast.Parser, analyzersToRun []string,
+) (map[string]Report, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	uastNode, err := parser.Parse(path, content)
+	uastNode, err := parser.Parse(ctx, path, content)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
-	results, err := svc.runAnalyzers(context.Background(), uastNode, analyzersToRun)
+	results, err := svc.runAnalyzers(ctx, uastNode, analyzersToRun)
 	if err != nil {
 		return nil, fmt.Errorf("run analyzers for %s: %w", path, err)
 	}
@@ -438,6 +443,7 @@ func (svc *StaticService) FormatPerAnalyzer(
 
 // RunAndFormat resolves analyzer IDs, runs analysis on the given path, and formats the output.
 func (svc *StaticService) RunAndFormat(
+	ctx context.Context,
 	path string,
 	analyzerIDs []string,
 	format string,
@@ -449,7 +455,7 @@ func (svc *StaticService) RunAndFormat(
 		return err
 	}
 
-	results, err := svc.AnalyzeFolder(path, analyzerNames)
+	results, err := svc.AnalyzeFolder(ctx, path, analyzerNames)
 	if err != nil {
 		return err
 	}

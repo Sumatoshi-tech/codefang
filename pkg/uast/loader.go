@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"strings"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
@@ -89,7 +90,7 @@ func (l *Loader) loadFromFiles() {
 
 		p, err := l.LoadParser(file)
 		if err != nil {
-			fmt.Printf("failed to load parser for %s: %v\n", d.Name(), err)
+			slog.Default().Warn("failed to load parser", "file", d.Name(), "error", err)
 			return nil
 		}
 
@@ -103,7 +104,7 @@ func (l *Loader) loadFromFiles() {
 	})
 
 	if err != nil {
-		fmt.Printf("error discovering parsers: %v\n", err)
+		slog.Default().Error("error discovering parsers", "error", err)
 	}
 }
 

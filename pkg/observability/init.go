@@ -180,8 +180,15 @@ func buildTracerProvider(
 		return nil, nil, fmt.Errorf("create trace exporter: %w", err)
 	}
 
+	batcher := sdktrace.NewBatchSpanProcessor(exporter)
+
+	var filterLogger *slog.Logger
+	if cfg.DebugTrace {
+		filterLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	}
+
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSpanProcessor(NewAttributeFilter(batcher, filterLogger)),
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(selectSampler(cfg)),
 	)

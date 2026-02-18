@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -39,7 +40,7 @@ type Changes []*Change
 
 // TreeDiff computes the changes between two trees using libgit2.
 // Skips diff when both tree OIDs are equal (e.g. metadata-only commits).
-func TreeDiff(repo *Repository, oldTree, newTree *Tree) (Changes, error) {
+func TreeDiff(_ context.Context, repo *Repository, oldTree, newTree *Tree) (Changes, error) {
 	if oldTree != nil && newTree != nil && oldTree.Hash() == newTree.Hash() {
 		return make(Changes, 0), nil
 	}
@@ -105,7 +106,7 @@ func TreeDiff(repo *Repository, oldTree, newTree *Tree) (Changes, error) {
 }
 
 // InitialTreeChanges creates changes for an initial commit (all files are insertions).
-func InitialTreeChanges(repo *Repository, tree *Tree) (Changes, error) {
+func InitialTreeChanges(_ context.Context, repo *Repository, tree *Tree) (Changes, error) {
 	if tree == nil {
 		return nil, nil
 	}
@@ -185,15 +186,20 @@ type File struct {
 	repo *Repository
 }
 
-// Contents returns the file contents.
-func (f *File) Contents() ([]byte, error) {
-	blob, err := f.repo.LookupBlob(f.Hash)
+// ContentsContext returns the file contents, accepting a context for tracing.
+func (f *File) ContentsContext(ctx context.Context) ([]byte, error) {
+	blob, err := f.repo.LookupBlob(ctx, f.Hash)
 	if err != nil {
 		return nil, err
 	}
 	defer blob.Free()
 
 	return blob.Contents(), nil
+}
+
+// Contents returns the file contents.
+func (f *File) Contents() ([]byte, error) {
+	return f.ContentsContext(context.Background())
 }
 
 // Reader returns a reader for the file contents.
@@ -206,9 +212,14 @@ func (f *File) Reader() (io.ReadCloser, error) {
 	return io.NopCloser(&blobReader{data: contents}), nil
 }
 
+// BlobContext returns the blob object for this file, accepting a context for tracing.
+func (f *File) BlobContext(ctx context.Context) (*Blob, error) {
+	return f.repo.LookupBlob(ctx, f.Hash)
+}
+
 // Blob returns the blob object for this file.
 func (f *File) Blob() (*Blob, error) {
-	return f.repo.LookupBlob(f.Hash)
+	return f.BlobContext(context.Background())
 }
 
 // TreeFiles returns all files in a tree.

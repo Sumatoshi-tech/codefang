@@ -2,6 +2,7 @@
 package shotness
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -394,12 +395,12 @@ func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (s *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	if !s.shouldConsumeCommit(ctx.Commit) {
+func (s *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	if !s.shouldConsumeCommit(ac.Commit) {
 		return nil
 	}
 
-	changesList := s.UAST.Changes()
+	changesList := s.UAST.Changes(ctx)
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 

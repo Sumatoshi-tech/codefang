@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -75,7 +76,7 @@ type HistoryAnalyzer interface {
 	Initialize(repository *gitlib.Repository) error
 
 	// Consumption.
-	Consume(ctx *Context) error
+	Consume(ctx context.Context, ac *Context) error
 
 	// Result handling.
 	Finalize() (Report, error)

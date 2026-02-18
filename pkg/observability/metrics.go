@@ -21,6 +21,10 @@ const (
 	statusError = "error"
 )
 
+// durationBucketBoundaries covers 10ms to 600s for analysis workloads
+// that range from sub-second static checks to multi-minute history pipelines.
+var durationBucketBoundaries = []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600}
+
 // REDMetrics holds the OTel instruments for Rate, Error, Duration metrics.
 type REDMetrics struct {
 	requestsTotal    metric.Int64Counter
@@ -42,6 +46,7 @@ func NewREDMetrics(mt metric.Meter) (*REDMetrics, error) {
 	reqDuration, err := mt.Float64Histogram(metricRequestDuration,
 		metric.WithDescription("Request duration in seconds"),
 		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBucketBoundaries...),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create %s: %w", metricRequestDuration, err)

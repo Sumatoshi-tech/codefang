@@ -2,9 +2,11 @@
 package devs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,12 +27,23 @@ type HistoryAnalyzer struct {
 	Ticks                *plumbing.TicksSinceStart
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
-	tickData             map[int]map[int]*DevTick
+	commitDevData        map[string]*CommitDevData // per-commit stats keyed by hash hex.
+	commitsByTick        map[int][]gitlib.Hash
 	merges               map[gitlib.Hash]bool
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
 	Anonymize            bool
+}
+
+// CommitDevData holds aggregate dev stats for a single commit.
+type CommitDevData struct {
+	Commits   int                              `json:"commits"`
+	Added     int                              `json:"lines_added"`
+	Removed   int                              `json:"lines_removed"`
+	Changed   int                              `json:"lines_changed"`
+	AuthorID  int                              `json:"author_id"`
+	Languages map[string]pkgplumbing.LineStats `json:"languages,omitempty"`
 }
 
 // DevTick is the statistics for a development tick and a particular developer.
@@ -111,6 +124,10 @@ func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 		d.tickSize = val
 	}
 
+	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); exists {
+		d.commitsByTick = val
+	}
+
 	return nil
 }
 
@@ -122,16 +139,16 @@ func (d *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
 
-	d.tickData = map[int]map[int]*DevTick{}
+	d.commitDevData = map[string]*CommitDevData{}
 	d.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (d *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
 	// OneShotMergeProcessor logic.
-	commit := ctx.Commit
+	commit := ac.Commit
 	shouldConsume := true
 	commitHash := commit.Hash()
 
@@ -154,23 +171,15 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	tick := d.Ticks.Tick
-
-	devstick, exists := d.tickData[tick]
-	if !exists {
-		devstick = map[int]*DevTick{}
-		d.tickData[tick] = devstick
+	cdd := &CommitDevData{
+		Commits:   1,
+		AuthorID:  author,
+		Languages: make(map[string]pkgplumbing.LineStats),
 	}
+	d.commitDevData[commit.Hash().String()] = cdd
 
-	dd, exists := devstick[author]
-	if !exists {
-		dd = &DevTick{Languages: map[string]pkgplumbing.LineStats{}}
-		devstick[author] = dd
-	}
+	isMerge := ac.IsMerge
 
-	dd.Commits++
-
-	isMerge := ctx.IsMerge
 	if isMerge {
 		return nil
 	}
@@ -179,15 +188,16 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 	lineStats := d.LineStats.LineStats
 
 	for changeEntry, stats := range lineStats {
-		dd.Added += stats.Added
-		dd.Removed += stats.Removed
-		dd.Changed += stats.Changed
+		cdd.Added += stats.Added
+		cdd.Removed += stats.Removed
+		cdd.Changed += stats.Changed
+
 		lang := langs[changeEntry.Hash]
-		langStats := dd.Languages[lang]
-		dd.Languages[lang] = pkgplumbing.LineStats{
-			Added:   langStats.Added + stats.Added,
-			Removed: langStats.Removed + stats.Removed,
-			Changed: langStats.Changed + stats.Changed,
+		cddLangStats := cdd.Languages[lang]
+		cdd.Languages[lang] = pkgplumbing.LineStats{
+			Added:   cddLangStats.Added + stats.Added,
+			Removed: cddLangStats.Removed + stats.Removed,
+			Changed: cddLangStats.Changed + stats.Changed,
 		}
 	}
 
@@ -208,7 +218,8 @@ func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}
 
 	return analyze.Report{
-		"Ticks":              d.tickData,
+		"CommitDevData":      d.commitDevData,
+		"CommitsByTick":      d.commitsByTick,
 		"ReversedPeopleDict": names,
 		"TickSize":           d.tickSize,
 	}, nil
@@ -241,52 +252,7 @@ func (d *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 			continue
 		}
 
-		d.mergeBranch(other)
-	}
-}
-
-// mergeBranch merges a single branch's ticks into this analyzer.
-func (d *HistoryAnalyzer) mergeBranch(other *HistoryAnalyzer) {
-	for tick, otherDevTick := range other.tickData {
-		d.ensureTickExists(tick)
-
-		for devID, otherStats := range otherDevTick {
-			d.mergeDevStats(tick, devID, otherStats)
-		}
-	}
-}
-
-// ensureTickExists ensures the tick map exists.
-func (d *HistoryAnalyzer) ensureTickExists(tick int) {
-	if d.tickData[tick] == nil {
-		d.tickData[tick] = make(map[int]*DevTick)
-	}
-}
-
-// mergeDevStats merges stats for a single developer in a tick.
-func (d *HistoryAnalyzer) mergeDevStats(tick, devID int, otherStats *DevTick) {
-	if d.tickData[tick][devID] == nil {
-		d.tickData[tick][devID] = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
-	}
-
-	currentStats := d.tickData[tick][devID]
-	currentStats.Commits += otherStats.Commits
-	currentStats.Added += otherStats.Added
-	currentStats.Removed += otherStats.Removed
-	currentStats.Changed += otherStats.Changed
-
-	mergeDevLanguageStats(currentStats.Languages, otherStats.Languages)
-}
-
-// mergeDevLanguageStats merges language-specific stats.
-func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
-	for lang, langStats := range source {
-		currentLangStats := target[lang]
-		target[lang] = pkgplumbing.LineStats{
-			Added:   currentLangStats.Added + langStats.Added,
-			Removed: currentLangStats.Removed + langStats.Removed,
-			Changed: currentLangStats.Changed + langStats.Changed,
-		}
+		maps.Copy(d.commitDevData, other.commitDevData)
 	}
 }
 

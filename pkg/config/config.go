@@ -33,6 +33,13 @@ type HistoryConfig struct {
 	Sentiment SentimentConfig `mapstructure:"sentiment"`
 	Shotness  ShotnessConfig  `mapstructure:"shotness"`
 	Typos     TyposConfig     `mapstructure:"typos"`
+	Anomaly   AnomalyConfig   `mapstructure:"anomaly"`
+}
+
+// AnomalyConfig holds temporal anomaly detection analyzer settings.
+type AnomalyConfig struct {
+	Threshold  float64 `mapstructure:"threshold"`
+	WindowSize int     `mapstructure:"window_size"`
 }
 
 // BurndownConfig holds burndown analyzer settings.
@@ -112,6 +119,10 @@ var (
 	ErrInvalidImportsGoroutines = errors.New("history.imports.goroutines must be positive")
 	// ErrInvalidImportsMaxFileSize indicates the max file size is not positive.
 	ErrInvalidImportsMaxFileSize = errors.New("history.imports.max_file_size must be positive")
+	// ErrInvalidAnomalyThreshold indicates the threshold is not positive.
+	ErrInvalidAnomalyThreshold = errors.New("history.anomaly.threshold must be positive")
+	// ErrInvalidAnomalyWindowSize indicates the window size is less than 2.
+	ErrInvalidAnomalyWindowSize = errors.New("history.anomaly.window_size must be at least 2")
 )
 
 // Validate checks Config invariants and returns the first error found.
@@ -173,5 +184,16 @@ func (c *Config) validateHistory() error {
 		return ErrInvalidImportsMaxFileSize
 	}
 
+	if c.History.Anomaly.Threshold < 0 {
+		return ErrInvalidAnomalyThreshold
+	}
+
+	if c.History.Anomaly.WindowSize != 0 && c.History.Anomaly.WindowSize < minAnomalyWindowSize {
+		return ErrInvalidAnomalyWindowSize
+	}
+
 	return nil
 }
+
+// minAnomalyWindowSize is the minimum valid sliding window for anomaly detection.
+const minAnomalyWindowSize = 2

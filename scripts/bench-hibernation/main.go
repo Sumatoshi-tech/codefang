@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -195,7 +196,7 @@ func main() {
 
 		log.Printf("processing chunk %d/%d (commits %d-%d)", i+1, len(chunks), chunk.start, chunk.end)
 
-		if err := runner.ProcessChunk(commits[chunk.start:chunk.end], chunk.start); err != nil {
+		if _, err := runner.ProcessChunk(context.Background(), commits[chunk.start:chunk.end], chunk.start, i); err != nil {
 			log.Fatalf("process chunk %d: %v", i+1, err)
 		}
 	}

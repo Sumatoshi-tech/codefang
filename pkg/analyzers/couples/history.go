@@ -2,6 +2,7 @@
 package couples
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -135,8 +136,8 @@ func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
+func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
+	commit := ac.Commit
 	shouldConsume := true
 
 	if commit.NumParents() > 1 {
@@ -147,7 +148,7 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		}
 	}
 
-	mergeMode := ctx.IsMerge
+	mergeMode := ac.IsMerge
 	c.lastCommit = commit
 
 	author := c.Identity.AuthorID
@@ -164,8 +165,8 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		c.peopleCommits[author]++
 	}
 
-	context := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
-	c.updateFileCouplings(context)
+	couplingCtx := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
+	c.updateFileCouplings(couplingCtx)
 
 	return nil
 }
@@ -175,18 +176,18 @@ func (c *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 func (c *HistoryAnalyzer) processTreeChanges(
 	treeDiff gitlib.Changes, mergeMode bool, author int,
 ) []string {
-	context := make([]string, 0, len(treeDiff))
+	couplingCtx := make([]string, 0, len(treeDiff))
 
 	for _, change := range treeDiff {
-		context = c.processOneChange(change, mergeMode, author, context)
+		couplingCtx = c.processOneChange(change, mergeMode, author, couplingCtx)
 	}
 
-	return context
+	return couplingCtx
 }
 
 // processOneChange handles a single tree change and returns the updated context.
 func (c *HistoryAnalyzer) processOneChange(
-	change *gitlib.Change, mergeMode bool, author int, context []string,
+	change *gitlib.Change, mergeMode bool, author int, couplingCtx []string,
 ) []string {
 	toName := change.To.Name
 	fromName := change.From.Name
@@ -194,7 +195,7 @@ func (c *HistoryAnalyzer) processOneChange(
 	switch change.Action {
 	case gitlib.Insert:
 		if !mergeMode || c.files[toName] == nil {
-			context = append(context, toName)
+			couplingCtx = append(couplingCtx, toName)
 			c.people[author][toName]++
 		}
 	case gitlib.Delete:
@@ -207,22 +208,22 @@ func (c *HistoryAnalyzer) processOneChange(
 		}
 
 		if !mergeMode || c.files[toName] == nil {
-			context = append(context, toName)
+			couplingCtx = append(couplingCtx, toName)
 			c.people[author][toName]++
 		}
 	}
 
-	return context
+	return couplingCtx
 }
 
 // updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
-func (c *HistoryAnalyzer) updateFileCouplings(context []string) {
-	if len(context) > CouplesMaximumMeaningfulContextSize {
+func (c *HistoryAnalyzer) updateFileCouplings(couplingCtx []string) {
+	if len(couplingCtx) > CouplesMaximumMeaningfulContextSize {
 		return
 	}
 
-	for _, file := range context {
-		for _, otherFile := range context {
+	for _, file := range couplingCtx {
+		for _, otherFile := range couplingCtx {
 			lane, exists := c.files[file]
 			if !exists {
 				lane = map[string]int{}

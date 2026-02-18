@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -101,7 +102,7 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 // Consume resets state for the new commit. Parsing is deferred until Changes() is called.
 // Releases previous commit's UAST trees back to the node/positions pools.
 // If the context contains pre-computed UAST changes from the pipeline, they are used directly.
-func (c *UASTChangesAnalyzer) Consume(ctx *analyze.Context) error {
+func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
 	// Release previous commit's UAST trees back to pools for reuse.
 	for _, ch := range c.changes {
 		node.ReleaseTree(ch.Before)
@@ -109,8 +110,8 @@ func (c *UASTChangesAnalyzer) Consume(ctx *analyze.Context) error {
 	}
 
 	// Use pre-computed UAST changes from the pipeline if available.
-	if ctx.UASTChanges != nil {
-		c.changes = ctx.UASTChanges
+	if ac.UASTChanges != nil {
+		c.changes = ac.UASTChanges
 		c.parsed = true
 	} else {
 		c.changes = nil
@@ -122,7 +123,7 @@ func (c *UASTChangesAnalyzer) Consume(ctx *analyze.Context) error {
 
 // Changes returns parsed UAST changes, parsing lazily on first call per commit.
 // This avoids expensive UAST parsing when downstream analyzers don't need it.
-func (c *UASTChangesAnalyzer) Changes() []uast.Change {
+func (c *UASTChangesAnalyzer) Changes(ctx context.Context) []uast.Change {
 	if c.parsed {
 		return c.changes
 	}
@@ -132,9 +133,9 @@ func (c *UASTChangesAnalyzer) Changes() []uast.Change {
 	cache := c.BlobCache.Cache
 
 	if len(treeChanges) <= 1 || c.Goroutines <= 1 {
-		c.changes = c.changesSequential(treeChanges, cache)
+		c.changes = c.changesSequential(ctx, treeChanges, cache)
 	} else {
-		c.changes = c.changesParallel(treeChanges, cache)
+		c.changes = c.changesParallel(ctx, treeChanges, cache)
 	}
 
 	return c.changes
@@ -142,14 +143,15 @@ func (c *UASTChangesAnalyzer) Changes() []uast.Change {
 
 // changesSequential parses UAST changes one file at a time.
 func (c *UASTChangesAnalyzer) changesSequential(
+	ctx context.Context,
 	treeChanges gitlib.Changes,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) []uast.Change {
 	var result []uast.Change
 
 	for _, change := range treeChanges {
-		before := c.parseBeforeVersion(change, cache)
-		after := c.parseAfterVersion(change, cache)
+		before := c.parseBeforeVersion(ctx, change, cache)
+		after := c.parseAfterVersion(ctx, change, cache)
 
 		if before != nil || after != nil {
 			result = append(result, uast.Change{
@@ -173,6 +175,7 @@ type uastParseResult struct {
 // changesParallel parses UAST changes across multiple goroutines.
 // Each file's before/after parsing is independent and thread-safe.
 func (c *UASTChangesAnalyzer) changesParallel(
+	ctx context.Context,
 	treeChanges gitlib.Changes,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) []uast.Change {
@@ -188,8 +191,8 @@ func (c *UASTChangesAnalyzer) changesParallel(
 			defer wg.Done()
 
 			for change := range jobs {
-				before := c.parseBeforeVersion(change, cache)
-				after := c.parseAfterVersion(change, cache)
+				before := c.parseBeforeVersion(ctx, change, cache)
+				after := c.parseAfterVersion(ctx, change, cache)
 
 				if before != nil || after != nil {
 					results <- uastParseResult{before, after, change}
@@ -221,6 +224,7 @@ func (c *UASTChangesAnalyzer) changesParallel(
 
 // parseBeforeVersion parses the "before" version for modifications and deletions.
 func (c *UASTChangesAnalyzer) parseBeforeVersion(
+	ctx context.Context,
 	change *gitlib.Change,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) *node.Node {
@@ -228,11 +232,12 @@ func (c *UASTChangesAnalyzer) parseBeforeVersion(
 		return nil
 	}
 
-	return c.parseBlob(change.From.Hash, change.From.Name, cache)
+	return c.parseBlob(ctx, change.From.Hash, change.From.Name, cache)
 }
 
 // parseAfterVersion parses the "after" version for modifications and insertions.
 func (c *UASTChangesAnalyzer) parseAfterVersion(
+	ctx context.Context,
 	change *gitlib.Change,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) *node.Node {
@@ -240,11 +245,12 @@ func (c *UASTChangesAnalyzer) parseAfterVersion(
 		return nil
 	}
 
-	return c.parseBlob(change.To.Hash, change.To.Name, cache)
+	return c.parseBlob(ctx, change.To.Hash, change.To.Name, cache)
 }
 
 // parseBlob parses a blob into a UAST node if the file is supported.
 func (c *UASTChangesAnalyzer) parseBlob(
+	ctx context.Context,
 	hash gitlib.Hash,
 	filename string,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
@@ -258,7 +264,7 @@ func (c *UASTChangesAnalyzer) parseBlob(
 		return nil
 	}
 
-	parsed, err := c.parser.Parse(filename, blob.Data)
+	parsed, err := c.parser.Parse(ctx, filename, blob.Data)
 	if err != nil {
 		return nil
 	}

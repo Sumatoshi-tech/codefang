@@ -1,6 +1,7 @@
 package gitlib_test
 
 import (
+	"context"
 	"io"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestBlobReaderViaBlob(t *testing.T) {
 	file, err := commit.File("test.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	defer blob.Free()
@@ -46,7 +47,7 @@ func TestBlobContents(t *testing.T) {
 	file, err := commit.File("test.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	defer blob.Free()
@@ -68,7 +69,7 @@ func TestBlobHash(t *testing.T) {
 	file, err := commit.File("test.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	defer blob.Free()
@@ -89,7 +90,7 @@ func TestBlobFree(t *testing.T) {
 	file, err := commit.File("test.txt")
 	require.NoError(t, err)
 
-	blob, err := repo.LookupBlob(file.Hash)
+	blob, err := repo.LookupBlob(context.Background(), file.Hash)
 	require.NoError(t, err)
 
 	// Free multiple times should be safe.
@@ -113,7 +114,7 @@ func getHeadCommit(t *testing.T, repo *gitlib.Repository) *gitlib.Commit {
 	head, err := repo.Head()
 	require.NoError(t, err)
 
-	commit, err := repo.LookupCommit(head)
+	commit, err := repo.LookupCommit(context.Background(), head)
 	require.NoError(t, err)
 
 	return commit

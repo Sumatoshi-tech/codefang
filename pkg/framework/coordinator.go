@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -42,10 +43,10 @@ const defaultBlobArenaBytes = 4 * 1024 * 1024
 // in a /proc/meminfo line (e.g. "MemTotal: 16384 kB" has 3 fields).
 const minMemInfoFields = 2
 
-// defaultMemoryLimitBytes is the default soft memory limit (14 GiB).
+// defaultMemoryLimitBytes is the default soft memory limit (4 GiB).
 // This caps peak memory usage while leaving headroom for the OS.
 // Go's GC becomes aggressive as heap approaches this limit, preventing OOM.
-const defaultMemoryLimitBytes = uint64(14 * 1024 * 1024 * 1024)
+const defaultMemoryLimitBytes = uint64(4 * 1024 * 1024 * 1024)
 
 // memoryLimitRatio is the fraction of system memory to use as the soft limit.
 // Go's runtime GC becomes aggressive as heap approaches this limit.
@@ -60,6 +61,30 @@ const (
 	memTotalUnitKiB = "kB"
 	kibibyte        = uint64(1024)
 )
+
+// PipelineStats holds cumulative pipeline metrics for a single Coordinator run.
+// Populated during Process(); valid after the returned channel is fully drained.
+type PipelineStats struct {
+	BlobDuration time.Duration
+	DiffDuration time.Duration
+	UASTDuration time.Duration
+
+	BlobCacheHits   int64
+	BlobCacheMisses int64
+	DiffCacheHits   int64
+	DiffCacheMisses int64
+}
+
+// Add accumulates another PipelineStats into this one (cross-chunk aggregation).
+func (s *PipelineStats) Add(other PipelineStats) {
+	s.BlobDuration += other.BlobDuration
+	s.DiffDuration += other.DiffDuration
+	s.UASTDuration += other.UASTDuration
+	s.BlobCacheHits += other.BlobCacheHits
+	s.BlobCacheMisses += other.BlobCacheMisses
+	s.DiffCacheHits += other.DiffCacheHits
+	s.DiffCacheMisses += other.DiffCacheMisses
+}
 
 // CoordinatorConfig configures the pipeline coordinator.
 type CoordinatorConfig struct {
@@ -134,10 +159,35 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 	}
 }
 
+// Pipeline memory model constants matching pkg/budget/model.go.
+// Duplicated here to avoid a circular dependency (budget imports framework).
+const (
+	runtimeOverhead   = 50 * 1024 * 1024 // Go runtime + libgit2 base.
+	repoHandleSize    = 10 * 1024 * 1024 // Per-worker libgit2 handle.
+	avgDiffEntrySize  = 2 * 1024         // Average cached diff entry.
+	avgCommitDataSize = 64 * 1024        // Average in-flight commit data.
+)
+
+// EstimatedOverhead returns the estimated memory consumed by the pipeline
+// infrastructure (runtime, workers, caches, buffers) — everything except
+// analyzer state. This allows the streaming planner to accurately compute
+// how much memory remains for analyzer state growth.
+func (c CoordinatorConfig) EstimatedOverhead() int64 {
+	workers := int64(c.Workers) * (repoHandleSize + int64(c.BlobArenaSize))
+	caches := c.BlobCacheSize + int64(c.DiffCacheSize)*avgDiffEntrySize
+	buffers := int64(c.BufferSize) * avgCommitDataSize
+
+	return runtimeOverhead + workers + caches + buffers
+}
+
 // Coordinator orchestrates the full data processing pipeline.
 type Coordinator struct {
 	repo   *gitlib.Repository
 	config CoordinatorConfig
+
+	// stats holds cumulative pipeline metrics, populated after Process()
+	// output channel is fully drained.
+	stats PipelineStats
 
 	commitStreamer *CommitStreamer
 	blobPipeline   *BlobPipeline
@@ -239,6 +289,12 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 	}
 }
 
+// Stats returns the pipeline stats collected during Process().
+// Only valid after the channel returned by Process() is fully drained.
+func (c *Coordinator) Stats() PipelineStats {
+	return c.stats
+}
+
 func applyRuntimeTuning(config CoordinatorConfig) []byte {
 	applyGCPercent(config.GCPercent)
 	applyMemoryLimit()
@@ -247,7 +303,7 @@ func applyRuntimeTuning(config CoordinatorConfig) []byte {
 }
 
 // applyMemoryLimit sets Go's soft memory limit based on available system memory.
-// Uses 75% of system memory (capped at 14 GiB) to trigger aggressive GC before OOM.
+// Uses 75% of system memory (capped at 4 GiB) to trigger aggressive GC before OOM.
 // Go's GC uses this as a target: when heap approaches the limit, GC runs more
 // frequently regardless of GOGC. This prevents OOM on large analysis workloads.
 func applyMemoryLimit() {
@@ -331,6 +387,8 @@ func scaleBytesByUnit(value uint64, unit string) uint64 {
 }
 
 // Process runs the full pipeline on a slice of commits.
+// After the returned channel is fully drained, call Stats() to retrieve
+// pipeline timing and cache metrics.
 func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-chan CommitData {
 	// Start all workers.
 	c.seqWorker.Start()
@@ -341,15 +399,33 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 
 	// Pipeline: Commits -> Blobs -> Diffs -> [UAST].
 	commitChan := c.commitStreamer.Stream(ctx, commits)
-	blobChan := c.blobPipeline.Process(ctx, commitChan)
-	diffChan := c.diffPipeline.Process(ctx, blobChan)
+
+	blobHitsBefore, blobMissesBefore := cacheStats(c.blobCache)
+	diffHitsBefore, diffMissesBefore := cacheStats(c.diffCache)
+
+	blobStart := time.Now()
+	blobOut, blobDone := signalOnDrain(c.blobPipeline.Process(ctx, commitChan))
+
+	diffStart := time.Now()
+	diffOut, diffDone := signalOnDrain(c.diffPipeline.Process(ctx, blobOut))
 
 	// Optionally add UAST pipeline stage for pre-computed UAST parsing.
 	var dataChan <-chan CommitData
+
+	var uastDone <-chan struct{}
+
+	var uastStart time.Time
+
 	if c.uastPipeline != nil {
-		dataChan = c.uastPipeline.Process(ctx, diffChan)
+		uastStart = time.Now()
+
+		var uastOut <-chan CommitData
+
+		uastOut, uastDone = signalOnDrain(c.uastPipeline.Process(ctx, diffOut))
+
+		dataChan = uastOut
 	} else {
-		dataChan = diffChan
+		dataChan = diffOut
 	}
 
 	// Ensure workers stop when pipeline is done.
@@ -367,16 +443,12 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 			}
 		}
 
-		// Cleanup
-		// Close request channels to stop workers.
-		close(c.seqRequests)
-		close(c.poolRequests)
+		// All stages are complete. Record timing and cache deltas.
+		c.recordStageTiming(blobDone, blobStart, diffDone, diffStart, uastDone, uastStart)
+		c.recordCacheDeltas(blobHitsBefore, blobMissesBefore, diffHitsBefore, diffMissesBefore)
 
-		c.seqWorker.Stop()
-
-		for _, w := range c.poolWorkers {
-			w.Stop()
-		}
+		// Cleanup: stop workers and free resources.
+		c.stopWorkers()
 
 		// Free pool repos.
 		for _, r := range c.poolRepos {
@@ -385,6 +457,85 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 	}()
 
 	return finalChan
+}
+
+// recordStageTiming waits for each pipeline stage to finish and records its duration.
+func (c *Coordinator) recordStageTiming(
+	blobDone <-chan struct{}, blobStart time.Time,
+	diffDone <-chan struct{}, diffStart time.Time,
+	uastDone <-chan struct{}, uastStart time.Time,
+) {
+	<-blobDone
+
+	c.stats.BlobDuration = time.Since(blobStart)
+
+	<-diffDone
+
+	c.stats.DiffDuration = time.Since(diffStart)
+
+	if uastDone != nil {
+		<-uastDone
+
+		c.stats.UASTDuration = time.Since(uastStart)
+	}
+}
+
+// recordCacheDeltas computes cache hit/miss deltas since the given baselines.
+func (c *Coordinator) recordCacheDeltas(blobHitsBefore, blobMissesBefore, diffHitsBefore, diffMissesBefore int64) {
+	if c.blobCache != nil {
+		c.stats.BlobCacheHits = c.blobCache.CacheHits() - blobHitsBefore
+		c.stats.BlobCacheMisses = c.blobCache.CacheMisses() - blobMissesBefore
+	}
+
+	if c.diffCache != nil {
+		c.stats.DiffCacheHits = c.diffCache.CacheHits() - diffHitsBefore
+		c.stats.DiffCacheMisses = c.diffCache.CacheMisses() - diffMissesBefore
+	}
+}
+
+// stopWorkers closes request channels and stops all workers.
+func (c *Coordinator) stopWorkers() {
+	close(c.seqRequests)
+	close(c.poolRequests)
+
+	c.seqWorker.Stop()
+
+	for _, w := range c.poolWorkers {
+		w.Stop()
+	}
+}
+
+// cacheStatsProvider can report cache hit/miss counters.
+type cacheStatsProvider interface {
+	CacheHits() int64
+	CacheMisses() int64
+}
+
+// cacheStats returns the current hit/miss counters, or zero if cache is nil.
+func cacheStats[T cacheStatsProvider](c T) (hits, misses int64) {
+	if reflect.ValueOf(&c).Elem().IsNil() {
+		return 0, 0
+	}
+
+	return c.CacheHits(), c.CacheMisses()
+}
+
+// signalOnDrain returns a channel that is closed after all items from src
+// have been forwarded to dst. This enables ending stage spans independently.
+func signalOnDrain[T any](src <-chan T) (forwarded <-chan T, drained <-chan struct{}) {
+	sig := make(chan struct{})
+	out := make(chan T)
+
+	go func() {
+		defer close(sig)
+		defer close(out)
+
+		for item := range src {
+			out <- item
+		}
+	}()
+
+	return out, sig
 }
 
 // ProcessSingle processes a single commit.

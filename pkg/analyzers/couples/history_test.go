@@ -2,6 +2,7 @@ package couples
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"insert",
 	)
-	require.NoError(t, c.Consume(&analyze.Context{Commit: commit1}))
+	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit1}))
 
 	if c.peopleCommits[0] != 1 {
 		t.Errorf("expected author 0 commits 1, got %d", c.peopleCommits[0])
@@ -112,7 +113,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"modify",
 	)
-	require.NoError(t, c.Consume(&analyze.Context{Commit: commit2}))
+	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit2}))
 
 	if c.people[1]["f1"] != 1 {
 		t.Errorf("expected author 1 f1 count 1, got %d", c.people[1]["f1"])
@@ -131,7 +132,7 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"delete",
 	)
-	require.NoError(t, c.Consume(&analyze.Context{Commit: commit3}))
+	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit3}))
 
 	if c.people[0]["f2"] != 2 { // 1 insert + 1 delete.
 		t.Errorf("expected author 0 f2 count 2, got %d", c.people[0]["f2"])
@@ -157,7 +158,7 @@ func TestHistoryAnalyzer_Consume_Merge(t *testing.T) {
 	)
 
 	// First pass (shouldConsume=true, merges marked).
-	require.NoError(t, c.Consume(&analyze.Context{Commit: commit}))
+	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit}))
 
 	if !c.merges[commit.Hash()] {
 		t.Error("expected merge marked")
@@ -168,7 +169,7 @@ func TestHistoryAnalyzer_Consume_Merge(t *testing.T) {
 	c.TreeDiff.Changes = gitlib.Changes{change}
 	c.Identity.AuthorID = 0
 
-	require.NoError(t, c.Consume(&analyze.Context{Commit: commit, IsMerge: true}))
+	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit, IsMerge: true}))
 
 	if c.people[0]["new_merge.txt"] != 1 {
 		t.Errorf("expected new_merge.txt counted in merge, got %d", c.people[0]["new_merge.txt"])

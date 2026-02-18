@@ -2,6 +2,7 @@ package sentiment
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -67,8 +68,8 @@ func TestHistoryAnalyzer_Initialize(t *testing.T) {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	if s.commentsByTick == nil {
-		t.Error("expected commentsByTick initialized")
+	if s.commentsByCommit == nil {
+		t.Error("expected commentsByCommit initialized")
 	}
 }
 
@@ -97,12 +98,15 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	s.UAST.SetChangesForTest(changes)
 	s.Ticks.Tick = 0
 
-	err := s.Consume(&analyze.Context{})
+	hash1 := gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	commit1 := gitlib.NewTestCommit(hash1, gitlib.TestSignature("dev", "dev@test.com"), "test")
+
+	err := s.Consume(context.Background(), &analyze.Context{Commit: commit1})
 	if err != nil {
 		t.Fatalf("Consume failed: %v", err)
 	}
 
-	comments := s.commentsByTick[0]
+	comments := s.commentsByCommit[hash1.String()]
 	if len(comments) != 1 {
 		t.Errorf("expected 1 comment, got %d", len(comments))
 	}
@@ -120,9 +124,12 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	s.UAST.SetChangesForTest([]uast.Change{{After: shortCommentNode}})
 	s.Ticks.Tick = 1
 
-	require.NoError(t, s.Consume(&analyze.Context{}))
+	hash2 := gitlib.NewHash("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	commit2 := gitlib.NewTestCommit(hash2, gitlib.TestSignature("dev", "dev@test.com"), "test2")
 
-	if len(s.commentsByTick[1]) != 0 {
+	require.NoError(t, s.Consume(context.Background(), &analyze.Context{Commit: commit2}))
+
+	if len(s.commentsByCommit[hash2.String()]) != 0 {
 		t.Error("expected short comment filtered out")
 	}
 }
@@ -140,27 +147,20 @@ func TestHistoryAnalyzer_Consume_ChildComments(t *testing.T) {
 	root := &node.Node{Type: "Block"}
 	child := &node.Node{
 		Type:  node.UASTComment,
-		Token: "Child comment 123",                       // Longer to pass filters.
-		Pos:   &node.Positions{StartLine: 2, EndLine: 2}, // Different pos from root? Root has nil pos?
+		Token: "Child comment 123",
+		Pos:   &node.Positions{StartLine: 2, EndLine: 2},
 	}
 	root.Children = []*node.Node{child}
 
 	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
-	require.NoError(t, s.Consume(&analyze.Context{}))
+	hash := gitlib.NewHash("cccccccccccccccccccccccccccccccccccccccc")
+	commit := gitlib.NewTestCommit(hash, gitlib.TestSignature("dev", "dev@test.com"), "test")
 
-	if len(s.commentsByTick[0]) != 1 {
-		// Debug if not extracted
-		// extractComments recursive on children?
-		// History.go: extractComments calls on children.
-		// Node.UASTComment type check on root.
-		// Root is "Block" -> recursion.
-		// Child is "Comment" -> extracted.
-		// MergeComments processes extracted.
-		// Token "Child comment 123" -> 17 chars > 5.
-		// Ratio: 14/17 = 0.82 > 0.6.
-		// Should work.
-		t.Errorf("expected child comment extracted, got %d", len(s.commentsByTick[0]))
+	require.NoError(t, s.Consume(context.Background(), &analyze.Context{Commit: commit}))
+
+	if len(s.commentsByCommit[hash.String()]) != 1 {
+		t.Errorf("expected child comment extracted, got %d", len(s.commentsByCommit[hash.String()]))
 	}
 }
 
@@ -181,17 +181,18 @@ func TestHistoryAnalyzer_Consume_MergeLines(t *testing.T) {
 	root := &node.Node{Type: "Block", Children: []*node.Node{c1, c2}}
 	s.UAST.SetChangesForTest([]uast.Change{{After: root}})
 
-	require.NoError(t, s.Consume(&analyze.Context{}))
+	hash := gitlib.NewHash("dddddddddddddddddddddddddddddddddddddd")
+	commit := gitlib.NewTestCommit(hash, gitlib.TestSignature("dev", "dev@test.com"), "test")
 
-	comments := s.commentsByTick[0]
+	require.NoError(t, s.Consume(context.Background(), &analyze.Context{Commit: commit}))
+
+	comments := s.commentsByCommit[hash.String()]
 	if len(comments) != 1 {
 		t.Fatalf("expected 1 merged comment, got %d", len(comments))
 	}
 
 	if comments[0] != "Line 1 is good\nLine 2 is nice" &&
 		comments[0] != "Line 1 is good Line 2 is nice" {
-		// Newlines might be replaced by spaces in filtered output via
-		// WhitespaceRE.ReplaceAllString(comment, " "), so both forms are valid.
 		t.Errorf("expected merged content, got %q", comments[0])
 	}
 }
@@ -201,19 +202,16 @@ func TestHistoryAnalyzer_Finalize(t *testing.T) {
 
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
-	s.commentsByTick[0] = []string{"Good"}
+	s.commentsByCommit["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] = []string{"Good"}
 
 	report, err := s.Finalize()
 	if err != nil {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 
-	emotions, ok := report["emotions_by_tick"].(map[int]float32)
-	require.True(t, ok, "type assertion failed for emotions")
-
-	if _, hasEmotion := emotions[0]; !hasEmotion {
-		t.Error("expected emotions for tick 0")
-	}
+	cbc, ok := report["comments_by_commit"].(map[string][]string)
+	require.True(t, ok, "type assertion failed for comments_by_commit")
+	require.Len(t, cbc, 1)
 }
 
 func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
@@ -312,7 +310,7 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	require.NoError(t, s.Initialize(nil))
 
 	// Add some state to original.
-	s.commentsByTick[0] = []string{"original comment"}
+	s.commentsByCommit["aaa"] = []string{"original comment"}
 
 	forks := s.Fork(2)
 	require.Len(t, forks, 2)
@@ -323,14 +321,14 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	require.True(t, ok)
 
 	// Forks should have empty independent maps (not inherit parent state).
-	require.Empty(t, fork1.commentsByTick, "fork should have empty commentsByTick map")
-	require.Empty(t, fork2.commentsByTick, "fork should have empty commentsByTick map")
+	require.Empty(t, fork1.commentsByCommit, "fork should have empty commentsByCommit map")
+	require.Empty(t, fork2.commentsByCommit, "fork should have empty commentsByCommit map")
 
 	// Modifying one fork should not affect the other.
-	fork1.commentsByTick[1] = []string{"fork1 comment"}
+	fork1.commentsByCommit["bbb"] = []string{"fork1 comment"}
 
-	require.Len(t, fork1.commentsByTick, 1)
-	require.Empty(t, fork2.commentsByTick, "fork2 should not see fork1's changes")
+	require.Len(t, fork1.commentsByCommit, 1)
+	require.Empty(t, fork2.commentsByCommit, "fork2 should not see fork1's changes")
 }
 
 func TestFork_SharesConfig(t *testing.T) {
@@ -351,51 +349,48 @@ func TestFork_SharesConfig(t *testing.T) {
 	require.InDelta(t, s.Gap, fork1.Gap, 0.001)
 }
 
-func TestMerge_CombinesCommentsByTick(t *testing.T) {
+func TestMerge_CombinesCommentsByCommit(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has comments at tick 0.
-	s.commentsByTick[0] = []string{"original comment"}
+	// Original has comments for commit aaa.
+	s.commentsByCommit["aaa"] = []string{"original comment"}
 
-	// Create a branch with comments at different tick.
+	// Create a branch with comments for a different commit.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
-	branch.commentsByTick[1] = []string{"branch comment"}
+	branch.commentsByCommit["bbb"] = []string{"branch comment"}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have both ticks.
-	require.Len(t, s.commentsByTick, 2)
-	require.Len(t, s.commentsByTick[0], 1)
-	require.Len(t, s.commentsByTick[1], 1)
-	require.Equal(t, "original comment", s.commentsByTick[0][0])
-	require.Equal(t, "branch comment", s.commentsByTick[1][0])
+	// Should have both commits.
+	require.Len(t, s.commentsByCommit, 2)
+	require.Len(t, s.commentsByCommit["aaa"], 1)
+	require.Len(t, s.commentsByCommit["bbb"], 1)
+	require.Equal(t, "original comment", s.commentsByCommit["aaa"][0])
+	require.Equal(t, "branch comment", s.commentsByCommit["bbb"][0])
 }
 
-func TestMerge_AppendsCommentsAtSameTick(t *testing.T) {
+func TestMerge_DistinctCommits(t *testing.T) {
 	t.Parallel()
 
 	s := &HistoryAnalyzer{}
 	require.NoError(t, s.Initialize(nil))
 
-	// Original has comments at tick 0.
-	s.commentsByTick[0] = []string{"comment 1"}
+	s.commentsByCommit["aaa"] = []string{"comment 1"}
 
-	// Branch also has comments at tick 0.
+	// Branch has a different commit.
 	branch := &HistoryAnalyzer{}
 	require.NoError(t, branch.Initialize(nil))
-	branch.commentsByTick[0] = []string{"comment 2", "comment 3"}
+	branch.commentsByCommit["bbb"] = []string{"comment 2", "comment 3"}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Should have all comments at tick 0.
-	require.Len(t, s.commentsByTick[0], 3)
-	require.Contains(t, s.commentsByTick[0], "comment 1")
-	require.Contains(t, s.commentsByTick[0], "comment 2")
-	require.Contains(t, s.commentsByTick[0], "comment 3")
+	require.Len(t, s.commentsByCommit, 2)
+	require.Len(t, s.commentsByCommit["aaa"], 1)
+	require.Len(t, s.commentsByCommit["bbb"], 2)
 }
 
 func TestForkMerge_RoundTrip(t *testing.T) {
@@ -414,18 +409,109 @@ func TestForkMerge_RoundTrip(t *testing.T) {
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Each fork adds different comments.
-	fork1.commentsByTick[0] = []string{"fork1 tick0 comment"}
-	fork1.commentsByTick[1] = []string{"fork1 tick1 comment"}
-	fork2.commentsByTick[0] = []string{"fork2 tick0 comment"}
-	fork2.commentsByTick[2] = []string{"fork2 tick2 comment"}
+	// Each fork adds different commits (forks process distinct commits).
+	fork1.commentsByCommit["aaa"] = []string{"fork1 commit aaa comment"}
+	fork1.commentsByCommit["bbb"] = []string{"fork1 commit bbb comment"}
+	fork2.commentsByCommit["ccc"] = []string{"fork2 commit ccc comment"}
+	fork2.commentsByCommit["ddd"] = []string{"fork2 commit ddd comment"}
 
 	// Merge.
 	s.Merge(forks)
 
-	// Verify all comments are merged.
-	require.Len(t, s.commentsByTick, 3)
-	require.Len(t, s.commentsByTick[0], 2) // from both forks.
-	require.Len(t, s.commentsByTick[1], 1) // from fork1.
-	require.Len(t, s.commentsByTick[2], 1) // from fork2.
+	// Verify all commits are merged.
+	require.Len(t, s.commentsByCommit, 4)
+	require.Len(t, s.commentsByCommit["aaa"], 1)
+	require.Len(t, s.commentsByCommit["bbb"], 1)
+	require.Len(t, s.commentsByCommit["ccc"], 1)
+	require.Len(t, s.commentsByCommit["ddd"], 1)
+}
+
+func TestHistoryAnalyzer_Consume_StoresPerCommitComments(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{
+		UAST:             &plumbing.UASTChangesAnalyzer{},
+		Ticks:            &plumbing.TicksSinceStart{},
+		MinCommentLength: 10,
+	}
+	require.NoError(t, s.Initialize(nil))
+
+	commentNode := &node.Node{
+		Type:  node.UASTComment,
+		Token: "This is a good comment for commit",
+		Pos:   &node.Positions{StartLine: 1, EndLine: 1},
+	}
+	s.UAST.SetChangesForTest([]uast.Change{{After: commentNode}})
+	s.Ticks.Tick = 0
+
+	hash := gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	commit := gitlib.NewTestCommit(hash, gitlib.TestSignature("dev", "dev@test.com"), "test")
+
+	err := s.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	// Per-commit comments should exist.
+	require.Len(t, s.commentsByCommit, 1)
+	assert.Contains(t, s.commentsByCommit, hash.String())
+	assert.Len(t, s.commentsByCommit[hash.String()], 1)
+}
+
+func TestHistoryAnalyzer_Finalize_IncludesCommitComments(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	hashStr := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	s.commentsByCommit[hashStr] = []string{"test comment data"}
+
+	report, err := s.Finalize()
+	require.NoError(t, err)
+
+	cbc, ok := report["comments_by_commit"].(map[string][]string)
+	require.True(t, ok, "report must contain comments_by_commit")
+	assert.Len(t, cbc, 1)
+	assert.Contains(t, cbc, hashStr)
+}
+
+func TestHistoryAnalyzer_Merge_CombinesCommitComments(t *testing.T) {
+	t.Parallel()
+
+	s := &HistoryAnalyzer{}
+	require.NoError(t, s.Initialize(nil))
+
+	fork1 := &HistoryAnalyzer{}
+	require.NoError(t, fork1.Initialize(nil))
+	fork1.commentsByCommit["aaa"] = []string{"comment a"}
+
+	fork2 := &HistoryAnalyzer{}
+	require.NoError(t, fork2.Initialize(nil))
+	fork2.commentsByCommit["bbb"] = []string{"comment b"}
+
+	s.Merge([]analyze.HistoryAnalyzer{fork1, fork2})
+
+	assert.Len(t, s.commentsByCommit, 2)
+	assert.Contains(t, s.commentsByCommit, "aaa")
+	assert.Contains(t, s.commentsByCommit, "bbb")
+}
+
+func TestRegisterTickExtractor_Sentiment(t *testing.T) { //nolint:paralleltest // writes to global map
+	report := analyze.Report{
+		"emotions_by_tick": map[int]float32{0: 0.7},
+		"comments_by_commit": map[string][]string{
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {"nice work on this function", "great improvement"},
+			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {"this is ugly code"},
+		},
+	}
+
+	result := extractCommitTimeSeries(report)
+	require.Len(t, result, 2)
+
+	statsA, ok := result["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+	require.True(t, ok)
+
+	statsMap, ok := statsA.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 2, statsMap["comment_count"])
+	assert.Contains(t, statsMap, "sentiment")
 }
