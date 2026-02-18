@@ -13,7 +13,6 @@ copyright: Copyright &copy; 2024-2026 Sumatoshi Tech — Apache 2.0 License
 
 theme:
   name: material
-  custom_dir: site/overrides
   logo: assets/logo.png
   favicon: assets/favicon.png
   icon:

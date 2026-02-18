@@ -36,7 +36,7 @@ outputs:
 
 runs:
   using: "docker"
-  image: "build/package/Dockerfile"
+  image: "Dockerfile"
   entrypoint: "/entrypoint.sh"
   env:
     INPUT_ANALYZERS: ${{ inputs.analyzers }}
