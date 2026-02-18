@@ -21,7 +21,7 @@ func EnrichFromReports(
 
 	var allSummaries []ExternalSummary
 
-	for source, extractor := range timeSeriesExtractors {
+	for source, extractor := range snapshotExtractors() {
 		report, ok := otherReports[source]
 		if !ok {
 			continue

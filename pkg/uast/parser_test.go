@@ -274,25 +274,17 @@ func main() {
 	}
 }
 
-// DSL Query Efficiency Instrumentation Helpers (migrated).
-var (
-	filterCallCount    int
-	mapCallCount       int
-	evaluationCount    int
-	dslAllocationCount int
-)
-
-func resetDSLCounters() {
-	filterCallCount = 0
-	mapCallCount = 0
-	evaluationCount = 0
-	dslAllocationCount = 0
+// dslCounters holds per-test DSL query efficiency counters.
+type dslCounters struct {
+	filterCalls int
+	mapCalls    int
+	evaluations int
 }
 
-func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
+func instrumentedFindDSL(counters *dslCounters, nd *node.Node, query string) ([]*node.Node, error) {
 	// Track filter and map operations.
-	filterCallCount++
-	evaluationCount++
+	counters.filterCalls++
+	counters.evaluations++
 
 	// Simulate the query execution.
 	results, err := nd.FindDSL(query)
@@ -300,7 +292,7 @@ func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
 	// Count operations based on query type.
 	if query != "" {
 		// Rough estimation of operations based on query complexity.
-		evaluationCount += len(results) * 2 // Each result requires evaluation.
+		counters.evaluations += len(results) * 2 // Each result requires evaluation.
 	}
 
 	return results, err
@@ -349,51 +341,46 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			resetDSLCounters()
+			counters := &dslCounters{}
 
-			results, findErr := instrumentedFindDSL(nd, tc.query)
+			results, findErr := instrumentedFindDSL(counters, nd, tc.query)
 			if findErr != nil {
 				t.Fatalf("DSL query failed: %v", findErr)
 			}
 
-			if filterCallCount > tc.maxFilterCalls {
-				t.Errorf("Too many filter calls: got %d, want <= %d", filterCallCount, tc.maxFilterCalls)
+			if counters.filterCalls > tc.maxFilterCalls {
+				t.Errorf("Too many filter calls: got %d, want <= %d", counters.filterCalls, tc.maxFilterCalls)
 			}
 
-			if mapCallCount > tc.maxMapCalls {
-				t.Errorf("Too many map calls: got %d, want <= %d", mapCallCount, tc.maxMapCalls)
+			if counters.mapCalls > tc.maxMapCalls {
+				t.Errorf("Too many map calls: got %d, want <= %d", counters.mapCalls, tc.maxMapCalls)
 			}
 
-			if evaluationCount > tc.maxEvaluations {
-				t.Errorf("Too many evaluations: got %d, want <= %d", evaluationCount, tc.maxEvaluations)
+			if counters.evaluations > tc.maxEvaluations {
+				t.Errorf("Too many evaluations: got %d, want <= %d", counters.evaluations, tc.maxEvaluations)
 			}
 
 			t.Logf("DSL query efficiency: %d filter calls, %d map calls, %d evaluations, %d results",
-				filterCallCount, mapCallCount, evaluationCount, len(results))
+				counters.filterCalls, counters.mapCalls, counters.evaluations, len(results))
 		})
 	}
 }
 
-var (
-	iterationCount       int
-	maxStackDepthReached int
-	nodeAllocationCount  int
-)
-
-func resetOperationCounters() {
-	iterationCount = 0
-	maxStackDepthReached = 0
-	nodeAllocationCount = 0
+// traversalCounters holds per-test tree traversal efficiency counters.
+type traversalCounters struct {
+	iterations    int
+	maxStackDepth int
+	allocations   int
 }
 
-func instrumentedPreOrder(nd *node.Node) <-chan *node.Node {
-	iterationCount++
+func instrumentedPreOrder(counters *traversalCounters, nd *node.Node) <-chan *node.Node {
+	counters.iterations++
 
 	return nd.PreOrder()
 }
 
-func instrumentedPostOrder(nd *node.Node, fn func(*node.Node)) {
-	iterationCount++
+func instrumentedPostOrder(counters *traversalCounters, nd *node.Node, fn func(*node.Node)) {
+	counters.iterations++
 
 	nd.VisitPostOrder(fn)
 }
@@ -438,11 +425,10 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 		t.Run(tc.name+"/PreOrderEfficiency", func(t *testing.T) {
 			t.Parallel()
 
-			resetOperationCounters()
-
+			counters := &traversalCounters{}
 			count := 0
 
-			for nd := range instrumentedPreOrder(root) {
+			for nd := range instrumentedPreOrder(counters, root) {
 				_ = nd
 				count++
 			}
@@ -451,30 +437,29 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 				t.Fatal("No nodes traversed")
 			}
 
-			if iterationCount > tc.maxIterations {
-				t.Errorf("Too many iterations: got %d, want <= %d", iterationCount, tc.maxIterations)
+			if counters.iterations > tc.maxIterations {
+				t.Errorf("Too many iterations: got %d, want <= %d", counters.iterations, tc.maxIterations)
 			}
 
-			if maxStackDepthReached > tc.maxStackDepth {
-				t.Errorf("Stack depth too high: got %d, want <= %d", maxStackDepthReached, tc.maxStackDepth)
+			if counters.maxStackDepth > tc.maxStackDepth {
+				t.Errorf("Stack depth too high: got %d, want <= %d", counters.maxStackDepth, tc.maxStackDepth)
 			}
 
-			if nodeAllocationCount > tc.maxAllocations {
-				t.Errorf("Too many allocations: got %d, want <= %d", nodeAllocationCount, tc.maxAllocations)
+			if counters.allocations > tc.maxAllocations {
+				t.Errorf("Too many allocations: got %d, want <= %d", counters.allocations, tc.maxAllocations)
 			}
 
 			t.Logf("Pre-order efficiency: %d iterations, max depth %d, %d allocations, %d nodes",
-				iterationCount, maxStackDepthReached, nodeAllocationCount, count)
+				counters.iterations, counters.maxStackDepth, counters.allocations, count)
 		})
 
 		t.Run(tc.name+"/PostOrderEfficiency", func(t *testing.T) {
 			t.Parallel()
 
-			resetOperationCounters()
-
+			counters := &traversalCounters{}
 			count := 0
 
-			instrumentedPostOrder(root, func(_ *node.Node) {
+			instrumentedPostOrder(counters, root, func(_ *node.Node) {
 				count++
 			})
 
@@ -482,20 +467,20 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 				t.Fatal("No nodes traversed")
 			}
 
-			if iterationCount > tc.maxIterations {
-				t.Errorf("Too many iterations: got %d, want <= %d", iterationCount, tc.maxIterations)
+			if counters.iterations > tc.maxIterations {
+				t.Errorf("Too many iterations: got %d, want <= %d", counters.iterations, tc.maxIterations)
 			}
 
-			if maxStackDepthReached > tc.maxStackDepth {
-				t.Errorf("Stack depth too high: got %d, want <= %d", maxStackDepthReached, tc.maxStackDepth)
+			if counters.maxStackDepth > tc.maxStackDepth {
+				t.Errorf("Stack depth too high: got %d, want <= %d", counters.maxStackDepth, tc.maxStackDepth)
 			}
 
-			if nodeAllocationCount > tc.maxAllocations {
-				t.Errorf("Too many allocations: got %d, want <= %d", nodeAllocationCount, tc.maxAllocations)
+			if counters.allocations > tc.maxAllocations {
+				t.Errorf("Too many allocations: got %d, want <= %d", counters.allocations, tc.maxAllocations)
 			}
 
 			t.Logf("Post-order efficiency: %d iterations, max depth %d, %d allocations, %d nodes",
-				iterationCount, maxStackDepthReached, nodeAllocationCount, count)
+				counters.iterations, counters.maxStackDepth, counters.allocations, count)
 		})
 	}
 }

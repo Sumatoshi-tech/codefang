@@ -1,7 +1,6 @@
 package anomaly
 
 import (
-	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,16 +9,27 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-func TestRegisterTimeSeriesExtractor(t *testing.T) {
-	t.Parallel()
+// withIsolatedRegistry saves the global extractors, replaces them with an empty
+// map, and restores the originals when the test finishes. All access goes
+// through the mutex so there is no race with other parallel tests.
+func withIsolatedRegistry(t *testing.T) {
+	t.Helper()
 
-	// Save and restore global state.
-	original := make(map[string]TimeSeriesExtractor)
-	maps.Copy(original, timeSeriesExtractors)
+	timeSeriesExtractorsMu.Lock()
+	original := timeSeriesExtractors
+	timeSeriesExtractors = make(map[string]TimeSeriesExtractor)
+	timeSeriesExtractorsMu.Unlock()
 
 	t.Cleanup(func() {
+		timeSeriesExtractorsMu.Lock()
 		timeSeriesExtractors = original
+		timeSeriesExtractorsMu.Unlock()
 	})
+}
+
+func TestRegisterTimeSeriesExtractor(t *testing.T) {
+	t.Parallel()
+	withIsolatedRegistry(t)
 
 	called := false
 	fn := func(_ analyze.Report) ([]int, map[string][]float64) {
