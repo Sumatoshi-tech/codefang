@@ -13,10 +13,8 @@ func LowerDSL(ast DSLNode) (QueryFunc, error) {
 	return globalLowererRegistry.Lower(ast)
 }
 
-//nolint:gochecknoglobals // Singleton lowerer registry.
 var globalLowererRegistry *DSLNodeLowererRegistry
 
-//nolint:gochecknoinits // Required to break initialization cycle with LowerDSL.
 func init() {
 	globalLowererRegistry = NewDSLNodeLowererRegistry()
 	globalLowererRegistry.Register(PipelineType, &PipelineLowerer{})

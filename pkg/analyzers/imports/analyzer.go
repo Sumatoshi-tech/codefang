@@ -6,8 +6,11 @@ import (
 	"io"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -41,7 +44,16 @@ func (a *Analyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (a *Analyzer) Description() string {
-	return "Extracts and analyzes import statements from code"
+	return a.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (a *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		a.Name(),
+		"Extracts and analyzes import statements from code",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -90,9 +102,54 @@ func (a *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
 
 // FormatReportJSON writes the analysis report in JSON format.
 func (a *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
-	err := json.NewEncoder(w).Encode(report)
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	_, err = fmt.Fprint(w, string(jsonData))
+	if err != nil {
+		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportYAML writes the analysis report in YAML format.
+func (a *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportBinary writes the report in binary envelope format.
+func (a *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, w)
+	if err != nil {
+		return fmt.Errorf("formatreportbinary: %w", err)
 	}
 
 	return nil

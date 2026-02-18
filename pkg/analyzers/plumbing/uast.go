@@ -1,9 +1,12 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
+	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -13,19 +16,25 @@ import (
 )
 
 // UASTChangesAnalyzer extracts UAST-level changes between commits.
+// It uses lazy parsing - changes are only parsed when Changes() is called.
 type UASTChangesAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
-	FileDiff  *FileDiffAnalyzer
-	BlobCache *BlobCacheAnalyzer
-	parser    *uast.Parser
-	Changes   []uast.Change
+	TreeDiff   *TreeDiffAnalyzer
+	BlobCache  *BlobCacheAnalyzer
+	Goroutines int
+	parser     *uast.Parser
+	changes    []uast.Change
+	parsed     bool // tracks whether parsing was done for current commit.
 }
 
 const (
 	// FeatureUast is the feature flag for UAST-based analysis.
 	FeatureUast = "uast"
+
+	// ConfigUASTChangesGoroutines is the configuration key for parallel UAST parsing.
+	ConfigUASTChangesGoroutines = "UASTChanges.Goroutines"
+
+	// defaultGoroutineDivisor is used to derive default goroutine count from NumCPU.
+	defaultGoroutineDivisor = 4
 )
 
 // Name returns the name of the analyzer.
@@ -40,16 +49,37 @@ func (c *UASTChangesAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (c *UASTChangesAnalyzer) Description() string {
-	return "Extracts UAST changes from file changes in commits."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *UASTChangesAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		c.Name(),
+		"Extracts UAST changes from file changes in commits.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
 func (c *UASTChangesAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
-	return []pipeline.ConfigurationOption{}
+	return []pipeline.ConfigurationOption{
+		{
+			Name:        ConfigUASTChangesGoroutines,
+			Description: "Number of goroutines to use for parallel UAST parsing (fallback when pipeline is not available).",
+			Flag:        "uast-changes-goroutines",
+			Type:        pipeline.IntConfigurationOption,
+			Default:     max(runtime.NumCPU()/defaultGoroutineDivisor, 1),
+		},
+	}
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (c *UASTChangesAnalyzer) Configure(_ map[string]any) error {
+func (c *UASTChangesAnalyzer) Configure(facts map[string]any) error {
+	if val, exists := facts[ConfigUASTChangesGoroutines].(int); exists {
+		c.Goroutines = val
+	}
+
 	return nil
 }
 
@@ -62,44 +92,210 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 
 	c.parser = parser
 
+	if c.Goroutines <= 0 {
+		c.Goroutines = max(runtime.NumCPU()/defaultGoroutineDivisor, 1)
+	}
+
 	return nil
 }
 
-// Consume processes a single commit with the provided dependency results.
-func (c *UASTChangesAnalyzer) Consume(_ *analyze.Context) error {
-	// Simple implementation.
-	fileDiffs := c.FileDiff.FileDiffs
-	// Cache := c.BlobCache.Cache.
-	// Need to parse before/after if changed.
+// Consume resets state for the new commit. Parsing is deferred until Changes() is called.
+// Releases previous commit's UAST trees back to the node/positions pools.
+// If the context contains pre-computed UAST changes from the pipeline, they are used directly.
+func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
+	// Release previous commit's UAST trees back to pools for reuse.
+	for _, ch := range c.changes {
+		node.ReleaseTree(ch.Before)
+		node.ReleaseTree(ch.After)
+	}
 
+	// Use pre-computed UAST changes from the pipeline if available.
+	if ac.UASTChanges != nil {
+		c.changes = ac.UASTChanges
+		c.parsed = true
+	} else {
+		c.changes = nil
+		c.parsed = false
+	}
+
+	return nil
+}
+
+// Changes returns parsed UAST changes, parsing lazily on first call per commit.
+// This avoids expensive UAST parsing when downstream analyzers don't need it.
+func (c *UASTChangesAnalyzer) Changes(ctx context.Context) []uast.Change {
+	if c.parsed {
+		return c.changes
+	}
+
+	c.parsed = true
+	treeChanges := c.TreeDiff.Changes
+	cache := c.BlobCache.Cache
+
+	if len(treeChanges) <= 1 || c.Goroutines <= 1 {
+		c.changes = c.changesSequential(ctx, treeChanges, cache)
+	} else {
+		c.changes = c.changesParallel(ctx, treeChanges, cache)
+	}
+
+	return c.changes
+}
+
+// changesSequential parses UAST changes one file at a time.
+func (c *UASTChangesAnalyzer) changesSequential(
+	ctx context.Context,
+	treeChanges gitlib.Changes,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) []uast.Change {
 	var result []uast.Change
 
-	for filename, fileDiff := range fileDiffs {
-		if len(fileDiff.Diffs) == 0 {
-			continue
+	for _, change := range treeChanges {
+		before := c.parseBeforeVersion(ctx, change, cache)
+		after := c.parseAfterVersion(ctx, change, cache)
+
+		if before != nil || after != nil {
+			result = append(result, uast.Change{
+				Before: before,
+				After:  after,
+				Change: change,
+			})
 		}
-		// NOTE: Actual UAST diffing is not yet implemented.
-		// For now, minimal placeholder to satisfy dependencies.
-		change := &gitlib.Change{
-			Action: gitlib.Modify,
-			From:   gitlib.ChangeEntry{Name: filename},
-			To:     gitlib.ChangeEntry{Name: filename},
-		}
-		result = append(result, uast.Change{
-			Before: nil, // Would need full file content parsing.
-			After:  nil,
-			Change: change,
+	}
+
+	return result
+}
+
+// uastParseResult holds the result of parsing a single file change.
+type uastParseResult struct {
+	before *node.Node
+	after  *node.Node
+	change *gitlib.Change
+}
+
+// changesParallel parses UAST changes across multiple goroutines.
+// Each file's before/after parsing is independent and thread-safe.
+func (c *UASTChangesAnalyzer) changesParallel(
+	ctx context.Context,
+	treeChanges gitlib.Changes,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) []uast.Change {
+	jobs := make(chan *gitlib.Change, len(treeChanges))
+	results := make(chan uastParseResult, len(treeChanges))
+
+	var wg sync.WaitGroup
+
+	wg.Add(c.Goroutines)
+
+	for range c.Goroutines {
+		go func() {
+			defer wg.Done()
+
+			for change := range jobs {
+				before := c.parseBeforeVersion(ctx, change, cache)
+				after := c.parseAfterVersion(ctx, change, cache)
+
+				if before != nil || after != nil {
+					results <- uastParseResult{before, after, change}
+				}
+			}
+		}()
+	}
+
+	for _, change := range treeChanges {
+		jobs <- change
+	}
+
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	var changes []uast.Change
+
+	for r := range results {
+		changes = append(changes, uast.Change{
+			Before: r.before,
+			After:  r.after,
+			Change: r.change,
 		})
 	}
 
-	c.Changes = result
+	return changes
+}
 
-	return nil
+// parseBeforeVersion parses the "before" version for modifications and deletions.
+func (c *UASTChangesAnalyzer) parseBeforeVersion(
+	ctx context.Context,
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	if change.Action != gitlib.Modify && change.Action != gitlib.Delete {
+		return nil
+	}
+
+	return c.parseBlob(ctx, change.From.Hash, change.From.Name, cache)
+}
+
+// parseAfterVersion parses the "after" version for modifications and insertions.
+func (c *UASTChangesAnalyzer) parseAfterVersion(
+	ctx context.Context,
+	change *gitlib.Change,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	if change.Action != gitlib.Modify && change.Action != gitlib.Insert {
+		return nil
+	}
+
+	return c.parseBlob(ctx, change.To.Hash, change.To.Name, cache)
+}
+
+// parseBlob parses a blob into a UAST node if the file is supported.
+func (c *UASTChangesAnalyzer) parseBlob(
+	ctx context.Context,
+	hash gitlib.Hash,
+	filename string,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) *node.Node {
+	blob, ok := cache[hash]
+	if !ok {
+		return nil
+	}
+
+	if !c.parser.IsSupported(filename) {
+		return nil
+	}
+
+	parsed, err := c.parser.Parse(ctx, filename, blob.Data)
+	if err != nil {
+		return nil
+	}
+
+	return parsed
+}
+
+// SetChanges sets the changes directly, marking them as parsed.
+func (c *UASTChangesAnalyzer) SetChanges(changes []uast.Change) {
+	c.changes = changes
+	c.parsed = true
+}
+
+// SetChangesForTest sets the changes directly (for testing only).
+func (c *UASTChangesAnalyzer) SetChangesForTest(changes []uast.Change) {
+	c.SetChanges(changes)
+}
+
+// TransferChanges returns the current changes and clears the internal reference
+// without releasing the UAST trees. The caller takes ownership of the returned
+// changes and is responsible for releasing them.
+func (c *UASTChangesAnalyzer) TransferChanges() []uast.Change {
+	ch := c.changes
+	c.changes = nil
+
+	return ch
 }
 
 // Finalize completes the analysis and returns the result.
 func (c *UASTChangesAnalyzer) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -129,17 +325,3 @@ func (c *UASTChangesAnalyzer) Serialize(report analyze.Report, format string, wr
 
 	return nil
 }
-
-// UASTExtractor extracts UAST nodes from source code blobs.
-type UASTExtractor struct {
-	// Dependencies.
-	BlobCache *BlobCacheAnalyzer
-
-	// Output.
-	UASTs map[string]*node.Node
-
-	parser *uast.Parser //nolint:unused // acknowledged.
-}
-
-// ... Implement rest of UASTExtractor similar to above if needed ...
-// For now UASTChanges is the primary dependency for Sentiment/Typos/Shotness.

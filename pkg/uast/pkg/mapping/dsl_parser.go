@@ -431,7 +431,6 @@ func extractText(parseNode *node32) string {
 	return string([]rune(nodeTextBuffer)[parseNode.begin:parseNode.end])
 }
 
-//nolint:gochecknoglobals // Set by parseMappingDSL for text extraction across the parse tree.
 var (
 	nodeTextBuffer string
 	nodeTextMu     sync.Mutex
@@ -443,11 +442,13 @@ func extractPattern(patternNode *node32) string {
 
 func extractUASTField(fieldNode *node32) (fname string, fvals []string) {
 	for child := fieldNode.up; child != nil; child = child.next {
-		switch child.pegRule { //nolint:exhaustive // Only UASTFieldName and UASTFieldValue are relevant.
+		switch child.pegRule {
 		case ruleUASTFieldName:
 			fname = extractText(child)
 		case ruleUASTFieldValue:
 			fvals = extractFieldValues(child)
+		default:
+			// Other PEG rules are not relevant for field extraction.
 		}
 	}
 
@@ -458,7 +459,7 @@ func extractFieldValues(valueNode *node32) []string {
 	var fvals []string
 
 	for valNode := valueNode.up; valNode != nil; valNode = valNode.next {
-		switch valNode.pegRule { //nolint:exhaustive // Only capture, identifier, string, and multi types are relevant.
+		switch valNode.pegRule {
 		case ruleCapture, ruleIdentifier:
 			fvals = append(fvals, extractText(valNode))
 		case ruleString:
@@ -474,6 +475,8 @@ func extractFieldValues(valueNode *node32) []string {
 			fvals = append(fvals, extractMultipleCaptures(valNode)...)
 		case ruleMultipleStrings:
 			fvals = append(fvals, extractMultipleStrings(valNode)...)
+		default:
+			// Other PEG rules are not relevant for value extraction.
 		}
 	}
 

@@ -2,13 +2,15 @@ package cohesion
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -44,7 +46,16 @@ func (c *Analyzer) Flag() string {
 
 // Description returns the analyzer description.
 func (c *Analyzer) Description() string {
-	return "Calculates LCOM and cohesion metrics."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		c.Name(),
+		"Calculates LCOM and cohesion metrics.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -86,7 +97,7 @@ func (c *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs cohesion analysis on the UAST.
 func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
+		return nil, analyze.ErrNilRootNode
 	}
 
 	functions, err := c.findFunctions(root)
@@ -180,7 +191,12 @@ func (c *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
 
 // FormatReportJSON formats the analysis report as JSON.
 func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
-	jsonData, err := json.MarshalIndent(report, "", "  ")
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
 	}
@@ -188,6 +204,41 @@ func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	_, err = fmt.Fprint(w, string(jsonData))
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportYAML formats the analysis report as YAML.
+func (c *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportBinary formats cohesion analysis results as binary envelope.
+func (c *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, w)
+	if err != nil {
+		return fmt.Errorf("formatreportbinary: %w", err)
 	}
 
 	return nil
@@ -254,8 +305,6 @@ func (c *Analyzer) getSizeAssessment(lineCount int) string {
 }
 
 // findFunctions finds all functions using the generic traverser.
-//
-//nolint:unparam // parameter is needed for interface compliance.
 func (c *Analyzer) findFunctions(root *node.Node) ([]Function, error) {
 	functionNodes := c.traverser.FindNodesByRoles(root, []string{"Function"})
 	typeNodes := c.traverser.FindNodesByType(root, []string{"Function", "Method"})

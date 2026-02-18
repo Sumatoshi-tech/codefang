@@ -1,6 +1,7 @@
 package imports
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/importmodel"
@@ -26,15 +28,26 @@ const (
 	defaultTickHours        = 24
 )
 
+// ErrParserNotInitialized indicates that the UAST parser was not initialized.
+var ErrParserNotInitialized = errors.New("parser not initialized")
+
+// ErrUnsupportedLanguage indicates that the language is not supported for import extraction.
+var ErrUnsupportedLanguage = errors.New("unsupported language")
+
+// ErrInvalidImportsMap indicates a type assertion failure for the imports map.
+var ErrInvalidImportsMap = errors.New("expected Map for imports")
+
+// ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
+var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
+
+// ErrInvalidTickSize indicates a type assertion failure for tickSize.
+var ErrInvalidTickSize = errors.New("expected time.Duration for tickSize")
+
 // Map maps file paths to their import lists.
 type Map = map[int]map[string]map[string]map[int]int64
 
 // HistoryAnalyzer tracks import usage across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-		Errorf(format string, args ...any)
-	}
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	BlobCache          *plumbing.BlobCacheAnalyzer
 	Identity           *plumbing.IdentityDetector
@@ -59,7 +72,16 @@ func (h *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (h *HistoryAnalyzer) Description() string {
-	return "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author."
+	return h.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (h *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/imports",
+		Description: "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -129,18 +151,18 @@ func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel.File, error) {
+func (h *HistoryAnalyzer) extractImports(ctx context.Context, name string, data []byte) (*importmodel.File, error) {
 	if h.parser == nil {
-		return nil, errors.New("parser not initialized") //nolint:err113 // simple guard, no sentinel needed
+		return nil, ErrParserNotInitialized
 	}
 
 	// Check if supported.
 	if !h.parser.IsSupported(name) {
-		return nil, fmt.Errorf("unsupported language for %s", name) //nolint:err113 // dynamic error is acceptable here.
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedLanguage, name)
 	}
 
 	// Parse.
-	root, err := h.parser.Parse(name, data)
+	root, err := h.parser.Parse(ctx, name, data)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +185,7 @@ func (h *HistoryAnalyzer) extractImports(name string, data []byte) (*importmodel
 // extractImportsParallel spins up a worker pool to parse changed files in
 // parallel and returns per-blob import results.
 func (h *HistoryAnalyzer) extractImportsParallel(
+	ctx context.Context,
 	changes gitlib.Changes,
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) map[gitlib.Hash]importmodel.File {
@@ -180,28 +203,48 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 		go func() {
 			defer wg.Done()
 
-			for change := range jobs {
-				blob := cache[change.To.Hash]
-				if blob.Size() > int64(h.MaxFileSize) {
-					continue
-				}
-
-				file, err := h.extractImports(change.To.Name, blob.Data)
-				if err == nil {
-					mu.Lock()
-
-					extracted[change.To.Hash] = *file
-
-					mu.Unlock()
-				}
-			}
+			h.processImportJobs(ctx, jobs, cache, &mu, extracted)
 		}()
 	}
 
-	for _, change := range changes {
-		action := change.Action
+	dispatchImportJobs(changes, jobs)
+	wg.Wait()
 
-		switch action {
+	return extracted
+}
+
+// processImportJobs reads changes from the jobs channel, extracts imports from
+// each blob, and stores results in the extracted map under lock.
+func (h *HistoryAnalyzer) processImportJobs(
+	ctx context.Context,
+	jobs <-chan *gitlib.Change,
+	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
+	mu *sync.Mutex,
+	extracted map[gitlib.Hash]importmodel.File,
+) {
+	for change := range jobs {
+		blob := cache[change.To.Hash]
+		if blob == nil || blob.Size() > int64(h.MaxFileSize) {
+			continue
+		}
+
+		file, err := h.extractImports(ctx, change.To.Name, blob.Data)
+		if err != nil {
+			continue
+		}
+
+		mu.Lock()
+
+		extracted[change.To.Hash] = *file
+
+		mu.Unlock()
+	}
+}
+
+// dispatchImportJobs sends modified or inserted changes to the jobs channel.
+func dispatchImportJobs(changes gitlib.Changes, jobs chan<- *gitlib.Change) {
+	for _, change := range changes {
+		switch change.Action {
 		case gitlib.Modify, gitlib.Insert:
 			jobs <- change
 		case gitlib.Delete:
@@ -210,9 +253,6 @@ func (h *HistoryAnalyzer) extractImportsParallel(
 	}
 
 	close(jobs)
-	wg.Wait()
-
-	return extracted
 }
 
 // aggregateImports folds the per-blob import data into the analyzer's
@@ -247,8 +287,8 @@ func (h *HistoryAnalyzer) aggregateImports(
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *HistoryAnalyzer) Consume(_ *analyze.Context) error {
-	extracted := h.extractImportsParallel(h.TreeDiff.Changes, h.BlobCache.Cache)
+func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) error {
+	extracted := h.extractImportsParallel(ctx, h.TreeDiff.Changes, h.BlobCache.Cache)
 	h.aggregateImports(extracted, h.Identity.AuthorID, h.Ticks.Tick)
 
 	return nil
@@ -263,45 +303,158 @@ func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 	}, nil
 }
 
+// SequentialOnly returns false because imports analysis can be parallelized.
+func (h *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// CPUHeavy returns false because import tracking is lightweight bookkeeping.
+func (h *HistoryAnalyzer) CPUHeavy() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing output state for one commit.
+func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   h.TreeDiff.Changes,
+		BlobCache: h.BlobCache.Cache,
+		Tick:      h.Ticks.Tick,
+		AuthorID:  h.Identity.AuthorID,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (h *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	h.TreeDiff.Changes = snapshot.Changes
+	h.BlobCache.Cache = snapshot.BlobCache
+	h.Ticks.Tick = snapshot.Tick
+	h.Identity.AuthorID = snapshot.AuthorID
+}
+
+// ReleaseSnapshot releases any resources owned by the snapshot.
+func (h *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only config.
 func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		// Use shared state legacy behavior for now.
-		forks[i] = h
+		clone := &HistoryAnalyzer{
+			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
+			BlobCache:          &plumbing.BlobCacheAnalyzer{},
+			Identity:           &plumbing.IdentityDetector{},
+			Ticks:              &plumbing.TicksSinceStart{},
+			reversedPeopleDict: h.reversedPeopleDict,
+			TickSize:           h.TickSize,
+			Goroutines:         h.Goroutines,
+			MaxFileSize:        h.MaxFileSize,
+			parser:             h.parser, // Parser is thread-safe for reads.
+		}
+		// Initialize independent state for each fork.
+		clone.imports = Map{}
+
+		forks[i] = clone
 	}
 
 	return forks
 }
 
 // Merge combines results from forked analyzer branches.
-func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		h.mergeImports(other.imports)
+	}
+}
+
+// mergeImports combines import data from another analyzer.
+func (h *HistoryAnalyzer) mergeImports(other Map) {
+	for author, otherLangs := range other {
+		h.ensureAuthor(author)
+		h.mergeAuthorImports(author, otherLangs)
+	}
+}
+
+// ensureAuthor ensures the author entry exists in imports map.
+func (h *HistoryAnalyzer) ensureAuthor(author int) {
+	if h.imports[author] == nil {
+		h.imports[author] = make(map[string]map[string]map[int]int64)
+	}
+}
+
+// mergeAuthorImports merges language imports for a specific author.
+func (h *HistoryAnalyzer) mergeAuthorImports(author int, otherLangs map[string]map[string]map[int]int64) {
+	for lang, otherImps := range otherLangs {
+		if h.imports[author][lang] == nil {
+			h.imports[author][lang] = make(map[string]map[int]int64)
+		}
+
+		h.mergeLangImports(author, lang, otherImps)
+	}
+}
+
+// mergeLangImports merges imports for a specific author and language.
+func (h *HistoryAnalyzer) mergeLangImports(author int, lang string, otherImps map[string]map[int]int64) {
+	for imp, otherTicks := range otherImps {
+		if h.imports[author][lang][imp] == nil {
+			h.imports[author][lang][imp] = make(map[int]int64)
+		}
+
+		for tick, count := range otherTicks {
+			h.imports[author][lang][imp][tick] += count
+		}
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
+	switch format {
+	case analyze.FormatPlot:
+		return h.generatePlot(result, writer)
+	case analyze.FormatJSON:
 		err := json.NewEncoder(writer).Encode(result)
 		if err != nil {
 			return fmt.Errorf("json encode: %w", err)
 		}
 
 		return nil
-	}
+	case analyze.FormatBinary:
+		err := reportutil.EncodeBinaryEnvelope(result, writer)
+		if err != nil {
+			return fmt.Errorf("binary encode: %w", err)
+		}
 
+		return nil
+	case analyze.FormatYAML:
+		return h.serializeYAML(result, writer)
+	default:
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
+	}
+}
+
+func (h *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
 	imports, ok := result["imports"].(Map)
 	if !ok {
-		return errors.New("expected Map for imports") //nolint:err113 // descriptive error for type assertion failure.
+		if len(result) == 0 {
+			return nil
+		}
+
+		return ErrInvalidImportsMap
 	}
 
 	reversedPeopleDict, ok := result["author_index"].([]string)
 	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
+		return ErrInvalidReversedPeopleDict
 	}
 
 	tickSize, ok := result["tick_size"].(time.Duration)
 	if !ok {
-		return errors.New("expected time.Duration for tickSize") //nolint:err113 // descriptive error for type assertion failure.
+		return ErrInvalidTickSize
 	}
 
 	devs := make([]int, 0, len(imports))

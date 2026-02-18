@@ -1,12 +1,19 @@
-package uast //nolint:testpackage // Tests need access to internal parser methods.
+package uast
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
+)
+
+const (
+	testGoFunctionType   = "go:function"
+	testFunctionDecl     = "FunctionDecl"
+	testUASTFunctionType = "Function"
 )
 
 // Test helper functions for generating test content.
@@ -33,6 +40,8 @@ func generateVeryLargeGoFile() []byte {
 }
 
 func TestNewParser_CreatesParser(t *testing.T) {
+	t.Parallel()
+
 	// Create a parser.
 	p, err := NewParser()
 	if err != nil {
@@ -45,32 +54,35 @@ func TestNewParser_CreatesParser(t *testing.T) {
 }
 
 func TestParser_Parse(t *testing.T) {
+	t.Parallel()
+
 	p, err := NewParser()
 	if err != nil {
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
 	// Test with a supported file.
-	_, err = p.Parse("foo.go", []byte("package main"))
+	_, err = p.Parse(context.Background(), "foo.go", []byte("package main"))
 	if err != nil {
 		t.Logf("parse error (expected for mock): %v", err)
 	}
 
 	// Test with empty filename.
-	_, err = p.Parse("", []byte(""))
+	_, err = p.Parse(context.Background(), "", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for empty filename")
 	}
 
 	// Test with unsupported language.
-	_, err = p.Parse("foo.xyz", []byte(""))
+	_, err = p.Parse(context.Background(), "foo.xyz", []byte(""))
 	if err == nil {
 		t.Errorf("expected error for unsupported language")
 	}
 }
 
-//nolint:gocyclo,cyclop // Integration test with many assertions.
 func TestIntegration_GoFunctionUAST_SPEC(t *testing.T) {
+	t.Parallel()
+
 	src := []byte(`package main
 func add(a, b int) int { return a + b }`)
 
@@ -79,7 +91,7 @@ func add(a, b int) int { return a + b }`)
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	root, err := parser.Parse("main.go", src)
+	root, err := parser.Parse(context.Background(), "main.go", src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -99,7 +111,7 @@ func add(a, b int) int { return a + b }`)
 	var fn *node.Node
 
 	for _, child := range root.Children {
-		if child.Type == "go:function" || child.Type == "Function" || child.Type == "FunctionDecl" {
+		if child.Type == testGoFunctionType || child.Type == testUASTFunctionType || child.Type == testFunctionDecl {
 			fn = child
 
 			break
@@ -111,12 +123,12 @@ func add(a, b int) int { return a + b }`)
 	}
 
 	// Check canonical type.
-	if fn.Type != "go:function" && fn.Type != "Function" && fn.Type != "FunctionDecl" {
+	if fn.Type != testGoFunctionType && fn.Type != testUASTFunctionType && fn.Type != testFunctionDecl {
 		t.Errorf("Function node has wrong type: got %q", fn.Type)
 	}
 
 	// Check roles.
-	wantRoles := map[string]bool{"Function": true, "Declaration": true}
+	wantRoles := map[string]bool{testUASTFunctionType: true, "Declaration": true}
 
 	for _, r := range fn.Roles {
 		delete(wantRoles, string(r))
@@ -138,6 +150,8 @@ func add(a, b int) int { return a + b }`)
 }
 
 func TestDSL_E2E_GoIntegration(t *testing.T) {
+	t.Parallel()
+
 	goCode := `package main
 func hello() {}
 func world() {}`
@@ -147,7 +161,7 @@ func world() {}`
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	uastRoot, err := parser.Parse("main.go", []byte(goCode))
+	uastRoot, err := parser.Parse(context.Background(), "main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -179,7 +193,7 @@ func world() {}`
 		got = append(got, n.Token)
 	}
 
-	want := []string{"Function", "Function"}
+	want := []string{testUASTFunctionType, testUASTFunctionType}
 
 	if len(got) != len(want) {
 		t.Errorf("got %v, want %v", got, want)
@@ -195,6 +209,8 @@ func world() {}`
 }
 
 func TestDSL_E2E_GoComplexProgram(t *testing.T) {
+	t.Parallel()
+
 	goCode := `package main
 
 import "fmt"
@@ -217,7 +233,7 @@ func main() {
 		t.Fatalf("failed to create parser: %v", err)
 	}
 
-	uastRoot, err := parser.Parse("main.go", []byte(goCode))
+	uastRoot, err := parser.Parse(context.Background(), "main.go", []byte(goCode))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -228,7 +244,7 @@ func main() {
 
 	// Find all function and method nodes.
 	functionNodes := uastRoot.Find(func(n *node.Node) bool {
-		return n.Type == "Function" || n.Type == "go:function" || n.Type == "FunctionDecl" || n.Type == "Method"
+		return n.Type == testUASTFunctionType || n.Type == testGoFunctionType || n.Type == testFunctionDecl || n.Type == "Method"
 	})
 
 	if len(functionNodes) < 2 {
@@ -258,27 +274,17 @@ func main() {
 	}
 }
 
-// DSL Query Efficiency Instrumentation Helpers (migrated).
-//
-//nolint:gochecknoglobals // Test instrumentation counters.
-var (
-	filterCallCount    int
-	mapCallCount       int
-	evaluationCount    int
-	dslAllocationCount int
-)
-
-func resetDSLCounters() {
-	filterCallCount = 0
-	mapCallCount = 0
-	evaluationCount = 0
-	dslAllocationCount = 0
+// dslCounters holds per-test DSL query efficiency counters.
+type dslCounters struct {
+	filterCalls int
+	mapCalls    int
+	evaluations int
 }
 
-func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
+func instrumentedFindDSL(counters *dslCounters, nd *node.Node, query string) ([]*node.Node, error) {
 	// Track filter and map operations.
-	filterCallCount++
-	evaluationCount++
+	counters.filterCalls++
+	counters.evaluations++
 
 	// Simulate the query execution.
 	results, err := nd.FindDSL(query)
@@ -286,14 +292,15 @@ func instrumentedFindDSL(nd *node.Node, query string) ([]*node.Node, error) {
 	// Count operations based on query type.
 	if query != "" {
 		// Rough estimation of operations based on query complexity.
-		evaluationCount += len(results) * 2 // Each result requires evaluation.
+		counters.evaluations += len(results) * 2 // Each result requires evaluation.
 	}
 
 	return results, err
 }
 
-//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -326,64 +333,61 @@ func TestDSLQueryAlgorithmEfficiency(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		nd, parseErr := parser.Parse(tc.name+".go", tc.content)
+		nd, parseErr := parser.Parse(context.Background(), tc.name+".go", tc.content)
 		if parseErr != nil {
 			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-			resetDSLCounters()
+			t.Parallel()
 
-			results, findErr := instrumentedFindDSL(nd, tc.query)
+			counters := &dslCounters{}
+
+			results, findErr := instrumentedFindDSL(counters, nd, tc.query)
 			if findErr != nil {
 				t.Fatalf("DSL query failed: %v", findErr)
 			}
 
-			if filterCallCount > tc.maxFilterCalls {
-				t.Errorf("Too many filter calls: got %d, want <= %d", filterCallCount, tc.maxFilterCalls)
+			if counters.filterCalls > tc.maxFilterCalls {
+				t.Errorf("Too many filter calls: got %d, want <= %d", counters.filterCalls, tc.maxFilterCalls)
 			}
 
-			if mapCallCount > tc.maxMapCalls {
-				t.Errorf("Too many map calls: got %d, want <= %d", mapCallCount, tc.maxMapCalls)
+			if counters.mapCalls > tc.maxMapCalls {
+				t.Errorf("Too many map calls: got %d, want <= %d", counters.mapCalls, tc.maxMapCalls)
 			}
 
-			if evaluationCount > tc.maxEvaluations {
-				t.Errorf("Too many evaluations: got %d, want <= %d", evaluationCount, tc.maxEvaluations)
+			if counters.evaluations > tc.maxEvaluations {
+				t.Errorf("Too many evaluations: got %d, want <= %d", counters.evaluations, tc.maxEvaluations)
 			}
 
 			t.Logf("DSL query efficiency: %d filter calls, %d map calls, %d evaluations, %d results",
-				filterCallCount, mapCallCount, evaluationCount, len(results))
+				counters.filterCalls, counters.mapCalls, counters.evaluations, len(results))
 		})
 	}
 }
 
-//nolint:gochecknoglobals // Test instrumentation counters.
-var (
-	iterationCount       int
-	maxStackDepthReached int
-	nodeAllocationCount  int
-)
-
-func resetOperationCounters() {
-	iterationCount = 0
-	maxStackDepthReached = 0
-	nodeAllocationCount = 0
+// traversalCounters holds per-test tree traversal efficiency counters.
+type traversalCounters struct {
+	iterations    int
+	maxStackDepth int
+	allocations   int
 }
 
-func instrumentedPreOrder(nd *node.Node) <-chan *node.Node {
-	iterationCount++
+func instrumentedPreOrder(counters *traversalCounters, nd *node.Node) <-chan *node.Node {
+	counters.iterations++
 
 	return nd.PreOrder()
 }
 
-func instrumentedPostOrder(nd *node.Node, fn func(*node.Node)) {
-	iterationCount++
+func instrumentedPostOrder(counters *traversalCounters, nd *node.Node, fn func(*node.Node)) {
+	counters.iterations++
 
 	nd.VisitPostOrder(fn)
 }
 
-//nolint:gocognit // Complex efficiency test with nested subtests.
 func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -413,17 +417,18 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		root, parseErr := parser.Parse(tc.name+".go", tc.content)
+		root, parseErr := parser.Parse(context.Background(), tc.name+".go", tc.content)
 		if parseErr != nil {
 			t.Fatalf("Failed to parse test file: %v", parseErr)
 		}
 
 		t.Run(tc.name+"/PreOrderEfficiency", func(t *testing.T) {
-			resetOperationCounters()
+			t.Parallel()
 
+			counters := &traversalCounters{}
 			count := 0
 
-			for nd := range instrumentedPreOrder(root) {
+			for nd := range instrumentedPreOrder(counters, root) {
 				_ = nd
 				count++
 			}
@@ -432,28 +437,29 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 				t.Fatal("No nodes traversed")
 			}
 
-			if iterationCount > tc.maxIterations {
-				t.Errorf("Too many iterations: got %d, want <= %d", iterationCount, tc.maxIterations)
+			if counters.iterations > tc.maxIterations {
+				t.Errorf("Too many iterations: got %d, want <= %d", counters.iterations, tc.maxIterations)
 			}
 
-			if maxStackDepthReached > tc.maxStackDepth {
-				t.Errorf("Stack depth too high: got %d, want <= %d", maxStackDepthReached, tc.maxStackDepth)
+			if counters.maxStackDepth > tc.maxStackDepth {
+				t.Errorf("Stack depth too high: got %d, want <= %d", counters.maxStackDepth, tc.maxStackDepth)
 			}
 
-			if nodeAllocationCount > tc.maxAllocations {
-				t.Errorf("Too many allocations: got %d, want <= %d", nodeAllocationCount, tc.maxAllocations)
+			if counters.allocations > tc.maxAllocations {
+				t.Errorf("Too many allocations: got %d, want <= %d", counters.allocations, tc.maxAllocations)
 			}
 
 			t.Logf("Pre-order efficiency: %d iterations, max depth %d, %d allocations, %d nodes",
-				iterationCount, maxStackDepthReached, nodeAllocationCount, count)
+				counters.iterations, counters.maxStackDepth, counters.allocations, count)
 		})
 
 		t.Run(tc.name+"/PostOrderEfficiency", func(t *testing.T) {
-			resetOperationCounters()
+			t.Parallel()
 
+			counters := &traversalCounters{}
 			count := 0
 
-			instrumentedPostOrder(root, func(_ *node.Node) {
+			instrumentedPostOrder(counters, root, func(_ *node.Node) {
 				count++
 			})
 
@@ -461,25 +467,27 @@ func TestTreeTraversalAlgorithmEfficiency(t *testing.T) {
 				t.Fatal("No nodes traversed")
 			}
 
-			if iterationCount > tc.maxIterations {
-				t.Errorf("Too many iterations: got %d, want <= %d", iterationCount, tc.maxIterations)
+			if counters.iterations > tc.maxIterations {
+				t.Errorf("Too many iterations: got %d, want <= %d", counters.iterations, tc.maxIterations)
 			}
 
-			if maxStackDepthReached > tc.maxStackDepth {
-				t.Errorf("Stack depth too high: got %d, want <= %d", maxStackDepthReached, tc.maxStackDepth)
+			if counters.maxStackDepth > tc.maxStackDepth {
+				t.Errorf("Stack depth too high: got %d, want <= %d", counters.maxStackDepth, tc.maxStackDepth)
 			}
 
-			if nodeAllocationCount > tc.maxAllocations {
-				t.Errorf("Too many allocations: got %d, want <= %d", nodeAllocationCount, tc.maxAllocations)
+			if counters.allocations > tc.maxAllocations {
+				t.Errorf("Too many allocations: got %d, want <= %d", counters.allocations, tc.maxAllocations)
 			}
 
 			t.Logf("Post-order efficiency: %d iterations, max depth %d, %d allocations, %d nodes",
-				iterationCount, maxStackDepthReached, nodeAllocationCount, count)
+				counters.iterations, counters.maxStackDepth, counters.allocations, count)
 		})
 	}
 }
 
 func TestParserWithCustomMap(t *testing.T) {
+	t.Parallel()
+
 	// Create a simple custom UAST mapping for testing.
 	customMaps := map[string]Map{
 		"custom_json": {
@@ -591,6 +599,8 @@ true <- (true) => uast(
 }
 
 func TestParserWithMultipleCustomMaps(t *testing.T) {
+	t.Parallel()
+
 	// Create multiple custom UAST mappings.
 	customMaps := map[string]Map{
 		"custom_json1": {
@@ -698,6 +708,8 @@ string <- (string) => uast(
 }
 
 func TestParserCustomMapPriority(t *testing.T) {
+	t.Parallel()
+
 	// Create a custom UAST mapping that overrides the built-in JSON parser.
 	customMaps := map[string]Map{
 		"custom_json": {
@@ -788,7 +800,7 @@ true <- (true) => uast(
 	// Parse some JSON content.
 	content := []byte(`{"name": "test", "value": 42}`)
 
-	nd, parseErr := parserInstance.Parse(filename, content)
+	nd, parseErr := parserInstance.Parse(context.Background(), filename, content)
 	if parseErr != nil {
 		t.Fatalf("Failed to parse JSON: %v", parseErr)
 	}
@@ -807,6 +819,8 @@ true <- (true) => uast(
 
 // TestParser_GetEmbeddedMappings tests the GetEmbeddedMappings method.
 func TestParser_GetEmbeddedMappings(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -843,6 +857,8 @@ func TestParser_GetEmbeddedMappings(t *testing.T) {
 
 // TestParser_GetEmbeddedMappingsList tests the GetEmbeddedMappingsList method.
 func TestParser_GetEmbeddedMappingsList(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -879,9 +895,9 @@ func TestParser_GetEmbeddedMappingsList(t *testing.T) {
 }
 
 // TestParser_GetMapping tests the GetMapping method.
-//
-//nolint:gocognit // Complex test with multiple subtests.
 func TestParser_GetMapping(t *testing.T) {
+	t.Parallel()
+
 	parser, err := NewParser()
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
@@ -889,6 +905,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test retrieving existing language mapping.
 	t.Run("existing language", func(t *testing.T) {
+		t.Parallel()
+
 		mapping, mapErr := parser.GetMapping("go")
 		if mapErr != nil {
 			t.Fatalf("Failed to get 'go' mapping: %v", mapErr)
@@ -914,6 +932,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test error case for non-existent language.
 	t.Run("non-existent language", func(t *testing.T) {
+		t.Parallel()
+
 		_, mapErr := parser.GetMapping("nonexistent_language_xyz")
 		if mapErr == nil {
 			t.Error("Expected error for non-existent language")
@@ -926,6 +946,8 @@ func TestParser_GetMapping(t *testing.T) {
 
 	// Test retrieving another language.
 	t.Run("python mapping", func(t *testing.T) {
+		t.Parallel()
+
 		mapping, mapErr := parser.GetMapping("python")
 		if mapErr != nil {
 			t.Fatalf("Failed to get 'python' mapping: %v", mapErr)

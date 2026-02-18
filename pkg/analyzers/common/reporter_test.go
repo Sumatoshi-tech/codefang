@@ -1,4 +1,4 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"encoding/json"
@@ -54,7 +54,7 @@ func TestReporter_GenerateReport_Text(t *testing.T) {
 	reporter := NewReporter(config)
 
 	report := analyze.Report{
-		"analyzer_name": "test_analyzer",
+		"analyzer_name": testAnalyzerName,
 		"message":       "Test completed",
 		"score":         0.85,
 	}
@@ -78,7 +78,7 @@ func TestReporter_GenerateReport_JSON(t *testing.T) {
 	reporter := NewReporter(config)
 
 	report := analyze.Report{
-		"analyzer_name": "test_analyzer",
+		"analyzer_name": testAnalyzerName,
 		"message":       "Test completed",
 		"score":         0.85,
 	}
@@ -96,8 +96,8 @@ func TestReporter_GenerateReport_JSON(t *testing.T) {
 		t.Errorf("result is not valid JSON: %v", err)
 	}
 
-	if parsed["analyzer_name"] != "test_analyzer" {
-		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", parsed["analyzer_name"])
+	if parsed["analyzer_name"] != testAnalyzerName {
+		t.Errorf("expected analyzer_name '%s', got '%v'", testAnalyzerName, parsed["analyzer_name"])
 	}
 }
 
@@ -110,7 +110,7 @@ func TestReporter_GenerateReport_Summary(t *testing.T) {
 	reporter := NewReporter(config)
 
 	report := analyze.Report{
-		"analyzer_name": "test_analyzer",
+		"analyzer_name": testAnalyzerName,
 		"message":       "Test completed",
 		"score":         0.85,
 		"total_items":   10,
@@ -121,7 +121,7 @@ func TestReporter_GenerateReport_Summary(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(result, "test_analyzer") {
+	if !strings.Contains(result, testAnalyzerName) {
 		t.Error("expected summary to contain analyzer name")
 	}
 
@@ -182,7 +182,7 @@ func TestReporter_GenerateSummaryReport_WithMetricKeys(t *testing.T) {
 	reporter := NewReporter(config)
 
 	report := analyze.Report{
-		"analyzer_name": "test_analyzer",
+		"analyzer_name": testAnalyzerName,
 		"score":         0.85,
 		"total_items":   10,
 		"ignored_field": "should not appear",
@@ -327,7 +327,7 @@ func TestReporter_GenerateComparisonReport_SingleReport(t *testing.T) {
 	}
 }
 
-func TestReporter_ToFloat(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestReporter_ToFloat(t *testing.T) {
 	t.Parallel()
 
 	reporter := NewReporter(ReportConfig{})
@@ -348,6 +348,8 @@ func TestReporter_ToFloat(t *testing.T) { //nolint:tparallel // parallel test pa
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result, ok := reporter.toFloat(tt.input)
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)
@@ -360,7 +362,7 @@ func TestReporter_ToFloat(t *testing.T) { //nolint:tparallel // parallel test pa
 	}
 }
 
-func TestReporter_ToInt(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestReporter_ToInt(t *testing.T) {
 	t.Parallel()
 
 	reporter := NewReporter(ReportConfig{})
@@ -381,6 +383,8 @@ func TestReporter_ToInt(t *testing.T) { //nolint:tparallel // parallel test patt
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result, ok := reporter.toInt(tt.input)
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)

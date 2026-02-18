@@ -1,0 +1,48 @@
+name: "Codefang Code Analysis"
+description: "Run Codefang static and history code analysis on your repository with quality gates."
+author: "Sumatoshi-tech"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  analyzers:
+    description: "Comma-separated analyzer IDs or glob patterns (e.g., static/complexity,history/burndown,static/*)"
+    required: false
+    default: "static/*"
+  path:
+    description: "Path to the folder or repository to analyze"
+    required: false
+    default: "."
+  config-path:
+    description: "Path to .codefang.yaml configuration file (empty uses default search)"
+    required: false
+    default: ""
+  format:
+    description: "Output format: json, text, compact, yaml"
+    required: false
+    default: "json"
+  fail-on-error:
+    description: "Fail the workflow step if analysis detects issues"
+    required: false
+    default: "false"
+
+outputs:
+  report:
+    description: "Analysis report content"
+  report-file:
+    description: "Path to the report file (use this instead of report output for large reports)"
+  pass:
+    description: "Whether analysis passed without errors (true/false)"
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  entrypoint: "/entrypoint.sh"
+  env:
+    INPUT_ANALYZERS: ${{ inputs.analyzers }}
+    INPUT_PATH: ${{ inputs.path }}
+    INPUT_CONFIG_PATH: ${{ inputs.config-path }}
+    INPUT_FORMAT: ${{ inputs.format }}
+    INPUT_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}

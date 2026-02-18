@@ -1,4 +1,4 @@
-package halstead //nolint:testpackage // testing internal implementation.
+package halstead
 
 import (
 	"testing"

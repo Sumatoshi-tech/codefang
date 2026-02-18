@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,7 +63,7 @@ func runDiff(file1, file2, output, format string) error {
 		return fmt.Errorf("failed to read file %s: %w", file1, err)
 	}
 
-	node1, err := parser.Parse(file1, code1)
+	node1, err := parser.Parse(context.Background(), file1, code1)
 	if err != nil {
 		return fmt.Errorf("parse error in %s: %w", file1, err)
 	}
@@ -77,7 +78,7 @@ func runDiff(file1, file2, output, format string) error {
 		return fmt.Errorf("failed to read file %s: %w", file2, err)
 	}
 
-	node2, err := parser.Parse(file2, code2)
+	node2, err := parser.Parse(context.Background(), file2, code2)
 	if err != nil {
 		return fmt.Errorf("parse error in %s: %w", file2, err)
 	}

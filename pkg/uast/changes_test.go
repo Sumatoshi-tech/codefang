@@ -1,4 +1,4 @@
-package uast //nolint:testpackage // Tests need access to internal DetectChanges function.
+package uast
 
 import (
 	"testing"
@@ -6,7 +6,14 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const (
+	testGoFileType      = "go:file"
+	testFuncSubtractTok = "func subtract"
+)
+
 func TestDetectChanges_NodeAdded(t *testing.T) {
+	t.Parallel()
+
 	after := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -38,6 +45,8 @@ func TestDetectChanges_NodeAdded(t *testing.T) {
 }
 
 func TestDetectChanges_NodeRemoved(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -69,6 +78,8 @@ func TestDetectChanges_NodeRemoved(t *testing.T) {
 }
 
 func TestDetectChanges_NoChanges(t *testing.T) {
+	t.Parallel()
+
 	changes := DetectChanges(nil, nil)
 
 	if len(changes) != 0 {
@@ -77,6 +88,8 @@ func TestDetectChanges_NoChanges(t *testing.T) {
 }
 
 func TestDetectChanges_NodeModified(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -88,7 +101,7 @@ func TestDetectChanges_NodeModified(t *testing.T) {
 
 	after := &node.Node{
 		Type:  "go:function",
-		Token: "func subtract",
+		Token: testFuncSubtractTok,
 		Pos: &node.Positions{
 			StartLine: 1,
 			EndLine:   3,
@@ -117,6 +130,8 @@ func TestDetectChanges_NodeModified(t *testing.T) {
 }
 
 func TestDetectChanges_TypeChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -141,6 +156,8 @@ func TestDetectChanges_TypeChanged(t *testing.T) {
 }
 
 func TestDetectChanges_PositionChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -177,6 +194,8 @@ func TestDetectChanges_PositionChanged(t *testing.T) {
 }
 
 func TestDetectChanges_PositionChangedMinor(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -215,18 +234,20 @@ func TestDetectChanges_PositionChangedMinor(t *testing.T) {
 }
 
 func TestDetectChanges_ChildrenAdded(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
 		},
 	}
 
 	after := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
-			{Type: "go:function", Token: "func subtract"},
+			{Type: "go:function", Token: testFuncSubtractTok},
 		},
 	}
 
@@ -239,11 +260,11 @@ func TestDetectChanges_ChildrenAdded(t *testing.T) {
 	var parentModified, childAdded bool
 
 	for _, change := range changes {
-		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
+		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == testGoFileType {
 			parentModified = true
 		}
 
-		if change.Type == ChangeAdded && change.After != nil && change.After.Token == "func subtract" {
+		if change.Type == ChangeAdded && change.After != nil && change.After.Token == testFuncSubtractTok {
 			childAdded = true
 		}
 	}
@@ -258,16 +279,18 @@ func TestDetectChanges_ChildrenAdded(t *testing.T) {
 }
 
 func TestDetectChanges_ChildrenRemoved(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
-			{Type: "go:function", Token: "func subtract"},
+			{Type: "go:function", Token: testFuncSubtractTok},
 		},
 	}
 
 	after := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
 		},
@@ -282,11 +305,11 @@ func TestDetectChanges_ChildrenRemoved(t *testing.T) {
 	var parentModified, childRemoved bool
 
 	for _, change := range changes {
-		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
+		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == testGoFileType {
 			parentModified = true
 		}
 
-		if change.Type == ChangeRemoved && change.Before != nil && change.Before.Token == "func subtract" {
+		if change.Type == ChangeRemoved && change.Before != nil && change.Before.Token == testFuncSubtractTok {
 			childRemoved = true
 		}
 	}
@@ -301,17 +324,19 @@ func TestDetectChanges_ChildrenRemoved(t *testing.T) {
 }
 
 func TestDetectChanges_ChildrenModified(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
 		},
 	}
 
 	after := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
-			{Type: "go:function", Token: "func subtract"},
+			{Type: "go:function", Token: testFuncSubtractTok},
 		},
 	}
 
@@ -324,7 +349,7 @@ func TestDetectChanges_ChildrenModified(t *testing.T) {
 	var parentModified, childRemoved, childAdded bool
 
 	for _, change := range changes {
-		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == "go:file" {
+		if change.Type == ChangeModified && change.Before != nil && change.Before.Type == testGoFileType {
 			parentModified = true
 		}
 
@@ -332,7 +357,7 @@ func TestDetectChanges_ChildrenModified(t *testing.T) {
 			childRemoved = true
 		}
 
-		if change.Type == ChangeAdded && change.After != nil && change.After.Token == "func subtract" {
+		if change.Type == ChangeAdded && change.After != nil && change.After.Token == testFuncSubtractTok {
 			childAdded = true
 		}
 	}
@@ -351,6 +376,8 @@ func TestDetectChanges_ChildrenModified(t *testing.T) {
 }
 
 func TestDetectChanges_GoFunctionBodyChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "go:function",
 		Token: "func add",
@@ -391,6 +418,8 @@ func TestDetectChanges_GoFunctionBodyChanged(t *testing.T) {
 }
 
 func TestDetectChanges_JavaClassChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "java:class",
 		Token: "class Test",
@@ -431,6 +460,8 @@ func TestDetectChanges_JavaClassChanged(t *testing.T) {
 }
 
 func TestDetectChanges_JavaMethodChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "java:method",
 		Token: "public void test()",
@@ -471,6 +502,8 @@ func TestDetectChanges_JavaMethodChanged(t *testing.T) {
 }
 
 func TestDetectChanges_JavaConstructorChanged(t *testing.T) {
+	t.Parallel()
+
 	before := &node.Node{
 		Type:  "java:constructor",
 		Token: "public Test()",
@@ -510,11 +543,12 @@ func TestDetectChanges_JavaConstructorChanged(t *testing.T) {
 	}
 }
 
-//nolint:gocognit,gocyclo,cyclop // Complex test scenario with many assertions.
 func TestDetectChanges_ComplexScenario(t *testing.T) {
+	t.Parallel()
+
 	// Test a complex scenario with multiple types of changes.
 	before := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
 			{Type: "go:function", Token: "func add"},
 			{Type: "go:function", Token: "func multiply"},
@@ -523,11 +557,11 @@ func TestDetectChanges_ComplexScenario(t *testing.T) {
 	}
 
 	after := &node.Node{
-		Type: "go:file",
+		Type: testGoFileType,
 		Children: []*node.Node{
-			{Type: "go:function", Token: "func add"},      // Unchanged.
-			{Type: "go:function", Token: "func subtract"}, // Modified (reported as removed+added).
-			{Type: "go:constant", Token: "const y"},       // Added.
+			{Type: "go:function", Token: "func add"},          // Unchanged.
+			{Type: "go:function", Token: testFuncSubtractTok}, // Modified (reported as removed+added).
+			{Type: "go:constant", Token: "const y"},           // Added.
 			// Removed: func multiply, var x.
 		},
 	}
@@ -548,7 +582,7 @@ func TestDetectChanges_ComplexScenario(t *testing.T) {
 				addedConstY = true
 			}
 
-			if change.After != nil && change.After.Token == "func subtract" {
+			if change.After != nil && change.After.Token == testFuncSubtractTok {
 				addedFuncSubtract = true
 			}
 		case ChangeRemoved:

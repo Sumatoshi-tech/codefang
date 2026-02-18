@@ -1,4 +1,4 @@
-package renderer //nolint:testpackage // testing internal implementation.
+package renderer
 
 import (
 	"strings"
@@ -176,8 +176,8 @@ func TestRender_ContainsHeaderBox(t *testing.T) {
 
 // mockSectionWithMetrics adds metrics to the mock section.
 type mockSectionWithMetrics struct {
-	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	metrics                   []analyze.Metric
+	analyze.BaseReportSection
+	metrics []analyze.Metric
 }
 
 func (m *mockSectionWithMetrics) KeyMetrics() []analyze.Metric {
@@ -246,8 +246,8 @@ func TestRender_EmptyMetrics(t *testing.T) {
 
 // mockSectionWithDistribution adds distribution to the mock section.
 type mockSectionWithDistribution struct {
-	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	distribution              []analyze.DistributionItem
+	analyze.BaseReportSection
+	distribution []analyze.DistributionItem
 }
 
 func (m *mockSectionWithDistribution) Distribution() []analyze.DistributionItem {
@@ -315,8 +315,8 @@ func TestRender_EmptyDistribution(t *testing.T) {
 
 // mockSectionWithIssues adds issues to the mock section.
 type mockSectionWithIssues struct {
-	analyze.BaseReportSection //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	issues                    []analyze.Issue
+	analyze.BaseReportSection
+	issues []analyze.Issue
 }
 
 func (m *mockSectionWithIssues) TopIssues(n int) []analyze.Issue {

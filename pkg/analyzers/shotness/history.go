@@ -2,36 +2,37 @@
 package shotness
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
 // HistoryAnalyzer measures co-change frequency of code entities across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
-	FileDiff    *plumbing.FileDiffAnalyzer
-	UASTChanges *plumbing.UASTChangesAnalyzer
-	nodes       map[string]*nodeShotness
-	files       map[string]map[string]*nodeShotness
-	merges      map[gitlib.Hash]bool
-	DSLStruct   string
-	DSLName     string
+	FileDiff  *plumbing.FileDiffAnalyzer
+	UAST      *plumbing.UASTChangesAnalyzer
+	nodes     map[string]*nodeShotness
+	files     map[string]map[string]*nodeShotness
+	merges    map[gitlib.Hash]bool
+	DSLStruct string
+	DSLName   string
 }
 
 type nodeShotness struct {
@@ -59,13 +60,16 @@ const (
 	// DefaultShotnessDSLStruct is the default DSL expression for selecting code structures.
 	DefaultShotnessDSLStruct = "filter(.roles has \"Function\")"
 	// DefaultShotnessDSLName is the default DSL expression for extracting names.
-	DefaultShotnessDSLName = ".token"
+	DefaultShotnessDSLName = ".props.name"
 )
 
 // Name returns the name of the analyzer.
 func (s *HistoryAnalyzer) Name() string {
 	return "Shotness"
 }
+
+// NeedsUAST returns true because shotness analysis requires UAST parsing.
+func (s *HistoryAnalyzer) NeedsUAST() bool { return true }
 
 // Flag returns the CLI flag for the analyzer.
 func (s *HistoryAnalyzer) Flag() string {
@@ -74,7 +78,16 @@ func (s *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (s *HistoryAnalyzer) Description() string {
-	return "Structural hotness - a fine-grained alternative to --couples."
+	return s.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (s *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/shotness",
+		Description: "Structural hotness - a fine-grained alternative to --couples.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -201,8 +214,6 @@ func (s *HistoryAnalyzer) handleInsertion(change uast.Change, allNodes map[strin
 }
 
 // handleModification processes a file modification, including renames and diff-based node tracking.
-//
-//nolint:gocognit,cyclop,gocyclo // complexity is inherent to coordinating rename, diff, and node tracking logic.
 func (s *HistoryAnalyzer) handleModification(
 	change uast.Change,
 	diffs map[string]pkgplumbing.FileDiffData,
@@ -219,20 +230,28 @@ func (s *HistoryAnalyzer) handleModification(
 		return
 	}
 
-	reversedNodesBefore := reverseNodeMap(nodesBefore)
-
 	nodesAfter, err := s.extractNodes(change.After)
 	if err != nil {
 		return
 	}
-
-	reversedNodesAfter := reverseNodeMap(nodesAfter)
 
 	diff, ok := diffs[toName]
 	if !ok {
 		return
 	}
 
+	s.applyDiffEdits(toName, nodesBefore, nodesAfter, diff, allNodes)
+}
+
+// applyDiffEdits walks the diff edits and records which nodes were touched.
+func (s *HistoryAnalyzer) applyDiffEdits(
+	toName string,
+	nodesBefore, nodesAfter map[string]*node.Node,
+	diff pkgplumbing.FileDiffData,
+	allNodes map[string]bool,
+) {
+	reversedNodesBefore := reverseNodeMap(nodesBefore)
+	reversedNodesAfter := reverseNodeMap(nodesAfter)
 	line2nodeBefore := genLine2Node(nodesBefore, diff.OldLinesOfCode)
 	line2nodeAfter := genLine2Node(nodesAfter, diff.NewLinesOfCode)
 
@@ -240,34 +259,36 @@ func (s *HistoryAnalyzer) handleModification(
 
 	for _, edit := range diff.Diffs {
 		size := utf8.RuneCountInString(edit.Text)
+
 		switch edit.Type {
 		case diffmatchpatch.DiffDelete:
-			for l := lineNumBefore; l < lineNumBefore+size; l++ {
-				if l < len(line2nodeBefore) {
-					for _, n := range line2nodeBefore[l] {
-						if id, idOK := reversedNodesBefore[n.ID]; idOK {
-							s.addNode(id, n, toName, allNodes)
-						}
-					}
-				}
-			}
-
+			s.recordTouchedNodes(line2nodeBefore, reversedNodesBefore, lineNumBefore, size, toName, allNodes)
 			lineNumBefore += size
 		case diffmatchpatch.DiffInsert:
-			for l := lineNumAfter; l < lineNumAfter+size; l++ {
-				if l < len(line2nodeAfter) {
-					for _, n := range line2nodeAfter[l] {
-						if id, idOK := reversedNodesAfter[n.ID]; idOK {
-							s.addNode(id, n, toName, allNodes)
-						}
-					}
-				}
-			}
-
+			s.recordTouchedNodes(line2nodeAfter, reversedNodesAfter, lineNumAfter, size, toName, allNodes)
 			lineNumAfter += size
 		case diffmatchpatch.DiffEqual:
 			lineNumBefore += size
 			lineNumAfter += size
+		}
+	}
+}
+
+// recordTouchedNodes marks nodes touched by a diff hunk spanning [startLine, startLine+size).
+func (s *HistoryAnalyzer) recordTouchedNodes(
+	line2node [][]*node.Node,
+	reversed map[string]string,
+	startLine, size int,
+	fileName string,
+	allNodes map[string]bool,
+) {
+	for l := startLine; l < startLine+size; l++ {
+		if l < len(line2node) {
+			for _, n := range line2node[l] {
+				if id, ok := reversed[n.ID]; ok {
+					s.addNode(id, n, fileName, allNodes)
+				}
+			}
 		}
 	}
 }
@@ -325,7 +346,7 @@ func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
 			continue
 		}
 
-		startLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		startLine := safeconv.MustUintToInt(pos.StartLine)
 
 		endLine := resolveEndLine(uastNode, pos)
 
@@ -350,19 +371,19 @@ func genLine2Node(nodes map[string]*node.Node, linesNum int) [][]*node.Node {
 // Otherwise, the function walks the node's children to find the maximum line.
 func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
 	if pos.EndLine > pos.StartLine {
-		return int(pos.EndLine) //nolint:gosec // security concern is acceptable here.
+		return safeconv.MustUintToInt(pos.EndLine)
 	}
 
-	endLine := int(pos.StartLine) //nolint:gosec // security concern is acceptable here.
+	endLine := safeconv.MustUintToInt(pos.StartLine)
 
 	uastNode.VisitPreOrder(func(child *node.Node) {
 		if child.Pos == nil {
 			return
 		}
 
-		candidate := int(child.Pos.StartLine) //nolint:gosec // security concern is acceptable here.
+		candidate := safeconv.MustUintToInt(child.Pos.StartLine)
 		if child.Pos.EndLine > child.Pos.StartLine {
-			candidate = int(child.Pos.EndLine) //nolint:gosec // security concern is acceptable here.
+			candidate = safeconv.MustUintToInt(child.Pos.EndLine)
 		}
 
 		if candidate > endLine {
@@ -374,12 +395,12 @@ func resolveEndLine(uastNode *node.Node, pos *node.Positions) int {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (s *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
-	if !s.shouldConsumeCommit(ctx.Commit) {
+func (s *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	if !s.shouldConsumeCommit(ac.Commit) {
 		return nil
 	}
 
-	changesList := s.UASTChanges.Changes
+	changesList := s.UAST.Changes(ctx)
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 
@@ -438,63 +459,183 @@ func (s *HistoryAnalyzer) Finalize() (analyze.Report, error) {
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
+// Each fork gets independent mutable state while sharing read-only dependencies.
 func (s *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := *s
-		// Shallow copy for shared state (legacy behavior).
-		res[i] = &clone
+		clone := &HistoryAnalyzer{
+			FileDiff:  &plumbing.FileDiffAnalyzer{},
+			UAST:      &plumbing.UASTChangesAnalyzer{},
+			DSLStruct: s.DSLStruct,
+			DSLName:   s.DSLName,
+		}
+		// Initialize independent state for each fork.
+		clone.nodes = make(map[string]*nodeShotness)
+		clone.files = make(map[string]map[string]*nodeShotness)
+		clone.merges = make(map[gitlib.Hash]bool)
+
+		res[i] = clone
 	}
 
 	return res
 }
 
 // Merge combines results from forked analyzer branches.
-func (s *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {
+func (s *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
+	for _, branch := range branches {
+		other, ok := branch.(*HistoryAnalyzer)
+		if !ok {
+			continue
+		}
+
+		s.mergeNodes(other.nodes)
+		s.mergeMerges(other.merges)
+	}
+
+	// Rebuild files map from merged nodes.
+	s.rebuildFilesMap()
+}
+
+// mergeNodes combines node data from another analyzer.
+func (s *HistoryAnalyzer) mergeNodes(other map[string]*nodeShotness) {
+	for key, otherNode := range other {
+		if s.nodes[key] == nil {
+			s.nodes[key] = &nodeShotness{
+				Summary: otherNode.Summary,
+				Count:   otherNode.Count,
+				Couples: make(map[string]int),
+			}
+
+			maps.Copy(s.nodes[key].Couples, otherNode.Couples)
+		} else {
+			// Sum counts.
+			s.nodes[key].Count += otherNode.Count
+
+			// Sum couples.
+			for ck, cv := range otherNode.Couples {
+				s.nodes[key].Couples[ck] += cv
+			}
+		}
+	}
+}
+
+// mergeMerges combines merge tracking from another analyzer.
+func (s *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
+	for hash := range other {
+		s.merges[hash] = true
+	}
+}
+
+// SequentialOnly returns false because shotness analysis can be parallelized.
+func (s *HistoryAnalyzer) SequentialOnly() bool { return false }
+
+// CPUHeavy returns true because shotness analysis performs UAST processing per commit.
+func (s *HistoryAnalyzer) CPUHeavy() bool { return true }
+
+// SnapshotPlumbing captures the current plumbing output state for parallel execution.
+func (s *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		UASTChanges: s.UAST.TransferChanges(),
+		FileDiffs:   s.FileDiff.FileDiffs,
+	}
+}
+
+// ApplySnapshot restores plumbing state from a previously captured snapshot.
+func (s *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	s.UAST.SetChanges(ss.UASTChanges)
+	s.FileDiff.FileDiffs = ss.FileDiffs
+}
+
+// ReleaseSnapshot releases UAST trees owned by the snapshot.
+func (s *HistoryAnalyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	for _, ch := range ss.UASTChanges {
+		node.ReleaseTree(ch.Before)
+		node.ReleaseTree(ch.After)
+	}
+}
+
+// rebuildFilesMap rebuilds the files map from the nodes map.
+func (s *HistoryAnalyzer) rebuildFilesMap() {
+	s.files = make(map[string]map[string]*nodeShotness)
+
+	for key, ns := range s.nodes {
+		fileName := ns.Summary.File
+		if s.files[fileName] == nil {
+			s.files[fileName] = make(map[string]*nodeShotness)
+		}
+
+		s.files[fileName][key] = ns
+	}
 }
 
 // Serialize writes the analysis result to the given writer.
 func (s *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return s.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return s.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return s.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return s.serializeBinary(result, writer)
+	default:
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
+	}
+}
 
-		return nil
+func (s *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	nodes, ok := result["Nodes"].([]NodeSummary)
-	if !ok {
-		return errors.New("expected []NodeSummary for nodes") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
 
-	counters, ok := result["Counters"].([]map[int]int)
-	if !ok {
-		return errors.New("expected []map[int]int for counters") //nolint:err113 // descriptive error for type assertion failure.
+	return nil
+}
+
+func (s *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	for i, summary := range nodes {
-		fmt.Fprintf(writer, "  - name: %s\n    file: %s\n    internal_role: %s\n    counters: {",
-			summary.Name, summary.File, summary.Type)
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
+	}
 
-		keys := make([]int, 0, len(counters[i]))
-		for key := range counters[i] {
-			keys = append(keys, key)
-		}
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
 
-		sort.Ints(keys)
+	return nil
+}
 
-		for j, key := range keys {
-			val := counters[i][key]
-			if j < len(keys)-1 {
-				fmt.Fprintf(writer, "\"%d\":%d,", key, val)
-			} else {
-				fmt.Fprintf(writer, "\"%d\":%d", key, val)
-			}
-		}
+func (s *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
 
-		fmt.Fprintln(writer, "}")
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
 
 	return nil

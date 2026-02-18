@@ -1,4 +1,4 @@
-package cohesion //nolint:testpackage // testing internal implementation.
+package cohesion
 
 import (
 	"bytes"
@@ -7,6 +7,9 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -347,9 +350,7 @@ func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	var buf bytes.Buffer
 
 	err := analyzer.FormatReportJSON(report, &buf)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	output := buf.String()
 
@@ -357,22 +358,13 @@ func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	var jsonData map[string]any
 
 	err = json.Unmarshal([]byte(output), &jsonData)
-	if err != nil {
-		t.Errorf("Generated output is not valid JSON: %v", err)
-	}
+	require.NoError(t, err, "Generated output is not valid JSON")
 
-	// Check that the JSON contains expected fields.
-	expectedFields := []string{"total_functions", "lcom", "cohesion_score", "function_cohesion", "message", "functions"}
-	for _, field := range expectedFields {
-		if _, exists := jsonData[field]; !exists {
-			t.Errorf("Expected JSON to contain field '%s'", field)
-		}
-	}
-
-	// Check specific values.
-	if totalFunctions, ok := jsonData["total_functions"].(float64); !ok || totalFunctions != 1 {
-		t.Errorf("Expected total_functions to be 1, got %v", totalFunctions)
-	}
+	// Check that the JSON contains metrics structure fields.
+	assert.Contains(t, jsonData, "function_cohesion")
+	assert.Contains(t, jsonData, "distribution")
+	assert.Contains(t, jsonData, "low_cohesion_functions")
+	assert.Contains(t, jsonData, "aggregate")
 }
 
 func TestAnalyzer_CreateAggregator(t *testing.T) {
@@ -624,7 +616,7 @@ func TestAnalyzer_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
@@ -706,6 +698,8 @@ func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) { //nolint:tparallel //
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			cohesion := analyzer.calculateFunctionLevelCohesion(tc.function)
 
 			if cohesion < tc.expectedMin || cohesion > tc.expectedMax {
@@ -989,4 +983,33 @@ func createBenchmarkResults() map[string]analyze.Report {
 	}
 
 	return results
+}
+
+// --- FormatReportYAML Test ---.
+
+func TestAnalyzer_FormatReportYAML(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	report := analyze.Report{
+		"total_functions":   3,
+		"lcom":              2.5,
+		"cohesion_score":    0.7,
+		"function_cohesion": 0.65,
+		"message":           "Test message",
+		"functions": []map[string]any{
+			{"name": "testFunc", "cohesion": 0.8},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := analyzer.FormatReportYAML(report, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "function_cohesion:")
+	assert.Contains(t, output, "distribution:")
+	assert.Contains(t, output, "aggregate:")
 }

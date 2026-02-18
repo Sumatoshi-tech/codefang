@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -87,7 +88,7 @@ func parseExploreFile(file, lang string) (*node.Node, error) {
 		filename = strings.TrimSuffix(file, ext) + "." + lang
 	}
 
-	parsedNode, err := parser.Parse(filename, code)
+	parsedNode, err := parser.Parse(context.Background(), filename, code)
 	if err != nil {
 		return nil, fmt.Errorf("parse error in %s: %w", file, err)
 	}

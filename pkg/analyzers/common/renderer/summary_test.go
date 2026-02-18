@@ -1,4 +1,4 @@
-package renderer //nolint:testpackage // testing internal implementation.
+package renderer
 
 import (
 	"testing"

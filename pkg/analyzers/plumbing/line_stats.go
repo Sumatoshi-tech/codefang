@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,11 +24,6 @@ type LinesStatsCalculator struct {
 
 	// Output.
 	LineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats
-
-	// Internal. //nolint:unused // used via reflection or external caller.
-	l interface { //nolint:unused // acknowledged.
-		Warnf(format string, args ...any)
-	}
 }
 
 // Name returns the name of the analyzer.
@@ -42,7 +38,16 @@ func (l *LinesStatsCalculator) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (l *LinesStatsCalculator) Description() string {
-	return "Measures line statistics for each text file in the commit."
+	return l.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (l *LinesStatsCalculator) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		l.Name(),
+		"Measures line statistics for each text file in the commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -61,10 +66,10 @@ func (l *LinesStatsCalculator) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (l *LinesStatsCalculator) Consume(ctx *analyze.Context) error {
+func (l *LinesStatsCalculator) Consume(_ context.Context, ac *analyze.Context) error {
 	result := map[gitlib.ChangeEntry]pkgplumbing.LineStats{}
 
-	if ctx.IsMerge {
+	if ac.IsMerge {
 		l.LineStats = result
 
 		return nil
@@ -181,7 +186,7 @@ func computeDiffLineStats(diffs []diffmatchpatch.Diff) (added, removed, changed 
 
 // Finalize completes the analysis and returns the result.
 func (l *LinesStatsCalculator) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.

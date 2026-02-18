@@ -11,6 +11,8 @@ import (
 )
 
 func TestZeroHash(t *testing.T) {
+	t.Parallel()
+
 	hash := gitlib.ZeroHash()
 
 	assert.Equal(t, gitlib.Hash{}, hash)
@@ -18,6 +20,8 @@ func TestZeroHash(t *testing.T) {
 }
 
 func TestNewHash(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -73,6 +77,8 @@ func TestNewHash(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := gitlib.NewHash(tc.input)
 			assert.Equal(t, tc.expected, result)
 		})
@@ -80,6 +86,8 @@ func TestNewHash(t *testing.T) {
 }
 
 func TestHashString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		hash     gitlib.Hash
@@ -112,6 +120,8 @@ func TestHashString(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := tc.hash.String()
 			assert.Equal(t, tc.expected, result)
 		})
@@ -119,6 +129,8 @@ func TestHashString(t *testing.T) {
 }
 
 func TestHashIsZero(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		hash     gitlib.Hash
@@ -147,6 +159,8 @@ func TestHashIsZero(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := tc.hash.IsZero()
 			assert.Equal(t, tc.expected, result)
 		})
@@ -154,6 +168,8 @@ func TestHashIsZero(t *testing.T) {
 }
 
 func TestHashRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	original := "0123456789abcdef0123456789abcdef01234567"
 
 	hash := gitlib.NewHash(original)
@@ -163,6 +179,8 @@ func TestHashRoundTrip(t *testing.T) {
 }
 
 func TestHashFromOid(t *testing.T) {
+	t.Parallel()
+
 	oid := new(git2go.Oid)
 	copy(oid[:], []byte{
 		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
@@ -181,6 +199,8 @@ func TestHashFromOid(t *testing.T) {
 }
 
 func TestHashToOid(t *testing.T) {
+	t.Parallel()
+
 	hash := gitlib.Hash{
 		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
 		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
@@ -196,6 +216,8 @@ func TestHashToOid(t *testing.T) {
 }
 
 func TestHashOidRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	original := new(git2go.Oid)
 	copy(original[:], []byte{
 		0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe,

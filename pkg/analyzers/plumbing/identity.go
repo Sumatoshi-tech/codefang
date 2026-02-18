@@ -2,6 +2,7 @@ package plumbing
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,14 +18,17 @@ import (
 
 // IdentityDetector maps commit authors to canonical developer identities.
 type IdentityDetector struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	PeopleDict         map[string]int
 	PeopleDictPath     string
 	ReversedPeopleDict []string
 	AuthorID           int
 	ExactSignatures    bool
+	// incrementalEmails and incrementalNames are used when building the dict incrementally
+	// during Consume() when commits aren't available during Configure().
+	incrementalEmails map[int][]string
+	incrementalNames  map[int][]string
+	incrementalSize   int
+	dictFinalized     bool
 }
 
 const (
@@ -46,7 +50,16 @@ func (d *IdentityDetector) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (d *IdentityDetector) Description() string {
-	return "Determines the author of a commit."
+	return d.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (d *IdentityDetector) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		d.Name(),
+		"Determines the author of a commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -58,8 +71,7 @@ func (d *IdentityDetector) ListConfigurationOptions() []pipeline.ConfigurationOp
 		Type:        pipeline.PathConfigurationOption,
 		Default:     ""}, {
 		Name: ConfigIdentityDetectorExactSignatures,
-		//nolint:misspell // spelling is intentional.
-		Description: "Disable separate name/email matching. This will lead to considerbly more " +
+		Description: "Disable separate name/email matching. This will lead to considerably more " +
 			"identities and should not be normally used.",
 		Flag:    "exact-signatures",
 		Type:    pipeline.BoolConfigurationOption,
@@ -102,36 +114,81 @@ func (d *IdentityDetector) Configure(facts map[string]any) error {
 
 // Initialize prepares the analyzer for processing commits.
 func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
+	// If PeopleDict is already set (from Configure), mark as finalized.
+	if d.PeopleDict != nil {
+		d.dictFinalized = true
+
+		return nil
+	}
+
+	// Initialize for incremental building during Consume().
+	d.PeopleDict = make(map[string]int)
+	d.incrementalEmails = make(map[int][]string)
+	d.incrementalNames = make(map[int][]string)
+	d.incrementalSize = 0
+	d.dictFinalized = false
+
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *IdentityDetector) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
-
-	var authorID int
-
-	var exists bool
-
+func (d *IdentityDetector) Consume(_ context.Context, ac *analyze.Context) error {
+	commit := ac.Commit
 	signature := commit.Author()
-	if !d.ExactSignatures {
-		authorID, exists = d.PeopleDict[strings.ToLower(signature.Email)]
-		if !exists {
-			authorID, exists = d.PeopleDict[strings.ToLower(signature.Name)]
-		}
+
+	var (
+		authorID int
+		exists   bool
+	)
+
+	if d.ExactSignatures {
+		authorID, exists = d.lookupExactSignature(signature)
 	} else {
-		// For exact signatures, combine name and email.
-		sigStr := fmt.Sprintf("%s <%s>", signature.Name, signature.Email)
-		authorID, exists = d.PeopleDict[strings.ToLower(sigStr)]
+		authorID, exists = d.lookupLooseSignature(signature)
 	}
 
-	if !exists {
+	if !exists && d.dictFinalized {
 		authorID = identity.AuthorMissing
 	}
 
 	d.AuthorID = authorID
 
 	return nil
+}
+
+// lookupExactSignature finds or registers an author using exact signature matching.
+func (d *IdentityDetector) lookupExactSignature(signature gitlib.Signature) (int, bool) {
+	sigStr := strings.ToLower(fmt.Sprintf("%s <%s>", signature.Name, signature.Email))
+	authorID, exists := d.PeopleDict[sigStr]
+
+	if !exists && !d.dictFinalized {
+		authorID = d.incrementalSize
+		d.PeopleDict[sigStr] = authorID
+		d.incrementalSize++
+	}
+
+	return authorID, exists
+}
+
+// lookupLooseSignature finds or registers an author using loose signature matching.
+func (d *IdentityDetector) lookupLooseSignature(signature gitlib.Signature) (int, bool) {
+	email := strings.ToLower(signature.Email)
+	name := strings.ToLower(signature.Name)
+
+	authorID, exists := d.PeopleDict[email]
+	if !exists {
+		authorID, exists = d.PeopleDict[name]
+	}
+
+	if !exists && !d.dictFinalized {
+		d.incrementalSize = registerLooseIdentity(
+			d.PeopleDict, d.incrementalEmails, d.incrementalNames,
+			email, name, d.incrementalSize,
+		)
+		authorID = d.PeopleDict[email]
+	}
+
+	return authorID, exists
 }
 
 // LoadPeopleDict loads the author identity mapping from a file.
@@ -254,7 +311,29 @@ func registerLooseIdentity(dict map[string]int, emails, names map[int][]string, 
 
 // Finalize completes the analysis and returns the result.
 func (d *IdentityDetector) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	// Build ReversedPeopleDict from incrementally collected data if needed.
+	if !d.dictFinalized && d.incrementalSize > 0 {
+		d.ReversedPeopleDict = make([]string, d.incrementalSize)
+
+		if d.ExactSignatures {
+			// For exact signatures, reverse the dict directly.
+			for key, val := range d.PeopleDict {
+				d.ReversedPeopleDict[val] = key
+			}
+		} else {
+			// For loose matching, build readable names from emails and names.
+			for id := range d.incrementalSize {
+				sort.Strings(d.incrementalNames[id])
+				sort.Strings(d.incrementalEmails[id])
+				d.ReversedPeopleDict[id] = strings.Join(d.incrementalNames[id], "|") +
+					"|" + strings.Join(d.incrementalEmails[id], "|")
+			}
+		}
+
+		d.dictFinalized = true
+	}
+
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -282,4 +361,9 @@ func (d *IdentityDetector) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// GetAuthorID returns the author ID of the last processed commit.
+func (d *IdentityDetector) GetAuthorID() int {
+	return d.AuthorID
 }

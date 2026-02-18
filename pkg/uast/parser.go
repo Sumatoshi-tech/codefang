@@ -1,6 +1,7 @@
 package uast
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -109,21 +110,18 @@ func (parser *Parser) GetLanguage(filename string) string {
 }
 
 // Parse parses a file and returns its UAST.
-func (parser *Parser) Parse(filename string, content []byte) (*node.Node, error) {
-	// Get file extension.
+func (parser *Parser) Parse(ctx context.Context, filename string, content []byte) (*node.Node, error) {
 	ext := strings.ToLower(getFileExtension(filename))
 	if ext == "" {
 		return nil, fmt.Errorf("%w for %s", errNoFileExtension, filename)
 	}
 
-	// Get parser for this extension.
 	langParser, exists := parser.loader.LanguageParser(ext)
 	if !exists {
 		return nil, fmt.Errorf("%w %s", errNoParser, ext)
 	}
 
-	// Parse using the parser.
-	return langParser.Parse(filename, content)
+	return langParser.Parse(ctx, filename, content)
 }
 
 // GetEmbeddedMappings returns all embedded UAST mappings.

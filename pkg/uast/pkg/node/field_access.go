@@ -388,7 +388,6 @@ func (e *PropsValueExtractor) Extract(node *Node) any {
 	return nil
 }
 
-//nolint:gochecknoglobals // package-level registry initialized once.
 var globalFieldAccessRegistry = NewFieldAccessStrategyRegistry()
 
 // Helper functions for production usage.

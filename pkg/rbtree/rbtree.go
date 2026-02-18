@@ -591,8 +591,6 @@ func (tree *RBTree) FindLE(key uint32) Iterator {
 
 // Insert an item. If the item is already in the tree, do nothing and
 // return false. Else return true.
-//
-//nolint:gocognit // RB-tree insertion with rebalancing is inherently complex.
 func (tree *RBTree) Insert(item Item) (bool, Iterator) {
 	// Delay creating n until it is found to be inserted.
 	nodeIdx := tree.doInsert(item)
@@ -989,7 +987,7 @@ func (tree *RBTree) doInsert(item Item) uint32 {
 // Find a node whose item >= Key. The 2nd return Value is true iff the
 // node.item==Key. Returns (nil, false) if all nodes in the tree are <
 // Key.
-func (tree *RBTree) findGE(key uint32) (uint32, bool) { //nolint:revive // intentional private/public pair
+func (tree *RBTree) findGE(key uint32) (uint32, bool) {
 	alloc := tree.storage()
 	nodeIdx := tree.root
 
@@ -1255,17 +1253,15 @@ func (tree *RBTree) replaceNode(oldn, newn uint32) {
 //
 // Left rotation:
 //
-//	  X              Y
-//	A   Y    =>    X   C
-//	  B C        A B
+//	  X           =>       Y
+//	A   Y         =>     X   C
+//	  B   C       =>   A   B
 //
 // Right rotation:
 //
-//	    Y            X
-//	  X   C  =>    A   Y
-//	A B              B C
-//
-//nolint:dupword // ASCII art diagrams contain intentional repeated letters.
+//	   X       <=       Y
+//	A    Y     <=     X   C
+//	  B   C    <=   A   B
 func (tree *RBTree) rotateDirection(pivot uint32, isLeft bool) {
 	alloc := tree.storage()
 

@@ -6,9 +6,12 @@ import (
 	"io"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/terminal"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -105,7 +108,16 @@ func (c *Analyzer) Flag() string {
 
 // Description returns the analyzer description.
 func (c *Analyzer) Description() string {
-	return "Analyzes code complexity including cyclomatic and cognitive complexity."
+	return c.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (c *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		c.Name(),
+		"Analyzes code complexity including cyclomatic and cognitive complexity.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -160,7 +172,12 @@ func (c *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
 
 // FormatReportJSON formats complexity analysis results as JSON.
 func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
-	jsonData, err := json.MarshalIndent(report, "", "  ")
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
 	}
@@ -168,6 +185,41 @@ func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	_, err = fmt.Fprint(w, string(jsonData))
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportYAML formats complexity analysis results as YAML.
+func (c *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	_, err = w.Write(data)
+	if err != nil {
+		return fmt.Errorf("formatreportyaml: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportBinary formats complexity analysis results as binary envelope.
+func (c *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		metrics = &ComputedMetrics{}
+	}
+
+	err = reportutil.EncodeBinaryEnvelope(metrics, w)
+	if err != nil {
+		return fmt.Errorf("formatreportbinary: %w", err)
 	}
 
 	return nil
@@ -741,7 +793,7 @@ func (c *Analyzer) getComplexityAssessment(complexity int, thresholds map[string
 	}
 }
 
-// getCognitiveAssessment returns an assessment with emoji for cognitive complexity //nolint:goconst // message string used inline.
+// getCognitiveAssessment returns an assessment with emoji for cognitive complexity.
 func (c *Analyzer) getCognitiveAssessment(complexity int) string {
 	if complexity <= complexityThresholdHigh {
 		return "🟢 Low"

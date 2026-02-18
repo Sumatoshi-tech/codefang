@@ -3,7 +3,8 @@
 package lsp
 
 import (
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 	"sync"
 
@@ -55,11 +56,15 @@ func (ds *DocumentStore) Delete(uri string) {
 type Server struct {
 	store   *DocumentStore
 	handler protocol.Handler
+	logger  *slog.Logger
 }
 
 // NewServer creates a new mapping DSL LSP server with default handlers.
 func NewServer() *Server {
-	srv := &Server{store: NewDocumentStore()}
+	srv := &Server{
+		store:  NewDocumentStore(),
+		logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
 
 	srv.handler = protocol.Handler{
 		Initialize:             srv.initialize,
@@ -83,7 +88,7 @@ func (srv *Server) Run() {
 
 	err := lspServer.RunStdio()
 	if err != nil {
-		log.Printf("LSP server error: %v", err)
+		srv.logger.Error("LSP server error", "error", err)
 	}
 }
 
@@ -158,7 +163,6 @@ func (srv *Server) didClose(_ *glsp.Context, params *protocol.DidCloseTextDocume
 	return nil
 }
 
-//nolint:gochecknoglobals // LSP completion and hover data are package-level constants by design.
 var (
 	mappingDSLKeywords = []protocol.CompletionItem{
 		completionItem("<-", protocol.CompletionItemKindKeyword, "Pattern assignment"),
@@ -211,7 +215,7 @@ func (srv *Server) hover(_ *glsp.Context, params *protocol.HoverParams) (*protoc
 
 	text, ok := srv.store.Get(uri)
 	if !ok {
-		return nil, nil //nolint:nilnil // LSP protocol expects nil hover when no document found.
+		return nil, nil // LSP protocol expects nil hover when no document found.
 	}
 
 	word := extractWordAtPosition(text, int(pos.Line), int(pos.Character))
@@ -225,7 +229,7 @@ func (srv *Server) hover(_ *glsp.Context, params *protocol.HoverParams) (*protoc
 		}, nil
 	}
 
-	return nil, nil //nolint:nilnil // LSP protocol expects nil hover when no docs available.
+	return nil, nil // LSP protocol expects nil hover when no docs available.
 }
 
 // extractWordAtPosition returns the word at the given line/character in the text.

@@ -1,0 +1,7 @@
+<div class="text-center">
+    <p class="text-sm text-stone-500 dark:text-stone-400">{{.Label}}</p>
+    <p class="text-2xl font-semibold text-stone-900 dark:text-stone-50">{{.Value}}</p>
+{{if .Trend}}
+    <p class="text-sm {{.TrendClass}}">{{.Trend}}</p>
+{{end}}
+</div>

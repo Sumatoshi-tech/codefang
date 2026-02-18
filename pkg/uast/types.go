@@ -1,6 +1,7 @@
 package uast
 
 import (
+	"context"
 	"strings"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -217,7 +218,7 @@ func collectAddedChildren(afterChildren []*node.Node, afterUsed []bool) []NodeCh
 
 // LanguageParser is responsible for parsing source code into UAST nodes.
 type LanguageParser interface {
-	Parse(filename string, content []byte) (*node.Node, error)
+	Parse(ctx context.Context, filename string, content []byte) (*node.Node, error)
 	Language() string
 	Extensions() []string
 }
