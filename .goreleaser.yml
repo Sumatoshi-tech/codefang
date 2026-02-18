@@ -3,7 +3,7 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go run ./build/scripts/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
+    - go run ./tools/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
 
 builds:
   - id: codefang

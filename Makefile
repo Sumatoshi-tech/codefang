@@ -60,12 +60,12 @@ precompile: libgit2
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
-	CGO_ENABLED=1 go run ./build/scripts/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
+	CGO_ENABLED=1 go run ./tools/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
 
 # Generate UAST mappings for all languages
 uastmaps-gen:
 	@echo "Generating UAST mappings..."
-	@python3 build/scripts/uastmapsgen/gen_uastmaps.py
+	@python3 tools/uastmapsgen/gen_uastmaps.py
 
 # Generate JSON schemas for all analyzers
 .PHONY: schemas
@@ -74,7 +74,7 @@ schemas: libgit2
 	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
-	CGO_ENABLED=1 go run ./build/scripts/schemagen/schemagen.go -o docs/schemas
+	CGO_ENABLED=1 go run ./tools/schemagen/schemagen.go -o docs/schemas
 	@echo "✓ Schemas generated in docs/schemas/"
 
 # Install binaries to user's local bin directory
@@ -107,7 +107,7 @@ testv: all
 
 # Run UAST performance benchmarks (comprehensive suite with organized results)
 bench: all
-	python3 build/scripts/benchmark/benchmark_runner.py
+	python3 tools/benchmark/benchmark_runner.py
 
 # Burndown perf baseline: 1k + 15k commits with CPU profiles. REPO=path (default: .)
 # Produces cpu_1k.prof, cpu_15k.prof; run from repo root.
@@ -185,39 +185,39 @@ benchprofile: all
 # Run benchmarks and generate performance plots
 benchplot: all
 	CGO_ENABLED=1 go test -run="^$$" -bench=. -benchmem ./pkg/uast > test/benchmarks/benchmark_results.txt 2>&1
-	python3 build/scripts/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
+	python3 tools/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
 
 # Run benchmarks with verbose output and generate plots
 benchplotv: all
 	CGO_ENABLED=1 go test -run="^$$" -bench=. -benchmem -v ./pkg/uast > test/benchmarks/benchmark_results.txt 2>&1
-	python3 build/scripts/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
+	python3 tools/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
 
 # Run comprehensive benchmark suite with organized results
 bench-suite: bench
 
 # Run benchmarks without plots
 bench-no-plots: all
-	python3 build/scripts/benchmark/benchmark_runner.py --no-plots
+	python3 tools/benchmark/benchmark_runner.py --no-plots
 
 # Generate report for latest benchmark run
 report:
-	python3 build/scripts/benchmark/benchmark_report.py
+	python3 tools/benchmark/benchmark_report.py
 
 # Generate report for specific run
 report-run:
-	python3 build/scripts/benchmark/benchmark_report.py $(RUN_NAME)
+	python3 tools/benchmark/benchmark_report.py $(RUN_NAME)
 
 # List all benchmark runs
 bench-list:
-	python3 build/scripts/benchmark/benchmark_report.py --list
+	python3 tools/benchmark/benchmark_report.py --list
 
 # Compare latest run with previous
 compare:
-	python3 build/scripts/benchmark/benchmark_comparison.py $(shell python3 build/scripts/benchmark/benchmark_report.py --list | head -1)
+	python3 tools/benchmark/benchmark_comparison.py $(shell python3 tools/benchmark/benchmark_report.py --list | head -1)
 
 # Compare specific runs
 compare-runs:
-	python3 build/scripts/benchmark/benchmark_comparison.py $(CURRENT_RUN) --baseline $(BASELINE_RUN)
+	python3 tools/benchmark/benchmark_comparison.py $(CURRENT_RUN) --baseline $(BASELINE_RUN)
 
 # Run Codefang burndown and compare with Hercules reference.
 # Usage: make compare-burndown [REPO=~/sources/iortcw] [FP=1 for --first-parent]
@@ -233,32 +233,32 @@ compare-last:
 	@N=$${N:-2}; \
 	echo "Comparing last $$N benchmark runs..."; \
 	if [ $$N -eq 2 ]; then \
-		LATEST=$$(python3 build/scripts/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -1 | xargs); \
-		PREVIOUS=$$(python3 build/scripts/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -2 | tail -1 | xargs); \
+		LATEST=$$(python3 tools/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -1 | xargs); \
+		PREVIOUS=$$(python3 tools/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -2 | tail -1 | xargs); \
 		echo "Latest: $$LATEST"; \
 		echo "Previous: $$PREVIOUS"; \
-		python3 build/scripts/benchmark/benchmark_comparison.py "$$LATEST" --baseline "$$PREVIOUS"; \
+		python3 tools/benchmark/benchmark_comparison.py "$$LATEST" --baseline "$$PREVIOUS"; \
 	else \
-		RUNS=$$(python3 build/scripts/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -$$N | tr '\n' ' '); \
+		RUNS=$$(python3 tools/benchmark/benchmark_report.py --list | grep -v "Available benchmark runs:" | head -$$N | tr '\n' ' '); \
 		echo "Comparing $$N runs:"; \
 		echo "$$RUNS" | nl; \
-		python3 build/scripts/benchmark/benchmark_comparison_multi.py "$$RUNS"; \
+		python3 tools/benchmark/benchmark_comparison_multi.py "$$RUNS"; \
 	fi
 
 # Run benchmarks with profiling and generate plots
 benchplotprofile: all
 	CGO_ENABLED=1 go test -run="^$$" -bench=. -benchmem -cpuprofile=cpu.prof -memprofile=mem.prof ./pkg/uast > test/benchmarks/benchmark_results.txt 2>&1
-	python3 build/scripts/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
+	python3 tools/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
 
 # Run specific benchmark and generate plots (usage: make benchplot-simple BENCH=BenchmarkParse)
 benchplot-simple: all
 	CGO_ENABLED=1 go test -run="^$$" -bench=$(BENCH) -benchmem ./pkg/uast > test/benchmarks/benchmark_results.txt 2>&1
-	python3 build/scripts/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
+	python3 tools/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
 
 # Run benchmarks with timeout and generate plots (usage: make benchplot-timeout TIMEOUT=30s)
 benchplot-timeout: all
 	CGO_ENABLED=1 go test -run="^$$" -bench=. -benchmem -timeout=$(TIMEOUT) ./pkg/uast > test/benchmarks/benchmark_results.txt 2>&1
-	python3 build/scripts/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
+	python3 tools/benchmark/benchmark_plot.py test/benchmarks/benchmark_results.txt
 
 clean:
 	rm -f ./uast
