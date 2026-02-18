@@ -1,6 +1,6 @@
 module github.com/Sumatoshi-tech/codefang
 
-go 1.24.5
+go 1.26
 
 require (
 	github.com/alexaandru/go-sitter-forest v1.9.163

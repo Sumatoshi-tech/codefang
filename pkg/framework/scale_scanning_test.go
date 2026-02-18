@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 )
 
-// --- Helpers ---
+// errNilReport is returned when a concurrent repo analysis produces a nil report.
+var errNilReport = errors.New("nil report")
+
+// Helpers.
 
 // createBareRepo creates a bare git repository by first building a normal repo
 // with commits and then cloning it as bare. This simulates GitLab backup repos.
@@ -35,6 +39,7 @@ func createBareRepo(t *testing.T, numCommits int) string {
 
 	srcRepo, err := git2go.InitRepository(srcDir, false)
 	require.NoError(t, err, "InitRepository (source)")
+
 	defer srcRepo.Free()
 
 	writeAndCommit(t, srcRepo, srcDir, numCommits)
@@ -63,6 +68,7 @@ func createNormalRepo(t *testing.T, numCommits int) string {
 
 	repo, err := git2go.InitRepository(dir, false)
 	require.NoError(t, err, "InitRepository")
+
 	defer repo.Free()
 
 	writeAndCommit(t, repo, dir, numCommits)
@@ -79,6 +85,7 @@ func createNormalRepoWithTimedCommits(t *testing.T, commitTimes []time.Time) str
 
 	repo, err := git2go.InitRepository(dir, false)
 	require.NoError(t, err, "InitRepository")
+
 	defer repo.Free()
 
 	for i, when := range commitTimes {
@@ -109,6 +116,7 @@ func writeAndCommit(t *testing.T, repo *git2go.Repository, dir string, numCommit
 
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
+
 	p := filepath.Join(dir, name)
 	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o750))
 	require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
@@ -124,6 +132,7 @@ func commitAtTime(t *testing.T, repo *git2go.Repository, message string, when ti
 
 	index, err := repo.Index()
 	require.NoError(t, err)
+
 	defer index.Free()
 
 	require.NoError(t, index.AddAll([]string{"*"}, git2go.IndexAddDefault, nil))
@@ -134,15 +143,20 @@ func commitAtTime(t *testing.T, repo *git2go.Repository, message string, when ti
 
 	tree, err := repo.LookupTree(treeID)
 	require.NoError(t, err)
+
 	defer tree.Free()
 
 	sig := &git2go.Signature{Name: "Test", Email: "test@test.com", When: when}
 
 	var parents []*git2go.Commit
-	if head, headErr := repo.Head(); headErr == nil {
-		if hc, lookupErr := repo.LookupCommit(head.Target()); lookupErr == nil {
+
+	head, headErr := repo.Head()
+	if headErr == nil {
+		hc, lookupErr := repo.LookupCommit(head.Target())
+		if lookupErr == nil {
 			parents = append(parents, hc)
 		}
+
 		head.Free()
 	}
 
@@ -155,7 +169,7 @@ func commitAtTime(t *testing.T, repo *git2go.Repository, message string, when ti
 }
 
 // buildFullPipeline builds a complete plumbing + devs analyzer pipeline.
-func buildFullPipeline(libRepo *gitlib.Repository) ([]analyze.HistoryAnalyzer, *devs.HistoryAnalyzer) {
+func buildFullPipeline(libRepo *gitlib.Repository) (all []analyze.HistoryAnalyzer, leaf *devs.HistoryAnalyzer) {
 	treeDiff := &plumbing.TreeDiffAnalyzer{Repository: libRepo}
 	identity := &plumbing.IdentityDetector{}
 	ticks := &plumbing.TicksSinceStart{}
@@ -164,12 +178,12 @@ func buildFullPipeline(libRepo *gitlib.Repository) ([]analyze.HistoryAnalyzer, *
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
-	leaf := &devs.HistoryAnalyzer{
+	leaf = &devs.HistoryAnalyzer{
 		Identity: identity, TreeDiff: treeDiff, Ticks: ticks,
 		Languages: langDetect, LineStats: lineStats,
 	}
 
-	all := []analyze.HistoryAnalyzer{
+	all = []analyze.HistoryAnalyzer{
 		treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, leaf,
 	}
 
@@ -182,14 +196,17 @@ func collectAllCommits(t *testing.T, repo *gitlib.Repository) []*gitlib.Commit {
 
 	iter, err := repo.Log(&gitlib.LogOptions{})
 	require.NoError(t, err, "Log")
+
 	defer iter.Close()
 
 	var commits []*gitlib.Commit
+
 	for {
 		c, nextErr := iter.Next()
 		if nextErr != nil {
 			break
 		}
+
 		commits = append(commits, c)
 	}
 
@@ -202,6 +219,7 @@ func runAnalysis(t *testing.T, repoPath string) (analyze.Report, *devs.HistoryAn
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -220,8 +238,9 @@ func runAnalysis(t *testing.T, repoPath string) (analyze.Report, *devs.HistoryAn
 	return report, leaf
 }
 
-// --- Test: Bare Repository Support ---
+// Test: Bare Repository Support.
 
+// TestScaleScanning_BareRepoAnalysis verifies that codefang can open and analyze a bare repo.
 func TestScaleScanning_BareRepoAnalysis(t *testing.T) {
 	t.Parallel()
 
@@ -232,6 +251,7 @@ func TestScaleScanning_BareRepoAnalysis(t *testing.T) {
 	// Verify codefang can open and analyze a bare repo.
 	libRepo, err := gitlib.OpenRepository(bareDir)
 	require.NoError(t, err, "OpenRepository on bare repo")
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -257,13 +277,17 @@ func TestScaleScanning_BareRepoMatchesNormalRepo(t *testing.T) {
 
 	// Create a normal repo.
 	srcDir := t.TempDir()
+
 	srcRepo, err := git2go.InitRepository(srcDir, false)
 	require.NoError(t, err)
+
 	defer srcRepo.Free()
+
 	writeAndCommit(t, srcRepo, srcDir, numCommits)
 
 	// Clone as bare.
 	bareDir := t.TempDir()
+
 	bareRepo, err := git2go.Clone(srcDir, bareDir, &git2go.CloneOptions{Bare: true})
 	require.NoError(t, err)
 	bareRepo.Free()
@@ -281,8 +305,9 @@ func TestScaleScanning_BareRepoMatchesNormalRepo(t *testing.T) {
 		"bare repo analysis should match normal repo analysis")
 }
 
-// --- Test: JSON Output Format ---
+// Test: JSON Output Format.
 
+// TestScaleScanning_JSONOutputStructure verifies JSON output is valid and non-empty.
 func TestScaleScanning_JSONOutputStructure(t *testing.T) {
 	t.Parallel()
 
@@ -291,12 +316,14 @@ func TestScaleScanning_JSONOutputStructure(t *testing.T) {
 
 	// Serialize to JSON.
 	var buf bytes.Buffer
+
 	err := leaf.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err, "Serialize to JSON")
 	require.NotEmpty(t, buf.Bytes(), "JSON output should not be empty")
 
 	// Verify valid JSON.
 	var parsed map[string]any
+
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	require.NoError(t, err, "JSON output should be valid JSON")
 
@@ -329,6 +356,7 @@ func TestScaleScanning_OutputHistoryResultsJSON(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -342,6 +370,7 @@ func TestScaleScanning_OutputHistoryResultsJSON(t *testing.T) {
 
 	// Use OutputHistoryResults — this is what `codefang run --format json` calls.
 	var buf bytes.Buffer
+
 	err = analyze.OutputHistoryResults([]analyze.HistoryAnalyzer{leaf}, results, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 	require.NotEmpty(t, buf.String())
@@ -350,8 +379,9 @@ func TestScaleScanning_OutputHistoryResultsJSON(t *testing.T) {
 	require.True(t, json.Valid(buf.Bytes()), "OutputHistoryResults JSON should be valid")
 }
 
-// --- Test: Streaming / Chunked Processing ---
+// Test: Streaming / Chunked Processing.
 
+// TestScaleScanning_StreamingProducesIdenticalOutput verifies streaming matches single-pass.
 func TestScaleScanning_StreamingProducesIdenticalOutput(t *testing.T) {
 	t.Parallel()
 
@@ -364,6 +394,7 @@ func TestScaleScanning_StreamingProducesIdenticalOutput(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -373,6 +404,7 @@ func TestScaleScanning_StreamingProducesIdenticalOutput(t *testing.T) {
 	// Baseline: single pass.
 	baselineAnalyzers, baselineLeaf := buildFullPipeline(libRepo)
 	runner1 := framework.NewRunner(libRepo, repoPath, baselineAnalyzers...)
+
 	baselineResults, err := runner1.Run(context.Background(), commits)
 	require.NoError(t, err)
 
@@ -395,6 +427,7 @@ func TestScaleScanning_StreamingProducesIdenticalOutput(t *testing.T) {
 					require.NoError(t, h.Hibernate(), "Hibernate chunk %d", chunkIdx)
 				}
 			}
+
 			for _, a := range streamAnalyzers {
 				if h, ok := a.(streaming.Hibernatable); ok {
 					require.NoError(t, h.Boot(), "Boot chunk %d", chunkIdx)
@@ -427,6 +460,7 @@ func TestScaleScanning_StreamingWithMemoryBudget(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -435,11 +469,11 @@ func TestScaleScanning_StreamingWithMemoryBudget(t *testing.T) {
 	analyzers, leaf := buildFullPipeline(libRepo)
 	config := framework.DefaultCoordinatorConfig()
 	runner := framework.NewRunnerWithConfig(libRepo, repoPath, config, analyzers...)
-	runner.CoreCount = 7 // 7 plumbing + 1 leaf
+	runner.CoreCount = 7 // 7 plumbing + 1 leaf.
 
 	streamConfig := framework.StreamingConfig{
 		// Very small budget to force multiple chunks.
-		MemBudget: 500 * 1024 * 1024, // 500 MiB
+		MemBudget: 500 * 1024 * 1024, // 500 MiB.
 		RepoPath:  repoPath,
 	}
 
@@ -450,8 +484,9 @@ func TestScaleScanning_StreamingWithMemoryBudget(t *testing.T) {
 	require.NotNil(t, results[leaf], "devs report from streaming should not be nil")
 }
 
-// --- Test: Checkpoint Save/Resume ---
+// Test: Checkpoint Save/Resume.
 
+// TestScaleScanning_CheckpointSaveResumeAcrossChunks verifies checkpoint save and resume.
 func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 	t.Parallel()
 
@@ -465,6 +500,7 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -475,7 +511,7 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 	runner1 := framework.NewRunner(libRepo, repoPath, analyzers1...)
 	require.NoError(t, runner1.Initialize())
 
-	for chunkIdx := 0; chunkIdx < 2; chunkIdx++ {
+	for chunkIdx := range 2 {
 		start := chunkIdx * chunkSize
 		end := min(start+chunkSize, len(commits))
 
@@ -485,6 +521,7 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 					require.NoError(t, h.Hibernate())
 				}
 			}
+
 			for _, a := range analyzers1 {
 				if h, ok := a.(streaming.Hibernatable); ok {
 					require.NoError(t, h.Boot())
@@ -498,10 +535,12 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 
 	// Save checkpoint after 2 chunks (50 commits processed).
 	var checkpointCount int
+
 	for _, a := range analyzers1 {
 		if cp, ok := a.(interface{ SaveCheckpoint(string) error }); ok {
 			require.NoError(t, cp.SaveCheckpoint(checkpointDir),
 				"SaveCheckpoint for %s", a.Name())
+
 			checkpointCount++
 		}
 	}
@@ -528,6 +567,7 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 					require.NoError(t, h.Hibernate())
 				}
 			}
+
 			for _, a := range analyzers2 {
 				if h, ok := a.(streaming.Hibernatable); ok {
 					require.NoError(t, h.Boot())
@@ -549,29 +589,32 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 	// Also run a full baseline for comparison if checkpoint covered all analyzers.
 	if checkpointCount > 0 {
 		var buf bytes.Buffer
+
 		err = leaf2.Serialize(report, analyze.FormatJSON, &buf)
 		require.NoError(t, err)
 		require.True(t, json.Valid(buf.Bytes()), "checkpoint-resumed report should produce valid JSON")
 	}
 }
 
-// --- Test: --since Incremental Filtering ---
+// Test: --since Incremental Filtering.
 
+// TestScaleScanning_SinceFilteringDuration verifies duration-based --since filtering.
 func TestScaleScanning_SinceFilteringDuration(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
 	commitTimes := []time.Time{
-		now.Add(-72 * time.Hour), // 3 days ago
-		now.Add(-48 * time.Hour), // 2 days ago
-		now.Add(-24 * time.Hour), // 1 day ago
-		now.Add(-1 * time.Hour),  // 1 hour ago
+		now.Add(-72 * time.Hour), // 3 days ago.
+		now.Add(-48 * time.Hour), // 2 days ago.
+		now.Add(-24 * time.Hour), // 1 day ago.
+		now.Add(-1 * time.Hour),  // 1 hour ago.
 	}
 
 	repoPath := createNormalRepoWithTimedCommits(t, commitTimes)
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// Load all commits.
@@ -603,10 +646,12 @@ func TestScaleScanning_SinceFilteringRFC3339(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// Use RFC3339 cutoff at 60 hours ago.
 	cutoff := now.Add(-60 * time.Hour).Format(time.RFC3339)
+
 	recentCommits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{
 		Since: cutoff,
 	})
@@ -630,6 +675,7 @@ func TestScaleScanning_SinceAnalysisProducesResults(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// Load only recent commits.
@@ -648,8 +694,9 @@ func TestScaleScanning_SinceAnalysisProducesResults(t *testing.T) {
 	require.NotNil(t, results[leaf], "analysis on --since subset should produce results")
 }
 
-// --- Test: Batch Processing Multiple Repos ---
+// Test: Batch Processing Multiple Repos.
 
+// TestScaleScanning_MultipleReposIndependent verifies concurrent independent repo analysis.
 func TestScaleScanning_MultipleReposIndependent(t *testing.T) {
 	t.Parallel()
 
@@ -664,6 +711,12 @@ func TestScaleScanning_MultipleReposIndependent(t *testing.T) {
 		err  error
 	}
 
+	// Create repos before launching goroutines to avoid go-require violations.
+	repoPaths := make([]string, numRepos)
+	for i := range numRepos {
+		repoPaths[i] = createNormalRepo(t, numCommits)
+	}
+
 	results := make(chan repoResult, numRepos)
 
 	var wg sync.WaitGroup
@@ -674,28 +727,48 @@ func TestScaleScanning_MultipleReposIndependent(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 
-			repoPath := createNormalRepo(t, numCommits)
-
-			libRepo, err := gitlib.OpenRepository(repoPath)
+			libRepo, err := gitlib.OpenRepository(repoPaths[idx])
 			if err != nil {
 				results <- repoResult{idx: idx, err: err}
+
 				return
 			}
+
 			defer libRepo.Free()
 
-			commits := collectAllCommits(t, libRepo)
-			slices.Reverse(commits)
+			commits, err := libRepo.Log(&gitlib.LogOptions{})
+			if err != nil {
+				results <- repoResult{idx: idx, err: err}
+
+				return
+			}
+
+			var commitList []*gitlib.Commit
+
+			for {
+				c, nextErr := commits.Next()
+				if nextErr != nil {
+					break
+				}
+
+				commitList = append(commitList, c)
+			}
+
+			commits.Close()
+			slices.Reverse(commitList)
 
 			analyzers, leaf := buildFullPipeline(libRepo)
-			runner := framework.NewRunner(libRepo, repoPath, analyzers...)
+			runner := framework.NewRunner(libRepo, repoPaths[idx], analyzers...)
 
-			reports, runErr := runner.Run(context.Background(), commits)
+			reports, runErr := runner.Run(context.Background(), commitList)
 			if runErr != nil {
 				results <- repoResult{idx: idx, err: runErr}
+
 				return
 			}
 
 			var buf bytes.Buffer
+
 			serErr := leaf.Serialize(reports[leaf], analyze.FormatJSON, &buf)
 			results <- repoResult{idx: idx, json: buf.Bytes(), err: serErr}
 		}(i)
@@ -721,7 +794,14 @@ func TestScaleScanning_BatchStreamingMultipleRepos(t *testing.T) {
 		numCommits = 80
 	)
 
+	// Create repos before launching goroutines to avoid go-require violations.
+	repoPaths := make([]string, numRepos)
+	for i := range numRepos {
+		repoPaths[i] = createNormalRepo(t, numCommits)
+	}
+
 	var wg sync.WaitGroup
+
 	errs := make(chan error, numRepos)
 
 	for i := range numRepos {
@@ -730,26 +810,44 @@ func TestScaleScanning_BatchStreamingMultipleRepos(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 
-			repoPath := createNormalRepo(t, numCommits)
-
-			libRepo, err := gitlib.OpenRepository(repoPath)
+			libRepo, err := gitlib.OpenRepository(repoPaths[idx])
 			if err != nil {
 				errs <- fmt.Errorf("repo %d: open: %w", idx, err)
+
 				return
 			}
+
 			defer libRepo.Free()
 
-			commits := collectAllCommits(t, libRepo)
+			iter, err := libRepo.Log(&gitlib.LogOptions{})
+			if err != nil {
+				errs <- fmt.Errorf("repo %d: log: %w", idx, err)
+
+				return
+			}
+
+			var commits []*gitlib.Commit
+
+			for {
+				c, nextErr := iter.Next()
+				if nextErr != nil {
+					break
+				}
+
+				commits = append(commits, c)
+			}
+
+			iter.Close()
 			slices.Reverse(commits)
 
 			analyzers, leaf := buildFullPipeline(libRepo)
 			config := framework.DefaultCoordinatorConfig()
-			runner := framework.NewRunnerWithConfig(libRepo, repoPath, config, analyzers...)
+			runner := framework.NewRunnerWithConfig(libRepo, repoPaths[idx], config, analyzers...)
 			runner.CoreCount = 7
 
 			streamConfig := framework.StreamingConfig{
 				MemBudget: 500 * 1024 * 1024,
-				RepoPath:  repoPath,
+				RepoPath:  repoPaths[idx],
 			}
 
 			results, runErr := framework.RunStreaming(
@@ -757,11 +855,13 @@ func TestScaleScanning_BatchStreamingMultipleRepos(t *testing.T) {
 			)
 			if runErr != nil {
 				errs <- fmt.Errorf("repo %d: streaming: %w", idx, runErr)
+
 				return
 			}
 
 			if results[leaf] == nil {
-				errs <- fmt.Errorf("repo %d: nil report", idx)
+				errs <- fmt.Errorf("repo %d: %w", idx, errNilReport)
+
 				return
 			}
 
@@ -777,18 +877,21 @@ func TestScaleScanning_BatchStreamingMultipleRepos(t *testing.T) {
 	}
 }
 
-// --- Test: Large Repo Resilience ---
+// Test: Large Repo Resilience.
 
+// TestScaleScanning_EmptyRepoHandledGracefully verifies empty repos do not crash.
 func TestScaleScanning_EmptyRepoHandledGracefully(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
+
 	repo, err := git2go.InitRepository(dir, false)
 	require.NoError(t, err)
 	repo.Free()
 
 	libRepo, err := gitlib.OpenRepository(dir)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// An empty repo (no commits) should not crash.
@@ -796,7 +899,7 @@ func TestScaleScanning_EmptyRepoHandledGracefully(t *testing.T) {
 	// LoadCommits calls Head() which fails on empty repo.
 	// Either empty result or error is acceptable, but no panic.
 	if err != nil {
-		return // graceful error
+		return // Graceful error.
 	}
 
 	require.Empty(t, commits, "empty repo should have no commits")
@@ -809,6 +912,7 @@ func TestScaleScanning_SingleCommitRepo(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -830,6 +934,7 @@ func TestScaleScanning_CommitLimitRespected(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// Load only the last 10 commits.
@@ -853,6 +958,7 @@ func TestScaleScanning_HeadOnlyMode(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{HeadOnly: true})
@@ -877,8 +983,9 @@ func TestScaleScanning_RemoteURIRejected(t *testing.T) {
 	require.ErrorIs(t, err, gitlib.ErrRemoteNotSupported)
 }
 
-// --- Test: Format Validation ---
+// Test: Format Validation.
 
+// TestScaleScanning_AllUniversalFormatsAccepted verifies all format strings are accepted.
 func TestScaleScanning_AllUniversalFormatsAccepted(t *testing.T) {
 	t.Parallel()
 
@@ -900,8 +1007,9 @@ func TestScaleScanning_BinAliasNormalized(t *testing.T) {
 	require.Equal(t, analyze.FormatBinary, analyze.NormalizeFormat(" BIN "))
 }
 
-// --- Test: Bare Repo with RunStreaming ---
+// Test: Bare Repo with RunStreaming.
 
+// TestScaleScanning_BareRepoWithStreaming verifies streaming works on bare repos.
 func TestScaleScanning_BareRepoWithStreaming(t *testing.T) {
 	t.Parallel()
 
@@ -911,6 +1019,7 @@ func TestScaleScanning_BareRepoWithStreaming(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(bareDir)
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	commits := collectAllCommits(t, libRepo)
@@ -934,17 +1043,20 @@ func TestScaleScanning_BareRepoWithStreaming(t *testing.T) {
 
 	// Verify JSON output from bare repo streaming.
 	var buf bytes.Buffer
+
 	err = leaf.Serialize(results[leaf], analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 	require.True(t, json.Valid(buf.Bytes()))
 }
 
-// --- Test: First-Parent Walk (merge-heavy repos) ---
+// Test: First-Parent Walk (merge-heavy repos).
 
+// TestScaleScanning_FirstParentWalkWithMerges verifies first-parent walk with merge commits.
 func TestScaleScanning_FirstParentWalkWithMerges(t *testing.T) {
 	t.Parallel()
 
 	repo := framework.NewTestRepo(t)
+
 	defer repo.Close()
 
 	// Build a repo with merges, simulating a real codebase workflow.
@@ -960,6 +1072,7 @@ func TestScaleScanning_FirstParentWalkWithMerges(t *testing.T) {
 
 	libRepo, err := gitlib.OpenRepository(repo.Path())
 	require.NoError(t, err)
+
 	defer libRepo.Free()
 
 	// First-parent walk should work without "internal integrity error".
@@ -975,12 +1088,14 @@ func TestScaleScanning_FirstParentWalkWithMerges(t *testing.T) {
 	require.NotNil(t, results[leaf])
 }
 
-// --- Test: ParseTime Formats ---
+// Test: ParseTime Formats.
 
+// TestScaleScanning_ParseTimeDuration verifies duration parsing for --since.
 func TestScaleScanning_ParseTimeDuration(t *testing.T) {
 	t.Parallel()
 
 	before := time.Now()
+
 	parsed, err := gitlib.ParseTime("24h")
 	require.NoError(t, err)
 
@@ -990,6 +1105,7 @@ func TestScaleScanning_ParseTimeDuration(t *testing.T) {
 		"ParseTime(24h) should be ~24h ago")
 }
 
+// TestScaleScanning_ParseTimeRFC3339 verifies RFC3339 timestamp parsing.
 func TestScaleScanning_ParseTimeRFC3339(t *testing.T) {
 	t.Parallel()
 
@@ -1000,6 +1116,7 @@ func TestScaleScanning_ParseTimeRFC3339(t *testing.T) {
 	require.Equal(t, expected, parsed)
 }
 
+// TestScaleScanning_ParseTimeDateOnly verifies date-only string parsing.
 func TestScaleScanning_ParseTimeDateOnly(t *testing.T) {
 	t.Parallel()
 
@@ -1010,6 +1127,7 @@ func TestScaleScanning_ParseTimeDateOnly(t *testing.T) {
 	require.Equal(t, expected, parsed)
 }
 
+// TestScaleScanning_ParseTimeInvalid verifies invalid time strings are rejected.
 func TestScaleScanning_ParseTimeInvalid(t *testing.T) {
 	t.Parallel()
 
