@@ -1,4 +1,4 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"testing"
@@ -188,7 +188,7 @@ func TestMetricsProcessor_GetCount(t *testing.T) {
 	}
 }
 
-func TestMetricsProcessor_extractFloat(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestMetricsProcessor_extractFloat(t *testing.T) {
 	t.Parallel()
 
 	processor := NewMetricsProcessor([]string{}, []string{})
@@ -209,6 +209,8 @@ func TestMetricsProcessor_extractFloat(t *testing.T) { //nolint:tparallel // par
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result, ok := processor.extractFloat(tt.value)
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)
@@ -221,7 +223,7 @@ func TestMetricsProcessor_extractFloat(t *testing.T) { //nolint:tparallel // par
 	}
 }
 
-func TestMetricsProcessor_extractInt(t *testing.T) { //nolint:tparallel // parallel test pattern is intentional.
+func TestMetricsProcessor_extractInt(t *testing.T) {
 	t.Parallel()
 
 	processor := NewMetricsProcessor([]string{}, []string{})
@@ -242,6 +244,8 @@ func TestMetricsProcessor_extractInt(t *testing.T) { //nolint:tparallel // paral
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result, ok := processor.extractInt(tt.value)
 			if ok != tt.ok {
 				t.Errorf("expected ok=%v, got ok=%v", tt.ok, ok)

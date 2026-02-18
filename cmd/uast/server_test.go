@@ -7,6 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
@@ -218,4 +222,20 @@ func TestHandleParseWithInvalidUASTMaps(t *testing.T) {
 	if response.Error == "" {
 		t.Error("Expected error for invalid UAST mapping, got none")
 	}
+}
+
+func TestUASTServer_MiddlewareWrapsRoutes(t *testing.T) {
+	t.Parallel()
+
+	tracer := noop.NewTracerProvider().Tracer("test")
+	handler := newServerMux(tracer)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/mappings", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	require.NotPanics(t, func() {
+		handler.ServeHTTP(rec, req)
+	})
+
+	assert.Equal(t, http.StatusOK, rec.Code)
 }

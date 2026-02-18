@@ -1,4 +1,4 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"testing"
@@ -17,9 +17,9 @@ func TestResultBuilder_BuildEmptyResult(t *testing.T) {
 	t.Parallel()
 
 	builder := NewResultBuilder()
-	result := builder.BuildEmptyResult("test_analyzer")
+	result := builder.BuildEmptyResult(testAnalyzerName)
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
@@ -55,9 +55,9 @@ func TestResultBuilder_BuildBasicResult(t *testing.T) {
 	t.Parallel()
 
 	builder := NewResultBuilder()
-	result := builder.BuildBasicResult("test_analyzer", 10, "Test message")
+	result := builder.BuildBasicResult(testAnalyzerName, 10, "Test message")
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
@@ -78,9 +78,9 @@ func TestResultBuilder_BuildDetailedResult(t *testing.T) {
 		"score":      0.85,
 		"complexity": 15,
 	}
-	result := builder.BuildDetailedResult("test_analyzer", fields)
+	result := builder.BuildDetailedResult(testAnalyzerName, fields)
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
@@ -104,9 +104,9 @@ func TestResultBuilder_BuildCollectionResult(t *testing.T) {
 	metrics := map[string]any{
 		"average": 150.0,
 	}
-	result := builder.BuildCollectionResult("test_analyzer", "items", items, metrics, "Collection built")
+	result := builder.BuildCollectionResult(testAnalyzerName, "items", items, metrics, "Collection built")
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 
@@ -137,9 +137,9 @@ func TestResultBuilder_BuildMetricResult(t *testing.T) {
 		"cyclomatic":           15,
 		"cognitive_complexity": 20,
 	}
-	result := builder.BuildMetricResult("test_analyzer", metrics, "Metrics computed")
+	result := builder.BuildMetricResult(testAnalyzerName, metrics, "Metrics computed")
 
-	if result["analyzer_name"] != "test_analyzer" {
+	if result["analyzer_name"] != testAnalyzerName {
 		t.Errorf("expected analyzer_name 'test_analyzer', got '%v'", result["analyzer_name"])
 	}
 

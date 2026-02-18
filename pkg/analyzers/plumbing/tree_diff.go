@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,6 @@ import (
 
 // TreeDiffAnalyzer computes tree-level diffs between commits.
 type TreeDiffAnalyzer struct {
-	l              interface{ Critical(args ...any) } //nolint:unused // used via dependency injection.
 	NameFilter     *regexp.Regexp
 	Languages      map[string]bool
 	previousTree   *gitlib.Tree
@@ -40,11 +40,13 @@ const (
 	allLanguages               = "all"
 )
 
-var defaultBlacklistedPrefixes = []string{ //nolint:gochecknoglobals // global is needed for registration.
+// ErrInvalidSkipFiles indicates a type assertion failure for SkipFiles configuration.
+var ErrInvalidSkipFiles = errors.New("expected []string for SkipFiles")
+
+// defaultBlacklistedPrefixes: path prefixes only (e.g. vendor/). No language-specific filenames.
+var defaultBlacklistedPrefixes = []string{
 	"vendor/",
 	"vendors/",
-	"package-lock.json",
-	"Gopkg.lock",
 }
 
 // Name returns the name of the analyzer.
@@ -59,7 +61,16 @@ func (t *TreeDiffAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (t *TreeDiffAnalyzer) Description() string {
-	return "Generates the list of changes for a commit."
+	return t.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (t *TreeDiffAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		t.Name(),
+		"Generates the list of changes for a commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -103,7 +114,7 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTreeDiffEnableBlacklist].(bool); exists && val {
 		skipFiles, ok := facts[ConfigTreeDiffBlacklistedPrefixes].([]string)
 		if !ok {
-			return errors.New("expected []string for SkipFiles") //nolint:err113 // descriptive error for type assertion failure.
+			return ErrInvalidSkipFiles
 		}
 
 		t.SkipFiles = skipFiles
@@ -140,62 +151,79 @@ func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TreeDiffAnalyzer) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
+func (t *TreeDiffAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+	if ac != nil && ac.Changes != nil {
+		t.Changes = t.filterChanges(ctx, ac.Changes)
 
+		return nil
+	}
+
+	return t.computeTreeDiff(ctx, ac.Commit)
+}
+
+// computeTreeDiff performs traditional tree diff computation as a fallback.
+func (t *TreeDiffAnalyzer) computeTreeDiff(ctx context.Context, commit analyze.CommitLike) error {
 	tree, err := commit.Tree()
 	if err != nil {
 		return fmt.Errorf("consume: %w", err)
 	}
 
-	var changes gitlib.Changes
+	t.ensurePreviousTree(commit)
 
-	if t.previousTree == nil && commit.NumParents() > 0 {
-		// If previousTree is nil but we have parents, it means we jumped into the history (parallel processing).
-		// We need to fetch the parent tree to diff against.
-		parent, parentErr := commit.Parent(0)
-		if parentErr == nil && parent != nil {
-			var treeErr error
-
-			t.previousTree, treeErr = parent.Tree()
-			parent.Free()
-
-			if treeErr != nil {
-				// Parent tree unavailable, will diff against empty tree.
-				t.previousTree = nil
-			}
-		}
+	changes, err := t.diffTrees(ctx, tree)
+	if err != nil {
+		return err
 	}
 
-	if t.previousTree != nil {
-		changes, err = gitlib.TreeDiff(t.Repository, t.previousTree, tree)
-		if err != nil {
-			return fmt.Errorf("consume: %w", err)
-		}
-	} else {
-		changes, err = gitlib.InitialTreeChanges(t.Repository, tree)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Free previous tree before reassigning.
 	if t.previousTree != nil {
 		t.previousTree.Free()
 	}
 
 	t.previousTree = tree
 	t.previousCommit = commit.Hash()
-	t.Changes = t.filterChanges(changes)
+	t.Changes = t.filterChanges(ctx, changes)
 
 	return nil
 }
 
-func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes {
+// ensurePreviousTree fetches the parent tree if needed for parallel processing.
+func (t *TreeDiffAnalyzer) ensurePreviousTree(commit analyze.CommitLike) {
+	if t.previousTree != nil || commit.NumParents() == 0 {
+		return
+	}
+
+	parent, err := commit.Parent(0)
+	if err != nil || parent == nil {
+		return
+	}
+
+	defer parent.Free()
+
+	tree, treeErr := parent.Tree()
+	if treeErr == nil {
+		t.previousTree = tree
+	}
+}
+
+// diffTrees computes the diff between previous tree and current tree.
+func (t *TreeDiffAnalyzer) diffTrees(ctx context.Context, tree *gitlib.Tree) (gitlib.Changes, error) {
+	if t.previousTree != nil {
+		changes, err := gitlib.TreeDiff(ctx, t.Repository, t.previousTree, tree)
+		if err != nil {
+			return nil, fmt.Errorf("consume: %w", err)
+		}
+
+		return changes, nil
+	}
+
+	return gitlib.InitialTreeChanges(ctx, t.Repository, tree)
+}
+
+func (t *TreeDiffAnalyzer) filterChanges(ctx context.Context, changes gitlib.Changes) gitlib.Changes {
 	filtered := make(gitlib.Changes, 0, len(changes))
 
 	for _, change := range changes {
-		if t.shouldIncludeChange(change) {
+		if t.shouldIncludeChange(ctx, change) {
 			filtered = append(filtered, change)
 		}
 	}
@@ -203,7 +231,7 @@ func (t *TreeDiffAnalyzer) filterChanges(changes gitlib.Changes) gitlib.Changes 
 	return filtered
 }
 
-func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
+func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitlib.Change) bool {
 	var name string
 
 	var hash gitlib.Hash
@@ -220,7 +248,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 		hash = change.To.Hash
 	}
 
-	// Check blacklist.
+	// Check blacklist: path prefix match only (e.g. "vendor/").
 	if len(t.SkipFiles) > 0 {
 		for _, prefix := range t.SkipFiles {
 			if strings.HasPrefix(name, prefix) {
@@ -240,7 +268,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 
 	// Check language filter.
 	if !t.Languages[allLanguages] {
-		pass, err := t.checkLanguage(name, hash)
+		pass, err := t.checkLanguage(ctx, name, hash)
 		if err != nil || !pass {
 			return false
 		}
@@ -249,7 +277,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(change *gitlib.Change) bool {
 	return true
 }
 
-func (t *TreeDiffAnalyzer) checkLanguage(fileName string, hash gitlib.Hash) (bool, error) {
+func (t *TreeDiffAnalyzer) checkLanguage(ctx context.Context, fileName string, hash gitlib.Hash) (bool, error) {
 	if t.Languages[allLanguages] {
 		return true, nil
 	}
@@ -257,7 +285,7 @@ func (t *TreeDiffAnalyzer) checkLanguage(fileName string, hash gitlib.Hash) (boo
 	lang := enry.GetLanguage(path.Base(fileName), nil)
 	if lang == "" {
 		// Try to detect from content.
-		blob, err := t.Repository.LookupBlob(hash)
+		blob, err := t.Repository.LookupBlob(ctx, hash)
 		if err == nil {
 			defer blob.Free()
 
@@ -283,7 +311,7 @@ func (t *TreeDiffAnalyzer) Finalize() (analyze.Report, error) {
 		t.previousTree = nil
 	}
 
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -312,4 +340,13 @@ func (t *TreeDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// InjectPreparedData sets pre-computed changes from parallel preparation.
+func (t *TreeDiffAnalyzer) InjectPreparedData(
+	changes []*gitlib.Change,
+	_ map[gitlib.Hash]*gitlib.CachedBlob,
+	_ any,
+) {
+	t.Changes = changes
 }

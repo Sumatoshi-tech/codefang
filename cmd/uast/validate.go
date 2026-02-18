@@ -52,9 +52,9 @@ Examples:
 func runValidate(inputPath, schemaPath string, quiet, colorize, nocolor bool) error {
 	// Color setup.
 	if nocolor {
-		color.NoColor = true //nolint:reassign // intentional override of library global
+		color.NoColor = true
 	} else if colorize {
-		color.NoColor = false //nolint:reassign // intentional override of library global
+		color.NoColor = false
 	}
 
 	inputReader, inputLabel := loadInput(inputPath)

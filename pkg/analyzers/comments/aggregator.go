@@ -14,9 +14,9 @@ const (
 
 // Aggregator aggregates results from multiple comment analyses.
 type Aggregator struct {
-	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	detailedComments   []map[string]any
-	detailedFunctions  []map[string]any
+	*common.Aggregator
+	detailedComments  []map[string]any
+	detailedFunctions []map[string]any
 }
 
 // NewAggregator creates a new Aggregator.

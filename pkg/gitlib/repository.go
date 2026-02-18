@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -48,7 +49,7 @@ func (r *Repository) Head() (Hash, error) {
 }
 
 // LookupCommit returns the commit with the given hash.
-func (r *Repository) LookupCommit(hash Hash) (*Commit, error) {
+func (r *Repository) LookupCommit(_ context.Context, hash Hash) (*Commit, error) {
 	commit, err := r.repo.LookupCommit(hash.ToOid())
 	if err != nil {
 		return nil, fmt.Errorf("lookup commit: %w", err)
@@ -58,7 +59,7 @@ func (r *Repository) LookupCommit(hash Hash) (*Commit, error) {
 }
 
 // LookupBlob returns the blob with the given hash.
-func (r *Repository) LookupBlob(hash Hash) (*Blob, error) {
+func (r *Repository) LookupBlob(_ context.Context, hash Hash) (*Blob, error) {
 	blob, err := r.repo.LookupBlob(hash.ToOid())
 	if err != nil {
 		return nil, fmt.Errorf("lookup blob: %w", err)
@@ -89,7 +90,8 @@ func (r *Repository) Walk() (*RevWalk, error) {
 
 // LogOptions configures the commit log iteration.
 type LogOptions struct {
-	Since *time.Time // Only include commits after this time.
+	Since       *time.Time // Only include commits after this time.
+	FirstParent bool       // Follow only first parent (git log --first-parent).
 }
 
 // Log returns a commit iterator starting from HEAD.
@@ -115,7 +117,13 @@ func (r *Repository) Log(opts *LogOptions) (*CommitIter, error) {
 		return nil, fmt.Errorf("push HEAD to revwalk: %w", err)
 	}
 
-	walk.Sorting(git2go.SortTime)
+	// Topological order ensures we never diff against a descendant; prevents
+	// negative burndown values when branches have different timestamps.
+	walk.Sorting(git2go.SortTime | git2go.SortTopological)
+
+	if opts != nil && opts.FirstParent {
+		walk.SimplifyFirstParent()
+	}
 
 	return &CommitIter{walk: walk, repo: r, since: opts.Since}, nil
 }

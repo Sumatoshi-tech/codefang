@@ -15,7 +15,7 @@ Codefang is a comprehensive code analysis platform that understands your code de
 
 ## 1. Preface
 
-For detailed technical documentation, architectural decisions, and algorithm deep-dives, please visit our **[Documentation Hub](docs/)**.
+For detailed technical documentation, architectural decisions, and algorithm deep-dives, please visit our **[Documentation](https://sumatoshi-tech.github.io/codefang/)**.
 
 So, you've stumbled upon Codefang. You might be thinking, *"Wait, didn't `src-d` build something like this years ago?"*
 
@@ -141,6 +141,6 @@ Don't just use AI to write code. Use Codefang to verify it. By giving `codefang`
 
 ### Ready to lift?
 
-Check out the [Documentation](docs/) for deep dives, or just start piping commands and see what breaks.
+Check out the [full documentation](https://sumatoshi-tech.github.io/codefang/) for deep dives, or just start piping commands and see what breaks.
 
 *Happy Mining!*

@@ -11,6 +11,8 @@ import (
 )
 
 func TestNewTestCommit(t *testing.T) {
+	t.Parallel()
+
 	hash := gitlib.NewHash("abcdef1234567890abcdef1234567890abcdef12")
 	author := gitlib.Signature{
 		Name:  "Test Author",
@@ -30,6 +32,8 @@ func TestNewTestCommit(t *testing.T) {
 }
 
 func TestTestCommitParent(t *testing.T) {
+	t.Parallel()
+
 	commit := gitlib.NewTestCommit(gitlib.Hash{}, gitlib.Signature{}, "msg")
 
 	parent, err := commit.Parent(0)
@@ -39,6 +43,8 @@ func TestTestCommitParent(t *testing.T) {
 }
 
 func TestTestCommitTree(t *testing.T) {
+	t.Parallel()
+
 	commit := gitlib.NewTestCommit(gitlib.Hash{}, gitlib.Signature{}, "msg")
 
 	tree, err := commit.Tree()
@@ -48,6 +54,8 @@ func TestTestCommitTree(t *testing.T) {
 }
 
 func TestTestCommitFiles(t *testing.T) {
+	t.Parallel()
+
 	commit := gitlib.NewTestCommit(gitlib.Hash{}, gitlib.Signature{}, "msg")
 
 	files, err := commit.Files()
@@ -57,6 +65,8 @@ func TestTestCommitFiles(t *testing.T) {
 }
 
 func TestTestCommitFile(t *testing.T) {
+	t.Parallel()
+
 	commit := gitlib.NewTestCommit(gitlib.Hash{}, gitlib.Signature{}, "msg")
 
 	file, err := commit.File("some/path")
@@ -65,7 +75,9 @@ func TestTestCommitFile(t *testing.T) {
 	assert.ErrorIs(t, err, gitlib.ErrMockNotImplemented)
 }
 
-func TestTestCommitFree(_ *testing.T) {
+func TestTestCommitFree(t *testing.T) {
+	t.Parallel()
+
 	commit := gitlib.NewTestCommit(gitlib.Hash{}, gitlib.Signature{}, "msg")
 
 	// Should not panic.
@@ -73,6 +85,8 @@ func TestTestCommitFree(_ *testing.T) {
 }
 
 func TestTestSignature(t *testing.T) {
+	t.Parallel()
+
 	sig := gitlib.TestSignature("John Doe", "john@example.com")
 
 	assert.Equal(t, "John Doe", sig.Name)
@@ -81,6 +95,8 @@ func TestTestSignature(t *testing.T) {
 }
 
 func TestErrMockNotImplementedExists(t *testing.T) {
+	t.Parallel()
+
 	require.Error(t, gitlib.ErrMockNotImplemented)
 	assert.Equal(t, "mock: operation not implemented", gitlib.ErrMockNotImplemented.Error())
 }

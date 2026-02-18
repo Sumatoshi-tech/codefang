@@ -1,0 +1,59 @@
+<!doctype html>
+<html class="{{.DarkClass}}">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{{.Title}} - {{.ProjectName}}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://go-echarts.github.io/go-echarts-assets/assets/echarts.min.js"></script>
+        <script>
+            tailwind.config = {
+                darkMode: "class",
+                theme: {
+                    extend: {
+                        colors: {
+                            accent: {
+                                DEFAULT: "{{.Theme.Accent}}",
+                                hover: "{{.Theme.AccentHover}}",
+                                subtle: "{{.Theme.AccentSubtle}}",
+                            },
+                        },
+                        borderRadius: {
+                            sm: "0.25rem",
+                        },
+                    },
+                },
+            };
+        </script>
+        <style>
+                    html { font-size: 95%; }
+                    * { transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+                    .chart-container { min-width: 600px; }
+                    ::-webkit-scrollbar { width: 8px; height: 8px; }
+                    ::-webkit-scrollbar-track { background: transparent; }
+                    ::-webkit-scrollbar-thumb {
+                        background: {{.Theme.Border}};
+                        border-radius: 4px;
+                    }
+                    ::-webkit-scrollbar-thumb:hover { background: {{.Theme.BorderSubtle}}; }
+                    /* Override Tailwind's .container for go-echarts charts */
+                    .tab-panel .container,
+                    .card .container {
+                        max-width: none;
+                        padding: 0;
+                        margin: 0;
+                        width: 100%;
+                    }
+            {{.ExtraCSS}}
+        </style>
+    </head>
+    <body
+        class="min-h-screen bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-50 antialiased"
+    >
+        <div class="max-w-6xl mx-auto px-4 py-6">
+            {{.Header}}
+            <main class="space-y-6">{{.Content}}</main>
+        </div>
+        {{.Scripts}}
+    </body>
+</html>

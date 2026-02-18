@@ -1,7 +1,6 @@
 package halstead
 
 import (
-	"errors"
 	"fmt"
 	"io"
 
@@ -161,7 +160,16 @@ func (h *Analyzer) Flag() string {
 
 // Description returns the analyzer description.
 func (h *Analyzer) Description() string {
-	return "Calculates Halstead complexity metrics."
+	return h.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (h *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		h.Name(),
+		"Calculates Halstead complexity metrics.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -208,7 +216,7 @@ func (h *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
 // Analyze performs Halstead analysis on the UAST.
 func (h *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	if root == nil {
-		return nil, errors.New("root node is nil") //nolint:err113 // simple guard, no sentinel needed
+		return nil, analyze.ErrNilRootNode
 	}
 
 	functions := h.findFunctions(root)
@@ -243,6 +251,16 @@ func (h *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
 // FormatReportJSON formats the analysis report as JSON.
 func (h *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 	return h.formatter.FormatReportJSON(report, w)
+}
+
+// FormatReportYAML formats the analysis report as YAML.
+func (h *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportYAML(report, w)
+}
+
+// FormatReportBinary formats the analysis report as binary envelope.
+func (h *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportBinary(report, w)
 }
 
 // buildEmptyResult creates an empty result for cases with no functions.

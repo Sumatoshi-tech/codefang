@@ -9,7 +9,6 @@ import (
 type cohesionContext struct {
 	functionNode *node.Node
 	function     Function
-	nestingLevel int //nolint:unused // used via reflection or external caller.
 }
 
 // Visitor implements NodeVisitor for cohesion analysis.

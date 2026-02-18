@@ -14,8 +14,8 @@ const (
 
 // Aggregator aggregates Halstead analysis results.
 type Aggregator struct {
-	*common.Aggregator //nolint:embeddedstructfieldcheck // embedded struct field is intentional.
-	detailedFunctions  []map[string]any
+	*common.Aggregator
+	detailedFunctions []map[string]any
 }
 
 // NewAggregator creates a new Halstead aggregator.

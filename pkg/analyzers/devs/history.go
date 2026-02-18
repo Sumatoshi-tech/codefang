@@ -2,15 +2,17 @@
 package devs
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"sort"
-	"strings"
+	"maps"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
@@ -20,19 +22,28 @@ import (
 
 // HistoryAnalyzer calculates per-developer line statistics across commit history.
 type HistoryAnalyzer struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	Identity             *plumbing.IdentityDetector
 	TreeDiff             *plumbing.TreeDiffAnalyzer
 	Ticks                *plumbing.TicksSinceStart
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
-	ticks                map[int]map[int]*DevTick //nolint:revive // intentional naming matches exported Ticks field.
+	commitDevData        map[string]*CommitDevData // per-commit stats keyed by hash hex.
+	commitsByTick        map[int][]gitlib.Hash
 	merges               map[gitlib.Hash]bool
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
+	Anonymize            bool
+}
+
+// CommitDevData holds aggregate dev stats for a single commit.
+type CommitDevData struct {
+	Commits   int                              `json:"commits"`
+	Added     int                              `json:"lines_added"`
+	Removed   int                              `json:"lines_removed"`
+	Changed   int                              `json:"lines_changed"`
+	AuthorID  int                              `json:"author_id"`
+	Languages map[string]pkgplumbing.LineStats `json:"languages,omitempty"`
 }
 
 // DevTick is the statistics for a development tick and a particular developer.
@@ -43,11 +54,11 @@ type DevTick struct {
 	Commits   int
 }
 
+// Configuration option keys for the devs analyzer.
 const (
-	// ConfigDevsConsiderEmptyCommits is the configuration key for including empty commits in developer statistics.
 	ConfigDevsConsiderEmptyCommits = "Devs.ConsiderEmptyCommits"
+	ConfigDevsAnonymize            = "Devs.Anonymize"
 
-	// DefaultHoursPerDay defines the number of hours in a day for tick size calculation.
 	defaultHoursPerDay = 24
 )
 
@@ -63,24 +74,46 @@ func (d *HistoryAnalyzer) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (d *HistoryAnalyzer) Description() string {
-	return "Calculates the number of commits, added, removed and changed lines per developer through time."
+	return d.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (d *HistoryAnalyzer) Descriptor() analyze.Descriptor {
+	return analyze.Descriptor{
+		ID:          "history/devs",
+		Description: "Calculates the number of commits, added, removed and changed lines per developer through time.",
+		Mode:        analyze.ModeHistory,
+	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
 func (d *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
-	return []pipeline.ConfigurationOption{{
-		Name:        ConfigDevsConsiderEmptyCommits,
-		Description: "Take into account empty commits such as trivial merges.",
-		Flag:        "empty-commits",
-		Type:        pipeline.BoolConfigurationOption,
-		Default:     false,
-	}}
+	return []pipeline.ConfigurationOption{
+		{
+			Name:        ConfigDevsConsiderEmptyCommits,
+			Description: "Take into account empty commits such as trivial merges.",
+			Flag:        "empty-commits",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+		{
+			Name:        ConfigDevsAnonymize,
+			Description: "Anonymize developer names in output (e.g., Developer-A, Developer-B).",
+			Flag:        "anonymize",
+			Type:        pipeline.BoolConfigurationOption,
+			Default:     false,
+		},
+	}
 }
 
 // Configure configures the analyzer with the given facts.
 func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigDevsConsiderEmptyCommits].(bool); exists {
 		d.ConsiderEmptyCommits = val
+	}
+
+	if val, exists := facts[ConfigDevsAnonymize].(bool); exists {
+		d.Anonymize = val
 	}
 
 	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
@@ -91,25 +124,31 @@ func (d *HistoryAnalyzer) Configure(facts map[string]any) error {
 		d.tickSize = val
 	}
 
+	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); exists {
+		d.commitsByTick = val
+	}
+
 	return nil
 }
 
 // Initialize prepares the analyzer for processing commits.
 func (d *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
+	RegisterDevPlotSections()
+
 	if d.tickSize == 0 {
 		d.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
 
-	d.ticks = map[int]map[int]*DevTick{}
+	d.commitDevData = map[string]*CommitDevData{}
 	d.merges = map[gitlib.Hash]bool{}
 
 	return nil
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
+func (d *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
 	// OneShotMergeProcessor logic.
-	commit := ctx.Commit
+	commit := ac.Commit
 	shouldConsume := true
 	commitHash := commit.Hash()
 
@@ -132,40 +171,33 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 		return nil
 	}
 
-	tick := d.Ticks.Tick
-
-	devstick, exists := d.ticks[tick]
-	if !exists {
-		devstick = map[int]*DevTick{}
-		d.ticks[tick] = devstick
+	cdd := &CommitDevData{
+		Commits:   1,
+		AuthorID:  author,
+		Languages: make(map[string]pkgplumbing.LineStats),
 	}
+	d.commitDevData[commit.Hash().String()] = cdd
 
-	dd, exists := devstick[author]
-	if !exists {
-		dd = &DevTick{Languages: map[string]pkgplumbing.LineStats{}}
-		devstick[author] = dd
-	}
+	isMerge := ac.IsMerge
 
-	dd.Commits++
-
-	isMerge := ctx.IsMerge
 	if isMerge {
 		return nil
 	}
 
-	langs := d.Languages.Languages
+	langs := d.Languages.Languages()
 	lineStats := d.LineStats.LineStats
 
 	for changeEntry, stats := range lineStats {
-		dd.Added += stats.Added
-		dd.Removed += stats.Removed
-		dd.Changed += stats.Changed
+		cdd.Added += stats.Added
+		cdd.Removed += stats.Removed
+		cdd.Changed += stats.Changed
+
 		lang := langs[changeEntry.Hash]
-		langStats := dd.Languages[lang]
-		dd.Languages[lang] = pkgplumbing.LineStats{
-			Added:   langStats.Added + stats.Added,
-			Removed: langStats.Removed + stats.Removed,
-			Changed: langStats.Changed + stats.Changed,
+		cddLangStats := cdd.Languages[lang]
+		cdd.Languages[lang] = pkgplumbing.LineStats{
+			Added:   cddLangStats.Added + stats.Added,
+			Removed: cddLangStats.Removed + stats.Removed,
+			Changed: cddLangStats.Changed + stats.Changed,
 		}
 	}
 
@@ -174,9 +206,21 @@ func (d *HistoryAnalyzer) Consume(ctx *analyze.Context) error {
 
 // Finalize completes the analysis and returns the result.
 func (d *HistoryAnalyzer) Finalize() (analyze.Report, error) {
+	names := d.reversedPeopleDict
+
+	// If reversedPeopleDict wasn't set via facts, get it from the Identity detector.
+	if len(names) == 0 && d.Identity != nil {
+		names = d.Identity.ReversedPeopleDict
+	}
+
+	if d.Anonymize {
+		names = anonymizeNames(names)
+	}
+
 	return analyze.Report{
-		"Ticks":              d.ticks,
-		"ReversedPeopleDict": d.reversedPeopleDict,
+		"CommitDevData":      d.commitDevData,
+		"CommitsByTick":      d.commitsByTick,
+		"ReversedPeopleDict": names,
 		"TickSize":           d.tickSize,
 	}, nil
 }
@@ -186,6 +230,14 @@ func (d *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := *d
+
+		// Independent plumbing state (not shared with parent).
+		clone.Identity = &plumbing.IdentityDetector{}
+		clone.TreeDiff = &plumbing.TreeDiffAnalyzer{}
+		clone.Ticks = &plumbing.TicksSinceStart{}
+		clone.Languages = &plumbing.LanguagesDetectionAnalyzer{}
+		clone.LineStats = &plumbing.LinesStatsCalculator{}
+
 		res[i] = &clone
 	}
 
@@ -200,143 +252,107 @@ func (d *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 			continue
 		}
 
-		d.mergeBranch(other)
+		maps.Copy(d.commitDevData, other.commitDevData)
 	}
 }
 
-// mergeBranch merges a single branch's ticks into this analyzer.
-func (d *HistoryAnalyzer) mergeBranch(other *HistoryAnalyzer) {
-	for tick, otherDevTick := range other.ticks {
-		d.ensureTickExists(tick)
+// SequentialOnly returns true because devs' Fork() does not isolate mutable map state.
+func (d *HistoryAnalyzer) SequentialOnly() bool { return true }
 
-		for devID, otherStats := range otherDevTick {
-			d.mergeDevStats(tick, devID, otherStats)
-		}
+// CPUHeavy returns false because developer stats aggregation is lightweight bookkeeping.
+func (d *HistoryAnalyzer) CPUHeavy() bool { return false }
+
+// SnapshotPlumbing captures the current plumbing state.
+func (d *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+	return plumbing.Snapshot{
+		Changes:   d.TreeDiff.Changes,
+		Tick:      d.Ticks.Tick,
+		AuthorID:  d.Identity.AuthorID,
+		Languages: d.Languages.Languages(),
+		LineStats: d.LineStats.LineStats,
 	}
 }
 
-// ensureTickExists ensures the tick map exists.
-func (d *HistoryAnalyzer) ensureTickExists(tick int) {
-	if d.ticks[tick] == nil {
-		d.ticks[tick] = make(map[int]*DevTick)
-	}
-}
-
-// mergeDevStats merges stats for a single developer in a tick.
-func (d *HistoryAnalyzer) mergeDevStats(tick, devID int, otherStats *DevTick) {
-	if d.ticks[tick][devID] == nil {
-		d.ticks[tick][devID] = &DevTick{Languages: make(map[string]pkgplumbing.LineStats)}
+// ApplySnapshot restores plumbing state from a snapshot.
+func (d *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+	snapshot, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
 	}
 
-	currentStats := d.ticks[tick][devID]
-	currentStats.Commits += otherStats.Commits
-	currentStats.Added += otherStats.Added
-	currentStats.Removed += otherStats.Removed
-	currentStats.Changed += otherStats.Changed
-
-	mergeDevLanguageStats(currentStats.Languages, otherStats.Languages)
+	d.TreeDiff.Changes = snapshot.Changes
+	d.Ticks.Tick = snapshot.Tick
+	d.Identity.AuthorID = snapshot.AuthorID
+	d.Languages.SetLanguages(snapshot.Languages)
+	d.LineStats.LineStats = snapshot.LineStats
 }
 
-// mergeDevLanguageStats merges language-specific stats.
-func mergeDevLanguageStats(target, source map[string]pkgplumbing.LineStats) {
-	for lang, langStats := range source {
-		currentLangStats := target[lang]
-		target[lang] = pkgplumbing.LineStats{
-			Added:   currentLangStats.Added + langStats.Added,
-			Removed: currentLangStats.Removed + langStats.Removed,
-			Changed: currentLangStats.Changed + langStats.Changed,
-		}
-	}
-}
+// ReleaseSnapshot is a no-op for devs (no UAST resources).
+func (d *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
 
 // Serialize writes the analysis result to the given writer.
 func (d *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatJSON {
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
+	switch format {
+	case analyze.FormatJSON:
+		return d.serializeJSON(result, writer)
+	case analyze.FormatYAML:
+		return d.serializeYAML(result, writer)
+	case analyze.FormatPlot:
+		return d.generatePlot(result, writer)
+	case analyze.FormatBinary:
+		return d.serializeBinary(result, writer)
+	default:
+		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
+	}
+}
 
-		return nil
+func (d *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure.
+		metrics = &ComputedMetrics{}
 	}
 
-	ticks, ok := result["Ticks"].(map[int]map[int]*DevTick)
-	if !ok {
-		return errors.New("expected map[int]map[int]*DevTick for ticks") //nolint:err113 // descriptive error for type assertion failure.
+	err = json.NewEncoder(writer).Encode(metrics)
+	if err != nil {
+		return fmt.Errorf("json encode: %w", err)
 	}
-
-	reversedPeopleDict, ok := result["ReversedPeopleDict"].([]string)
-	if !ok {
-		return errors.New("expected []string for reversedPeopleDict") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	tickSize, ok := result["TickSize"].(time.Duration)
-	if !ok {
-		return errors.New("expected time.Duration for tickSize") //nolint:err113 // descriptive error for type assertion failure.
-	}
-
-	fmt.Fprintln(writer, "  ticks:")
-	serializeDevTicks(writer, ticks)
-
-	fmt.Fprintln(writer, "  people:")
-
-	for _, person := range reversedPeopleDict {
-		fmt.Fprintf(writer, "  - %s\n", person)
-	}
-
-	fmt.Fprintln(writer, "  tick_size:", int(tickSize.Seconds()))
 
 	return nil
 }
 
-// serializeDevTicks writes sorted tick data to the writer.
-func serializeDevTicks(writer io.Writer, ticks map[int]map[int]*DevTick) {
-	tickKeys := make([]int, 0, len(ticks))
-	for tick := range ticks {
-		tickKeys = append(tickKeys, tick)
+func (d *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		// For empty or invalid reports, serialize empty metrics structure.
+		metrics = &ComputedMetrics{}
 	}
 
-	sort.Ints(tickKeys)
-
-	for _, tick := range tickKeys {
-		fmt.Fprintf(writer, "    %d:\n", tick)
-		serializeDevTickEntries(writer, ticks[tick])
+	data, err := yaml.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("yaml marshal: %w", err)
 	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("yaml write: %w", err)
+	}
+
+	return nil
 }
 
-// serializeDevTickEntries writes sorted developer entries for a single tick.
-func serializeDevTickEntries(writer io.Writer, rtick map[int]*DevTick) {
-	devseq := make([]int, 0, len(rtick))
-	for dev := range rtick {
-		devseq = append(devseq, dev)
+func (d *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(result)
+	if err != nil {
+		metrics = &ComputedMetrics{}
 	}
 
-	sort.Ints(devseq)
-
-	for _, dev := range devseq {
-		stats := rtick[dev]
-
-		devID := dev
-		if dev == identity.AuthorMissing {
-			devID = -1
-		}
-
-		langs := make([]string, 0, len(stats.Languages))
-
-		for lang, ls := range stats.Languages {
-			if lang == "" {
-				lang = "none"
-			}
-
-			langs = append(langs,
-				fmt.Sprintf("%s: [%d, %d, %d]", lang, ls.Added, ls.Removed, ls.Changed))
-		}
-
-		sort.Strings(langs)
-		fmt.Fprintf(writer, "      %d: [%d, %d, %d, %d, {%s}]\n",
-			devID, stats.Commits, stats.Added, stats.Removed, stats.Changed,
-			strings.Join(langs, ", "))
+	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
+	if err != nil {
+		return fmt.Errorf("binary encode: %w", err)
 	}
+
+	return nil
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

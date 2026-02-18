@@ -1,11 +1,13 @@
-package filehistory //nolint:testpackage // testing internal implementation.
+package filehistory
 
 import (
 	"bytes"
-	"strings"
+	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
@@ -42,7 +44,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"insert",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit1}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit1}))
 
 	if len(h.files) != 1 {
 		t.Errorf("expected 1 file, got %d", len(h.files))
@@ -75,7 +77,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"modify",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit2}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit2}))
 
 	if len(fh.Hashes) != 2 {
 		t.Errorf("expected 2 commits, got %d", len(fh.Hashes))
@@ -102,7 +104,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"rename",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit3}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit3}))
 
 	if _, ok := h.files["test.txt"]; ok {
 		t.Error("test.txt should be gone")
@@ -133,7 +135,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"delete",
 	)
-	require.NoError(t, h.Consume(&analyze.Context{Commit: commit4}))
+	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit4}))
 
 	if _, ok := h.files["renamed.txt"]; !ok {
 		t.Error("renamed.txt should still exist in history")
@@ -164,7 +166,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	)
 
 	// First call should consume.
-	err := h.Consume(&analyze.Context{Commit: commit})
+	err := h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume failed: %v", err)
 	}
@@ -174,7 +176,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	}
 
 	// Second call for same commit should not process again.
-	err = h.Consume(&analyze.Context{Commit: commit})
+	err = h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume 2 failed: %v", err)
 	}
@@ -198,7 +200,7 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		},
 	}
 
-	// YAML.
+	// YAML - now uses computed metrics.
 	var buf bytes.Buffer
 
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
@@ -206,25 +208,91 @@ func TestAnalyzer_Serialize(t *testing.T) {
 		t.Fatalf("Serialize YAML failed: %v", err)
 	}
 
-	if !strings.Contains(buf.String(), "test.txt") {
-		t.Error("expected test.txt in YAML output")
-	}
+	// Should contain metrics structure keys.
+	assert.Contains(t, buf.String(), "file_churn:")
+	assert.Contains(t, buf.String(), "aggregate:")
 
-	if !strings.Contains(buf.String(), "10,0,5") {
-		t.Error("expected stats in YAML output")
-	}
+	// Default format falls back to YAML.
+	var defaultBuf bytes.Buffer
 
-	// Binary.
-	var pbuf bytes.Buffer
-
-	err = h.Serialize(report, analyze.FormatBinary, &pbuf)
+	err = h.Serialize(report, analyze.FormatBinary, &defaultBuf)
 	if err != nil {
-		t.Fatalf("Serialize Binary failed: %v", err)
+		t.Fatalf("Serialize default failed: %v", err)
 	}
 
-	if pbuf.Len() == 0 {
-		t.Error("expected binary output")
+	if defaultBuf.Len() == 0 {
+		t.Error("expected output for default format")
 	}
+}
+
+func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	report := analyze.Report{
+		"Files": map[string]FileHistory{
+			"test.go": {
+				Hashes: []gitlib.Hash{
+					gitlib.NewHash("c100000000000000000000000000000000000001"),
+					gitlib.NewHash("c200000000000000000000000000000000000002"),
+				},
+				People: map[int]pkgplumbing.LineStats{
+					0: {Added: 100, Removed: 10, Changed: 20},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := h.Serialize(report, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
+
+	var result map[string]any
+
+	err = json.Unmarshal(buf.Bytes(), &result)
+	require.NoError(t, err)
+
+	// Should have computed metrics structure.
+	assert.Contains(t, result, "file_churn")
+	assert.Contains(t, result, "file_contributors")
+	assert.Contains(t, result, "hotspots")
+	assert.Contains(t, result, "aggregate")
+}
+
+func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	report := analyze.Report{
+		"Files": map[string]FileHistory{
+			"test.go": {
+				Hashes: []gitlib.Hash{
+					gitlib.NewHash("c100000000000000000000000000000000000001"),
+					gitlib.NewHash("c200000000000000000000000000000000000002"),
+				},
+				People: map[int]pkgplumbing.LineStats{
+					0: {Added: 100, Removed: 10, Changed: 20},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := h.Serialize(report, analyze.FormatYAML, &buf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Should have computed metrics structure (YAML keys).
+	assert.Contains(t, output, "file_churn:")
+	assert.Contains(t, output, "file_contributors:")
+	assert.Contains(t, output, "hotspots:")
+	assert.Contains(t, output, "aggregate:")
 }
 
 func TestAnalyzer_Misc(t *testing.T) {
@@ -263,7 +331,98 @@ func TestAnalyzer_Misc(t *testing.T) {
 	c1, ok := clones[0].(*Analyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
-	if len(c1.files) != 1 {
-		t.Error("expected 1 file in clone")
+	// After fix: clones should have empty files (independent state).
+	if len(c1.files) != 0 {
+		t.Error("expected 0 files in clone (independent copy)")
 	}
+}
+
+func TestFork_CreatesIndependentCopies(t *testing.T) {
+	t.Parallel()
+
+	h := &Analyzer{}
+	require.NoError(t, h.Initialize(nil))
+
+	clones := h.Fork(2)
+
+	c1, ok := clones[0].(*Analyzer)
+	require.True(t, ok, "type assertion failed for c1")
+
+	c2, ok := clones[1].(*Analyzer)
+	require.True(t, ok, "type assertion failed for c2")
+
+	// Modify c1's state.
+	c1.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 10}},
+	}
+
+	// c2 should not be affected.
+	require.Empty(t, c2.files, "clones should have independent state")
+}
+
+func TestMerge_CombinesFiles(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.files["a.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 5}},
+		Hashes: []gitlib.Hash{gitlib.NewHash("abc123")},
+	}
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.files["b.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{1: {Added: 10}},
+		Hashes: []gitlib.Hash{gitlib.NewHash("def456")},
+	}
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Main should have both files.
+	require.Len(t, main.files, 2)
+	require.NotNil(t, main.files["a.go"])
+	require.NotNil(t, main.files["b.go"])
+}
+
+func TestMerge_CombinesPeopleStats(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 5, Removed: 2}},
+	}
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.files["test.go"] = &FileHistory{
+		People: map[int]pkgplumbing.LineStats{0: {Added: 3, Removed: 1}},
+	}
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Stats should be summed.
+	stats := main.files["test.go"].People[0]
+	require.Equal(t, 8, stats.Added)
+	require.Equal(t, 3, stats.Removed)
+}
+
+func TestMerge_CombinesMerges(t *testing.T) {
+	t.Parallel()
+
+	main := &Analyzer{}
+	require.NoError(t, main.Initialize(nil))
+	main.merges[gitlib.NewHash("abc123")] = true
+
+	branch := &Analyzer{}
+	require.NoError(t, branch.Initialize(nil))
+	branch.merges[gitlib.NewHash("def456")] = true
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	// Both merges should be present.
+	require.Len(t, main.merges, 2)
+	require.True(t, main.merges[gitlib.NewHash("abc123")])
+	require.True(t, main.merges[gitlib.NewHash("def456")])
 }

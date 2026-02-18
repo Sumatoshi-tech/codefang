@@ -22,9 +22,9 @@ var ErrBinary = gitlib.ErrBinary
 // LineStats holds the numbers of inserted, deleted and changed lines.
 type LineStats struct {
 	// Added is the number of added lines by a particular developer in a particular day.
-	Added int
+	Added int `json:"added" yaml:"added"`
 	// Removed is the number of removed lines by a particular developer in a particular day.
-	Removed int
+	Removed int `json:"removed" yaml:"removed"`
 	// Changed is the number of changed lines by a particular developer in a particular day.
-	Changed int
+	Changed int `json:"changed" yaml:"changed"`
 }

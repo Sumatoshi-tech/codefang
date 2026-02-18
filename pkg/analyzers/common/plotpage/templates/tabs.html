@@ -1,0 +1,23 @@
+<div class="tabs" data-tabs="{{.ID}}">
+    <div class="flex border-b border-stone-200 dark:border-stone-700" role="tablist">
+{{range $i, $item := .Items}}
+        <button
+            type="button"
+            role="tab"
+            aria-selected="{{if eq $i 0}}true{{else}}false{{end}}"
+            aria-controls="{{$.ID}}-{{$item.ID}}"
+            data-tab="{{$item.ID}}"
+            class="px-4 py-2 text-sm font-medium border-b-2 {{if eq $i 0}}border-accent text-accent{{else}}border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300{{end}} transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-stone-900"
+            onclick="switchTab('{{$.ID}}', '{{$item.ID}}')"
+        >{{$item.Label}}</button>
+{{end}}
+    </div>
+{{range $i, $item := .Items}}
+    <div
+        id="{{$.ID}}-{{$item.ID}}"
+        role="tabpanel"
+        class="tab-panel p-4 {{if ne $i 0}}hidden{{end}}"
+        data-panel="{{$item.ID}}"
+    >{{$item.Content}}</div>
+{{end}}
+</div>

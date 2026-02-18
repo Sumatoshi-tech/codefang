@@ -15,6 +15,8 @@ import (
 // has been exhausted (which frees the walk internally) does not cause a double-free.
 // This is a regression test for a segfault caused by double-freeing the RevWalk.
 func TestCommitIterCloseAfterExhaustion(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -54,6 +56,8 @@ func TestCommitIterCloseAfterExhaustion(t *testing.T) {
 // TestCommitIterCloseBeforeExhaustion tests that calling Close() before
 // exhausting the iterator correctly frees resources.
 func TestCommitIterCloseBeforeExhaustion(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 
@@ -88,6 +92,8 @@ func TestCommitIterCloseBeforeExhaustion(t *testing.T) {
 
 // TestCommitIterNextAfterClose tests that calling Next() after Close() returns EOF.
 func TestCommitIterNextAfterClose(t *testing.T) {
+	t.Parallel()
+
 	tr := newTestRepo(t)
 	defer tr.cleanup()
 

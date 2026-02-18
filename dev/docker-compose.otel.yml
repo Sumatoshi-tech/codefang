@@ -1,0 +1,44 @@
+# Local OpenTelemetry development stack.
+# Works with Docker Compose, podman-compose, and podman compose.
+#
+# Services:
+#   - OTel Collector (gRPC :4317, HTTP :4318)
+#   - Jaeger UI (:16686) for traces
+#   - Prometheus (:9090) for metrics
+#
+# After starting, run codefang with:
+#   export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
+#   codefang run --debug-trace -a history/burndown .
+#
+# Then open http://localhost:16686 to view traces.
+
+services:
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro,z
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Prometheus exporter (collector metrics)
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: docker.io/jaegertracing/all-in-one:1.64.0
+    ports:
+      - "16686:16686" # Jaeger UI
+    expose:
+      - "4317" # OTLP gRPC (collector sends here, no host binding needed)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  prometheus:
+    image: docker.io/prom/prometheus:v3.1.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector

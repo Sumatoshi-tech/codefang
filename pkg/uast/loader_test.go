@@ -1,10 +1,12 @@
-package uast //nolint:testpackage // White-box tests access internal loader behavior.
+package uast
 
 import (
 	"testing"
 )
 
 func TestNewLoader(t *testing.T) {
+	t.Parallel()
+
 	loader := NewLoader(nil)
 	if loader == nil {
 		t.Errorf("expected non-nil loader")
@@ -12,6 +14,8 @@ func TestNewLoader(t *testing.T) {
 }
 
 func TestLoader_LoadProvider(t *testing.T) {
+	t.Parallel()
+
 	loader := NewLoader(nil)
 
 	// With embedded mappings, LanguageParser uses extension-based lookup.
@@ -29,6 +33,8 @@ func TestLoader_LoadProvider(t *testing.T) {
 }
 
 func TestLoader_LoadAllProviders(t *testing.T) {
+	t.Parallel()
+
 	loader := NewLoader(nil)
 
 	// Test loading all providers (this will fail since we don't have actual embed.FS).
@@ -39,6 +45,8 @@ func TestLoader_LoadAllProviders(t *testing.T) {
 }
 
 func TestLoader_loadDSLMapping(t *testing.T) {
+	t.Parallel()
+
 	loader := NewLoader(nil)
 
 	// With embedded mappings, parsers are loaded from pre-compiled cache.

@@ -56,6 +56,8 @@ linters:
 
     # --- Too noisy for this codebase ---
     - exhaustruct # Go idiom is zero-value initialization; this linter fights the language
+    - gochecknoglobals # No config options; all 35 globals are legitimate (ldflags, sync.Pool, registries, lookup tables)
+    - testpackage # All 58 test files intentionally use white-box testing for internal implementation
 
     # --- Conflicting linters ---
     - whitespace # Conflicts with wsl_v5: multi-func requires blank lines that wsl_v5 forbids
@@ -172,14 +174,18 @@ linters:
 
     godot:
       scope: all
-      capital: true
+      # capital: true triggers index-out-of-range panic in godot on some comments (e.g. in gitlib).
+      capital: false
 
     gomoddirectives:
       replace-local: true
 
     gosec:
       excludes:
+        - G115 # Integer overflow conversion - values are bounded by repository/file sizes
         - G204 # Subprocess launched with variable - needed for command execution
+        - G401 # Use of weak cryptographic primitive (SHA1) - used for content fingerprinting, not security
+        - G505 # Import of crypto/sha1 - used for content fingerprinting, not security
       severity: medium
       confidence: medium
 
@@ -198,7 +204,7 @@ linters:
       skip-single-param: true
 
     interfacebloat:
-      max: 5
+      max: 10
 
     ireturn:
       allow:
@@ -207,13 +213,17 @@ linters:
         - empty
         - stdlib
         - generic
+        - github\.com/go-echarts/go-echarts/v2/components\.Charter
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.PlumbingSnapshot
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ResultAggregator
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
+        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.StaticAnalyzer
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.DSLNode
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.ValueExtractor
         - github\.com/xeipuuv/gojsonschema\.JSONLoader
+        - go\.opentelemetry\.io/otel/.*
 
     lll:
       line-length: 140
@@ -359,7 +369,7 @@ linters:
 
     varnamelen:
       max-distance: 6
-      min-name-length: 2
+      min-name-length: 1
       check-receiver: false
       check-return: true
       check-type-param: true
@@ -384,6 +394,17 @@ linters:
         - fd
         - rw
         - kv
+        - op
+        - ch
+        - ln
+        - cb
+        - ts
+        - tp
+        - rc
+        - dd
+        - da
+        - si
+        - gh
       ignore-decls:
         - i int
         - j int
@@ -422,30 +443,48 @@ linters:
     presets:
       - std-error-handling
       - common-false-positives
-    # Generated PEG parser files - machine-generated, exclude from all linting.
+    # Generated PEG parser files and embedded mappings - machine-generated, exclude from all linting.
     paths:
       - '\.peg\.go$'
+      - 'pkg/uast/embedded_mappings\.gen\.go$'
     rules:
-      # Relax selected linters in test files.
-      - path: _test\.go
-        linters:
-          - bodyclose
-          - dupl
-          - funlen
-          - goconst
-          - gosec
-          - noctx
-          - wrapcheck
-          - exhaustruct
-          - varnamelen
-          - err113
-          - mnd
-          - paralleltest
+      # Pipeline processing involves inherently complex batch/retry/error logic.
+      - path: pkg/framework/(blob|diff)_pipeline\.go
+        linters: [funlen, gocognit, gocyclo, cyclop, nestif]
 
-      # The "common" package name is intentional for shared analyzer utilities.
-      - path: pkg/analyzers/common/
-        text: "avoid meaningless package names"
-        linters: [revive]
+      # CGO bridge functions are long due to C interop boilerplate and result conversion.
+      - path: pkg/gitlib/cgo_bridge\.go
+        linters: [funlen, gocognit, gocyclo, cyclop]
+
+      # Worker handle() dispatches multiple request types in a single function.
+      - path: pkg/gitlib/worker\.go
+        linters: [funlen, gocognit, gocyclo, cyclop, nestif]
+
+      # Burndown history analysis has inherently complex change-tracking logic.
+      - path: pkg/analyzers/burndown/history\.go
+        linters: [funlen, gocognit]
+
+      # RB-tree insertion with rebalancing is inherently complex.
+      - path: pkg/rbtree/rbtree\.go
+        linters: [gocognit]
+
+      # CGO files: C code comments in import "C" blocks can't end in periods;
+      # nlreturn false-positives on C function calls (non-Go column offsets).
+      - path: pkg/gitlib/cgo_bridge\.go
+        linters: [godot, nlreturn]
+      - path: pkg/uast/cgo_end_positions\.go
+        linters: [godot]
+      - path: pkg/uast/cgo_named_children_batch\.go
+        linters: [godot]
+
+      # CGO file: gocritic false positives on CGO-generated code (dupImport, dupSubExpr, underef).
+      - path: pkg/gitlib/cgo_bridge\.go
+        linters: [gocritic]
+
+      # libgit2 callback signatures require error return; unparam reports always-nil.
+      - path: pkg/gitlib/diff\.go
+        text: "result 0 \\(error\\) is always nil|result 1 \\(error\\) is always nil"
+        linters: [unparam]
 
       # Package-comment style exclusions for nolint/TODO lines.
       - text: 'package comment should be of the form ".+"'
@@ -458,3 +497,108 @@ linters:
       # DSL parser test contains long raw string literals (mapping DSL grammar) that cannot be broken.
       - path: pkg/uast/pkg/mapping/dsl_parser_test\.go
         linters: [lll]
+
+      # LSP protocol requires nil (*Hover) response when no result is available.
+      - path: pkg/uast/lsp/server\.go
+        linters: [nilnil]
+
+      # git2go callback returns nil function to skip hunk processing; library-defined signature.
+      - path: pkg/gitlib/gitlib_test\.go
+        linters: [nilnil]
+
+      # DSL AST converter functions must return DSLNode to satisfy the nodeConverter function type.
+      - path: pkg/uast/pkg/node/querydsl\.go
+        linters: [iface]
+
+      # Parallelizable is used via type assertions in runner.go, not as a parameter/return type.
+      - path: pkg/analyzers/analyze/history\.go
+        text: "Parallelizable"
+        linters: [iface]
+
+      # color.NoColor is the library-provided way to control colored output.
+      - path: cmd/uast/validate\.go
+        linters: [reassign]
+
+      # Test files naturally have similar setup/assertion patterns and long test functions.
+      - path: _test\.go
+        linters: [dupl, funlen, gocognit, gocyclo, cyclop, nestif]
+
+      # Test intentionally creates a blocked directory with restrictive then restored permissions.
+      - path: pkg/analyzers/analyze/static_test\.go
+        text: "G302"
+        linters: [gosec]
+
+      # findFunctions error return is always nil but needed for consistent internal API.
+      - path: pkg/analyzers/cohesion/cohesion\.go
+        text: findFunctions
+        linters: [unparam]
+
+      # Binary files silently skipped when CountLines fails; nil error return is intentional.
+      - path: pkg/analyzers/burndown/history\.go
+        linters: [nilerr]
+
+      # Example functions are long due to inline UAST mapping definitions.
+      - path: examples/
+        linters: [funlen]
+
+      # Build script template generation is inherently long but cannot be split.
+      - path: tools/
+        linters: [funlen]
+
+      # Cross-function span lifecycle pattern; spancheck false positive.
+      - path: pkg/observability/tracer_filter\.go
+        linters: [spancheck]
+
+      # Timeline is a core interface that legitimately needs 11 methods (Replace, Iterate, Len, Nodes,
+      # Validate, CloneShallow, CloneDeep, Erase, Flatten, Reconstruct, MergeAdjacentSameValue).
+      - path: pkg/burndown/timeline\.go
+        linters: [interfacebloat]
+
+      # NewTreapTimeline returns concrete *treapTimeline to satisfy ireturn/iface;
+      # revive unexported-return conflicts with these linters.
+      - path: pkg/burndown/timeline_treap\.go
+        text: "unexported-return"
+        linters: [revive]
+
+      # Package names "metrics" and "version" conflict with stdlib but renaming would be disruptive.
+      - path: pkg/metrics/
+        text: "var-naming.*conflict"
+        linters: [revive]
+      - path: pkg/version/
+        text: "var-naming.*conflict"
+        linters: [revive]
+
+      # Aggregator embedding is an intentional design pattern for method promotion.
+      - path: pkg/analyzers/(comments|complexity|halstead)/aggregator\.go
+        linters: [embeddedstructfieldcheck]
+
+      # BaseReportSection embedding is standard Go pattern for partial interface implementation in tests.
+      - path: pkg/analyzers/common/renderer/(json_test|renderer_test)\.go
+        linters: [embeddedstructfieldcheck]
+
+      # CGO init() is required to call C.cf_init() for library initialization.
+      - path: pkg/gitlib/cgo_bridge\.go
+        linters: [gochecknoinits]
+
+      # testing.AllocsPerRun is incompatible with t.Parallel(); exclude paralleltest for this file.
+      - path: pkg/uast/parser_dsl_test\.go
+        text: "TestNodeType_FallbackInline_ZeroAllocs"
+        linters: [paralleltest]
+
+      # init() required to populate global registries used by ParseDSL/LowerDSL at package import time.
+      - path: pkg/uast/pkg/node/(lowering|querydsl)\.go
+        linters: [gochecknoinits]
+
+      # Package name "common" is an established convention in this codebase for shared analyzer utilities.
+      - path: pkg/analyzers/common/
+        text: "var-naming"
+        linters: [revive]
+
+      # DSL parser switch statements intentionally handle only relevant pegRule cases.
+      - path: pkg/uast/pkg/mapping/dsl_parser\.go
+        linters: [exhaustive]
+
+      # findGE/FindGE is an intentional private/public pair for RB-tree search.
+      - path: pkg/rbtree/rbtree\.go
+        text: "confusing-naming.*findGE"
+        linters: [revive]

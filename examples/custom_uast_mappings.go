@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -9,8 +10,6 @@ import (
 )
 
 // ExampleCustomMappings demonstrates how to use custom UAST mappings.
-//
-//nolint:funlen // This example function is long due to the inline UAST mapping definition which cannot be shortened.
 func ExampleCustomMappings(logger *slog.Logger) {
 	// Define a custom UAST mapping for a simple configuration language.
 	customMaps := map[string]uast.Map{
@@ -102,7 +101,7 @@ true <- (true) => uast(
 	}`)
 
 	// Parse the content.
-	node, err := parser.Parse(filename, content)
+	node, err := parser.Parse(context.Background(), filename, content)
 	if err != nil {
 		logger.Error("Failed to parse file", "file", filename, "error", err)
 		os.Exit(1)
@@ -113,8 +112,6 @@ true <- (true) => uast(
 }
 
 // ExampleMultipleCustomMappings demonstrates using multiple custom mappings.
-//
-//nolint:funlen // This example function is long due to inline UAST mapping definitions which cannot be shortened.
 func ExampleMultipleCustomMappings(logger *slog.Logger) {
 	// Define multiple custom UAST mappings.
 	customMaps := map[string]uast.Map{

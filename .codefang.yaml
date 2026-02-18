@@ -1,0 +1,64 @@
+# codefang configuration file
+# Place this file in your repository root or $HOME directory.
+# Values shown below are the defaults. Uncomment and modify as needed.
+#
+# Environment variables override file values using the CODEFANG_ prefix:
+#   CODEFANG_PIPELINE_WORKERS=4
+#   CODEFANG_HISTORY_BURNDOWN_GRANULARITY=15
+#
+# CLI flags override both environment variables and file values.
+
+# List of analyzers to run. Empty means all registered analyzers.
+# analyzers: []
+
+# Pipeline resource tuning.
+# pipeline:
+#   workers: 0              # 0 = auto (GOMAXPROCS)
+#   memory_budget: ""       # e.g. "4GiB"
+#   blob_cache_size: ""     # e.g. "512MiB"
+#   diff_cache_size: 0
+#   blob_arena_size: ""     # e.g. "256MiB"
+#   commit_batch_size: 0
+#   gogc: 0                 # 0 = Go default (100)
+#   ballast_size: "0"       # e.g. "128MiB"
+#   memory_limit: ""        # e.g. "8GiB" — sets debug.SetMemoryLimit
+#   worker_timeout: ""      # e.g. "60s" — stall detection timeout per worker request
+
+# History analyzer settings.
+# history:
+#   burndown:
+#     granularity: 30
+#     sampling: 30
+#     track_files: false
+#     track_people: false
+#     hibernation_threshold: 1000
+#     hibernation_to_disk: true
+#     hibernation_directory: ""
+#     debug: false
+#     goroutines: 0         # 0 = auto
+#
+#   devs:
+#     consider_empty_commits: false
+#     anonymize: false
+#
+#   imports:
+#     goroutines: 4
+#     max_file_size: 1048576  # 1 MiB
+#
+#   sentiment:
+#     min_comment_length: 20
+#     gap: 0.5               # 0.0 - 1.0
+#
+#   shotness:
+#     dsl_struct: 'filter(.roles has "Function")'
+#     dsl_name: ".props.name"
+#
+#   typos:
+#     max_distance: 4
+
+# Checkpoint settings for incremental analysis.
+# checkpoint:
+#   enabled: true
+#   dir: ""                  # empty = default temp dir
+#   resume: true
+#   clear_prev: false

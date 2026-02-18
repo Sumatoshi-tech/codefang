@@ -1,0 +1,144 @@
+site_name: Codefang
+site_url: https://sumatoshi-tech.github.io/codefang
+site_description: The heavy lifter for your codebase — deep code analysis through structure and history.
+site_author: Sumatoshi Tech
+repo_url: https://github.com/Sumatoshi-tech/codefang
+repo_name: Sumatoshi-tech/codefang
+edit_uri: edit/main/site/
+
+docs_dir: site
+site_dir: build
+
+copyright: Copyright &copy; 2024-2026 Sumatoshi Tech — Apache 2.0 License
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: codefang
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: codefang-dark
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: JetBrains Mono
+    code: JetBrains Mono
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Sumatoshi-tech/codefang
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+  - stylesheets/stars.css
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - First Analysis: getting-started/first-analysis.md
+  - User Guide:
+      - CLI Reference: guide/cli-reference.md
+      - Configuration: guide/configuration.md
+      - Output Formats: guide/output-formats.md
+  - Analyzers:
+      - Overview: analyzers/index.md
+      - Static Analyzers:
+          - Complexity: analyzers/complexity.md
+          - Cohesion: analyzers/cohesion.md
+          - Halstead: analyzers/halstead.md
+          - Comments: analyzers/comments.md
+          - Imports (Static): analyzers/imports.md
+      - History Analyzers:
+          - Burndown: analyzers/burndown.md
+          - Developers: analyzers/developers.md
+          - Couples: analyzers/couples.md
+          - File History: analyzers/file-history.md
+          - Sentiment: analyzers/sentiment.md
+          - Shotness: analyzers/shotness.md
+          - Typos: analyzers/typos.md
+          - Anomaly Detection: analyzers/anomaly.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - UAST System: architecture/uast.md
+      - Streaming Pipeline: architecture/streaming-pipeline.md
+  - Integrations:
+      - MCP Server: integrations/mcp.md
+      - Docker & GitHub Actions: integrations/docker-and-actions.md
+      - AI Agents: integrations/ai-agents.md
+  - Operations:
+      - Observability: operations/observability.md
+      - Large-Scale Scanning: operations/large-scale-scanning.md
+  - Contributing:
+      - How to Contribute: contributing/index.md
+      - Code of Conduct: contributing/code-of-conduct.md
+      - Changelog: contributing/changelog.md

@@ -1,0 +1,620 @@
+/* ==========================================================================
+   Codefang Documentation Theme
+   Matches the Codefang report visual identity:
+   - Stone palette (warm neutrals) with amber accents
+   - Inter + JetBrains Mono typography
+   - Card-based layout with subtle borders
+   - Box-drawing–inspired section headers
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Color Scheme: Light (codefang)
+   Mirrors lightTheme from plotpage/theme.go
+   -------------------------------------------------------------------------- */
+[data-md-color-scheme="codefang"] {
+    --md-primary-fg-color: #44403c; /* stone-700 — header bar */
+    --md-primary-fg-color--light: #78716c; /* stone-500 */
+    --md-primary-fg-color--dark: #1c1917; /* stone-900 */
+    --md-primary-bg-color: #fafaf9; /* stone-50 */
+    --md-primary-bg-color--light: #ffffff;
+
+    --md-accent-fg-color: #a16207; /* amber-700 — accent */
+    --md-accent-fg-color--transparent: rgba(161, 98, 7, 0.12);
+    --md-accent-bg-color: #fef3c7; /* amber-100 */
+
+    --md-default-fg-color: #1c1917; /* stone-900 */
+    --md-default-fg-color--light: #44403c; /* stone-700 */
+    --md-default-fg-color--lighter: #78716c; /* stone-500 */
+    --md-default-fg-color--lightest: #e7e5e4; /* stone-200 */
+    --md-default-bg-color: #fafaf9; /* stone-50 */
+    --md-default-bg-color--light: #ffffff;
+    --md-default-bg-color--lighter: #f5f5f4; /* stone-100 */
+    --md-default-bg-color--lightest: #e7e5e4; /* stone-200 */
+
+    --md-code-fg-color: #1c1917;
+    --md-code-bg-color: #f5f5f4; /* stone-100 */
+    --md-code-hl-color: rgba(161, 98, 7, 0.12);
+
+    --md-typeset-color: #1c1917;
+    --md-typeset-a-color: #a16207;
+
+    --md-footer-fg-color: #fafaf9;
+    --md-footer-fg-color--light: #d6d3d1;
+    --md-footer-fg-color--lighter: #a8a29e;
+    --md-footer-bg-color: #1c1917;
+    --md-footer-bg-color--dark: #0c0a09;
+
+    /* Admonition accent overrides */
+    --md-admonition-fg-color: #1c1917;
+    --md-admonition-bg-color: #ffffff;
+
+    /* Custom tokens */
+    --cf-surface: #ffffff;
+    --cf-border: #e7e5e4;
+    --cf-border-subtle: #d6d3d1;
+    --cf-accent: #a16207;
+    --cf-accent-hover: #854d0e;
+    --cf-accent-subtle: #fef3c7;
+    --cf-text-muted: #78716c;
+    --cf-success: #16a34a;
+    --cf-warning: #ca8a04;
+    --cf-error: #dc2626;
+    --cf-info: #2563eb;
+}
+
+/* --------------------------------------------------------------------------
+   Color Scheme: Dark (codefang-dark)
+   Mirrors darkTheme from plotpage/theme.go
+   -------------------------------------------------------------------------- */
+[data-md-color-scheme="codefang-dark"] {
+    --md-primary-fg-color: #d6d3d1; /* stone-300 */
+    --md-primary-fg-color--light: #a8a29e; /* stone-400 */
+    --md-primary-fg-color--dark: #fafaf9; /* stone-50 */
+    --md-primary-bg-color: #1c1917; /* stone-900 */
+    --md-primary-bg-color--light: #292524; /* stone-800 */
+
+    --md-accent-fg-color: #d97706; /* amber-600 */
+    --md-accent-fg-color--transparent: rgba(217, 119, 6, 0.12);
+    --md-accent-bg-color: #451a03; /* amber-950 */
+
+    --md-default-fg-color: #fafaf9;
+    --md-default-fg-color--light: #d6d3d1;
+    --md-default-fg-color--lighter: #a8a29e;
+    --md-default-fg-color--lightest: #44403c;
+    --md-default-bg-color: #0c0a09; /* stone-950 */
+    --md-default-bg-color--light: #1c1917; /* stone-900 */
+    --md-default-bg-color--lighter: #292524; /* stone-800 */
+    --md-default-bg-color--lightest: #44403c; /* stone-700 */
+
+    --md-code-fg-color: #fafaf9;
+    --md-code-bg-color: #1c1917;
+    --md-code-hl-color: rgba(217, 119, 6, 0.12);
+
+    --md-typeset-color: #fafaf9;
+    --md-typeset-a-color: #d97706;
+
+    --md-footer-fg-color: #fafaf9;
+    --md-footer-fg-color--light: #d6d3d1;
+    --md-footer-fg-color--lighter: #a8a29e;
+    --md-footer-bg-color: #0c0a09;
+    --md-footer-bg-color--dark: #000000;
+
+    --md-admonition-fg-color: #fafaf9;
+    --md-admonition-bg-color: #1c1917;
+
+    --cf-surface: #1c1917;
+    --cf-border: #44403c;
+    --cf-border-subtle: #57534e;
+    --cf-accent: #d97706;
+    --cf-accent-hover: #f59e0b;
+    --cf-accent-subtle: #451a03;
+    --cf-text-muted: #a8a29e;
+    --cf-success: #22c55e;
+    --cf-warning: #eab308;
+    --cf-error: #ef4444;
+    --cf-info: #3b82f6;
+}
+
+/* --------------------------------------------------------------------------
+   Global Overrides
+   -------------------------------------------------------------------------- */
+
+/* Header bar — flat stone, no gradient */
+.md-header {
+    background: var(--cf-surface);
+    border-bottom: 1px solid var(--cf-border);
+    box-shadow: none;
+    color: var(--md-default-fg-color);
+}
+
+.md-header[data-md-state="shadow"] {
+    box-shadow: 0 0 0.4rem rgba(0, 0, 0, 0.1);
+}
+
+.md-header__topic {
+    color: var(--md-default-fg-color);
+    font-weight: 600;
+}
+
+.md-header__title {
+    color: var(--md-default-fg-color);
+}
+
+.md-header .md-header__button {
+    color: var(--md-default-fg-color--light);
+}
+
+.md-header .md-source {
+    color: var(--md-default-fg-color--lighter);
+}
+
+/* Tabs bar */
+.md-tabs {
+    background: var(--cf-surface);
+    border-bottom: 1px solid var(--cf-border);
+    color: var(--md-default-fg-color);
+}
+
+.md-tabs__link {
+    color: var(--md-default-fg-color--lighter);
+    font-size: 0.8rem;
+    font-weight: 500;
+    opacity: 1;
+}
+
+.md-tabs__link:hover {
+    color: var(--cf-accent);
+    opacity: 1;
+}
+
+.md-tabs__item--active .md-tabs__link {
+    color: var(--cf-accent);
+    opacity: 1;
+}
+
+/* Search bar */
+.md-search__input {
+    background: var(--md-default-bg-color--lighter);
+}
+
+/* Sidebar nav links */
+.md-nav__link:hover,
+.md-nav__link--active {
+    color: var(--cf-accent);
+}
+
+.md-nav__link--active {
+    font-weight: 600;
+}
+
+/* Links */
+.md-typeset a {
+    color: var(--cf-accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition:
+        border-color 0.2s,
+        color 0.2s;
+}
+
+.md-typeset a:hover {
+    color: var(--cf-accent-hover);
+    border-bottom-color: var(--cf-accent-hover);
+}
+
+/* Code blocks — stone surface */
+.md-typeset code {
+    background: var(--md-code-bg-color);
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+    color: var(--cf-accent);
+    font-size: 0.85em;
+}
+
+.md-typeset pre > code {
+    color: var(--md-code-fg-color);
+}
+
+.highlight pre,
+.md-typeset .highlight pre {
+    background: var(--md-code-bg-color);
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+}
+
+/* Tables — report-style striped */
+.md-typeset table:not([class]) {
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    font-size: 0.85rem;
+}
+
+.md-typeset table:not([class]) th {
+    background: var(--md-default-bg-color--lighter);
+    border-bottom: 1px solid var(--cf-border);
+    color: var(--cf-text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem;
+}
+
+.md-typeset table:not([class]) td {
+    border-bottom: 1px solid var(--cf-border);
+    padding: 0.75rem 1rem;
+    color: var(--md-default-fg-color--light);
+}
+
+.md-typeset table:not([class]) tr:nth-child(even) td {
+    background: var(--md-default-bg-color--lighter);
+}
+
+.md-typeset table:not([class]) tr:hover td {
+    background: var(--cf-accent-subtle);
+}
+
+/* Admonitions — left-border accent style matching report alerts */
+.md-typeset .admonition,
+.md-typeset details {
+    border: 1px solid var(--cf-border);
+    border-left: 4px solid var(--cf-accent);
+    border-radius: 0.25rem;
+    background: var(--cf-surface);
+    box-shadow: none;
+    font-size: 0.9rem;
+}
+
+.md-typeset .admonition > .admonition-title,
+.md-typeset details > summary {
+    background: var(--md-default-bg-color--lighter);
+    border-bottom: 1px solid var(--cf-border);
+    font-weight: 500;
+}
+
+/* Admonition color variants (left border) */
+.md-typeset .admonition.note,
+.md-typeset details.note {
+    border-left-color: var(--cf-info);
+}
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+    border-left-color: var(--cf-success);
+}
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+    border-left-color: var(--cf-warning);
+}
+.md-typeset .admonition.danger,
+.md-typeset details.danger {
+    border-left-color: var(--cf-error);
+}
+.md-typeset .admonition.example,
+.md-typeset details.example {
+    border-left-color: var(--cf-accent);
+}
+.md-typeset .admonition.info,
+.md-typeset details.info {
+    border-left-color: var(--cf-info);
+}
+.md-typeset .admonition.success,
+.md-typeset details.success {
+    border-left-color: var(--cf-success);
+}
+.md-typeset .admonition.failure,
+.md-typeset details.failure {
+    border-left-color: var(--cf-error);
+}
+
+/* Tabs — report-style bottom-border indicator */
+.md-typeset .tabbed-set .tabbed-labels > label {
+    color: var(--md-default-fg-color--lighter);
+    font-weight: 500;
+    font-size: 0.85rem;
+    border-bottom: 2px solid transparent;
+}
+
+.md-typeset .tabbed-set .tabbed-labels > label:hover {
+    color: var(--md-default-fg-color);
+}
+
+.md-typeset .tabbed-set .tabbed-labels > .tabbed-labels--active,
+.md-typeset .tabbed-set .tabbed-labels > label.active {
+    color: var(--cf-accent);
+    border-bottom-color: var(--cf-accent);
+}
+
+.md-typeset .tabbed-set {
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.md-typeset .tabbed-set .tabbed-labels {
+    background: var(--md-default-bg-color--lighter);
+    border-bottom: 1px solid var(--cf-border);
+}
+
+.md-typeset .tabbed-set .tabbed-content {
+    padding: 1rem;
+}
+
+/* Grid cards — report card style */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li {
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+    box-shadow: none;
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover {
+    border-color: var(--cf-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Content max-width matching report max-w-6xl */
+.md-content__inner {
+    max-width: 72rem;
+}
+
+/* Footer */
+.md-footer {
+    border-top: 1px solid var(--cf-border);
+}
+
+/* --------------------------------------------------------------------------
+   Report-Specific Components
+   Used on the landing page and special sections
+   -------------------------------------------------------------------------- */
+
+/* Hide the auto-generated H1 on pages that use .cf-hero-banner (home page) */
+.md-content__inner:has(> .cf-hero-banner) > h1:first-child {
+    display: none;
+}
+
+/* Zero out all container spacing on home page for flush banner */
+.md-main__inner:has(.cf-hero-banner) {
+    margin-top: 0;
+}
+
+.md-content:has(.cf-hero-banner) {
+    margin: 0;
+}
+
+.md-content__inner:has(> .cf-hero-banner) {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+}
+
+/* Hero banner with parallax stars — full bleed */
+.cf-hero-banner {
+    position: relative;
+    background: radial-gradient(ellipse at bottom, #1c1917 0%, #0c0a09 100%);
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    padding: 6rem 1rem 5rem;
+    overflow: hidden;
+}
+
+.cf-hero-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+}
+
+.cf-hero-title {
+    font-size: 2.75rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #fafaf9;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(180deg, #fafaf9 0%, #a8a29e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.cf-hero-subtitle {
+    font-size: 1.125rem;
+    color: #a8a29e;
+    max-width: 600px;
+    margin: 0 auto 1.5rem;
+    line-height: 1.6;
+}
+
+.cf-hero-badges {
+    margin-bottom: 1.5rem;
+}
+
+.cf-hero-badges img {
+    margin: 0 3px;
+}
+
+.cf-hero-buttons {
+    margin: 2rem 0;
+}
+
+.cf-hero-buttons .md-button {
+    margin: 0 0.5rem;
+}
+
+/* Primary button — amber accent */
+.cf-hero-buttons .md-button--primary {
+    background: var(--cf-accent);
+    border-color: var(--cf-accent);
+    color: #fff;
+}
+
+.cf-hero-buttons .md-button--primary:hover {
+    background: var(--cf-accent-hover);
+    border-color: var(--cf-accent-hover);
+}
+
+/* Secondary button — always light on dark banner */
+.cf-hero-buttons .md-button:not(.md-button--primary) {
+    border: 1px solid #57534e;
+    color: #d6d3d1;
+    background: transparent;
+}
+
+.cf-hero-buttons .md-button:not(.md-button--primary):hover {
+    border-color: var(--cf-accent);
+    color: var(--cf-accent);
+    background: transparent;
+}
+
+/* Report-style section header — mimics DrawHeader box drawing */
+.cf-section-header {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+    color: var(--cf-text-muted);
+    margin: 2.5rem 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--cf-border);
+    border-radius: 0.25rem;
+    display: inline-block;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+/* Report separator — thin line like DrawSeparator */
+.cf-separator {
+    border: none;
+    border-top: 1px solid var(--cf-border);
+    margin: 2rem 0;
+}
+
+/* Stat cards — matching report stat template */
+.cf-stat {
+    text-align: center;
+    padding: 1.25rem 1rem;
+}
+
+.cf-stat-value {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--md-default-fg-color);
+    font-family: "JetBrains Mono", monospace;
+}
+
+.cf-stat-label {
+    font-size: 0.8rem;
+    color: var(--cf-text-muted);
+    margin-top: 0.25rem;
+}
+
+/* Progress bar — terminal-style ████░░ */
+.cf-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+}
+
+.cf-progress-bar {
+    display: inline-block;
+    letter-spacing: 0;
+    line-height: 1;
+}
+
+.cf-progress-filled {
+    color: var(--cf-accent);
+}
+
+.cf-progress-empty {
+    color: var(--cf-border);
+}
+
+.cf-progress-label {
+    color: var(--md-default-fg-color--light);
+    font-weight: 500;
+}
+
+/* Analyzer cards */
+.cf-analyzer-card {
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-border);
+    border-left: 4px solid var(--cf-accent);
+    border-radius: 0.25rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
+}
+
+.cf-analyzer-card:hover {
+    border-left-color: var(--cf-accent-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Badge — matches report badge template */
+.cf-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border-radius: 0.25rem;
+    letter-spacing: 0.02em;
+}
+
+.cf-badge--static {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--cf-info);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.cf-badge--history {
+    background: rgba(161, 98, 7, 0.1);
+    color: var(--cf-accent);
+    border: 1px solid rgba(161, 98, 7, 0.2);
+}
+
+.cf-badge--success {
+    background: rgba(22, 163, 74, 0.1);
+    color: var(--cf-success);
+    border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+/* Terminal-style box header (used in landing page) */
+.cf-box-header {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--md-default-fg-color--light);
+    background: var(--md-code-bg-color);
+    border: 1px solid var(--cf-border);
+    border-radius: 0.25rem;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+/* Scrollbar styling matching report */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--cf-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--cf-border-subtle);
+}

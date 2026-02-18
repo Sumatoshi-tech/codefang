@@ -1,0 +1,21 @@
+<section class="bg-white dark:bg-stone-900 rounded-sm border border-stone-200 dark:border-stone-700 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-stone-100 dark:border-stone-800">
+        <h2 class="text-lg font-medium text-stone-900 dark:text-stone-50">{{.Title}}</h2>
+        <p class="mt-0.5 text-sm text-stone-500 dark:text-stone-400">{{.Subtitle}}</p>
+    </div>
+    <div class="p-5 overflow-x-auto">
+        <div class="chart-container">{{.Chart}}</div>
+    </div>
+{{if .Hint}}
+    <div class="mx-5 mb-5 p-4 bg-stone-50 dark:bg-stone-800 border-l-4 border-accent rounded-sm">
+{{if .Hint.Title}}
+        <p class="font-medium text-stone-900 dark:text-stone-100 text-sm">{{.Hint.Title}}</p>
+{{end}}
+        <ul class="mt-2 space-y-1 text-sm text-stone-600 dark:text-stone-300 list-disc list-inside">
+{{range .Hint.Items}}
+            <li>{{.}}</li>
+{{end}}
+        </ul>
+    </div>
+{{end}}
+</section>

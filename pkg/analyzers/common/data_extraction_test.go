@@ -1,4 +1,4 @@
-package common //nolint:testpackage // testing internal implementation.
+package common
 
 import (
 	"testing"
@@ -695,7 +695,7 @@ func TestDefaultNameExtractors(t *testing.T) {
 	}
 }
 
-func TestDefaultValueExtractors(t *testing.T) { //nolint:cyclop,gocognit,gocyclo // cyclomatic complexity is acceptable for this function.
+func TestDefaultValueExtractors(t *testing.T) {
 	t.Parallel()
 
 	extractors := getDefaultValueExtractors()

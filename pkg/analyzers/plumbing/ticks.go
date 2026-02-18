@@ -1,6 +1,7 @@
 package plumbing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,9 +15,6 @@ import (
 
 // TicksSinceStart computes relative time ticks for each commit since the start.
 type TicksSinceStart struct {
-	l interface { //nolint:unused // used via dependency injection.
-		Warnf(format string, args ...any)
-	}
 	tick0        *time.Time
 	commits      map[int][]gitlib.Hash
 	remote       string
@@ -44,7 +42,16 @@ func (t *TicksSinceStart) Flag() string {
 
 // Description returns a human-readable description of the analyzer.
 func (t *TicksSinceStart) Description() string {
-	return "Provides relative tick information for every commit."
+	return t.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (t *TicksSinceStart) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeHistory,
+		t.Name(),
+		"Provides relative tick information for every commit.",
+	)
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -95,9 +102,9 @@ func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TicksSinceStart) Consume(ctx *analyze.Context) error {
-	commit := ctx.Commit
-	index := ctx.Index
+func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) error {
+	commit := ac.Commit
+	index := ac.Index
 
 	if index == 0 {
 		tick0 := commit.Committer().When
@@ -147,7 +154,7 @@ func FloorTime(t time.Time, d time.Duration) time.Time {
 
 // Finalize completes the analysis and returns the result.
 func (t *TicksSinceStart) Finalize() (analyze.Report, error) {
-	return nil, nil //nolint:nilnil // nil,nil return is intentional.
+	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -175,4 +182,9 @@ func (t *TicksSinceStart) Serialize(report analyze.Report, format string, writer
 	}
 
 	return nil
+}
+
+// CurrentTick returns the tick value of the last processed commit.
+func (t *TicksSinceStart) CurrentTick() int {
+	return t.Tick
 }
