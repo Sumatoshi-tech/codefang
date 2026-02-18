@@ -69,7 +69,7 @@ jobs:
       - name: Verify action outputs
         env:
           ACTION_PASS: ${{ steps.analysis.outputs.pass }}
-          ACTION_REPORT_FILE: ${{ steps.analysis.outputs.report-file }}
+          ACTION_REPORT_RELPATH: ${{ steps.analysis.outputs.report-file }}
         run: |
           echo "Pass: $ACTION_PASS"
 
@@ -78,7 +78,9 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$ACTION_REPORT_FILE" ] || [ ! -f "$ACTION_REPORT_FILE" ]; then
+          ACTION_REPORT_FILE="${GITHUB_WORKSPACE}/${ACTION_REPORT_RELPATH}"
+
+          if [ -z "$ACTION_REPORT_RELPATH" ] || [ ! -f "$ACTION_REPORT_FILE" ]; then
             echo "ERROR: report file not found at '$ACTION_REPORT_FILE'"
             exit 1
           fi

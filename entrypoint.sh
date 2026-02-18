@@ -30,13 +30,15 @@ fi
 
 # Write outputs for GitHub Actions
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    # Write report to a file to avoid exceeding GitHub expression memory limits
-    REPORT_FILE="${GITHUB_WORKSPACE:-.}/.codefang-report.${FORMAT}"
-    echo "$REPORT" > "$REPORT_FILE"
+    # Write report to a file to avoid exceeding GitHub expression memory limits.
+    # Use a relative filename in the output so host-side steps can resolve it
+    # against their own GITHUB_WORKSPACE (container path differs from host path).
+    REPORT_FILENAME=".codefang-report.${FORMAT}"
+    echo "$REPORT" > "${GITHUB_WORKSPACE:-.}/${REPORT_FILENAME}"
 
     {
         echo "pass=$PASS"
-        echo "report-file=$REPORT_FILE"
+        echo "report-file=$REPORT_FILENAME"
         echo "report<<CODEFANG_EOF"
         echo "$REPORT"
         echo "CODEFANG_EOF"
