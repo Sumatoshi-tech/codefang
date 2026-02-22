@@ -1,11 +1,9 @@
-// Package reportutil provides type-safe accessors for analyze.Report fields.
+// Package reportutil provides type-safe accessors for map[string]any fields.
 package reportutil
 
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
 // Formatting constants.
@@ -14,7 +12,7 @@ const (
 )
 
 // GetFloat64 returns a float64 value from the report, handling int conversion.
-func GetFloat64(report analyze.Report, key string) float64 {
+func GetFloat64(report map[string]any, key string) float64 {
 	if v, ok := report[key]; ok {
 		switch val := v.(type) {
 		case float64:
@@ -28,7 +26,7 @@ func GetFloat64(report analyze.Report, key string) float64 {
 }
 
 // GetInt returns an int value from the report, handling float64 conversion.
-func GetInt(report analyze.Report, key string) int {
+func GetInt(report map[string]any, key string) int {
 	if v, ok := report[key]; ok {
 		switch val := v.(type) {
 		case int:
@@ -42,7 +40,7 @@ func GetInt(report analyze.Report, key string) int {
 }
 
 // GetString returns a string value from the report.
-func GetString(report analyze.Report, key string) string {
+func GetString(report map[string]any, key string) string {
 	if v, ok := report[key]; ok {
 		if s, isStr := v.(string); isStr {
 			return s
@@ -53,7 +51,7 @@ func GetString(report analyze.Report, key string) string {
 }
 
 // GetFunctions returns the []map[string]any for the given key.
-func GetFunctions(report analyze.Report, key string) []map[string]any {
+func GetFunctions(report map[string]any, key string) []map[string]any {
 	if v, ok := report[key]; ok {
 		if fns, isFns := v.([]map[string]any); isFns {
 			return fns
@@ -64,7 +62,7 @@ func GetFunctions(report analyze.Report, key string) []map[string]any {
 }
 
 // GetStringSlice returns a []string value from the report.
-func GetStringSlice(report analyze.Report, key string) []string {
+func GetStringSlice(report map[string]any, key string) []string {
 	if v, ok := report[key]; ok {
 		if s, isSlice := v.([]string); isSlice {
 			return s
@@ -75,7 +73,7 @@ func GetStringSlice(report analyze.Report, key string) []string {
 }
 
 // GetStringIntMap returns a map[string]int value from the report.
-func GetStringIntMap(report analyze.Report, key string) map[string]int {
+func GetStringIntMap(report map[string]any, key string) map[string]int {
 	if v, ok := report[key]; ok {
 		if m, isMap := v.(map[string]int); isMap {
 			return m

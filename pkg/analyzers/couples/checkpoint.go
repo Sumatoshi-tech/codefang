@@ -8,15 +8,12 @@ import (
 // checkpointBasename is the base filename for checkpoint files.
 const checkpointBasename = "couples_state"
 
-// checkpointState holds the serializable state of the couples analyzer.
+// checkpointState holds the serializable working state of the couples analyzer.
 type checkpointState struct {
-	Files              map[string]map[string]int `json:"files"`
-	People             []map[string]int          `json:"people"`
-	PeopleCommits      []int                     `json:"people_commits"`
-	Merges             []string                  `json:"merges"`
-	Renames            []rename                  `json:"renames"`
-	PeopleNumber       int                       `json:"people_number"`
-	ReversedPeopleDict []string                  `json:"reversed_people_dict"`
+	SeenFiles          []string `json:"seen_files"`
+	Merges             []string `json:"merges"`
+	PeopleNumber       int      `json:"people_number"`
+	ReversedPeopleDict []string `json:"reversed_people_dict"`
 }
 
 // newPersister creates a checkpoint persister for couples analyzer.
@@ -39,84 +36,56 @@ func (c *HistoryAnalyzer) LoadCheckpoint(dir string) error {
 
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
 func (c *HistoryAnalyzer) buildCheckpointState() *checkpointState {
-	state := &checkpointState{
-		Files:              c.files,
-		People:             c.people,
-		PeopleCommits:      c.peopleCommits,
-		Merges:             make([]string, 0, len(c.merges)),
+	seenFiles := make([]string, 0, len(c.seenFiles))
+	for f := range c.seenFiles {
+		seenFiles = append(seenFiles, f)
+	}
+
+	merges := make([]string, 0, len(c.merges))
+	for hash := range c.merges {
+		merges = append(merges, hash.String())
+	}
+
+	return &checkpointState{
+		SeenFiles:          seenFiles,
+		Merges:             merges,
 		PeopleNumber:       c.PeopleNumber,
 		ReversedPeopleDict: c.reversedPeopleDict,
 	}
-
-	// Convert renames pointer to slice.
-	if c.renames != nil {
-		state.Renames = *c.renames
-	}
-
-	// Convert merge hashes to strings.
-	for hash := range c.merges {
-		state.Merges = append(state.Merges, hash.String())
-	}
-
-	return state
 }
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	c.files = state.Files
-	c.people = state.People
-	c.peopleCommits = state.PeopleCommits
-	c.PeopleNumber = state.PeopleNumber
-	c.reversedPeopleDict = state.ReversedPeopleDict
+	c.seenFiles = make(map[string]bool, len(state.SeenFiles))
+	for _, f := range state.SeenFiles {
+		c.seenFiles[f] = true
+	}
 
-	// Convert renames slice to pointer.
-	c.renames = &state.Renames
-
-	// Convert merge hash strings back to hashes.
 	c.merges = make(map[gitlib.Hash]bool, len(state.Merges))
 	for _, hashStr := range state.Merges {
 		c.merges[gitlib.NewHash(hashStr)] = true
 	}
+
+	c.PeopleNumber = state.PeopleNumber
+	c.reversedPeopleDict = state.ReversedPeopleDict
 }
+
+// checkpointBaseOverhead is the minimum checkpoint size in bytes.
+const checkpointBaseOverhead = 100
 
 // Checkpoint size estimation constants.
 const (
-	baseOverheadBytes    = 100
-	bytesPerFilePair     = 80
-	bytesPerPersonFile   = 60
-	bytesPerMerge        = 44
-	bytesPerRename       = 100
-	bytesPerPerson       = 50
-	bytesPerPeopleCommit = 8
+	bytesPerSeenFile = 60
+	bytesPerMerge    = 44
+	bytesPerPerson   = 50
 )
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
 func (c *HistoryAnalyzer) CheckpointSize() int64 {
-	size := int64(baseOverheadBytes)
-
-	// Count file pairs.
-	for _, couplings := range c.files {
-		size += int64(len(couplings) * bytesPerFilePair)
-	}
-
-	// Count person-file entries.
-	for _, files := range c.people {
-		size += int64(len(files) * bytesPerPersonFile)
-	}
-
-	// Count merge entries.
-	size += int64(len(c.merges) * bytesPerMerge)
-
-	// Count rename entries.
-	if c.renames != nil {
-		size += int64(len(*c.renames) * bytesPerRename)
-	}
-
-	// Count people entries.
-	size += int64(len(c.reversedPeopleDict) * bytesPerPerson)
-
-	// Count peopleCommits entries.
-	size += int64(len(c.peopleCommits) * bytesPerPeopleCommit)
+	size := int64(checkpointBaseOverhead)
+	size += int64(len(c.seenFiles)) * bytesPerSeenFile
+	size += int64(len(c.merges)) * bytesPerMerge
+	size += int64(len(c.reversedPeopleDict)) * bytesPerPerson
 
 	return size
 }

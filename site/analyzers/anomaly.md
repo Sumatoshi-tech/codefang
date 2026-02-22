@@ -21,6 +21,19 @@ codefang run -a history/anomaly \
 
 ---
 
+## Architecture
+
+The anomaly analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` extracts file changes, line stats, language diversity, and author ID, returning per-commit metrics as a `TC{Data: *CommitAnomalyData}`. The analyzer retains no per-commit state.
+2. **Aggregation phase**: An `anomaly.Aggregator` collects TCs, merges `CommitAnomalyData` into per-tick `TickMetrics` (aggregating files, lines, languages, and unique authors), and produces `TICK` results.
+3. **Z-score detection**: `ticksToReport()` runs sliding-window Z-score analysis on six dimensions over the aggregated tick metrics to detect anomalies.
+4. **Serialization phase**: `SerializeTICKs()` converts aggregated TICKs into JSON, YAML, binary, or HTML plot output via `ComputeAllMetrics()`.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
 ## What It Measures
 
 ### Z-Score Analysis

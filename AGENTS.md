@@ -256,13 +256,26 @@ type AnalyzerPool struct {
 
 ### Analyzer Pattern
 ```go
-// pkg/analyzers/analyzer.go
+// pkg/analyzers/analyze/analyzer.go
 type Analyzer interface {
     Name() string
     Description() string
     Analyze(ctx context.Context, input AnalyzerInput) (*AnalyzerResult, error)
 }
 
+// For history analyzers, embed BaseHistoryAnalyzer to reduce boilerplate:
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     // ... dependencies ...
+// }
+//
+// And implement the aggregator using GenericAggregator:
+// func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
+//     return analyze.NewGenericAggregator[*MyTickState, *MyTickData](
+//         opts, extractTC, mergeState, sizeState, buildTick,
+//     )
+// }
+//
 // Implementations: complexity, cohesion, halstead, sentiment, burndown, couples
 ```
 
@@ -451,8 +464,8 @@ Write down the *why*, not just the *how*. Update:
 - [Effective Go](https://go.dev/doc/effective_go)
 - [Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
 - [Project Layout](https://github.com/golang-standards/project-layout)
-- [docs/architecture.md](docs/architecture.md)
-- [docs/analyzers.md](docs/analyzers.md)
+- [site/architecture/overview.md](site/architecture/overview.md)
+- [site/analyzers/index.md](site/analyzers/index.md)
 - [instructions/istr-implement.md](instructions/istr-implement.md)
 
 ---

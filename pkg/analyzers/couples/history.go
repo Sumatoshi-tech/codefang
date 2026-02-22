@@ -26,23 +26,49 @@ const (
 // ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
 var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
 
+//
+
 // HistoryAnalyzer identifies co-change coupling between files and developers.
 type HistoryAnalyzer struct {
-	Identity           *plumbing.IdentityDetector
+	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+
 	TreeDiff           *plumbing.TreeDiffAnalyzer
-	files              map[string]map[string]int
-	renames            *[]rename
+	Identity           *plumbing.IdentityDetector
 	lastCommit         analyze.CommitLike
 	merges             map[gitlib.Hash]bool
-	people             []map[string]int
-	peopleCommits      []int
 	reversedPeopleDict []string
 	PeopleNumber       int
+	seenFiles          map[string]bool
 }
 
-type rename struct {
-	FromName string
-	ToName   string
+// NewHistoryAnalyzer creates a new HistoryAnalyzer.
+func NewHistoryAnalyzer() *HistoryAnalyzer {
+	a := &HistoryAnalyzer{}
+
+	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		Desc: analyze.Descriptor{
+			ID: "history/couples",
+			Description: "The result is a square matrix, the value in each cell corresponds to the number of times " +
+				"the pair of files appeared in the same commit or pair of developers committed to the same file.",
+			Mode: analyze.ModeHistory,
+		},
+		Sequential: false,
+		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
+			if len(report) == 0 {
+				return &ComputedMetrics{}, nil
+			}
+
+			return ComputeAllMetrics(report)
+		},
+		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
+			return newAggregator(opts, a.PeopleNumber, a.reversedPeopleDict, a.lastCommit)
+		},
+		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
+			return ticksToReport(ctx, ticks, a.reversedPeopleDict, a.PeopleNumber, a.lastCommit)
+		},
+	}
+
+	return a
 }
 
 const (
@@ -96,16 +122,14 @@ func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
 	return nil
 }
 
+// MapDependencies returns the required plumbing analyzers.
+func (c *HistoryAnalyzer) MapDependencies() []string {
+	return []string{}
+}
+
 // Initialize prepares the analyzer for processing commits.
 func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
-	c.people = make([]map[string]int, c.PeopleNumber+1)
-	for i := range c.people {
-		c.people[i] = map[string]int{}
-	}
-
-	c.peopleCommits = make([]int, c.PeopleNumber+1)
-	c.files = map[string]map[string]int{}
-	c.renames = &[]rename{}
+	c.seenFiles = map[string]bool{}
 	c.merges = map[gitlib.Hash]bool{}
 
 	return nil
@@ -114,38 +138,17 @@ func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 // ensureCapacity grows people and peopleCommits slices if needed.
 // This handles incremental identity detection where PeopleNumber
 // isn't known at Configure time.
-func (c *HistoryAnalyzer) ensureCapacity(minSize int) {
-	if minSize <= len(c.people) {
-		return
-	}
 
-	// Grow people slice.
-	newPeople := make([]map[string]int, minSize)
-	copy(newPeople, c.people)
-
-	for i := len(c.people); i < minSize; i++ {
-		newPeople[i] = make(map[string]int)
-	}
-
-	c.people = newPeople
-
-	// Grow peopleCommits slice.
-	newPeopleCommits := make([]int, minSize)
-	copy(newPeopleCommits, c.peopleCommits)
-	c.peopleCommits = newPeopleCommits
-}
-
-// Consume processes a single commit with the provided dependency results.
-func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
+// Consume processes a single commit and returns a TC with coupling data.
+func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	commit := ac.Commit
-	shouldConsume := true
 
 	if commit.NumParents() > 1 {
 		if c.merges[commit.Hash()] {
-			shouldConsume = false
-		} else {
-			c.merges[commit.Hash()] = true
+			return analyze.TC{Data: &CommitData{}}, nil
 		}
+
+		c.merges[commit.Hash()] = true
 	}
 
 	mergeMode := ac.IsMerge
@@ -156,110 +159,73 @@ func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) error 
 		author = c.PeopleNumber
 	}
 
-	// Grow slices dynamically if author ID exceeds current capacity.
-	// This handles incremental identity detection where PeopleNumber
-	// isn't known at Configure time.
-	c.ensureCapacity(author + 1)
-
-	if shouldConsume {
-		c.peopleCommits[author]++
+	data := CommitData{
+		CouplingFiles: []string{},
+		AuthorFiles:   make(map[string]int),
+		Renames:       []RenamePair{},
+		CommitCounted: true,
 	}
 
-	couplingCtx := c.processTreeChanges(c.TreeDiff.Changes, mergeMode, author)
-	c.updateFileCouplings(couplingCtx)
-
-	return nil
-}
-
-// processTreeChanges processes the tree diff changes and returns the list of files
-// that form the coupling context.
-func (c *HistoryAnalyzer) processTreeChanges(
-	treeDiff gitlib.Changes, mergeMode bool, author int,
-) []string {
-	couplingCtx := make([]string, 0, len(treeDiff))
-
-	for _, change := range treeDiff {
-		couplingCtx = c.processOneChange(change, mergeMode, author, couplingCtx)
+	for _, change := range c.TreeDiff.Changes {
+		c.processChange(change, mergeMode, author, &data)
 	}
 
-	return couplingCtx
+	return analyze.TC{Data: &data}, nil
 }
 
-// processOneChange handles a single tree change and returns the updated context.
-func (c *HistoryAnalyzer) processOneChange(
-	change *gitlib.Change, mergeMode bool, author int, couplingCtx []string,
-) []string {
-	toName := change.To.Name
-	fromName := change.From.Name
+func (c *HistoryAnalyzer) processChange(change *gitlib.Change, mergeMode bool, author int, data *CommitData) {
+	action := change.Action
 
-	switch change.Action {
-	case gitlib.Insert:
-		if !mergeMode || c.files[toName] == nil {
-			couplingCtx = append(couplingCtx, toName)
-			c.people[author][toName]++
-		}
-	case gitlib.Delete:
-		if !mergeMode {
-			c.people[author][fromName]++
-		}
-	case gitlib.Modify:
-		if fromName != toName {
-			*c.renames = append(*c.renames, rename{ToName: toName, FromName: fromName})
-		}
-
-		if !mergeMode || c.files[toName] == nil {
-			couplingCtx = append(couplingCtx, toName)
-			c.people[author][toName]++
-		}
+	name := change.To.Name
+	if action == gitlib.Delete {
+		name = change.From.Name
 	}
 
-	return couplingCtx
-}
+	if action == gitlib.Modify && change.To.Name != change.From.Name {
+		data.Renames = append(data.Renames, RenamePair{
+			FromName: change.From.Name,
+			ToName:   change.To.Name,
+		})
+		name = change.To.Name
+	}
 
-// updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
-func (c *HistoryAnalyzer) updateFileCouplings(couplingCtx []string) {
-	if len(couplingCtx) > CouplesMaximumMeaningfulContextSize {
+	if mergeMode && action == gitlib.Delete {
 		return
 	}
 
-	for _, file := range couplingCtx {
-		for _, otherFile := range couplingCtx {
-			lane, exists := c.files[file]
-			if !exists {
-				lane = map[string]int{}
-				c.files[file] = lane
-			}
+	if !mergeMode {
+		if action != gitlib.Delete {
+			data.CouplingFiles = append(data.CouplingFiles, name)
+		}
 
-			lane[otherFile]++
+		c.seenFiles[name] = true
+
+		if author != identity.AuthorMissing {
+			data.AuthorFiles[name] = author
+		}
+
+		return
+	}
+
+	if !c.seenFiles[name] {
+		// Merge mode and not delete.
+		data.CouplingFiles = append(data.CouplingFiles, name)
+
+		if author != identity.AuthorMissing {
+			data.AuthorFiles[name] = author
 		}
 	}
 }
 
-// Finalize completes the analysis and returns the result.
-func (c *HistoryAnalyzer) Finalize() (analyze.Report, error) {
-	files, people := c.propagateRenames(c.currentFiles())
-	filesSequence, filesIndex := buildFilesIndex(files)
-	filesLines := c.computeFilesLines(filesSequence)
+// updateFileCouplings updates the file co-occurrence matrix based on the coupling context.
 
-	// Use the actual people count from accumulated data rather than PeopleNumber,
-	// which may be 0 when IdentityDetector.PeopleCount fact was not provided.
-	effectivePeopleNumber := c.PeopleNumber
-
-	if len(people) > effectivePeopleNumber+1 {
-		effectivePeopleNumber = len(people) - 1
+// mergeFileCouplings additively merges two file coupling maps.
+func mergeFileCouplings(existing, incoming map[string]int) map[string]int {
+	for k, v := range incoming {
+		existing[k] += v
 	}
 
-	peopleMatrix, peopleFiles := computePeopleMatrix(people, filesIndex, effectivePeopleNumber)
-	filesMatrix := computeFilesMatrix(c.files, filesSequence, filesIndex)
-
-	return analyze.Report{
-		"PeopleMatrix":       peopleMatrix,
-		"PeopleFiles":        peopleFiles,
-		"Files":              filesSequence,
-		"FilesLines":         filesLines,
-		"FilesMatrix":        filesMatrix,
-		"ReversedPeopleDict": c.reversedPeopleDict,
-	}, nil
+	return existing
 }
 
 // buildFilesIndex creates a sorted sequence of file names and a map from file name to index.
@@ -277,47 +243,6 @@ func buildFilesIndex(files map[string]map[string]int) (sequence []string, index 
 	}
 
 	return filesSequence, filesIndex
-}
-
-// computeFilesLines counts the number of newlines in each file at the last commit.
-func (c *HistoryAnalyzer) computeFilesLines(filesSequence []string) []int {
-	filesLines := make([]int, len(filesSequence))
-
-	if c.lastCommit == nil {
-		return filesLines
-	}
-
-	for i, name := range filesSequence {
-		file, err := c.lastCommit.File(name)
-		if err != nil {
-			continue
-		}
-
-		blob, err := file.Blob()
-		if err != nil {
-			continue
-		}
-
-		reader := blob.Reader()
-
-		buf := make([]byte, readBufferSize)
-		count := 0
-
-		for {
-			n, readErr := reader.Read(buf)
-			count += countNewlines(buf[:n])
-
-			if readErr != nil {
-				break
-			}
-		}
-
-		filesLines[i] = count
-
-		blob.Free()
-	}
-
-	return filesLines
 }
 
 // computePeopleMatrix builds the people co-occurrence matrix and the per-person file lists.
@@ -419,18 +344,19 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
 			PeopleNumber:       c.PeopleNumber,
 			reversedPeopleDict: c.reversedPeopleDict,
+			seenFiles:          make(map[string]bool),
+		}
+		if c.BaseHistoryAnalyzer != nil {
+			clone.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+				Desc:             c.Desc,
+				Sequential:       c.Sequential,
+				ComputeMetricsFn: c.ComputeMetricsFn,
+				AggregatorFn:     c.AggregatorFn,
+				TicksToReportFn:  c.TicksToReportFn,
+			}
 		}
 		// Initialize independent state for each fork.
-		clone.files = make(map[string]map[string]int)
-		clone.renames = &[]rename{}
 		clone.merges = make(map[gitlib.Hash]bool)
-
-		clone.people = make([]map[string]int, c.PeopleNumber+1)
-		for j := range clone.people {
-			clone.people[j] = make(map[string]int)
-		}
-
-		clone.peopleCommits = make([]int, c.PeopleNumber+1)
 
 		res[i] = clone
 	}
@@ -446,64 +372,12 @@ func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 			continue
 		}
 
-		c.mergeFiles(other.files)
-		c.mergePeople(other.people)
-		c.mergePeopleCommits(other.peopleCommits)
 		c.mergeMerges(other.merges)
-		c.mergeRenames(other.renames)
 
-		// Keep the latest lastCommit so Finalize can compute file line counts.
+		// Keep the latest lastCommit for aggregator/ticksToReport file line counts.
 		if other.lastCommit != nil {
 			c.lastCommit = other.lastCommit
 		}
-	}
-}
-
-// mergeFiles combines file coupling counts from another analyzer.
-func (c *HistoryAnalyzer) mergeFiles(other map[string]map[string]int) {
-	for file, otherCouplings := range other {
-		if c.files[file] == nil {
-			c.files[file] = make(map[string]int)
-		}
-
-		for otherFile, count := range otherCouplings {
-			c.files[file][otherFile] += count
-		}
-	}
-}
-
-// mergePeople combines per-person file touch counts from another analyzer.
-func (c *HistoryAnalyzer) mergePeople(other []map[string]int) {
-	// Grow if the forked branch discovered more authors than we expected.
-	if len(other) > len(c.people) {
-		grown := make([]map[string]int, len(other))
-		copy(grown, c.people)
-
-		for i := len(c.people); i < len(other); i++ {
-			grown[i] = make(map[string]int)
-		}
-
-		c.people = grown
-	}
-
-	for i, otherFiles := range other {
-		for file, count := range otherFiles {
-			c.people[i][file] += count
-		}
-	}
-}
-
-// mergePeopleCommits combines per-person commit counts from another analyzer.
-func (c *HistoryAnalyzer) mergePeopleCommits(other []int) {
-	// Grow if the forked branch discovered more authors than we expected.
-	if len(other) > len(c.peopleCommits) {
-		grown := make([]int, len(other))
-		copy(grown, c.peopleCommits)
-		c.peopleCommits = grown
-	}
-
-	for i, count := range other {
-		c.peopleCommits[i] += count
 	}
 }
 
@@ -511,13 +385,6 @@ func (c *HistoryAnalyzer) mergePeopleCommits(other []int) {
 func (c *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
 	for hash := range other {
 		c.merges[hash] = true
-	}
-}
-
-// mergeRenames combines rename tracking from another analyzer.
-func (c *HistoryAnalyzer) mergeRenames(other *[]rename) {
-	if other != nil {
-		*c.renames = append(*c.renames, *other...)
 	}
 }
 
@@ -584,79 +451,7 @@ func (c *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Write
 	return nil
 }
 
-// FormatReport writes the formatted analysis report to the given writer.
-func (c *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return c.Serialize(report, analyze.FormatYAML, writer)
-}
-
-func (c *HistoryAnalyzer) currentFiles() map[string]bool {
-	files := map[string]bool{}
-
-	if c.lastCommit == nil {
-		for key := range c.files {
-			files[key] = true
-		}
-
-		return files
-	}
-
-	c.collectTreeFiles(files)
-
-	return files
-}
-
-// collectTreeFiles populates the files map from the last commit's tree.
-// Best-effort: errors are silently ignored since this is a best-effort enumeration.
-func (c *HistoryAnalyzer) collectTreeFiles(files map[string]bool) {
-	tree, treeErr := c.lastCommit.Tree()
-	if treeErr != nil {
-		return
-	}
-
-	err := tree.Files().ForEach(func(fobj *gitlib.File) error {
-		files[fobj.Name] = true
-
-		return nil
-	})
-	if err != nil {
-		return
-	}
-}
-
-func (c *HistoryAnalyzer) propagateRenames(
-	files map[string]bool,
-) (reducedFiles map[string]map[string]int, people []map[string]int) {
-	// Renames := *c.renames.
-	reducedFiles = map[string]map[string]int{}
-
-	for file := range files {
-		fmap := map[string]int{}
-
-		refmap := c.files[file]
-		for other := range files {
-			refval := refmap[other]
-			if refval > 0 {
-				fmap[other] = refval
-			}
-		}
-
-		if len(fmap) > 0 {
-			reducedFiles[file] = fmap
-		}
-	}
-
-	people = make([]map[string]int, len(c.people))
-	for i, counts := range c.people {
-		reducedCounts := map[string]int{}
-		people[i] = reducedCounts
-
-		for file := range files {
-			count := counts[file]
-			if count > 0 {
-				reducedCounts[file] = count
-			}
-		}
-	}
-
-	return reducedFiles, people
+// NewAggregator creates a new aggregator for this analyzer.
+func (c *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
+	return newAggregator(opts, c.PeopleNumber, c.reversedPeopleDict, c.lastCommit)
 }

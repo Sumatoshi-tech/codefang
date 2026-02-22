@@ -66,13 +66,13 @@ func (l *LinesStatsCalculator) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (l *LinesStatsCalculator) Consume(_ context.Context, ac *analyze.Context) error {
+func (l *LinesStatsCalculator) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	result := map[gitlib.ChangeEntry]pkgplumbing.LineStats{}
 
 	if ac.IsMerge {
 		l.LineStats = result
 
-		return nil
+		return analyze.TC{}, nil
 	}
 
 	treeDiff := l.TreeDiff.Changes
@@ -92,7 +92,7 @@ func (l *LinesStatsCalculator) Consume(_ context.Context, ac *analyze.Context) e
 
 	l.LineStats = result
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 func computeInsertStats(
@@ -184,11 +184,6 @@ func computeDiffLineStats(diffs []diffmatchpatch.Diff) (added, removed, changed 
 	return added, removed, changed
 }
 
-// Finalize completes the analysis and returns the result.
-func (l *LinesStatsCalculator) Finalize() (analyze.Report, error) {
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (l *LinesStatsCalculator) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -214,4 +209,25 @@ func (l *LinesStatsCalculator) Serialize(report analyze.Report, format string, w
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (l *LinesStatsCalculator) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (l *LinesStatsCalculator) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (l *LinesStatsCalculator) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (l *LinesStatsCalculator) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (l *LinesStatsCalculator) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }

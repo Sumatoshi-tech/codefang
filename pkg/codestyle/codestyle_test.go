@@ -354,9 +354,10 @@ const maxInterfaceMethods = 5
 // because splitting them would hurt cohesion or break existing contracts.
 var allowedFatInterfaces = map[string]bool{
 	"StaticAnalyzer":  true, // core analyzer contract; all 8 methods are consumed together.
-	"HistoryAnalyzer": true, // core analyzer contract; all 6 methods are consumed together.
+	"HistoryAnalyzer": true, // core analyzer contract; all 10 methods are consumed together.
 	"ReportSection":   true, // rendering contract; all 8 methods are consumed together.
 	"Timeline":        true, // burndown data structure; 11 methods form a cohesive mutation/query API.
+	"Aggregator":      true, // streaming pipeline contract; 6 methods form a cohesive lifecycle (feed/flush/spill/collect/size/close).
 }
 
 // TestNoFatInterfaces verifies that interfaces stay small and focused.

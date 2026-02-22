@@ -21,8 +21,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
@@ -206,7 +204,7 @@ func main() {
 	writeHeapProfile("heap_after_all_chunks.prof")
 
 	// Finalize.
-	_, err = runner.Finalize()
+	_, err = runner.FinalizeWithAggregators(context.Background())
 	if err != nil {
 		log.Fatalf("finalize: %v", err)
 	}
@@ -250,38 +248,19 @@ func buildPipeline(repo *gitlib.Repository, analyzerName string) ([]analyze.Hist
 	fileDiff := &plumbing.FileDiffAnalyzer{BlobCache: blobCache, TreeDiff: treeDiff}
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
-	uastChanges := &plumbing.UASTChangesAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
-
 	switch analyzerName {
 	case "file-history":
 		core := []analyze.HistoryAnalyzer{
 			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect,
 		}
-		leaf := &filehistory.Analyzer{
-			Identity: identity, TreeDiff: treeDiff, LineStats: lineStats,
-		}
-
-		return append(core, leaf), len(core)
-	case "shotness":
-		core := []analyze.HistoryAnalyzer{
-			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges,
-		}
-		leaf := &shotness.HistoryAnalyzer{
-			FileDiff: fileDiff, UAST: uastChanges,
-		}
-
-		return append(core, leaf), len(core)
-	case "sentiment":
-		core := []analyze.HistoryAnalyzer{
-			treeDiff, identity, ticks, blobCache, fileDiff, langDetect, uastChanges,
-		}
-		leaf := &sentiment.HistoryAnalyzer{
-			UAST: uastChanges, Ticks: ticks,
-		}
+		leaf := filehistory.NewAnalyzer()
+		leaf.Identity = identity
+		leaf.TreeDiff = treeDiff
+		leaf.LineStats = lineStats
 
 		return append(core, leaf), len(core)
 	default:
-		log.Fatalf("unknown analyzer: %s (supported: file-history, shotness, sentiment)", analyzerName)
+		log.Fatalf("unknown analyzer: %s (supported: file-history)", analyzerName)
 
 		return nil, 0
 	}

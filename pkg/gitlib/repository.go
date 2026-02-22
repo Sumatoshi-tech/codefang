@@ -92,6 +92,7 @@ func (r *Repository) Walk() (*RevWalk, error) {
 type LogOptions struct {
 	Since       *time.Time // Only include commits after this time.
 	FirstParent bool       // Follow only first parent (git log --first-parent).
+	Reverse     bool       // Yield oldest commits first (adds git2go.SortReverse).
 }
 
 // Log returns a commit iterator starting from HEAD.
@@ -119,13 +120,48 @@ func (r *Repository) Log(opts *LogOptions) (*CommitIter, error) {
 
 	// Topological order ensures we never diff against a descendant; prevents
 	// negative burndown values when branches have different timestamps.
-	walk.Sorting(git2go.SortTime | git2go.SortTopological)
+	sortFlags := git2go.SortTime | git2go.SortTopological
+	if opts != nil && opts.Reverse {
+		sortFlags |= git2go.SortReverse
+	}
+
+	walk.Sorting(sortFlags)
 
 	if opts != nil && opts.FirstParent {
 		walk.SimplifyFirstParent()
 	}
 
-	return &CommitIter{walk: walk, repo: r, since: opts.Since}, nil
+	var since *time.Time
+	if opts != nil {
+		since = opts.Since
+	}
+
+	return &CommitIter{walk: walk, repo: r, since: since}, nil
+}
+
+// CommitCount returns the number of commits matching the given log options.
+// It walks the revision history counting OIDs without looking up full commit
+// objects, making it O(N) in time but O(1) in memory. The Reverse option is
+// ignored since ordering doesn't affect the count.
+func (r *Repository) CommitCount(opts *LogOptions) (int, error) {
+	iter, err := r.Log(opts)
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+
+	count := 0
+
+	for {
+		skipErr := iter.skip1()
+		if skipErr != nil {
+			break
+		}
+
+		count++
+	}
+
+	return count, nil
 }
 
 // DiffTreeToTree computes the diff between two trees.

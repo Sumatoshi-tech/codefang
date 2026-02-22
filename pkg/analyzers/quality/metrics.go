@@ -3,6 +3,7 @@ package quality
 import (
 	"math"
 	"slices"
+	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/anomaly"
@@ -13,28 +14,6 @@ import (
 // extractor with the anomaly package for cross-analyzer anomaly detection.
 func RegisterTimeSeriesExtractor() {
 	anomaly.RegisterTimeSeriesExtractor("quality", extractTimeSeries)
-}
-
-// RegisterTickExtractor registers the quality analyzer's per-commit extractor
-// with the unified time-series output system.
-func RegisterTickExtractor() {
-	analyze.RegisterTickExtractor("quality", extractCommitTimeSeries)
-}
-
-// extractCommitTimeSeries extracts per-commit quality stats from the report.
-func extractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitQuality, ok := report["commit_quality"].(map[string]*TickQuality)
-	if !ok || len(commitQuality) == 0 {
-		return nil
-	}
-
-	result := make(map[string]any, len(commitQuality))
-
-	for hash, tq := range commitQuality {
-		result[hash] = computeTickStats(tq)
-	}
-
-	return result
 }
 
 func extractTimeSeries(report analyze.Report) (ticks []int, dimensions map[string][]float64) {
@@ -106,43 +85,10 @@ func AggregateCommitsToTicks(
 
 // TickQuality holds per-file quality metric values for a single tick.
 // Values are appended per-file during Consume; statistics are computed at output time.
-type TickQuality struct {
-	// Per-file complexity values.
-	Complexities    []float64 // Cyclomatic complexity per file.
-	Cognitives      []float64 // Cognitive complexity per file.
-	MaxComplexities []int     // Max single-function complexity per file.
-	Functions       []int     // Function count per file.
-
-	// Per-file Halstead values.
-	HalsteadVolumes []float64
-	HalsteadEfforts []float64
-	DeliveredBugs   []float64
-
-	// Per-file comment/doc values.
-	CommentScores []float64
-	DocCoverages  []float64
-
-	// Per-file cohesion values.
-	CohesionScores []float64
-}
 
 // filesAnalyzed returns the number of files analyzed in this tick.
 func (tq *TickQuality) filesAnalyzed() int {
 	return len(tq.Complexities)
-}
-
-// merge appends another TickQuality's per-file values into this one.
-func (tq *TickQuality) merge(other *TickQuality) {
-	tq.Complexities = append(tq.Complexities, other.Complexities...)
-	tq.Cognitives = append(tq.Cognitives, other.Cognitives...)
-	tq.MaxComplexities = append(tq.MaxComplexities, other.MaxComplexities...)
-	tq.Functions = append(tq.Functions, other.Functions...)
-	tq.HalsteadVolumes = append(tq.HalsteadVolumes, other.HalsteadVolumes...)
-	tq.HalsteadEfforts = append(tq.HalsteadEfforts, other.HalsteadEfforts...)
-	tq.DeliveredBugs = append(tq.DeliveredBugs, other.DeliveredBugs...)
-	tq.CommentScores = append(tq.CommentScores, other.CommentScores...)
-	tq.DocCoverages = append(tq.DocCoverages, other.DocCoverages...)
-	tq.CohesionScores = append(tq.CohesionScores, other.CohesionScores...)
 }
 
 // TickStats holds computed statistics for a single tick.
@@ -243,24 +189,15 @@ type ReportData struct {
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
-// It prefers per-commit data aggregated to ticks when available,
-// falling back to direct per-tick data for backward compatibility.
+// Expects canonical format: commit_quality and commits_by_tick.
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
-	// Try per-commit path first (canonical).
 	commitQuality, hasCommit := report["commit_quality"].(map[string]*TickQuality)
 	commitsByTick, hasTicks := report["commits_by_tick"].(map[int][]gitlib.Hash)
 
 	if hasCommit && hasTicks && len(commitQuality) > 0 {
 		data.TickQuality = AggregateCommitsToTicks(commitQuality, commitsByTick)
-	}
-
-	// Fall back to direct per-tick data (backward compat).
-	if len(data.TickQuality) == 0 {
-		if v, ok := report["tick_quality"].(map[int]*TickQuality); ok {
-			data.TickQuality = v
-		}
 	}
 
 	if data.TickQuality == nil {
@@ -277,17 +214,6 @@ type ComputedMetrics struct {
 	TimeSeries []TimeSeriesEntry `json:"time_series" yaml:"time_series"`
 	Aggregate  AggregateData     `json:"aggregate"   yaml:"aggregate"`
 }
-
-const analyzerNameQuality = "quality"
-
-// AnalyzerName returns the name of the analyzer.
-func (m *ComputedMetrics) AnalyzerName() string { return analyzerNameQuality }
-
-// ToJSON returns the metrics in a format suitable for JSON marshaling.
-func (m *ComputedMetrics) ToJSON() any { return m }
-
-// ToYAML returns the metrics in a format suitable for YAML marshaling.
-func (m *ComputedMetrics) ToYAML() any { return m }
 
 // ComputeAllMetrics runs all quality metrics and returns the results.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
@@ -511,4 +437,16 @@ func sumInt(values []int) int {
 	}
 
 	return s
+}
+
+// sortedTickKeys returns a sorted slice of tick keys from the given map.
+func sortedTickKeys(tickQuality map[int]*TickQuality) []int {
+	keys := make([]int, 0, len(tickQuality))
+	for k := range tickQuality {
+		keys = append(keys, k)
+	}
+
+	sort.Ints(keys)
+
+	return keys
 }

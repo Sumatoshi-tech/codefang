@@ -10,6 +10,13 @@ import (
 // midpointDivisor is used to compute the midpoint index when splitting a range in half.
 const midpointDivisor = 2
 
+// Segment represents a contiguous run of lines with the same time value.
+// Used for compact serialization of treap state (segments vs per-line expansion).
+type Segment struct {
+	Length int
+	Value  TimeKey
+}
+
 // treapNode is a single segment: length lines with value Value. Position is implicit (sum of left subtree sizes).
 type treapNode struct {
 	left, right *treapNode
@@ -357,3 +364,58 @@ func (tt *treapTimeline) Reconstruct(lines []int) {
 
 // MergeAdjacentSameValue is a no-op for treap; segment coalescing is optional and not required for correctness.
 func (tt *treapTimeline) MergeAdjacentSameValue() {}
+
+// Segments returns the treap's segments (excluding the TreeEnd sentinel) as a compact slice.
+// This is O(segments) rather than O(totalLength) like Flatten.
+func (tt *treapTimeline) Segments() []Segment {
+	var segs []Segment
+
+	tt.walkNodes(tt.root, 0, func(_, length int, t TimeKey) bool {
+		if t == TreeEnd {
+			return true
+		}
+
+		segs = append(segs, Segment{Length: length, Value: t})
+
+		return true
+	})
+
+	return segs
+}
+
+// ReconstructFromSegments rebuilds the treap from a compact segment slice.
+// This avoids the intermediate per-line expansion that Reconstruct(Flatten()) requires.
+func (tt *treapTimeline) ReconstructFromSegments(segs []Segment) {
+	tt.root = nil
+	tt.totalLength = 0
+
+	for _, s := range segs {
+		tt.totalLength += s.Length
+	}
+
+	if len(segs) == 0 {
+		return
+	}
+
+	var build func(start, end int) *treapNode
+
+	build = func(start, end int) *treapNode {
+		if start >= end {
+			return nil
+		}
+
+		mid := (start + end) / midpointDivisor
+		s := segs[mid]
+		tt.nextPriority++
+
+		n := &treapNode{length: s.Length, value: s.Value, priority: tt.nextPriority}
+		n.left = build(start, mid)
+		n.right = build(mid+1, end)
+		n.recalcSize()
+
+		return n
+	}
+
+	tt.root = build(0, len(segs))
+	tt.root = tt.merge(tt.root, tt.newNode(0, TreeEnd))
+}

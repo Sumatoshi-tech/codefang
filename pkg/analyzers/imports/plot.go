@@ -2,7 +2,6 @@ package imports
 
 import (
 	"errors"
-	"io"
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -31,21 +30,6 @@ func registerHistoryPlotSections() bool {
 	})
 
 	return true
-}
-
-func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	sections, err := h.GenerateSections(report)
-	if err != nil {
-		return err
-	}
-
-	page := plotpage.NewPage(
-		"Import Usage Analysis",
-		"Tracking dependency usage patterns over project history",
-	)
-	page.Add(sections...)
-
-	return page.Render(writer)
 }
 
 // GenerateSections returns the sections for combined reports.

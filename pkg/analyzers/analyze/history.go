@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -9,6 +10,9 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
+
+// ErrNotImplemented is returned by stub methods that are not yet implemented.
+var ErrNotImplemented = errors.New("not implemented")
 
 // Serialization format constants.
 const (
@@ -75,11 +79,28 @@ type HistoryAnalyzer interface {
 	// Core analysis methods.
 	Initialize(repository *gitlib.Repository) error
 
-	// Consumption.
-	Consume(ctx context.Context, ac *Context) error
+	// Consumption. Returns a TC with per-commit result data.
+	// Plumbing analyzers return zero-value TC (Data: nil).
+	Consume(ctx context.Context, ac *Context) (TC, error)
 
-	// Result handling.
-	Finalize() (Report, error)
+	// Memory sizing for the planner.
+	// WorkingStateSize returns the estimated bytes of analyzer-internal
+	// working state accumulated per commit (maps, treaps, matrices).
+	WorkingStateSize() int64
+	// AvgTCSize returns the estimated bytes of TC payload emitted per commit.
+	AvgTCSize() int64
+
+	// Aggregation. NewAggregator creates a per-analyzer aggregator that
+	// collects TCs into TICKs. Returns nil when no aggregator is available.
+	NewAggregator(opts AggregatorOptions) Aggregator
+	// SerializeTICKs writes aggregated TICKs in the given format.
+	// Returns ErrNotImplemented when not yet wired.
+	SerializeTICKs(ticks []TICK, format string, writer io.Writer) error
+
+	// ReportFromTICKs converts aggregated TICKs into a Report.
+	// Returns ErrNotImplemented for analyzers without aggregators.
+	// ctx is used for cancellation and tracing (e.g. tree.Files() I/O).
+	ReportFromTICKs(ctx context.Context, ticks []TICK) (Report, error)
 
 	// Branching support.
 	Fork(n int) []HistoryAnalyzer

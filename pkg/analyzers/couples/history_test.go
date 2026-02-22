@@ -42,27 +42,21 @@ func TestHistoryAnalyzer_Configure(t *testing.T) {
 func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	c := &HistoryAnalyzer{PeopleNumber: 1}
+	c := &HistoryAnalyzer{
+		PeopleNumber:       1,
+		reversedPeopleDict: []string{"dev"},
+	}
 
 	err := c.Initialize(nil)
 	if err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	if len(c.people) != 2 {
-		t.Errorf("expected people len 2, got %d", len(c.people))
-	}
-
-	if len(c.peopleCommits) != 2 {
-		t.Errorf("expected peopleCommits len 2, got %d", len(c.peopleCommits))
-	}
-
-	if c.renames == nil {
-		t.Error("expected renames to be initialized")
-	}
+	require.NotNil(t, c.seenFiles)
+	require.NotNil(t, c.merges)
 }
 
-func TestHistoryAnalyzer_Consume(t *testing.T) {
+func TestHistoryAnalyzer_Consume_ReturnsTC(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
@@ -72,7 +66,6 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	}
 	require.NoError(t, c.Initialize(nil))
 
-	// 1. Insert two files in same commit (author 0).
 	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
 	change1 := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "f1", Hash: hash1}}
 	change2 := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "f2", Hash: hash1}}
@@ -80,66 +73,101 @@ func TestHistoryAnalyzer_Consume(t *testing.T) {
 	c.TreeDiff.Changes = gitlib.Changes{change1, change2}
 	c.Identity.AuthorID = 0
 
-	commit1 := gitlib.NewTestCommit(
+	commit := gitlib.NewTestCommit(
 		gitlib.NewHash("c100000000000000000000000000000000000001"),
 		gitlib.Signature{When: time.Now()},
 		"insert",
 	)
-	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit1}))
 
-	if c.peopleCommits[0] != 1 {
-		t.Errorf("expected author 0 commits 1, got %d", c.peopleCommits[0])
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok, "expected *CommitData")
+	assert.ElementsMatch(t, []string{"f1", "f2"}, cd.CouplingFiles)
+	assert.Equal(t, 0, cd.AuthorFiles["f1"]) // The author ID is 0 from c.Identity.AuthorID = 0.
+	assert.Equal(t, 0, cd.AuthorFiles["f2"])
+	assert.True(t, cd.CommitCounted)
+	assert.Empty(t, cd.Renames)
+
+	// seenFiles should be updated.
+	assert.True(t, c.seenFiles["f1"])
+	assert.True(t, c.seenFiles["f2"])
+}
+
+func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber: 1,
+		Identity:     &plumbing.IdentityDetector{},
+		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
 	}
+	require.NoError(t, c.Initialize(nil))
 
-	if c.people[0]["f1"] != 1 {
-		t.Errorf("expected author 0 f1 count 1, got %d", c.people[0]["f1"])
-	}
-
-	if c.files["f1"]["f2"] != 1 {
-		t.Errorf("expected f1-f2 coupling 1, got %d", c.files["f1"]["f2"])
-	}
-
-	// 2. Modify f1 (author 1).
-	change3 := &gitlib.Change{
-		Action: gitlib.Modify,
-		From:   gitlib.ChangeEntry{Name: "f1", Hash: hash1},
-		To:     gitlib.ChangeEntry{Name: "f1", Hash: hash1},
-	}
-	c.TreeDiff.Changes = gitlib.Changes{change3}
-	c.Identity.AuthorID = 1
-
-	commit2 := gitlib.NewTestCommit(
-		gitlib.NewHash("c200000000000000000000000000000000000002"),
-		gitlib.Signature{When: time.Now()},
-		"modify",
-	)
-	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit2}))
-
-	if c.people[1]["f1"] != 1 {
-		t.Errorf("expected author 1 f1 count 1, got %d", c.people[1]["f1"])
-	}
-
-	// 3. Delete f2 (author 0).
-	change4 := &gitlib.Change{
+	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
+	change := &gitlib.Change{
 		Action: gitlib.Delete,
-		From:   gitlib.ChangeEntry{Name: "f2", Hash: hash1},
+		From:   gitlib.ChangeEntry{Name: "f1", Hash: hash1},
 	}
-	c.TreeDiff.Changes = gitlib.Changes{change4}
+
+	c.TreeDiff.Changes = gitlib.Changes{change}
 	c.Identity.AuthorID = 0
 
-	commit3 := gitlib.NewTestCommit(
-		gitlib.NewHash("c300000000000000000000000000000000000003"),
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c200000000000000000000000000000000000002"),
 		gitlib.Signature{When: time.Now()},
 		"delete",
 	)
-	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit3}))
 
-	if c.people[0]["f2"] != 2 { // 1 insert + 1 delete.
-		t.Errorf("expected author 0 f2 count 2, got %d", c.people[0]["f2"])
-	}
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok)
+	// Deletes don't add to coupling context.
+	assert.Empty(t, cd.CouplingFiles)
+	assert.Equal(t, 0, cd.AuthorFiles["f1"]) // The author ID is 0 from c.Identity.AuthorID = 0.
 }
 
-func TestHistoryAnalyzer_Consume_Merge(t *testing.T) {
+func TestHistoryAnalyzer_Consume_Rename(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber: 1,
+		Identity:     &plumbing.IdentityDetector{},
+		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+	}
+	require.NoError(t, c.Initialize(nil))
+
+	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
+	change := &gitlib.Change{
+		Action: gitlib.Modify,
+		From:   gitlib.ChangeEntry{Name: "old.go", Hash: hash1},
+		To:     gitlib.ChangeEntry{Name: "new.go", Hash: hash1},
+	}
+
+	c.TreeDiff.Changes = gitlib.Changes{change}
+	c.Identity.AuthorID = 0
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c300000000000000000000000000000000000003"),
+		gitlib.Signature{When: time.Now()},
+		"rename",
+	)
+
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok)
+	assert.Len(t, cd.Renames, 1)
+	assert.Equal(t, "old.go", cd.Renames[0].FromName)
+	assert.Equal(t, "new.go", cd.Renames[0].ToName)
+	assert.Contains(t, cd.CouplingFiles, "new.go")
+}
+
+func TestHistoryAnalyzer_Consume_MergeDedup(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
@@ -157,61 +185,124 @@ func TestHistoryAnalyzer_Consume_Merge(t *testing.T) {
 		gitlib.NewHash("p200000000000000000000000000000000000002"),
 	)
 
-	// First pass (shouldConsume=true, merges marked).
-	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit}))
-
-	if !c.merges[commit.Hash()] {
-		t.Error("expected merge marked")
-	}
-
-	// Test Consume logic with IsMerge=true.
-	change := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "new_merge.txt"}}
-	c.TreeDiff.Changes = gitlib.Changes{change}
+	c.TreeDiff.Changes = gitlib.Changes{}
 	c.Identity.AuthorID = 0
 
-	require.NoError(t, c.Consume(context.Background(), &analyze.Context{Commit: commit, IsMerge: true}))
+	// First pass: shouldConsume=true.
+	tc1, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
 
-	if c.people[0]["new_merge.txt"] != 1 {
-		t.Errorf("expected new_merge.txt counted in merge, got %d", c.people[0]["new_merge.txt"])
-	}
+	cd1, ok := tc1.Data.(*CommitData)
+	require.True(t, ok)
+	assert.True(t, cd1.CommitCounted)
+	assert.True(t, c.merges[commit.Hash()])
+
+	// Second pass: shouldConsume=false (duplicate merge).
+	tc2, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	// Empty TC since nothing meaningful happened.
+	cd2, ok := tc2.Data.(*CommitData)
+	require.True(t, ok)
+	assert.False(t, cd2.CommitCounted)
 }
 
-func TestHistoryAnalyzer_Finalize(t *testing.T) {
+func TestHistoryAnalyzer_Consume_MergeMode(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber:       1,
-		reversedPeopleDict: []string{"dev1"},
+		PeopleNumber: 1,
+		Identity:     &plumbing.IdentityDetector{},
+		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
-	// Manually populate state.
-	c.people[0] = map[string]int{"f1": 10, "f2": 5}
-	c.people[1] = map[string]int{"f1": 5} // Overlap on f1.
-	c.files["f1"] = map[string]int{"f2": 3}
-	c.files["f2"] = map[string]int{"f1": 3}
+	// Pre-populate seenFiles.
+	c.seenFiles["existing.go"] = true
 
-	report, err := c.Finalize()
-	if err != nil {
-		t.Fatalf("Finalize failed: %v", err)
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	change1 := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "existing.go", Hash: hash}}
+	change2 := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "new.go", Hash: hash}}
+
+	c.TreeDiff.Changes = gitlib.Changes{change1, change2}
+	c.Identity.AuthorID = 0
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c400000000000000000000000000000000000004"),
+		gitlib.Signature{When: time.Now()},
+		"merge_mode",
+	)
+
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit, IsMerge: true})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok)
+	// existing.go should be filtered out (already seen in merge mode).
+	assert.Equal(t, []string{"new.go"}, cd.CouplingFiles)
+	assert.Equal(t, 0, cd.AuthorFiles["new.go"]) // The author ID is 0 from c.Identity.AuthorID = 0.
+	assert.Zero(t, cd.AuthorFiles["existing.go"])
+}
+
+func TestHistoryAnalyzer_Fork_WorkingStateOnly(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber:       2,
+		reversedPeopleDict: []string{"alice", "bob"},
+		seenFiles:          make(map[string]bool),
+		merges:             make(map[gitlib.Hash]bool),
 	}
+	require.NoError(t, c.Initialize(nil))
 
-	pm, ok := report["PeopleMatrix"].([]map[int]int64)
-	require.True(t, ok, "type assertion failed for pm")
+	clones := c.Fork(2)
+	require.Len(t, clones, 2)
 
-	if pm[0][1] != 5 {
-		t.Errorf("expected people matrix 0-1 to be 5, got %d", pm[0][1])
-	}
-
-	fm, ok := report["FilesMatrix"].([]map[int]int64)
-	require.True(t, ok, "type assertion failed for fm")
-
-	if fm[0][1] != 3 {
-		t.Errorf("expected files matrix 0-1 to be 3, got %d", fm[0][1])
+	for _, clone := range clones {
+		cc, ok := clone.(*HistoryAnalyzer)
+		require.True(t, ok)
+		assert.NotNil(t, cc.seenFiles)
+		assert.NotNil(t, cc.merges)
+		assert.Equal(t, 2, cc.PeopleNumber)
+		assert.Equal(t, []string{"alice", "bob"}, cc.reversedPeopleDict)
 	}
 }
 
-func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
+func TestHistoryAnalyzer_Merge_WorkingState(t *testing.T) {
+	t.Parallel()
+
+	main := &HistoryAnalyzer{PeopleNumber: 1}
+	require.NoError(t, main.Initialize(nil))
+
+	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
+	main.merges[hash1] = true
+	main.seenFiles["a.go"] = true
+
+	branch := &HistoryAnalyzer{PeopleNumber: 1}
+	require.NoError(t, branch.Initialize(nil))
+
+	hash2 := gitlib.NewHash("2222222222222222222222222222222222222222")
+	branch.merges[hash2] = true
+	branch.seenFiles["b.go"] = true
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c500000000000000000000000000000000000005"),
+		gitlib.Signature{When: time.Now()},
+		"last",
+	)
+	branch.lastCommit = commit
+
+	main.Merge([]analyze.HistoryAnalyzer{branch})
+
+	assert.True(t, main.merges[hash1])
+	assert.True(t, main.merges[hash2])
+	assert.True(t, main.seenFiles["a.go"])
+	// b.go shouldn't be here since Merge only merges lastCommit and merges in new architecture.
+	assert.False(t, main.seenFiles["b.go"])
+	assert.Equal(t, commit, main.lastCommit)
+}
+
+func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{}
@@ -238,14 +329,13 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
 
-	// Should have computed metrics structure.
 	assert.Contains(t, result, "file_coupling")
 	assert.Contains(t, result, "developer_coupling")
 	assert.Contains(t, result, "file_ownership")
 	assert.Contains(t, result, "aggregate")
 }
 
-func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
+func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{}
@@ -268,14 +358,13 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	// Should have computed metrics structure (YAML keys).
 	assert.Contains(t, output, "file_coupling:")
 	assert.Contains(t, output, "developer_coupling:")
 	assert.Contains(t, output, "file_ownership:")
 	assert.Contains(t, output, "aggregate:")
 }
 
-func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
+func TestHistoryAnalyzer_Serialize_Binary(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{}
@@ -295,7 +384,7 @@ func TestHistoryAnalyzer_Serialize_Default(t *testing.T) {
 	require.NoError(t, err)
 
 	if buf.Len() == 0 {
-		t.Error("expected output for default format")
+		t.Error("expected output for binary format")
 	}
 }
 
@@ -303,150 +392,59 @@ func TestHistoryAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{}
-	if c.Name() == "" {
-		t.Error("Name empty")
-	}
-
-	if c.Flag() == "" {
-		t.Error("Flag empty")
-	}
-
-	if c.Description() == "" {
-		t.Error("Description empty")
-	}
+	assert.NotEmpty(t, c.Name())
+	assert.NotEmpty(t, c.Flag())
+	assert.NotEmpty(t, c.Description())
 
 	require.NoError(t, c.Initialize(nil))
 
 	clones := c.Fork(2)
-	if len(clones) != 2 {
-		t.Error("expected 2 clones")
+	assert.Len(t, clones, 2)
+}
+
+func TestHistoryAnalyzer_NewAggregator(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber:       2,
+		reversedPeopleDict: []string{"alice", "bob"},
+		seenFiles:          make(map[string]bool),
+		merges:             make(map[gitlib.Hash]bool),
 	}
+	require.NoError(t, c.Initialize(nil))
+
+	agg := c.NewAggregator(analyze.AggregatorOptions{})
+	require.NotNil(t, agg)
+	require.NoError(t, agg.Close())
 }
 
-func TestMerge_CombinesFileCouplings(t *testing.T) {
+func TestHistoryAnalyzer_SerializeTICKs(t *testing.T) {
 	t.Parallel()
 
-	// Create main analyzer.
-	main := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, main.Initialize(nil))
-	main.files["a.go"] = map[string]int{"b.go": 2}
-	main.files["b.go"] = map[string]int{"a.go": 2}
+	ticks := []analyze.TICK{
+		{
+			Tick: 0,
+			Data: &TickData{
+				Files: map[string]map[string]int{
+					"a.go": {"b.go": 3, "a.go": 5},
+					"b.go": {"a.go": 3, "b.go": 5},
+				},
+				People:        []map[string]int{{"a.go": 10, "b.go": 5}, {}},
+				PeopleCommits: []int{15, 0},
+			},
+		},
+	}
 
-	// Create branch with additional couplings.
-	branch := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, branch.Initialize(nil))
-	branch.files["a.go"] = map[string]int{"b.go": 3, "c.go": 1}
-	branch.files["c.go"] = map[string]int{"a.go": 1}
+	c := NewHistoryAnalyzer()
+	c.PeopleNumber = 1
+	c.reversedPeopleDict = []string{"dev"}
 
-	// Merge.
-	main.Merge([]analyze.HistoryAnalyzer{branch})
+	var buf bytes.Buffer
 
-	// Verify: a.go -> b.go should be 2 + 3 = 5.
-	assert.Equal(t, 5, main.files["a.go"]["b.go"], "file coupling should sum")
-	// Verify: a.go -> c.go should be 0 + 1 = 1.
-	assert.Equal(t, 1, main.files["a.go"]["c.go"], "new coupling should be added")
-	// Verify: c.go -> a.go should be 0 + 1 = 1.
-	assert.Equal(t, 1, main.files["c.go"]["a.go"], "new file should be added")
-}
+	err := c.SerializeTICKs(ticks, analyze.FormatJSON, &buf)
+	require.NoError(t, err)
 
-func TestMerge_CombinesPeople(t *testing.T) {
-	t.Parallel()
-
-	main := &HistoryAnalyzer{PeopleNumber: 2}
-	require.NoError(t, main.Initialize(nil))
-	main.people[0]["a.go"] = 5
-	main.people[1]["b.go"] = 3
-
-	branch := &HistoryAnalyzer{PeopleNumber: 2}
-	require.NoError(t, branch.Initialize(nil))
-	branch.people[0]["a.go"] = 2
-	branch.people[0]["c.go"] = 1
-	branch.people[1]["b.go"] = 4
-
-	main.Merge([]analyze.HistoryAnalyzer{branch})
-
-	assert.Equal(t, 7, main.people[0]["a.go"], "person 0 a.go should sum")
-	assert.Equal(t, 1, main.people[0]["c.go"], "person 0 c.go should be added")
-	assert.Equal(t, 7, main.people[1]["b.go"], "person 1 b.go should sum")
-}
-
-func TestMerge_CombinesPeopleCommits(t *testing.T) {
-	t.Parallel()
-
-	main := &HistoryAnalyzer{PeopleNumber: 2}
-	require.NoError(t, main.Initialize(nil))
-	main.peopleCommits[0] = 10
-	main.peopleCommits[1] = 5
-
-	branch := &HistoryAnalyzer{PeopleNumber: 2}
-	require.NoError(t, branch.Initialize(nil))
-	branch.peopleCommits[0] = 3
-	branch.peopleCommits[1] = 7
-
-	main.Merge([]analyze.HistoryAnalyzer{branch})
-
-	assert.Equal(t, 13, main.peopleCommits[0], "person 0 commits should sum")
-	assert.Equal(t, 12, main.peopleCommits[1], "person 1 commits should sum")
-}
-
-func TestMerge_CombinesMerges(t *testing.T) {
-	t.Parallel()
-
-	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
-	hash2 := gitlib.NewHash("2222222222222222222222222222222222222222")
-	hash3 := gitlib.NewHash("3333333333333333333333333333333333333333")
-
-	main := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, main.Initialize(nil))
-	main.merges[hash1] = true
-
-	branch := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, branch.Initialize(nil))
-	branch.merges[hash2] = true
-	branch.merges[hash3] = true
-
-	main.Merge([]analyze.HistoryAnalyzer{branch})
-
-	assert.True(t, main.merges[hash1], "hash1 should be in merges")
-	assert.True(t, main.merges[hash2], "hash2 should be added")
-	assert.True(t, main.merges[hash3], "hash3 should be added")
-}
-
-func TestMerge_CombinesRenames(t *testing.T) {
-	t.Parallel()
-
-	main := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, main.Initialize(nil))
-	*main.renames = append(*main.renames, rename{FromName: "old1.go", ToName: "new1.go"})
-
-	branch := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, branch.Initialize(nil))
-	*branch.renames = append(*branch.renames, rename{FromName: "old2.go", ToName: "new2.go"})
-
-	main.Merge([]analyze.HistoryAnalyzer{branch})
-
-	assert.Len(t, *main.renames, 2, "renames should be combined")
-	assert.Equal(t, "old1.go", (*main.renames)[0].FromName)
-	assert.Equal(t, "old2.go", (*main.renames)[1].FromName)
-}
-
-func TestMerge_MultipleBranches(t *testing.T) {
-	t.Parallel()
-
-	main := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, main.Initialize(nil))
-	main.files["a.go"] = map[string]int{"b.go": 1}
-
-	branch1 := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, branch1.Initialize(nil))
-	branch1.files["a.go"] = map[string]int{"b.go": 2}
-
-	branch2 := &HistoryAnalyzer{PeopleNumber: 1}
-	require.NoError(t, branch2.Initialize(nil))
-	branch2.files["a.go"] = map[string]int{"b.go": 3}
-
-	main.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
-
-	// 1 + 2 + 3 = 6
-	assert.Equal(t, 6, main.files["a.go"]["b.go"], "should sum across all branches")
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
+	assert.Contains(t, result, "file_coupling")
 }

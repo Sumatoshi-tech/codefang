@@ -136,13 +136,13 @@ func (f *FileDiffAnalyzer) Initialize(repo *gitlib.Repository) error {
 const parallelThreshold = 1
 
 // Consume processes a single commit with the provided dependency results.
-func (f *FileDiffAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
+func (f *FileDiffAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	// Check if the runtime pipeline has already computed diffs.
 	if ac != nil && ac.FileDiffs != nil {
 		// Use the pre-computed diffs from the runtime pipeline.
 		f.FileDiffs = ac.FileDiffs
 
-		return nil
+		return analyze.TC{}, nil
 	}
 
 	// Fall back to traditional diff computation.
@@ -153,13 +153,13 @@ func (f *FileDiffAnalyzer) Consume(_ context.Context, ac *analyze.Context) error
 		result := f.processChangesSequential(treeDiff, cache)
 		f.FileDiffs = result
 
-		return nil
+		return analyze.TC{}, nil
 	}
 
 	result := f.processChangesParallel(treeDiff, cache)
 	f.FileDiffs = result
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 // processChangesNative uses libgit2's native blob diff for maximum performance.
@@ -326,11 +326,6 @@ func stripWhitespace(str string, ignoreWhitespace bool) string {
 	return str
 }
 
-// Finalize completes the analysis and returns the result.
-func (f *FileDiffAnalyzer) Finalize() (analyze.Report, error) {
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (f *FileDiffAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -357,6 +352,25 @@ func (f *FileDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (f *FileDiffAnalyzer) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (f *FileDiffAnalyzer) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (f *FileDiffAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator { return nil }
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (f *FileDiffAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (f *FileDiffAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }
 
 // InjectPreparedData sets pre-computed file diffs from parallel preparation.

@@ -121,6 +121,20 @@ The couples analyzer has no additional configuration options. It uses the identi
 
 ---
 
+## Architecture
+
+The couples analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: Each commit produces a `TC{Data: *CommitData}` containing the coupling context (list of co-changed files), per-file author touch counts, rename pairs, and whether the author's commit count was incremented. The `CouplesMaximumMeaningfulContextSize` filter (1000 files) is applied before TC emission.
+
+2. **Aggregation phase**: The `Aggregator` accumulates the file co-occurrence matrix using `SpillStore[map[string]int]`, along with per-person file touch counts (`people`), commit counts (`peopleCommits`), and rename tracking. When memory pressure exceeds `SpillBudget`, the file coupling matrix is spilled to disk via gob encoding. `Collect()` merges spilled data using additive merge semantics.
+
+3. **Serialization phase**: `ticksToReport()` reconstructs the full report (PeopleMatrix, PeopleFiles, Files, FilesLines, FilesMatrix, ReversedPeopleDict) from aggregated TICKs, then `ComputeAllMetrics()` produces the final JSON/YAML/plot output.
+
+**Working state** (`merges`, `seenFiles`) stays in the analyzer for merge-mode dedup across commits. **Accumulated output** (file couplings, people maps, renames) is owned entirely by the aggregator.
+
+---
+
 ## Limitations
 
 - **Large commits excluded**: Commits touching more than 1000 files are ignored to avoid noise from mass changes (formatting, license headers, dependency updates).

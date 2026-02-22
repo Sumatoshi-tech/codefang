@@ -468,8 +468,8 @@ func writeConvertedTimeSeries(model UnifiedModel, writer io.Writer) error {
 		}
 	}
 
-	commitMeta := buildCommitMetaFromReports(reports)
-	ts := BuildMergedTimeSeries(reports, commitMeta, 0)
+	commitMeta := buildOrderedCommitMetaFromReports(reports)
+	ts := BuildMergedTimeSeriesDirect(nil, commitMeta, 0)
 
 	return WriteMergedTimeSeries(ts, writer)
 }

@@ -26,3 +26,4 @@ pkg/uast/pkg/mapping/mapping.peg.go:Pretty
 pkg/uast/pkg/mapping/mapping.peg.go:Size
 pkg/uast/pkg/node/dsl_parser.peg.go:Pretty
 pkg/uast/pkg/node/dsl_parser.peg.go:Size
+pkg/analyzers/file_history/history.go:Analyzer

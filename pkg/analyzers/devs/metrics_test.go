@@ -9,6 +9,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
@@ -31,13 +32,18 @@ const (
 func TestParseTickData_Valid(t *testing.T) {
 	t.Parallel()
 
-	ticks := map[int]map[int]*DevTick{
-		0: {0: {Commits: testCommits}},
+	hash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	commitDevData := map[string]*CommitDevData{
+		hash: {Commits: testCommits, AuthorID: 0},
+	}
+	commitsByTick := map[int][]gitlib.Hash{
+		0: {gitlib.NewHash(hash)},
 	}
 	names := []string{testDevName1}
 
 	report := analyze.Report{
-		"Ticks":              ticks,
+		"CommitDevData":      commitDevData,
+		"CommitsByTick":      commitsByTick,
 		"ReversedPeopleDict": names,
 		"TickSize":           testTickSize,
 	}
@@ -46,12 +52,14 @@ func TestParseTickData_Valid(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, data)
-	assert.Equal(t, ticks, data.Ticks)
+	require.Len(t, data.Ticks, 1)
+	require.Contains(t, data.Ticks[0], 0)
+	assert.Equal(t, testCommits, data.Ticks[0][0].Commits)
 	assert.Equal(t, names, data.Names)
 	assert.Equal(t, testTickSize, data.TickSize)
 }
 
-func TestParseTickData_MissingTicks(t *testing.T) {
+func TestParseTickData_EmptyCanonical(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
@@ -61,17 +69,19 @@ func TestParseTickData_MissingTicks(t *testing.T) {
 
 	data, err := ParseTickData(report)
 
-	require.Error(t, err)
-	assert.Equal(t, ErrInvalidTicks, err)
-	assert.Nil(t, data)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+	assert.Empty(t, data.Ticks)
+	assert.Equal(t, []string{testDevName1}, data.Names)
 }
 
 func TestParseTickData_MissingPeopleDict(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
-		"Ticks":    map[int]map[int]*DevTick{},
-		"TickSize": testTickSize,
+		"CommitDevData": map[string]*CommitDevData{},
+		"CommitsByTick": map[int][]gitlib.Hash{},
+		"TickSize":      testTickSize,
 	}
 
 	data, err := ParseTickData(report)
@@ -84,11 +94,11 @@ func TestParseTickData_MissingPeopleDict(t *testing.T) {
 func TestParseTickData_MissingTickSize_DefaultsTo24Hours(t *testing.T) {
 	t.Parallel()
 
-	ticks := map[int]map[int]*DevTick{}
 	names := []string{testDevName1}
 
 	report := analyze.Report{
-		"Ticks":              ticks,
+		"CommitDevData":      map[string]*CommitDevData{},
+		"CommitsByTick":      map[int][]gitlib.Hash{},
 		"ReversedPeopleDict": names,
 	}
 
@@ -701,16 +711,19 @@ func TestComputeAllMetrics_InvalidReport(t *testing.T) {
 func TestComputeAllMetrics_Valid(t *testing.T) {
 	t.Parallel()
 
+	hash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	report := analyze.Report{
-		"Ticks": map[int]map[int]*DevTick{
-			0: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 100, Removed: 30},
-					Commits:   5,
-					Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 100}},
-				},
+		"CommitDevData": map[string]*CommitDevData{
+			hash: {
+				Commits:   5,
+				Added:     100,
+				Removed:   30,
+				Changed:   0,
+				AuthorID:  0,
+				Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 100}},
 			},
 		},
+		"CommitsByTick":      map[int][]gitlib.Hash{0: {gitlib.NewHash(hash)}},
 		"ReversedPeopleDict": []string{testDevName1},
 		"TickSize":           testTickSize,
 	}

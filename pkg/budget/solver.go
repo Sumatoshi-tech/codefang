@@ -34,7 +34,8 @@ const (
 // Solver constraints.
 const (
 	// MinimumBudget is the smallest budget the solver will accept.
-	MinimumBudget = 128 * MiB
+	// Must exceed BaseOverhead (250 MiB) plus room for at least 1 worker.
+	MinimumBudget = 512 * MiB
 
 	// DefaultArenaSize is the default blob arena size.
 	DefaultArenaSize = 4 * MiB
@@ -98,17 +99,19 @@ func SolveForBudget(budget int64) (framework.CoordinatorConfig, error) {
 // deriveKnobs calculates individual configuration knobs from allocation budgets.
 func deriveKnobs(cacheAlloc, workerAlloc, bufferAlloc int64) framework.CoordinatorConfig {
 	// Workers: maximize within allocation, minimum 1, cap at optimal ratio of CPU cores.
-	// Testing shows ~60% of CPU cores provides optimal performance due to contention overhead.
+	// Include native overhead (C/mmap) per worker in the cost calculation.
 	maxWorkers := max(MinWorkers, runtime.NumCPU()*OptimalWorkerRatio/percentDivisor)
-	workerCost := int64(RepoHandleSize + DefaultArenaSize)
+	workerCost := int64(RepoHandleSize + DefaultArenaSize + WorkerNativeOverhead)
 	workers := max(MinWorkers, min(maxWorkers, int(workerAlloc/workerCost)))
 
-	// Blob cache: 80% of cache allocation.
+	// Blob cache: 80% of cache allocation, capped to avoid dominating the budget.
 	blobCacheSize := max(int64(MinBlobCacheSize), cacheAlloc*BlobCacheRatio/percentDivisor)
+	blobCacheSize = min(blobCacheSize, MaxBlobCacheSize)
 
-	// Diff cache: 20% of cache allocation, converted to entries.
+	// Diff cache: 20% of cache allocation, converted to entries, capped.
 	diffCacheAlloc := cacheAlloc * DiffCacheRatio / percentDivisor
 	diffCacheSize := max(MinDiffCacheSize, int(diffCacheAlloc/AvgDiffSize))
+	diffCacheSize = min(diffCacheSize, MaxDiffCacheEntries)
 
 	// Buffer size: based on allocation and workers.
 	bufferSize := max(MinBufferSize, int(bufferAlloc/AvgCommitDataSize))

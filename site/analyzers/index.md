@@ -45,6 +45,7 @@ History analyzers iterate over Git commits (oldest to newest) and accumulate sta
 | [Developers](developers.md) | `history/devs` | Developer activity, language breakdown, bus factor |
 | [Couples](couples.md) | `history/couples` | File coupling, co-change patterns |
 | [File History](file-history.md) | `history/file-history` | Per-file lifecycle and modification tracking |
+| [Quality](quality.md) | `history/quality` | Complexity, Halstead, comment, and cohesion metrics over time |
 | [Sentiment](sentiment.md) | `history/sentiment` | Comment sentiment analysis over time |
 | [Shotness](shotness.md) | `history/shotness` | Structural hotspots (function-level change tracking) |
 | [Typos](typos.md) | `history/typos` | Typo detection dataset builder |

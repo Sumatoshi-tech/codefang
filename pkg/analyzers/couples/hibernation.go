@@ -3,8 +3,7 @@ package couples
 import "github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 
 // Hibernate compresses the analyzer's state to reduce memory usage.
-// Clears the merges map since processed merge commits won't be seen again
-// during streaming (commits are processed chronologically).
+// Clears ephemeral working state that is chunk-scoped.
 func (c *HistoryAnalyzer) Hibernate() error {
 	// Clear merges map - only used to prevent double-counting
 	// within a chunk. Between chunks, we won't see same commits.
@@ -19,7 +18,6 @@ func (c *HistoryAnalyzer) Hibernate() error {
 // Boot restores the analyzer from hibernated state.
 // Re-initializes the merges map for the next chunk.
 func (c *HistoryAnalyzer) Boot() error {
-	// Ensure merges map is ready for new chunk.
 	if c.merges == nil {
 		c.merges = make(map[gitlib.Hash]bool)
 	}
@@ -27,9 +25,19 @@ func (c *HistoryAnalyzer) Boot() error {
 	return nil
 }
 
-// stateGrowthPerCommit is the estimated per-commit memory growth in bytes
-// for the couples analyzer (file coupling matrix, developer-file maps).
-const stateGrowthPerCommit = 100 * 1024
+// CleanupSpills is a no-op. The aggregator owns spill cleanup.
+func (c *HistoryAnalyzer) CleanupSpills() {}
 
-// StateGrowthPerCommit returns the estimated per-commit memory growth in bytes.
-func (c *HistoryAnalyzer) StateGrowthPerCommit() int64 { return stateGrowthPerCommit }
+// workingStateSize is the estimated bytes of working state per commit
+// for the couples analyzer (seenFiles set, merges map).
+const workingStateSize = 80 * 1024
+
+// avgTCSize is the estimated bytes of TC payload per commit
+// for the couples analyzer.
+const avgTCSize = 20 * 1024
+
+// WorkingStateSize returns the estimated bytes of working state per commit.
+func (c *HistoryAnalyzer) WorkingStateSize() int64 { return workingStateSize }
+
+// AvgTCSize returns the estimated bytes of TC payload per commit.
+func (c *HistoryAnalyzer) AvgTCSize() int64 { return avgTCSize }

@@ -5,6 +5,7 @@
 #include "codefang_git.h"
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -20,6 +21,38 @@ void cf_init() {
     // when running inside Go goroutines.
     omp_set_num_threads(1);
 #endif
+}
+
+/*
+ * Configure libgit2 global memory limits.
+ *
+ * mwindow_mapped_limit: maximum bytes of pack file data to mmap at once.
+ *   Default is 8 GiB on 64-bit, which can dominate RSS on large repos.
+ * cache_max_size: maximum bytes for the global object cache (decompressed
+ *   objects like commits, trees, blobs). Default is 256 MiB.
+ *
+ * Both are global settings shared across all repository handles.
+ * Must be called before opening repositories for full effect.
+ */
+int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int malloc_arena_max) {
+    int err = 0;
+    if (mwindow_mapped_limit > 0) {
+        err = git_libgit2_opts(GIT_OPT_SET_MWINDOW_MAPPED_LIMIT, mwindow_mapped_limit);
+        if (err != 0) return err;
+    }
+    if (cache_max_size > 0) {
+        err = git_libgit2_opts(GIT_OPT_SET_CACHE_MAX_SIZE, (ssize_t)cache_max_size);
+        if (err != 0) return err;
+    }
+    /* Limit glibc malloc arenas to prevent RSS explosion.
+     * Default is 8*num_cores which creates ~192 arenas on 24-core machines.
+     * Each arena retains freed memory, causing RSS to be 3-4x higher than
+     * actual usage. A moderate limit (e.g. 4-8) dramatically reduces peak
+     * RSS with minimal performance impact. */
+    if (malloc_arena_max > 0) {
+        mallopt(M_ARENA_MAX, malloc_arena_max);
+    }
+    return 0;
 }
 
 /*

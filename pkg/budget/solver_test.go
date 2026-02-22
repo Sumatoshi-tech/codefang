@@ -26,9 +26,7 @@ func TestSolveForBudget_MediumBudget(t *testing.T) {
 func TestSolveForBudget_SmallBudget(t *testing.T) {
 	t.Parallel()
 
-	const budget256MiB = 256 * MiB
-
-	cfg, err := SolveForBudget(budget256MiB)
+	cfg, err := SolveForBudget(MinimumBudget)
 
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, cfg.Workers, MinWorkers, "should have minimum workers")
@@ -73,8 +71,6 @@ func TestSolveForBudget_NeverExceedsBudget(t *testing.T) {
 
 	budgets := []int64{
 		MinimumBudget,
-		256 * MiB,
-		512 * MiB,
 		1 * GiB,
 		2 * GiB,
 		4 * GiB,
@@ -132,7 +128,7 @@ func TestSolveForBudget_Deterministic(t *testing.T) {
 func TestSolveForBudget_LargerBudgetMoreResources(t *testing.T) {
 	t.Parallel()
 
-	smallCfg, err := SolveForBudget(256 * MiB)
+	smallCfg, err := SolveForBudget(MinimumBudget)
 	require.NoError(t, err)
 
 	largeCfg, err := SolveForBudget(2 * GiB)

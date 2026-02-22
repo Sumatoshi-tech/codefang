@@ -259,6 +259,58 @@ func (ci *CommitIter) ForEach(cb func(*Commit) error) error {
 	}
 }
 
+// Skip advances the iterator by n commits without materializing Commit objects.
+// Used for checkpoint resume to efficiently skip already-processed commits.
+func (ci *CommitIter) Skip(n int) error {
+	for range n {
+		err := ci.skip1()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// skip1 advances the iterator by one commit without looking up the full object.
+// Returns [io.EOF] when the walk is exhausted. Respects the since filter.
+func (ci *CommitIter) skip1() error {
+	if ci.walk == nil {
+		return io.EOF
+	}
+
+	oid := new(git2go.Oid)
+
+	err := ci.walk.Next(oid)
+	if err != nil {
+		ci.walk.Free()
+		ci.walk = nil
+
+		return io.EOF
+	}
+
+	// When a since filter is active, we must look up the commit to check
+	// the author timestamp. This is slower but necessary for correctness.
+	if ci.since != nil {
+		commit, lookupErr := ci.repo.repo.LookupCommit(oid)
+		if lookupErr != nil {
+			return io.EOF
+		}
+
+		before := commit.Author().When.Before(*ci.since)
+		commit.Free()
+
+		if before {
+			ci.walk.Free()
+			ci.walk = nil
+
+			return io.EOF
+		}
+	}
+
+	return nil
+}
+
 // Close releases resources.
 func (ci *CommitIter) Close() {
 	if ci.walk != nil {
