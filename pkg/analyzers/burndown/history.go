@@ -855,6 +855,10 @@ func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 		return b.generatePlot(result, writer)
 	}
 
+	if format == analyze.FormatText {
+		return b.generateText(result, writer)
+	}
+
 	if b.BaseHistoryAnalyzer != nil {
 		return b.BaseHistoryAnalyzer.Serialize(result, format, writer)
 	}
@@ -868,13 +872,17 @@ func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 
 // SerializeTICKs converts aggregated TICKs into the final report and serializes it.
 func (b *HistoryAnalyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	if format == analyze.FormatPlot || format == analyze.FormatText {
 		report, err := b.ReportFromTICKs(context.Background(), ticks)
 		if err != nil {
 			return err
 		}
 
-		return b.generatePlot(report, writer)
+		if format == analyze.FormatPlot {
+			return b.generatePlot(report, writer)
+		}
+
+		return b.generateText(report, writer)
 	}
 
 	if b.BaseHistoryAnalyzer != nil {
@@ -961,6 +969,64 @@ func (b *HistoryAnalyzer) collectDeltas() *CommitResult {
 		b.collectPeopleDeltas(result, shard)
 		b.collectMatrixDeltas(result, shard)
 		b.collectFileDeltas(result, shard)
+	}
+
+	if b.TrackFiles && b.PeopleNumber > 0 {
+		result.FileOwnership = b.collectFileOwnership()
+	}
+
+	return result
+}
+
+// collectFileOwnership extracts per-file author ownership from live file
+// segments across all shards. Each file's treap stores packed [author|tick]
+// values; we iterate segments to sum line counts per author.
+func (b *HistoryAnalyzer) collectFileOwnership() map[PathID]map[int]int {
+	ownership := map[PathID]map[int]int{}
+
+	for _, shard := range b.shards {
+		for pathID, file := range shard.filesByID {
+			if file == nil {
+				continue
+			}
+
+			pid := PathID(pathID)
+			fileOwnership := extractFileOwnership(file, b.unpackPersonWithTick)
+
+			if len(fileOwnership) == 0 {
+				continue
+			}
+
+			if ownership[pid] == nil {
+				ownership[pid] = fileOwnership
+			} else {
+				for author, count := range fileOwnership {
+					ownership[pid][author] += count
+				}
+			}
+		}
+	}
+
+	return ownership
+}
+
+// extractFileOwnership iterates a file's segments and sums line counts per
+// author by unpacking the packed [author|tick] value stored in each segment.
+func extractFileOwnership(
+	file *burndown.File,
+	unpack func(int) (int, int),
+) map[int]int {
+	result := map[int]int{}
+
+	for _, seg := range file.Segments() {
+		if seg.Value == burndown.TreeEnd {
+			continue
+		}
+
+		author, _ := unpack(int(seg.Value))
+		if author != identity.AuthorMissing {
+			result[author] += seg.Length
+		}
 	}
 
 	return result
@@ -1569,6 +1635,10 @@ func (b *HistoryAnalyzer) normalizeTicks(history sparseHistory, lastTick int) (t
 	}
 
 	sort.Ints(ticks)
+
+	if len(ticks) == 0 {
+		return ticks, max(lastTick, 0)
+	}
 
 	if lastTick >= 0 {
 		if ticks[len(ticks)-1] < lastTick {
