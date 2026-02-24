@@ -210,6 +210,46 @@ func TestCommentWeight(t *testing.T) {
 	}
 }
 
+func TestComputeSentiment_MultilingualScoring(t *testing.T) {
+	t.Parallel()
+
+	ruPos := "отлично успешно"
+	ruNeg := "плохо ошибка ужасно"
+
+	t.Run("russian_positive", func(t *testing.T) {
+		t.Parallel()
+
+		score := ComputeSentiment([]string{ruPos})
+		assert.Greater(t, float64(score), float64(SentimentNegativeThreshold))
+	})
+
+	t.Run("russian_negative", func(t *testing.T) {
+		t.Parallel()
+
+		score := ComputeSentiment([]string{ruNeg})
+		assert.Less(t, float64(score), float64(SentimentPositiveThreshold))
+	})
+}
+
+func TestInjectMultilingualLexicons(t *testing.T) {
+	t.Parallel()
+
+	analyzer := getVaderAnalyzer()
+
+	assert.Greater(t, len(analyzer.Lexicon), 7500,
+		"lexicon should contain more than base VADER entries after injection")
+}
+
+func TestIsASCIIOnly(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isASCIIOnly("hello"))
+	assert.True(t, isASCIIOnly("fix123"))
+	assert.True(t, isASCIIOnly(""))
+	assert.False(t, isASCIIOnly("\u043f\u043b\u043e\u0445\u043e"))
+	assert.False(t, isASCIIOnly("\u597d"))
+}
+
 func TestAverageCommentLength(t *testing.T) {
 	t.Parallel()
 

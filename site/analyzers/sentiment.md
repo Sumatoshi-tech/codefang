@@ -61,8 +61,8 @@ The analyzer supports comments in any language that uses Unicode letters:
 
 Comment filtering uses Unicode-aware regex patterns (`\p{L}` for letters, `\p{N}` for digits) rather than ASCII-only ranges, ensuring comments in non-English languages are not silently dropped.
 
-!!! warning "Sentiment scoring accuracy"
-    While comment *extraction* is multilingual, sentiment *scoring* currently uses VADER which is optimized for English text. Non-English comments will be extracted and included in the analysis, but their sentiment scores may be less accurate. Future versions will add language-specific scoring.
+!!! info "Multilingual sentiment scoring"
+    Sentiment scoring uses VADER's English lexicon as the base, extended with **93,000+ multilingual word entries** from the Chen-Skiena lexicon dataset (ACL 2014) covering **32 languages**. Non-ASCII words from the dataset are injected into VADER's lexicon at startup, enabling basic sentiment scoring for comments in Russian, Chinese, Japanese, Korean, Arabic, and 27 other languages. VADER's grammatical rules (negation, intensifiers) still operate on English syntax, so scoring accuracy for non-English comments is lower than for English — but significantly better than no coverage.
 
 ### Sentiment Classification
 
@@ -71,6 +71,27 @@ Filtered comments are classified as positive, negative, or neutral using **VADER
 #### VADER Base Scoring
 
 VADER is a lexicon and rule-based sentiment analyzer designed for social media and short text. It handles negations, intensifiers, and punctuation. The compound score (-1 to 1) is mapped to our [0, 1] range.
+
+#### Multilingual Lexicon Extension
+
+At startup, the analyzer injects ~93,000 multilingual word entries from the [Chen-Skiena lexicon dataset](https://aclanthology.org/P14-2063/) (ACL 2014) into VADER's lexicon. This covers 32 languages:
+
+| Language Family | Languages |
+|---|---|
+| **Slavic** | Russian, Ukrainian, Polish, Czech, Slovak, Croatian, Bulgarian |
+| **CJK** | Chinese, Japanese, Korean |
+| **Romance** | Spanish, French, Portuguese, Italian, Romanian |
+| **Germanic** | German, Dutch, Swedish, Danish, Norwegian, Finnish |
+| **Other** | Arabic, Hebrew, Hindi, Thai, Turkish, Greek, Hungarian, Indonesian, Malay, Vietnamese, Persian |
+
+Only non-ASCII words are injected to avoid overriding VADER's curated English entries. Words receive binary valence: +1.5 (positive) or -1.5 (negative), which is the mid-range of VADER's scale.
+
+To regenerate lexicons from updated source data:
+
+```bash
+go run tools/lexgen/lexgen.go -pos pos_words.txt -neg neg_words.txt \
+  -o pkg/analyzers/sentiment/lexicons/lexicon_data.gen.go
+```
 
 #### SE-Domain Adjustments
 
@@ -219,7 +240,7 @@ The terminal renderer provides a colored, Unicode-rich summary:
 
 ## Limitations
 
-- **Sentiment scoring accuracy**: VADER is optimized for English text. While non-English comments are properly extracted and included, their sentiment scores may be less accurate than English comments.
+- **Non-English scoring accuracy**: While 32 languages have lexicon coverage via the Chen-Skiena dataset, VADER's grammatical rules (negation handling, intensifiers, punctuation effects) are English-specific. Non-English comments get word-level sentiment from the lexicon but miss syntactic nuances.
 - **UAST dependency**: Requires UAST parsing support for the target language. Files in unsupported languages are skipped.
 - **Sarcasm**: Sarcasm, irony, and context-dependent meaning can mislead the classifier. Comments like "great, another production outage" may be scored as positive.
 - **Comment extraction**: Only comments that appear in the UAST are analyzed. Preprocessor directives, build file comments, and non-code files are excluded.

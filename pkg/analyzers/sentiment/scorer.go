@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/jonreiter/govader"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment/lexicons"
 )
 
 var (
@@ -16,9 +18,43 @@ var (
 func getVaderAnalyzer() *govader.SentimentIntensityAnalyzer {
 	vaderOnce.Do(func() {
 		vaderAnalyzer = govader.NewSentimentIntensityAnalyzer()
+		injectMultilingualLexicons(vaderAnalyzer)
 	})
 
 	return vaderAnalyzer
+}
+
+// injectMultilingualLexicons adds multilingual sentiment entries to VADER's lexicon.
+// VADER's Lexicon field is a public map[string]float64 — we inject non-English
+// entries from the Chen-Skiena dataset so that VADER can score comments in
+// 32+ languages without requiring translation.
+//
+// Only words containing non-ASCII characters are injected to avoid overriding
+// VADER's built-in English lexicon with lower-quality bilingual entries.
+func injectMultilingualLexicons(sia *govader.SentimentIntensityAnalyzer) {
+	entries := lexicons.All()
+
+	for _, entry := range entries {
+		if isASCIIOnly(entry.Word) {
+			continue
+		}
+
+		lower := strings.ToLower(entry.Word)
+		if _, exists := sia.Lexicon[lower]; !exists {
+			sia.Lexicon[lower] = entry.Valence
+		}
+	}
+}
+
+// isASCIIOnly returns true if all bytes in s are ASCII (< 128).
+func isASCIIOnly(s string) bool {
+	for i := range len(s) {
+		if s[i] >= 128 { //nolint:mnd // ASCII boundary
+			return false
+		}
+	}
+
+	return true
 }
 
 // vaderCompoundRange maps VADER [-1,1] to our [0,1] via (compound+1)/2.
