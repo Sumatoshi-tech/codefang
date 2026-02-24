@@ -10,17 +10,22 @@ COPY . .
 # target (which requires a generator script not shipped in the Docker context).
 RUN make libgit2
 
-RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
-    PKG_CONFIG_PATH=$(pwd)/$LIBGIT2_INSTALL/lib64/pkgconfig:$(pwd)/$LIBGIT2_INSTALL/lib/pkgconfig \
-    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include -include stdint.h" \
-    CGO_LDFLAGS="-L$(pwd)/$LIBGIT2_INSTALL/lib64 -L$(pwd)/$LIBGIT2_INSTALL/lib -lgit2 -lpthread" \
-    CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/codefang ./cmd/codefang
+# Wrapper: add -include stdint.h only for C compilation (not assembly).
+# Needed because the ansible tree-sitter grammar omits #include <stdint.h>.
+RUN printf '#!/bin/sh\nfor a; do case "$a" in *.s|*.S) exec gcc "$@";; esac; done\nexec gcc -include stdint.h "$@"\n' \
+    > /usr/local/bin/cc-wrap && chmod +x /usr/local/bin/cc-wrap
 
 RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
     PKG_CONFIG_PATH=$(pwd)/$LIBGIT2_INSTALL/lib64/pkgconfig:$(pwd)/$LIBGIT2_INSTALL/lib/pkgconfig \
-    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include -include stdint.h" \
+    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include" \
     CGO_LDFLAGS="-L$(pwd)/$LIBGIT2_INSTALL/lib64 -L$(pwd)/$LIBGIT2_INSTALL/lib -lgit2 -lpthread" \
-    CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/uast ./cmd/uast
+    CC=cc-wrap CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/codefang ./cmd/codefang
+
+RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
+    PKG_CONFIG_PATH=$(pwd)/$LIBGIT2_INSTALL/lib64/pkgconfig:$(pwd)/$LIBGIT2_INSTALL/lib/pkgconfig \
+    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include" \
+    CGO_LDFLAGS="-L$(pwd)/$LIBGIT2_INSTALL/lib64 -L$(pwd)/$LIBGIT2_INSTALL/lib -lgit2 -lpthread" \
+    CC=cc-wrap CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/uast ./cmd/uast
 
 FROM alpine:3.21
 
