@@ -25,7 +25,7 @@ func safeReadFile(path string) (content []byte, resolvedPath string, err error) 
 		return nil, "", fmt.Errorf("resolve path %q: %w", path, err)
 	}
 
-	//nolint:gosec // resolvedPath is normalized and existence/type checked in resolveUserFilePath.
+	// #nosec G703 -- resolvedPath is normalized and validated in resolveUserFilePath.
 	content, err = os.ReadFile(resolvedPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", resolvedPath, err)
@@ -50,7 +50,7 @@ func resolveUserFilePath(path string) (string, error) {
 		return "", fmt.Errorf("resolve absolute path for %q: %w", path, err)
 	}
 
-	//nolint:gosec // absPath is normalized by filepath.Clean + filepath.Abs.
+	// #nosec G703 -- absPath is normalized and validated as a file path.
 	info, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", absPath, err)
@@ -79,6 +79,6 @@ func sanitizeForTerminal(input string) string {
 }
 
 func writeTerminalLine(args ...any) {
-	//nolint:gosec // CLI terminal output; values are sanitized by call sites where needed.
+	// #nosec G705 -- writes to terminal stdout, not a web sink.
 	fmt.Fprintln(os.Stdout, args...)
 }
