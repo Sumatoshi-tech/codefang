@@ -14,6 +14,12 @@ type CommitResult struct {
 
 	// FileDeltas: pathID -> curTick -> prevTick -> lineCountDelta.
 	FileDeltas map[PathID]sparseHistory
+
+	// FileOwnership: pathID -> authorID -> surviving line count.
+	// Computed from live file segments (not sparse history) when both
+	// TrackFiles and PeopleNumber > 0. This is a snapshot of current
+	// state, not a delta — each commit's snapshot replaces the previous.
+	FileOwnership map[PathID]map[int]int
 }
 
 // TickResult holds the aggregated burndown state for a single tick,
@@ -23,6 +29,7 @@ type TickResult struct {
 	PeopleHistories []sparseHistory
 	Matrix          []map[int]int64
 	FileHistories   map[PathID]sparseHistory
+	FileOwnership   map[PathID]map[int]int
 }
 
 // deltaBuffer holds per-commit delta accumulation for a single shard.

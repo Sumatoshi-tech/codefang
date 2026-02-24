@@ -153,17 +153,34 @@ func computeGlobalSurvival(input *ReportData) []SurvivalData {
 	return result
 }
 
+// findPeakLines computes the total lines ever written across all cohorts.
+// Each band represents a cohort of code written during a time period.
+// The peak of each band (its maximum value across all samples) is the number
+// of lines originally written in that cohort. Summing these gives the total
+// lines ever written, which is the correct denominator for survival rate.
 func findPeakLines(history DenseHistory) int64 {
-	var peakLines int64
+	if len(history) == 0 {
+		return 0
+	}
+
+	numBands := len(history[0])
+	bandPeaks := make([]int64, numBands)
 
 	for _, sample := range history {
-		total := sumPositiveValues(sample)
-		if total > peakLines {
-			peakLines = total
+		for band := range min(len(sample), numBands) {
+			if sample[band] > bandPeaks[band] {
+				bandPeaks[band] = sample[band]
+			}
 		}
 	}
 
-	return peakLines
+	var total int64
+
+	for _, peak := range bandPeaks {
+		total += peak
+	}
+
+	return total
 }
 
 func sumPositiveValues(values []int64) int64 {
@@ -388,26 +405,8 @@ func computeAggregate(input *ReportData) AggregateData {
 	totalTicks := (agg.NumSamples - 1) * input.Sampling
 	agg.AnalysisPeriodDays = int(time.Duration(totalTicks) * input.TickSize / (defaultTickSizeHours * time.Hour))
 
-	for _, sample := range input.GlobalHistory {
-		var total int64
-
-		for _, v := range sample {
-			if v > 0 {
-				total += v
-			}
-		}
-
-		if total > agg.TotalPeakLines {
-			agg.TotalPeakLines = total
-		}
-	}
-
-	lastSample := input.GlobalHistory[agg.NumSamples-1]
-	for _, v := range lastSample {
-		if v > 0 {
-			agg.TotalCurrentLines += v
-		}
-	}
+	agg.TotalPeakLines = findPeakLines(input.GlobalHistory)
+	agg.TotalCurrentLines = sumPositiveValues(input.GlobalHistory[agg.NumSamples-1])
 
 	if agg.TotalPeakLines > 0 {
 		agg.OverallSurvivalRate = float64(agg.TotalCurrentLines) / float64(agg.TotalPeakLines)

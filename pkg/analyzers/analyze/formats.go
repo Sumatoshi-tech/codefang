@@ -11,7 +11,7 @@ const (
 	// FormatBinAlias is a short CLI alias for binary output.
 	FormatBinAlias = "bin"
 
-	// FormatText is the human-readable static analysis output format.
+	// FormatText is the human-readable output format for CLI display.
 	FormatText = "text"
 
 	// FormatCompact is the single-line-per-analyzer static analysis output format.
@@ -43,7 +43,7 @@ func NormalizeFormat(format string) string {
 
 // UniversalFormats returns the canonical output formats supported by all analyzers.
 func UniversalFormats() []string {
-	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary, FormatTimeSeries, FormatNDJSON}
+	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary, FormatTimeSeries, FormatNDJSON, FormatText}
 }
 
 // ValidateFormat checks whether a format is in the provided support list.

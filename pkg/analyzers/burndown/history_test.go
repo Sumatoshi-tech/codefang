@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/burndown"
+	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 )
 
 func TestHistoryAnalyzer_Name(t *testing.T) {
@@ -424,4 +426,478 @@ func TestCollectDeltas_MergesAllShards(t *testing.T) {
 	// File deltas should have both files.
 	assert.Equal(t, int64(20), result.FileDeltas[PathID(0)][1][0])
 	assert.Equal(t, int64(15), result.FileDeltas[PathID(1)][1][0])
+}
+
+// --- collectFileOwnership Tests ---.
+
+func TestCollectFileOwnership_EmptyShards(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+	b.PeopleNumber = 1
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	ownership := b.collectFileOwnership()
+	assert.Empty(t, ownership)
+}
+
+func TestCollectFileOwnership_WithFiles(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 1
+	b.PeopleNumber = 2
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	// Create a file in shard 0 with author=1, tick=5.
+	packed := 5 | (1 << burndown.TreeMaxBinPower)
+	file := burndown.NewFile(packed, 80)
+
+	b.shards[0].filesByID = append(b.shards[0].filesByID, file)
+
+	ownership := b.collectFileOwnership()
+
+	require.Contains(t, ownership, PathID(0))
+	assert.Equal(t, 80, ownership[PathID(0)][1])
+}
+
+func TestCollectDeltas_IncludesFileOwnership(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 1
+	b.PeopleNumber = 2
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	b.resetDeltaBuffers()
+
+	// Create a file in shard 0 with author=0, tick=3.
+	packed := 3 | (0 << burndown.TreeMaxBinPower)
+	file := burndown.NewFile(packed, 50)
+
+	b.shards[0].filesByID = append(b.shards[0].filesByID, file)
+
+	result := b.collectDeltas()
+
+	require.NotNil(t, result.FileOwnership)
+	require.Contains(t, result.FileOwnership, PathID(0))
+	assert.Equal(t, 50, result.FileOwnership[PathID(0)][0])
+}
+
+func TestCollectDeltas_NoOwnershipWithoutPeople(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 1
+	b.PeopleNumber = 0
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	b.resetDeltaBuffers()
+
+	result := b.collectDeltas()
+
+	assert.Nil(t, result.FileOwnership)
+}
+
+// --- groupSparseHistory Tests ---.
+
+func TestGroupSparseHistory_Empty(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+
+	result := b.groupSparseHistory(sparseHistory{}, 30)
+
+	assert.Equal(t, DenseHistory{}, result)
+}
+
+func TestGroupSparseHistory_SingleTick(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	history := sparseHistory{
+		0: {0: 100},
+	}
+
+	result := b.groupSparseHistory(history, 0)
+
+	require.Len(t, result, 1) // 1 sample (tick 0 / sampling 30 = 0, +1).
+	require.Len(t, result[0], 1)
+	assert.Equal(t, int64(100), result[0][0])
+}
+
+func TestGroupSparseHistory_MultiTickForwardFill(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	// Tick 0: 100 lines in band 0.
+	// Tick 60: 50 new lines in band 1.
+	// Tick 30 is a gap — should forward-fill from tick 0.
+	history := sparseHistory{
+		0:  {0: 100},
+		60: {30: 50},
+	}
+
+	result := b.groupSparseHistory(history, 60)
+
+	// samples = 60/30 + 1 = 3.
+	// bands = 60/30 + 1 = 3.
+	require.Len(t, result, 3)
+
+	// Sample 0: band 0 = 100.
+	assert.Equal(t, int64(100), result[0][0])
+
+	// Sample 1: forward-filled from sample 0.
+	assert.Equal(t, int64(100), result[1][0])
+
+	// Sample 2: forward-fill + new data.
+	assert.Equal(t, int64(100), result[2][0])
+	assert.Equal(t, int64(50), result[2][1])
+}
+
+func TestGroupSparseHistory_SamplingEqualsGranularity(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	history := sparseHistory{
+		0:  {0: 100},
+		30: {0: -20, 30: 80},
+	}
+
+	result := b.groupSparseHistory(history, 30)
+
+	require.Len(t, result, 2)
+	assert.Equal(t, int64(100), result[0][0])
+	// Sample 1: carried 100, then delta -20 + 80 in band 1.
+	assert.Equal(t, int64(80), result[1][0])
+	assert.Equal(t, int64(80), result[1][1])
+}
+
+func TestNormalizeTicks_EmptyHistory(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	ticks, lastTick := b.normalizeTicks(sparseHistory{}, 60)
+
+	assert.Empty(t, ticks)
+	assert.Equal(t, 60, lastTick)
+}
+
+func TestNormalizeTicks_NegativeLastTick(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	ticks, lastTick := b.normalizeTicks(sparseHistory{}, -1)
+
+	assert.Empty(t, ticks)
+	assert.Equal(t, 0, lastTick)
+}
+
+// --- Configure Tests ---.
+
+func TestConfigure_WithPeopleTracking(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	facts := map[string]any{
+		ConfigBurndownGranularity:                       15,
+		ConfigBurndownSampling:                          10,
+		ConfigBurndownTrackFiles:                        true,
+		ConfigBurndownTrackPeople:                       true,
+		identity.FactIdentityDetectorPeopleCount:        3,
+		identity.FactIdentityDetectorReversedPeopleDict: []string{"Alice", "Bob", "Charlie"},
+		ConfigBurndownHibernationThreshold:              500,
+		ConfigBurndownHibernationToDisk:                 true,
+		ConfigBurndownDebug:                             true,
+		ConfigBurndownGoroutines:                        8,
+	}
+
+	err := b.Configure(facts)
+	require.NoError(t, err)
+
+	assert.Equal(t, 15, b.Granularity)
+	assert.Equal(t, 10, b.Sampling)
+	assert.True(t, b.TrackFiles)
+	assert.Equal(t, 3, b.PeopleNumber)
+	assert.Equal(t, []string{"Alice", "Bob", "Charlie"}, b.reversedPeopleDict)
+	assert.Equal(t, 500, b.HibernationThreshold)
+	assert.True(t, b.HibernationToDisk)
+	assert.True(t, b.Debug)
+	assert.Equal(t, 8, b.Goroutines)
+}
+
+func TestConfigure_NegativePeopleCount(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	facts := map[string]any{
+		ConfigBurndownTrackPeople:                true,
+		identity.FactIdentityDetectorPeopleCount: -1,
+	}
+
+	err := b.Configure(facts)
+	require.Error(t, err)
+}
+
+func TestConfigure_PeopleTrackingWithBadDict(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	facts := map[string]any{
+		ConfigBurndownTrackPeople:                       true,
+		identity.FactIdentityDetectorPeopleCount:        2,
+		identity.FactIdentityDetectorReversedPeopleDict: "not a slice",
+	}
+
+	err := b.Configure(facts)
+	require.Error(t, err)
+}
+
+func TestInitialize_NegativePeopleNumber(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.PeopleNumber = -1
+
+	err := b.Initialize(nil)
+	require.Error(t, err)
+}
+
+func TestInitialize_SamplingAdjustment(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 15
+	b.Sampling = 30 // Larger than granularity, should be clamped.
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 15, b.Sampling)
+}
+
+// --- packPersonWithTick / unpackPersonWithTick Tests ---.
+
+func TestPackPersonWithTick_NoPeople(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.PeopleNumber = 0
+	result := b.packPersonWithTick(5, 42)
+	assert.Equal(t, 42, result) // when no people, returns tick directly.
+}
+
+func TestPackPersonWithTick_WithPeople(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.PeopleNumber = 2
+	result := b.packPersonWithTick(1, 5)
+	// tick = 5, person = 1 shifted by TreeMaxBinPower.
+	assert.Equal(t, 5|(1<<burndown.TreeMaxBinPower), result)
+}
+
+func TestUnpackPersonWithTick_NoPeople(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.PeopleNumber = 0
+	person, tick := b.unpackPersonWithTick(42)
+	assert.Equal(t, identity.AuthorMissing, person)
+	assert.Equal(t, 42, tick)
+}
+
+func TestUnpackPersonWithTick_WithPeople(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.PeopleNumber = 3
+	packed := b.packPersonWithTick(2, 7)
+	person, tick := b.unpackPersonWithTick(packed)
+	assert.Equal(t, 2, person)
+	assert.Equal(t, 7, tick)
+}
+
+// --- Simple Getter Tests ---.
+
+func TestWorkingStateSize(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	assert.Positive(t, b.WorkingStateSize())
+}
+
+func TestAvgTCSize(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	assert.Positive(t, b.AvgTCSize())
+}
+
+// --- Serialize Plot Tests ---.
+
+func TestSerialize_Plot(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	report := analyze.Report{
+		"GlobalHistory": DenseHistory{{100, 50}, {120, 60}},
+		"Sampling":      30,
+		"Granularity":   30,
+		"TickSize":      24 * time.Hour,
+	}
+
+	var buf bytes.Buffer
+
+	err := b.Serialize(report, analyze.FormatPlot, &buf)
+	require.NoError(t, err)
+	assert.Positive(t, buf.Len())
+}
+
+func TestSerialize_PlotEmpty(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	report := analyze.Report{
+		"GlobalHistory": DenseHistory{},
+		"Sampling":      30,
+		"Granularity":   30,
+		"TickSize":      24 * time.Hour,
+	}
+
+	var buf bytes.Buffer
+
+	err := b.Serialize(report, analyze.FormatPlot, &buf)
+	require.NoError(t, err)
+	assert.Positive(t, buf.Len())
+}
+
+func TestSerializeTICKs_Plot(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+	b.TickSize = 24 * time.Hour
+
+	ticks := []analyze.TICK{
+		{
+			Tick: 0,
+			Data: &TickResult{
+				GlobalHistory: sparseHistory{0: {0: 100}},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := b.SerializeTICKs(ticks, analyze.FormatPlot, &buf)
+	require.NoError(t, err)
+	assert.Positive(t, buf.Len())
+}
+
+// --- onNewTick Tests ---.
+
+func TestOnNewTick(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.tick = 5
+	b.previousTick = 3
+	b.mergedAuthor = 1
+
+	b.onNewTick()
+
+	assert.Equal(t, 5, b.previousTick)
+	assert.Equal(t, identity.AuthorMissing, b.mergedAuthor)
+}
+
+func TestOnNewTick_NoPreviousAdvance(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.tick = 3
+	b.previousTick = 5 // Already ahead.
+	b.mergedAuthor = 1
+
+	b.onNewTick()
+
+	assert.Equal(t, 5, b.previousTick)                      // Unchanged.
+	assert.Equal(t, identity.AuthorMissing, b.mergedAuthor) // Always reset.
+}
+
+// --- CleanupSpills Tests ---.
+
+func TestCleanupSpills_NoSpills(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Goroutines = 2
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+	// Should not panic.
+	b.CleanupSpills()
+}
+
+// --- fillDenseHistory / groupSparseHistory Tests ---.
+
+func TestFillDenseHistory(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+
+	history := sparseHistory{
+		0: {0: 100},
+	}
+	result := b.groupSparseHistory(history, 30)
+	require.Len(t, result, 2)
+	// First sample: band 0 = 100.
+	assert.Equal(t, int64(100), result[0][0])
+	// Second sample: forward-filled from first.
+	assert.Equal(t, int64(100), result[1][0])
 }

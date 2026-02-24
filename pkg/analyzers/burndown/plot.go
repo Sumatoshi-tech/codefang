@@ -60,7 +60,8 @@ func (b *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 		return nil, fmt.Errorf("generate chart: %w", err)
 	}
 
-	return []plotpage.Section{
+	sections := []plotpage.Section{
+		buildSummarySection(report),
 		{
 			Title:    "Code Burndown Chart",
 			Subtitle: "Shows how code written at different times survives over the project's lifetime.",
@@ -72,11 +73,69 @@ func (b *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 					"Bottom layers = oldest code still surviving",
 					"Narrowing layers = code being deleted or rewritten",
 					"Flat layers = stable code that rarely changes",
-					"Look for: Rapid decrease in recent layers indicates instability",
+					"Rapid decrease in recent layers indicates instability",
 				},
 			},
 		},
-	}, nil
+	}
+
+	return sections, nil
+}
+
+const plotMaxStatsColumns = 4
+
+func buildSummarySection(report analyze.Report) plotpage.Section {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		return plotpage.Section{
+			Title: "Burndown Summary",
+			Chart: plotpage.NewGrid(plotMaxStatsColumns,
+				plotpage.NewStat("Current Lines", "N/A"),
+			),
+		}
+	}
+
+	agg := metrics.Aggregate
+	survivalPct := fmt.Sprintf("%.1f%%", agg.OverallSurvivalRate*percentMultiplier)
+	survivalColor := survivalBadgeColor(agg.OverallSurvivalRate)
+
+	stats := []plotpage.Renderable{
+		plotpage.NewStat("Current Lines", formatInt64(agg.TotalCurrentLines)),
+		plotpage.NewStat("Peak Lines", formatInt64(agg.TotalPeakLines)),
+		plotpage.NewStat("Survival Rate", survivalPct).WithTrend(survivalPct, survivalColor),
+		plotpage.NewStat("Analysis Period", fmt.Sprintf("%d days", agg.AnalysisPeriodDays)),
+	}
+
+	if agg.TrackedDevelopers > 0 {
+		stats = append(stats, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
+	}
+
+	if agg.TrackedFiles > 0 {
+		stats = append(stats, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
+	}
+
+	return plotpage.Section{
+		Title:    "Burndown Summary",
+		Subtitle: "Aggregate statistics from code burndown analysis.",
+		Chart:    plotpage.NewGrid(plotMaxStatsColumns, stats...),
+	}
+}
+
+// survivalBadgeColor returns a semantic color based on survival rate thresholds.
+func survivalBadgeColor(rate float64) plotpage.BadgeColor {
+	const (
+		highThreshold = 0.7
+		midThreshold  = 0.5
+	)
+
+	switch {
+	case rate >= highThreshold:
+		return plotpage.BadgeSuccess
+	case rate >= midThreshold:
+		return plotpage.BadgeWarning
+	default:
+		return plotpage.BadgeError
+	}
 }
 
 type burndownParams struct {
@@ -93,7 +152,7 @@ func extractParams(report analyze.Report) *burndownParams {
 	if !histOK {
 		// Fallback: after binary encode -> JSON decode, "GlobalHistory" becomes
 		// "global_survival" ([]any of map[string]any with band_breakdown).
-		globalHistory = extractDenseHistoryFromBinary(report, "global_survival")
+		globalHistory = extractDenseHistoryFromBinary(report)
 		if globalHistory == nil {
 			return nil
 		}
@@ -179,7 +238,9 @@ func extractProjectName(report analyze.Report) string {
 // extractDenseHistoryFromBinary converts binary-decoded JSON survival data back
 // to DenseHistory. After binary encode -> JSON decode round-trip, survival data
 // is []any where each element is map[string]any with "band_breakdown" ([]any of float64).
-func extractDenseHistoryFromBinary(report analyze.Report, key string) DenseHistory {
+func extractDenseHistoryFromBinary(report analyze.Report) DenseHistory {
+	const key = "global_survival"
+
 	raw, rawOK := report[key]
 	if !rawOK {
 		return nil
