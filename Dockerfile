@@ -1,6 +1,6 @@
 FROM golang:1.26-alpine AS builder
 
-RUN apk add --no-cache cmake gcc g++ musl-dev linux-headers make
+RUN apk add --no-cache cmake gcc g++ musl-dev linux-headers make pkgconfig
 
 WORKDIR /src
 COPY . .
@@ -12,13 +12,13 @@ RUN make libgit2
 
 RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
     PKG_CONFIG_PATH=$(pwd)/$LIBGIT2_INSTALL/lib64/pkgconfig:$(pwd)/$LIBGIT2_INSTALL/lib/pkgconfig \
-    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include" \
+    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include -include stdint.h" \
     CGO_LDFLAGS="-L$(pwd)/$LIBGIT2_INSTALL/lib64 -L$(pwd)/$LIBGIT2_INSTALL/lib -lgit2 -lpthread" \
     CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/codefang ./cmd/codefang
 
 RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
     PKG_CONFIG_PATH=$(pwd)/$LIBGIT2_INSTALL/lib64/pkgconfig:$(pwd)/$LIBGIT2_INSTALL/lib/pkgconfig \
-    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include" \
+    CGO_CFLAGS="-I$(pwd)/$LIBGIT2_INSTALL/include -include stdint.h" \
     CGO_LDFLAGS="-L$(pwd)/$LIBGIT2_INSTALL/lib64 -L$(pwd)/$LIBGIT2_INSTALL/lib -lgit2 -lpthread" \
     CGO_ENABLED=1 go build -ldflags '-extldflags=-static' -o build/bin/uast ./cmd/uast
 
