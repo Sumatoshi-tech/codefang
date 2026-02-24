@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Legacy cleanup** (specs/legacy-incomplete-cleanup): Removed all backward-compat fallbacks
+  (quality, anomaly, sentiment, devs ParseReportData); formalized shotness shallow extraction;
+  integrated VADER (GoVader) for real sentiment analysis; fixed stale comments and dead code.
 - **Complete rewrite** from the original `src-d/hercules` project. Modern
   Go 1.24+ codebase with idiomatic patterns, clean architecture, and
   comprehensive test coverage.
