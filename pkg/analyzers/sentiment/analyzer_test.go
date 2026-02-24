@@ -435,6 +435,102 @@ func TestSerializeTICKs_UnsupportedFormat(t *testing.T) {
 	require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 }
 
+func TestFilterComments_BasicFiltering(t *testing.T) {
+	t.Parallel()
+
+	const minLen = 10
+
+	t.Run("english_accepted", func(t *testing.T) {
+		t.Parallel()
+
+		r := filterComments([]string{"This function handles validation correctly"}, minLen)
+		assert.Len(t, r, 1)
+	})
+
+	t.Run("short_filtered", func(t *testing.T) {
+		t.Parallel()
+
+		r := filterComments([]string{"bad"}, minLen)
+		assert.Empty(t, r)
+	})
+
+	t.Run("license_filtered", func(t *testing.T) {
+		t.Parallel()
+
+		r := filterComments([]string{"Copyright 2024 Acme Corp Licensed under MIT"}, minLen)
+		assert.Empty(t, r)
+	})
+}
+
+func TestFilterComments_MultilingualSupport(t *testing.T) {
+	t.Parallel()
+
+	const minLen = 10
+
+	comments := map[string]string{
+		"chinese":  "\u8fd9\u4e2a\u51fd\u6570\u5904\u7406\u8f93\u5165\u9a8c\u8bc1\u903b\u8f91",
+		"japanese": "\u3053\u306e\u95a2\u6570\u306f\u5165\u529b\u3092\u51e6\u7406\u3057\u3066\u6b63\u3057\u3044",
+		"korean":   "\uc774 \ud568\uc218\ub294 \uc785\ub825 \uc720\ud6a8\uc131 \uac80\uc0ac\ub97c \ucc98\ub9ac",
+		"cyrillic": "Эта функция",
+		"arabic":   "\u0647\u0630\u0647 \u0627\u0644\u062f\u0627\u0644\u0629 \u062a\u062a\u0639\u0627\u0645\u0644 \u0645\u0639",
+	}
+
+	for lang, comment := range comments {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+
+			r := filterComments([]string{comment}, minLen)
+			assert.Len(t, r, 1, "%s should be included", lang)
+		})
+	}
+}
+
+//nolint:misspell // testing UK spelling detection
+func TestFilterComments_LicenceUKSpelling(t *testing.T) {
+	t.Parallel()
+
+	const minLen = 10
+
+	comment := "This code is under the Licence agreement terms"
+	r := filterComments([]string{comment}, minLen)
+	assert.Empty(t, r, "UK licence should be filtered")
+}
+
+func TestLicenseRegex(t *testing.T) {
+	t.Parallel()
+
+	t.Run("license_us", func(t *testing.T) {
+		t.Parallel()
+
+		assert.True(t, licenseRE.MatchString("Licensed under MIT License"))
+	})
+
+	t.Run("copyright", func(t *testing.T) {
+		t.Parallel()
+
+		assert.True(t, licenseRE.MatchString("Copyright 2024 Acme Corp"))
+	})
+
+	t.Run("copyright_symbol", func(t *testing.T) {
+		t.Parallel()
+
+		assert.True(t, licenseRE.MatchString("\u00a9 2024 All rights reserved"))
+	})
+
+	t.Run("no_match", func(t *testing.T) {
+		t.Parallel()
+
+		assert.False(t, licenseRE.MatchString("This function processes data"))
+	})
+}
+
+//nolint:misspell // testing UK spelling detection
+func TestLicenseRegex_UKSpelling(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, licenseRE.MatchString("This Licence covers all usage"))
+}
+
 func TestExtractCommitTimeSeries_Sentiment(t *testing.T) {
 	t.Parallel()
 

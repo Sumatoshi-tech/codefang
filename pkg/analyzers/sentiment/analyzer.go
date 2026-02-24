@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
@@ -53,12 +54,12 @@ const (
 )
 
 var (
-	filteredFirstCharRE = regexp.MustCompile("[^a-zA-Z0-9]")
-	filteredCharsRE     = regexp.MustCompile(`[^-a-zA-Z0-9_:;,./?!#&%+*=\n \t()]+`)
-	charsRE             = regexp.MustCompile("[a-zA-Z]+")
+	filteredFirstCharRE = regexp.MustCompile(`[^\p{L}\p{N}]`)
+	filteredCharsRE     = regexp.MustCompile(`[^\p{L}\p{N}\-_:;,./?!#&%+*=\n \t()]+`)
+	charsRE             = regexp.MustCompile(`\p{L}+`)
 	functionNameRE      = regexp.MustCompile(`\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)`)
 	whitespaceRE        = regexp.MustCompile(`\s+`)
-	licenseRE           = regexp.MustCompile("(?i)[li[cs]en[cs][ei]|copyright|©")
+	licenseRE           = regexp.MustCompile(`(?i)(licen[cs]e|copyright|©)`)
 )
 
 // Analyzer tracks comment sentiment across commit history.
@@ -252,7 +253,12 @@ func filterComments(comments []string, minLength int) []string {
 
 	for _, comment := range comments {
 		comment = strings.TrimSpace(comment)
-		if comment == "" || filteredFirstCharRE.MatchString(comment[:1]) {
+		if comment == "" {
+			continue
+		}
+
+		firstRune, _ := utf8.DecodeRuneInString(comment)
+		if firstRune == utf8.RuneError || filteredFirstCharRE.MatchString(string(firstRune)) {
 			continue
 		}
 
