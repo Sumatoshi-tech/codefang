@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -286,7 +287,7 @@ func (c *Analyzer) buildEmptyResult(message string) analyze.Report {
 
 // buildDetailedFunctionsTable creates the detailed functions table for display.
 func (c *Analyzer) buildDetailedFunctionsTable(
-	functionMetrics map[string]FunctionMetrics,
+	functionMetrics []FunctionMetrics,
 	config Config,
 ) []map[string]any {
 	detailedFunctionsTable := make([]map[string]any, 0, len(functionMetrics))
@@ -380,18 +381,32 @@ func (c *Analyzer) isFunctionNode(n *node.Node) bool {
 // calculateAllFunctionMetrics calculates metrics for all functions.
 func (c *Analyzer) calculateAllFunctionMetrics(
 	functions []*node.Node, config Config,
-) (functionMetrics map[string]FunctionMetrics, totals map[string]int) {
-	functionMetrics = make(map[string]FunctionMetrics)
+) (functionMetrics []FunctionMetrics, totals map[string]int) {
+	functionMetrics = make([]FunctionMetrics, 0, len(functions))
 	totals = c.initializeTotals()
 	complexityDistribution := c.initializeComplexityDistribution()
 
 	for _, fn := range functions {
 		metrics := c.calculateFunctionMetrics(fn)
-		functionMetrics[metrics.Name] = metrics
+		functionMetrics = append(functionMetrics, metrics)
 
 		c.updateTotals(totals, metrics)
 		c.updateComplexityDistribution(complexityDistribution, metrics, config)
 	}
+
+	sort.Slice(functionMetrics, func(i, j int) bool {
+		left, right := functionMetrics[i], functionMetrics[j]
+
+		if left.CyclomaticComplexity != right.CyclomaticComplexity {
+			return left.CyclomaticComplexity > right.CyclomaticComplexity
+		}
+
+		if left.CognitiveComplexity != right.CognitiveComplexity {
+			return left.CognitiveComplexity > right.CognitiveComplexity
+		}
+
+		return left.Name < right.Name
+	})
 
 	c.addDistributionToTotals(totals, complexityDistribution)
 
@@ -446,13 +461,14 @@ func (c *Analyzer) addDistributionToTotals(totals, distribution map[string]int) 
 // calculateFunctionMetrics calculates metrics for a single function.
 func (c *Analyzer) calculateFunctionMetrics(fn *node.Node) FunctionMetrics {
 	name := c.extractFunctionName(fn)
+	cyclomatic := c.calculateCyclomaticComplexity(fn)
 
 	return FunctionMetrics{
 		Name:                 name,
-		CyclomaticComplexity: c.calculateCyclomaticComplexity(fn),
+		CyclomaticComplexity: cyclomatic,
 		CognitiveComplexity:  c.calculateCognitiveComplexity(fn),
 		NestingDepth:         c.calculateNestingDepth(fn),
-		DecisionPoints:       c.countDecisionPoints(fn),
+		DecisionPoints:       max(cyclomatic-1, 0),
 		LinesOfCode:          c.estimateLinesOfCode(fn),
 		Parameters:           c.countParameters(fn),
 		ReturnStatements:     c.countReturnStatements(fn),
@@ -462,9 +478,14 @@ func (c *Analyzer) calculateFunctionMetrics(fn *node.Node) FunctionMetrics {
 // calculateCyclomaticComplexity calculates cyclomatic complexity for a function.
 func (c *Analyzer) calculateCyclomaticComplexity(fn *node.Node) int {
 	complexity := 1 // Base complexity.
+	sourceCtx := newFunctionSourceContext(fn)
 
 	fn.VisitPreOrder(func(n *node.Node) {
-		if c.isDecisionPoint(n) {
+		if n == fn {
+			return
+		}
+
+		if c.isDecisionPointWithSource(n, sourceCtx) {
 			complexity++
 		}
 	})
@@ -482,37 +503,40 @@ func (c *Analyzer) calculateCognitiveComplexity(fn *node.Node) int {
 // calculateNestingDepth calculates the maximum nesting depth for a function.
 func (c *Analyzer) calculateNestingDepth(fn *node.Node) int {
 	maxDepth := 0
-	currentDepth := 0
 
-	fn.VisitPreOrder(func(n *node.Node) {
-		if c.isNestingStart(n) {
+	var walk func(curr *node.Node, depth int, parent *node.Node, childIdx int)
+
+	walk = func(curr *node.Node, depth int, parent *node.Node, childIdx int) {
+		if curr == nil {
+			return
+		}
+
+		currentDepth := depth
+		if c.isNestingNode(curr) && !isElseIfNode(parent, curr, childIdx) {
 			currentDepth++
 			if currentDepth > maxDepth {
 				maxDepth = currentDepth
 			}
-		} else if c.isNestingEnd(n) {
-			currentDepth--
 		}
-	})
+
+		for idx, child := range curr.Children {
+			walk(child, currentDepth, curr, idx)
+		}
+	}
+
+	for idx, child := range fn.Children {
+		walk(child, 0, fn, idx)
+	}
 
 	return maxDepth
 }
 
-// countDecisionPoints counts the number of decision points in a function.
-func (c *Analyzer) countDecisionPoints(fn *node.Node) int {
-	count := 0
-
-	fn.VisitPreOrder(func(n *node.Node) {
-		if c.isDecisionPoint(n) {
-			count++
-		}
-	})
-
-	return count
-}
-
 // estimateLinesOfCode estimates the lines of code for a function.
 func (c *Analyzer) estimateLinesOfCode(fn *node.Node) int {
+	if fn.Pos != nil && fn.Pos.EndLine >= fn.Pos.StartLine {
+		return int(fn.Pos.EndLine-fn.Pos.StartLine) + 1
+	}
+
 	loc := 0
 
 	fn.VisitPreOrder(func(n *node.Node) {
@@ -542,90 +566,43 @@ func (c *Analyzer) countReturnStatements(fn *node.Node) int {
 
 // isDecisionPoint checks if a node represents a decision point.
 func (c *Analyzer) isDecisionPoint(target *node.Node) bool {
-	if c.isAlwaysDecisionPoint(string(target.Type)) {
-		return true
-	}
-
-	if c.isConditionalDecisionPoint(target) {
-		return true
-	}
-
-	return c.hasDecisionRole(target)
+	return c.isDecisionPointWithSource(target, functionSourceContext{})
 }
 
-// isAlwaysDecisionPoint checks if a node type is always a decision point.
-func (c *Analyzer) isAlwaysDecisionPoint(nodeType string) bool {
-	switch nodeType {
-	case node.UASTSwitch, node.UASTCase, node.UASTTry, node.UASTCatch,
-		node.UASTThrow, node.UASTBreak, node.UASTContinue:
+func (c *Analyzer) isDecisionPointWithSource(target *node.Node, sourceCtx functionSourceContext) bool {
+	if target == nil {
+		return false
+	}
+
+	switch target.Type {
+	case node.UASTIf, node.UASTLoop, node.UASTCatch:
+		return true
+	case node.UASTCase:
+		if !isDefaultCase(target) {
+			return true
+		}
+	case node.UASTBinaryOp:
+		if sourceCtx.binaryOperator(target) == "" {
+			return false
+		}
+
+		return isLogicalOperatorToken(sourceCtx.binaryOperator(target))
+	}
+
+	return false
+}
+
+func (c *Analyzer) isNestingNode(target *node.Node) bool {
+	if target == nil {
+		return false
+	}
+
+	switch target.Type {
+	case node.UASTIf, node.UASTLoop, node.UASTSwitch, node.UASTTry, node.UASTCatch:
 		return true
 	default:
 		return false
 	}
-}
-
-// isConditionalDecisionPoint checks if a node is a conditional decision point.
-func (c *Analyzer) isConditionalDecisionPoint(target *node.Node) bool {
-	switch target.Type {
-	case node.UASTIf:
-		return target.HasAnyRole(node.RoleCondition)
-	case node.UASTLoop:
-		return c.hasLoopRole(target)
-	case node.UASTBinaryOp, node.UASTUnaryOp:
-		return c.hasLogicalOperator(target)
-	}
-
-	return false
-}
-
-// hasLoopRole checks if a node has loop-related roles.
-func (c *Analyzer) hasLoopRole(n *node.Node) bool {
-	return n.HasAnyRole(node.RoleCondition) || n.HasAnyRole(node.RoleLoop)
-}
-
-// hasLogicalOperator checks if a node has a logical operator.
-func (c *Analyzer) hasLogicalOperator(n *node.Node) bool {
-	if operator, ok := n.Props["operator"]; ok {
-		return c.isLogicalOperator(operator)
-	}
-
-	return false
-}
-
-// hasDecisionRole checks if a node has decision-related roles.
-func (c *Analyzer) hasDecisionRole(n *node.Node) bool {
-	for _, role := range n.Roles {
-		if string(role) == node.RoleCondition ||
-			string(role) == node.RoleBreak ||
-			string(role) == node.RoleContinue {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isNestingStart checks if a node starts a nesting level.
-func (c *Analyzer) isNestingStart(n *node.Node) bool {
-	return n.Type == node.UASTIf || n.Type == node.UASTLoop ||
-		n.Type == node.UASTSwitch || n.Type == node.UASTTry ||
-		n.Type == node.UASTBlock || n.Type == node.UASTFunction
-}
-
-// isNestingEnd checks if a node ends a nesting level.
-func (c *Analyzer) isNestingEnd(n *node.Node) bool {
-	return n.Type == node.UASTBlock || n.Type == node.UASTFunction
-}
-
-// isLogicalOperator checks if an operator is logical.
-func (c *Analyzer) isLogicalOperator(operator string) bool {
-	logicalOps := map[string]bool{
-		"&&": true, "||": true, "!": true,
-		"and": true, "or": true, "not": true,
-		"AND": true, "OR": true, "NOT": true,
-	}
-
-	return logicalOps[operator]
 }
 
 // extractFunctionName extracts the name of a function.
