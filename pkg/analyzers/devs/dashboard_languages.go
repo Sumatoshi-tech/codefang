@@ -2,12 +2,16 @@ package devs
 
 import (
 	"io"
+	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
+
+// radarIndicatorMax is the percentage ceiling for radar indicators.
+const radarIndicatorMax = 100
 
 type languagesContent struct {
 	chart *charts.Radar
@@ -39,7 +43,10 @@ func createLanguagesRadar(data *DashboardData) *charts.Radar {
 	radar := charts.NewRadar()
 	radar.SetGlobalOptions(
 		charts.WithInitializationOpts(co.Init("100%", radarHeight)),
-		charts.WithTitleOpts(co.Title("Language Expertise", "Radar chart showing developer expertise across languages")),
+		charts.WithTitleOpts(co.Title(
+			"Language Expertise",
+			"Relative expertise profile per developer (strongest language = 100%)",
+		)),
 		charts.WithTooltipOpts(co.Tooltip("item")),
 		charts.WithLegendOpts(co.Legend()),
 		charts.WithRadarComponentOpts(co.RadarComponent(indicators, radarSplitNum)),
@@ -57,30 +64,15 @@ func createLanguagesRadar(data *DashboardData) *charts.Radar {
 
 func buildRadarIndicators(data *DashboardData) []*opts.Indicator {
 	indicators := make([]*opts.Indicator, len(data.TopLanguages))
-	maxValues := computeLanguageMaxValues(data)
 
 	for i, lang := range data.TopLanguages {
 		indicators[i] = &opts.Indicator{
 			Name: lang,
-			Max:  float32(maxValues[lang]),
+			Max:  radarIndicatorMax,
 		}
 	}
 
 	return indicators
-}
-
-func computeLanguageMaxValues(data *DashboardData) map[string]int {
-	maxValues := make(map[string]int)
-
-	for _, dev := range data.Metrics.Developers {
-		for lang, stats := range dev.Languages {
-			if stats.Added > maxValues[lang] {
-				maxValues[lang] = stats.Added
-			}
-		}
-	}
-
-	return maxValues
 }
 
 type radarSeriesData struct {
@@ -88,17 +80,83 @@ type radarSeriesData struct {
 	values []float64
 }
 
-func buildRadarData(data *DashboardData) []radarSeriesData {
-	count := min(topDevsForRadar, len(data.Metrics.Developers))
-	result := make([]radarSeriesData, count)
+// topDevsByContribution returns the top N developers sorted by total contribution
+// (Added+Removed) across the top languages shown on the radar. This ensures the
+// radar shows the biggest code owners, not the most prolific committers (which may
+// be bots).
+func topDevsByContribution(data *DashboardData, n int) []DeveloperData {
+	type devScore struct {
+		dev          DeveloperData
+		contribution int
+	}
+
+	scored := make([]devScore, len(data.Metrics.Developers))
+
+	for i, dev := range data.Metrics.Developers {
+		total := 0
+
+		for _, lang := range data.TopLanguages {
+			if stats, ok := dev.Languages[lang]; ok {
+				total += stats.Added + stats.Removed
+			}
+		}
+
+		scored[i] = devScore{dev: dev, contribution: total}
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].contribution > scored[j].contribution
+	})
+
+	count := min(n, len(scored))
+	result := make([]DeveloperData, count)
 
 	for i := range count {
-		dev := data.Metrics.Developers[i]
+		result[i] = scored[i].dev
+	}
+
+	return result
+}
+
+// devContribution returns the total contribution (Added+Removed) for a developer
+// across the given languages.
+func devContribution(dev DeveloperData, langs []string) map[string]int {
+	result := make(map[string]int, len(langs))
+
+	for _, lang := range langs {
+		if stats, ok := dev.Languages[lang]; ok {
+			result[lang] = stats.Added + stats.Removed
+		}
+	}
+
+	return result
+}
+
+// buildRadarData computes per-developer relative expertise profiles.
+// Each developer is normalized independently: their strongest language = 100%,
+// and all other languages are relative to that. This produces visually distinct
+// shapes that show expertise distribution regardless of project scale.
+func buildRadarData(data *DashboardData) []radarSeriesData {
+	topDevs := topDevsByContribution(data, topDevsForRadar)
+	result := make([]radarSeriesData, len(topDevs))
+
+	for i, dev := range topDevs {
+		contribs := devContribution(dev, data.TopLanguages)
+
+		// Find this developer's max contribution across top languages.
+		maxContrib := 0
+
+		for _, c := range contribs {
+			if c > maxContrib {
+				maxContrib = c
+			}
+		}
+
 		values := make([]float64, len(data.TopLanguages))
 
-		for j, lang := range data.TopLanguages {
-			if stats, ok := dev.Languages[lang]; ok {
-				values[j] = float64(stats.Added)
+		if maxContrib > 0 {
+			for j, lang := range data.TopLanguages {
+				values[j] = float64(contribs[lang]) / float64(maxContrib) * radarIndicatorMax
 			}
 		}
 

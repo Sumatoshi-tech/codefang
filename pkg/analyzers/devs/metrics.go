@@ -282,21 +282,26 @@ type DeveloperData struct {
 
 // LanguageData contains computed data for a programming language.
 type LanguageData struct {
-	Name         string      `json:"name"         yaml:"name"`
-	TotalLines   int         `json:"total_lines"  yaml:"total_lines"`
-	Contributors map[int]int `json:"contributors" yaml:"contributors"`
+	Name              string      `json:"name"               yaml:"name"`
+	TotalLines        int         `json:"total_lines"        yaml:"total_lines"`
+	TotalContribution int         `json:"total_contribution" yaml:"total_contribution"`
+	Contributors      map[int]int `json:"contributors"       yaml:"contributors"`
 }
 
 // BusFactorData contains knowledge concentration data for a language.
+// BusFactor follows the CHAOSS Contributor Absence Factor methodology:
+// the smallest number of contributors responsible for 50% of total contributions.
 type BusFactorData struct {
-	Language         string  `json:"language"                       yaml:"language"`
-	PrimaryDevID     int     `json:"primary_dev_id"                 yaml:"primary_dev_id"`
-	PrimaryDevName   string  `json:"primary_dev_name"               yaml:"primary_dev_name"`
-	PrimaryPct       float64 `json:"primary_percentage"             yaml:"primary_percentage"`
-	SecondaryDevID   int     `json:"secondary_dev_id,omitempty"     yaml:"secondary_dev_id,omitempty"`
-	SecondaryDevName string  `json:"secondary_dev_name,omitempty"   yaml:"secondary_dev_name,omitempty"`
-	SecondaryPct     float64 `json:"secondary_percentage,omitempty" yaml:"secondary_percentage,omitempty"`
-	RiskLevel        string  `json:"risk_level"                     yaml:"risk_level"`
+	Language          string  `json:"language"                       yaml:"language"`
+	BusFactor         int     `json:"bus_factor"                     yaml:"bus_factor"`
+	TotalContributors int     `json:"total_contributors"             yaml:"total_contributors"`
+	PrimaryDevID      int     `json:"primary_dev_id"                 yaml:"primary_dev_id"`
+	PrimaryDevName    string  `json:"primary_dev_name"               yaml:"primary_dev_name"`
+	PrimaryPct        float64 `json:"primary_percentage"             yaml:"primary_percentage"`
+	SecondaryDevID    int     `json:"secondary_dev_id,omitempty"     yaml:"secondary_dev_id,omitempty"`
+	SecondaryDevName  string  `json:"secondary_dev_name,omitempty"   yaml:"secondary_dev_name,omitempty"`
+	SecondaryPct      float64 `json:"secondary_percentage,omitempty" yaml:"secondary_percentage,omitempty"`
+	RiskLevel         string  `json:"risk_level"                     yaml:"risk_level"`
 }
 
 // ActivityData contains time-series activity for a single tick.
@@ -322,6 +327,8 @@ type AggregateData struct {
 	TotalDevelopers     int `json:"total_developers"      yaml:"total_developers"`
 	ActiveDevelopers    int `json:"active_developers"     yaml:"active_developers"`
 	AnalysisPeriodTicks int `json:"analysis_period_ticks" yaml:"analysis_period_ticks"`
+	ProjectBusFactor    int `json:"project_bus_factor"    yaml:"project_bus_factor"`
+	TotalLanguages      int `json:"total_languages"       yaml:"total_languages"`
 }
 
 // --- Metric Implementations ---.
@@ -462,7 +469,9 @@ func (m *LanguagesMetric) Compute(developers []DeveloperData) []LanguageData {
 			}
 
 			ld.TotalLines += stats.Added
-			ld.Contributors[dev.ID] += stats.Added
+			contribution := stats.Added + stats.Removed
+			ld.TotalContribution += contribution
+			ld.Contributors[dev.ID] += contribution
 		}
 	}
 
@@ -495,9 +504,9 @@ func NewBusFactorMetric() *BusFactorMetric {
 		MetricMeta: metrics.MetricMeta{
 			MetricName:        "bus_factor",
 			MetricDisplayName: "Bus Factor Risk",
-			MetricDescription: "Knowledge concentration risk per language. Measures how dependent each language's " +
-				"codebase is on individual contributors. Risk levels: CRITICAL (>=90% single owner), " +
-				"HIGH (>=80%), MEDIUM (>=60%), LOW (<60%).",
+			MetricDescription: "Knowledge concentration risk per language using the CHAOSS Contributor Absence Factor " +
+				"methodology. Bus factor = smallest number of contributors covering 50% of contributions (Added+Removed). " +
+				"Risk levels: CRITICAL (>=90% single owner), HIGH (>=80%), MEDIUM (>=60%), LOW (<60%).",
 			MetricType: "risk",
 		},
 	}
@@ -529,12 +538,16 @@ const (
 	riskPriorityDefault  = 3
 )
 
+// busFactorThreshold is the CHAOSS contribution coverage threshold (50%).
+const busFactorThreshold = 0.5
+
 // Compute calculates bus factor risk from language data.
+// Contributors map values represent total contribution (Added+Removed).
 func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 	result := make([]BusFactorData, 0, len(input.Languages))
 
 	for _, ld := range input.Languages {
-		if ld.TotalLines == 0 {
+		if ld.TotalContribution == 0 {
 			continue
 		}
 
@@ -553,18 +566,27 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 			return contribs[i].lines > contribs[j].lines
 		})
 
-		bf := BusFactorData{Language: ld.Name}
+		sortedAmounts := make([]int, len(contribs))
+		for i, c := range contribs {
+			sortedAmounts[i] = c.lines
+		}
+
+		bf := BusFactorData{
+			Language:          ld.Name,
+			TotalContributors: len(contribs),
+			BusFactor:         computeBusFactorFromSorted(sortedAmounts, ld.TotalContribution),
+		}
 
 		if len(contribs) > 0 {
 			bf.PrimaryDevID = contribs[0].id
 			bf.PrimaryDevName = devName(contribs[0].id, input.Names)
-			bf.PrimaryPct = float64(contribs[0].lines) / float64(ld.TotalLines) * percentMultiplier
+			bf.PrimaryPct = float64(contribs[0].lines) / float64(ld.TotalContribution) * percentMultiplier
 		}
 
 		if len(contribs) > 1 {
 			bf.SecondaryDevID = contribs[1].id
 			bf.SecondaryDevName = devName(contribs[1].id, input.Names)
-			bf.SecondaryPct = float64(contribs[1].lines) / float64(ld.TotalLines) * percentMultiplier
+			bf.SecondaryPct = float64(contribs[1].lines) / float64(ld.TotalContribution) * percentMultiplier
 		}
 
 		switch {
@@ -586,6 +608,29 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 	})
 
 	return result
+}
+
+// computeBusFactorFromSorted returns the smallest number of contributors
+// who together account for at least 50% of total contributions.
+// This follows the CHAOSS Contributor Absence Factor methodology.
+// sortedContribs must be sorted descending by contribution amount.
+func computeBusFactorFromSorted(sortedContribs []int, total int) int {
+	if total == 0 || len(sortedContribs) == 0 {
+		return 0
+	}
+
+	threshold := float64(total) * busFactorThreshold
+	cumulative := 0
+
+	for i, amount := range sortedContribs {
+		cumulative += amount
+
+		if float64(cumulative) >= threshold {
+			return i + 1
+		}
+	}
+
+	return len(sortedContribs)
 }
 
 // ActivityMetric computes time-series commit activity.
@@ -639,8 +684,9 @@ func NewChurnMetric() *ChurnMetric {
 		MetricMeta: metrics.MetricMeta{
 			MetricName:        "churn",
 			MetricDisplayName: "Code Churn",
-			MetricDescription: "Time-series of lines added and removed per tick. " +
-				"High churn may indicate refactoring, feature development, or instability.",
+			MetricDescription: "Time-series of lines added and removed per tick (line velocity). " +
+				"Shows the volume of code changes over time. High values may indicate " +
+				"refactoring, feature development, or instability.",
 			MetricType: "time_series",
 		},
 	}
@@ -670,7 +716,9 @@ func (m *ChurnMetric) Compute(input *TickData) []ChurnData {
 // AggregateInput is the input for aggregate computation.
 type AggregateInput struct {
 	Developers []DeveloperData
+	Languages  []LanguageData
 	Ticks      map[int]map[int]*DevTick
+	TickSize   time.Duration
 }
 
 // AggregateMetric computes summary statistics.
@@ -685,19 +733,26 @@ func NewAggregateMetric() *AggregateMetric {
 			MetricName:        "aggregate",
 			MetricDisplayName: "Summary Statistics",
 			MetricDescription: "Aggregate statistics across all developers and the analysis period. " +
-				"Active developers are those with commits in the recent 30% of the analysis period.",
+				"Active developers are those with commits in the last 90 days (or recent 30% as fallback). " +
+				"Project bus factor follows the CHAOSS Contributor Absence Factor methodology.",
 			MetricType: "aggregate",
 		},
 	}
 }
 
 // ActiveThresholdRatio defines what portion of analysis period counts as "recent".
+// Used as fallback when TickSize is not available.
 const ActiveThresholdRatio = 0.7
+
+// DefaultActiveDays is the time-based threshold for considering a developer "active".
+// Developers with commits in the last 90 days are counted as active.
+const DefaultActiveDays = 90
 
 // Compute calculates aggregate statistics.
 func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 	agg := AggregateData{
 		TotalDevelopers: len(input.Developers),
+		TotalLanguages:  len(input.Languages),
 	}
 
 	for _, d := range input.Developers {
@@ -711,7 +766,7 @@ func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 		maxTick := tickKeys[len(tickKeys)-1]
 		agg.AnalysisPeriodTicks = maxTick
 
-		recentThreshold := int(float64(maxTick) * ActiveThresholdRatio)
+		recentThreshold := computeActiveThreshold(maxTick, input.TickSize)
 		activeDevs := make(map[int]bool)
 
 		for tick, devTicks := range input.Ticks {
@@ -725,7 +780,61 @@ func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 		agg.ActiveDevelopers = len(activeDevs)
 	}
 
+	agg.ProjectBusFactor = computeProjectBusFactor(input.Developers)
+
 	return agg
+}
+
+// computeActiveThreshold returns the tick index threshold for "active" developers.
+// When TickSize is known, uses time-based calculation (last 90 days).
+// Otherwise falls back to ratio-based (last 30% of analysis period).
+func computeActiveThreshold(maxTick int, tickSize time.Duration) int {
+	if tickSize > 0 {
+		activeDuration := time.Duration(DefaultActiveDays) * defaultTickHours * time.Hour
+		ticksForActive := int(activeDuration / tickSize)
+		threshold := maxTick - ticksForActive
+
+		if threshold < 0 {
+			return 0
+		}
+
+		return threshold
+	}
+
+	return int(float64(maxTick) * ActiveThresholdRatio)
+}
+
+// computeProjectBusFactor computes the CHAOSS Contributor Absence Factor
+// across the entire project: the smallest number of developers responsible
+// for 50% of all contributions (Added+Removed).
+func computeProjectBusFactor(developers []DeveloperData) int {
+	if len(developers) == 0 {
+		return 0
+	}
+
+	type devContrib struct {
+		contribution int
+	}
+
+	contribs := make([]devContrib, len(developers))
+	total := 0
+
+	for i, dev := range developers {
+		c := dev.Added + dev.Removed
+		contribs[i] = devContrib{c}
+		total += c
+	}
+
+	sort.Slice(contribs, func(i, j int) bool {
+		return contribs[i].contribution > contribs[j].contribution
+	})
+
+	sortedAmounts := make([]int, len(contribs))
+	for i, c := range contribs {
+		sortedAmounts[i] = c.contribution
+	}
+
+	return computeBusFactorFromSorted(sortedAmounts, total)
 }
 
 // ComputedMetrics holds all computed metric results for the devs analyzer.
@@ -765,7 +874,12 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	churn := churnMetric.Compute(input)
 
 	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(AggregateInput{Developers: developers, Ticks: input.Ticks})
+	aggregate := aggMetric.Compute(AggregateInput{
+		Developers: developers,
+		Languages:  languages,
+		Ticks:      input.Ticks,
+		TickSize:   input.TickSize,
+	})
 
 	return &ComputedMetrics{
 		Ticks:      input.Ticks,

@@ -16,6 +16,12 @@ With anonymization:
 codefang run -a history/devs --anonymize .
 ```
 
+Text output (terminal-friendly):
+
+```bash
+codefang run -a history/devs -f text .
+```
+
 ---
 
 ## Architecture
@@ -46,12 +52,20 @@ For each developer (identified by the identity detector):
 
 Aggregated across all developers:
 
-- **Total lines per language**: Overall language breakdown
-- **Contributors per language**: Which developers contribute to each language
+- **Total lines per language**: Lines added (for backward compatibility)
+- **Total contribution per language**: Lines added + removed, used for bus factor and ownership calculations
+- **Contributors per language**: Which developers contribute to each language, measured by total contribution (added + removed)
 
 ### Bus Factor
 
-Knowledge concentration risk per language. For each language, the analyzer identifies the primary and secondary contributors and computes what percentage of the code each owns.
+Knowledge concentration risk per language, following the [CHAOSS Contributor Absence Factor](https://chaoss.community/kb/metric-bus-factor/) methodology.
+
+For each language, the analyzer computes:
+
+- **Bus factor number**: The smallest number of contributors responsible for 50% of total contributions (added + removed). This is the CHAOSS standard metric.
+- **Total contributors**: Number of unique contributors to that language.
+- **Primary/secondary owner**: The top two contributors and their ownership percentages.
+- **Risk level**: Based on primary owner concentration.
 
 !!! danger "Risk levels"
     - **CRITICAL** (>= 90%): A single developer owns nearly all the code
@@ -59,13 +73,18 @@ Knowledge concentration risk per language. For each language, the analyzer ident
     - **MEDIUM** (>= 60%): Moderate concentration
     - **LOW** (< 60%): Healthy distribution
 
+A **project-level bus factor** is also computed across all developers and all languages, reported in the aggregate section.
+
 ### Activity Time Series
 
 Per-tick commit counts broken down by developer. Shows contribution velocity over time.
 
-### Code Churn
+### Code Churn (Line Velocity)
 
-Per-tick lines added and removed. High churn may indicate refactoring, feature development, or instability.
+Per-tick lines added and removed. This measures raw line velocity — the volume of code changes over time. High values may indicate refactoring, feature development, or instability.
+
+!!! note "Terminology"
+    In academic literature, "code churn" specifically refers to recently-written code that is quickly rewritten. This analyzer measures the broader concept of line velocity (total additions and removals per time period).
 
 ---
 
@@ -111,17 +130,29 @@ history:
         }
       ],
       "languages": [
-        {"name": "Go", "total_lines": 45000},
-        {"name": "Python", "total_lines": 12000}
+        {
+          "name": "Go",
+          "total_lines": 45000,
+          "total_contribution": 67800,
+          "contributors": {"0": 54600, "1": 13200}
+        },
+        {
+          "name": "Python",
+          "total_lines": 12000,
+          "total_contribution": 16700,
+          "contributors": {"0": 11200, "1": 5500}
+        }
       ],
       "busfactor": [
         {
           "language": "Python",
+          "bus_factor": 1,
+          "total_contributors": 2,
           "primary_dev_name": "alice",
-          "primary_percentage": 82.5,
+          "primary_percentage": 67.1,
           "secondary_dev_name": "bob",
-          "secondary_percentage": 12.3,
-          "risk_level": "HIGH"
+          "secondary_percentage": 32.9,
+          "risk_level": "MEDIUM"
         }
       ],
       "activity": [
@@ -137,7 +168,9 @@ history:
         "total_lines_removed": 42000,
         "total_developers": 5,
         "active_developers": 3,
-        "analysis_period_ticks": 120
+        "analysis_period_ticks": 120,
+        "project_bus_factor": 2,
+        "total_languages": 4
       }
     }
     ```
@@ -151,17 +184,25 @@ history:
       total_lines_removed: 42000
       total_developers: 5
       active_developers: 3
+      project_bus_factor: 2
+      total_languages: 4
     developers:
       - name: alice
         commits: 342
         lines_added: 28500
         lines_removed: 12300
         net_lines: 16200
+    languages:
+      - name: Go
+        total_lines: 45000
+        total_contribution: 67800
     busfactor:
       - language: Python
+        bus_factor: 1
+        total_contributors: 2
         primary_dev_name: alice
-        primary_percentage: 82.5
-        risk_level: HIGH
+        primary_percentage: 67.1
+        risk_level: MEDIUM
     ```
 
 ---
@@ -169,11 +210,11 @@ history:
 ## Use Cases
 
 - **Team assessment**: Understand who contributes what, in which languages, and when.
-- **Bus factor analysis**: Identify languages or components where a single developer departure would create critical knowledge gaps.
+- **Bus factor analysis**: Identify languages or components where a single developer departure would create critical knowledge gaps. The CHAOSS bus factor number tells you how many people need to leave before 50% of knowledge is lost.
 - **Activity monitoring**: Track developer engagement over time. Declining activity may signal burnout or attrition risk.
 - **Language migration tracking**: Monitor the adoption of a new language by watching language statistics over time.
 - **Onboarding evaluation**: Measure how quickly new team members ramp up by comparing their activity curves.
-- **Code churn analysis**: Detect periods of high churn that may correlate with instability or deadline pressure.
+- **Code churn analysis**: Detect periods of high line velocity that may correlate with instability or deadline pressure.
 
 ---
 
@@ -182,4 +223,5 @@ history:
 - **Identity resolution**: Developer identity is determined by the identity detector (email-based by default). Multiple email addresses for the same person will appear as separate developers unless a mailmap is configured.
 - **Merge commits**: By default, merge commits are processed only once (first encounter). Trivial merges are skipped unless `ConsiderEmptyCommits` is enabled.
 - **Line attribution**: Lines are attributed to the commit author, not the committer. In workflows with heavy rebasing, this may differ from expectations.
-- **Active developer threshold**: "Active developers" are defined as those with commits in the recent 30% of the analysis period. This threshold is not configurable.
+- **Contribution measurement**: Contributions are measured as lines added + lines removed. This gives fair credit to refactoring work but does not distinguish between code complexity or quality.
+- **Active developer threshold**: "Active developers" are those with commits in the last 90 days (when tick size is known). Falls back to the recent 30% of the analysis period when tick size is unavailable. This threshold is not configurable.

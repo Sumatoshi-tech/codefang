@@ -430,3 +430,265 @@ func TestAnonymousID(t *testing.T) {
 		t.Errorf("expected two letters for index 26, got %s", id)
 	}
 }
+
+func TestOverviewTab_ProjectBusFactor(t *testing.T) {
+	t.Parallel()
+
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 100, Removed: 20},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 100, Removed: 20},
+				},
+				Commits: 5,
+			},
+		},
+	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice"})
+
+	var buf bytes.Buffer
+
+	err := GenerateDashboard(report, &buf)
+	if err != nil {
+		t.Fatalf("GenerateDashboard failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Project Bus Factor") {
+		t.Error("expected Project Bus Factor stat in overview")
+	}
+}
+
+func TestBusFactorTab_BusFactorColumn(t *testing.T) {
+	t.Parallel()
+
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 800, Removed: 100},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 800, Removed: 100},
+				},
+				Commits: 10,
+			},
+			1: {
+				LineStats: pkgplumbing.LineStats{Added: 200, Removed: 50},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 200, Removed: 50},
+				},
+				Commits: 3,
+			},
+		},
+	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice", "Bob"})
+
+	var buf bytes.Buffer
+
+	err := GenerateDashboard(report, &buf)
+	if err != nil {
+		t.Fatalf("GenerateDashboard failed: %v", err)
+	}
+
+	output := buf.String()
+	// The bus factor column should show "Bus Factor" header.
+	if !strings.Contains(output, "Bus Factor") {
+		t.Error("expected Bus Factor column in bus factor table")
+	}
+	// Should contain the CHAOSS bus factor ratio (e.g., "1/2").
+	if !strings.Contains(output, "1/2") {
+		t.Error("expected bus factor ratio like 1/2 in output")
+	}
+}
+
+func TestTabRendering_Overview(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createOverviewTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("overview tab render failed: %v", err)
+	}
+
+	output := buf.String()
+	if output == "" {
+		t.Error("expected non-empty overview tab output")
+	}
+}
+
+func TestTabRendering_Activity(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createActivityTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("activity tab render failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty activity tab output")
+	}
+}
+
+func TestTabRendering_Workload(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createWorkloadTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("workload tab render failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty workload tab output")
+	}
+}
+
+func TestTabRendering_Languages(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createLanguagesTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("languages tab render failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty languages tab output")
+	}
+}
+
+func TestTabRendering_BusFactor(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createBusFactorTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("busfactor tab render failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty busfactor tab output")
+	}
+}
+
+func TestTabRendering_Churn(t *testing.T) {
+	t.Parallel()
+
+	data := createTestDashboardData(t)
+
+	tab := createChurnTab(data)
+
+	var buf bytes.Buffer
+
+	err := tab.Render(&buf)
+	if err != nil {
+		t.Fatalf("churn tab render failed: %v", err)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty churn tab output")
+	}
+}
+
+func TestTabRendering_EmptyData(t *testing.T) {
+	t.Parallel()
+
+	data := &DashboardData{
+		Metrics: &ComputedMetrics{},
+	}
+
+	tabs := []struct {
+		name   string
+		render func() error
+	}{
+		{"activity", func() error {
+			var b bytes.Buffer
+
+			return createActivityTab(data).Render(&b)
+		}},
+		{"churn", func() error {
+			var b bytes.Buffer
+
+			return createChurnTab(data).Render(&b)
+		}},
+		{"busfactor", func() error {
+			var b bytes.Buffer
+
+			return createBusFactorTab(data).Render(&b)
+		}},
+	}
+
+	for _, tab := range tabs {
+		err := tab.render()
+		if err != nil {
+			t.Errorf("%s tab render with empty data failed: %v", tab.name, err)
+		}
+	}
+}
+
+func createTestDashboardData(t *testing.T) *DashboardData {
+	t.Helper()
+
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 500, Removed: 100, Changed: 50},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go":     {Added: 400, Removed: 80, Changed: 40},
+					"Python": {Added: 100, Removed: 20, Changed: 10},
+				},
+				Commits: 15,
+			},
+			1: {
+				LineStats: pkgplumbing.LineStats{Added: 200, Removed: 50, Changed: 20},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 200, Removed: 50, Changed: 20},
+				},
+				Commits: 8,
+			},
+		},
+		1: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 300, Removed: 60, Changed: 30},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 300, Removed: 60, Changed: 30},
+				},
+				Commits: 10,
+			},
+		},
+	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice", "Bob"})
+
+	data, err := newDashboardData(report)
+	if err != nil {
+		t.Fatalf("createTestDashboardData failed: %v", err)
+	}
+
+	return data
+}

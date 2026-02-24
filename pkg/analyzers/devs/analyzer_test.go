@@ -332,6 +332,186 @@ func TestComputeAllMetrics_FromCommitData(t *testing.T) {
 	assert.Equal(t, 2, computed.Aggregate.TotalCommits)
 }
 
+func TestAnalyzer_SnapshotPlumbing(t *testing.T) {
+	t.Parallel()
+
+	d := newTestDevAnalyzer()
+	h := gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+	d.TreeDiff.Changes = gitlib.Changes{
+		&gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "f.go", Hash: h}},
+	}
+	d.Ticks.Tick = 7
+	d.Identity.AuthorID = 3
+	d.Languages.SetLanguagesForTest(map[gitlib.Hash]string{h: "Go"})
+	d.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
+		{Name: "f.go", Hash: h}: {Added: 10, Removed: 2},
+	}
+
+	snap := d.SnapshotPlumbing()
+	require.NotNil(t, snap)
+
+	// Apply to a fresh analyzer.
+	d2 := newTestDevAnalyzer()
+	d2.ApplySnapshot(snap)
+
+	assert.Equal(t, 7, d2.Ticks.Tick)
+	assert.Equal(t, 3, d2.Identity.AuthorID)
+	assert.Len(t, d2.TreeDiff.Changes, 1)
+}
+
+func TestAnalyzer_ReleaseSnapshot(t *testing.T) {
+	t.Parallel()
+
+	d := NewAnalyzer()
+	// Should not panic with nil.
+	d.ReleaseSnapshot(nil)
+}
+
+func TestExtractTC(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickDevData)
+	cdd := &CommitDevData{Commits: 1, Added: 10, Removed: 3, AuthorID: 0}
+	tc := analyze.TC{
+		Tick:       0,
+		Data:       cdd,
+		CommitHash: gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+	}
+
+	err := extractTC(tc, byTick)
+	require.NoError(t, err)
+	require.Contains(t, byTick, 0)
+	assert.Len(t, byTick[0].DevData, 1)
+}
+
+func TestExtractTC_NilData(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickDevData)
+	tc := analyze.TC{Tick: 0, Data: nil}
+
+	err := extractTC(tc, byTick)
+	require.NoError(t, err)
+	assert.Empty(t, byTick)
+}
+
+func TestMergeState(t *testing.T) {
+	t.Parallel()
+
+	s1 := &TickDevData{DevData: map[string]*CommitDevData{
+		"aaa": {Commits: 1, Added: 10},
+	}}
+	s2 := &TickDevData{DevData: map[string]*CommitDevData{
+		"bbb": {Commits: 2, Added: 20},
+	}}
+
+	result := mergeState(s1, s2)
+	assert.Len(t, result.DevData, 2)
+}
+
+func TestMergeState_Nil(t *testing.T) {
+	t.Parallel()
+
+	s := &TickDevData{DevData: map[string]*CommitDevData{"aaa": {Commits: 1}}}
+
+	assert.Equal(t, s, mergeState(nil, s))
+	assert.Equal(t, s, mergeState(s, nil))
+}
+
+func TestSizeState(t *testing.T) {
+	t.Parallel()
+
+	assert.Zero(t, sizeState(nil))
+	assert.Zero(t, sizeState(&TickDevData{}))
+
+	s := &TickDevData{DevData: map[string]*CommitDevData{
+		"aaa": {Commits: 1, Languages: map[string]pkgplumbing.LineStats{"Go": {Added: 10}}},
+	}}
+	assert.Positive(t, sizeState(s))
+}
+
+func TestBuildTick(t *testing.T) {
+	t.Parallel()
+
+	// Nil state.
+	tick, err := buildTick(5, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 5, tick.Tick)
+	assert.Nil(t, tick.Data)
+
+	// Non-nil state.
+	s := &TickDevData{DevData: map[string]*CommitDevData{"aaa": {Commits: 1}}}
+	tick, err = buildTick(3, s)
+	require.NoError(t, err)
+	assert.Equal(t, 3, tick.Tick)
+	assert.NotNil(t, tick.Data)
+}
+
+func TestMergeCommitDevData(t *testing.T) {
+	t.Parallel()
+
+	existing := &CommitDevData{
+		Commits: 1, Added: 10, Removed: 2, Changed: 1,
+		Languages: map[string]pkgplumbing.LineStats{
+			"Go": {Added: 10, Removed: 2},
+		},
+	}
+	incoming := &CommitDevData{
+		Commits: 2, Added: 20, Removed: 5, Changed: 3,
+		Languages: map[string]pkgplumbing.LineStats{
+			"Go":     {Added: 15, Removed: 3},
+			"Python": {Added: 5, Removed: 2},
+		},
+	}
+
+	result := mergeCommitDevData(existing, incoming)
+	assert.Equal(t, 3, result.Commits)
+	assert.Equal(t, 30, result.Added)
+	assert.Equal(t, 7, result.Removed)
+	assert.Equal(t, 25, result.Languages["Go"].Added)
+	assert.Equal(t, 5, result.Languages["Python"].Added)
+}
+
+func TestTicksToReport(t *testing.T) {
+	t.Parallel()
+
+	ticks := []analyze.TICK{
+		{Tick: 0, Data: &TickDevData{DevData: map[string]*CommitDevData{
+			"aaa": {Commits: 1, Added: 10, AuthorID: 0},
+		}}},
+	}
+	cbt := map[int][]gitlib.Hash{0: {gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}}
+	names := []string{"Alice"}
+
+	report := ticksToReport(context.Background(), ticks, cbt, names, 24*time.Hour, false)
+
+	assert.NotNil(t, report["CommitDevData"])
+	assert.NotNil(t, report["CommitsByTick"])
+	assert.Equal(t, names, report["ReversedPeopleDict"])
+}
+
+func TestTicksToReport_Anonymize(t *testing.T) {
+	t.Parallel()
+
+	ticks := []analyze.TICK{}
+	names := []string{"John Doe"}
+
+	report := ticksToReport(context.Background(), ticks, nil, names, 24*time.Hour, true)
+
+	rNames, ok := report["ReversedPeopleDict"].([]string)
+	require.True(t, ok)
+	assert.NotEqual(t, "John Doe", rNames[0])
+}
+
+func TestComputeMetricsSafe_EmptyReport(t *testing.T) {
+	t.Parallel()
+
+	m, err := computeMetricsSafe(analyze.Report{})
+	require.NoError(t, err)
+	assert.NotNil(t, m)
+}
+
 // newTestDevAnalyzer creates an analyzer with plumbing dependencies for Consume tests.
 func newTestDevAnalyzer() *Analyzer {
 	langs := &plumbing.LanguagesDetectionAnalyzer{}

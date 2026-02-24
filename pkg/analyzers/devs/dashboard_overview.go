@@ -39,7 +39,7 @@ func (o *overviewContent) renderStats(w io.Writer) error {
 		plotpage.NewStat("Total Commits", formatNumber(m.Aggregate.TotalCommits)),
 		plotpage.NewStat("Total Developers", strconv.Itoa(m.Aggregate.TotalDevelopers)),
 		plotpage.NewStat("Active Developers", strconv.Itoa(m.Aggregate.ActiveDevelopers)),
-		plotpage.NewStat("Languages", strconv.Itoa(len(m.Languages))),
+		plotpage.NewStat("Project Bus Factor", strconv.Itoa(m.Aggregate.ProjectBusFactor)),
 	)
 
 	return statsGrid.Render(w)
