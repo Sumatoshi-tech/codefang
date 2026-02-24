@@ -67,9 +67,9 @@ func (bf *busfactorContent) renderTable(w io.Writer) error {
 		return fmt.Errorf("writing table div: %w", err)
 	}
 
-	card := plotpage.NewCard("Bus Factor Analysis", "Risk assessment by language ownership concentration")
+	card := plotpage.NewCard("Bus Factor Analysis", "Risk assessment by language ownership concentration (CHAOSS methodology)")
 	table := plotpage.NewTable([]string{
-		"Language", "Risk Level", "Primary Owner", "Primary %", "Secondary Owner", "Secondary %",
+		"Language", "Risk Level", "Bus Factor", "Primary Owner", "Primary %", "Secondary Owner", "Secondary %",
 	})
 
 	count := min(riskTableMaxRows, len(bf.data.Metrics.BusFactor))
@@ -78,6 +78,7 @@ func (bf *busfactorContent) renderTable(w io.Writer) error {
 		table.AddRow(
 			bfd.Language,
 			riskBadgeHTML(bfd.RiskLevel),
+			fmt.Sprintf("%d/%d", bfd.BusFactor, bfd.TotalContributors),
 			bfd.PrimaryDevName,
 			formatPercent(bfd.PrimaryPct),
 			secondaryDevDisplay(bfd.SecondaryDevName),
