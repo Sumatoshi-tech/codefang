@@ -314,7 +314,8 @@ func TestLanguagesMetric_SingleLanguage(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, testLangGo, result[0].Name)
 	assert.Equal(t, testLinesAdded, result[0].TotalLines)
-	assert.Equal(t, testLinesAdded, result[0].Contributors[0])
+	assert.Equal(t, testLinesAdded, result[0].TotalContribution) // Contribution = added+removed = 100+0.
+	assert.Equal(t, testLinesAdded, result[0].Contributors[0])   // Per-dev contribution.
 }
 
 func TestLanguagesMetric_MultipleLanguages_SortedByTotalLines(t *testing.T) {
@@ -372,8 +373,27 @@ func TestLanguagesMetric_MultipleContributors(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, testLangGo, result[0].Name)
 	assert.Equal(t, 100, result[0].TotalLines)
-	assert.Equal(t, 60, result[0].Contributors[0])
+	assert.Equal(t, 100, result[0].TotalContribution) // Total contribution = (60+0)+(40+0).
+	assert.Equal(t, 60, result[0].Contributors[0])    // Per-dev contribution.
 	assert.Equal(t, 40, result[0].Contributors[1])
+}
+
+func TestLanguagesMetric_ContributionIncludesRemoved(t *testing.T) {
+	t.Parallel()
+
+	developers := []DeveloperData{
+		{ID: 0, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 60, Removed: 40}}},
+		{ID: 1, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 10, Removed: 90}}},
+	}
+	metric := NewLanguagesMetric()
+
+	result := metric.Compute(developers)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, 70, result[0].TotalLines)         // Added only: 60+10.
+	assert.Equal(t, 200, result[0].TotalContribution) // (60+40)+(10+90).
+	assert.Equal(t, 100, result[0].Contributors[0])   // 60+40.
+	assert.Equal(t, 100, result[0].Contributors[1])   // 10+90.
 }
 
 // --- BusFactorMetric Tests ---.
@@ -400,12 +420,12 @@ func TestBusFactorMetric_Empty(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestBusFactorMetric_ZeroLines_Skipped(t *testing.T) {
+func TestBusFactorMetric_ZeroContribution_Skipped(t *testing.T) {
 	t.Parallel()
 
 	metric := NewBusFactorMetric()
 	input := BusFactorInput{
-		Languages: []LanguageData{{Name: testLangGo, TotalLines: 0}},
+		Languages: []LanguageData{{Name: testLangGo, TotalContribution: 0}},
 		Names:     []string{testDevName1},
 	}
 
@@ -420,7 +440,7 @@ func TestBusFactorMetric_SingleContributor_Critical(t *testing.T) {
 	metric := NewBusFactorMetric()
 	input := BusFactorInput{
 		Languages: []LanguageData{
-			{Name: testLangGo, TotalLines: 100, Contributors: map[int]int{0: 100}},
+			{Name: testLangGo, TotalLines: 100, TotalContribution: 100, Contributors: map[int]int{0: 100}},
 		},
 		Names: []string{testDevName1},
 	}
@@ -433,6 +453,8 @@ func TestBusFactorMetric_SingleContributor_Critical(t *testing.T) {
 	assert.Equal(t, testDevName1, result[0].PrimaryDevName)
 	assert.InDelta(t, 100.0, result[0].PrimaryPct, 0.01)
 	assert.Equal(t, RiskCritical, result[0].RiskLevel)
+	assert.Equal(t, 1, result[0].BusFactor)
+	assert.Equal(t, 1, result[0].TotalContributors)
 }
 
 func TestBusFactorMetric_RiskLevels(t *testing.T) {
@@ -461,8 +483,9 @@ func TestBusFactorMetric_RiskLevels(t *testing.T) {
 			input := BusFactorInput{
 				Languages: []LanguageData{
 					{
-						Name:       testLangGo,
-						TotalLines: 100,
+						Name:              testLangGo,
+						TotalLines:        100,
+						TotalContribution: 100,
 						Contributors: map[int]int{
 							0: tt.primaryPct,
 							1: 100 - tt.primaryPct,
@@ -486,9 +509,9 @@ func TestBusFactorMetric_SortedByRiskPriority(t *testing.T) {
 	metric := NewBusFactorMetric()
 	input := BusFactorInput{
 		Languages: []LanguageData{
-			{Name: testLangGo, TotalLines: 100, Contributors: map[int]int{0: 50, 1: 50}},    // LOW.
-			{Name: testLangPython, TotalLines: 100, Contributors: map[int]int{0: 95, 1: 5}}, // CRITICAL.
-			{Name: "JavaScript", TotalLines: 100, Contributors: map[int]int{0: 70, 1: 30}},  // MEDIUM.
+			{Name: testLangGo, TotalLines: 100, TotalContribution: 100, Contributors: map[int]int{0: 50, 1: 50}},    // LOW.
+			{Name: testLangPython, TotalLines: 100, TotalContribution: 100, Contributors: map[int]int{0: 95, 1: 5}}, // CRITICAL.
+			{Name: "JavaScript", TotalLines: 100, TotalContribution: 100, Contributors: map[int]int{0: 70, 1: 30}},  // MEDIUM.
 		},
 		Names: []string{testDevName1, testDevName2},
 	}
@@ -499,6 +522,31 @@ func TestBusFactorMetric_SortedByRiskPriority(t *testing.T) {
 	assert.Equal(t, RiskCritical, result[0].RiskLevel)
 	assert.Equal(t, RiskMedium, result[1].RiskLevel)
 	assert.Equal(t, RiskLow, result[2].RiskLevel)
+}
+
+func TestBusFactorMetric_CHAASSBusFactorNumber(t *testing.T) {
+	t.Parallel()
+
+	metric := NewBusFactorMetric()
+	input := BusFactorInput{
+		Languages: []LanguageData{
+			{
+				Name:              testLangGo,
+				TotalLines:        100,
+				TotalContribution: 100,
+				Contributors:      map[int]int{0: 30, 1: 25, 2: 20, 3: 15, 4: 10},
+			},
+		},
+		Names: []string{testDevName1, testDevName2, testDevName3, "Dave", "Eve"},
+	}
+
+	result := metric.Compute(input)
+
+	require.Len(t, result, 1)
+	// Dev0(30) + Dev1(25) = 55 >= 50, so bus factor = 2.
+	assert.Equal(t, 2, result[0].BusFactor)
+	assert.Equal(t, 5, result[0].TotalContributors)
+	assert.Equal(t, RiskLow, result[0].RiskLevel)
 }
 
 // --- ActivityMetric Tests ---.
@@ -652,9 +700,10 @@ func TestAggregateMetric_Compute(t *testing.T) {
 		Ticks: map[int]map[int]*DevTick{
 			0:  {0: {Commits: 5}},
 			5:  {0: {Commits: 5}},
-			8:  {1: {Commits: 5}}, // Recent (8 >= 10*0.7=7).
+			8:  {1: {Commits: 5}}, // Recent.
 			10: {0: {Commits: 3}}, // Recent.
 		},
+		TickSize: testTickSize,
 	}
 
 	result := metric.Compute(input)
@@ -664,7 +713,62 @@ func TestAggregateMetric_Compute(t *testing.T) {
 	assert.Equal(t, 50, result.TotalLinesRemoved)
 	assert.Equal(t, 2, result.TotalDevelopers)
 	assert.Equal(t, 10, result.AnalysisPeriodTicks)
-	// Both devs active in recent period (tick >= 7).
+	// With TickSize=24h and maxTick=10, 90 days = 90 ticks > 10,
+	// so threshold = 0, all devs are active.
+	assert.Equal(t, 2, result.ActiveDevelopers)
+	// Dev0 has 130 total contribution, Dev1 has 70.
+	// 130 >= 100 (50% of 200), so project bus factor = 1.
+	assert.Equal(t, 1, result.ProjectBusFactor)
+}
+
+func TestAggregateMetric_ActiveDevelopers_TimeBased(t *testing.T) {
+	t.Parallel()
+
+	metric := NewAggregateMetric()
+	// Ticks span 200 ticks at 24h each = 200 days.
+	// Dev 0 only active at tick 0 (old).
+	// Dev 1 active at tick 180 (within last 90 days = last 90 ticks).
+	input := AggregateInput{
+		Developers: []DeveloperData{
+			{ID: 0, Commits: 5, Added: 100, Removed: 30},
+			{ID: 1, Commits: 3, Added: 50, Removed: 10},
+		},
+		Ticks: map[int]map[int]*DevTick{
+			0:   {0: {Commits: 5}},
+			180: {1: {Commits: 3}},
+		},
+		TickSize: testTickSize,
+	}
+
+	result := metric.Compute(input)
+
+	// Threshold = 180 - 90 = 90. Dev 0 at tick 0 < 90 => inactive.
+	// Dev 1 at tick 180 >= 90 => active.
+	assert.Equal(t, 180, result.AnalysisPeriodTicks)
+	assert.Equal(t, 1, result.ActiveDevelopers)
+}
+
+func TestAggregateMetric_ActiveDevelopers_RatioFallback(t *testing.T) {
+	t.Parallel()
+
+	metric := NewAggregateMetric()
+	// No TickSize => falls back to ratio-based (last 30%).
+	input := AggregateInput{
+		Developers: []DeveloperData{
+			{ID: 0, Commits: 5, Added: 100, Removed: 30},
+			{ID: 1, Commits: 3, Added: 50, Removed: 10},
+		},
+		Ticks: map[int]map[int]*DevTick{
+			0:  {0: {Commits: 5}},
+			5:  {0: {Commits: 5}},
+			8:  {1: {Commits: 5}}, // Recent (8 >= 10*0.7=7).
+			10: {0: {Commits: 3}}, // Recent.
+		},
+	}
+
+	result := metric.Compute(input)
+
+	// Threshold = 10 * 0.7 = 7. Both devs active at tick >= 7.
 	assert.Equal(t, 2, result.ActiveDevelopers)
 }
 
@@ -793,4 +897,190 @@ func TestComputedMetrics_ImplementsMetricsOutput(t *testing.T) {
 
 	// Compile-time interface compliance check.
 	var _ renderer.MetricsOutput = metrics
+}
+
+func TestIntVal(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 42, intVal(float64(42)))
+	assert.Equal(t, 10, intVal(10))
+	assert.Equal(t, 0, intVal("not a number"))
+	assert.Equal(t, 0, intVal(nil))
+}
+
+func TestBuildCommitDevDataFromMap(t *testing.T) {
+	t.Parallel()
+
+	cddMap := map[string]any{
+		"hash1": map[string]any{
+			"commits":       float64(1),
+			"lines_added":   float64(20),
+			"lines_removed": float64(5),
+			"lines_changed": float64(3),
+			"author_id":     float64(0),
+			"languages": map[string]any{
+				"Go": map[string]any{
+					"added":   float64(20),
+					"removed": float64(5),
+					"changed": float64(3),
+				},
+			},
+		},
+	}
+
+	result := buildCommitDevDataFromMap(cddMap)
+	require.Len(t, result, 1)
+	assert.Equal(t, 1, result["hash1"].Commits)
+	assert.Equal(t, 20, result["hash1"].Added)
+	assert.Equal(t, 20, result["hash1"].Languages["Go"].Added)
+}
+
+func TestBuildCommitsByTickFromMap(t *testing.T) {
+	t.Parallel()
+
+	cbtMap := map[string]any{
+		"0": []any{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		"1": []any{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+	}
+
+	result := buildCommitsByTickFromMap(cbtMap)
+	require.Len(t, result, 2)
+	assert.Len(t, result[0], 1)
+	assert.Len(t, result[1], 1)
+}
+
+func TestParseLanguages(t *testing.T) {
+	t.Parallel()
+
+	langs := map[string]any{
+		"Go": map[string]any{
+			"added":   float64(100),
+			"removed": float64(20),
+			"changed": float64(5),
+		},
+	}
+
+	result := parseLanguages(langs)
+	assert.Equal(t, 100, result["Go"].Added)
+	assert.Equal(t, 20, result["Go"].Removed)
+}
+
+func TestParseLanguages_Invalid(t *testing.T) {
+	t.Parallel()
+
+	result := parseLanguages("not a map")
+	assert.Empty(t, result)
+}
+
+func TestParseTickSize_Variants(t *testing.T) {
+	t.Parallel()
+
+	// Duration value.
+	report := analyze.Report{"TickSize": 12 * time.Hour}
+	assert.Equal(t, 12*time.Hour, parseTickSize(report))
+
+	// Float64 value.
+	report = analyze.Report{"TickSize": float64(48 * time.Hour)}
+	assert.Equal(t, 48*time.Hour, parseTickSize(report))
+
+	// Int value.
+	report = analyze.Report{"TickSize": int(72 * time.Hour)}
+	assert.Equal(t, 72*time.Hour, parseTickSize(report))
+
+	// Missing key.
+	report = analyze.Report{}
+	assert.Equal(t, 24*time.Hour, parseTickSize(report))
+}
+
+func TestParseReversedPeopleDict_AnySlice(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"ReversedPeopleDict": []any{"Alice", "Bob"},
+	}
+
+	names, err := parseReversedPeopleDict(report)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Alice", "Bob"}, names)
+}
+
+func TestParseCommitDevData_FromMap(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"CommitDevData": map[string]any{
+			"hash1": map[string]any{
+				"commits":     float64(1),
+				"lines_added": float64(20),
+				"author_id":   float64(0),
+			},
+		},
+	}
+
+	result, ok := parseCommitDevData(report)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+	assert.Equal(t, 1, result["hash1"].Commits)
+}
+
+func TestParseCommitsByTick_FromMap(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"CommitsByTick": map[string]any{
+			"0": []any{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		},
+	}
+
+	result, ok := parseCommitsByTick(report)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+}
+
+func TestDevName_Variants(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"Alice", "Bob"}
+
+	assert.Equal(t, "Alice", devName(0, names))
+	assert.Equal(t, "Bob", devName(1, names))
+	assert.Contains(t, devName(99, names), "dev_99")
+}
+
+func TestRecoverMetricsFromBinary(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a binary-decoded report.
+	report := analyze.Report{
+		"developers": []any{
+			map[string]any{
+				"id":            float64(0),
+				"name":          "Alice",
+				"commits":       float64(10),
+				"lines_added":   float64(100),
+				"lines_removed": float64(20),
+				"lines_changed": float64(5),
+				"net_lines":     float64(80),
+				"languages":     map[string]any{},
+				"first_tick":    float64(0),
+				"last_tick":     float64(5),
+				"active_ticks":  float64(3),
+			},
+		},
+		"aggregate": map[string]any{
+			"total_commits":         float64(10),
+			"total_lines_added":     float64(100),
+			"total_lines_removed":   float64(20),
+			"total_developers":      float64(1),
+			"active_developers":     float64(1),
+			"analysis_period_ticks": float64(5),
+			"project_bus_factor":    float64(1),
+			"total_languages":       float64(1),
+		},
+	}
+
+	metrics, err := recoverMetricsFromBinary(report)
+	require.NoError(t, err)
+	assert.Equal(t, 10, metrics.Aggregate.TotalCommits)
+	assert.Len(t, metrics.Developers, 1)
 }

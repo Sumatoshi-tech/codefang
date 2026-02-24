@@ -12,7 +12,7 @@ import (
 
 // Visualization constants (rendering-specific, not metrics).
 const (
-	topDevsForRadar      = 10
+	topDevsForRadar      = 5
 	topDevsForTreemap    = 30
 	topLanguagesForRadar = 8
 	treemapHeight        = "600px"

@@ -3,6 +3,7 @@ package devs
 
 import (
 	"context"
+	"io"
 	"maps"
 	"time"
 
@@ -253,6 +254,52 @@ func (a *Analyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 
 // ReleaseSnapshot is a no-op for devs.
 func (a *Analyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+
+// Serialize writes the analysis result to the given writer.
+func (a *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatText {
+		return a.generateText(result, writer)
+	}
+
+	if format == analyze.FormatPlot {
+		return GenerateDashboard(result, writer)
+	}
+
+	if a.BaseHistoryAnalyzer != nil {
+		return a.BaseHistoryAnalyzer.Serialize(result, format, writer)
+	}
+
+	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		ComputeMetricsFn: computeMetricsSafe,
+	}).Serialize(result, format, writer)
+}
+
+// SerializeTICKs converts aggregated TICKs into the final report and serializes it.
+func (a *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
+	if format == analyze.FormatText || format == analyze.FormatPlot {
+		report, err := a.ReportFromTICKs(context.Background(), ticks)
+		if err != nil {
+			return err
+		}
+
+		if format == analyze.FormatPlot {
+			return GenerateDashboard(report, writer)
+		}
+
+		return a.generateText(report, writer)
+	}
+
+	if a.BaseHistoryAnalyzer != nil {
+		return a.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
+	}
+
+	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		ComputeMetricsFn: computeMetricsSafe,
+		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
+			return ticksToReport(ctx, t, a.commitsByTick, a.reversedPeopleDict, a.tickSize, a.Anonymize)
+		},
+	}).SerializeTICKs(ticks, format, writer)
+}
 
 // ReportFromTICKs converts aggregated TICKs into a Report.
 func (a *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
