@@ -79,6 +79,7 @@ Controlled sample comparison before fixes showed:
   - Cyclomatic parity with `gocyclo` v0.6.0
   - Cognitive parity with `gocognit` v1.2.1
 - [x] Visitor and analyzer paths produce consistent metrics.
-- [x] `make lint` passes.
+- [ ] `make lint` passes (currently blocked by unrelated pre-existing `cmd/uast` gosec/staticcheck findings).
+- [x] Complexity analyzer package changes are lint-clean.
 - [x] `make test` passes.
 - [x] Coverage for complexity package >= 80% (achieved: 84.2%).
