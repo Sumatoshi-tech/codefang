@@ -323,6 +323,14 @@ func createComplexityScatterChart(functions []map[string]any, co *plotpage.Chart
 
 	scatter.AddSeries("Functions", scatterData,
 		charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}),
+		charts.WithMarkLineNameXAxisItemOpts(opts.MarkLineNameXAxisItem{
+			Name:  "Cyclomatic warning",
+			XAxis: cyclomaticRedLine,
+		}),
+		charts.WithMarkLineNameYAxisItemOpts(opts.MarkLineNameYAxisItem{
+			Name:  "Cognitive warning",
+			YAxis: cognitiveRedLine,
+		}),
 	)
 
 	return scatter

@@ -2,6 +2,7 @@ package complexity
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -34,6 +36,46 @@ func TestAnalyzer_Basic(t *testing.T) {
 			t.Errorf("Expected threshold '%s' to exist", expected)
 		}
 	}
+}
+
+func TestAnalyzer_MetadataAndFormatting(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	assert.Equal(t, "complexity-analysis", analyzer.Flag())
+	assert.Equal(t, analyzer.Descriptor().Description, analyzer.Description())
+	assert.Empty(t, analyzer.ListConfigurationOptions())
+	require.NoError(t, analyzer.Configure(nil))
+	assert.NotNil(t, analyzer.CreateAggregator())
+	assert.NotNil(t, analyzer.CreateVisitor())
+
+	report := analyze.Report{
+		"total_functions":      1,
+		"average_complexity":   2.0,
+		"max_complexity":       2,
+		"total_complexity":     2,
+		"cognitive_complexity": 1,
+		"nesting_depth":        1,
+		"decision_points":      1,
+		"message":              "ok",
+		"functions": []map[string]any{
+			{
+				"name":                  "f",
+				"cyclomatic_complexity": 2,
+				"cognitive_complexity":  1,
+				"nesting_depth":         1,
+				"lines_of_code":         2,
+			},
+		},
+	}
+
+	var textOut bytes.Buffer
+	require.NoError(t, analyzer.FormatReport(report, &textOut))
+	assert.Contains(t, textOut.String(), "COMPLEXITY")
+
+	var binaryOut bytes.Buffer
+	require.NoError(t, analyzer.FormatReportBinary(report, &binaryOut))
+	assert.NotEmpty(t, binaryOut.Bytes())
 }
 
 func TestAnalyzer_NilRoot(t *testing.T) {
@@ -134,17 +176,21 @@ func TestAnalyzer_IsDecisionPoint(t *testing.T) {
 
 	// Test decision point types.
 	decisionTypes := []string{
-		node.UASTIf, node.UASTSwitch, node.UASTCase, node.UASTTry, node.UASTCatch,
-		node.UASTThrow, node.UASTBreak, node.UASTContinue, node.UASTReturn,
+		node.UASTIf, node.UASTLoop, node.UASTCase, node.UASTCatch,
 	}
 
 	for _, nodeType := range decisionTypes {
 		testNode := &node.Node{Type: node.Type(nodeType)}
-		testNode.Roles = []node.Role{node.RoleCondition}
 
 		if !analyzer.isDecisionPoint(testNode) {
 			t.Errorf("Expected node type '%s' to be a decision point", nodeType)
 		}
+	}
+
+	// Default switch case should not increment cyclomatic complexity.
+	defaultCase := &node.Node{Type: node.UASTCase, Token: "default:\n\treturn 0"}
+	if analyzer.isDecisionPoint(defaultCase) {
+		t.Error("Expected default case to not be a decision point")
 	}
 
 	// Test non-decision point type.
@@ -167,6 +213,130 @@ func TestAnalyzer_IsDecisionPoint(t *testing.T) {
 	arithmeticOpNode.Props = map[string]string{"operator": "+"}
 	if analyzer.isDecisionPoint(arithmeticOpNode) {
 		t.Error("Expected binary op with '+' to not be a decision point")
+	}
+}
+
+func TestAnalyzer_GoldenParity_GoMethodologySample(t *testing.T) {
+	t.Parallel()
+
+	const source = `package sample
+
+func Linear(x int) int {
+	return x
+}
+
+func IfElse(flag bool) int {
+	if flag {
+		return 1
+	}
+	return 0
+}
+
+func LoopAndGuards(items []int) int {
+	total := 0
+	for _, v := range items {
+		if v < 0 {
+			continue
+		}
+		if v == 0 {
+			break
+		}
+		total += v
+	}
+	return total
+}
+
+func SwitchBranches(x int) int {
+	switch x {
+	case 1:
+		return 1
+	case 2, 3:
+		return 2
+	default:
+		return 0
+	}
+}
+
+func BoolChain(a, b, c, d bool) bool {
+	if a && b && c || d {
+		return true
+	}
+	return false
+}
+
+func NestedIf(a, b, c bool) int {
+	if a {
+		if b {
+			if c {
+				return 1
+			}
+		}
+	}
+	return 0
+}
+
+func ElseIfChain(x int) int {
+	if x < 0 {
+		return -1
+	} else if x == 0 {
+		return 0
+	} else if x == 1 {
+		return 1
+	}
+	return 2
+}
+`
+
+	parser, err := uast.NewParser()
+	require.NoError(t, err)
+
+	root, err := parser.Parse(context.Background(), "sample.go", []byte(source))
+	require.NoError(t, err)
+
+	analyzer := NewAnalyzer()
+	report, err := analyzer.Analyze(root)
+	require.NoError(t, err)
+
+	functions, ok := report["functions"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, functions, 7)
+
+	type functionMetrics struct {
+		cognitive  int
+		cyclomatic int
+	}
+
+	got := make(map[string]functionMetrics, len(functions))
+	for _, fn := range functions {
+		name, nameOK := fn["name"].(string)
+		cyclomatic, cyclomaticOK := fn["cyclomatic_complexity"].(int)
+		cognitive, cognitiveOK := fn["cognitive_complexity"].(int)
+		require.True(t, nameOK && cyclomaticOK && cognitiveOK)
+
+		got[name] = functionMetrics{
+			cyclomatic: cyclomatic,
+			cognitive:  cognitive,
+		}
+	}
+
+	// Golden references:
+	// - Cyclomatic: gocyclo v0.6.0
+	// - Cognitive: gocognit v1.2.1.
+	expected := map[string]functionMetrics{
+		"Linear":         {cyclomatic: 1, cognitive: 0},
+		"IfElse":         {cyclomatic: 2, cognitive: 1},
+		"LoopAndGuards":  {cyclomatic: 4, cognitive: 5},
+		"SwitchBranches": {cyclomatic: 3, cognitive: 1},
+		"BoolChain":      {cyclomatic: 5, cognitive: 3},
+		"NestedIf":       {cyclomatic: 4, cognitive: 6},
+		"ElseIfChain":    {cyclomatic: 4, cognitive: 3},
+	}
+
+	for name, want := range expected {
+		gotMetrics, exists := got[name]
+		require.True(t, exists, "missing function metrics for %s", name)
+		assert.Equal(t, want.cyclomatic, gotMetrics.cyclomatic, "cyclomatic mismatch for %s", name)
+		assert.Equal(t, want.cognitive, gotMetrics.cognitive, "cognitive mismatch for %s", name)
 	}
 }
 

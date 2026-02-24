@@ -119,7 +119,7 @@ func parseStdin(lang, output, format string, writer io.Writer) error {
 
 // ParseFile parses a single source file into UAST format.
 func ParseFile(file, lang, output, format string, writer io.Writer) error {
-	code, err := os.ReadFile(file)
+	code, resolvedPath, err := safeReadFile(file)
 	if err != nil {
 		return fmt.Errorf("failed to read file %s: %w", file, err)
 	}
@@ -129,10 +129,10 @@ func ParseFile(file, lang, output, format string, writer io.Writer) error {
 		return fmt.Errorf("failed to initialize parser: %w", err)
 	}
 
-	filename := file
+	filename := resolvedPath
 	if lang != "" {
-		ext := filepath.Ext(file)
-		filename = strings.TrimSuffix(file, ext) + "." + lang
+		ext := filepath.Ext(resolvedPath)
+		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
 	}
 
 	parsedNode, err := parser.Parse(context.Background(), filename, code)

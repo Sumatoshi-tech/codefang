@@ -286,20 +286,7 @@ func handleGetMappingsList(responseWriter http.ResponseWriter, request *http.Req
 	}
 
 	mappings := parser.GetEmbeddedMappingsList()
-
-	jsonData, marshalErr := json.MarshalIndent(mappings, "", "  ")
-	if marshalErr != nil {
-		http.Error(responseWriter, "Failed to marshal mappings", http.StatusInternalServerError)
-
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-
-	_, writeErr := responseWriter.Write(jsonData)
-	if writeErr != nil {
-		slog.Default().ErrorContext(request.Context(), "failed to write response", "error", writeErr)
-	}
+	writeJSON(request.Context(), responseWriter, mappings)
 }
 
 func handleGetMapping(responseWriter http.ResponseWriter, request *http.Request) {
@@ -335,19 +322,7 @@ func handleGetMapping(responseWriter http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	jsonData, marshalErr := json.MarshalIndent(mappingData, "", "  ")
-	if marshalErr != nil {
-		http.Error(responseWriter, "Failed to marshal mapping", http.StatusInternalServerError)
-
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-
-	_, writeErr := responseWriter.Write(jsonData)
-	if writeErr != nil {
-		slog.Default().ErrorContext(request.Context(), "failed to write response", "error", writeErr)
-	}
+	writeJSON(request.Context(), responseWriter, mappingData)
 }
 
 func getFileExtension(language string) string {

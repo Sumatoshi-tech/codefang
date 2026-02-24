@@ -22,7 +22,7 @@ func generateLargeGoFile() []byte {
 	sb.WriteString("package main\n\n")
 
 	for i := range 50 {
-		sb.WriteString(fmt.Sprintf("func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i))
+		fmt.Fprintf(&sb, "func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i)
 	}
 
 	return []byte(sb.String())
@@ -33,7 +33,7 @@ func generateVeryLargeGoFile() []byte {
 	sb.WriteString("package main\n\n")
 
 	for i := range 100 {
-		sb.WriteString(fmt.Sprintf("func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i))
+		fmt.Fprintf(&sb, "func function%d() {\n\tx := %d\n\t_ = x\n}\n\n", i, i)
 	}
 
 	return []byte(sb.String())

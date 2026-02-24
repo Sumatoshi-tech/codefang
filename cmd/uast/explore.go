@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -60,7 +61,7 @@ func runExplore(file, lang string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "Exploring %s\n", file)
+	fmt.Fprintf(os.Stdout, "Exploring %s\n", sanitizeForTerminal(file))
 	fmt.Fprintln(os.Stdout, "Type 'help' for commands, 'quit' to exit")
 	fmt.Fprintln(os.Stdout)
 
@@ -77,15 +78,15 @@ func parseExploreFile(file, lang string) (*node.Node, error) {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedExploreFile, file)
 	}
 
-	code, err := os.ReadFile(file)
+	code, resolvedPath, err := safeReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", file, err)
 	}
 
-	filename := file
+	filename := resolvedPath
 	if lang != "" {
-		ext := filepath.Ext(file)
-		filename = strings.TrimSuffix(file, ext) + "." + lang
+		ext := filepath.Ext(resolvedPath)
+		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
 	}
 
 	parsedNode, err := parser.Parse(context.Background(), filename, code)
@@ -161,14 +162,18 @@ func handleExploreParts(parts []string, parsedNode *node.Node) {
 		if err != nil {
 			fmt.Fprintf(os.Stdout, "Error: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stdout, "Found %d results\n", len(results))
+			writeTerminalLine("Found", len(results), "results")
 
 			for idx, result := range results {
-				fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, result.Type, result.Token)
+				writeTerminalLine(
+					"["+strconv.Itoa(idx+1)+"]",
+					sanitizeForTerminal(string(result.Type))+":",
+					sanitizeForTerminal(result.Token),
+				)
 			}
 		}
 	default:
-		fmt.Fprintf(os.Stdout, "Unknown command: %s\n", parts[0])
+		writeTerminalLine("Unknown command:", sanitizeForTerminal(parts[0]))
 		fmt.Fprintln(os.Stdout, "Type 'help' for available commands")
 	}
 }
@@ -201,10 +206,14 @@ func findNodes(rootNode *node.Node, nodeType string) {
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "Found %d nodes of type '%s':\n", len(results), nodeType)
+	writeTerminalLine("Found", len(results), "nodes of type", "'"+sanitizeForTerminal(nodeType)+"':")
 
 	for idx, result := range results {
-		fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, result.Type, result.Token)
+		writeTerminalLine(
+			"["+strconv.Itoa(idx+1)+"]",
+			sanitizeForTerminal(string(result.Type))+":",
+			sanitizeForTerminal(result.Token),
+		)
 	}
 }
 

@@ -22,7 +22,15 @@ codefang analyze -a complexity ./src/
 
 ### Cyclomatic Complexity (McCabe, 1976)
 
-Counts the number of linearly independent paths through a function's control flow graph. Each decision point (`if`, `for`, `while`, `case`, `&&`, `||`) adds one to the complexity.
+Counts the number of linearly independent paths through a function's control flow graph.
+
+For Go code, the analyzer follows the same practical counting model used by `gocyclo`:
+
+- Base score is `1`
+- `if`, `for` / `range` add `+1`
+- Non-default `case` adds `+1`
+- Each `&&` and `||` adds `+1`
+- `default` case does **not** add complexity
 
 !!! info "Interpretation"
     - **1-10**: Simple, low risk
@@ -37,9 +45,9 @@ Measures how difficult code is for a human to read and understand. Unlike cyclom
 Key differences from cyclomatic complexity:
 
 - Nesting increments add to the score (deeper nesting = higher penalty)
-- `else if` does not increment (it continues a flat chain)
-- Boolean operator sequences (`a && b && c`) count as one increment
-- Recursion adds a penalty
+- `else if` adds structural complexity, but avoids extra nesting penalty vs deeply nested `if`
+- Logical operator sequences account for readability, not just path count
+- Direct recursion adds a penalty
 
 ### Nesting Depth
 
@@ -102,6 +110,44 @@ The complexity analyzer uses the UAST directly and has no analyzer-specific conf
 
     Summary: 2 functions, avg cyclomatic=11.5, max nesting=5
     ```
+
+---
+
+## Validation Against Golden Implementations
+
+The complexity analyzer is continuously validated against battle-tested Go references:
+
+- **Cyclomatic parity target:** `gocyclo` (v0.6.0)
+- **Cognitive parity target:** `gocognit` (v1.2.1)
+
+For stabilization, we run a controlled methodology sample through both references and `codefang`, then align discrepancies until parity is reached.
+
+---
+
+## Terminal UX (Readable Risk Triage)
+
+Top issue rows include all core complexity dimensions in one compact value:
+
+- `CC=<cyclomatic> | Cog=<cognitive> | Nest=<nesting>`
+
+Example:
+
+```text
+BoolChain      CC=5 | Cog=3 | Nest=1
+NestedIf       CC=4 | Cog=6 | Nest=3
+```
+
+Issues are sorted numerically by cyclomatic complexity (then cognitive, then nesting) so the highest-risk functions consistently appear first.
+
+---
+
+## Plot UX (Fast Visual Scanning)
+
+The plot output emphasizes fast interpretation for code-review and planning:
+
+- Scatter view includes explicit cyclomatic/cognitive warning guide lines.
+- Bubble size maps to nesting depth to preserve one-glance hotspot detection.
+- Bar and pie views keep the same threshold semantics as terminal output.
 
 ---
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -137,12 +138,12 @@ func parseFileForQuery(file string) (*node.Node, error) {
 		return parsedNode, nil
 	}
 
-	code, readErr := os.ReadFile(file)
+	code, resolvedPath, readErr := safeReadFile(file)
 	if readErr != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", file, readErr)
 	}
 
-	parsedNode, parseErr := parser.Parse(context.Background(), file, code)
+	parsedNode, parseErr := parser.Parse(context.Background(), resolvedPath, code)
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse error in %s: %w", file, parseErr)
 	}
@@ -207,12 +208,12 @@ func loadInteractiveInputFromFile(input string) (*node.Node, error) {
 	}
 
 	if parser.IsSupported(input) {
-		code, readErr := os.ReadFile(input)
+		code, resolvedPath, readErr := safeReadFile(input)
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read file %s: %w", input, readErr)
 		}
 
-		parsedNode, parseErr := parser.Parse(context.Background(), input, code)
+		parsedNode, parseErr := parser.Parse(context.Background(), resolvedPath, code)
 		if parseErr != nil {
 			return nil, fmt.Errorf("parse error in %s: %w", input, parseErr)
 		}
@@ -269,10 +270,14 @@ func executeInteractiveQuery(parsedNode *node.Node, query string) {
 	if len(results) == 0 {
 		fmt.Fprintln(os.Stdout, "No results found")
 	} else {
-		fmt.Fprintf(os.Stdout, "Found %d results:\n", len(results))
+		writeTerminalLine("Found", len(results), "results:")
 
 		for idx, resultNode := range results {
-			fmt.Fprintf(os.Stdout, "[%d] %s: %s\n", idx+1, resultNode.Type, resultNode.Token)
+			writeTerminalLine(
+				"["+strconv.Itoa(idx+1)+"]",
+				sanitizeForTerminal(string(resultNode.Type))+":",
+				sanitizeForTerminal(resultNode.Token),
+			)
 		}
 	}
 }

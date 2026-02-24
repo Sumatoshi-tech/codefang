@@ -365,8 +365,8 @@ func TestTopIssues_Value(t *testing.T) {
 		t.Fatal("TopIssues(1) returned empty")
 	}
 
-	if issues[0].Value != "CC=8" {
-		t.Errorf("issues[0].Value = %q, want %q", issues[0].Value, "CC=8")
+	if issues[0].Value != "CC=8 | Cog=6 | Nest=3" {
+		t.Errorf("issues[0].Value = %q, want %q", issues[0].Value, "CC=8 | Cog=6 | Nest=3")
 	}
 }
 
@@ -478,6 +478,31 @@ func TestTopIssues_SeverityPoor(t *testing.T) {
 	}
 }
 
+func TestTopIssues_SortsNumericComplexity(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"functions": []map[string]any{
+			{"name": "CC9", "cyclomatic_complexity": 9},
+			{"name": "CC12", "cyclomatic_complexity": 12},
+		},
+	}
+	section := NewReportSection(report)
+
+	issues := section.TopIssues(2)
+	if len(issues) != 2 {
+		t.Fatalf("TopIssues(2) = %d items, want 2", len(issues))
+	}
+
+	if issues[0].Name != "CC12" {
+		t.Errorf("issues[0].Name = %q, want %q", issues[0].Name, "CC12")
+	}
+
+	if issues[1].Name != "CC9" {
+		t.Errorf("issues[1].Name = %q, want %q", issues[1].Name, "CC9")
+	}
+}
+
 func TestGetFloat64_IntValue(t *testing.T) {
 	t.Parallel()
 
@@ -519,8 +544,8 @@ func TestGetIntFromMap_Float64Value(t *testing.T) {
 		t.Fatal("TopIssues(1) returned empty")
 	}
 
-	if issues[0].Value != "CC=7" {
-		t.Errorf("Value = %q, want %q", issues[0].Value, "CC=7")
+	if issues[0].Value != "CC=7 | Cog=0 | Nest=0" {
+		t.Errorf("Value = %q, want %q", issues[0].Value, "CC=7 | Cog=0 | Nest=0")
 	}
 }
 

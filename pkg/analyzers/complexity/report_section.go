@@ -62,6 +62,8 @@ const (
 	KeyFunctions           = "functions"
 	KeyFuncName            = "name"
 	KeyFuncCyclomatic      = "cyclomatic_complexity"
+	KeyFuncCognitive       = "cognitive_complexity"
+	KeyFuncNesting         = "nesting_depth"
 )
 
 // ReportSection implements analyze.ReportSection for complexity analysis.
@@ -141,22 +143,53 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 		return nil
 	}
 
-	issues := make([]analyze.Issue, 0, len(functions))
+	type issueEnvelope struct {
+		cognitive  int
+		cyclomatic int
+		issue      analyze.Issue
+		nesting    int
+	}
+
+	issues := make([]issueEnvelope, 0, len(functions))
 	for _, fn := range functions {
 		name := getStringFromMap(fn, KeyFuncName)
 		cc := getIntFromMap(fn, KeyFuncCyclomatic)
-		issues = append(issues, analyze.Issue{
-			Name:     name,
-			Value:    fmt.Sprintf("%s%d", IssueValuePrefix, cc),
-			Severity: severityForComplexity(cc),
+		cognitive := getIntFromMap(fn, KeyFuncCognitive)
+		nesting := getIntFromMap(fn, KeyFuncNesting)
+		issues = append(issues, issueEnvelope{
+			cyclomatic: cc,
+			cognitive:  cognitive,
+			nesting:    nesting,
+			issue: analyze.Issue{
+				Name:     name,
+				Value:    fmt.Sprintf("%s%d | Cog=%d | Nest=%d", IssueValuePrefix, cc, cognitive, nesting),
+				Severity: severityForComplexity(cc),
+			},
 		})
 	}
 
 	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Value > issues[j].Value
+		if issues[i].cyclomatic != issues[j].cyclomatic {
+			return issues[i].cyclomatic > issues[j].cyclomatic
+		}
+
+		if issues[i].cognitive != issues[j].cognitive {
+			return issues[i].cognitive > issues[j].cognitive
+		}
+
+		if issues[i].nesting != issues[j].nesting {
+			return issues[i].nesting > issues[j].nesting
+		}
+
+		return issues[i].issue.Name < issues[j].issue.Name
 	})
 
-	return issues
+	result := make([]analyze.Issue, 0, len(issues))
+	for _, item := range issues {
+		result = append(result, item.issue)
+	}
+
+	return result
 }
 
 // --- Score calculation ---.

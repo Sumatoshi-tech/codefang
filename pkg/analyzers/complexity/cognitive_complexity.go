@@ -1,248 +1,207 @@
 package complexity
 
 import (
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-const unknownNestingType = "unknown"
-
-// NestingContext tracks the nesting level and type for cognitive complexity.
-type NestingContext struct {
-	Type  string
-	Level int
-}
-
 // CognitiveComplexityCalculator implements the SonarSource cognitive complexity algorithm.
 type CognitiveComplexityCalculator struct {
-	nestingStack   []NestingContext
-	complexity     int
-	currentNesting int
+	complexity   int
+	sourceCtx    functionSourceContext
+	functionName string
 }
 
 // NewCognitiveComplexityCalculator creates a new cognitive complexity calculator.
 func NewCognitiveComplexityCalculator() *CognitiveComplexityCalculator {
-	return &CognitiveComplexityCalculator{
-		nestingStack:   make([]NestingContext, 0),
-		currentNesting: 0,
-	}
+	return &CognitiveComplexityCalculator{}
 }
 
 // CalculateCognitiveComplexity calculates cognitive complexity according to SonarSource specification.
 func (c *CognitiveComplexityCalculator) CalculateCognitiveComplexity(fn *node.Node) int {
-	calculator := NewCognitiveComplexityCalculator()
+	calculator := &CognitiveComplexityCalculator{
+		sourceCtx: newFunctionSourceContext(fn),
+	}
 
-	fn.VisitPreOrder(func(n *node.Node) {
-		calculator.processNode(n)
-	})
+	calculator.functionName = calculator.extractFunctionName(fn)
+
+	for idx, child := range fn.Children {
+		calculator.walkNode(child, fn, idx, 0)
+	}
 
 	return calculator.complexity
 }
 
-// processNode processes a single node and updates cognitive complexity.
-func (c *CognitiveComplexityCalculator) processNode(current *node.Node) {
-	if c.isComplexityIncreasingElement(current) {
-		c.addComplexityPoint(current)
+func (c *CognitiveComplexityCalculator) walkNode(curr, parent *node.Node, childIdx, nesting int) {
+	if curr == nil {
+		return
 	}
 
-	if c.isNestingStart(current) {
-		c.startNesting(current)
+	switch curr.Type {
+	case node.UASTIf:
+		c.processIfNode(curr, parent, childIdx, nesting)
+
+		return
+	case node.UASTLoop, node.UASTSwitch, node.UASTTry, node.UASTCatch, node.UASTMatch:
+		c.addNestingIncrement(nesting)
+
+		for idx, child := range curr.Children {
+			c.walkNode(child, curr, idx, nesting+1)
+		}
+
+		return
+	case node.UASTLambda:
+		for idx, child := range curr.Children {
+			c.walkNode(child, curr, idx, nesting+1)
+		}
+
+		return
+	case node.UASTCall:
+		if c.isRecursiveCall(curr) {
+			c.complexity++
+		}
 	}
 
-	if c.isNestingEnd(current) {
-		c.endNesting()
+	for idx, child := range curr.Children {
+		c.walkNode(child, curr, idx, nesting)
 	}
 }
 
-// isComplexityIncreasingElement checks if a node increases cognitive complexity.
-func (c *CognitiveComplexityCalculator) isComplexityIncreasingElement(n *node.Node) bool {
-	return c.isConditional(n) ||
-		c.isLoop(n) ||
-		c.isSwitchCase(n) ||
-		c.isExceptionHandling(n) ||
-		c.isLogicalOperator(n)
-}
-
-// isConditional checks if a node is a conditional statement.
-func (c *CognitiveComplexityCalculator) isConditional(n *node.Node) bool {
-	if n.Type == node.UASTIf {
-		return true
+func (c *CognitiveComplexityCalculator) processIfNode(ifNode, parent *node.Node, childIdx, nesting int) {
+	if isElseIfNode(parent, ifNode, childIdx) {
+		c.complexity++
+	} else {
+		c.addNestingIncrement(nesting)
 	}
 
-	return n.HasAnyRole(node.RoleCondition, node.RoleBranch)
-}
-
-// isLoop checks if a node is a loop construct.
-func (c *CognitiveComplexityCalculator) isLoop(n *node.Node) bool {
-	if n.Type == node.UASTLoop {
-		return true
+	if len(ifNode.Children) > 0 {
+		c.addLogicalSequenceComplexity(ifNode.Children[0])
+		c.walkNode(ifNode.Children[0], ifNode, 0, nesting)
 	}
 
-	return n.HasAnyRole(node.RoleLoop)
-}
-
-// isSwitchCase checks if a node is a switch case.
-func (c *CognitiveComplexityCalculator) isSwitchCase(n *node.Node) bool {
-	if n.Type == node.UASTCase {
-		return true
+	if len(ifNode.Children) > 1 {
+		c.walkNode(ifNode.Children[1], ifNode, 1, nesting+1)
 	}
 
-	return n.HasAnyRole(node.RoleBranch)
+	for idx := 2; idx < len(ifNode.Children); idx++ {
+		child := ifNode.Children[idx]
+
+		switch child.Type {
+		case node.UASTIf:
+			c.walkNode(child, ifNode, idx, nesting)
+		case node.UASTBlock:
+			// Sonar/gocognit model: else branch adds one structural increment.
+			c.complexity++
+			c.walkNode(child, ifNode, idx, nesting)
+		default:
+			c.walkNode(child, ifNode, idx, nesting)
+		}
+	}
 }
 
-// isExceptionHandling checks if a node is exception handling.
-func (c *CognitiveComplexityCalculator) isExceptionHandling(n *node.Node) bool {
-	switch n.Type {
-	case node.UASTCatch, node.UASTFinally:
-		return true
-	}
-
-	return n.HasAnyRole(node.RoleCatch, node.RoleFinally)
+func (c *CognitiveComplexityCalculator) addNestingIncrement(nesting int) {
+	c.complexity += nesting + 1
 }
 
-// isLogicalOperator checks if a node is a logical operator.
-func (c *CognitiveComplexityCalculator) isLogicalOperator(n *node.Node) bool {
-	if n.Type != node.UASTBinaryOp {
-		return false
+func (c *CognitiveComplexityCalculator) addLogicalSequenceComplexity(expr *node.Node) {
+	var operators []string
+	c.collectLogicalOperators(expr, &operators)
+
+	if len(operators) == 0 {
+		return
 	}
 
-	operator := c.getOperator(n)
+	c.complexity++
 
-	return c.isLogicalOperatorToken(operator)
+	lastOp := operators[0]
+	for _, op := range operators[1:] {
+		if op != lastOp {
+			c.complexity++
+			lastOp = op
+		}
+	}
 }
 
-// isLogicalOperatorToken checks if a token represents a logical operator.
-func (c *CognitiveComplexityCalculator) isLogicalOperatorToken(operator string) bool {
-	logicalOps := map[string]bool{
-		"&&": true, "||": true,
-		"and": true, "or": true,
-		"AND": true, "OR": true,
+func (c *CognitiveComplexityCalculator) collectLogicalOperators(curr *node.Node, operators *[]string) {
+	if curr == nil {
+		return
 	}
 
-	return logicalOps[operator]
+	if curr.Type == node.UASTBinaryOp && len(curr.Children) >= 2 {
+		c.collectLogicalOperators(curr.Children[0], operators)
+
+		op := c.sourceCtx.binaryOperator(curr)
+		if isLogicalOperatorToken(op) {
+			*operators = append(*operators, op)
+		}
+
+		c.collectLogicalOperators(curr.Children[1], operators)
+
+		return
+	}
+
+	for _, child := range curr.Children {
+		c.collectLogicalOperators(child, operators)
+	}
 }
 
-// getOperator extracts the operator from a binary operation node.
-func (c *CognitiveComplexityCalculator) getOperator(opNode *node.Node) string {
-	if opNode.Token != "" {
-		return opNode.Token
+func (c *CognitiveComplexityCalculator) extractFunctionName(fn *node.Node) string {
+	if fn == nil {
+		return ""
 	}
 
-	if op, ok := opNode.Props["operator"]; ok {
-		return op
+	if name, ok := common.ExtractFunctionName(fn); ok && name != "" {
+		return name
 	}
 
-	return c.getOperatorFromChildren(opNode)
-}
-
-// getOperatorFromChildren extracts operator from child nodes.
-func (c *CognitiveComplexityCalculator) getOperatorFromChildren(n *node.Node) string {
-	for _, child := range n.Children {
-		if child.HasAnyRole(node.RoleOperator) {
-			return child.Token
+	if fn.Props != nil {
+		if name := fn.Props["name"]; name != "" {
+			return name
 		}
 	}
 
 	return ""
 }
 
-// isNestingStart checks if a node starts a nesting level.
-func (c *CognitiveComplexityCalculator) isNestingStart(n *node.Node) bool {
-	switch n.Type {
-	case node.UASTIf, node.UASTLoop, node.UASTSwitch, node.UASTTry, node.UASTCatch, node.UASTFinally:
-		return true
+func (c *CognitiveComplexityCalculator) isRecursiveCall(callNode *node.Node) bool {
+	if callNode == nil || c.functionName == "" {
+		return false
 	}
 
-	return n.HasAnyRole(node.RoleCondition, node.RoleLoop, node.RoleTry, node.RoleCatch)
+	callName := c.extractCallName(callNode)
+	if callName == "" {
+		return false
+	}
+
+	return callName == c.functionName
 }
 
-// isNestingEnd checks if a node ends a nesting level.
-func (c *CognitiveComplexityCalculator) isNestingEnd(n *node.Node) bool {
-	switch n.Type {
-	case node.UASTBlock, node.UASTFunction:
-		return true
+func (c *CognitiveComplexityCalculator) extractCallName(callNode *node.Node) string {
+	if callNode == nil {
+		return ""
 	}
 
-	return false
-}
-
-// addComplexityPoint adds a complexity point with appropriate nesting penalty.
-func (c *CognitiveComplexityCalculator) addComplexityPoint(n *node.Node) {
-	c.complexity++
-
-	if c.isLogicalOperator(n) {
-		return
-	}
-
-	if c.currentNesting > 0 {
-		c.complexity += c.currentNesting
-	}
-}
-
-// startNesting starts a new nesting level.
-func (c *CognitiveComplexityCalculator) startNesting(n *node.Node) {
-	nestingType := c.getNestingType(n)
-
-	context := NestingContext{
-		Level: c.currentNesting,
-		Type:  nestingType,
-	}
-
-	c.nestingStack = append(c.nestingStack, context)
-	c.currentNesting++
-}
-
-// endNesting ends the current nesting level.
-func (c *CognitiveComplexityCalculator) endNesting() {
-	if len(c.nestingStack) > 0 {
-		c.nestingStack = c.nestingStack[:len(c.nestingStack)-1]
-		if c.currentNesting > 0 {
-			c.currentNesting--
-		}
-	}
-}
-
-// getNestingType determines the type of nesting for a node.
-func (c *CognitiveComplexityCalculator) getNestingType(n *node.Node) string {
-	nestingType := c.getNestingTypeByNodeType(n)
-	if nestingType != unknownNestingType {
-		return nestingType
-	}
-
-	return c.getNestingTypeByRole(n)
-}
-
-// getNestingTypeByNodeType determines nesting type based on node type.
-func (c *CognitiveComplexityCalculator) getNestingTypeByNodeType(target *node.Node) string {
-	nestingTypes := map[node.Type]string{
-		node.UASTIf:      "if",
-		node.UASTLoop:    "loop",
-		node.UASTSwitch:  "switch",
-		node.UASTTry:     "try",
-		node.UASTCatch:   "catch",
-		node.UASTFinally: "finally",
-	}
-
-	if nestingType, exists := nestingTypes[target.Type]; exists {
-		return nestingType
-	}
-
-	return unknownNestingType
-}
-
-// getNestingTypeByRole determines nesting type based on node roles.
-func (c *CognitiveComplexityCalculator) getNestingTypeByRole(target *node.Node) string {
-	roleToType := map[node.Role]string{
-		node.RoleCondition: "if",
-		node.RoleLoop:      "loop",
-		node.RoleTry:       "try",
-		node.RoleCatch:     "catch",
-	}
-
-	for role, nestingType := range roleToType {
-		if target.HasAnyRole(role) {
-			return nestingType
+	if callNode.Props != nil {
+		if name := callNode.Props["name"]; name != "" {
+			return name
 		}
 	}
 
-	return unknownNestingType
+	for _, child := range callNode.Children {
+		if child == nil {
+			continue
+		}
+
+		if child.HasAnyRole(node.RoleName) && child.Token != "" {
+			return child.Token
+		}
+	}
+
+	if len(callNode.Children) > 0 && callNode.Children[0] != nil {
+		if token := callNode.Children[0].Token; token != "" {
+			return token
+		}
+	}
+
+	return ""
 }
