@@ -3,13 +3,16 @@ package sentiment
 
 import (
 	"context"
+	"io"
 	"maps"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -53,12 +56,12 @@ const (
 )
 
 var (
-	filteredFirstCharRE = regexp.MustCompile("[^a-zA-Z0-9]")
-	filteredCharsRE     = regexp.MustCompile(`[^-a-zA-Z0-9_:;,./?!#&%+*=\n \t()]+`)
-	charsRE             = regexp.MustCompile("[a-zA-Z]+")
+	filteredFirstCharRE = regexp.MustCompile(`[^\p{L}\p{N}]`)
+	filteredCharsRE     = regexp.MustCompile(`[^\p{L}\p{N}\-_:;,./?!#&%+*=\n \t()]+`)
+	charsRE             = regexp.MustCompile(`\p{L}+`)
 	functionNameRE      = regexp.MustCompile(`\s*[a-zA-Z_][a-zA-Z_0-9]*\(\)`)
 	whitespaceRE        = regexp.MustCompile(`\s+`)
-	licenseRE           = regexp.MustCompile("(?i)[li[cs]en[cs][ei]|copyright|©")
+	licenseRE           = regexp.MustCompile(`(?i)(licen[cs]e|copyright|©)`)
 )
 
 // Analyzer tracks comment sentiment across commit history.
@@ -112,6 +115,43 @@ func NewAnalyzer() *Analyzer {
 // CPUHeavy indicates this analyzer does heavy computation.
 func (s *Analyzer) CPUHeavy() bool {
 	return true
+}
+
+// Serialize writes the analysis result to the given writer.
+// Overrides base to add plot format support.
+func (s *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
+		return s.generatePlot(result, writer)
+	}
+
+	return s.BaseHistoryAnalyzer.Serialize(result, format, writer)
+}
+
+// SerializeTICKs converts aggregated TICKs into the final report and serializes it.
+// Overrides base to add plot format support.
+func (s *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
+		report, err := s.ReportFromTICKs(context.Background(), ticks)
+		if err != nil {
+			return err
+		}
+
+		return s.generatePlot(report, writer)
+	}
+
+	return s.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
+}
+
+func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
+	sections, err := s.GenerateSections(report)
+	if err != nil {
+		return err
+	}
+
+	page := plotpage.NewPage(chartSectionTitle, chartSectionSubtitle)
+	page.Add(sections...)
+
+	return page.Render(writer)
 }
 
 func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
@@ -247,12 +287,52 @@ func mergeAdjacentComments(lines map[int][]*node.Node, lineNums []int) []string 
 	return mergedComments
 }
 
+// commentPrefixes are comment delimiters stripped before analysis.
+// Longer prefixes first so "///" is matched before "//".
+var commentPrefixes = []string{"///", "//!", "//", "/**", "/*", "#!", "##", "#", "--", ";;", ";"}
+
+// commentSuffixes are closing delimiters stripped from lines.
+var commentSuffixes = []string{"*/"}
+
+// stripCommentDelimiters removes common comment syntax from each line.
+func stripCommentDelimiters(text string) string {
+	lines := strings.Split(text, "\n")
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		for _, prefix := range commentPrefixes {
+			if strings.HasPrefix(trimmed, prefix) {
+				trimmed = strings.TrimSpace(trimmed[len(prefix):])
+
+				break
+			}
+		}
+
+		for _, suffix := range commentSuffixes {
+			if strings.HasSuffix(trimmed, suffix) {
+				trimmed = strings.TrimSpace(trimmed[:len(trimmed)-len(suffix)])
+			}
+		}
+
+		lines[i] = trimmed
+	}
+
+	return strings.TrimSpace(strings.Join(lines, " "))
+}
+
 func filterComments(comments []string, minLength int) []string {
 	filteredComments := make([]string, 0, len(comments))
 
 	for _, comment := range comments {
+		comment = stripCommentDelimiters(comment)
 		comment = strings.TrimSpace(comment)
-		if comment == "" || filteredFirstCharRE.MatchString(comment[:1]) {
+
+		if comment == "" {
+			continue
+		}
+
+		firstRune, _ := utf8.DecodeRuneInString(comment)
+		if firstRune == utf8.RuneError || filteredFirstCharRE.MatchString(string(firstRune)) {
 			continue
 		}
 
