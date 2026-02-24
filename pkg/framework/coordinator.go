@@ -43,10 +43,10 @@ const defaultBlobArenaBytes = 4 * 1024 * 1024
 // in a /proc/meminfo line (e.g. "MemTotal: 16384 kB" has 3 fields).
 const minMemInfoFields = 2
 
-// defaultMemoryLimitBytes is the default soft memory limit (4 GiB).
+// defaultMemoryLimitBytes is the default soft memory limit (8 GiB).
 // This caps peak memory usage while leaving headroom for the OS.
 // Go's GC becomes aggressive as heap approaches this limit, preventing OOM.
-const defaultMemoryLimitBytes = uint64(4 * 1024 * 1024 * 1024)
+const defaultMemoryLimitBytes = uint64(8 * 1024 * 1024 * 1024)
 
 // memoryLimitRatio is the fraction of system memory to use as the soft limit.
 // Go's runtime GC becomes aggressive as heap approaches this limit.
@@ -129,6 +129,9 @@ type CoordinatorConfig struct {
 	// Set to 0 to disable ballast allocation.
 	BallastSize int64
 
+	// FirstParent indicates whether the history walk is restricted to the first parent.
+	FirstParent bool
+
 	// WorkerTimeout is the maximum time to wait for a worker response before
 	// considering it stalled. Set to 0 to disable the watchdog.
 	WorkerTimeout time.Duration
@@ -162,18 +165,19 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 // Pipeline memory model constants matching pkg/budget/model.go.
 // Duplicated here to avoid a circular dependency (budget imports framework).
 const (
-	runtimeOverhead   = 50 * 1024 * 1024 // Go runtime + libgit2 base.
-	repoHandleSize    = 10 * 1024 * 1024 // Per-worker libgit2 handle.
-	avgDiffEntrySize  = 2 * 1024         // Average cached diff entry.
-	avgCommitDataSize = 64 * 1024        // Average in-flight commit data.
+	runtimeOverhead      = 250 * 1024 * 1024 // Go runtime + libgit2 base + shared mmap.
+	repoHandleSize       = 10 * 1024 * 1024  // Per-worker libgit2 handle (Go-visible).
+	workerNativeOverhead = 50 * 1024 * 1024  // Per-worker C/mmap overhead from libgit2.
+	avgDiffEntrySize     = 2 * 1024          // Average cached diff entry.
+	avgCommitDataSize    = 64 * 1024         // Average in-flight commit data.
 )
 
 // EstimatedOverhead returns the estimated memory consumed by the pipeline
-// infrastructure (runtime, workers, caches, buffers) — everything except
-// analyzer state. This allows the streaming planner to accurately compute
-// how much memory remains for analyzer state growth.
+// infrastructure (runtime, workers, caches, buffers, native/mmap overhead) —
+// everything except analyzer state. This allows the streaming planner to
+// accurately compute how much memory remains for analyzer state growth.
 func (c CoordinatorConfig) EstimatedOverhead() int64 {
-	workers := int64(c.Workers) * (repoHandleSize + int64(c.BlobArenaSize))
+	workers := int64(c.Workers) * (repoHandleSize + int64(c.BlobArenaSize) + workerNativeOverhead)
 	caches := c.BlobCacheSize + int64(c.DiffCacheSize)*avgDiffEntrySize
 	buffers := int64(c.BufferSize) * avgCommitDataSize
 
@@ -295,11 +299,44 @@ func (c *Coordinator) Stats() PipelineStats {
 	return c.stats
 }
 
-func applyRuntimeTuning(config CoordinatorConfig) []byte {
+func applyRuntimeTuning(config CoordinatorConfig, memBudgetOverride int64) []byte {
 	applyGCPercent(config.GCPercent)
-	applyMemoryLimit()
+
+	if memBudgetOverride > 0 {
+		applyMemoryLimitFromBudget(memBudgetOverride)
+	} else {
+		applyMemoryLimit()
+	}
 
 	return applyBallast(config.BallastSize)
+}
+
+// budgetLimitRatio is the fraction of the user's memory budget to use as the
+// soft memory limit. Leaves headroom for the GC to operate without thrashing.
+const budgetLimitRatio = 95
+
+// systemRAMLimitRatio caps the soft memory limit at 90% of system RAM to
+// prevent setting a limit higher than what the system can support.
+const systemRAMLimitRatio = 90
+
+// applyMemoryLimitFromBudget sets Go's soft memory limit to a fraction of the
+// user's memory budget. Capped at 90% of system RAM to prevent GC thrashing
+// when the budget exceeds available memory.
+func applyMemoryLimitFromBudget(budget int64) {
+	limit := resolveMemoryLimitFromBudget(budget, detectTotalMemoryBytes())
+	debug.SetMemoryLimit(SafeInt64(limit))
+}
+
+func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64) uint64 {
+	budgetBased := uint64(budget) * budgetLimitRatio / percentDivisor
+
+	if totalMemoryBytes > 0 {
+		systemCap := totalMemoryBytes * systemRAMLimitRatio / percentDivisor
+
+		return min(budgetBased, systemCap)
+	}
+
+	return budgetBased
 }
 
 // applyMemoryLimit sets Go's soft memory limit based on available system memory.

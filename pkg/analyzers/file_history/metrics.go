@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
@@ -64,28 +63,88 @@ type AggregateData struct {
 	HighChurnFiles         int     `json:"high_churn_files"          yaml:"high_churn_files"`
 }
 
-// --- Metric Implementations ---.
+// Hotspot risk thresholds.
+const (
+	HotspotThresholdCritical = 50 // commits.
+	HotspotThresholdHigh     = 30
+	HotspotThresholdMedium   = 15
+)
 
-// FileChurnMetric computes per-file churn statistics.
-type FileChurnMetric struct {
-	metrics.MetricMeta
-}
+// Risk level constants.
+const (
+	RiskCritical = "CRITICAL"
+	RiskHigh     = "HIGH"
+	RiskMedium   = "MEDIUM"
+	RiskLow      = "LOW"
+)
 
-// NewFileChurnMetric creates the file churn metric.
-func NewFileChurnMetric() *FileChurnMetric {
-	return &FileChurnMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "file_churn",
-			MetricDisplayName: "File Churn Statistics",
-			MetricDescription: "Per-file change frequency and line modification statistics. " +
-				"High churn files may indicate instability or active development areas.",
-			MetricType: "list",
-		},
+// Churn score divisor for normalization.
+const churnScoreDivisor = 100.0
+
+// Risk priority values for sorting.
+const (
+	riskPriorityCritical = 0
+	riskPriorityHigh     = 1
+	riskPriorityMedium   = 2
+	riskPriorityDefault  = 3
+)
+
+func riskPriority(level string) int {
+	switch level {
+	case RiskCritical:
+		return riskPriorityCritical
+	case RiskHigh:
+		return riskPriorityHigh
+	case RiskMedium:
+		return riskPriorityMedium
+	default:
+		return riskPriorityDefault
 	}
 }
 
-// Compute calculates file churn statistics.
-func (m *FileChurnMetric) Compute(input *ReportData) []FileChurnData {
+// --- Computed Metrics ---.
+
+// ComputedMetrics holds all computed metric results for the file history analyzer.
+type ComputedMetrics struct {
+	FileChurn        []FileChurnData       `json:"file_churn"        yaml:"file_churn"`
+	FileContributors []FileContributorData `json:"file_contributors" yaml:"file_contributors"`
+	Hotspots         []HotspotData         `json:"hotspots"          yaml:"hotspots"`
+	Aggregate        AggregateData         `json:"aggregate"         yaml:"aggregate"`
+}
+
+const analyzerNameFileHistory = "file_history"
+
+// AnalyzerName returns the analyzer identifier.
+func (m *ComputedMetrics) AnalyzerName() string {
+	return analyzerNameFileHistory
+}
+
+// ToJSON returns the metrics in JSON-serializable format.
+func (m *ComputedMetrics) ToJSON() any {
+	return m
+}
+
+// ToYAML returns the metrics in YAML-serializable format.
+func (m *ComputedMetrics) ToYAML() any {
+	return m
+}
+
+// ComputeAllMetrics runs all file history metrics and returns the results.
+func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+	input, err := ParseReportData(report)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ComputedMetrics{
+		FileChurn:        computeFileChurn(input),
+		FileContributors: computeFileContributors(input),
+		Hotspots:         computeHotspots(input),
+		Aggregate:        computeAggregate(input),
+	}, nil
+}
+
+func computeFileChurn(input *ReportData) []FileChurnData {
 	result := make([]FileChurnData, 0, len(input.Files))
 
 	for path, fh := range input.Files {
@@ -121,26 +180,7 @@ func (m *FileChurnMetric) Compute(input *ReportData) []FileChurnData {
 	return result
 }
 
-// FileContributorMetric computes per-file contributor breakdown.
-type FileContributorMetric struct {
-	metrics.MetricMeta
-}
-
-// NewFileContributorMetric creates the file contributor metric.
-func NewFileContributorMetric() *FileContributorMetric {
-	return &FileContributorMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "file_contributors",
-			MetricDisplayName: "File Contributor Breakdown",
-			MetricDescription: "Per-file breakdown of which developers contributed and their line statistics. " +
-				"Useful for identifying file ownership and knowledge distribution.",
-			MetricType: "list",
-		},
-	}
-}
-
-// Compute calculates file contributor statistics.
-func (m *FileContributorMetric) Compute(input *ReportData) []FileContributorData {
+func computeFileContributors(input *ReportData) []FileContributorData {
 	result := make([]FileContributorData, 0, len(input.Files))
 
 	for path, fh := range input.Files {
@@ -165,52 +205,7 @@ func (m *FileContributorMetric) Compute(input *ReportData) []FileContributorData
 	return result
 }
 
-// HotspotMetric identifies high-churn files.
-type HotspotMetric struct {
-	metrics.MetricMeta
-}
-
-// NewHotspotMetric creates the hotspot metric.
-func NewHotspotMetric() *HotspotMetric {
-	return &HotspotMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "hotspots",
-			MetricDisplayName: "Code Hotspots",
-			MetricDescription: "Identifies files with high change frequency that may indicate instability, " +
-				"complexity, or areas requiring refactoring attention.",
-			MetricType: "risk",
-		},
-	}
-}
-
-// Hotspot risk thresholds.
-const (
-	HotspotThresholdCritical = 50 // commits.
-	HotspotThresholdHigh     = 30
-	HotspotThresholdMedium   = 15
-)
-
-// Risk level constants.
-const (
-	RiskCritical = "CRITICAL"
-	RiskHigh     = "HIGH"
-	RiskMedium   = "MEDIUM"
-	RiskLow      = "LOW"
-)
-
-// Churn score divisor for normalization.
-const churnScoreDivisor = 100.0
-
-// Risk priority values for sorting.
-const (
-	riskPriorityCritical = 0
-	riskPriorityHigh     = 1
-	riskPriorityMedium   = 2
-	riskPriorityDefault  = 3
-)
-
-// Compute calculates hotspot data.
-func (m *HotspotMetric) Compute(input *ReportData) []HotspotData {
+func computeHotspots(input *ReportData) []HotspotData {
 	result := make([]HotspotData, 0, len(input.Files))
 
 	for path, fh := range input.Files {
@@ -258,39 +253,7 @@ func (m *HotspotMetric) Compute(input *ReportData) []HotspotData {
 	return result
 }
 
-func riskPriority(level string) int {
-	switch level {
-	case RiskCritical:
-		return riskPriorityCritical
-	case RiskHigh:
-		return riskPriorityHigh
-	case RiskMedium:
-		return riskPriorityMedium
-	default:
-		return riskPriorityDefault
-	}
-}
-
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "file_history_aggregate",
-			MetricDisplayName: "File History Summary",
-			MetricDescription: "Aggregate statistics across all tracked files including total commits, " +
-				"contributors, and average metrics.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+func computeAggregate(input *ReportData) AggregateData {
 	agg := AggregateData{
 		TotalFiles: len(input.Files),
 	}
@@ -329,58 +292,4 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	agg.AvgContributorsPerFile = float64(totalContributorCount) / float64(agg.TotalFiles)
 
 	return agg
-}
-
-// --- Computed Metrics ---.
-
-// ComputedMetrics holds all computed metric results for the file history analyzer.
-type ComputedMetrics struct {
-	FileChurn        []FileChurnData       `json:"file_churn"        yaml:"file_churn"`
-	FileContributors []FileContributorData `json:"file_contributors" yaml:"file_contributors"`
-	Hotspots         []HotspotData         `json:"hotspots"          yaml:"hotspots"`
-	Aggregate        AggregateData         `json:"aggregate"         yaml:"aggregate"`
-}
-
-const analyzerNameFileHistory = "file_history"
-
-// AnalyzerName returns the analyzer identifier.
-func (m *ComputedMetrics) AnalyzerName() string {
-	return analyzerNameFileHistory
-}
-
-// ToJSON returns the metrics in JSON-serializable format.
-func (m *ComputedMetrics) ToJSON() any {
-	return m
-}
-
-// ToYAML returns the metrics in YAML-serializable format.
-func (m *ComputedMetrics) ToYAML() any {
-	return m
-}
-
-// ComputeAllMetrics runs all file history metrics and returns the results.
-func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
-	input, err := ParseReportData(report)
-	if err != nil {
-		return nil, err
-	}
-
-	churnMetric := NewFileChurnMetric()
-	fileChurn := churnMetric.Compute(input)
-
-	contribMetric := NewFileContributorMetric()
-	fileContributors := contribMetric.Compute(input)
-
-	hotspotMetric := NewHotspotMetric()
-	hotspots := hotspotMetric.Compute(input)
-
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
-
-	return &ComputedMetrics{
-		FileChurn:        fileChurn,
-		FileContributors: fileContributors,
-		Hotspots:         hotspots,
-		Aggregate:        aggregate,
-	}, nil
 }

@@ -20,6 +20,18 @@ The imports analyzer extracts **import and dependency information** from source 
 
 ---
 
+## Architecture (History Mode)
+
+The imports history analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` extracts imports from changed files via parallel UAST parsing and returns them as `TC{Data: []ImportEntry}`. Each `ImportEntry` carries a language and import path. The analyzer retains no per-commit state; only the UAST parser is kept as working state.
+2. **Aggregation phase**: An `imports.Aggregator` collects TCs into a 4-level `Map` (author -> language -> import -> tick -> count) using `SpillStore[Map]`. The `AuthorID` and `Tick` from each TC index the entries correctly.
+3. **Serialization phase**: `SerializeTICKs()` merges all tick data back into the full `Map` with metadata (`author_index`, `tick_size`), then delegates to `Serialize()` for JSON, YAML, binary, or HTML plot output.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
 ## What It Measures
 
 ### Static Mode

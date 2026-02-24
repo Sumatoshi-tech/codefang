@@ -25,6 +25,7 @@ func TestValidateUniversalFormat(t *testing.T) {
 		{name: "binary", format: FormatBinary},
 		{name: "bin alias", format: FormatBinAlias},
 		{name: "timeseries", format: FormatTimeSeries},
+		{name: "ndjson", format: FormatNDJSON},
 	}
 
 	for _, testCase := range testCases {

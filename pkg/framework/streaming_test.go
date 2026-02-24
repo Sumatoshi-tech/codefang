@@ -11,96 +11,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 )
 
-func TestDoubleBufferMemoryBudget_HalvesBudget(t *testing.T) {
-	t.Parallel()
-
-	// 2 GiB budget: (2 GiB - 400 MiB overhead) / 2 + 400 MiB = ~1.2 GiB.
-	const (
-		budget   = int64(2 * 1024 * 1024 * 1024)
-		overhead = int64(streaming.BaseOverhead)
-		want     = (budget-overhead)/2 + overhead
-	)
-
-	got := doubleBufferMemoryBudget(budget)
-	if got != want {
-		t.Fatalf("doubleBufferMemoryBudget(%d) = %d, want %d", budget, got, want)
-	}
-}
-
-func TestDoubleBufferMemoryBudget_BelowOverhead(t *testing.T) {
-	t.Parallel()
-
-	// Budget below overhead: returns original budget (no split possible).
-	const budget = int64(streaming.BaseOverhead - 1)
-
-	got := doubleBufferMemoryBudget(budget)
-	if got != budget {
-		t.Fatalf("doubleBufferMemoryBudget(%d) = %d, want %d (unchanged)", budget, got, budget)
-	}
-}
-
-func TestDoubleBufferMemoryBudget_ZeroBudget(t *testing.T) {
-	t.Parallel()
-
-	got := doubleBufferMemoryBudget(0)
-	if got != 0 {
-		t.Fatalf("doubleBufferMemoryBudget(0) = %d, want 0", got)
-	}
-}
-
-func TestCanDoubleBuffer_EnoughBudgetMultipleChunks(t *testing.T) {
-	t.Parallel()
-
-	// 2 GiB budget, 3 chunks: double-buffering is allowed.
-	const (
-		budget = int64(2 * 1024 * 1024 * 1024)
-		chunks = 3
-	)
-
-	if !canDoubleBuffer(budget, chunks) {
-		t.Fatal("canDoubleBuffer should return true for sufficient budget and multiple chunks")
-	}
-}
-
-func TestCanDoubleBuffer_SingleChunk(t *testing.T) {
-	t.Parallel()
-
-	// Even with large budget, single chunk means no double-buffering needed.
-	const (
-		budget = int64(4 * 1024 * 1024 * 1024)
-		chunks = 1
-	)
-
-	if canDoubleBuffer(budget, chunks) {
-		t.Fatal("canDoubleBuffer should return false for single chunk")
-	}
-}
-
-func TestCanDoubleBuffer_ZeroBudget(t *testing.T) {
-	t.Parallel()
-
-	// Zero budget disables double-buffering.
-	const chunks = 3
-
-	if canDoubleBuffer(0, chunks) {
-		t.Fatal("canDoubleBuffer should return false for zero budget")
-	}
-}
-
-func TestCanDoubleBuffer_BudgetBelowThreshold(t *testing.T) {
-	t.Parallel()
-
-	// Budget below minimum threshold: no double-buffering.
-	const (
-		budget = int64(streaming.BaseOverhead + 1)
-		chunks = 3
-	)
-
-	if canDoubleBuffer(budget, chunks) {
-		t.Fatal("canDoubleBuffer should return false when budget is below minimum threshold")
-	}
-}
-
 func TestPrefetchedChunk_CollectsData(t *testing.T) {
 	t.Parallel()
 
@@ -214,9 +124,9 @@ func TestRunner_ProcessChunkFromData(t *testing.T) {
 		t.Fatalf("ProcessChunkFromData: %v", processErr)
 	}
 
-	reports, finalizeErr := runner.Finalize()
+	reports, finalizeErr := runner.FinalizeWithAggregators(context.Background())
 	if finalizeErr != nil {
-		t.Fatalf("Finalize: %v", finalizeErr)
+		t.Fatalf("FinalizeWithAggregators: %v", finalizeErr)
 	}
 
 	if len(reports) != 1 {
@@ -275,71 +185,25 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 		t.Fatalf("Initialize: %v", dbInitErr)
 	}
 
+	ap := streaming.NewAdaptivePlanner(len(commits), 0, 0, 0)
+
 	_, dbErr := processChunksDoubleBuffered(
 		context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)),
 		dbRunner, commits, chunks, nil, nil, nil, repo.Path(), nil, 0,
+		ap, 0,
 	)
 	if dbErr != nil {
 		t.Fatalf("processChunksDoubleBuffered: %v", dbErr)
 	}
 
-	dbReports, dbFinalizeErr := dbRunner.Finalize()
+	dbReports, dbFinalizeErr := dbRunner.FinalizeWithAggregators(context.Background())
 	if dbFinalizeErr != nil {
-		t.Fatalf("Finalize: %v", dbFinalizeErr)
+		t.Fatalf("FinalizeWithAggregators: %v", dbFinalizeErr)
 	}
 
 	// Both should produce one report entry.
 	if len(seqReports) != len(dbReports) {
 		t.Fatalf("report count: seq=%d, db=%d", len(seqReports), len(dbReports))
-	}
-}
-
-func TestPlanChunksWithDoubleBuffer_EnabledForLargeRepo(t *testing.T) {
-	t.Parallel()
-
-	// 2 GiB budget, 10000 commits: with default 500 KiB growth, chunk size caps
-	// at 3000, so 10000 commits produces 4 chunks — enough for double-buffering.
-	const (
-		budget      = int64(2 * 1024 * 1024 * 1024)
-		commitCount = 10000
-	)
-
-	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget, 0, 0)
-	if !enabled {
-		t.Fatal("expected double-buffering to be enabled")
-	}
-
-	if len(chunks) < 2 {
-		t.Fatalf("expected at least 2 chunks, got %d", len(chunks))
-	}
-
-	// Verify all commits are covered.
-	totalCommits := 0
-	for _, ch := range chunks {
-		totalCommits += ch.End - ch.Start
-	}
-
-	if totalCommits != commitCount {
-		t.Fatalf("chunks cover %d commits, want %d", totalCommits, commitCount)
-	}
-}
-
-func TestPlanChunksWithDoubleBuffer_DisabledForSmallRepo(t *testing.T) {
-	t.Parallel()
-
-	// 2 GiB budget, 100 commits: single chunk, no double-buffering.
-	const (
-		budget      = int64(2 * 1024 * 1024 * 1024)
-		commitCount = 100
-	)
-
-	chunks, enabled := planChunksWithDoubleBuffer(commitCount, budget, 0, 0)
-	if enabled {
-		t.Fatal("expected double-buffering to be disabled for single chunk")
-	}
-
-	if len(chunks) != 1 {
-		t.Fatalf("expected 1 chunk, got %d", len(chunks))
 	}
 }
 

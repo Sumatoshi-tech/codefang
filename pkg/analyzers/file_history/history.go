@@ -3,31 +3,29 @@ package filehistory
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
-// Analyzer tracks file-level change history across commits.
-type Analyzer struct {
+// HistoryAnalyzer tracks file-level change history across commits.
+type HistoryAnalyzer struct {
+	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+
 	// Dependencies.
 	Identity  *plumbing.IdentityDetector
 	TreeDiff  *plumbing.TreeDiffAnalyzer
 	LineStats *plumbing.LinesStatsCalculator
 
 	// State.
-	files      map[string]*FileHistory
-	lastCommit analyze.CommitLike
-	merges     map[gitlib.Hash]bool
+	files          map[string]*FileHistory
+	lastCommitHash gitlib.Hash
+	repo           *gitlib.Repository
+	merges         map[gitlib.Hash]bool
 }
 
 // FileHistory holds the change history for a single file.
@@ -36,23 +34,43 @@ type FileHistory struct {
 	Hashes []gitlib.Hash
 }
 
+// NewAnalyzer creates a new file history analyzer.
+func NewAnalyzer() *HistoryAnalyzer {
+	ha := &HistoryAnalyzer{
+		Identity:  &plumbing.IdentityDetector{},
+		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
+		LineStats: &plumbing.LinesStatsCalculator{},
+		files:     make(map[string]*FileHistory),
+		merges:    make(map[gitlib.Hash]bool),
+	}
+
+	ha.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		ComputeMetricsFn: ComputeAllMetrics,
+		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
+			return TicksToReport(ctx, t, ha.repo)
+		},
+	}
+
+	return ha
+}
+
 // Name returns the name of the analyzer.
-func (h *Analyzer) Name() string {
+func (h *HistoryAnalyzer) Name() string {
 	return "FileHistoryAnalysis"
 }
 
 // Flag returns the CLI flag for the analyzer.
-func (h *Analyzer) Flag() string {
+func (h *HistoryAnalyzer) Flag() string {
 	return "file-history"
 }
 
 // Description returns a human-readable description of the analyzer.
-func (h *Analyzer) Description() string {
+func (h *HistoryAnalyzer) Description() string {
 	return h.Descriptor().Description
 }
 
 // Descriptor returns stable analyzer metadata.
-func (h *Analyzer) Descriptor() analyze.Descriptor {
+func (h *HistoryAnalyzer) Descriptor() analyze.Descriptor {
 	return analyze.Descriptor{
 		ID: "history/file-history",
 		Description: "Each file path is mapped to the list of commits which touch that file " +
@@ -62,26 +80,27 @@ func (h *Analyzer) Descriptor() analyze.Descriptor {
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
-func (h *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+func (h *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{}
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (h *Analyzer) Configure(_ map[string]any) error {
+func (h *HistoryAnalyzer) Configure(_ map[string]any) error {
 	return nil
 }
 
 // Initialize prepares the analyzer for processing commits.
-func (h *Analyzer) Initialize(_ *gitlib.Repository) error {
+func (h *HistoryAnalyzer) Initialize(repo *gitlib.Repository) error {
 	h.files = map[string]*FileHistory{}
 	h.merges = map[gitlib.Hash]bool{}
+	h.repo = repo
 
 	return nil
 }
 
 // shouldConsumeCommit checks whether a commit should be processed.
 // It returns false for duplicate merge commits and non-merge context merges.
-func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
+func (h *HistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
 
 	if commit.NumParents() > 1 {
@@ -95,38 +114,116 @@ func (h *Analyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	return !ctx.IsMerge
 }
 
+// buildCommitData produces the TC payload from plumbing state without mutating h.files.
+func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze.CommitLike, author int) *CommitData {
+	data := &CommitData{}
+
+	router := &plumbing.ChangeRouter{
+		OnInsert: func(change *gitlib.Change) error {
+			data.PathActions = append(data.PathActions, PathAction{
+				Path:       change.To.Name,
+				Action:     gitlib.Insert,
+				CommitHash: commit.Hash(),
+			})
+
+			return nil
+		},
+		OnDelete: func(change *gitlib.Change) error {
+			data.PathActions = append(data.PathActions, PathAction{
+				Path:       change.From.Name,
+				Action:     gitlib.Delete,
+				CommitHash: commit.Hash(),
+			})
+
+			return nil
+		},
+		OnModify: func(change *gitlib.Change) error {
+			data.PathActions = append(data.PathActions, PathAction{
+				Path:       change.To.Name,
+				Action:     gitlib.Modify,
+				CommitHash: commit.Hash(),
+			})
+
+			return nil
+		},
+		OnRename: func(from, to string, _ *gitlib.Change) error {
+			data.PathActions = append(data.PathActions, PathAction{
+				FromPath:   from,
+				ToPath:     to,
+				Action:     gitlib.Modify,
+				CommitHash: commit.Hash(),
+			})
+
+			return nil
+		},
+	}
+
+	_ = router.Route(changes) //nolint:errcheck // errors are always nil from our handlers.
+
+	for changeEntry, stats := range h.LineStats.LineStats {
+		data.LineStatUpdates = append(data.LineStatUpdates, LineStatUpdate{
+			Path:     changeEntry.Name,
+			AuthorID: author,
+			Stats:    stats,
+		})
+	}
+
+	return data
+}
+
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
-func (h *Analyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) error {
-	for _, change := range changes {
-		h.processOneFileChange(change, commit)
+func (h *HistoryAnalyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) {
+	router := &plumbing.ChangeRouter{
+		OnInsert: func(change *gitlib.Change) error {
+			h.processAction(change, commit)
+
+			return nil
+		},
+		OnDelete: func(change *gitlib.Change) error {
+			h.processAction(change, commit)
+
+			return nil
+		},
+		OnModify: func(change *gitlib.Change) error {
+			h.processAction(change, commit)
+
+			return nil
+		},
+		OnRename: func(from, to string, _ *gitlib.Change) error {
+			fh := h.getOrCreateFileHistory(from)
+			if oldFH, ok := h.files[from]; ok {
+				delete(h.files, from)
+				h.files[to] = oldFH
+				fh = oldFH
+			}
+
+			fh.Hashes = append(fh.Hashes, commit.Hash())
+
+			return nil
+		},
 	}
 
-	return nil
+	_ = router.Route(changes) //nolint:errcheck // errors are always nil from our handlers.
 }
 
-// processOneFileChange handles a single file change for history tracking.
-func (h *Analyzer) processOneFileChange(change *gitlib.Change, commit analyze.CommitLike) {
-	action := change.Action
-	fh := h.getOrCreateFileHistory(change)
-
-	switch action {
-	case gitlib.Insert:
-		fh.Hashes = []gitlib.Hash{commit.Hash()}
-	case gitlib.Delete:
-		fh.Hashes = append(fh.Hashes, commit.Hash())
-	case gitlib.Modify:
-		fh = h.handleModifyRename(change, fh)
-		fh.Hashes = append(fh.Hashes, commit.Hash())
-	}
-}
-
-// getOrCreateFileHistory retrieves or creates a FileHistory for the given change.
-func (h *Analyzer) getOrCreateFileHistory(change *gitlib.Change) *FileHistory {
+// processAction handles Insert, Delete, and simple Modify actions.
+func (h *HistoryAnalyzer) processAction(change *gitlib.Change, commit analyze.CommitLike) {
 	name := change.To.Name
 	if change.Action == gitlib.Delete {
 		name = change.From.Name
 	}
 
+	fh := h.getOrCreateFileHistory(name)
+
+	if change.Action == gitlib.Insert {
+		fh.Hashes = []gitlib.Hash{commit.Hash()}
+	} else {
+		fh.Hashes = append(fh.Hashes, commit.Hash())
+	}
+}
+
+// getOrCreateFileHistory retrieves or creates a FileHistory for the given name.
+func (h *HistoryAnalyzer) getOrCreateFileHistory(name string) *FileHistory {
 	fh := h.files[name]
 	if fh == nil {
 		fh = &FileHistory{}
@@ -136,22 +233,8 @@ func (h *Analyzer) getOrCreateFileHistory(change *gitlib.Change) *FileHistory {
 	return fh
 }
 
-// handleModifyRename handles the rename portion of a Modify action.
-func (h *Analyzer) handleModifyRename(change *gitlib.Change, fh *FileHistory) *FileHistory {
-	if change.From.Name != change.To.Name {
-		if oldFH, ok := h.files[change.From.Name]; ok {
-			delete(h.files, change.From.Name)
-			h.files[change.To.Name] = oldFH
-
-			return oldFH
-		}
-	}
-
-	return fh
-}
-
 // aggregateLineStats merges line statistics from the current commit into file histories.
-func (h *Analyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats, author int) {
+func (h *HistoryAnalyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pkgplumbing.LineStats, author int) {
 	for changeEntry, stats := range lineStats {
 		file := h.files[changeEntry.Name]
 		if file == nil {
@@ -175,66 +258,36 @@ func (h *Analyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pkgplumbi
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (h *Analyzer) Consume(_ context.Context, ac *analyze.Context) error {
+// Emits a TC with CommitData for the aggregator. Also maintains local state
+// for Fork/Merge parallel path (workers merge state; main uses aggregator).
+func (h *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	if !h.shouldConsumeCommit(ac) {
-		return nil
+		return analyze.TC{}, nil
 	}
 
-	h.lastCommit = ac.Commit
-
-	err := h.processFileChanges(h.TreeDiff.Changes, ac.Commit)
-	if err != nil {
-		return err
+	if ac.Commit != nil {
+		h.lastCommitHash = ac.Commit.Hash()
 	}
 
+	h.processFileChanges(h.TreeDiff.Changes, ac.Commit)
 	h.aggregateLineStats(h.LineStats.LineStats, h.Identity.AuthorID)
 
-	return nil
-}
+	data := h.buildCommitData(h.TreeDiff.Changes, ac.Commit, h.Identity.AuthorID)
 
-// Finalize completes the analysis and returns the result.
-func (h *Analyzer) Finalize() (analyze.Report, error) {
-	files := map[string]FileHistory{}
-
-	if h.lastCommit != nil {
-		err := h.collectFinalFiles(files)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return analyze.Report{"Files": files}, nil
-}
-
-// collectFinalFiles populates the files map with histories of files present in the last commit.
-func (h *Analyzer) collectFinalFiles(files map[string]FileHistory) error {
-	fileIter, err := h.lastCommit.Files()
-	if err != nil {
-		return fmt.Errorf("listing files: %w", err)
-	}
-
-	iterErr := fileIter.ForEach(func(file *gitlib.File) error {
-		if fh := h.files[file.Name]; fh != nil {
-			files[file.Name] = *fh
-		}
-
-		return nil
-	})
-	if iterErr != nil {
-		return fmt.Errorf("iterating files: %w", iterErr)
-	}
-
-	return nil
+	return analyze.TC{
+		CommitHash: ac.Commit.Hash(),
+		Data:       data,
+	}, nil
 }
 
 // SequentialOnly returns false because file history analysis can be parallelized.
-func (h *Analyzer) SequentialOnly() bool { return false }
+func (h *HistoryAnalyzer) SequentialOnly() bool { return false }
 
 // CPUHeavy returns false because file history tracking is lightweight bookkeeping.
-func (h *Analyzer) CPUHeavy() bool { return false }
+func (h *HistoryAnalyzer) CPUHeavy() bool { return false }
 
 // SnapshotPlumbing captures the current plumbing output state for one commit.
-func (h *Analyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
+func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{
 		Changes:   h.TreeDiff.Changes,
 		LineStats: h.LineStats.LineStats,
@@ -243,7 +296,7 @@ func (h *Analyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 }
 
 // ApplySnapshot restores plumbing state from a previously captured snapshot.
-func (h *Analyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
+func (h *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 	snapshot, ok := snap.(plumbing.Snapshot)
 	if !ok {
 		return
@@ -255,32 +308,29 @@ func (h *Analyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 }
 
 // ReleaseSnapshot releases any resources owned by the snapshot.
-func (h *Analyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+func (h *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
 
 // Fork creates a copy of the analyzer for parallel processing.
 // Each fork gets its own independent copies of mutable state.
-func (h *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
+func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
-		clone := &Analyzer{
-			Identity:  &plumbing.IdentityDetector{},
-			TreeDiff:  &plumbing.TreeDiffAnalyzer{},
-			LineStats: &plumbing.LinesStatsCalculator{},
-		}
-		// Initialize independent state for each fork.
-		clone.files = make(map[string]*FileHistory)
-		clone.merges = make(map[gitlib.Hash]bool)
-
+		clone := NewAnalyzer()
 		res[i] = clone
 	}
 
 	return res
 }
 
+// Analyzer returns a new file-history analyzer.
+func Analyzer() *HistoryAnalyzer {
+	return NewAnalyzer()
+}
+
 // Merge combines results from forked analyzer branches.
-func (h *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
+func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 	for _, branch := range branches {
-		other, ok := branch.(*Analyzer)
+		other, ok := branch.(*HistoryAnalyzer)
 		if !ok {
 			continue
 		}
@@ -288,15 +338,15 @@ func (h *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
 		h.mergeFiles(other.files)
 		h.mergeMerges(other.merges)
 
-		// Keep the latest lastCommit so Finalize can filter deleted files.
-		if other.lastCommit != nil {
-			h.lastCommit = other.lastCommit
+		// Keep the latest lastCommitHash so Finalize can filter deleted files.
+		if !other.lastCommitHash.IsZero() {
+			h.lastCommitHash = other.lastCommitHash
 		}
 	}
 }
 
 // mergeFiles combines file histories from another analyzer.
-func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
+func (h *HistoryAnalyzer) mergeFiles(other map[string]*FileHistory) {
 	for name, otherFH := range other {
 		if h.files[name] == nil {
 			h.files[name] = &FileHistory{
@@ -327,76 +377,66 @@ func (h *Analyzer) mergeFiles(other map[string]*FileHistory) {
 }
 
 // mergeMerges combines merge commit tracking from another analyzer.
-func (h *Analyzer) mergeMerges(other map[gitlib.Hash]bool) {
+func (h *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
 	for hash := range other {
 		h.merges[hash] = true
 	}
 }
 
 // Serialize writes the analysis result to the given writer.
-func (h *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	switch format {
-	case analyze.FormatJSON:
-		return h.serializeJSON(result, writer)
-	case analyze.FormatYAML:
-		return h.serializeYAML(result, writer)
-	case analyze.FormatPlot:
+func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
 		return h.generatePlot(result, writer)
-	case analyze.FormatBinary:
-		return h.serializeBinary(result, writer)
-	default:
-		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
 	}
+
+	if h.BaseHistoryAnalyzer != nil {
+		return h.BaseHistoryAnalyzer.Serialize(result, format, writer)
+	}
+
+	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		ComputeMetricsFn: ComputeAllMetrics,
+	}).Serialize(result, format, writer)
 }
 
-func (h *Analyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
+// SerializeTICKs delegates to BaseHistoryAnalyzer for JSON/YAML/binary; FormatPlot uses ReportFromTICKs and generatePlot.
+func (h *HistoryAnalyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
+	if format == analyze.FormatPlot {
+		report, err := h.ReportFromTICKs(context.Background(), ticks)
+		if err != nil {
+			return err
+		}
+
+		return h.generatePlot(report, writer)
 	}
 
-	err = json.NewEncoder(writer).Encode(metrics)
-	if err != nil {
-		return fmt.Errorf("json encode: %w", err)
+	if h.BaseHistoryAnalyzer != nil {
+		return h.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
 	}
 
-	return nil
-}
+	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		ComputeMetricsFn: ComputeAllMetrics,
+		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
+			report, err := h.ReportFromTICKs(ctx, t)
+			if err != nil {
+				return nil
+			}
 
-func (h *Analyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
-	}
-
-	data, err := yaml.Marshal(metrics)
-	if err != nil {
-		return fmt.Errorf("yaml marshal: %w", err)
-	}
-
-	_, err = writer.Write(data)
-	if err != nil {
-		return fmt.Errorf("yaml write: %w", err)
-	}
-
-	return nil
-}
-
-func (h *Analyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
-	}
-
-	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
-	if err != nil {
-		return fmt.Errorf("binary encode: %w", err)
-	}
-
-	return nil
+			return report
+		},
+	}).SerializeTICKs(ticks, format, writer)
 }
 
 // FormatReport writes the formatted analysis report to the given writer.
-func (h *Analyzer) FormatReport(report analyze.Report, writer io.Writer) error {
+func (h *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
 	return h.Serialize(report, analyze.FormatYAML, writer)
+}
+
+// NewAggregator creates an aggregator for this analyzer.
+func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
+	return NewAggregator(opts)
+}
+
+// ReportFromTICKs converts aggregated TICKs into a Report.
+func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
+	return TicksToReport(ctx, ticks, h.repo), nil
 }

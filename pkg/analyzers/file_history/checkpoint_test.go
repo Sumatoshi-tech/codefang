@@ -15,7 +15,7 @@ func TestSaveCheckpoint_CreatesFile(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	err := h.SaveCheckpoint(dir)
@@ -31,7 +31,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 
 	dir := t.TempDir()
 
-	original := &Analyzer{}
+	original := NewAnalyzer()
 	require.NoError(t, original.Initialize(nil))
 	original.files["test.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 10, Removed: 5}},
@@ -41,7 +41,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 
 	require.NoError(t, original.SaveCheckpoint(dir))
 
-	restored := &Analyzer{}
+	restored := NewAnalyzer()
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
 	require.Len(t, restored.files, 1)
@@ -53,7 +53,7 @@ func TestLoadCheckpoint_RestoresState(t *testing.T) {
 func TestCheckpointSize_ReturnsPositiveValue(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 	h.files["test.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 10}},
@@ -68,7 +68,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 
 	dir := t.TempDir()
 
-	original := &Analyzer{}
+	original := NewAnalyzer()
 	require.NoError(t, original.Initialize(nil))
 
 	// Add multiple files with various state.
@@ -91,7 +91,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 
 	require.NoError(t, original.SaveCheckpoint(dir))
 
-	restored := &Analyzer{}
+	restored := NewAnalyzer()
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
 	// Verify files.

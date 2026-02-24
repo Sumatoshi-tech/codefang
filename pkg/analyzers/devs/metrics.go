@@ -2,54 +2,22 @@ package devs
 
 import (
 	"errors"
+	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
 
 // Error definitions for the devs analyzer.
 var (
-	ErrInvalidTicks      = errors.New("devs: invalid Ticks in report")
 	ErrInvalidPeopleDict = errors.New("devs: invalid ReversedPeopleDict in report")
 )
-
-// RegisterTickExtractor registers the devs analyzer's per-commit extractor
-// with the unified time-series output system.
-func RegisterTickExtractor() {
-	analyze.RegisterTickExtractor("devs", extractCommitTimeSeries)
-}
-
-// extractCommitTimeSeries extracts per-commit dev stats from the report.
-func extractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitData, ok := report["CommitDevData"].(map[string]*CommitDevData)
-	if !ok || len(commitData) == 0 {
-		return nil
-	}
-
-	result := make(map[string]any, len(commitData))
-
-	for hash, cdd := range commitData {
-		entry := map[string]any{
-			"commits":       cdd.Commits,
-			"lines_added":   cdd.Added,
-			"lines_removed": cdd.Removed,
-			"lines_changed": cdd.Changed,
-			"net_change":    cdd.Added - cdd.Removed,
-			"author_id":     cdd.AuthorID,
-		}
-		if len(cdd.Languages) > 0 {
-			entry["languages"] = cdd.Languages
-		}
-
-		result[hash] = entry
-	}
-
-	return result
-}
 
 // --- Input Data Types ---.
 
@@ -118,35 +86,23 @@ func aggregateDevTickFromCommits(hashes []gitlib.Hash, commitDevData map[string]
 
 // ParseTickData extracts TickData from an analyzer report.
 func ParseTickData(report analyze.Report) (*TickData, error) {
-	names, ok := report["ReversedPeopleDict"].([]string)
-	if !ok {
-		return nil, ErrInvalidPeopleDict
+	names, err := parseReversedPeopleDict(report)
+	if err != nil {
+		return nil, err
 	}
 
-	tickSize, ok := report["TickSize"].(time.Duration)
-	if !ok || tickSize == 0 {
-		tickSize = defaultTickHours * time.Hour
-	}
-
-	// Prefer per-commit aggregation (canonical path).
-	commitDevData, hasCommit := report["CommitDevData"].(map[string]*CommitDevData)
-	commitsByTick, hasTicks := report["CommitsByTick"].(map[int][]gitlib.Hash)
+	tickSize := parseTickSize(report)
+	commitDevData, _ := parseCommitDevData(report)
+	commitsByTick, _ := parseCommitsByTick(report)
 
 	var ticks map[int]map[int]*DevTick
 
-	if hasCommit && hasTicks && len(commitDevData) > 0 {
+	if len(commitDevData) > 0 && len(commitsByTick) > 0 {
 		ticks = AggregateCommitsToTicks(commitDevData, commitsByTick)
 	}
 
-	// Fall back to pre-aggregated per-tick data (backward compat).
-	if len(ticks) == 0 {
-		var tickOK bool
-
-		ticks, tickOK = report["Ticks"].(map[int]map[int]*DevTick)
-
-		if !tickOK {
-			return nil, ErrInvalidTicks
-		}
+	if ticks == nil {
+		ticks = make(map[int]map[int]*DevTick)
 	}
 
 	return &TickData{
@@ -154,6 +110,159 @@ func ParseTickData(report analyze.Report) (*TickData, error) {
 		Names:    names,
 		TickSize: tickSize,
 	}, nil
+}
+
+func parseReversedPeopleDict(report analyze.Report) ([]string, error) {
+	v, ok := report["ReversedPeopleDict"]
+	if !ok {
+		return nil, ErrInvalidPeopleDict
+	}
+
+	if s, isStrSlice := v.([]string); isStrSlice {
+		return s, nil
+	}
+
+	if arr, isAnySlice := v.([]any); isAnySlice {
+		var names []string
+
+		for _, x := range arr {
+			if str, isStr := x.(string); isStr {
+				names = append(names, str)
+			}
+		}
+
+		return names, nil
+	}
+
+	return nil, ErrInvalidPeopleDict
+}
+
+func parseTickSize(report analyze.Report) time.Duration {
+	if v, ok := report["TickSize"]; ok {
+		switch ts := v.(type) {
+		case time.Duration:
+			if ts > 0 {
+				return ts
+			}
+		case float64:
+			if ts > 0 {
+				return time.Duration(ts)
+			}
+		case int:
+			if ts > 0 {
+				return time.Duration(ts)
+			}
+		}
+	}
+
+	return defaultTickHours * time.Hour
+}
+
+func parseCommitDevData(report analyze.Report) (map[string]*CommitDevData, bool) {
+	v, ok := report["CommitDevData"]
+	if !ok {
+		return nil, false
+	}
+
+	if cdd, isType := v.(map[string]*CommitDevData); isType {
+		return cdd, true
+	}
+
+	if cddMap, isMap := v.(map[string]any); isMap {
+		return buildCommitDevDataFromMap(cddMap), true
+	}
+
+	return nil, false
+}
+
+func buildCommitDevDataFromMap(cddMap map[string]any) map[string]*CommitDevData {
+	res := make(map[string]*CommitDevData)
+
+	for hash, dataAny := range cddMap {
+		if dataMap, isMap := dataAny.(map[string]any); isMap {
+			res[hash] = &CommitDevData{
+				Commits:   intVal(dataMap["commits"]),
+				Added:     intVal(dataMap["lines_added"]),
+				Removed:   intVal(dataMap["lines_removed"]),
+				Changed:   intVal(dataMap["lines_changed"]),
+				AuthorID:  intVal(dataMap["author_id"]),
+				Languages: parseLanguages(dataMap["languages"]),
+			}
+		}
+	}
+
+	return res
+}
+
+func intVal(v any) int {
+	switch val := v.(type) {
+	case float64:
+		return int(val)
+	case int:
+		return val
+	}
+
+	return 0
+}
+
+func parseLanguages(v any) map[string]pkgplumbing.LineStats {
+	res := make(map[string]pkgplumbing.LineStats)
+
+	langsAny, isMap := v.(map[string]any)
+	if !isMap {
+		return res
+	}
+
+	for lang, statsAny := range langsAny {
+		statsMap, okMap := statsAny.(map[string]any)
+		if okMap {
+			res[lang] = pkgplumbing.LineStats{
+				Added:   intVal(statsMap["added"]),
+				Removed: intVal(statsMap["removed"]),
+				Changed: intVal(statsMap["changed"]),
+			}
+		}
+	}
+
+	return res
+}
+
+func parseCommitsByTick(report analyze.Report) (map[int][]gitlib.Hash, bool) {
+	v, ok := report["CommitsByTick"]
+	if !ok {
+		return nil, false
+	}
+
+	if cbt, isType := v.(map[int][]gitlib.Hash); isType {
+		return cbt, true
+	}
+
+	if cbtMap, isMap := v.(map[string]any); isMap {
+		return buildCommitsByTickFromMap(cbtMap), true
+	}
+
+	return nil, false
+}
+
+func buildCommitsByTickFromMap(cbtMap map[string]any) map[int][]gitlib.Hash {
+	res := make(map[int][]gitlib.Hash)
+
+	for kStr, hashesAny := range cbtMap {
+		k, err := strconv.Atoi(kStr)
+		if err != nil {
+			continue
+		}
+
+		if hashesArr, isArr := hashesAny.([]any); isArr {
+			for _, hAny := range hashesArr {
+				if hStr, isStr := hAny.(string); isStr {
+					res[k] = append(res[k], gitlib.NewHash(hStr))
+				}
+			}
+		}
+	}
+
+	return res
 }
 
 // DeveloperData contains computed data for a single developer.
@@ -700,4 +809,28 @@ func riskPriority(level string) int {
 	default:
 		return riskPriorityDefault
 	}
+}
+
+func devName(id int, names []string) string {
+	if id == identity.AuthorMissing {
+		return identity.AuthorMissingName
+	}
+
+	if id >= 0 && id < len(names) {
+		return names[id]
+	}
+
+	return fmt.Sprintf("dev_%d", id)
+}
+
+func sortedKeys(m map[int]map[int]*DevTick) []int {
+	keys := make([]int, 0, len(m))
+
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Ints(keys)
+
+	return keys
 }

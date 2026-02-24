@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -19,11 +18,7 @@ import (
 func TestAnalyzer_Consume(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{
-		Identity:  &plumbing.IdentityDetector{},
-		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
-		LineStats: &plumbing.LinesStatsCalculator{},
-	}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// 1. Insert.
@@ -44,7 +39,8 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"insert",
 	)
-	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit1}))
+	_, consumeErr := h.Consume(context.Background(), &analyze.Context{Commit: commit1})
+	require.NoError(t, consumeErr)
 
 	if len(h.files) != 1 {
 		t.Errorf("expected 1 file, got %d", len(h.files))
@@ -77,7 +73,8 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"modify",
 	)
-	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit2}))
+	_, consumeErr2 := h.Consume(context.Background(), &analyze.Context{Commit: commit2})
+	require.NoError(t, consumeErr2)
 
 	if len(fh.Hashes) != 2 {
 		t.Errorf("expected 2 commits, got %d", len(fh.Hashes))
@@ -104,7 +101,8 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"rename",
 	)
-	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit3}))
+	_, consumeErr3 := h.Consume(context.Background(), &analyze.Context{Commit: commit3})
+	require.NoError(t, consumeErr3)
 
 	if _, ok := h.files["test.txt"]; ok {
 		t.Error("test.txt should be gone")
@@ -135,7 +133,8 @@ func TestAnalyzer_Consume(t *testing.T) {
 		gitlib.Signature{When: time.Now()},
 		"delete",
 	)
-	require.NoError(t, h.Consume(context.Background(), &analyze.Context{Commit: commit4}))
+	_, consumeErr4 := h.Consume(context.Background(), &analyze.Context{Commit: commit4})
+	require.NoError(t, consumeErr4)
 
 	if _, ok := h.files["renamed.txt"]; !ok {
 		t.Error("renamed.txt should still exist in history")
@@ -149,11 +148,7 @@ func TestAnalyzer_Consume(t *testing.T) {
 func TestAnalyzer_Merge(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{
-		Identity:  &plumbing.IdentityDetector{},
-		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
-		LineStats: &plumbing.LinesStatsCalculator{},
-	}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Simulate merge commit.
@@ -166,7 +161,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	)
 
 	// First call should consume.
-	err := h.Consume(context.Background(), &analyze.Context{Commit: commit})
+	_, err := h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume failed: %v", err)
 	}
@@ -176,7 +171,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 	}
 
 	// Second call for same commit should not process again.
-	err = h.Consume(context.Background(), &analyze.Context{Commit: commit})
+	_, err = h.Consume(context.Background(), &analyze.Context{Commit: commit})
 	if err != nil {
 		t.Fatalf("Consume 2 failed: %v", err)
 	}
@@ -185,7 +180,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 func TestAnalyzer_Serialize(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Manually construct report.
@@ -228,7 +223,7 @@ func TestAnalyzer_Serialize(t *testing.T) {
 func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	report := analyze.Report{
@@ -265,7 +260,7 @@ func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	report := analyze.Report{
@@ -298,7 +293,7 @@ func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 func TestAnalyzer_Misc(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	if h.Name() == "" {
 		t.Error("Name empty")
 	}
@@ -328,7 +323,7 @@ func TestAnalyzer_Misc(t *testing.T) {
 		t.Error("expected 2 clones")
 	}
 
-	c1, ok := clones[0].(*Analyzer)
+	c1, ok := clones[0].(*HistoryAnalyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
 	// After fix: clones should have empty files (independent state).
@@ -340,15 +335,15 @@ func TestAnalyzer_Misc(t *testing.T) {
 func TestFork_CreatesIndependentCopies(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	clones := h.Fork(2)
 
-	c1, ok := clones[0].(*Analyzer)
+	c1, ok := clones[0].(*HistoryAnalyzer)
 	require.True(t, ok, "type assertion failed for c1")
 
-	c2, ok := clones[1].(*Analyzer)
+	c2, ok := clones[1].(*HistoryAnalyzer)
 	require.True(t, ok, "type assertion failed for c2")
 
 	// Modify c1's state.
@@ -363,14 +358,14 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 func TestMerge_CombinesFiles(t *testing.T) {
 	t.Parallel()
 
-	main := &Analyzer{}
+	main := NewAnalyzer()
 	require.NoError(t, main.Initialize(nil))
 	main.files["a.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 5}},
 		Hashes: []gitlib.Hash{gitlib.NewHash("abc123")},
 	}
 
-	branch := &Analyzer{}
+	branch := NewAnalyzer()
 	require.NoError(t, branch.Initialize(nil))
 	branch.files["b.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{1: {Added: 10}},
@@ -388,13 +383,13 @@ func TestMerge_CombinesFiles(t *testing.T) {
 func TestMerge_CombinesPeopleStats(t *testing.T) {
 	t.Parallel()
 
-	main := &Analyzer{}
+	main := NewAnalyzer()
 	require.NoError(t, main.Initialize(nil))
 	main.files["test.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 5, Removed: 2}},
 	}
 
-	branch := &Analyzer{}
+	branch := NewAnalyzer()
 	require.NoError(t, branch.Initialize(nil))
 	branch.files["test.go"] = &FileHistory{
 		People: map[int]pkgplumbing.LineStats{0: {Added: 3, Removed: 1}},
@@ -411,11 +406,11 @@ func TestMerge_CombinesPeopleStats(t *testing.T) {
 func TestMerge_CombinesMerges(t *testing.T) {
 	t.Parallel()
 
-	main := &Analyzer{}
+	main := NewAnalyzer()
 	require.NoError(t, main.Initialize(nil))
 	main.merges[gitlib.NewHash("abc123")] = true
 
-	branch := &Analyzer{}
+	branch := NewAnalyzer()
 	require.NoError(t, branch.Initialize(nil))
 	branch.merges[gitlib.NewHash("def456")] = true
 

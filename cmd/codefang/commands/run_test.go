@@ -71,12 +71,24 @@ func (s *stubHistoryRunAnalyzer) Descriptor() analyze.Descriptor { return s.desc
 func (s *stubHistoryRunAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return nil
 }
-func (s *stubHistoryRunAnalyzer) Configure(_ map[string]any) error                    { return nil }
-func (s *stubHistoryRunAnalyzer) Initialize(_ *gitlib.Repository) error               { return nil }
-func (s *stubHistoryRunAnalyzer) Consume(_ context.Context, _ *analyze.Context) error { return nil }
-func (s *stubHistoryRunAnalyzer) Finalize() (analyze.Report, error)                   { return analyze.Report{}, nil }
-func (s *stubHistoryRunAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer                { return nil }
-func (s *stubHistoryRunAnalyzer) Merge(_ []analyze.HistoryAnalyzer)                   {}
+func (s *stubHistoryRunAnalyzer) Configure(_ map[string]any) error      { return nil }
+func (s *stubHistoryRunAnalyzer) Initialize(_ *gitlib.Repository) error { return nil }
+func (s *stubHistoryRunAnalyzer) Consume(_ context.Context, _ *analyze.Context) (analyze.TC, error) {
+	return analyze.TC{}, nil
+}
+func (s *stubHistoryRunAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer { return nil }
+func (s *stubHistoryRunAnalyzer) Merge(_ []analyze.HistoryAnalyzer)    {}
+func (s *stubHistoryRunAnalyzer) WorkingStateSize() int64              { return 0 }
+func (s *stubHistoryRunAnalyzer) AvgTCSize() int64                     { return 0 }
+func (s *stubHistoryRunAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+func (s *stubHistoryRunAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+func (s *stubHistoryRunAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
+}
 func (s *stubHistoryRunAnalyzer) Serialize(_ analyze.Report, _ string, _ io.Writer) error {
 	return nil
 }

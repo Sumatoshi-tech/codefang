@@ -57,6 +57,14 @@ func NewFileWithTimeline(timeline Timeline, updaters ...Updater) *File {
 	return &File{timeline: timeline, updaters: updaters}
 }
 
+// NewFileFromSegments creates a File from serialized segments without triggering updaters.
+func NewFileFromSegments(segs []Segment, updaters ...Updater) *File {
+	timeline := &treapTimeline{}
+	timeline.ReconstructFromSegments(segs)
+
+	return &File{timeline: timeline, updaters: updaters}
+}
+
 func (file *File) updateTime(currentTime, previousTime, delta int) {
 	if previousTime&TreeMergeMark == TreeMergeMark {
 		if currentTime == previousTime {
@@ -94,6 +102,16 @@ func (file *File) Delete() {
 // ReplaceUpdaters replaces the file's updaters with a new set.
 func (file *File) ReplaceUpdaters(updaters []Updater) {
 	file.updaters = updaters
+}
+
+// Segments returns the file's timeline segments as a compact slice.
+func (file *File) Segments() []Segment {
+	return file.timeline.Segments()
+}
+
+// ReconstructFromSegments rebuilds the file's timeline from a compact segment slice.
+func (file *File) ReconstructFromSegments(segs []Segment) {
+	file.timeline.ReconstructFromSegments(segs)
 }
 
 // Len returns the number of lines in the file.

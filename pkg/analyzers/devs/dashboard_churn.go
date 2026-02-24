@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
@@ -33,36 +32,26 @@ func createChurnChart(data *DashboardData) *charts.Bar {
 	}
 
 	xLabels := make([]string, len(data.Metrics.Churn))
-	added := make([]opts.BarData, len(data.Metrics.Churn))
-	removed := make([]opts.BarData, len(data.Metrics.Churn))
+	added := make([]plotpage.SeriesData, len(data.Metrics.Churn))
+	removed := make([]plotpage.SeriesData, len(data.Metrics.Churn))
 
 	for i, cm := range data.Metrics.Churn {
 		xLabels[i] = strconv.Itoa(cm.Tick)
-		added[i] = opts.BarData{Value: cm.Added}
-		removed[i] = opts.BarData{Value: -cm.Removed}
+		added[i] = cm.Added
+		removed[i] = -cm.Removed
+	}
+
+	series := []plotpage.BarSeries{
+		{Name: "Added", Data: added, Color: "#22c55e"},
+		{Name: "Removed", Data: removed, Color: "#ef4444"},
 	}
 
 	co := plotpage.DefaultChartOpts()
+	bar := plotpage.BuildBarChart(co, xLabels, series, "Lines")
 
-	bar := charts.NewBar()
+	// Add specific titles to the generated chart.
 	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", churnChartHeight)),
 		charts.WithTitleOpts(co.Title("Code Churn", "Lines added vs removed over time")),
-		charts.WithTooltipOpts(co.Tooltip("axis")),
-		charts.WithLegendOpts(co.Legend()),
-		charts.WithGridOpts(co.GridCompact()),
-		charts.WithDataZoomOpts(co.DataZoom()...),
-		charts.WithXAxisOpts(co.XAxis("Time (tick)")),
-		charts.WithYAxisOpts(co.YAxis("Lines")),
-	)
-
-	bar.SetXAxis(xLabels)
-
-	bar.AddSeries("Added", added,
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: "#22c55e"}),
-	)
-	bar.AddSeries("Removed", removed,
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: "#ef4444"}),
 	)
 
 	return bar

@@ -2,19 +2,14 @@ package imports
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"sort"
 	"sync"
 	"time"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/importmodel"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -26,38 +21,89 @@ const (
 	defaultGoroutines       = 4
 	defaultMaxFileSizeShift = 20
 	defaultTickHours        = 24
+	estimatedImportSize     = 24
 )
 
-// ErrParserNotInitialized indicates that the UAST parser was not initialized.
+// ErrParserNotInitialized indicates the UAST parser is not initialized.
 var ErrParserNotInitialized = errors.New("parser not initialized")
 
-// ErrUnsupportedLanguage indicates that the language is not supported for import extraction.
+// ErrUnsupportedLanguage indicates the language is not supported.
 var ErrUnsupportedLanguage = errors.New("unsupported language")
 
-// ErrInvalidImportsMap indicates a type assertion failure for the imports map.
-var ErrInvalidImportsMap = errors.New("expected Map for imports")
-
-// ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
-var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
-
-// ErrInvalidTickSize indicates a type assertion failure for tickSize.
-var ErrInvalidTickSize = errors.New("expected time.Duration for tickSize")
-
 // Map maps file paths to their import lists.
+// author -> lang -> import -> tick -> count.
 type Map = map[int]map[string]map[string]map[int]int64
+
+// ImportEntry represents a single import extracted from a commit.
+// It carries the language and import path for aggregation.
+type ImportEntry struct {
+	Lang   string
+	Import string
+}
+
+// TickData is the per-tick aggregated payload stored in analyze.TICK.Data.
+// It holds the accumulated 4-level imports map for the tick.
+type TickData struct {
+	Imports Map
+}
+
+// tickAccumulator holds the in-memory state during aggregation for a single tick.
+type tickAccumulator struct {
+	imports Map
+}
 
 // HistoryAnalyzer tracks import usage across commit history.
 type HistoryAnalyzer struct {
+	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	BlobCache          *plumbing.BlobCacheAnalyzer
 	Identity           *plumbing.IdentityDetector
 	Ticks              *plumbing.TicksSinceStart
-	imports            Map
 	parser             *uast.Parser
 	reversedPeopleDict []string
 	TickSize           time.Duration
 	Goroutines         int
 	MaxFileSize        int
+}
+
+// NewHistoryAnalyzer creates a new HistoryAnalyzer.
+func NewHistoryAnalyzer() *HistoryAnalyzer {
+	a := &HistoryAnalyzer{
+		Goroutines:  defaultGoroutines,
+		MaxFileSize: 1 << defaultMaxFileSizeShift,
+		TickSize:    defaultTickHours * time.Hour,
+	}
+
+	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+		Desc: analyze.Descriptor{
+			ID:          "history/imports",
+			Description: "Extracts imports from changed files and tracks usage per author.",
+			Mode:        analyze.ModeHistory,
+		},
+		Sequential: false,
+		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
+			if len(report) == 0 {
+				return &ComputedMetrics{}, nil
+			}
+
+			return ComputeAllMetrics(report)
+		},
+		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
+			return analyze.NewGenericAggregator[*tickAccumulator, *TickData](
+				opts,
+				a.extractTC,
+				a.mergeState,
+				a.sizeState,
+				a.buildTick,
+			)
+		},
+		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
+			return ticksToReport(ctx, ticks, a.reversedPeopleDict, a.TickSize)
+		},
+	}
+
+	return a
 }
 
 // Name returns the name of the analyzer.
@@ -68,20 +114,6 @@ func (h *HistoryAnalyzer) Name() string {
 // Flag returns the CLI flag for the analyzer.
 func (h *HistoryAnalyzer) Flag() string {
 	return "imports-per-dev"
-}
-
-// Description returns a human-readable description of the analyzer.
-func (h *HistoryAnalyzer) Description() string {
-	return h.Descriptor().Description
-}
-
-// Descriptor returns stable analyzer metadata.
-func (h *HistoryAnalyzer) Descriptor() analyze.Descriptor {
-	return analyze.Descriptor{
-		ID:          "history/imports",
-		Description: "Whenever a file is changed or added, we extract the imports from it and increment their usage for the commit author.",
-		Mode:        analyze.ModeHistory,
-	}
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
@@ -127,7 +159,6 @@ func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
 
 // Initialize prepares the analyzer for processing commits.
 func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
-	h.imports = Map{}
 	if h.TickSize == 0 {
 		h.TickSize = time.Hour * defaultTickHours
 	}
@@ -255,59 +286,199 @@ func dispatchImportJobs(changes gitlib.Changes, jobs chan<- *gitlib.Change) {
 	close(jobs)
 }
 
-// aggregateImports folds the per-blob import data into the analyzer's
-// cumulative imports map, keyed by author and tick.
-func (h *HistoryAnalyzer) aggregateImports(
-	extractedImports map[gitlib.Hash]importmodel.File,
-	author, tick int,
-) {
-	aimps := h.imports[author]
-	if aimps == nil {
-		aimps = map[string]map[string]map[int]int64{}
-		h.imports[author] = aimps
+// Consume processes a single commit with the provided dependency results.
+func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) (analyze.TC, error) {
+	if h.parser == nil {
+		return analyze.TC{}, ErrParserNotInitialized
 	}
 
-	for _, file := range extractedImports {
-		limps := aimps[file.Lang]
-		if limps == nil {
-			limps = map[string]map[int]int64{}
-			aimps[file.Lang] = limps
-		}
+	extracted := h.extractImportsParallel(ctx, h.TreeDiff.Changes, h.BlobCache.Cache)
 
+	var entries []ImportEntry
+
+	for _, file := range extracted {
 		for _, imp := range file.Imports {
-			timps, exists := limps[imp]
-			if !exists {
-				timps = map[int]int64{}
-				limps[imp] = timps
-			}
-
-			timps[tick]++
+			entries = append(entries, ImportEntry{
+				Lang:   file.Lang,
+				Import: imp,
+			})
 		}
 	}
+
+	tc := analyze.TC{
+		Tick: h.Ticks.Tick,
+	}
+
+	if len(entries) > 0 {
+		tc.Data = map[string]any{
+			"entries":  entries,
+			"authorID": h.Identity.AuthorID,
+		}
+	}
+
+	return tc, nil
 }
 
-// Consume processes a single commit with the provided dependency results.
-func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) error {
-	extracted := h.extractImportsParallel(ctx, h.TreeDiff.Changes, h.BlobCache.Cache)
-	h.aggregateImports(extracted, h.Identity.AuthorID, h.Ticks.Tick)
+// GenericAggregator Delegates.
+
+func (h *HistoryAnalyzer) extractTC(tc analyze.TC, byTick map[int]*tickAccumulator) error {
+	if tc.Data == nil {
+		return nil
+	}
+
+	data, ok := tc.Data.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	entries, ok := data["entries"].([]ImportEntry)
+	if !ok || len(entries) == 0 {
+		return nil
+	}
+
+	authorID, ok := data["authorID"].(int)
+	if !ok {
+		return nil
+	}
+
+	acc, exists := byTick[tc.Tick]
+	if !exists {
+		acc = &tickAccumulator{imports: make(Map)}
+		byTick[tc.Tick] = acc
+	}
+
+	addEntriesToMap(acc.imports, entries, authorID, tc.Tick)
 
 	return nil
 }
 
-// Finalize completes the analysis and returns the result.
-func (h *HistoryAnalyzer) Finalize() (analyze.Report, error) {
-	return analyze.Report{
-		"imports":      h.imports,
-		"author_index": h.reversedPeopleDict,
-		"tick_size":    h.TickSize,
+func (h *HistoryAnalyzer) mergeState(dst, src *tickAccumulator) *tickAccumulator {
+	mergeImportMaps(dst.imports, src.imports)
+
+	return dst
+}
+
+func (h *HistoryAnalyzer) sizeState(acc *tickAccumulator) int64 {
+	size := int64(0)
+
+	for _, langs := range acc.imports {
+		for _, imps := range langs {
+			for _, ticks := range imps {
+				size += int64(len(ticks) * estimatedImportSize)
+			}
+		}
+	}
+
+	return size
+}
+
+func (h *HistoryAnalyzer) buildTick(tick int, acc *tickAccumulator) (analyze.TICK, error) {
+	return analyze.TICK{
+		Tick: tick,
+		Data: &TickData{
+			Imports: acc.imports,
+		},
 	}, nil
 }
 
-// SequentialOnly returns false because imports analysis can be parallelized.
-func (h *HistoryAnalyzer) SequentialOnly() bool { return false }
+// NewAggregator creates an imports Aggregator that collects per-commit entries.
+func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
+	return h.AggregatorFn(opts)
+}
 
-// CPUHeavy returns false because import tracking is lightweight bookkeeping.
-func (h *HistoryAnalyzer) CPUHeavy() bool { return false }
+// ReportFromTICKs converts aggregated TICKs into a Report.
+func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
+	return ticksToReport(ctx, ticks, h.reversedPeopleDict, h.TickSize), nil
+}
+
+// Helper methods.
+
+func mergeImportMaps(dst, src Map) {
+	for auth, srcLangs := range src {
+		dstLangs, ok := dst[auth]
+		if !ok {
+			dstLangs = make(map[string]map[string]map[int]int64)
+			dst[auth] = dstLangs
+		}
+
+		mergeLangImports(dstLangs, srcLangs)
+	}
+}
+
+func mergeLangImports(dstLangs, srcLangs map[string]map[string]map[int]int64) {
+	for lang, srcImps := range srcLangs {
+		dstImps, ok := dstLangs[lang]
+		if !ok {
+			dstImps = make(map[string]map[int]int64)
+			dstLangs[lang] = dstImps
+		}
+
+		mergeTicks(dstImps, srcImps)
+	}
+}
+
+func mergeTicks(dstImps, srcImps map[string]map[int]int64) {
+	for imp, srcTicks := range srcImps {
+		dstTicks, ok := dstImps[imp]
+		if !ok {
+			dstTicks = make(map[int]int64)
+			dstImps[imp] = dstTicks
+		}
+
+		for tick, count := range srcTicks {
+			dstTicks[tick] += count
+		}
+	}
+}
+
+func addEntriesToMap(m Map, entries []ImportEntry, authorID, tick int) {
+	langs, hasAuthor := m[authorID]
+	if !hasAuthor {
+		langs = make(map[string]map[string]map[int]int64)
+		m[authorID] = langs
+	}
+
+	for _, entry := range entries {
+		imps, hasLang := langs[entry.Lang]
+		if !hasLang {
+			imps = make(map[string]map[int]int64)
+			langs[entry.Lang] = imps
+		}
+
+		timps, hasImp := imps[entry.Import]
+		if !hasImp {
+			timps = make(map[int]int64)
+			imps[entry.Import] = timps
+		}
+
+		timps[tick]++
+	}
+}
+
+// ticksToReport converts aggregated TICKs into the analyze.Report format.
+func ticksToReport(
+	_ context.Context,
+	ticks []analyze.TICK,
+	reversedPeopleDict []string,
+	tickSize time.Duration,
+) analyze.Report {
+	merged := Map{}
+
+	for _, tick := range ticks {
+		td, ok := tick.Data.(*TickData)
+		if !ok || td == nil {
+			continue
+		}
+
+		mergeImportMaps(merged, td.Imports)
+	}
+
+	return analyze.Report{
+		"imports":      merged,
+		"author_index": reversedPeopleDict,
+		"tick_size":    tickSize,
+	}
+}
 
 // SnapshotPlumbing captures the current plumbing output state for one commit.
 func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
@@ -341,18 +512,17 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	forks := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
-			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
-			BlobCache:          &plumbing.BlobCacheAnalyzer{},
-			Identity:           &plumbing.IdentityDetector{},
-			Ticks:              &plumbing.TicksSinceStart{},
-			reversedPeopleDict: h.reversedPeopleDict,
-			TickSize:           h.TickSize,
-			Goroutines:         h.Goroutines,
-			MaxFileSize:        h.MaxFileSize,
-			parser:             h.parser, // Parser is thread-safe for reads.
+			BaseHistoryAnalyzer: h.BaseHistoryAnalyzer,
+			TreeDiff:            &plumbing.TreeDiffAnalyzer{},
+			BlobCache:           &plumbing.BlobCacheAnalyzer{},
+			Identity:            &plumbing.IdentityDetector{},
+			Ticks:               &plumbing.TicksSinceStart{},
+			reversedPeopleDict:  h.reversedPeopleDict,
+			TickSize:            h.TickSize,
+			Goroutines:          h.Goroutines,
+			MaxFileSize:         h.MaxFileSize,
+			parser:              h.parser, // Parser is thread-safe for reads.
 		}
-		// Initialize independent state for each fork.
-		clone.imports = Map{}
 
 		forks[i] = clone
 	}
@@ -360,132 +530,5 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	return forks
 }
 
-// Merge combines results from forked analyzer branches.
-func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
-	for _, branch := range branches {
-		other, ok := branch.(*HistoryAnalyzer)
-		if !ok {
-			continue
-		}
-
-		h.mergeImports(other.imports)
-	}
-}
-
-// mergeImports combines import data from another analyzer.
-func (h *HistoryAnalyzer) mergeImports(other Map) {
-	for author, otherLangs := range other {
-		h.ensureAuthor(author)
-		h.mergeAuthorImports(author, otherLangs)
-	}
-}
-
-// ensureAuthor ensures the author entry exists in imports map.
-func (h *HistoryAnalyzer) ensureAuthor(author int) {
-	if h.imports[author] == nil {
-		h.imports[author] = make(map[string]map[string]map[int]int64)
-	}
-}
-
-// mergeAuthorImports merges language imports for a specific author.
-func (h *HistoryAnalyzer) mergeAuthorImports(author int, otherLangs map[string]map[string]map[int]int64) {
-	for lang, otherImps := range otherLangs {
-		if h.imports[author][lang] == nil {
-			h.imports[author][lang] = make(map[string]map[int]int64)
-		}
-
-		h.mergeLangImports(author, lang, otherImps)
-	}
-}
-
-// mergeLangImports merges imports for a specific author and language.
-func (h *HistoryAnalyzer) mergeLangImports(author int, lang string, otherImps map[string]map[int]int64) {
-	for imp, otherTicks := range otherImps {
-		if h.imports[author][lang][imp] == nil {
-			h.imports[author][lang][imp] = make(map[int]int64)
-		}
-
-		for tick, count := range otherTicks {
-			h.imports[author][lang][imp][tick] += count
-		}
-	}
-}
-
-// Serialize writes the analysis result to the given writer.
-func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	switch format {
-	case analyze.FormatPlot:
-		return h.generatePlot(result, writer)
-	case analyze.FormatJSON:
-		err := json.NewEncoder(writer).Encode(result)
-		if err != nil {
-			return fmt.Errorf("json encode: %w", err)
-		}
-
-		return nil
-	case analyze.FormatBinary:
-		err := reportutil.EncodeBinaryEnvelope(result, writer)
-		if err != nil {
-			return fmt.Errorf("binary encode: %w", err)
-		}
-
-		return nil
-	case analyze.FormatYAML:
-		return h.serializeYAML(result, writer)
-	default:
-		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
-	}
-}
-
-func (h *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
-	imports, ok := result["imports"].(Map)
-	if !ok {
-		if len(result) == 0 {
-			return nil
-		}
-
-		return ErrInvalidImportsMap
-	}
-
-	reversedPeopleDict, ok := result["author_index"].([]string)
-	if !ok {
-		return ErrInvalidReversedPeopleDict
-	}
-
-	tickSize, ok := result["tick_size"].(time.Duration)
-	if !ok {
-		return ErrInvalidTickSize
-	}
-
-	devs := make([]int, 0, len(imports))
-	for dev := range imports {
-		devs = append(devs, dev)
-	}
-
-	sort.Ints(devs)
-	fmt.Fprintln(writer, "  tick_size:", int(tickSize.Seconds()))
-	fmt.Fprintln(writer, "  imports:")
-
-	for _, dev := range devs {
-		imps := imports[dev]
-
-		obj, err := json.Marshal(imps)
-		if err != nil {
-			return fmt.Errorf("serialize: %w", err)
-		}
-
-		devName := fmt.Sprintf("dev_%d", dev)
-		if dev >= 0 && dev < len(reversedPeopleDict) {
-			devName = reversedPeopleDict[dev]
-		}
-
-		fmt.Fprintf(writer, "    %s: %s\n", devName, string(obj))
-	}
-
-	return nil
-}
-
-// FormatReport writes the formatted analysis report to the given writer.
-func (h *HistoryAnalyzer) FormatReport(report analyze.Report, writer io.Writer) error {
-	return h.Serialize(report, analyze.FormatYAML, writer)
-}
+// Merge is a no-op since state is managed by the GenericAggregator.
+func (h *HistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer) {}

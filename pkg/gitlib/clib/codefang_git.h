@@ -211,6 +211,15 @@ int cf_batch_diff_blobs(
  */
 void cf_init();
 
+/*
+ * Configure libgit2 global memory limits and glibc malloc arenas.
+ * mwindow_mapped_limit: max bytes of mmap'd pack data (0 = no change).
+ * cache_max_size: max bytes for object cache (0 = no change).
+ * malloc_arena_max: max glibc malloc arenas (0 = no change).
+ * Returns 0 on success.
+ */
+int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int malloc_arena_max);
+
 /* ============================================================================
  * Utility Functions
  * ============================================================================ */

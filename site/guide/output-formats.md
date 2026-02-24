@@ -215,7 +215,8 @@ analyzers** into a single stream keyed by commit. Each entry contains commit
 metadata plus per-analyzer data for that commit.
 
 This format is only meaningful for history analyzers. It requires at least one
-analyzer that has registered a tick extractor.
+analyzer that implements the `CommitTimeSeriesProvider` interface (anomaly,
+devs, quality, sentiment).
 
 ```bash
 codefang run -a history/devs,history/sentiment --format timeseries .

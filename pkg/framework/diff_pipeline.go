@@ -234,7 +234,9 @@ func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob,
 		job.data.FileDiffs = make(map[string]plumbing.FileDiffData)
 
 		// Add cache hits first.
-		maps.Copy(job.data.FileDiffs, job.cacheHits)
+		if len(job.cacheHits) > 0 {
+			maps.Copy(job.data.FileDiffs, job.cacheHits)
+		}
 
 		// Process batched diff response.
 		if job.batchResp != nil && job.batchLen > 0 {

@@ -102,7 +102,7 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 // Consume resets state for the new commit. Parsing is deferred until Changes() is called.
 // Releases previous commit's UAST trees back to the node/positions pools.
 // If the context contains pre-computed UAST changes from the pipeline, they are used directly.
-func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) error {
+func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	// Release previous commit's UAST trees back to pools for reuse.
 	for _, ch := range c.changes {
 		node.ReleaseTree(ch.Before)
@@ -118,7 +118,7 @@ func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) er
 		c.parsed = false
 	}
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 // Changes returns parsed UAST changes, parsing lazily on first call per commit.
@@ -293,11 +293,6 @@ func (c *UASTChangesAnalyzer) TransferChanges() []uast.Change {
 	return ch
 }
 
-// Finalize completes the analysis and returns the result.
-func (c *UASTChangesAnalyzer) Finalize() (analyze.Report, error) {
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (c *UASTChangesAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -324,4 +319,25 @@ func (c *UASTChangesAnalyzer) Serialize(report analyze.Report, format string, wr
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (c *UASTChangesAnalyzer) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (c *UASTChangesAnalyzer) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (c *UASTChangesAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (c *UASTChangesAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (c *UASTChangesAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }

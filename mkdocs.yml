@@ -123,10 +123,13 @@ nav:
           - Developers: analyzers/developers.md
           - Couples: analyzers/couples.md
           - File History: analyzers/file-history.md
+          - Quality: analyzers/quality.md
           - Sentiment: analyzers/sentiment.md
           - Shotness: analyzers/shotness.md
           - Typos: analyzers/typos.md
           - Anomaly Detection: analyzers/anomaly.md
+  - Examples:
+      - Kubernetes Analysis: examples/index.md
   - Architecture:
       - Overview: architecture/overview.md
       - UAST System: architecture/uast.md

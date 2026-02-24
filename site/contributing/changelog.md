@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Double-buffered chunk pipelining** overlapping pipeline prefetch with
   analyzer consumption for improved throughput on multi-chunk workloads.
 - **Checkpointing** with automatic save after each processed chunk and
-  crash recovery via `--resume` flag.
+  crash recovery via `--resume` flag. Checkpoint format v2 preserves
+  aggregator spill state so resumed runs produce identical output.
 - **Configuration system** (`.codefang.yaml`) with file, environment variable,
   and CLI flag support. Merge priority: CLI > env > file > defaults.
 - **Large-scale scanning** support for fleet analysis of thousands of
@@ -52,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Legacy cleanup** (specs/legacy-incomplete-cleanup): Removed all backward-compat fallbacks
+  (quality, anomaly, sentiment, devs ParseReportData); formalized shotness shallow extraction;
+  integrated VADER (GoVader) for real sentiment analysis; fixed stale comments and dead code.
 - **Complete rewrite** from the original `src-d/hercules` project. Modern
   Go 1.24+ codebase with idiomatic patterns, clean architecture, and
   comprehensive test coverage.

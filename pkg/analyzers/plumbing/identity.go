@@ -132,7 +132,7 @@ func (d *IdentityDetector) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (d *IdentityDetector) Consume(_ context.Context, ac *analyze.Context) error {
+func (d *IdentityDetector) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	commit := ac.Commit
 	signature := commit.Author()
 
@@ -153,7 +153,7 @@ func (d *IdentityDetector) Consume(_ context.Context, ac *analyze.Context) error
 
 	d.AuthorID = authorID
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 // lookupExactSignature finds or registers an author using exact signature matching.
@@ -309,31 +309,28 @@ func registerLooseIdentity(dict map[string]int, emails, names map[int][]string, 
 	return size + 1
 }
 
-// Finalize completes the analysis and returns the result.
-func (d *IdentityDetector) Finalize() (analyze.Report, error) {
-	// Build ReversedPeopleDict from incrementally collected data if needed.
-	if !d.dictFinalized && d.incrementalSize > 0 {
-		d.ReversedPeopleDict = make([]string, d.incrementalSize)
-
-		if d.ExactSignatures {
-			// For exact signatures, reverse the dict directly.
-			for key, val := range d.PeopleDict {
-				d.ReversedPeopleDict[val] = key
-			}
-		} else {
-			// For loose matching, build readable names from emails and names.
-			for id := range d.incrementalSize {
-				sort.Strings(d.incrementalNames[id])
-				sort.Strings(d.incrementalEmails[id])
-				d.ReversedPeopleDict[id] = strings.Join(d.incrementalNames[id], "|") +
-					"|" + strings.Join(d.incrementalEmails[id], "|")
-			}
-		}
-
-		d.dictFinalized = true
+// FinalizeDict builds ReversedPeopleDict if it was collected incrementally.
+func (d *IdentityDetector) FinalizeDict() {
+	if d.dictFinalized || d.PeopleDict == nil {
+		return
 	}
 
-	return analyze.Report{}, nil
+	reverseDict := make([]string, d.incrementalSize)
+
+	if d.ExactSignatures {
+		for key, val := range d.PeopleDict {
+			reverseDict[val] = key
+		}
+	} else {
+		for val := range d.incrementalSize {
+			sort.Strings(d.incrementalNames[val])
+			sort.Strings(d.incrementalEmails[val])
+			reverseDict[val] = strings.Join(d.incrementalNames[val], "|") + "|" + strings.Join(d.incrementalEmails[val], "|")
+		}
+	}
+
+	d.ReversedPeopleDict = reverseDict
+	d.dictFinalized = true
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -361,6 +358,25 @@ func (d *IdentityDetector) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (d *IdentityDetector) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (d *IdentityDetector) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (d *IdentityDetector) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator { return nil }
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (d *IdentityDetector) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (d *IdentityDetector) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }
 
 // GetAuthorID returns the author ID of the last processed commit.

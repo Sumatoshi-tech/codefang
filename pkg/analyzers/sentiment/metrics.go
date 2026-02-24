@@ -6,46 +6,12 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/anomaly"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
-
-// mockSentimentValue is a placeholder sentiment score used until
-// real NLP-based sentiment analysis is implemented.
-const mockSentimentValue = 0.5
 
 // RegisterTimeSeriesExtractor registers the sentiment analyzer's time series
 // extractor with the anomaly package for cross-analyzer anomaly detection.
 func RegisterTimeSeriesExtractor() {
 	anomaly.RegisterTimeSeriesExtractor("sentiment", extractTimeSeries)
-}
-
-// RegisterTickExtractor registers the sentiment analyzer's per-commit extractor
-// with the unified time-series output system.
-func RegisterTickExtractor() {
-	analyze.RegisterTickExtractor("sentiment", extractCommitTimeSeries)
-}
-
-// extractCommitTimeSeries extracts per-commit sentiment data from the report.
-func extractCommitTimeSeries(report analyze.Report) map[string]any {
-	commentsByCommit, ok := report["comments_by_commit"].(map[string][]string)
-	if !ok || len(commentsByCommit) == 0 {
-		return nil
-	}
-
-	result := make(map[string]any, len(commentsByCommit))
-
-	for hash, comments := range commentsByCommit {
-		entry := map[string]any{
-			"comment_count": len(comments),
-		}
-		if len(comments) > 0 {
-			entry["sentiment"] = mockSentimentValue
-		}
-
-		result[hash] = entry
-	}
-
-	return result
 }
 
 func extractTimeSeries(report analyze.Report) (ticks []int, dimensions map[string][]float64) {
@@ -101,9 +67,7 @@ func AggregateCommitsToTicks(
 			cbt[tick] = append(cbt[tick], comments...)
 		}
 
-		if len(cbt[tick]) > 0 {
-			ebt[tick] = mockSentimentValue
-		}
+		ebt[tick] = ComputeSentiment(cbt[tick])
 	}
 
 	return cbt, ebt
@@ -119,8 +83,7 @@ type ReportData struct {
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
-// It prefers per-commit data aggregated to ticks when available,
-// falling back to direct per-tick data for backward compatibility.
+// Expects canonical format: comments_by_commit and commits_by_tick.
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
@@ -128,24 +91,20 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 		data.CommitsByTick = v
 	}
 
-	// Try per-commit path first (canonical).
 	commentsByCommit, hasCommit := report["comments_by_commit"].(map[string][]string)
 
 	if hasCommit && len(commentsByCommit) > 0 && len(data.CommitsByTick) > 0 {
 		data.CommentsByTick, data.EmotionsByTick = AggregateCommitsToTicks(
 			commentsByCommit, data.CommitsByTick,
 		)
-
-		return data, nil
 	}
 
-	// Fall back to direct per-tick data (backward compat).
-	if v, ok := report["emotions_by_tick"].(map[int]float32); ok {
-		data.EmotionsByTick = v
+	if data.EmotionsByTick == nil {
+		data.EmotionsByTick = make(map[int]float32)
 	}
 
-	if v, ok := report["comments_by_tick"].(map[int][]string); ok {
-		data.CommentsByTick = v
+	if data.CommentsByTick == nil {
+		data.CommentsByTick = make(map[int][]string)
 	}
 
 	return data, nil
@@ -191,25 +150,49 @@ type AggregateData struct {
 	NegativeTicks    int     `json:"negative_ticks"    yaml:"negative_ticks"`
 }
 
-// --- Metric Implementations ---.
+// --- Computed Metrics ---.
 
-// TimeSeriesMetric computes sentiment time series.
-type TimeSeriesMetric struct {
-	metrics.MetricMeta
+// ComputedMetrics holds all computed metric results for the sentiment analyzer.
+type ComputedMetrics struct {
+	TimeSeries          []TimeSeriesData         `json:"time_series"           yaml:"time_series"`
+	Trend               TrendData                `json:"trend"                 yaml:"trend"`
+	LowSentimentPeriods []LowSentimentPeriodData `json:"low_sentiment_periods" yaml:"low_sentiment_periods"`
+	Aggregate           AggregateData            `json:"aggregate"             yaml:"aggregate"`
 }
 
-// NewTimeSeriesMetric creates the sentiment time series metric.
-func NewTimeSeriesMetric() *TimeSeriesMetric {
-	return &TimeSeriesMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "sentiment_time_series",
-			MetricDisplayName: "Sentiment Time Series",
-			MetricDescription: "Time series of comment sentiment values per tick. " +
-				"Tracks emotional tone of comments over the project's lifetime.",
-			MetricType: "time_series",
-		},
+const analyzerNameSentiment = "sentiment"
+
+// AnalyzerName returns the name of the analyzer that produced these metrics.
+func (m *ComputedMetrics) AnalyzerName() string {
+	return analyzerNameSentiment
+}
+
+// ToJSON returns the metrics in a format suitable for JSON marshaling.
+func (m *ComputedMetrics) ToJSON() any {
+	return m
+}
+
+// ToYAML returns the metrics in a format suitable for YAML marshaling.
+func (m *ComputedMetrics) ToYAML() any {
+	return m
+}
+
+// ComputeAllMetrics runs all sentiment metrics and returns the results.
+func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+	input, err := ParseReportData(report)
+	if err != nil {
+		return nil, err
 	}
+
+	return &ComputedMetrics{
+		TimeSeries:          computeTimeSeries(input),
+		Trend:               computeTrend(input),
+		LowSentimentPeriods: computeLowSentimentPeriods(input),
+		Aggregate:           computeAggregate(input),
+	}, nil
 }
+
+// --- Metric Implementations ---.
 
 // Sentiment thresholds and constants.
 const (
@@ -237,11 +220,8 @@ func classifyTrendDirection(startSentiment, endSentiment float32) string {
 	}
 }
 
-// Compute calculates sentiment time series data.
-func (m *TimeSeriesMetric) Compute(input *ReportData) []TimeSeriesData {
-	// Get sorted ticks.
+func computeTimeSeries(input *ReportData) []TimeSeriesData {
 	ticks := make([]int, 0, len(input.EmotionsByTick))
-
 	for tick := range input.EmotionsByTick {
 		ticks = append(ticks, tick)
 	}
@@ -288,26 +268,7 @@ func classifySentiment(sentiment float32) string {
 	}
 }
 
-// TrendMetric computes sentiment trend.
-type TrendMetric struct {
-	metrics.MetricMeta
-}
-
-// NewTrendMetric creates the sentiment trend metric.
-func NewTrendMetric() *TrendMetric {
-	return &TrendMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "sentiment_trend",
-			MetricDisplayName: "Sentiment Trend",
-			MetricDescription: "Overall trend of sentiment from start to end of analysis period. " +
-				"Indicates whether comment tone is improving or declining.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates sentiment trend.
-func (m *TrendMetric) Compute(input *ReportData) TrendData {
+func computeTrend(input *ReportData) TrendData {
 	if len(input.EmotionsByTick) == 0 {
 		return TrendData{}
 	}
@@ -343,26 +304,7 @@ func (m *TrendMetric) Compute(input *ReportData) TrendData {
 	}
 }
 
-// LowSentimentPeriodMetric identifies periods with negative sentiment.
-type LowSentimentPeriodMetric struct {
-	metrics.MetricMeta
-}
-
-// NewLowSentimentPeriodMetric creates the low sentiment period metric.
-func NewLowSentimentPeriodMetric() *LowSentimentPeriodMetric {
-	return &LowSentimentPeriodMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "low_sentiment_periods",
-			MetricDisplayName: "Low Sentiment Periods",
-			MetricDescription: "Time periods with negative or low sentiment in comments. " +
-				"May indicate frustration, technical debt, or problematic code areas.",
-			MetricType: "risk",
-		},
-	}
-}
-
-// Compute identifies low sentiment periods.
-func (m *LowSentimentPeriodMetric) Compute(input *ReportData) []LowSentimentPeriodData {
+func computeLowSentimentPeriods(input *ReportData) []LowSentimentPeriodData {
 	var result []LowSentimentPeriodData
 
 	for tick, sentiment := range input.EmotionsByTick {
@@ -395,26 +337,7 @@ func (m *LowSentimentPeriodMetric) Compute(input *ReportData) []LowSentimentPeri
 	return result
 }
 
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "sentiment_aggregate",
-			MetricDisplayName: "Sentiment Summary",
-			MetricDescription: "Aggregate sentiment statistics including average sentiment, " +
-				"and distribution of positive/neutral/negative periods.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+func computeAggregate(input *ReportData) AggregateData {
 	agg := AggregateData{
 		TotalTicks: len(input.EmotionsByTick),
 	}
@@ -449,58 +372,4 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	agg.AverageSentiment = totalSentiment / float32(agg.TotalTicks)
 
 	return agg
-}
-
-// --- Computed Metrics ---.
-
-// ComputedMetrics holds all computed metric results for the sentiment analyzer.
-type ComputedMetrics struct {
-	TimeSeries          []TimeSeriesData         `json:"time_series"           yaml:"time_series"`
-	Trend               TrendData                `json:"trend"                 yaml:"trend"`
-	LowSentimentPeriods []LowSentimentPeriodData `json:"low_sentiment_periods" yaml:"low_sentiment_periods"`
-	Aggregate           AggregateData            `json:"aggregate"             yaml:"aggregate"`
-}
-
-const analyzerNameSentiment = "sentiment"
-
-// AnalyzerName returns the name of the analyzer that produced these metrics.
-func (m *ComputedMetrics) AnalyzerName() string {
-	return analyzerNameSentiment
-}
-
-// ToJSON returns the metrics in a format suitable for JSON marshaling.
-func (m *ComputedMetrics) ToJSON() any {
-	return m
-}
-
-// ToYAML returns the metrics in a format suitable for YAML marshaling.
-func (m *ComputedMetrics) ToYAML() any {
-	return m
-}
-
-// ComputeAllMetrics runs all sentiment metrics and returns the results.
-func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
-	input, err := ParseReportData(report)
-	if err != nil {
-		return nil, err
-	}
-
-	tsMetric := NewTimeSeriesMetric()
-	timeSeries := tsMetric.Compute(input)
-
-	trendMetric := NewTrendMetric()
-	trend := trendMetric.Compute(input)
-
-	lowMetric := NewLowSentimentPeriodMetric()
-	lowPeriods := lowMetric.Compute(input)
-
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
-
-	return &ComputedMetrics{
-		TimeSeries:          timeSeries,
-		Trend:               trend,
-		LowSentimentPeriods: lowPeriods,
-		Aggregate:           aggregate,
-	}, nil
 }

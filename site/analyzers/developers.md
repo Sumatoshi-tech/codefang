@@ -18,6 +18,18 @@ codefang run -a history/devs --anonymize .
 
 ---
 
+## Architecture
+
+The developers analyzer is built on the **BaseHistoryAnalyzer** and **GenericAggregator** foundations:
+
+1. **Consume phase**: `Consume()` extracts author ID, line stats, and language breakdown, delegating state storage to the generic aggregator framework. The analyzer retains minimal internal state.
+2. **Aggregation phase**: The `GenericAggregator` automatically handles per-commit memory spilling and per-tick grouping using pure function hooks (`extractTC`, `mergeState`, `buildTick`), eliminating custom state management boilerplate.
+3. **Metrics & UI phase**: A pure function pipeline (`ComputeAllMetrics`) generates the output structures for JSON, YAML, and text, while declarative chart builders (`plotpage.BuildBarChart`, `plotpage.BuildLineChart`) render the HTML visualizations.
+
+This unified approach significantly reduces boilerplate while maintaining full support for streaming output, decoupled aggregation, and budget-aware memory spilling.
+
+---
+
 ## What It Measures
 
 ### Developer Statistics

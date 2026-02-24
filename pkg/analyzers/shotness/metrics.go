@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // --- Input Data Types ---.
@@ -69,28 +68,19 @@ type AggregateData struct {
 	HotNodes          int     `json:"hot_nodes"            yaml:"hot_nodes"`
 }
 
-// --- Metric Implementations ---.
+// Hotspot thresholds.
+const (
+	HotspotThresholdHigh   = 20
+	HotspotThresholdMedium = 10
 
-// NodeHotnessMetric computes per-node hotness data.
-type NodeHotnessMetric struct {
-	metrics.MetricMeta
-}
+	// Coupling divisor for strength calculation.
+	couplingDivisor = 2
+)
 
-// NewNodeHotnessMetric creates the node hotness metric.
-func NewNodeHotnessMetric() *NodeHotnessMetric {
-	return &NodeHotnessMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "node_hotness",
-			MetricDisplayName: "Node Hotness",
-			MetricDescription: "Per-node change frequency and coupling information. " +
-				"Hot nodes change frequently and may need attention.",
-			MetricType: "list",
-		},
-	}
-}
+// --- Pure Metric Functions ---.
 
-// Compute calculates node hotness data.
-func (m *NodeHotnessMetric) Compute(input *ReportData) []NodeHotnessData {
+// computeNodeHotness calculates node hotness data.
+func computeNodeHotness(input *ReportData) []NodeHotnessData {
 	result := make([]NodeHotnessData, 0, len(input.Nodes))
 
 	// Find max change count for normalization.
@@ -138,26 +128,8 @@ func (m *NodeHotnessMetric) Compute(input *ReportData) []NodeHotnessData {
 	return result
 }
 
-// NodeCouplingMetric computes node co-change coupling.
-type NodeCouplingMetric struct {
-	metrics.MetricMeta
-}
-
-// NewNodeCouplingMetric creates the node coupling metric.
-func NewNodeCouplingMetric() *NodeCouplingMetric {
-	return &NodeCouplingMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "node_coupling",
-			MetricDisplayName: "Node Coupling",
-			MetricDescription: "Shows which code structures (functions, classes) change together. " +
-				"High coupling indicates tight dependencies.",
-			MetricType: "list",
-		},
-	}
-}
-
-// Compute calculates node coupling data.
-func (m *NodeCouplingMetric) Compute(input *ReportData) []NodeCouplingData {
+// computeNodeCoupling calculates node coupling data.
+func computeNodeCoupling(input *ReportData) []NodeCouplingData {
 	var result []NodeCouplingData
 
 	for i, counters := range input.Counters {
@@ -196,33 +168,6 @@ func (m *NodeCouplingMetric) Compute(input *ReportData) []NodeCouplingData {
 	return result
 }
 
-// HotspotNodeMetric identifies frequently changing nodes.
-type HotspotNodeMetric struct {
-	metrics.MetricMeta
-}
-
-// NewHotspotNodeMetric creates the hotspot node metric.
-func NewHotspotNodeMetric() *HotspotNodeMetric {
-	return &HotspotNodeMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "hotspot_nodes",
-			MetricDisplayName: "Hotspot Nodes",
-			MetricDescription: "Code structures with high change frequency that may indicate instability " +
-				"or areas requiring refactoring.",
-			MetricType: "risk",
-		},
-	}
-}
-
-// Hotspot thresholds.
-const (
-	HotspotThresholdHigh   = 20
-	HotspotThresholdMedium = 10
-
-	// Coupling divisor for strength calculation.
-	couplingDivisor = 2
-)
-
 func classifyChangeRisk(changeCount int) string {
 	switch {
 	case changeCount >= HotspotThresholdHigh:
@@ -234,8 +179,8 @@ func classifyChangeRisk(changeCount int) string {
 	}
 }
 
-// Compute identifies hotspot nodes.
-func (m *HotspotNodeMetric) Compute(input *ReportData) []HotspotNodeData {
+// computeHotspotNodes identifies hotspot nodes.
+func computeHotspotNodes(input *ReportData) []HotspotNodeData {
 	var result []HotspotNodeData
 
 	for i, node := range input.Nodes {
@@ -272,26 +217,8 @@ func (m *HotspotNodeMetric) Compute(input *ReportData) []HotspotNodeData {
 	return result
 }
 
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "shotness_aggregate",
-			MetricDisplayName: "Shotness Summary",
-			MetricDescription: "Aggregate statistics for structural hotness analysis including " +
-				"total nodes, changes, and coupling information.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+// computeAggregate calculates aggregate statistics.
+func computeAggregate(input *ReportData) AggregateData {
 	agg := AggregateData{
 		TotalNodes: len(input.Nodes),
 	}
@@ -359,22 +286,10 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	hotnessMetric := NewNodeHotnessMetric()
-	nodeHotness := hotnessMetric.Compute(input)
-
-	couplingMetric := NewNodeCouplingMetric()
-	nodeCoupling := couplingMetric.Compute(input)
-
-	hotspotMetric := NewHotspotNodeMetric()
-	hotspotNodes := hotspotMetric.Compute(input)
-
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
-
 	return &ComputedMetrics{
-		NodeHotness:  nodeHotness,
-		NodeCoupling: nodeCoupling,
-		HotspotNodes: hotspotNodes,
-		Aggregate:    aggregate,
+		NodeHotness:  computeNodeHotness(input),
+		NodeCoupling: computeNodeCoupling(input),
+		HotspotNodes: computeHotspotNodes(input),
+		Aggregate:    computeAggregate(input),
 	}, nil
 }

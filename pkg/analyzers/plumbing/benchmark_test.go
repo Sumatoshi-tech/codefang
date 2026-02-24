@@ -135,7 +135,7 @@ func BenchmarkBlobCache_Consume(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				consumeErr := bc.Consume(context.Background(), analyzeCtx)
+				_, consumeErr := bc.Consume(context.Background(), analyzeCtx)
 				if consumeErr != nil {
 					b.Fatal(consumeErr)
 				}

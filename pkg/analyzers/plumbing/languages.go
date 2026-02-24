@@ -295,12 +295,12 @@ func (l *LanguagesDetectionAnalyzer) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume resets state for the new commit. Detection is deferred until Languages() is called.
-func (l *LanguagesDetectionAnalyzer) Consume(_ context.Context, _ *analyze.Context) error {
+func (l *LanguagesDetectionAnalyzer) Consume(_ context.Context, _ *analyze.Context) (analyze.TC, error) {
 	// Reset state for new commit - detection is lazy.
 	l.languages = nil
 	l.parsed = false
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 // Languages returns detected languages, computing lazily on first call per commit.
@@ -368,11 +368,6 @@ func (l *LanguagesDetectionAnalyzer) SetLanguagesForTest(languages map[gitlib.Ha
 	l.SetLanguages(languages)
 }
 
-// Finalize completes the analysis and returns the result.
-func (l *LanguagesDetectionAnalyzer) Finalize() (analyze.Report, error) {
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (l *LanguagesDetectionAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -398,4 +393,25 @@ func (l *LanguagesDetectionAnalyzer) Serialize(report analyze.Report, format str
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (l *LanguagesDetectionAnalyzer) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (l *LanguagesDetectionAnalyzer) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (l *LanguagesDetectionAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (l *LanguagesDetectionAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (l *LanguagesDetectionAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }

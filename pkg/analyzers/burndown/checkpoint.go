@@ -30,9 +30,6 @@ type checkpointState struct {
 	PathInternerRev []string
 
 	// Global state.
-	GlobalHistory      sparseHistory
-	PeopleHistories    []sparseHistory
-	Matrix             []map[int]int64
 	ReversedPeopleDict []string
 	Tick               int
 	PreviousTick       int
@@ -55,9 +52,6 @@ type pathEntry struct {
 type shardState struct {
 	FileHistoriesByID []sparseHistory
 	ActiveIDs         []PathID
-	GlobalHistory     sparseHistory
-	PeopleHistories   []sparseHistory
-	Matrix            []map[int]int64
 	MergedByID        map[PathID]bool
 	DeletionsByID     map[PathID]bool
 }
@@ -74,13 +68,11 @@ func (b *HistoryAnalyzer) LoadCheckpoint(dir string) error {
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
 func (b *HistoryAnalyzer) CheckpointSize() int64 {
-	// Rough estimate: pathInterner entries + histories.
+	// Rough estimate: pathInterner entries + active file state.
 	size := int64(0)
 	if b.pathInterner != nil {
 		size += int64(len(b.pathInterner.rev) * estimatedBytesPerPath)
 	}
-
-	size += int64(len(b.globalHistory) * estimatedBytesPerHistory)
 
 	for _, sh := range b.shards {
 		size += int64(len(sh.activeIDs) * estimatedBytesPerActive)
@@ -92,9 +84,6 @@ func (b *HistoryAnalyzer) CheckpointSize() int64 {
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
 func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 	state := &checkpointState{
-		GlobalHistory:      cloneSparseHistory(b.globalHistory),
-		PeopleHistories:    clonePeopleHistories(b.peopleHistories),
-		Matrix:             cloneMatrix(b.matrix),
 		ReversedPeopleDict: append([]string{}, b.reversedPeopleDict...),
 		Tick:               b.tick,
 		PreviousTick:       b.previousTick,
@@ -112,7 +101,7 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		}
 	}
 
-	// Save shard state.
+	// Save shard state (file treaps are working state, history maps are in aggregator).
 	state.Shards = make([]shardState, len(b.shards))
 
 	for i, shard := range b.shards {
@@ -120,9 +109,6 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		state.Shards[i] = shardState{
 			FileHistoriesByID: clonePeopleHistories(shard.fileHistoriesByID),
 			ActiveIDs:         append([]PathID{}, shard.activeIDs...),
-			GlobalHistory:     cloneSparseHistory(shard.globalHistory),
-			PeopleHistories:   clonePeopleHistories(shard.peopleHistories),
-			Matrix:            cloneMatrix(shard.matrix),
 			MergedByID:        clonePathIDMap(shard.mergedByID),
 			DeletionsByID:     clonePathIDMap(shard.deletionsByID),
 		}
@@ -134,9 +120,6 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (b *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	b.globalHistory = state.GlobalHistory
-	b.peopleHistories = state.PeopleHistories
-	b.matrix = state.Matrix
 	b.reversedPeopleDict = state.ReversedPeopleDict
 	b.tick = state.Tick
 	b.previousTick = state.PreviousTick
@@ -155,21 +138,18 @@ func (b *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 		b.pathInterner.ids[entry.Path] = entry.ID
 	}
 
-	// Restore shards.
-	for i, shardState := range state.Shards {
+	// Restore shards (working state only — history maps are in the aggregator).
+	for i, ss := range state.Shards {
 		if i >= len(b.shards) {
 			break
 		}
 
 		shard := b.shards[i]
 		shard.mu.Lock()
-		shard.fileHistoriesByID = shardState.FileHistoriesByID
-		shard.activeIDs = shardState.ActiveIDs
-		shard.globalHistory = shardState.GlobalHistory
-		shard.peopleHistories = shardState.PeopleHistories
-		shard.matrix = shardState.Matrix
-		shard.mergedByID = shardState.MergedByID
-		shard.deletionsByID = shardState.DeletionsByID
+		shard.fileHistoriesByID = ss.FileHistoriesByID
+		shard.activeIDs = ss.ActiveIDs
+		shard.mergedByID = ss.MergedByID
+		shard.deletionsByID = ss.DeletionsByID
 		shard.mu.Unlock()
 	}
 }
@@ -200,23 +180,6 @@ func clonePeopleHistories(histories []sparseHistory) []sparseHistory {
 
 	for i, hist := range histories {
 		clone[i] = cloneSparseHistory(hist)
-	}
-
-	return clone
-}
-
-func cloneMatrix(matrix []map[int]int64) []map[int]int64 {
-	if matrix == nil {
-		return nil
-	}
-
-	clone := make([]map[int]int64, len(matrix))
-
-	for i, row := range matrix {
-		if row != nil {
-			clone[i] = make(map[int]int64, len(row))
-			maps.Copy(clone[i], row)
-		}
 	}
 
 	return clone

@@ -5,7 +5,6 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // --- Input Data Types ---.
@@ -59,180 +58,6 @@ type AggregateData struct {
 	AffectedCommits int `json:"affected_commits" yaml:"affected_commits"`
 }
 
-// --- Metric Implementations ---.
-
-// TypoListMetric computes the list of typo fixes.
-type TypoListMetric struct {
-	metrics.MetricMeta
-}
-
-// NewTypoListMetric creates the typo list metric.
-func NewTypoListMetric() *TypoListMetric {
-	return &TypoListMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "typo_list",
-			MetricDisplayName: "Typo Fixes",
-			MetricDescription: "List of identified typo-fix pairs extracted from commit history. " +
-				"Shows the incorrect identifier and its correction.",
-			MetricType: "list",
-		},
-	}
-}
-
-// Compute calculates typo list data.
-func (m *TypoListMetric) Compute(input *ReportData) []TypoData {
-	result := make([]TypoData, 0, len(input.Typos))
-
-	for _, t := range input.Typos {
-		result = append(result, TypoData{
-			Wrong:   t.Wrong,
-			Correct: t.Correct,
-			File:    t.File,
-			Line:    t.Line,
-			Commit:  t.Commit.String(),
-		})
-	}
-
-	return result
-}
-
-// TypoPatternMetric computes common typo patterns.
-type TypoPatternMetric struct {
-	metrics.MetricMeta
-}
-
-// NewTypoPatternMetric creates the typo pattern metric.
-func NewTypoPatternMetric() *TypoPatternMetric {
-	return &TypoPatternMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "typo_patterns",
-			MetricDisplayName: "Typo Patterns",
-			MetricDescription: "Common typo patterns that occur multiple times across the codebase. " +
-				"Can be used to identify systematic naming issues.",
-			MetricType: "list",
-		},
-	}
-}
-
-// Compute calculates typo patterns.
-func (m *TypoPatternMetric) Compute(input *ReportData) []TypoPatternData {
-	patterns := make(map[string]int)
-
-	for _, t := range input.Typos {
-		key := t.Wrong + "|" + t.Correct
-		patterns[key]++
-	}
-
-	var result []TypoPatternData
-
-	for key, freq := range patterns {
-		if freq > 1 { // Only include patterns that occur more than once.
-			// Split key back into wrong|correct.
-			for i := range len(key) {
-				if key[i] == '|' {
-					result = append(result, TypoPatternData{
-						Wrong:     key[:i],
-						Correct:   key[i+1:],
-						Frequency: freq,
-					})
-
-					break
-				}
-			}
-		}
-	}
-
-	// Sort by frequency descending.
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Frequency > result[j].Frequency
-	})
-
-	return result
-}
-
-// FileTypoMetric computes typo statistics per file.
-type FileTypoMetric struct {
-	metrics.MetricMeta
-}
-
-// NewFileTypoMetric creates the file typo metric.
-func NewFileTypoMetric() *FileTypoMetric {
-	return &FileTypoMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "file_typos",
-			MetricDisplayName: "File Typo Statistics",
-			MetricDescription: "Per-file typo fix counts showing which files had the most typo corrections.",
-			MetricType:        "list",
-		},
-	}
-}
-
-// Compute calculates file typo statistics.
-func (m *FileTypoMetric) Compute(input *ReportData) []FileTypoData {
-	fileCounts := make(map[string]int)
-
-	for _, t := range input.Typos {
-		fileCounts[t.File]++
-	}
-
-	result := make([]FileTypoData, 0, len(fileCounts))
-	for file, count := range fileCounts {
-		result = append(result, FileTypoData{
-			File:       file,
-			TypoCount:  count,
-			FixedTypos: count,
-		})
-	}
-
-	// Sort by typo count descending.
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].TypoCount > result[j].TypoCount
-	})
-
-	return result
-}
-
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "typos_aggregate",
-			MetricDisplayName: "Typos Summary",
-			MetricDescription: "Aggregate statistics for typo analysis including total count, " +
-				"unique patterns, and affected files.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
-	agg := AggregateData{
-		TotalTypos: len(input.Typos),
-	}
-
-	patterns := make(map[string]bool)
-	files := make(map[string]bool)
-	commits := make(map[gitlib.Hash]bool)
-
-	for _, t := range input.Typos {
-		patterns[t.Wrong+"|"+t.Correct] = true
-		files[t.File] = true
-		commits[t.Commit] = true
-	}
-
-	agg.UniquePatterns = len(patterns)
-	agg.AffectedFiles = len(files)
-	agg.AffectedCommits = len(commits)
-
-	return agg
-}
-
 // --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the typos analyzer.
@@ -268,22 +93,109 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	listMetric := NewTypoListMetric()
-	typoList := listMetric.Compute(input)
-
-	patternMetric := NewTypoPatternMetric()
-	patterns := patternMetric.Compute(input)
-
-	fileMetric := NewFileTypoMetric()
-	fileTypos := fileMetric.Compute(input)
-
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
-
 	return &ComputedMetrics{
-		TypoList:  typoList,
-		Patterns:  patterns,
-		FileTypos: fileTypos,
-		Aggregate: aggregate,
+		TypoList:  computeTypoList(input),
+		Patterns:  computeTypoPatterns(input),
+		FileTypos: computeFileTypos(input),
+		Aggregate: computeAggregate(input),
 	}, nil
+}
+
+// --- Metric Implementations ---.
+
+func computeTypoList(input *ReportData) []TypoData {
+	result := make([]TypoData, 0, len(input.Typos))
+
+	for _, t := range input.Typos {
+		result = append(result, TypoData{
+			Wrong:   t.Wrong,
+			Correct: t.Correct,
+			File:    t.File,
+			Line:    t.Line,
+			Commit:  t.Commit.String(),
+		})
+	}
+
+	return result
+}
+
+func computeTypoPatterns(input *ReportData) []TypoPatternData {
+	patterns := make(map[string]int)
+
+	for _, t := range input.Typos {
+		key := t.Wrong + "|" + t.Correct
+		patterns[key]++
+	}
+
+	var result []TypoPatternData
+
+	for key, freq := range patterns {
+		if freq > 1 { // Only include patterns that occur more than once.
+			// Split key back into wrong|correct.
+			for i := range len(key) {
+				if key[i] == '|' {
+					result = append(result, TypoPatternData{
+						Wrong:     key[:i],
+						Correct:   key[i+1:],
+						Frequency: freq,
+					})
+
+					break
+				}
+			}
+		}
+	}
+
+	// Sort by frequency descending.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Frequency > result[j].Frequency
+	})
+
+	return result
+}
+
+func computeFileTypos(input *ReportData) []FileTypoData {
+	fileCounts := make(map[string]int)
+
+	for _, t := range input.Typos {
+		fileCounts[t.File]++
+	}
+
+	result := make([]FileTypoData, 0, len(fileCounts))
+	for file, count := range fileCounts {
+		result = append(result, FileTypoData{
+			File:       file,
+			TypoCount:  count,
+			FixedTypos: count,
+		})
+	}
+
+	// Sort by typo count descending.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TypoCount > result[j].TypoCount
+	})
+
+	return result
+}
+
+func computeAggregate(input *ReportData) AggregateData {
+	agg := AggregateData{
+		TotalTypos: len(input.Typos),
+	}
+
+	patterns := make(map[string]bool)
+	files := make(map[string]bool)
+	commits := make(map[gitlib.Hash]bool)
+
+	for _, t := range input.Typos {
+		patterns[t.Wrong+"|"+t.Correct] = true
+		files[t.File] = true
+		commits[t.Commit] = true
+	}
+
+	agg.UniquePatterns = len(patterns)
+	agg.AffectedFiles = len(files)
+	agg.AffectedCommits = len(commits)
+
+	return agg
 }

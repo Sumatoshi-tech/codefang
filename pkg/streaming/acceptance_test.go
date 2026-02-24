@@ -48,7 +48,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 	slices.Reverse(commits)
 
 	// Build analyzer pipeline (same as production).
-	buildPipeline := func() ([]analyze.HistoryAnalyzer, *devs.HistoryAnalyzer) {
+	buildPipeline := func() ([]analyze.HistoryAnalyzer, *devs.Analyzer) {
 		treeDiff := &plumbing.TreeDiffAnalyzer{Repository: libRepo}
 		identity := &plumbing.IdentityDetector{}
 		ticks := &plumbing.TicksSinceStart{}
@@ -57,10 +57,12 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 		lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 		langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
-		leaf := &devs.HistoryAnalyzer{
-			Identity: identity, TreeDiff: treeDiff, Ticks: ticks,
-			Languages: langDetect, LineStats: lineStats,
-		}
+		leaf := devs.NewAnalyzer()
+		leaf.Identity = identity
+		leaf.TreeDiff = treeDiff
+		leaf.Ticks = ticks
+		leaf.Languages = langDetect
+		leaf.LineStats = lineStats
 
 		all := []analyze.HistoryAnalyzer{
 			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, leaf,
@@ -107,8 +109,8 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 		require.NoError(t, processErr, "ProcessChunk %d", i)
 	}
 
-	streamResults, err := runner2.Finalize()
-	require.NoError(t, err, "streaming Finalize")
+	streamResults, err := runner2.FinalizeWithAggregators(context.Background())
+	require.NoError(t, err, "streaming FinalizeWithAggregators")
 	streamYAML := serializeReport(t, streamLeaf, streamResults[streamLeaf])
 
 	// --- Compare ---.

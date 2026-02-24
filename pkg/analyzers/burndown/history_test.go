@@ -15,7 +15,7 @@ import (
 func TestHistoryAnalyzer_Name(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	if b.Name() == "" {
 		t.Error("Name empty")
 	}
@@ -24,7 +24,7 @@ func TestHistoryAnalyzer_Name(t *testing.T) {
 func TestHistoryAnalyzer_Flag(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	if b.Flag() == "" {
 		t.Error("Flag empty")
 	}
@@ -33,7 +33,7 @@ func TestHistoryAnalyzer_Flag(t *testing.T) {
 func TestHistoryAnalyzer_Description(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	if b.Description() == "" {
 		t.Error("Description empty")
 	}
@@ -42,7 +42,7 @@ func TestHistoryAnalyzer_Description(t *testing.T) {
 func TestHistoryAnalyzer_ListConfigurationOptions(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 
 	opts := b.ListConfigurationOptions()
 	if len(opts) == 0 {
@@ -53,7 +53,7 @@ func TestHistoryAnalyzer_ListConfigurationOptions(t *testing.T) {
 func TestHistoryAnalyzer_Configure(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	err := b.Configure(nil)
 	require.NoError(t, err)
 }
@@ -61,11 +61,11 @@ func TestHistoryAnalyzer_Configure(t *testing.T) {
 func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity: 30,
-		Sampling:    30,
-		Goroutines:  4,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = 30
+	b.Sampling = 30
+	b.Goroutines = 4
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 }
@@ -73,7 +73,7 @@ func TestHistoryAnalyzer_Initialize(t *testing.T) {
 func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 
 	report := analyze.Report{
 		"GlobalHistory":      DenseHistory{{100, 200}, {150, 180}},
@@ -106,7 +106,7 @@ func TestHistoryAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
 func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 
 	report := analyze.Report{
 		"GlobalHistory":      DenseHistory{{100, 200}, {150, 180}},
@@ -137,12 +137,12 @@ func TestHistoryAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 func TestHistoryAnalyzer_Fork_CreatesIndependentCopies(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity:  DefaultBurndownGranularity,
-		Sampling:     DefaultBurndownSampling,
-		Goroutines:   4,
-		PeopleNumber: 2,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 4
+	b.PeopleNumber = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
@@ -178,11 +178,11 @@ func TestHistoryAnalyzer_Fork_CreatesIndependentCopies(t *testing.T) {
 func TestHistoryAnalyzer_Fork_IndependentShards(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
@@ -194,26 +194,26 @@ func TestHistoryAnalyzer_Fork_IndependentShards(t *testing.T) {
 	fork2, ok := forks[1].(*HistoryAnalyzer)
 	require.True(t, ok)
 
-	// Modify fork1's shard.
-	fork1.shards[0].globalHistory[1] = map[int]int64{0: 100}
+	// Modify fork1's shard tracking maps — they should be independent.
+	fork1.shards[0].mergedByID[PathID(42)] = true
 
 	// fork2's shard should be unaffected.
-	require.Empty(t, fork2.shards[0].globalHistory,
+	require.Empty(t, fork2.shards[0].mergedByID,
 		"fork2 shard should be independent of fork1")
 
 	// Parent's shard should be unaffected.
-	require.Empty(t, b.shards[0].globalHistory,
+	require.NotContains(t, b.shards[0].mergedByID, PathID(42),
 		"parent shard should be independent of forks")
 }
 
 func TestHistoryAnalyzer_Fork_IndependentRenames(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
@@ -229,77 +229,28 @@ func TestHistoryAnalyzer_Fork_IndependentRenames(t *testing.T) {
 	require.Empty(t, fork1.renames, "fork should start with empty renames")
 }
 
-func TestHistoryAnalyzer_Merge_CombinesShardHistories(t *testing.T) {
-	t.Parallel()
-
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
-	err := b.Initialize(nil)
-	require.NoError(t, err)
-
-	// Create branches with different history data.
-	branch1 := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
-	err = branch1.Initialize(nil)
-	require.NoError(t, err)
-
-	branch1.shards[0].globalHistory[1] = map[int]int64{0: 100}
-	branch1.tick = 5
-
-	branch2 := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
-	err = branch2.Initialize(nil)
-	require.NoError(t, err)
-
-	branch2.shards[0].globalHistory[1] = map[int]int64{0: 50}
-	branch2.shards[1].globalHistory[2] = map[int]int64{1: 200}
-	branch2.tick = 10
-
-	b.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
-
-	// Histories should be combined.
-	require.Equal(t, int64(150), b.shards[0].globalHistory[1][0],
-		"shard 0 history should be summed")
-	require.Equal(t, int64(200), b.shards[1].globalHistory[2][1],
-		"shard 1 history should be merged")
-
-	// tick should be max.
-	require.Equal(t, 10, b.tick, "tick should be max of all branches")
-}
-
 func TestHistoryAnalyzer_Merge_CombinesRenames(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
-	branch1 := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-		renames:     map[string]string{"a.go": "b.go"},
-	}
+	branch1 := NewHistoryAnalyzer()
+	branch1.Granularity = DefaultBurndownGranularity
+	branch1.Sampling = DefaultBurndownSampling
+	branch1.Goroutines = 2
+	branch1.renames = map[string]string{"a.go": "b.go"}
 
-	branch2 := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-		renames:     map[string]string{"c.go": "d.go"},
-	}
+	branch2 := NewHistoryAnalyzer()
+	branch2.Granularity = DefaultBurndownGranularity
+	branch2.Sampling = DefaultBurndownSampling
+	branch2.Goroutines = 2
+	branch2.renames = map[string]string{"c.go": "d.go"}
 
 	b.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
 
@@ -308,41 +259,14 @@ func TestHistoryAnalyzer_Merge_CombinesRenames(t *testing.T) {
 	require.Equal(t, "d.go", b.renames["c.go"])
 }
 
-func TestHistoryAnalyzer_Merge_HandlesEmptyBranches(t *testing.T) {
-	t.Parallel()
-
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
-	err := b.Initialize(nil)
-	require.NoError(t, err)
-
-	b.shards[0].globalHistory[1] = map[int]int64{0: 100}
-
-	emptyBranch := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
-	err = emptyBranch.Initialize(nil)
-	require.NoError(t, err)
-
-	b.Merge([]analyze.HistoryAnalyzer{emptyBranch})
-
-	// Original history should be preserved.
-	require.Equal(t, int64(100), b.shards[0].globalHistory[1][0])
-}
-
 func TestHistoryAnalyzer_Merge_HandlesNilBranches(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity: DefaultBurndownGranularity,
-		Sampling:    DefaultBurndownSampling,
-		Goroutines:  2,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
@@ -350,39 +274,154 @@ func TestHistoryAnalyzer_Merge_HandlesNilBranches(t *testing.T) {
 	b.Merge(nil)
 }
 
-func TestHistoryAnalyzer_ForkMerge_RoundTrip(t *testing.T) {
+func TestHistoryAnalyzer_Merge_TakeMaxTick(t *testing.T) {
 	t.Parallel()
 
-	b := &HistoryAnalyzer{
-		Granularity:  DefaultBurndownGranularity,
-		Sampling:     DefaultBurndownSampling,
-		Goroutines:   2,
-		PeopleNumber: 1,
-	}
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
 	err := b.Initialize(nil)
 	require.NoError(t, err)
 
-	// Fork.
-	forks := b.Fork(2)
+	branch1 := NewHistoryAnalyzer()
+	branch1.Granularity = DefaultBurndownGranularity
+	branch1.Sampling = DefaultBurndownSampling
+	branch1.Goroutines = 2
 
-	fork1, ok := forks[0].(*HistoryAnalyzer)
-	require.True(t, ok)
+	err = branch1.Initialize(nil)
+	require.NoError(t, err)
 
-	fork2, ok := forks[1].(*HistoryAnalyzer)
-	require.True(t, ok)
+	branch1.tick = 5
 
-	// Simulate parallel processing - each fork accumulates different data.
-	fork1.shards[0].globalHistory[1] = map[int]int64{0: 100}
-	fork1.tick = 5
+	branch2 := NewHistoryAnalyzer()
+	branch2.Granularity = DefaultBurndownGranularity
+	branch2.Sampling = DefaultBurndownSampling
+	branch2.Goroutines = 2
 
-	fork2.shards[0].globalHistory[2] = map[int]int64{1: 200}
-	fork2.tick = 10
+	err = branch2.Initialize(nil)
+	require.NoError(t, err)
 
-	// Merge back.
-	b.Merge(forks)
+	branch2.tick = 10
 
-	// Should have data from both forks.
-	require.Equal(t, int64(100), b.shards[0].globalHistory[1][0])
-	require.Equal(t, int64(200), b.shards[0].globalHistory[2][1])
-	require.Equal(t, 10, b.tick)
+	b.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
+
+	require.Equal(t, 10, b.tick, "tick should be max of all branches")
+}
+
+func TestHistoryAnalyzer_NewAggregator_ReturnsAggregator(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.PeopleNumber = 2
+
+	opts := analyze.AggregatorOptions{
+		SpillBudget: 1024 * 1024,
+		SpillDir:    t.TempDir(),
+		Sampling:    b.Sampling,
+		Granularity: b.Granularity,
+	}
+
+	agg := b.NewAggregator(opts)
+	assert.NotNil(t, agg)
+}
+
+// --- Delta Buffer Tests ---.
+
+func TestResetDeltaBuffers_ClearsState(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+	b.PeopleNumber = 1
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	// Populate delta buffers manually.
+	b.shards[0].deltas.globalDeltas = sparseHistory{1: {0: 100}}
+	b.shards[0].deltas.peopleDeltas = map[int]sparseHistory{0: {1: {0: 50}}}
+	b.shards[0].deltas.matrixDeltas = []map[int]int64{{1: 10}}
+	b.shards[0].deltas.fileDeltas = map[PathID]sparseHistory{0: {1: {0: 20}}}
+
+	b.resetDeltaBuffers()
+
+	// All delta buffers should be empty.
+	for i, shard := range b.shards {
+		assert.Empty(t, shard.deltas.globalDeltas, "shard %d globalDeltas", i)
+		assert.Empty(t, shard.deltas.peopleDeltas, "shard %d peopleDeltas", i)
+		assert.Nil(t, shard.deltas.matrixDeltas, "shard %d matrixDeltas", i)
+		assert.Empty(t, shard.deltas.fileDeltas, "shard %d fileDeltas", i)
+	}
+}
+
+func TestCollectDeltas_EmptyShards(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	b.resetDeltaBuffers()
+
+	result := b.collectDeltas()
+
+	assert.NotNil(t, result)
+	assert.Empty(t, result.GlobalDeltas)
+	assert.Nil(t, result.PeopleDeltas)
+	assert.Nil(t, result.MatrixDeltas)
+	assert.Nil(t, result.FileDeltas)
+}
+
+func TestCollectDeltas_MergesAllShards(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+	b.Granularity = DefaultBurndownGranularity
+	b.Sampling = DefaultBurndownSampling
+	b.Goroutines = 2
+	b.PeopleNumber = 1
+	b.TrackFiles = true
+
+	err := b.Initialize(nil)
+	require.NoError(t, err)
+
+	b.resetDeltaBuffers()
+
+	// Add deltas to shard 0.
+	b.shards[0].deltas.globalDeltas[1] = map[int]int64{0: 100}
+	b.shards[0].deltas.peopleDeltas[0] = sparseHistory{1: {0: 50}}
+	b.shards[0].deltas.matrixDeltas = []map[int]int64{{1: 10}}
+	b.shards[0].deltas.fileDeltas[PathID(0)] = sparseHistory{1: {0: 20}}
+
+	// Add deltas to shard 1.
+	b.shards[1].deltas.globalDeltas[1] = map[int]int64{0: 200}
+	b.shards[1].deltas.peopleDeltas[0] = sparseHistory{1: {0: 30}}
+	b.shards[1].deltas.matrixDeltas = []map[int]int64{{1: 5}}
+	b.shards[1].deltas.fileDeltas[PathID(1)] = sparseHistory{1: {0: 15}}
+
+	result := b.collectDeltas()
+
+	// Global deltas should be merged (100 + 200).
+	assert.Equal(t, int64(300), result.GlobalDeltas[1][0])
+
+	// People deltas should be merged (50 + 30).
+	assert.Equal(t, int64(80), result.PeopleDeltas[0][1][0])
+
+	// Matrix deltas should be merged (10 + 5).
+	assert.Equal(t, int64(15), result.MatrixDeltas[0][1])
+
+	// File deltas should have both files.
+	assert.Equal(t, int64(20), result.FileDeltas[PathID(0)][1][0])
+	assert.Equal(t, int64(15), result.FileDeltas[PathID(1)][1][0])
 }

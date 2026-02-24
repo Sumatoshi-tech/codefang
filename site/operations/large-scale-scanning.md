@@ -196,7 +196,7 @@ for details.
 | 10k-100k commits | 4-8 GiB | 10-100 chunks with checkpoints |
 | 100k+ commits | 8 GiB | Many chunks, checkpointing essential |
 
-When unset, the budget defaults to 75% of system memory (capped at 4 GiB).
+When unset, the budget defaults to 50% of system memory (capped at 4 GiB).
 
 ## Incremental Scanning with `--since`
 

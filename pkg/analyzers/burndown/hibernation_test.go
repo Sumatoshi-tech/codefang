@@ -53,35 +53,6 @@ func TestHibernate_ClearsShardTrackingMaps(t *testing.T) {
 	}
 }
 
-func TestHibernate_PreservesHistoryData(t *testing.T) {
-	t.Parallel()
-
-	analyzer := createAnalyzerWithShards(shardCount)
-
-	// Add history data.
-	analyzer.globalHistory[1] = map[int]int64{0: 100}
-	analyzer.shards[0].globalHistory[1] = map[int]int64{0: 50}
-	analyzer.shards[0].activeIDs = []PathID{1, 2, 3}
-
-	err := analyzer.Hibernate()
-	if err != nil {
-		t.Fatalf("Hibernate() failed: %v", err)
-	}
-
-	// Verify history data is preserved.
-	if analyzer.globalHistory[1][0] != 100 {
-		t.Error("globalHistory was modified")
-	}
-
-	if analyzer.shards[0].globalHistory[1][0] != 50 {
-		t.Error("shard globalHistory was modified")
-	}
-
-	if len(analyzer.shards[0].activeIDs) != 3 {
-		t.Error("activeIDs was modified")
-	}
-}
-
 func TestBoot_InitializesNilMaps(t *testing.T) {
 	t.Parallel()
 
@@ -138,9 +109,9 @@ func TestHibernate_Boot_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	analyzer := createAnalyzerWithShards(shardCount)
+	defer analyzer.CleanupSpills()
 
-	// Setup: add history and tracking data.
-	analyzer.globalHistory[1] = map[int]int64{0: 100}
+	// Setup: add tracking data and active IDs.
 	analyzer.shards[0].activeIDs = []PathID{1, 2, 3}
 	analyzer.shards[0].mergedByID[PathID(1)] = true
 
@@ -156,11 +127,7 @@ func TestHibernate_Boot_RoundTrip(t *testing.T) {
 		t.Fatalf("Boot() failed: %v", err)
 	}
 
-	// Verify history survived.
-	if analyzer.globalHistory[1][0] != 100 {
-		t.Error("globalHistory not preserved after round trip")
-	}
-
+	// activeIDs must survive (files are live objects).
 	if len(analyzer.shards[0].activeIDs) != 3 {
 		t.Error("activeIDs not preserved after round trip")
 	}
@@ -180,97 +147,193 @@ func createAnalyzerWithShards(numShards int) *HistoryAnalyzer {
 			filesByID:         make([]*burndown.File, 0),
 			fileHistoriesByID: make([]sparseHistory, 0),
 			activeIDs:         make([]PathID, 0),
-			globalHistory:     make(sparseHistory),
-			peopleHistories:   make([]sparseHistory, 0),
-			matrix:            make([]map[int]int64, 0),
 			mergedByID:        make(map[PathID]bool),
 			deletionsByID:     make(map[PathID]bool),
 		}
 	}
 
-	return &HistoryAnalyzer{
-		shards:        shards,
-		globalHistory: make(sparseHistory),
-		pathInterner:  NewPathInterner(),
-	}
+	analyzer := NewHistoryAnalyzer()
+	analyzer.shards = shards
+	analyzer.shardSpills = make([]shardSpillState, numShards)
+	analyzer.pathInterner = NewPathInterner()
+
+	return analyzer
 }
 
-func TestHibernate_CompactsFileTimelines(t *testing.T) {
+func TestHibernate_SpillsFilesToDisk(t *testing.T) {
 	t.Parallel()
 
 	analyzer := createAnalyzerWithShards(shardCount)
+	defer analyzer.CleanupSpills()
 
-	// Create a file with multiple segments that can be compacted.
-	file := burndown.NewFile(1, 100) // tick 1, 100 lines.
-
-	// Make some updates that create segments.
-	file.Update(1, 50, 10, 0) // Insert 10 lines at position 50, same tick.
-	file.Update(1, 60, 5, 0)  // Insert 5 more lines, same tick.
-	file.Update(2, 0, 0, 10)  // Delete 10 lines at start, tick 2.
-	file.Update(2, 10, 20, 0) // Insert 20 lines, tick 2.
-
-	nodesBefore := file.Nodes()
-
-	// Add file to shard.
+	// Create files with known state.
 	id := analyzer.pathInterner.Intern("test.go")
-	analyzer.shards[0].filesByID = append(analyzer.shards[0].filesByID, file)
-	analyzer.shards[0].activeIDs = append(analyzer.shards[0].activeIDs, id)
+	analyzer.ensureCapacity(analyzer.shards[0], id)
 
-	// Ensure capacity.
-	for len(analyzer.shards[0].filesByID) <= int(id) {
-		analyzer.shards[0].filesByID = append(analyzer.shards[0].filesByID, nil)
-	}
-
+	file := burndown.NewFile(1, 100)
+	file.Update(2, 50, 20, 10) // Modify to create multiple segments.
 	analyzer.shards[0].filesByID[id] = file
+	analyzer.shards[0].activeIDs = append(analyzer.shards[0].activeIDs, id)
 
 	err := analyzer.Hibernate()
 	if err != nil {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	nodesAfter := file.Nodes()
-
-	// Node count should decrease or stay the same (compaction).
-	if nodesAfter > nodesBefore {
-		t.Errorf("node count increased: before=%d, after=%d", nodesBefore, nodesAfter)
+	// File should be nil after spill (freed from memory).
+	if analyzer.shards[0].filesByID[id] != nil {
+		t.Error("file should be nil after Hibernate spill")
 	}
 
-	// File should still be functional.
-	if file.Len() <= 0 {
-		t.Error("file length should be positive after hibernation")
+	// activeIDs must be preserved.
+	if len(analyzer.shards[0].activeIDs) != 1 {
+		t.Error("activeIDs should be preserved")
 	}
 }
 
-func TestHibernate_PreservesFileState(t *testing.T) {
+func TestBoot_RestoresFiles(t *testing.T) {
 	t.Parallel()
 
 	analyzer := createAnalyzerWithShards(shardCount)
+	defer analyzer.CleanupSpills()
 
 	// Create a file with known state.
-	file := burndown.NewFile(1, 50) // tick 1, 50 lines.
-	lenBefore := file.Len()
+	id := analyzer.pathInterner.Intern("restore.go")
+	analyzer.ensureCapacity(analyzer.shards[0], id)
 
-	id := analyzer.pathInterner.Intern("preserve.go")
-	analyzer.shards[0].filesByID = make([]*burndown.File, int(id)+1)
+	file := burndown.NewFile(1, 100)
+	file.Update(2, 50, 20, 10)
+	lenBefore := file.Len()
 	analyzer.shards[0].filesByID[id] = file
 	analyzer.shards[0].activeIDs = append(analyzer.shards[0].activeIDs, id)
+
+	// Hibernate spills files to disk.
+	err := analyzer.Hibernate()
+	if err != nil {
+		t.Fatalf("Hibernate() failed: %v", err)
+	}
+
+	// Boot restores files from disk.
+	err = analyzer.Boot()
+	if err != nil {
+		t.Fatalf("Boot() failed: %v", err)
+	}
+
+	// File should be restored.
+	restored := analyzer.shards[0].filesByID[id]
+	if restored == nil {
+		t.Fatal("file should be restored after Boot")
+	}
+
+	if restored.Len() != lenBefore {
+		t.Errorf("restored file Len: got %d, want %d", restored.Len(), lenBefore)
+	}
+
+	// File should be usable for updates after restoration.
+	restored.Update(3, 0, 5, 0) // Insert 5 lines at start.
+
+	if restored.Len() != lenBefore+5 {
+		t.Errorf("update after restore: Len got %d, want %d", restored.Len(), lenBefore+5)
+	}
+}
+
+func TestHibernate_Boot_PreservesFileState(t *testing.T) {
+	t.Parallel()
+
+	analyzer := createAnalyzerWithShards(shardCount)
+	defer analyzer.CleanupSpills()
+
+	// Create multiple files across shards.
+	ids := make([]PathID, 3)
+	names := []string{"a.go", "b.go", "c.go"}
+	lengths := []int{100, 200, 50}
+
+	for i, name := range names {
+		ids[i] = analyzer.pathInterner.Intern(name)
+		shardIdx := analyzer.getShardIndex(name)
+		shard := analyzer.shards[shardIdx]
+		analyzer.ensureCapacity(shard, ids[i])
+		file := burndown.NewFile(1, lengths[i])
+		shard.filesByID[ids[i]] = file
+		shard.activeIDs = append(shard.activeIDs, ids[i])
+	}
+
+	// Hibernate + Boot round-trip.
+	err := analyzer.Hibernate()
+	if err != nil {
+		t.Fatalf("Hibernate() failed: %v", err)
+	}
+
+	err = analyzer.Boot()
+	if err != nil {
+		t.Fatalf("Boot() failed: %v", err)
+	}
+
+	// Verify all files are restored with correct lengths.
+	for i, name := range names {
+		shardIdx := analyzer.getShardIndex(name)
+		shard := analyzer.shards[shardIdx]
+		file := shard.filesByID[ids[i]]
+
+		if file == nil {
+			t.Errorf("file %s not restored", name)
+
+			continue
+		}
+
+		if file.Len() != lengths[i] {
+			t.Errorf("file %s: Len got %d, want %d", name, file.Len(), lengths[i])
+		}
+	}
+}
+
+func TestHibernate_Boot_SpillsAndRestoresFileHistories(t *testing.T) {
+	t.Parallel()
+
+	analyzer := createAnalyzerWithShards(shardCount)
+	defer analyzer.CleanupSpills()
+
+	analyzer.TrackFiles = true
+
+	id := analyzer.pathInterner.Intern("history.go")
+	shard := analyzer.shards[0]
+	analyzer.ensureCapacity(shard, id)
+	shard.filesByID[id] = burndown.NewFile(1, 50)
+	shard.activeIDs = append(shard.activeIDs, id)
+
+	// Add file history data.
+	shard.fileHistoriesByID[id] = sparseHistory{
+		1: {0: 50},
+		2: {1: 10},
+	}
 
 	err := analyzer.Hibernate()
 	if err != nil {
 		t.Fatalf("Hibernate() failed: %v", err)
 	}
 
-	// File length should be preserved.
-	if file.Len() != lenBefore {
-		t.Errorf("file length changed: before=%d, after=%d", lenBefore, file.Len())
+	// File history should be cleared from memory.
+	if len(shard.fileHistoriesByID[id]) != 0 {
+		t.Error("fileHistoriesByID should be cleared after Hibernate")
 	}
 
-	// File should still be usable for updates.
-	file.Update(2, 25, 10, 0) // Insert 10 lines at position 25.
+	err = analyzer.Boot()
+	if err != nil {
+		t.Fatalf("Boot() failed: %v", err)
+	}
 
-	if file.Len() != lenBefore+10 {
-		t.Errorf("file update after hibernation failed: expected %d, got %d",
-			lenBefore+10, file.Len())
+	// File history should be restored.
+	history := shard.fileHistoriesByID[id]
+	if history == nil {
+		t.Fatal("fileHistoriesByID not restored after Boot")
+	}
+
+	if history[1][0] != 50 {
+		t.Errorf("file history[1][0]: got %d, want 50", history[1][0])
+	}
+
+	if history[2][1] != 10 {
+		t.Errorf("file history[2][1]: got %d, want 10", history[2][1])
 	}
 }
 

@@ -151,14 +151,14 @@ func (t *TreeDiffAnalyzer) Initialize(repository *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TreeDiffAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+func (t *TreeDiffAnalyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC, error) {
 	if ac != nil && ac.Changes != nil {
 		t.Changes = t.filterChanges(ctx, ac.Changes)
 
-		return nil
+		return analyze.TC{}, nil
 	}
 
-	return t.computeTreeDiff(ctx, ac.Commit)
+	return analyze.TC{}, t.computeTreeDiff(ctx, ac.Commit)
 }
 
 // computeTreeDiff performs traditional tree diff computation as a fallback.
@@ -303,17 +303,6 @@ func (t *TreeDiffAnalyzer) checkLanguage(ctx context.Context, fileName string, h
 	return t.Languages[strings.ToLower(lang)], nil
 }
 
-// Finalize completes the analysis and returns the result.
-func (t *TreeDiffAnalyzer) Finalize() (analyze.Report, error) {
-	// Clean up.
-	if t.previousTree != nil {
-		t.previousTree.Free()
-		t.previousTree = nil
-	}
-
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (t *TreeDiffAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -340,6 +329,25 @@ func (t *TreeDiffAnalyzer) Serialize(report analyze.Report, format string, write
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (t *TreeDiffAnalyzer) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (t *TreeDiffAnalyzer) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (t *TreeDiffAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator { return nil }
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (t *TreeDiffAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (t *TreeDiffAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }
 
 // InjectPreparedData sets pre-computed changes from parallel preparation.

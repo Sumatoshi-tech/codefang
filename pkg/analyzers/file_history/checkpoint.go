@@ -30,17 +30,17 @@ func newPersister() *checkpoint.Persister[checkpointState] {
 }
 
 // SaveCheckpoint writes the analyzer state to the given directory.
-func (h *Analyzer) SaveCheckpoint(dir string) error {
+func (h *HistoryAnalyzer) SaveCheckpoint(dir string) error {
 	return newPersister().Save(dir, h.buildCheckpointState)
 }
 
 // LoadCheckpoint restores the analyzer state from the given directory.
-func (h *Analyzer) LoadCheckpoint(dir string) error {
+func (h *HistoryAnalyzer) LoadCheckpoint(dir string) error {
 	return newPersister().Load(dir, h.restoreFromCheckpoint)
 }
 
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
-func (h *Analyzer) buildCheckpointState() *checkpointState {
+func (h *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 	state := &checkpointState{
 		Files:  make(map[string]fileHistoryCheckpoint, len(h.files)),
 		Merges: make([]string, 0, len(h.merges)),
@@ -69,7 +69,7 @@ func (h *Analyzer) buildCheckpointState() *checkpointState {
 }
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
-func (h *Analyzer) restoreFromCheckpoint(state *checkpointState) {
+func (h *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 	// Restore files.
 	h.files = make(map[string]*FileHistory, len(state.Files))
 	for name, cp := range state.Files {
@@ -102,7 +102,7 @@ const (
 )
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
-func (h *Analyzer) CheckpointSize() int64 {
+func (h *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(fhBaseOverheadBytes)
 
 	// Count file entries.

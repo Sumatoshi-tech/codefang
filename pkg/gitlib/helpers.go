@@ -74,21 +74,21 @@ func ReverseCommits(commits []*Commit) {
 }
 
 // LoadCommits loads commits from a repository with the given options.
-func LoadCommits(repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
+func LoadCommits(ctx context.Context, repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
 	if opts.HeadOnly {
-		return loadHeadCommit(repository)
+		return loadHeadCommit(ctx, repository)
 	}
 
-	return loadHistoryCommits(repository, opts)
+	return loadHistoryCommits(ctx, repository, opts)
 }
 
-func loadHeadCommit(repository *Repository) ([]*Commit, error) {
+func loadHeadCommit(ctx context.Context, repository *Repository) ([]*Commit, error) {
 	headHash, err := repository.Head()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get HEAD: %w", err)
 	}
 
-	commit, err := repository.LookupCommit(context.Background(), headHash)
+	commit, err := repository.LookupCommit(ctx, headHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get commit: %w", err)
 	}
@@ -96,7 +96,8 @@ func loadHeadCommit(repository *Repository) ([]*Commit, error) {
 	return []*Commit{commit}, nil
 }
 
-func loadHistoryCommits(repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
+func loadHistoryCommits(ctx context.Context, repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
+	_ = ctx // Reserved for future iterator/Log context support.
 	logOpts := &LogOptions{
 		FirstParent: opts.FirstParent,
 	}

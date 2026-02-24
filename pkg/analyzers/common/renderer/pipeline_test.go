@@ -17,7 +17,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
 	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/halstead"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
@@ -73,7 +72,6 @@ func TestMetricsOutput_InterfaceCompliance_StaticAnalyzers(t *testing.T) {
 		_ renderer.MetricsOutput = (*cohesion.ComputedMetrics)(nil)
 		_ renderer.MetricsOutput = (*halstead.ComputedMetrics)(nil)
 		_ renderer.MetricsOutput = (*comments.ComputedMetrics)(nil)
-		_ renderer.MetricsOutput = (*imports.ComputedMetrics)(nil)
 		_ renderer.MetricsOutput = (*typos.ComputedMetrics)(nil)
 	)
 
@@ -87,7 +85,6 @@ func TestMetricsOutput_InterfaceCompliance_StaticAnalyzers(t *testing.T) {
 		{"cohesion", &cohesion.ComputedMetrics{}, "cohesion"},
 		{"halstead", &halstead.ComputedMetrics{}, "halstead"},
 		{"comments", &comments.ComputedMetrics{}, "comments"},
-		{"imports", &imports.ComputedMetrics{}, "imports"},
 		{"typos", &typos.ComputedMetrics{}, "typos"},
 	}
 
@@ -191,11 +188,6 @@ func TestJSONOutputStructure_StaticAnalyzers(t *testing.T) {
 			name:         "comments",
 			metrics:      &comments.ComputedMetrics{},
 			expectedKeys: []string{"aggregate", "comment_quality", "function_documentation", "undocumented_functions"},
-		},
-		{
-			name:         "imports",
-			metrics:      &imports.ComputedMetrics{},
-			expectedKeys: []string{"aggregate", "import_list", "categories", "dependencies"},
 		},
 		{
 			name:         "typos",
@@ -314,11 +306,6 @@ func TestYAMLOutputStructure_StaticAnalyzers(t *testing.T) {
 			expectedKeys: []string{"aggregate", "comment_quality", "function_documentation", "undocumented_functions"},
 		},
 		{
-			name:         "imports",
-			metrics:      &imports.ComputedMetrics{},
-			expectedKeys: []string{"aggregate", "import_list", "categories", "dependencies"},
-		},
-		{
 			name:         "typos",
 			metrics:      &typos.ComputedMetrics{},
 			expectedKeys: []string{"aggregate", "typo_list", "patterns", "file_typos"},
@@ -361,7 +348,6 @@ func TestRenderMetricsJSON_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&imports.ComputedMetrics{},
 		&typos.ComputedMetrics{},
 	}
 
@@ -396,7 +382,6 @@ func TestRenderMetricsYAML_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&imports.ComputedMetrics{},
 		&typos.ComputedMetrics{},
 	}
 
@@ -434,7 +419,6 @@ func TestJSONYAMLConsistency_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&imports.ComputedMetrics{},
 		&typos.ComputedMetrics{},
 	}
 

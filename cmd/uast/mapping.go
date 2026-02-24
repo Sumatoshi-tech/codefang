@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	forest "github.com/alexaandru/go-sitter-forest"
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
 
@@ -21,9 +21,10 @@ const coveragePercent = 100
 
 // Sentinel errors for the mapping command.
 var (
-	ErrNodeTypesRequired = errors.New("--node-types is required for non-treesitter operations")
-	ErrNoInputFiles      = errors.New("no input files provided")
-	ErrNoRootNode        = errors.New("no root node found")
+	ErrNodeTypesRequired   = errors.New("--node-types is required for non-treesitter operations")
+	ErrNoInputFiles        = errors.New("no input files provided")
+	ErrNoRootNode          = errors.New("no root node found")
+	ErrUnsupportedLanguage = errors.New("unsupported language")
 )
 
 func mappingCmd() *cobra.Command {
@@ -213,7 +214,11 @@ func processFileForTreeSitterJSON(filename, language string) error {
 
 	// Set language if provided.
 	if language != "" {
-		lang := forest.GetLanguage(language)
+		lang := uast.GetLanguage(language)
+		if lang == nil {
+			return fmt.Errorf("%w: %s", ErrUnsupportedLanguage, language)
+		}
+
 		parser.SetLanguage(lang)
 	}
 

@@ -9,6 +9,7 @@ import (
 	git2go "github.com/libgit2/git2go/v34"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
@@ -262,7 +263,72 @@ func ResolveMemoryLimitForTest(totalMemoryBytes uint64) uint64 {
 	return resolveMemoryLimit(totalMemoryBytes)
 }
 
+// ResolveMemoryLimitFromBudgetForTest exposes budget-aligned memory limit logic.
+func ResolveMemoryLimitFromBudgetForTest(budget int64, totalMemoryBytes uint64) uint64 {
+	return resolveMemoryLimitFromBudget(budget, totalMemoryBytes)
+}
+
 // SplitLeavesForTest exposes the three-group leaf split for testing.
 func SplitLeavesForTest(runner *Runner) (cpuHeavy, lightweight, serial []analyze.HistoryAnalyzer) {
 	return runner.splitLeaves()
+}
+
+// RecordCommitMetaForTest exposes recordCommitMeta for unit testing.
+func RecordCommitMetaForTest(runner *Runner, tc analyze.TC) {
+	runner.recordCommitMeta(tc)
+}
+
+// AuthorNameForTest exposes authorName for unit testing.
+func AuthorNameForTest(runner *Runner, authorID int) string {
+	return runner.authorName(authorID)
+}
+
+// CommitMetaForTest returns the accumulated commit metadata map.
+func CommitMetaForTest(runner *Runner) map[string]analyze.CommitMeta {
+	return runner.commitMeta
+}
+
+// InjectCommitMetaForTest exposes injectCommitMeta for unit testing.
+func InjectCommitMetaForTest(runner *Runner, reports map[analyze.HistoryAnalyzer]analyze.Report) {
+	runner.injectCommitMeta(reports)
+}
+
+// InitAggregatorsForTest exposes initAggregators for unit testing.
+func InitAggregatorsForTest(runner *Runner) {
+	runner.initAggregators()
+}
+
+// SetIDProviderForTest sets the identity provider on a Runner for testing.
+func SetIDProviderForTest(runner *Runner, id *plumbing.IdentityDetector) {
+	runner.idProvider = id
+}
+
+// AggregatorsForTest returns the aggregator slice from the runner.
+func AggregatorsForTest(runner *Runner) []analyze.Aggregator {
+	return runner.aggregators
+}
+
+// AddTCForTest exposes addTC for unit testing.
+func AddTCForTest(runner *Runner, tc analyze.TC, idx int, ac *analyze.Context) {
+	runner.addTC(tc, idx, ac)
+}
+
+// AggSpillBudgetForTest returns the runner's aggregator spill budget.
+func AggSpillBudgetForTest(runner *Runner) int64 {
+	return runner.AggSpillBudget
+}
+
+// AggregatorStateSizeForTest exposes AggregatorStateSize for unit testing.
+func AggregatorStateSizeForTest(runner *Runner) int64 {
+	return runner.AggregatorStateSize()
+}
+
+// TCCountAccumulatedForTest exposes TCCountAccumulated for unit testing.
+func TCCountAccumulatedForTest(runner *Runner) int64 {
+	return runner.TCCountAccumulated()
+}
+
+// ResetTCCountForTest exposes ResetTCCount for unit testing.
+func ResetTCCountForTest(runner *Runner) {
+	runner.ResetTCCount()
 }

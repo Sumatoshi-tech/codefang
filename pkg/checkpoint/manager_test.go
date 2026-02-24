@@ -254,6 +254,59 @@ func TestRepoHash(t *testing.T) {
 	assert.NotEqual(t, hash, hash3)
 }
 
+func TestManager_Validate_OldVersion(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	m := NewManager(dir, "abc123")
+
+	// Manually write a v1 checkpoint.
+	cpDir := m.CheckpointDir()
+	err := os.MkdirAll(cpDir, 0o750)
+	require.NoError(t, err)
+
+	meta := `{"version":1,"repo_path":"/test/repo","analyzers":["burndown"]}`
+	err = os.WriteFile(m.MetadataPath(), []byte(meta), 0o600)
+	require.NoError(t, err)
+
+	err = m.Validate("/test/repo", []string{"burndown"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrVersionMismatch)
+}
+
+func TestManager_SaveLoad_AggregatorSpills(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	m := NewManager(dir, "abc123")
+
+	state := StreamingState{
+		TotalCommits:     100,
+		ProcessedCommits: 50,
+		CurrentChunk:     1,
+		TotalChunks:      2,
+		AggregatorSpills: []AggregatorSpillEntry{
+			{},
+			{Dir: "/tmp/spill-1", Count: 3},
+			{Dir: "/tmp/spill-2", Count: 1},
+		},
+	}
+
+	err := m.Save(nil, state, "/test/repo", []string{"burndown"})
+	require.NoError(t, err)
+
+	meta, err := m.LoadMetadata()
+	require.NoError(t, err)
+
+	assert.Equal(t, MetadataVersion, meta.Version)
+	require.Len(t, meta.StreamingState.AggregatorSpills, 3)
+	assert.Empty(t, meta.StreamingState.AggregatorSpills[0].Dir)
+	assert.Equal(t, "/tmp/spill-1", meta.StreamingState.AggregatorSpills[1].Dir)
+	assert.Equal(t, 3, meta.StreamingState.AggregatorSpills[1].Count)
+	assert.Equal(t, "/tmp/spill-2", meta.StreamingState.AggregatorSpills[2].Dir)
+	assert.Equal(t, 1, meta.StreamingState.AggregatorSpills[2].Count)
+}
+
 func TestManager_Save_ErrorOnMkdir(t *testing.T) {
 	t.Parallel()
 

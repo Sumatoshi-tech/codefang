@@ -237,8 +237,8 @@ Static analysis is fast, parallelized across files, and requires no Git history.
 2. Loads the commit history (optionally filtered by `--limit`, `--since`, `--first-parent`).
 3. The **Coordinator** orchestrates a worker pool with three pipeline stages: blob loading, diff computation, and UAST parsing.
 4. **Core plumbing analyzers** (tree diff, blob cache, identity detection, tick assignment, line stats, language detection, UAST changes) process each commit first.
-5. **Leaf history analyzers** consume the plumbing output and accumulate their state.
-6. For large repositories, the **streaming pipeline** splits commits into memory-bounded chunks with hibernate/boot cycles and optional double-buffered pipelining.
+5. **Leaf history analyzers** consume the plumbing output and accumulate their state using the generic aggregator framework or custom memory-efficient data structures.
+6. For large repositories, the **streaming pipeline** splits commits into memory-bounded chunks with hibernate/boot cycles and optional double-buffered pipelining. The `BaseHistoryAnalyzer` manages state serialization transparently.
 7. **Checkpointing** after each chunk enables crash recovery.
 
 ### Combined Mode
@@ -255,7 +255,7 @@ The history analysis pipeline is built around a **Runner** that coordinates
 the full lifecycle:
 
 ```
-Initialize --> ProcessChunk (x N) --> Finalize
+Initialize --> ProcessChunk (x N) --> FinalizeWithAggregators
 ```
 
 Each `ProcessChunk` call:

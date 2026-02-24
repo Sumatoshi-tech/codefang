@@ -122,24 +122,26 @@ func (b *BlobCacheAnalyzer) Initialize(repo *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (b *BlobCacheAnalyzer) Consume(ctx context.Context, ac *analyze.Context) error {
+func (b *BlobCacheAnalyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC, error) {
 	// Check if the runtime pipeline has already populated the cache.
 	if ac != nil && ac.BlobCache != nil {
 		// Use the pre-populated cache from the runtime pipeline.
 		b.previousCache = ac.BlobCache
 		b.Cache = ac.BlobCache
 
-		return nil
+		return analyze.TC{}, nil
 	}
 
 	// Fall back to traditional blob loading.
 	changes := b.TreeDiff.Changes
 
-	return b.consumeParallel(ctx, changes)
+	b.consumeParallel(ctx, changes)
+
+	return analyze.TC{}, nil
 }
 
 // consumeParallel is the original parallel blob loading implementation.
-func (b *BlobCacheAnalyzer) consumeParallel(ctx context.Context, changes []*gitlib.Change) error {
+func (b *BlobCacheAnalyzer) consumeParallel(ctx context.Context, changes []*gitlib.Change) {
 	cache := map[gitlib.Hash]*gitlib.CachedBlob{}
 	newCache := map[gitlib.Hash]*gitlib.CachedBlob{}
 
@@ -196,8 +198,6 @@ func (b *BlobCacheAnalyzer) consumeParallel(ctx context.Context, changes []*gitl
 
 	b.previousCache = newCache
 	b.Cache = cache
-
-	return nil
 }
 
 func (b *BlobCacheAnalyzer) handleInsert(
@@ -281,20 +281,6 @@ func (b *BlobCacheAnalyzer) handleModify(
 	}
 }
 
-// Finalize completes the analysis and returns the result.
-func (b *BlobCacheAnalyzer) Finalize() (analyze.Report, error) {
-	// Clean up repository pool.
-	// repos[0] is b.Repository, which is managed externally (by the runner).
-	for i := 1; i < len(b.repos); i++ {
-		if b.repos[i] != nil {
-			b.repos[i].Free()
-			b.repos[i] = nil
-		}
-	}
-
-	return analyze.Report{}, nil
-}
-
 // Fork creates a copy of the analyzer for parallel processing.
 func (b *BlobCacheAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
@@ -325,6 +311,27 @@ func (b *BlobCacheAnalyzer) Serialize(report analyze.Report, format string, writ
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (b *BlobCacheAnalyzer) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (b *BlobCacheAnalyzer) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (b *BlobCacheAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (b *BlobCacheAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (b *BlobCacheAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }
 
 // InjectPreparedData sets pre-computed cache from parallel preparation.

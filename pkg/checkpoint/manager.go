@@ -12,12 +12,14 @@ import (
 )
 
 // MetadataVersion is the current checkpoint metadata format version.
-const MetadataVersion = 1
+// Bumped from 1 to 2 when aggregator spill state was added.
+const MetadataVersion = 2
 
 // Sentinel errors for checkpoint validation.
 var (
 	ErrRepoPathMismatch = errors.New("repo path mismatch")
 	ErrAnalyzerMismatch = errors.New("analyzer mismatch")
+	ErrVersionMismatch  = errors.New("checkpoint version mismatch")
 )
 
 // DefaultDir returns the default checkpoint directory (~/.codefang/checkpoints).
@@ -198,6 +200,11 @@ func (m *Manager) Validate(repoPath string, analyzerNames []string) error {
 	meta, err := m.LoadMetadata()
 	if err != nil {
 		return err
+	}
+
+	if meta.Version != MetadataVersion {
+		return fmt.Errorf("%w: checkpoint has v%d, current is v%d",
+			ErrVersionMismatch, meta.Version, MetadataVersion)
 	}
 
 	if meta.RepoPath != repoPath {

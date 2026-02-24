@@ -15,6 +15,18 @@ codefang run -a history/sentiment .
 
 ---
 
+## Architecture
+
+The sentiment analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` extracts and filters comments from UAST changes, returning them as a `TC` (per-commit result). The analyzer retains no per-commit state.
+2. **Aggregation phase**: A `sentiment.Aggregator` collects TCs, groups comments by time bucket (tick), computes sentiment scores, and produces `TICK` results.
+3. **Serialization phase**: `SerializeTICKs()` converts aggregated TICKs into JSON, YAML, binary, or HTML plot output.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
 ## What It Measures
 
 ### Per-Commit Comment Extraction
@@ -25,6 +37,7 @@ For each commit, the analyzer:
 2. Extracts comment nodes from the new UAST
 3. Merges adjacent comment lines into single blocks
 4. Filters out noise (short comments, non-English text, license headers, function signatures)
+5. Returns the filtered comments as a `TC` payload (`sentiment.CommitResult`)
 
 ### Comment Filtering
 
@@ -38,7 +51,7 @@ Comments are filtered using several heuristics:
 
 ### Sentiment Classification
 
-Filtered comments are classified as positive, negative, or neutral using a gap threshold. The gap parameter controls how far from neutral a score must be to register as positive or negative.
+Filtered comments are classified as positive, negative, or neutral using **VADER** (Valence Aware Dictionary and sEntiment Reasoner) via the [GoVader](https://github.com/jonreiter/govader) library. VADER is a lexicon and rule-based sentiment analyzer designed for social media and short text; it handles negations, intensifiers, and punctuation. The compound score (‑1 to 1) is mapped to our [0, 1] range; comments are averaged per tick.
 
 ---
 

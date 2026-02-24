@@ -169,7 +169,7 @@ func commitAtTime(t *testing.T, repo *git2go.Repository, message string, when ti
 }
 
 // buildFullPipeline builds a complete plumbing + devs analyzer pipeline.
-func buildFullPipeline(libRepo *gitlib.Repository) (all []analyze.HistoryAnalyzer, leaf *devs.HistoryAnalyzer) {
+func buildFullPipeline(libRepo *gitlib.Repository) (all []analyze.HistoryAnalyzer, leaf *devs.Analyzer) {
 	treeDiff := &plumbing.TreeDiffAnalyzer{Repository: libRepo}
 	identity := &plumbing.IdentityDetector{}
 	ticks := &plumbing.TicksSinceStart{}
@@ -178,10 +178,12 @@ func buildFullPipeline(libRepo *gitlib.Repository) (all []analyze.HistoryAnalyze
 	lineStats := &plumbing.LinesStatsCalculator{TreeDiff: treeDiff, BlobCache: blobCache, FileDiff: fileDiff}
 	langDetect := &plumbing.LanguagesDetectionAnalyzer{TreeDiff: treeDiff, BlobCache: blobCache}
 
-	leaf = &devs.HistoryAnalyzer{
-		Identity: identity, TreeDiff: treeDiff, Ticks: ticks,
-		Languages: langDetect, LineStats: lineStats,
-	}
+	leaf = devs.NewAnalyzer()
+	leaf.Identity = identity
+	leaf.TreeDiff = treeDiff
+	leaf.Ticks = ticks
+	leaf.Languages = langDetect
+	leaf.LineStats = lineStats
 
 	all = []analyze.HistoryAnalyzer{
 		treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, leaf,
@@ -214,7 +216,7 @@ func collectAllCommits(t *testing.T, repo *gitlib.Repository) []*gitlib.Commit {
 }
 
 // runAnalysis runs a full single-pass analysis and returns the leaf report.
-func runAnalysis(t *testing.T, repoPath string) (analyze.Report, *devs.HistoryAnalyzer) {
+func runAnalysis(t *testing.T, repoPath string) (analyze.Report, *devs.Analyzer) {
 	t.Helper()
 
 	libRepo, err := gitlib.OpenRepository(repoPath)
@@ -439,7 +441,7 @@ func TestScaleScanning_StreamingProducesIdenticalOutput(t *testing.T) {
 		require.NoError(t, processErr, "ProcessChunk %d", chunkIdx)
 	}
 
-	streamResults, err := runner2.Finalize()
+	streamResults, err := runner2.FinalizeWithAggregators(context.Background())
 	require.NoError(t, err)
 
 	var streamBuf bytes.Buffer
@@ -482,6 +484,76 @@ func TestScaleScanning_StreamingWithMemoryBudget(t *testing.T) {
 	)
 	require.NoError(t, err, "RunStreaming")
 	require.NotNil(t, results[leaf], "devs report from streaming should not be nil")
+}
+
+// TestScaleScanning_StreamingFromIterator verifies that RunStreamingFromIterator
+// produces the same results as RunStreaming with a pre-loaded commit slice.
+func TestScaleScanning_StreamingFromIterator(t *testing.T) {
+	t.Parallel()
+
+	const numCommits = 150
+
+	repoPath := createNormalRepo(t, numCommits)
+
+	// Baseline: slice-based RunStreaming.
+	libRepo1, err := gitlib.OpenRepository(repoPath)
+	require.NoError(t, err)
+
+	defer libRepo1.Free()
+
+	commits := collectAllCommits(t, libRepo1)
+	slices.Reverse(commits)
+
+	baselineAnalyzers, baselineLeaf := buildFullPipeline(libRepo1)
+	config1 := framework.DefaultCoordinatorConfig()
+	runner1 := framework.NewRunnerWithConfig(libRepo1, repoPath, config1, baselineAnalyzers...)
+	runner1.CoreCount = 7
+
+	streamConfig := framework.StreamingConfig{
+		MemBudget: 500 * 1024 * 1024,
+		RepoPath:  repoPath,
+	}
+
+	baselineResults, err := framework.RunStreaming(
+		context.Background(), runner1, commits, baselineAnalyzers, streamConfig,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, baselineResults[baselineLeaf])
+
+	var baselineBuf bytes.Buffer
+	require.NoError(t, baselineLeaf.Serialize(baselineResults[baselineLeaf], analyze.FormatYAML, &baselineBuf))
+
+	// Iterator-based: RunStreamingFromIterator.
+	libRepo2, err := gitlib.OpenRepository(repoPath)
+	require.NoError(t, err)
+
+	defer libRepo2.Free()
+
+	commitCount, err := libRepo2.CommitCount(&gitlib.LogOptions{})
+	require.NoError(t, err)
+	require.Equal(t, len(commits), commitCount)
+
+	iter, err := libRepo2.Log(&gitlib.LogOptions{Reverse: true})
+	require.NoError(t, err)
+
+	defer iter.Close()
+
+	iterAnalyzers, iterLeaf := buildFullPipeline(libRepo2)
+	config2 := framework.DefaultCoordinatorConfig()
+	runner2 := framework.NewRunnerWithConfig(libRepo2, repoPath, config2, iterAnalyzers...)
+	runner2.CoreCount = 7
+
+	iterResults, err := framework.RunStreamingFromIterator(
+		context.Background(), runner2, iter, commitCount, iterAnalyzers, streamConfig,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, iterResults[iterLeaf])
+
+	var iterBuf bytes.Buffer
+	require.NoError(t, iterLeaf.Serialize(iterResults[iterLeaf], analyze.FormatYAML, &iterBuf))
+
+	require.YAMLEq(t, baselineBuf.String(), iterBuf.String(),
+		"iterator-based streaming must match slice-based streaming")
 }
 
 // Test: Checkpoint Save/Resume.
@@ -579,7 +651,7 @@ func TestScaleScanning_CheckpointSaveResumeAcrossChunks(t *testing.T) {
 		require.NoError(t, processErr)
 	}
 
-	results2, err := runner2.Finalize()
+	results2, err := runner2.FinalizeWithAggregators(context.Background())
 	require.NoError(t, err)
 
 	// The resumed run should produce non-nil results.
@@ -618,12 +690,12 @@ func TestScaleScanning_SinceFilteringDuration(t *testing.T) {
 	defer libRepo.Free()
 
 	// Load all commits.
-	allCommits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{})
+	allCommits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{})
 	require.NoError(t, err)
 	require.Len(t, allCommits, 4, "should have 4 total commits")
 
 	// Load commits since 36 hours ago — should get the last 2.
-	recentCommits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{
+	recentCommits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{
 		Since: "36h",
 	})
 	require.NoError(t, err)
@@ -652,7 +724,7 @@ func TestScaleScanning_SinceFilteringRFC3339(t *testing.T) {
 	// Use RFC3339 cutoff at 60 hours ago.
 	cutoff := now.Add(-60 * time.Hour).Format(time.RFC3339)
 
-	recentCommits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{
+	recentCommits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{
 		Since: cutoff,
 	})
 	require.NoError(t, err)
@@ -679,7 +751,7 @@ func TestScaleScanning_SinceAnalysisProducesResults(t *testing.T) {
 	defer libRepo.Free()
 
 	// Load only recent commits.
-	commits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{
+	commits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{
 		Since: "36h",
 	})
 	require.NoError(t, err)
@@ -895,7 +967,7 @@ func TestScaleScanning_EmptyRepoHandledGracefully(t *testing.T) {
 	defer libRepo.Free()
 
 	// An empty repo (no commits) should not crash.
-	commits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{})
+	commits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{})
 	// LoadCommits calls Head() which fails on empty repo.
 	// Either empty result or error is acceptable, but no panic.
 	if err != nil {
@@ -938,7 +1010,7 @@ func TestScaleScanning_CommitLimitRespected(t *testing.T) {
 	defer libRepo.Free()
 
 	// Load only the last 10 commits.
-	commits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{Limit: 10})
+	commits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, commits, 10, "--limit should cap commit count")
 
@@ -961,7 +1033,7 @@ func TestScaleScanning_HeadOnlyMode(t *testing.T) {
 
 	defer libRepo.Free()
 
-	commits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{HeadOnly: true})
+	commits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{HeadOnly: true})
 	require.NoError(t, err)
 	require.Len(t, commits, 1, "HeadOnly should return exactly 1 commit")
 
@@ -1076,7 +1148,7 @@ func TestScaleScanning_FirstParentWalkWithMerges(t *testing.T) {
 	defer libRepo.Free()
 
 	// First-parent walk should work without "internal integrity error".
-	fpCommits, err := gitlib.LoadCommits(libRepo, gitlib.CommitLoadOptions{FirstParent: true})
+	fpCommits, err := gitlib.LoadCommits(context.Background(), libRepo, gitlib.CommitLoadOptions{FirstParent: true})
 	require.NoError(t, err)
 	require.NotEmpty(t, fpCommits)
 

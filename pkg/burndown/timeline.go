@@ -39,4 +39,8 @@ type Timeline interface {
 	// MergeAdjacentSameValue coalesces consecutive segments with the same time (reduces node count).
 	// No-op for implementations that do not benefit (e.g. implicit treap).
 	MergeAdjacentSameValue()
+	// Segments returns the treap's segments as a compact slice (excludes TreeEnd sentinel).
+	Segments() []Segment
+	// ReconstructFromSegments rebuilds from a compact segment slice (inverse of Segments).
+	ReconstructFromSegments(segs []Segment)
 }

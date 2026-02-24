@@ -20,6 +20,10 @@ const (
 	// FormatTimeSeries is the unified time-series output format that merges
 	// all history analyzer data into a single JSON array keyed by commit.
 	FormatTimeSeries = "timeseries"
+
+	// FormatNDJSON is the streaming output format that writes one JSON line
+	// per TC as commits are processed. No aggregator, no buffering.
+	FormatNDJSON = "ndjson"
 )
 
 var (
@@ -39,7 +43,7 @@ func NormalizeFormat(format string) string {
 
 // UniversalFormats returns the canonical output formats supported by all analyzers.
 func UniversalFormats() []string {
-	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary, FormatTimeSeries}
+	return []string{FormatJSON, FormatYAML, FormatPlot, FormatBinary, FormatTimeSeries, FormatNDJSON}
 }
 
 // ValidateFormat checks whether a format is in the provided support list.

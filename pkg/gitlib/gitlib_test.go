@@ -2419,3 +2419,166 @@ func TestDiffStatsFree(t *testing.T) {
 	stats.Free()
 	stats.Free()
 }
+
+func TestLog_Reverse_YieldsOldestFirst(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("1.txt", "1")
+	firstHash := tr.commit("first")
+
+	tr.createFile("2.txt", "2")
+	tr.commit("second")
+
+	tr.createFile("3.txt", "3")
+	lastHash := tr.commit("third")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	// Default (newest-first): third → second → first.
+	iterDefault, err := repo.Log(&gitlib.LogOptions{})
+	require.NoError(t, err)
+
+	defaultHashes := collectIterHashes(t, iterDefault)
+	require.Len(t, defaultHashes, 3)
+	assert.Equal(t, lastHash, defaultHashes[0], "default order should be newest-first")
+
+	// Reverse (oldest-first): first → second → third.
+	iterReverse, err := repo.Log(&gitlib.LogOptions{Reverse: true})
+	require.NoError(t, err)
+
+	reverseHashes := collectIterHashes(t, iterReverse)
+	require.Len(t, reverseHashes, 3)
+	assert.Equal(t, firstHash, reverseHashes[0], "reverse order should be oldest-first")
+	assert.Equal(t, lastHash, reverseHashes[2], "reverse order should have newest last")
+
+	// Both orderings should contain the same hashes.
+	assert.ElementsMatch(t, defaultHashes, reverseHashes)
+}
+
+func TestCommitCount_MatchesLoadCommits(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	for i := range 5 {
+		tr.createFile(filepath.Join("dir", filepath.Base(
+			filepath.Join("dir", string(rune('a'+i))+".txt"),
+		)), "content")
+		tr.commit("commit " + string(rune('a'+i)))
+	}
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	count, err := repo.CommitCount(&gitlib.LogOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 5, count)
+}
+
+func TestCommitCount_WithSince(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("1.txt", "1")
+	tr.commit("first")
+
+	tr.createFile("2.txt", "2")
+	tr.commit("second")
+
+	tr.createFile("3.txt", "3")
+	tr.commit("third")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	// Count all commits.
+	countAll, err := repo.CommitCount(&gitlib.LogOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 3, countAll)
+
+	// Count with a since filter far in the past should include all.
+	past := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	countSincePast, err := repo.CommitCount(&gitlib.LogOptions{Since: &past})
+	require.NoError(t, err)
+	assert.Equal(t, 3, countSincePast)
+
+	// Count with a since filter in the future should include none.
+	future := time.Now().Add(24 * time.Hour)
+
+	countSinceFuture, err := repo.CommitCount(&gitlib.LogOptions{Since: &future})
+	require.NoError(t, err)
+	assert.Equal(t, 0, countSinceFuture)
+}
+
+func TestCommitIter_Skip(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	hashes := make([]gitlib.Hash, 0, 5)
+
+	for i := range 5 {
+		tr.createFile(string(rune('a'+i))+".txt", "content")
+		h := tr.commit("commit " + string(rune('a'+i)))
+		hashes = append(hashes, h)
+	}
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	// Reversed order: oldest first (hashes[0] is oldest).
+	iter, err := repo.Log(&gitlib.LogOptions{Reverse: true})
+	require.NoError(t, err)
+
+	// Skip the first 2 commits.
+	err = iter.Skip(2)
+	require.NoError(t, err)
+
+	// The next commit should be the 3rd oldest (hashes[2]).
+	commit, err := iter.Next()
+	require.NoError(t, err)
+
+	assert.Equal(t, hashes[2], commit.Hash())
+	commit.Free()
+	iter.Close()
+}
+
+func TestCommitIter_Skip_PastEnd(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	tr.commit("only commit")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	iter, err := repo.Log(&gitlib.LogOptions{})
+	require.NoError(t, err)
+
+	// Skipping more than available should return EOF.
+	err = iter.Skip(10)
+	require.ErrorIs(t, err, io.EOF)
+	iter.Close()
+}

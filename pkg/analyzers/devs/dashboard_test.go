@@ -2,49 +2,82 @@ package devs
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
 )
+
+// ticksToCanonicalReport converts legacy Ticks format to canonical CommitDevData+CommitsByTick.
+func ticksToCanonicalReport(ticks map[int]map[int]*DevTick, names []string) analyze.Report {
+	commitDevData := make(map[string]*CommitDevData)
+	commitsByTick := make(map[int][]gitlib.Hash)
+
+	n := 0
+
+	for tick, devTicks := range ticks {
+		for devID, dt := range devTicks {
+			hash := fmt.Sprintf("%038x%02x", n, devID)
+			n++
+
+			cdd := &CommitDevData{
+				Commits:   dt.Commits,
+				Added:     dt.Added,
+				Removed:   dt.Removed,
+				Changed:   dt.Changed,
+				AuthorID:  devID,
+				Languages: dt.Languages,
+			}
+
+			commitDevData[hash] = cdd
+			commitsByTick[tick] = append(commitsByTick[tick], gitlib.NewHash(hash))
+		}
+	}
+
+	return analyze.Report{
+		"CommitDevData":      commitDevData,
+		"CommitsByTick":      commitsByTick,
+		"ReversedPeopleDict": names,
+		"TickSize":           24 * time.Hour,
+	}
+}
 
 func TestGenerateDashboard(t *testing.T) {
 	t.Parallel()
 
-	report := analyze.Report{
-		"Ticks": map[int]map[int]*DevTick{
+	ticks := map[int]map[int]*DevTick{
+		0: {
 			0: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go":     {Added: 80, Removed: 15, Changed: 8},
-						"Python": {Added: 20, Removed: 5, Changed: 2},
-					},
-					Commits: 5,
+				LineStats: pkgplumbing.LineStats{Added: 100, Removed: 20, Changed: 10},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go":     {Added: 80, Removed: 15, Changed: 8},
+					"Python": {Added: 20, Removed: 5, Changed: 2},
 				},
-				1: {
-					LineStats: pkgplumbing.LineStats{Added: 50, Removed: 10, Changed: 5},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 50, Removed: 10, Changed: 5},
-					},
-					Commits: 3,
-				},
+				Commits: 5,
 			},
 			1: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 200, Removed: 30, Changed: 15},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 200, Removed: 30, Changed: 15},
-					},
-					Commits: 8,
+				LineStats: pkgplumbing.LineStats{Added: 50, Removed: 10, Changed: 5},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 50, Removed: 10, Changed: 5},
 				},
+				Commits: 3,
 			},
 		},
-		"ReversedPeopleDict": []string{"Alice", "Bob"},
-		"TickSize":           24 * time.Hour,
+		1: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 200, Removed: 30, Changed: 15},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 200, Removed: 30, Changed: 15},
+				},
+				Commits: 8,
+			},
+		},
 	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice", "Bob"})
 
 	var buf bytes.Buffer
 
@@ -102,29 +135,33 @@ func TestGenerateDashboard_EmptyData(t *testing.T) {
 	}
 }
 
-func TestGenerateDashboard_InvalidTicks(t *testing.T) {
+func TestGenerateDashboard_InvalidCommitDevDataType(t *testing.T) {
 	t.Parallel()
 
+	// Invalid CommitDevData type (string instead of map) is treated as absent; yields empty dashboard.
 	report := analyze.Report{
-		"Ticks":              "invalid",
+		"CommitDevData":      "invalid",
+		"CommitsByTick":      map[int][]gitlib.Hash{},
 		"ReversedPeopleDict": []string{},
 	}
 
 	var buf bytes.Buffer
 
 	err := GenerateDashboard(report, &buf)
-	if err == nil {
-		t.Error("expected error for invalid ticks")
+	if err != nil {
+		t.Fatalf("expected success with empty data, got: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "Developer Analytics Dashboard") {
+		t.Error("expected dashboard title in output")
 	}
 }
 
 func TestGenerateDashboard_InvalidPeopleDict(t *testing.T) {
 	t.Parallel()
 
-	report := analyze.Report{
-		"Ticks":              map[int]map[int]*DevTick{},
-		"ReversedPeopleDict": 123,
-	}
+	report := ticksToCanonicalReport(map[int]map[int]*DevTick{}, []string{})
+	report["ReversedPeopleDict"] = 123
 
 	var buf bytes.Buffer
 
@@ -137,37 +174,34 @@ func TestGenerateDashboard_InvalidPeopleDict(t *testing.T) {
 func TestNewDashboardData(t *testing.T) {
 	t.Parallel()
 
-	report := analyze.Report{
-		"Ticks": map[int]map[int]*DevTick{
+	ticks := map[int]map[int]*DevTick{
+		0: {
 			0: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 100, Removed: 20},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 100, Removed: 20},
-					},
-					Commits: 5,
+				LineStats: pkgplumbing.LineStats{Added: 100, Removed: 20},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 100, Removed: 20},
 				},
-			},
-			1: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 50, Removed: 10},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 50, Removed: 10},
-					},
-					Commits: 3,
-				},
-				1: {
-					LineStats: pkgplumbing.LineStats{Added: 30, Removed: 5},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Python": {Added: 30, Removed: 5},
-					},
-					Commits: 2,
-				},
+				Commits: 5,
 			},
 		},
-		"ReversedPeopleDict": []string{"Alice", "Bob"},
-		"TickSize":           24 * time.Hour,
+		1: {
+			0: {
+				LineStats: pkgplumbing.LineStats{Added: 50, Removed: 10},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 50, Removed: 10},
+				},
+				Commits: 3,
+			},
+			1: {
+				LineStats: pkgplumbing.LineStats{Added: 30, Removed: 5},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Python": {Added: 30, Removed: 5},
+				},
+				Commits: 2,
+			},
+		},
 	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice", "Bob"})
 
 	data, err := newDashboardData(report)
 	if err != nil {
@@ -220,28 +254,25 @@ func TestNewDashboardData(t *testing.T) {
 func TestBusFactorCalculation(t *testing.T) {
 	t.Parallel()
 
-	report := analyze.Report{
-		"Ticks": map[int]map[int]*DevTick{
+	ticks := map[int]map[int]*DevTick{
+		0: {
 			0: {
-				0: {
-					LineStats: pkgplumbing.LineStats{Added: 950},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 950},
-					},
-					Commits: 10,
+				LineStats: pkgplumbing.LineStats{Added: 950},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 950},
 				},
-				1: {
-					LineStats: pkgplumbing.LineStats{Added: 50},
-					Languages: map[string]pkgplumbing.LineStats{
-						"Go": {Added: 50},
-					},
-					Commits: 1,
+				Commits: 10,
+			},
+			1: {
+				LineStats: pkgplumbing.LineStats{Added: 50},
+				Languages: map[string]pkgplumbing.LineStats{
+					"Go": {Added: 50},
 				},
+				Commits: 1,
 			},
 		},
-		"ReversedPeopleDict": []string{"Hero Developer", "Minor Contributor"},
-		"TickSize":           24 * time.Hour,
 	}
+	report := ticksToCanonicalReport(ticks, []string{"Hero Developer", "Minor Contributor"})
 
 	data, err := newDashboardData(report)
 	if err != nil {
@@ -302,19 +333,16 @@ func TestAnonymizeNames(t *testing.T) {
 func TestGenerateIdentityAudit(t *testing.T) {
 	t.Parallel()
 
-	report := analyze.Report{
-		"Ticks": map[int]map[int]*DevTick{
-			0: {
-				0: {Commits: 10},
-				1: {Commits: 5},
-			},
-			1: {
-				0: {Commits: 5},
-			},
+	ticks := map[int]map[int]*DevTick{
+		0: {
+			0: {Commits: 10},
+			1: {Commits: 5},
 		},
-		"ReversedPeopleDict": []string{"Alice", "Bob"},
-		"TickSize":           24 * time.Hour,
+		1: {
+			0: {Commits: 5},
+		},
 	}
+	report := ticksToCanonicalReport(ticks, []string{"Alice", "Bob"})
 
 	entries := GenerateIdentityAudit(report)
 	if len(entries) != 2 {
