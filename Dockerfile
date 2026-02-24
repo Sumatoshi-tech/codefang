@@ -29,7 +29,7 @@ RUN LIBGIT2_INSTALL=third_party/libgit2/install && \
 
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates git
+RUN apk add --no-cache ca-certificates git bash
 
 COPY --from=builder /src/build/bin/codefang /usr/local/bin/codefang
 COPY --from=builder /src/build/bin/uast /usr/local/bin/uast
