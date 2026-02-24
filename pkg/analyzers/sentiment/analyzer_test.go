@@ -531,6 +531,37 @@ func TestLicenseRegex_UKSpelling(t *testing.T) {
 	assert.True(t, licenseRE.MatchString("This Licence covers all usage"))
 }
 
+func TestStripCommentDelimiters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"go_single_line", "// This is a comment", "This is a comment"},
+		{"go_multiline_open", "/* Block comment */", "Block comment"},
+		{"python_hash", "# Python comment", "Python comment"},
+		{"triple_slash", "/// Doc comment", "Doc comment"},
+		{"rust_doc", "//! Module doc", "Module doc"},
+		{"sql_dash", "-- SQL comment", "SQL comment"},
+		{"semicolon", "; Lisp comment", "Lisp comment"},
+		{"no_prefix", "Normal text", "Normal text"},
+		{"multiline_go", "// Line 1\n// Line 2", "Line 1 Line 2"},
+		{"empty", "", ""},
+		{"only_prefix", "//", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := stripCommentDelimiters(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestExtractCommitTimeSeries_Sentiment(t *testing.T) {
 	t.Parallel()
 
