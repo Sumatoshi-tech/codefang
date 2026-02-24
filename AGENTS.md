@@ -477,3 +477,31 @@ Write down the *why*, not just the *how*. Update:
 - No vendor lock-in
 - TDD always
 - Use codefang to analyze your own code
+
+---
+
+## Cursor Cloud specific instructions
+
+### Prerequisites (already installed in VM snapshot)
+
+- Go 1.26.0 at `/usr/local/go/bin/go` (PATH configured in `~/.bashrc`)
+- `golangci-lint` v2 and `deadcode` tool in `~/go/bin/`
+- `libonig-dev` system package (required by `go-oniguruma` CGO dependency)
+- libgit2 git submodule initialized at `third_party/libgit2`
+
+### Building and running
+
+All build/test/lint commands are documented in the `Makefile` (run `make help` for a summary). Key commands:
+
+- `make build` — builds both `uast` and `codefang` binaries to `build/bin/`
+- `make test` — runs all Go tests
+- `make lint` — runs golangci-lint + deadcode analysis
+- `make install` — installs binaries to `~/.local/bin`
+
+### Gotchas
+
+- **lib64 symlink**: On this VM, cmake installs libgit2 to `lib/` not `lib64/`. The update script creates a `lib64/` symlink directory so the Makefile target `$(LIBGIT2_INSTALL)/lib64/libgit2.a` is satisfied. If you see "no rule to make target" errors for libgit2, check this symlink.
+- **Pre-existing lint issues**: `make lint` currently reports 11 pre-existing findings (gosec G705/G703 in `cmd/uast/` and staticcheck QF1012 in `pkg/uast/parser_test.go`). These are not regressions from setup.
+- **Precompile step**: `make build` and `make test` both trigger a precompile step that generates `pkg/uast/embedded_mappings.gen.go` from `.uastmap` files. This is normal and takes a few seconds.
+- **CGO flags**: All `go build`/`go test` commands require the libgit2 CGO flags. Use the Makefile targets (which set these automatically) rather than running `go test ./...` directly.
+- **Git submodule**: The `third_party/libgit2` directory must be populated before building. The update script handles this via `git submodule update --init --recursive`.
