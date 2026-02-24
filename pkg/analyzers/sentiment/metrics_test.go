@@ -277,6 +277,66 @@ func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
 	assert.InDelta(t, 0.0, result.ChangePercent, floatDelta)
 }
 
+func TestLinearRegressionEndpoints_Empty(t *testing.T) {
+	t.Parallel()
+
+	start, end := linearRegressionEndpoints(nil, nil)
+	assert.InDelta(t, 0.0, float64(start), floatDelta)
+	assert.InDelta(t, 0.0, float64(end), floatDelta)
+}
+
+func TestLinearRegressionEndpoints_SinglePoint(t *testing.T) {
+	t.Parallel()
+
+	emotions := map[int]float32{5: 0.7}
+	start, end := linearRegressionEndpoints([]int{5}, emotions)
+	assert.InDelta(t, 0.7, float64(start), floatDelta)
+	assert.InDelta(t, 0.7, float64(end), floatDelta)
+}
+
+func TestLinearRegressionEndpoints_PerfectUptrend(t *testing.T) {
+	t.Parallel()
+
+	emotions := map[int]float32{0: 0.2, 1: 0.4, 2: 0.6, 3: 0.8}
+	ticks := []int{0, 1, 2, 3}
+
+	start, end := linearRegressionEndpoints(ticks, emotions)
+	assert.InDelta(t, 0.2, float64(start), floatDelta)
+	assert.InDelta(t, 0.8, float64(end), floatDelta)
+}
+
+func TestLinearRegressionEndpoints_WithOutlier(t *testing.T) {
+	t.Parallel()
+
+	emotions := map[int]float32{0: 0.5, 1: 0.5, 2: 0.1, 3: 0.5, 4: 0.5}
+	ticks := []int{0, 1, 2, 3, 4}
+
+	start, end := linearRegressionEndpoints(ticks, emotions)
+
+	assert.InDelta(t, float64(start), float64(end), 0.15,
+		"regression should be roughly stable despite outlier at tick 2")
+}
+
+func TestSentimentTrendMetric_RegressionBased(t *testing.T) {
+	t.Parallel()
+
+	input := &ReportData{
+		EmotionsByTick: map[int]float32{
+			0: 0.3,
+			1: 0.3,
+			2: 0.8,
+			3: 0.5,
+			4: 0.5,
+		},
+	}
+
+	result := computeTrend(input)
+
+	assert.Equal(t, 0, result.StartTick)
+	assert.Equal(t, 4, result.EndTick)
+	assert.NotEmpty(t, result.TrendDirection)
+}
+
 // --- LowSentimentPeriodMetric Tests ---.
 
 func TestLowSentimentPeriodMetric_Empty(t *testing.T) {

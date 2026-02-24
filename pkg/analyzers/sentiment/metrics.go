@@ -283,25 +283,67 @@ func computeTrend(input *ReportData) TrendData {
 
 	startTick := ticks[0]
 	endTick := ticks[len(ticks)-1]
-	startSentiment := input.EmotionsByTick[startTick]
-	endSentiment := input.EmotionsByTick[endTick]
+
+	regressionStart, regressionEnd := linearRegressionEndpoints(ticks, input.EmotionsByTick)
 
 	changePercent := 0.0
 
-	if startSentiment > 0 {
-		changePercent = float64(endSentiment-startSentiment) / float64(startSentiment) * percentMultiplier
+	if regressionStart > 0 {
+		changePercent = float64(regressionEnd-regressionStart) / float64(regressionStart) * percentMultiplier
 	}
 
-	direction := classifyTrendDirection(startSentiment, endSentiment)
+	direction := classifyTrendDirection(regressionStart, regressionEnd)
 
 	return TrendData{
 		StartTick:      startTick,
 		EndTick:        endTick,
-		StartSentiment: startSentiment,
-		EndSentiment:   endSentiment,
+		StartSentiment: regressionStart,
+		EndSentiment:   regressionEnd,
 		TrendDirection: direction,
 		ChangePercent:  changePercent,
 	}
+}
+
+// linearRegressionEndpoints fits a least-squares line to the sentiment time series
+// and returns the fitted values at the first and last tick.
+// For a single data point, returns that value for both endpoints.
+func linearRegressionEndpoints(ticks []int, emotions map[int]float32) (start, end float32) {
+	n := float64(len(ticks))
+	if n == 0 {
+		return 0, 0
+	}
+
+	if n == 1 {
+		v := emotions[ticks[0]]
+
+		return v, v
+	}
+
+	var sumX, sumY, sumXY, sumX2 float64
+
+	for _, t := range ticks {
+		x := float64(t)
+		y := float64(emotions[t])
+		sumX += x
+		sumY += y
+		sumXY += x * y
+		sumX2 += x * x
+	}
+
+	denom := n*sumX2 - sumX*sumX
+	if denom == 0 {
+		avg := float32(sumY / n)
+
+		return avg, avg
+	}
+
+	slope := (n*sumXY - sumX*sumY) / denom
+	intercept := (sumY - slope*sumX) / n
+
+	startVal := float32(intercept + slope*float64(ticks[0]))
+	endVal := float32(intercept + slope*float64(ticks[len(ticks)-1]))
+
+	return startVal, endVal
 }
 
 func computeLowSentimentPeriods(input *ReportData) []LowSentimentPeriodData {
