@@ -5,7 +5,9 @@
 #include "codefang_git.h"
 #include <stdlib.h>
 #include <string.h>
+#ifdef __GLIBC__
 #include <malloc.h>
+#endif
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -49,9 +51,11 @@ int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int 
      * Each arena retains freed memory, causing RSS to be 3-4x higher than
      * actual usage. A moderate limit (e.g. 4-8) dramatically reduces peak
      * RSS with minimal performance impact. */
+#ifdef __GLIBC__
     if (malloc_arena_max > 0) {
         mallopt(M_ARENA_MAX, malloc_arena_max);
     }
+#endif
     return 0;
 }
 

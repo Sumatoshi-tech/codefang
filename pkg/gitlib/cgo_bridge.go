@@ -1,8 +1,7 @@
 package gitlib
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/clib -fopenmp
-#cgo LDFLAGS: -fopenmp
+#cgo CFLAGS: -I${SRCDIR}/clib
 #include "codefang_git.h"
 #include <stdlib.h>
 
