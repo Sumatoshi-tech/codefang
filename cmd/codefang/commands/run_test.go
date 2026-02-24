@@ -595,10 +595,19 @@ func TestResolveFormats_MixedSupportsUniversalFormats(t *testing.T) {
 	}
 }
 
-func TestResolveFormats_MixedRejectsText(t *testing.T) {
+func TestResolveFormats_MixedAcceptsText(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := analyze.ResolveFormats(analyze.FormatText, true, true)
+	staticFmt, historyFmt, err := analyze.ResolveFormats(analyze.FormatText, true, true)
+	require.NoError(t, err)
+	require.Equal(t, analyze.FormatText, staticFmt)
+	require.Equal(t, analyze.FormatText, historyFmt)
+}
+
+func TestResolveFormats_MixedRejectsInvalid(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := analyze.ResolveFormats("html", true, true)
 	require.ErrorIs(t, err, analyze.ErrInvalidMixedFormat)
 }
 
@@ -1031,7 +1040,7 @@ func TestAllAnalyzersRejectUnsupportedFormat(t *testing.T) {
 
 			var buf bytes.Buffer
 
-			err := analyzer.Serialize(analyze.Report{}, "text", &buf)
+			err := analyzer.Serialize(analyze.Report{}, "html", &buf)
 			require.ErrorIs(t, err, analyze.ErrUnsupportedFormat)
 		})
 	}

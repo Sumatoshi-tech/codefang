@@ -26,6 +26,7 @@ func TestValidateUniversalFormat(t *testing.T) {
 		{name: "bin alias", format: FormatBinAlias},
 		{name: "timeseries", format: FormatTimeSeries},
 		{name: "ndjson", format: FormatNDJSON},
+		{name: "text", format: FormatText},
 	}
 
 	for _, testCase := range testCases {
@@ -42,7 +43,7 @@ func TestValidateUniversalFormat(t *testing.T) {
 func TestValidateUniversalFormat_Invalid(t *testing.T) {
 	t.Parallel()
 
-	_, err := ValidateUniversalFormat("text")
+	_, err := ValidateUniversalFormat("html")
 	require.ErrorIs(t, err, ErrUnsupportedFormat)
 }
 

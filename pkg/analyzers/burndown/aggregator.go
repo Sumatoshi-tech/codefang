@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/identity"
 )
 
 // Memory estimation constants for aggregator state size.
@@ -28,6 +27,7 @@ type Aggregator struct {
 	peopleHistories map[int]sparseHistory
 	matrix          []map[int]int64
 	fileHistories   map[PathID]sparseHistory
+	fileOwnership   map[PathID]map[int]int // pathID -> authorID -> lines (snapshot, not delta).
 
 	// Configuration carried from the analyzer.
 	opts               analyze.AggregatorOptions
@@ -87,6 +87,10 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 		a.mergeFileDeltas(cr.FileDeltas)
 	}
 
+	if len(cr.FileOwnership) > 0 {
+		a.mergeFileOwnership(cr.FileOwnership)
+	}
+
 	if tc.Tick > a.lastTick {
 		a.lastTick = tc.Tick
 	}
@@ -103,6 +107,16 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 	}
 
 	return nil
+}
+
+// mergeFileOwnership replaces per-file ownership with the latest snapshot.
+// Ownership is a point-in-time snapshot, not a delta.
+func (a *Aggregator) mergeFileOwnership(ownership map[PathID]map[int]int) {
+	if a.fileOwnership == nil {
+		a.fileOwnership = make(map[PathID]map[int]int, len(ownership))
+	}
+
+	maps.Copy(a.fileOwnership, ownership)
 }
 
 func (a *Aggregator) mergeFileDeltas(deltas map[PathID]sparseHistory) {
@@ -131,6 +145,7 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 		PeopleHistories: a.clonePeopleHistories(),
 		Matrix:          a.cloneMatrix(),
 		FileHistories:   a.cloneFileHistories(),
+		FileOwnership:   a.cloneFileOwnership(),
 	}
 
 	return analyze.TICK{
@@ -199,6 +214,23 @@ func (a *Aggregator) cloneMatrix() []map[int]int64 {
 	return result
 }
 
+func (a *Aggregator) cloneFileOwnership() map[PathID]map[int]int {
+	if len(a.fileOwnership) == 0 {
+		return nil
+	}
+
+	result := make(map[PathID]map[int]int, len(a.fileOwnership))
+
+	for pathID, authors := range a.fileOwnership {
+		clone := make(map[int]int, len(authors))
+		maps.Copy(clone, authors)
+
+		result[pathID] = clone
+	}
+
+	return result
+}
+
 func (a *Aggregator) cloneFileHistories() map[PathID]sparseHistory {
 	if !a.trackFiles || len(a.fileHistories) == 0 {
 		return nil
@@ -219,6 +251,7 @@ type spillSnapshot struct {
 	PeopleHistories map[int]sparseHistory
 	Matrix          []map[int]int64
 	FileHistories   map[PathID]sparseHistory
+	FileOwnership   map[PathID]map[int]int
 }
 
 // Spill writes accumulated state to disk to free memory.
@@ -239,6 +272,7 @@ func (a *Aggregator) Spill() (int64, error) {
 		PeopleHistories: a.peopleHistories,
 		Matrix:          a.matrix,
 		FileHistories:   a.fileHistories,
+		FileOwnership:   a.fileOwnership,
 	}
 
 	path := filepath.Join(a.spillDir, fmt.Sprintf("agg_%03d.gob", a.spillN))
@@ -265,6 +299,7 @@ func (a *Aggregator) Spill() (int64, error) {
 	a.peopleHistories = map[int]sparseHistory{}
 	a.matrix = nil
 	a.fileHistories = map[PathID]sparseHistory{}
+	a.fileOwnership = nil
 
 	return sizeBefore, nil
 }
@@ -309,6 +344,15 @@ func (a *Aggregator) Collect() error {
 			}
 
 			mergeSparseHistory(a.fileHistories[pathID], history)
+		}
+
+		// FileOwnership is a snapshot; later spills replace earlier ones.
+		if len(snap.FileOwnership) > 0 {
+			if a.fileOwnership == nil {
+				a.fileOwnership = make(map[PathID]map[int]int, len(snap.FileOwnership))
+			}
+
+			maps.Copy(a.fileOwnership, snap.FileOwnership)
 		}
 	}
 
@@ -470,16 +514,35 @@ func mergeAllTicks(ticks []analyze.TICK) *TickResult {
 		mergeTickPeopleHistories(merged, tr.PeopleHistories)
 		mergeMatrixInto(&merged.Matrix, tr.Matrix)
 
-		for pathID, history := range tr.FileHistories {
-			if merged.FileHistories[pathID] == nil {
-				merged.FileHistories[pathID] = sparseHistory{}
-			}
-
-			mergeSparseHistory(merged.FileHistories[pathID], history)
-		}
+		mergeTickFileHistories(merged, tr.FileHistories)
+		mergeTickFileOwnership(merged, tr.FileOwnership)
 	}
 
 	return merged
+}
+
+func mergeTickFileHistories(merged *TickResult, src map[PathID]sparseHistory) {
+	for pathID, history := range src {
+		if merged.FileHistories[pathID] == nil {
+			merged.FileHistories[pathID] = sparseHistory{}
+		}
+
+		mergeSparseHistory(merged.FileHistories[pathID], history)
+	}
+}
+
+// mergeTickFileOwnership merges file ownership from a tick result.
+// FileOwnership is a snapshot — last tick wins.
+func mergeTickFileOwnership(merged *TickResult, src map[PathID]map[int]int) {
+	if len(src) == 0 {
+		return
+	}
+
+	if merged.FileOwnership == nil {
+		merged.FileOwnership = make(map[PathID]map[int]int, len(src))
+	}
+
+	maps.Copy(merged.FileOwnership, src)
 }
 
 func mergeTickPeopleHistories(merged *TickResult, src []sparseHistory) {
@@ -625,50 +688,13 @@ func addFilesToReport(
 
 		fileHistories[name] = converter.groupSparseHistory(history, lastTick)
 
-		ownership := computeFileOwnership(history)
-		if len(ownership) > 0 {
+		// Use segment-based ownership (computed from live file state)
+		// instead of the broken sparse-history approach.
+		if ownership := merged.FileOwnership[pathID]; len(ownership) > 0 {
 			fileOwnership[name] = ownership
 		}
 	}
 
 	report["FileHistories"] = fileHistories
 	report["FileOwnership"] = fileOwnership
-}
-
-// computeFileOwnership extracts per-author line ownership from the last tick
-// of a file's sparse history. The "last tick" is the highest curTick key.
-func computeFileOwnership(history sparseHistory) map[int]int {
-	if len(history) == 0 {
-		return nil
-	}
-
-	// Find the last (highest) tick.
-	lastTick := -1
-	for tick := range history {
-		if tick > lastTick {
-			lastTick = tick
-		}
-	}
-
-	inner := history[lastTick]
-	if len(inner) == 0 {
-		return nil
-	}
-
-	// Sum line counts per author from the inner map.
-	// In global/file history, prevTick is used to track age bands,
-	// not author identity. For ownership, we look at which author bands
-	// have positive line counts.
-	ownership := map[int]int{}
-
-	for prevTick, count := range inner {
-		if count > 0 {
-			ownership[prevTick] += int(count)
-		}
-	}
-
-	// Filter out non-author entries (AuthorMissing sentinel).
-	delete(ownership, identity.AuthorMissing)
-
-	return ownership
 }

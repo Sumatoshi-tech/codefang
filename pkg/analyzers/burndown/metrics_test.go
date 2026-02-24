@@ -135,6 +135,31 @@ func TestGlobalSurvivalMetric_MultipleSamples(t *testing.T) {
 	assert.InDelta(t, 150.0/300.0, result[2].SurvivalRate, 0.01)
 }
 
+func TestGlobalSurvivalMetric_GrowingRepo(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a growing repo: band 0 decays while band 1 grows.
+	// Band 0 peak = 100 (sample 0), band 1 peak = 200 (sample 1).
+	// Total lines ever written = 100 + 200 = 300.
+	// Current lines = 50 + 200 = 250.
+	// Survival = 250/300 = 83.3% (NOT 250/250 = 100%).
+	input := &ReportData{
+		GlobalHistory: DenseHistory{
+			{100, 0},  // Sample 0: 100 total.
+			{50, 200}, // Sample 1: 250 total (current).
+		},
+	}
+
+	result := computeGlobalSurvival(input)
+
+	require.Len(t, result, 2)
+	// Peak per band: band0=100, band1=200, total=300.
+	assert.Equal(t, int64(100), result[0].TotalLines)
+	assert.InDelta(t, 100.0/300.0, result[0].SurvivalRate, 0.01)
+	assert.Equal(t, int64(250), result[1].TotalLines)
+	assert.InDelta(t, 250.0/300.0, result[1].SurvivalRate, 0.01)
+}
+
 func TestGlobalSurvivalMetric_NegativeValuesIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -433,6 +458,28 @@ func TestBurndownAggregateMetric_Compute(t *testing.T) {
 	assert.Equal(t, int64(300), result.TotalPeakLines)
 	assert.Equal(t, int64(230), result.TotalCurrentLines)
 	assert.InDelta(t, 230.0/300.0, result.OverallSurvivalRate, 0.01)
+}
+
+func TestBurndownAggregateMetric_GrowingRepo(t *testing.T) {
+	t.Parallel()
+
+	// Growing repo: last sample has the most lines, but survival < 100%
+	// because older code was deleted.
+	input := &ReportData{
+		GlobalHistory: DenseHistory{
+			{100, 0},  // Sample 0: 100 total.
+			{50, 200}, // Sample 1: 250 total (current).
+		},
+		TickSize: getTestTickSize(),
+		Sampling: testSampling,
+	}
+
+	result := computeAggregate(input)
+
+	// Peak = sum of per-band peaks: max(100,50) + max(0,200) = 100 + 200 = 300.
+	assert.Equal(t, int64(300), result.TotalPeakLines)
+	assert.Equal(t, int64(250), result.TotalCurrentLines)
+	assert.InDelta(t, 250.0/300.0, result.OverallSurvivalRate, 0.01)
 }
 
 // --- ComputeAllMetrics Tests ---.
