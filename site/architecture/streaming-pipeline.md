@@ -68,7 +68,7 @@ flowchart LR
     subgraph chunk3["Chunk 3"]
         direction TB
         C3_PROCESS["Process commits<br/>1000..1499"]
-        C3_FINALIZE[Finalize]
+        C3_FINALIZE[FinalizeWithAggregators]
         C3_PROCESS --> C3_FINALIZE
     end
 
@@ -89,57 +89,87 @@ The `streaming.Planner` calculates optimal chunk boundaries. It lives in
 | `MinChunkSize` | 50 | Minimum commits per chunk to amortize hibernation cost |
 | `MaxChunkSize` | 3,000 | Safety cap on commits per chunk |
 | `BaseOverhead` | 400 MiB | Fixed memory for Go runtime + libgit2 + caches |
-| `DefaultStateGrowthPerCommit` | 500 KiB | Conservative fallback per-commit growth rate |
+| `DefaultStateGrowthPerCommit` | 500 KiB | Conservative fallback per-commit growth rate (= `DefaultWorkingStateSize` + `DefaultAvgTCSize`) |
+| `DefaultWorkingStateSize` | 400 KiB | Fallback per-commit working state estimate |
+| `DefaultAvgTCSize` | 100 KiB | Fallback per-commit TC payload estimate |
 | `SafetyMarginPercent` | 50% | Added to growth rate for transient allocations |
+| `UsablePercent` | 95% | Budget fraction available after GC slack |
+| `WorkStatePercent` | 60% | Fraction of remaining budget for analyzer working state |
+| `AggStatePercent` | 30% | Fraction of remaining budget for aggregator spill budget |
+| `ChunkMemPercent` | 10% | Fraction of remaining budget for in-flight data |
+
+### Budget Decomposition: P + W + A + S
+
+The scheduler decomposes the memory budget into four explicit regions:
+
+```
+B = P + W + A + S
+
+usable    = budget * 0.95              (S = 5% slack for GC headroom)
+remaining = usable - pipelineOverhead  (P = pipeline overhead)
+workState = remaining * 0.60           (W = analyzer working state)
+aggState  = remaining * 0.30           (A = aggregator state / spill budget)
+chunkMem  = remaining * 0.10           (reserved for in-flight CommitData + TCs)
+```
+
+The `ComputeSchedule()` function in `pkg/streaming/planner.go` performs this
+decomposition and returns a `Schedule` containing chunk boundaries, chunk size,
+buffering factor, and the aggregator spill budget.
 
 ### Chunk Size Calculation
 
-The planner determines chunk size using this formula:
+The planner determines chunk size from the **working state** portion of the budget:
 
 ```
-available = memory_budget - overhead
-growth    = aggregate_growth_per_commit * 1.5  (safety margin)
-chunk_size = clamp(available / growth, MinChunkSize, MaxChunkSize)
+growth     = working_state_per_commit * 1.5  (safety margin)
+chunk_size = clamp(workState / growth, MinChunkSize, MaxChunkSize)
 ```
 
 Where:
 
-- **`memory_budget`** is set via `--memory-budget` (e.g., `4GiB`).
-- **`overhead`** is `BaseOverhead` (400 MiB) or the pipeline's estimated overhead if known.
-- **`aggregate_growth_per_commit`** is the sum of all selected leaf analyzers' declared growth rates. Analyzers that implement the `MemoryWeighter` interface declare their per-commit growth; others default to 500 KiB.
+- **`workState`** is 60% of the remaining budget after pipeline overhead and slack.
+- **`working_state_per_commit`** is the sum of all selected leaf analyzers' declared `WorkingStateSize()` values. Each leaf analyzer declares `WorkingStateSize()` (analyzer-internal data structures) and `AvgTCSize()` (per-commit TC payload). Only `WorkingStateSize()` drives chunk sizing; `AvgTCSize()` is used separately for aggregator budget estimation.
 
-### MemoryWeighter Interface
+### Memory Sizing Methods
 
-Analyzers can declare their per-commit memory growth:
+Each `HistoryAnalyzer` declares two per-commit memory estimates:
 
 ```go
-type MemoryWeighter interface {
-    StateGrowthPerCommit() int64
-}
+// WorkingStateSize returns estimated bytes of analyzer-internal
+// working state accumulated per commit (maps, treaps, matrices).
+WorkingStateSize() int64
+
+// AvgTCSize returns estimated bytes of TC payload emitted per commit.
+AvgTCSize() int64
 ```
 
-The planner sums these across all selected leaf analyzers. If an analyzer does
-not implement this interface, `DefaultStateGrowthPerCommit` (500 KiB) is used
-as a conservative fallback.
+The planner sums `WorkingStateSize() + AvgTCSize()` across all selected leaf
+analyzers. Plumbing analyzers return 0 for both and are excluded from the sum.
 
 ### Example
 
-For a 10,000-commit repo with 4 GiB budget and 2 MiB/commit aggregate growth:
+For a 10,000-commit repo with 4 GiB budget, 400 MiB pipeline overhead, and
+1.5 MiB/commit working state growth:
 
 ```
-available  = 4 GiB - 400 MiB = 3,696 MiB
-growth     = 2 MiB * 1.5     = 3 MiB/commit
-chunk_size = 3,696 / 3       = 1,232 commits
-chunks     = ceil(10,000 / 1,232) = 9 chunks
+usable     = 4 GiB * 0.95          = 3,891 MiB
+remaining  = 3,891 - 400           = 3,491 MiB
+workState  = 3,491 * 0.60          = 2,095 MiB
+aggState   = 3,491 * 0.30          = 1,047 MiB  (AggSpillBudget)
+growth     = 1.5 MiB * 1.5         = 2.25 MiB/commit
+chunk_size = 2,095 / 2.25          = 931 commits
+chunks     = ceil(10,000 / 931)    = 11 chunks
 ```
 
 ---
 
-## Double-Buffered Chunk Pipelining
+## Buffered Chunk Pipelining
 
 When the memory budget is sufficient and multiple chunks are needed, the
-pipeline enables **double-buffered pipelining** to overlap the pipeline stage
-of chunk K+1 with the analyzer consumption stage of chunk K.
+pipeline enables **buffered pipelining** to overlap the pipeline stage
+of upcoming chunks with the analyzer consumption stage of the current chunk.
+The scheduler determines the **buffering factor** (1, 2, or 3) based on
+the memory budget.
 
 ### The Insight
 
@@ -152,7 +182,31 @@ Processing a chunk has two phases:
 
 These two phases use different resources and can overlap.
 
-### How It Works
+### Buffering Factor Selection
+
+The `ComputeSchedule()` function iterates buffering factors from `MaxBuffering`
+(default 3) down to 1, selecting the highest factor where `ChunkSize >=
+MinChunkSize`. Only the working state region (60% of remaining budget) is
+divided among buffering slots; the aggregator spill budget is unaffected.
+
+```
+for bf = maxBuffering; bf >= 1; bf-- {
+    chunkSize = workState / (bf * effectiveGrowth)
+    if chunkSize >= MinChunkSize {
+        return bf, chunkSize
+    }
+}
+```
+
+| Budget | Typical Factor | Behavior |
+|--------|----------------|----------|
+| 8 GiB | 2-3 | Double or triple buffering |
+| 4 GiB | 2-3 | Double or triple buffering |
+| 2 GiB | 1-2 | Single or double buffering |
+| 512 MiB | 1 | Single buffering (budget too tight) |
+| Unlimited (0) | 3 | Maximum parallelism |
+
+### How Double-Buffering Works
 
 ```
                     Time ───────────────────────────────────────────>
@@ -165,8 +219,6 @@ Chunk 3:                                        |==== Pipeline ====|==== Consume
                               Pipeline 2 overlaps with Consume 1
 ```
 
-The ASCII timeline above shows how double-buffering works:
-
 1. **Chunk 1** runs normally (no prefetch available yet).
 2. While Chunk 1's analyzers **consume** data, Chunk 2's **pipeline** runs
    concurrently in a background goroutine (`startPrefetch`).
@@ -174,16 +226,23 @@ The ASCII timeline above shows how double-buffering works:
    available -- analyzers can consume it immediately without waiting for I/O.
 4. The pattern repeats for subsequent chunks.
 
+### How Triple-Buffering Works
+
+With `BufferingFactor >= 3`, the scheduler produces smaller chunks (workState
+divided by 3), and the prefetch loop naturally overlaps more pipeline phases.
+The existing double-buffer loop handles triple-buffering semantics: at each
+iteration it prefetches the next chunk, so with more (smaller) chunks, the
+overlap covers a larger fraction of total processing time.
+
 ### Memory Budget Split
 
-When double-buffering is active, the memory budget is split to accommodate two
-concurrent analyzer states:
+The scheduler handles the memory budget split through the buffering factor
+iteration. With `BufferingFactor = N`, the working state region is divided
+among N concurrent slots:
 
 ```
-total_budget = overhead + state_budget
-state_for_two = total_budget - overhead
-per_slot = state_for_two / 2
-synthetic_overhead = overhead + per_slot  (fed to planner as "overhead")
+workState     = remaining * 0.60
+chunkSize     = workState / (N * effectiveGrowth)
 ```
 
 This results in smaller chunk sizes (more chunks), but the pipeline overlap
@@ -191,16 +250,47 @@ compensates by eliminating I/O wait time between chunks.
 
 ### Activation Conditions
 
-Double-buffering activates when **all** of these conditions are met:
+The scheduler automatically selects the buffering factor. The pipeline uses
+double-buffered processing when `BufferingFactor >= 2` and falls back to
+sequential chunk processing otherwise. Iterator mode (commit-at-a-time loading)
+always uses single-buffering since it cannot prefetch.
 
-| Condition | Rationale |
-|-----------|-----------|
-| At least 2 chunks planned | No benefit with a single chunk |
-| `memoryBudget > 0` | Budget must be explicitly set |
-| `available >= 2 * MinChunkSize * DefaultStateGrowthPerCommit` | Enough memory for two concurrent states |
+---
 
-When conditions are not met, the pipeline falls back to sequential chunk
-processing.
+## Three-Metric Adaptive Feedback
+
+After each chunk, the `AdaptivePlanner` examines three independent metrics and
+re-plans remaining chunks if any metric diverges from its prediction by more
+than 25%.
+
+### Tracked Metrics
+
+| Metric | Source | Purpose |
+|--------|--------|---------|
+| **Working state growth** | `HeapInuse` delta minus aggregator delta | Drives chunk resizing |
+| **TC payload size** | TC count x declared `AvgTCSize` | Detects data volume changes |
+| **Aggregator state growth** | `EstimatedStateSize()` delta | Detects accumulation spikes |
+
+Each metric is tracked by its own exponential moving average (EMA) with
+`alpha = 0.3` (~3-chunk half-life). The `ReplanObservation` struct carries
+all three per-commit observations to `Replan()`.
+
+### Replan Logic
+
+1. Update all three EMAs with the chunk's observations (clamped to 1 KiB floor).
+2. Compute the predicted effective growth rate: `declared * 1.5` (safety margin).
+3. If any EMA diverges from predicted by more than 25%, trigger a replan.
+4. The **working state growth** EMA drives chunk resizing (as before). TC and
+   aggregator metrics are informational triggers only.
+5. Processed chunks are never modified (checkpoint safety).
+
+### Telemetry
+
+`AdaptiveStats` exposes per-metric final rates:
+
+- `FinalWorkGrowth` — smoothed working state growth per commit.
+- `FinalTCSize` — smoothed TC payload size per commit.
+- `FinalAggGrowth` — smoothed aggregator state growth per commit.
 
 ---
 
@@ -241,7 +331,15 @@ completed chunk.
 | `CurrentChunk` | Index of the last completed chunk |
 | `TotalChunks` | Total planned chunk count |
 | `LastCommitHash` | Hash of the last processed commit |
+| `AggregatorSpills` | Per-aggregator spill directory path and spill count |
 | Analyzer state | Serialized state of all checkpointable analyzers |
+
+The checkpoint format is versioned (currently **v2**). Checkpoints saved by
+older versions are rejected with a warning, and the run starts fresh.
+
+On resume, aggregators are recreated and pointed at their saved spill
+directories so that TCs accumulated before the interruption are preserved.
+This ensures resumed runs produce identical output to uninterrupted runs.
 
 ### Checkpointable Interface
 
@@ -279,7 +377,7 @@ flowchart TD
     RESUME --> PROCESS
     PROCESS --> COMPLETE{All chunks done?}
     COMPLETE -->|Yes| CLEAR[Clear checkpoint]
-    CLEAR --> FINALIZE[Finalize results]
+    CLEAR --> FINALIZE[FinalizeWithAggregators]
     COMPLETE -->|Interrupted| SAVED[Checkpoint on disk]
     SAVED --> |Next run| CHECK
 ```
@@ -289,7 +387,7 @@ flowchart TD
 ## Full Pipeline Timeline
 
 The following diagram shows the complete lifecycle of a streaming analysis
-run with double-buffered pipelining and checkpointing:
+run with buffered pipelining (double-buffer shown) and checkpointing:
 
 ```
 Time ──────────────────────────────────────────────────────────────────────>
@@ -320,7 +418,7 @@ Hibernate:                      [hib][boot]              [hib][boot]
 | `Consume` | Analyzers process CommitData sequentially |
 | `[hib][boot]` | Hibernate/boot cycle between chunks |
 | `[save]` | Checkpoint saved to disk |
-| `REPORT` | `runner.Finalize()` -- generate output |
+| `REPORT` | `runner.FinalizeWithAggregators()` -- generate output via aggregator path |
 
 ---
 
@@ -349,8 +447,22 @@ Hibernate:                      [hib][boot]              [hib][boot]
   larger and runs faster.
 - **Checkpointing adds ~5% overhead**: The serialization cost per chunk
   boundary is small but non-zero.
-- **Double-buffering shines on I/O-bound repos**: Repositories with large
-  blobs benefit most from overlapping pipeline and consume phases.
+- **Buffered pipelining shines on I/O-bound repos**: Repositories with large
+  blobs benefit most from overlapping pipeline and consume phases. The
+  scheduler automatically selects double or triple buffering when the budget
+  allows.
+
+### Reference Benchmarks
+
+Measured on the kubernetes repository (56K first-parent commits, burndown
+analyzer, `--memory-budget 4GB`):
+
+| Metric | Value |
+|--------|-------|
+| Peak RSS | 6.5 -- 7.1 GiB |
+| Wall time | 2m 19s -- 2m 44s |
+| Chunks | ~20 (adaptive) |
+| NDJSON first line (10K commits) | 1.3s |
 
 ---
 

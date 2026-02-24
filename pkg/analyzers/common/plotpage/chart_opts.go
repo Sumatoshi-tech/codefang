@@ -87,17 +87,6 @@ func (c *ChartOpts) Grid() opts.Grid {
 	}
 }
 
-// GridCompact returns grid options with smaller top margin.
-func (c *ChartOpts) GridCompact() opts.Grid {
-	return opts.Grid{
-		Top:          "20%",
-		Bottom:       "15%",
-		Left:         "5%",
-		Right:        "5%",
-		ContainLabel: opts.Bool(true),
-	}
-}
-
 // DataZoom returns standard data zoom options.
 func (c *ChartOpts) DataZoom() []opts.DataZoom {
 	return []opts.DataZoom{

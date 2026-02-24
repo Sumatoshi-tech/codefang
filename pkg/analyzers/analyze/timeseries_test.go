@@ -8,36 +8,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 )
 
-func TestRegisterTickExtractor_StoresAndRetrieves(t *testing.T) { //nolint:paralleltest // writes to global map
-	called := false
-
-	extractor := func(_ analyze.Report) map[string]any {
-		called = true
-
-		return nil
-	}
-
-	analyze.RegisterTickExtractor("test-analyzer", extractor)
-
-	got := analyze.TickExtractorFor("test-analyzer")
-	if got == nil {
-		t.Fatal("expected registered extractor, got nil")
-	}
-
-	got(nil)
-
-	if !called {
-		t.Error("expected extractor to be called")
-	}
-}
-
-func TestTickExtractorFor_Unregistered(t *testing.T) { //nolint:paralleltest // reads global map
-	got := analyze.TickExtractorFor("nonexistent-analyzer")
-	if got != nil {
-		t.Errorf("expected nil for unregistered analyzer, got %v", got)
-	}
-}
-
 func TestMergedCommitData_MarshalJSON_Flattened(t *testing.T) {
 	t.Parallel()
 
@@ -100,12 +70,10 @@ func TestMergedCommitData_MarshalJSON_Flattened(t *testing.T) {
 	}
 }
 
-func TestBuildMergedTimeSeries_EmptyReports(t *testing.T) {
+func TestBuildMergedTimeSeriesDirect_EmptyData(t *testing.T) {
 	t.Parallel()
 
-	reports := make(map[string]analyze.Report)
-
-	ts := analyze.BuildMergedTimeSeries(reports, nil, 0)
+	ts := analyze.BuildMergedTimeSeriesDirect(nil, nil, 0)
 
 	if ts.Version != analyze.TimeSeriesModelVersion {
 		t.Errorf("expected version=%s, got %s", analyze.TimeSeriesModelVersion, ts.Version)
@@ -118,18 +86,23 @@ func TestBuildMergedTimeSeries_EmptyReports(t *testing.T) {
 	if len(ts.Analyzers) != 0 {
 		t.Errorf("expected 0 analyzers, got %d", len(ts.Analyzers))
 	}
+
+	if ts.TickSizeHours != 24 {
+		t.Errorf("expected default tick_size_hours=24, got %f", ts.TickSizeHours)
+	}
 }
 
-func TestBuildMergedTimeSeries_SingleAnalyzer(t *testing.T) { //nolint:paralleltest // writes to global map
-	analyze.RegisterTickExtractor("build-test-single", func(_ analyze.Report) map[string]any {
-		return map[string]any{
-			"aaa111": map[string]any{"score": 10},
-			"bbb222": map[string]any{"score": 20},
-		}
-	})
+func TestBuildMergedTimeSeriesDirect_SingleAnalyzer(t *testing.T) {
+	t.Parallel()
 
-	reports := map[string]analyze.Report{
-		"build-test-single": {},
+	active := []analyze.AnalyzerData{
+		{
+			Flag: "quality",
+			Data: map[string]any{
+				"aaa111": map[string]any{"score": 10},
+				"bbb222": map[string]any{"score": 20},
+			},
+		},
 	}
 
 	meta := []analyze.CommitMeta{
@@ -137,21 +110,20 @@ func TestBuildMergedTimeSeries_SingleAnalyzer(t *testing.T) { //nolint:parallelt
 		{Hash: "bbb222", Timestamp: "2024-01-02T00:00:00Z", Author: "bob", Tick: 1},
 	}
 
-	ts := analyze.BuildMergedTimeSeries(reports, meta, 0)
+	ts := analyze.BuildMergedTimeSeriesDirect(active, meta, 0)
 
 	if len(ts.Analyzers) != 1 {
 		t.Fatalf("expected 1 analyzer, got %d", len(ts.Analyzers))
 	}
 
-	if ts.Analyzers[0] != "build-test-single" {
-		t.Errorf("expected analyzer=build-test-single, got %s", ts.Analyzers[0])
+	if ts.Analyzers[0] != "quality" {
+		t.Errorf("expected analyzer=quality, got %s", ts.Analyzers[0])
 	}
 
 	if len(ts.Commits) != 2 {
 		t.Fatalf("expected 2 commits, got %d", len(ts.Commits))
 	}
 
-	// Sorted by commit order (meta order).
 	if ts.Commits[0].Hash != "aaa111" {
 		t.Errorf("expected first commit=aaa111, got %s", ts.Commits[0].Hash)
 	}
@@ -163,31 +135,39 @@ func TestBuildMergedTimeSeries_SingleAnalyzer(t *testing.T) { //nolint:parallelt
 	if ts.Commits[0].Author != "alice" {
 		t.Errorf("expected author=alice, got %s", ts.Commits[0].Author)
 	}
+
+	if ts.Commits[0].Tick != 0 {
+		t.Errorf("expected tick=0, got %d", ts.Commits[0].Tick)
+	}
+
+	if ts.Commits[1].Tick != 1 {
+		t.Errorf("expected tick=1, got %d", ts.Commits[1].Tick)
+	}
 }
 
-func TestBuildMergedTimeSeries_MultiAnalyzer(t *testing.T) { //nolint:paralleltest // writes to global map
-	analyze.RegisterTickExtractor("build-test-multi-a", func(_ analyze.Report) map[string]any {
-		return map[string]any{
-			"commit1": map[string]any{"metric_a": 1},
-		}
-	})
+func TestBuildMergedTimeSeriesDirect_MultiAnalyzer(t *testing.T) {
+	t.Parallel()
 
-	analyze.RegisterTickExtractor("build-test-multi-b", func(_ analyze.Report) map[string]any {
-		return map[string]any{
-			"commit1": map[string]any{"metric_b": 2},
-		}
-	})
-
-	reports := map[string]analyze.Report{
-		"build-test-multi-a": {},
-		"build-test-multi-b": {},
+	active := []analyze.AnalyzerData{
+		{
+			Flag: "analyzer-a",
+			Data: map[string]any{
+				"commit1": map[string]any{"metric_a": 1},
+			},
+		},
+		{
+			Flag: "analyzer-b",
+			Data: map[string]any{
+				"commit1": map[string]any{"metric_b": 2},
+			},
+		},
 	}
 
 	meta := []analyze.CommitMeta{
 		{Hash: "commit1", Timestamp: "2024-01-01T00:00:00Z", Author: "alice", Tick: 0},
 	}
 
-	ts := analyze.BuildMergedTimeSeries(reports, meta, 0)
+	ts := analyze.BuildMergedTimeSeriesDirect(active, meta, 0)
 
 	if len(ts.Commits) != 1 {
 		t.Fatalf("expected 1 commit, got %d", len(ts.Commits))
@@ -199,12 +179,91 @@ func TestBuildMergedTimeSeries_MultiAnalyzer(t *testing.T) { //nolint:parallelte
 		t.Fatalf("expected 2 analyzer entries, got %d", len(entry.Analyzers))
 	}
 
-	if _, ok := entry.Analyzers["build-test-multi-a"]; !ok {
-		t.Error("expected build-test-multi-a in analyzers")
+	if _, ok := entry.Analyzers["analyzer-a"]; !ok {
+		t.Error("expected analyzer-a in analyzers")
 	}
 
-	if _, ok := entry.Analyzers["build-test-multi-b"]; !ok {
-		t.Error("expected build-test-multi-b in analyzers")
+	if _, ok := entry.Analyzers["analyzer-b"]; !ok {
+		t.Error("expected analyzer-b in analyzers")
+	}
+}
+
+func TestBuildMergedTimeSeriesDirect_CustomTickSize(t *testing.T) {
+	t.Parallel()
+
+	ts := analyze.BuildMergedTimeSeriesDirect(nil, nil, 12)
+
+	if ts.TickSizeHours != 12 {
+		t.Errorf("expected tick_size_hours=12, got %f", ts.TickSizeHours)
+	}
+}
+
+func TestBuildMergedTimeSeriesDirect_CommitOrderFollowsMeta(t *testing.T) {
+	t.Parallel()
+
+	active := []analyze.AnalyzerData{
+		{
+			Flag: "test",
+			Data: map[string]any{
+				"commit3": "data3",
+				"commit1": "data1",
+				"commit2": "data2",
+			},
+		},
+	}
+
+	// Meta defines the canonical order.
+	meta := []analyze.CommitMeta{
+		{Hash: "commit1", Tick: 0},
+		{Hash: "commit2", Tick: 1},
+		{Hash: "commit3", Tick: 2},
+	}
+
+	ts := analyze.BuildMergedTimeSeriesDirect(active, meta, 0)
+
+	if len(ts.Commits) != 3 {
+		t.Fatalf("expected 3 commits, got %d", len(ts.Commits))
+	}
+
+	if ts.Commits[0].Hash != "commit1" {
+		t.Errorf("expected first=commit1, got %s", ts.Commits[0].Hash)
+	}
+
+	if ts.Commits[1].Hash != "commit2" {
+		t.Errorf("expected second=commit2, got %s", ts.Commits[1].Hash)
+	}
+
+	if ts.Commits[2].Hash != "commit3" {
+		t.Errorf("expected third=commit3, got %s", ts.Commits[2].Hash)
+	}
+}
+
+func TestBuildMergedTimeSeriesDirect_SkipsCommitsNotInMeta(t *testing.T) {
+	t.Parallel()
+
+	active := []analyze.AnalyzerData{
+		{
+			Flag: "test",
+			Data: map[string]any{
+				"known":   "data",
+				"unknown": "data",
+			},
+		},
+	}
+
+	meta := []analyze.CommitMeta{
+		{Hash: "known", Tick: 0},
+	}
+
+	ts := analyze.BuildMergedTimeSeriesDirect(active, meta, 0)
+
+	// Only "known" should appear since "unknown" is not in meta.
+	if len(ts.Commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(ts.Commits))
+	}
+
+	if ts.Commits[0].Hash != "known" {
+		t.Errorf("expected hash=known, got %s", ts.Commits[0].Hash)
 	}
 }
 

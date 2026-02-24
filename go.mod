@@ -3,13 +3,80 @@ module github.com/Sumatoshi-tech/codefang
 go 1.26
 
 require (
-	github.com/alexaandru/go-sitter-forest v1.9.163
+	github.com/alexaandru/go-sitter-forest/ansible v1.9.0
+	github.com/alexaandru/go-sitter-forest/bash v1.9.6
+	github.com/alexaandru/go-sitter-forest/c v1.9.4
+	github.com/alexaandru/go-sitter-forest/c_sharp v1.9.6
+	github.com/alexaandru/go-sitter-forest/clojure v1.9.1
+	github.com/alexaandru/go-sitter-forest/cmake v1.9.5
+	github.com/alexaandru/go-sitter-forest/commonlisp v1.9.1
+	github.com/alexaandru/go-sitter-forest/cpp v1.9.5
+	github.com/alexaandru/go-sitter-forest/crystal v1.9.29
+	github.com/alexaandru/go-sitter-forest/css v1.9.4
+	github.com/alexaandru/go-sitter-forest/csv v1.9.0
+	github.com/alexaandru/go-sitter-forest/dart v1.9.4
+	github.com/alexaandru/go-sitter-forest/dockerfile v1.9.1
+	github.com/alexaandru/go-sitter-forest/dotenv v1.9.0
+	github.com/alexaandru/go-sitter-forest/elixir v1.9.5
+	github.com/alexaandru/go-sitter-forest/elm v1.9.1
+	github.com/alexaandru/go-sitter-forest/fish v1.9.2
+	github.com/alexaandru/go-sitter-forest/fortran v1.9.13
+	github.com/alexaandru/go-sitter-forest/git_config v1.9.3
+	github.com/alexaandru/go-sitter-forest/gitattributes v1.9.1
+	github.com/alexaandru/go-sitter-forest/gitignore v1.9.0
 	github.com/alexaandru/go-sitter-forest/go v1.9.4
+	github.com/alexaandru/go-sitter-forest/gosum v1.9.0
+	github.com/alexaandru/go-sitter-forest/gotmpl v1.9.3
+	github.com/alexaandru/go-sitter-forest/gowork v1.9.0
+	github.com/alexaandru/go-sitter-forest/graphql v1.9.0
+	github.com/alexaandru/go-sitter-forest/groovy v1.9.4
+	github.com/alexaandru/go-sitter-forest/haskell v1.9.2
+	github.com/alexaandru/go-sitter-forest/hcl v1.9.3
+	github.com/alexaandru/go-sitter-forest/helm v1.9.4
+	github.com/alexaandru/go-sitter-forest/html v1.9.1
+	github.com/alexaandru/go-sitter-forest/ini v1.9.1
+	github.com/alexaandru/go-sitter-forest/java v1.9.5
+	github.com/alexaandru/go-sitter-forest/javascript v1.9.2
+	github.com/alexaandru/go-sitter-forest/json v1.9.1
+	github.com/alexaandru/go-sitter-forest/kotlin v1.9.4
+	github.com/alexaandru/go-sitter-forest/latex v1.9.2
+	github.com/alexaandru/go-sitter-forest/lua v1.9.3
+	github.com/alexaandru/go-sitter-forest/make v1.9.1
+	github.com/alexaandru/go-sitter-forest/markdown v1.9.5
+	github.com/alexaandru/go-sitter-forest/markdown_inline v1.9.3
+	github.com/alexaandru/go-sitter-forest/nim v1.9.1
+	github.com/alexaandru/go-sitter-forest/nim_format_string v1.9.0
+	github.com/alexaandru/go-sitter-forest/perl v1.9.9
+	github.com/alexaandru/go-sitter-forest/php v1.9.5
+	github.com/alexaandru/go-sitter-forest/powershell v1.9.5
+	github.com/alexaandru/go-sitter-forest/properties v1.9.2
+	github.com/alexaandru/go-sitter-forest/proto v1.9.1
+	github.com/alexaandru/go-sitter-forest/proxima v1.9.2
+	github.com/alexaandru/go-sitter-forest/prql v1.9.1
+	github.com/alexaandru/go-sitter-forest/psv v1.9.0
+	github.com/alexaandru/go-sitter-forest/python v1.9.10
+	github.com/alexaandru/go-sitter-forest/r v1.9.6
+	github.com/alexaandru/go-sitter-forest/rego v1.9.0
+	github.com/alexaandru/go-sitter-forest/ruby v1.9.3
+	github.com/alexaandru/go-sitter-forest/rust v1.9.13
+	github.com/alexaandru/go-sitter-forest/rust_with_rstml v1.9.1
+	github.com/alexaandru/go-sitter-forest/scala v1.9.8
+	github.com/alexaandru/go-sitter-forest/sql v1.9.13
+	github.com/alexaandru/go-sitter-forest/ssh_config v1.9.2
+	github.com/alexaandru/go-sitter-forest/swift v1.9.5
+	github.com/alexaandru/go-sitter-forest/tcl v1.9.4
+	github.com/alexaandru/go-sitter-forest/toml v1.9.2
+	github.com/alexaandru/go-sitter-forest/tsx v1.9.2
+	github.com/alexaandru/go-sitter-forest/typescript v1.9.4
+	github.com/alexaandru/go-sitter-forest/xml v1.9.5
+	github.com/alexaandru/go-sitter-forest/yaml v1.9.6
+	github.com/alexaandru/go-sitter-forest/zig v1.9.4
 	github.com/alexaandru/go-tree-sitter-bare v1.11.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/jedib0t/go-pretty/v6 v6.6.7
+	github.com/jonreiter/govader v0.0.0-20250429093935-f6505c8d03cc
 	github.com/libgit2/git2go/v34 v34.0.0
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/prometheus/client_golang v1.23.2
@@ -32,515 +99,6 @@ require (
 )
 
 require (
-	github.com/alexaandru/go-sitter-forest/abap v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/abl v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/ada v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/agda v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/aiken v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/al v1.9.14 // indirect
-	github.com/alexaandru/go-sitter-forest/alcha v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/amber v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/angular v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/animationtxt v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ansible v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/anzu v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/apex v1.9.8 // indirect
-	github.com/alexaandru/go-sitter-forest/applesoft v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/arduino v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/asciidoc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/asciidoc_inline v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/asm v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/astro v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/august v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/authzed v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/awa5_rs v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/awatalk v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/awk v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/bara v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/barq v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/bash v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/bass v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/beancount v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/bend v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/bibtex v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/bicep v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/bitbake v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/blade v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/blueprint v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/bluespec v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/bond v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/bp v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/bqn v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/brightscript v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/bruno v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/c v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/c3 v1.9.25 // indirect
-	github.com/alexaandru/go-sitter-forest/c_sharp v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/ca65 v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/caddy v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cairo v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/calc v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/capnp v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/carbon v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/cds v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/cedar v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cel v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cfengine v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/cg v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/cgsql v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/chatito v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/circom v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/clarity v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/cleancopy v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/clingo v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/clojure v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/cloudflare v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cmake v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/cmdl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cobol v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/cognate v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/comment v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/commonlisp v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/context v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cooklang v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/core v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/corn v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cpon v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cpp v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/crystal v1.9.29 // indirect
-	github.com/alexaandru/go-sitter-forest/css v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/csv v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/cuda v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/cue v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/cylc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/d v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/d2 v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/dale v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/dart v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/dataweave v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/dbml v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/desktop v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/devicetree v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/dezyne v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/dhall v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/diff v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/disassembly v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/djot v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/djot_inline v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/dockerfile v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/dot v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/dotenv v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/doxygen v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/dtd v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/dune v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/earthfile v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/ebnf v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/editorconfig v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/eds v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/eex v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/effekt v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/eiffel v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/elisp v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/elixir v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/elm v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/elsa v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/elvish v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/embedded_template v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/epics_cmd v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/epics_db v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/epics_msi_substitution v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/epics_msi_template v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/erlang v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/facility v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/factor v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/familymarkup v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/fastbuild v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/faust v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/fe v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fennel v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/fidl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fin v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/firrtl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fish v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/flamingo v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/fluentbit v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/foam v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/forth v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fortran v1.9.13 // indirect
-	github.com/alexaandru/go-sitter-forest/frostlang v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fsh v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fsharp v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/fsharp_signature v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/func v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/fusion v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gab v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/galvan v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/gap v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/gaptst v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/gdscript v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/gdshader v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gemfilelock v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gherkin v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ghostty v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/git_config v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/git_rebase v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gitattributes v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/gitcommit v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/gitignore v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gleam v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/glimmer v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/glimmer_javascript v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/glimmer_typescript v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/glint v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/glsl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/gn v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gnuplot v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/gobra v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/goctl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/godot_resource v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/gomod v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/gooscript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/gosum v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gotmpl v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/gowork v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gpg v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gram v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/graphql v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/gren v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/gritql v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/groovy v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/gstlaunch v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hack v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/haml v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/hare v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/haskell v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/haskell_persistent v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/haxe v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hcl v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/heex v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/helm v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/hjson v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hl7 v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hlsl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/hlsplaylist v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hocon v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hoon v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/html v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/htmlaskama v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/htmldjango v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/http v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/http2 v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/hungarian v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/hurl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hy v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/hygen_template v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/hylo v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/hyprlang v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/i3config v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/idl v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/idris v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/ignis v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/ini v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/ink v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/inko v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/integerbasic v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ipkg v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/ispc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/jai v1.9.27 // indirect
-	github.com/alexaandru/go-sitter-forest/janet v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/jasmin v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/java v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/javadoc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/javascript v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/jinja v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/jinja_inline v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/jq v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/jsdoc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/json v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/json5 v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/jsonc v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/jsonnet v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/jule v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/julia v1.9.10 // indirect
-	github.com/alexaandru/go-sitter-forest/just v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/kamailio_cfg v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/kanshi v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/kappa v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/kcl v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/kconfig v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/kdl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/koan v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/koka v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/kon v1.9.16 // indirect
-	github.com/alexaandru/go-sitter-forest/kos v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/kotlin v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/koto v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/kusto v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/lalrpop v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/lart v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/lat v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/latex v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/latte v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ldg v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ledger v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/leo v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/lexc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/lexd v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/lilypond v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/lilypond_scheme v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/linkerscript v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/liquid v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/liquidsoap v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/lithia v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/llvm v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/lookml v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/lox v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/lua v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/luadoc v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/luap v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/luau v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/m68k v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/magik v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/make v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/mandbconfig v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/markdown v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/markdown_inline v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/marte v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/matlab v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/mcfuncx v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/menhir v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/merlin6502 v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/mermaid v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/meson v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/mips v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/mlir v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/modelica v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/moonbit v1.9.26 // indirect
-	github.com/alexaandru/go-sitter-forest/moonscript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/motoko v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/move v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/move_on_aptos v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/mustache v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/muttrc v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/mxml v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/mylang v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/nasm v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/nelua v1.9.14 // indirect
-	github.com/alexaandru/go-sitter-forest/nesfab v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/nftables v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/nginx v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/nickel v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/nim v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/nim_format_string v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ninja v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/nix v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/norg v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/note v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/nqc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/nu v1.9.34 // indirect
-	github.com/alexaandru/go-sitter-forest/objc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/objdump v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ocaml v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/ocaml_interface v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/ocamllex v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/odin v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/org v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ott v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pact v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/pascal v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/passwd v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pdxinfo v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pem v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/perl v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/perm v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pgn v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/php v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/php_only v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/phpdoc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/pic v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/pint v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/pioasm v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/pkl v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/plantuml v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/po v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pod v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/poe_filter v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/pony v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/postscript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/poweron v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/powershell v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/printf v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/prisma v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/problog v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/prolog v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/promql v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/properties v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/proto v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/proxima v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/prql v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/psv v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pug v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/puppet v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/purescript v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pymanifest v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/pyrope v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/python v1.9.10 // indirect
-	github.com/alexaandru/go-sitter-forest/qbe v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ql v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/qmldir v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/qmljs v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/quakec v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/query v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/quint v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/r v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/racket v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/ralph v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/rasi v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/razor v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/rbs v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/rcl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/re2c v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/readline v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/regex v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/rego v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/requirements v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/rescript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/risor v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/rnoweb v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/robot v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/robots v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/roc v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/ron v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/rstml v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/rsx v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/rtx v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/ruby v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/runescript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/rust v1.9.13 // indirect
-	github.com/alexaandru/go-sitter-forest/rust_with_rstml v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/sage v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/scala v1.9.8 // indirect
-	github.com/alexaandru/go-sitter-forest/scfg v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/scheme v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/scss v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/sdml v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/sflog v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/shosts v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/simula v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/sincere v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/slang v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/slim v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/slint v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/smali v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/smith v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/smithy v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/sml v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/snakemake v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/snl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/sol v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/solidity v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/sop v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/soql v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/sosl v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/sourcepawn v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/sparql v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/spicy v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/sql v1.9.13 // indirect
-	github.com/alexaandru/go-sitter-forest/sql_bigquery v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/sqlite v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/squirrel v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/ssh_client_config v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/ssh_config v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/starlark v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/strace v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/streamdevice_proto v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/structurizr v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/styled v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/supercollider v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/superhtml v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/surface v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/surrealql v1.9.10 // indirect
-	github.com/alexaandru/go-sitter-forest/sus v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/svelte v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/sway v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/swift v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/sxhkdrc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/syphon v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/systemtap v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/systemverilog v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/t32 v1.9.9 // indirect
-	github.com/alexaandru/go-sitter-forest/tablegen v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/tact v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/talon v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/tcl v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/teal v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/templ v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/tera v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/terra v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/test v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/textproto v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/thrift v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/tiger v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/tlaplus v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/tmux v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/tnsl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/todolang v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/todotxt v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/toml v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/tort v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/tsv v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/tsx v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/tup v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/turtle v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/twig v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/twolc v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/typescript v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/typespec v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/typoscript v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/typst v1.9.7 // indirect
-	github.com/alexaandru/go-sitter-forest/udev v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/uiua v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/ungrammar v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/unison v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/ursa v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/usd v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/uxntal v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/v v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/vala v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/vento v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/verilog v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/vhdl v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/vhs v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/vim v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/vimdoc v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/virdant v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/virgil v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/vrl v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/vue v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/walnut v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/wbproto v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/wgsl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/wgsl_bevy v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/wing v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/wit v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/woml v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/wtf v1.9.3 // indirect
-	github.com/alexaandru/go-sitter-forest/xcompose v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/xfst v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/xml v1.9.5 // indirect
-	github.com/alexaandru/go-sitter-forest/xresources v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/yadl v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/yaml v1.9.6 // indirect
-	github.com/alexaandru/go-sitter-forest/yang v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/yaral v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/yarnlock v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/yuck v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/zathurarc v1.9.0 // indirect
-	github.com/alexaandru/go-sitter-forest/zeek v1.9.8 // indirect
-	github.com/alexaandru/go-sitter-forest/zig v1.9.4 // indirect
-	github.com/alexaandru/go-sitter-forest/ziggy v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/ziggy_schema v1.9.1 // indirect
-	github.com/alexaandru/go-sitter-forest/zoomba v1.9.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -590,12 +148,11 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
-	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
 	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
+	gonum.org/v1/gonum v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/grpc v1.78.0 // indirect

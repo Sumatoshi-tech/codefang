@@ -338,24 +338,6 @@ type ComputedMetrics struct {
 	Aggregate    AggregateData          `json:"aggregate"    yaml:"aggregate"`
 }
 
-// Analyzer name constant for MetricsOutput interface.
-const analyzerNameImports = "imports"
-
-// AnalyzerName returns the name of the analyzer.
-func (m *ComputedMetrics) AnalyzerName() string {
-	return analyzerNameImports
-}
-
-// ToJSON returns the metrics as a JSON-serializable object.
-func (m *ComputedMetrics) ToJSON() any {
-	return m
-}
-
-// ToYAML returns the metrics as a YAML-serializable object.
-func (m *ComputedMetrics) ToYAML() any {
-	return m
-}
-
 // ComputeAllMetrics runs all imports metrics and returns the results.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	input, err := ParseReportData(report)

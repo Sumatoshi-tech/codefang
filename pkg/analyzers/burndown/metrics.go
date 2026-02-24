@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Constants for burndown metrics calculations.
@@ -139,26 +138,7 @@ type AggregateData struct {
 	TrackedDevelopers   int     `json:"tracked_developers"    yaml:"tracked_developers"`
 }
 
-// GlobalSurvivalMetric computes code survival time series.
-type GlobalSurvivalMetric struct {
-	metrics.MetricMeta
-}
-
-// NewGlobalSurvivalMetric creates the global survival metric.
-func NewGlobalSurvivalMetric() *GlobalSurvivalMetric {
-	return &GlobalSurvivalMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "global_survival",
-			MetricDisplayName: "Global Code Survival",
-			MetricDescription: "Time series of total surviving lines of code, broken down by age bands. " +
-				"Shows how code written at different times persists over the project's lifetime.",
-			MetricType: "time_series",
-		},
-	}
-}
-
-// Compute calculates global survival time series.
-func (m *GlobalSurvivalMetric) Compute(input *ReportData) []SurvivalData {
+func computeGlobalSurvival(input *ReportData) []SurvivalData {
 	if len(input.GlobalHistory) == 0 {
 		return nil
 	}
@@ -223,24 +203,6 @@ func computeSurvivalSample(index int, sample []int64, peakLines int64) SurvivalD
 	}
 }
 
-// FileSurvivalMetric computes per-file survival statistics.
-type FileSurvivalMetric struct {
-	metrics.MetricMeta
-}
-
-// NewFileSurvivalMetric creates the file survival metric.
-func NewFileSurvivalMetric() *FileSurvivalMetric {
-	return &FileSurvivalMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "file_survival",
-			MetricDisplayName: "File Survival Statistics",
-			MetricDescription: "Per-file code survival and ownership statistics. Shows which developers " +
-				"own the most code in each file based on surviving lines.",
-			MetricType: "list",
-		},
-	}
-}
-
 // FileSurvivalInput holds input for file survival computation.
 type FileSurvivalInput struct {
 	FileHistories      map[string]DenseHistory
@@ -248,8 +210,19 @@ type FileSurvivalInput struct {
 	ReversedPeopleDict []string
 }
 
-// Compute calculates file survival statistics.
-func (m *FileSurvivalMetric) Compute(input FileSurvivalInput) []FileSurvivalData {
+// DeveloperSurvivalInput holds input for developer survival computation.
+type DeveloperSurvivalInput struct {
+	PeopleHistories    []DenseHistory
+	ReversedPeopleDict []string
+}
+
+// InteractionInput holds input for interaction computation.
+type InteractionInput struct {
+	PeopleMatrix       DenseHistory
+	ReversedPeopleDict []string
+}
+
+func computeFileSurvival(input FileSurvivalInput) []FileSurvivalData {
 	result := make([]FileSurvivalData, 0, len(input.FileOwnership))
 
 	for path, ownership := range input.FileOwnership {
@@ -290,32 +263,7 @@ func (m *FileSurvivalMetric) Compute(input FileSurvivalInput) []FileSurvivalData
 	return result
 }
 
-// DeveloperSurvivalMetric computes per-developer code survival.
-type DeveloperSurvivalMetric struct {
-	metrics.MetricMeta
-}
-
-// NewDeveloperSurvivalMetric creates the developer survival metric.
-func NewDeveloperSurvivalMetric() *DeveloperSurvivalMetric {
-	return &DeveloperSurvivalMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "developer_survival",
-			MetricDisplayName: "Developer Code Survival",
-			MetricDescription: "Per-developer statistics showing how much of each developer's code survives. " +
-				"Compares current surviving lines to peak contribution.",
-			MetricType: "list",
-		},
-	}
-}
-
-// DeveloperSurvivalInput holds input for developer survival computation.
-type DeveloperSurvivalInput struct {
-	PeopleHistories    []DenseHistory
-	ReversedPeopleDict []string
-}
-
-// Compute calculates developer survival statistics.
-func (m *DeveloperSurvivalMetric) Compute(input DeveloperSurvivalInput) []DeveloperSurvivalData {
+func computeDeveloperSurvivalList(input DeveloperSurvivalInput) []DeveloperSurvivalData {
 	result := make([]DeveloperSurvivalData, 0, len(input.PeopleHistories))
 
 	for devID, history := range input.PeopleHistories {
@@ -353,32 +301,7 @@ func computeDeveloperSurvival(devID int, history DenseHistory, names []string) D
 	}
 }
 
-// InteractionMetric computes developer interaction statistics.
-type InteractionMetric struct {
-	metrics.MetricMeta
-}
-
-// NewInteractionMetric creates the interaction metric.
-func NewInteractionMetric() *InteractionMetric {
-	return &InteractionMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "developer_interaction",
-			MetricDisplayName: "Developer Interaction Matrix",
-			MetricDescription: "Shows how developers modify each other's code. The matrix tracks which " +
-				"developer's code was modified by whom, indicating collaboration patterns.",
-			MetricType: "matrix",
-		},
-	}
-}
-
-// InteractionInput holds input for interaction computation.
-type InteractionInput struct {
-	PeopleMatrix       DenseHistory
-	ReversedPeopleDict []string
-}
-
-// Compute calculates developer interaction data.
-func (m *InteractionMetric) Compute(input InteractionInput) []InteractionData {
+func computeInteraction(input InteractionInput) []InteractionData {
 	if len(input.PeopleMatrix) == 0 {
 		return nil
 	}
@@ -449,26 +372,7 @@ func resolveModifierName(modifierID int, authorName string, isSelf bool, names [
 	return getName(modifierID, names)
 }
 
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "burndown_aggregate",
-			MetricDisplayName: "Burndown Summary",
-			MetricDescription: "Aggregate statistics for the burndown analysis including total lines, " +
-				"survival rates, and analysis period information.",
-			MetricType: "aggregate",
-		},
-	}
-}
-
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+func computeAggregate(input *ReportData) AggregateData {
 	agg := AggregateData{
 		TrackedFiles:      len(input.FileHistories),
 		TrackedDevelopers: len(input.PeopleHistories),
@@ -547,30 +451,25 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	globalMetric := NewGlobalSurvivalMetric()
-	globalSurvival := globalMetric.Compute(input)
+	globalSurvival := computeGlobalSurvival(input)
 
-	fileMetric := NewFileSurvivalMetric()
-	fileSurvival := fileMetric.Compute(FileSurvivalInput{
+	fileSurvival := computeFileSurvival(FileSurvivalInput{
 		FileHistories:      input.FileHistories,
 		FileOwnership:      input.FileOwnership,
 		ReversedPeopleDict: input.ReversedPeopleDict,
 	})
 
-	devMetric := NewDeveloperSurvivalMetric()
-	devSurvival := devMetric.Compute(DeveloperSurvivalInput{
+	devSurvival := computeDeveloperSurvivalList(DeveloperSurvivalInput{
 		PeopleHistories:    input.PeopleHistories,
 		ReversedPeopleDict: input.ReversedPeopleDict,
 	})
 
-	interactionMetric := NewInteractionMetric()
-	interaction := interactionMetric.Compute(InteractionInput{
+	interaction := computeInteraction(InteractionInput{
 		PeopleMatrix:       input.PeopleMatrix,
 		ReversedPeopleDict: input.ReversedPeopleDict,
 	})
 
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
+	aggregate := computeAggregate(input)
 
 	return &ComputedMetrics{
 		GlobalSurvival:    globalSurvival,

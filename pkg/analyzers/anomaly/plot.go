@@ -2,7 +2,6 @@ package anomaly
 
 import (
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 
@@ -20,23 +19,8 @@ const (
 	scatterSize      = 12
 )
 
-func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	sections, err := h.GenerateSections(report)
-	if err != nil {
-		return err
-	}
-
-	page := plotpage.NewPage(
-		"Temporal Anomaly Detection",
-		"Z-score based anomaly detection over commit history",
-	)
-	page.Add(sections...)
-
-	return page.Render(writer)
-}
-
 // GenerateSections returns the sections for combined reports.
-func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
 	chart, err := h.buildChart(report)
 	if err != nil {
 		return nil, err
@@ -77,11 +61,11 @@ func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 }
 
 // GenerateChart implements PlotGenerator interface.
-func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	return h.buildChart(report)
 }
 
-func (h *HistoryAnalyzer) buildChart(report analyze.Report) (*charts.Line, error) {
+func (h *Analyzer) buildChart(report analyze.Report) (*charts.Line, error) {
 	input, err := ParseReportData(report)
 	if err != nil {
 		return nil, fmt.Errorf("parse report: %w", err)
@@ -164,8 +148,7 @@ func createChurnChart(
 }
 
 func buildStatsSection(input *ReportData) plotpage.Section {
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
+	aggregate := computeAggregate(input)
 
 	anomalyRateStr := fmt.Sprintf("%.1f%%", aggregate.AnomalyRate)
 	totalAnomaliesStr := strconv.Itoa(aggregate.TotalAnomalies)
@@ -268,6 +251,6 @@ func createEmptyChart() *charts.Line {
 // RegisterPlotSections registers the anomaly plot section renderer with the analyze package.
 func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/anomaly", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
+		return (&Analyzer{}).GenerateSections(report)
 	})
 }

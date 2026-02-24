@@ -86,24 +86,12 @@ func TestParseReportData_Valid(t *testing.T) {
 
 // --- GlobalSurvivalMetric Tests ---.
 
-func TestGlobalSurvivalMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	metric := NewGlobalSurvivalMetric()
-
-	assert.Equal(t, "global_survival", metric.Name())
-	assert.Equal(t, "Global Code Survival", metric.DisplayName())
-	assert.Equal(t, "time_series", metric.Type())
-	assert.NotEmpty(t, metric.Description())
-}
-
 func TestGlobalSurvivalMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	metric := NewGlobalSurvivalMetric()
 	input := &ReportData{GlobalHistory: nil}
 
-	result := metric.Compute(input)
+	result := computeGlobalSurvival(input)
 
 	assert.Nil(t, result)
 }
@@ -111,12 +99,11 @@ func TestGlobalSurvivalMetric_Empty(t *testing.T) {
 func TestGlobalSurvivalMetric_SingleSample(t *testing.T) {
 	t.Parallel()
 
-	metric := NewGlobalSurvivalMetric()
 	input := &ReportData{
 		GlobalHistory: DenseHistory{{100, 200, 50}},
 	}
 
-	result := metric.Compute(input)
+	result := computeGlobalSurvival(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].SampleIndex)
@@ -128,7 +115,6 @@ func TestGlobalSurvivalMetric_SingleSample(t *testing.T) {
 func TestGlobalSurvivalMetric_MultipleSamples(t *testing.T) {
 	t.Parallel()
 
-	metric := NewGlobalSurvivalMetric()
 	input := &ReportData{
 		GlobalHistory: DenseHistory{
 			{100, 200}, // Sample 0: 300 total (peak).
@@ -137,7 +123,7 @@ func TestGlobalSurvivalMetric_MultipleSamples(t *testing.T) {
 		},
 	}
 
-	result := metric.Compute(input)
+	result := computeGlobalSurvival(input)
 
 	require.Len(t, result, 3)
 	// Peak is 300, so survival rates are relative to that.
@@ -152,12 +138,11 @@ func TestGlobalSurvivalMetric_MultipleSamples(t *testing.T) {
 func TestGlobalSurvivalMetric_NegativeValuesIgnored(t *testing.T) {
 	t.Parallel()
 
-	metric := NewGlobalSurvivalMetric()
 	input := &ReportData{
 		GlobalHistory: DenseHistory{{100, -50, 200}},
 	}
 
-	result := metric.Compute(input)
+	result := computeGlobalSurvival(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, int64(300), result[0].TotalLines)
@@ -165,24 +150,12 @@ func TestGlobalSurvivalMetric_NegativeValuesIgnored(t *testing.T) {
 
 // --- FileSurvivalMetric Tests ---.
 
-func TestFileSurvivalMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	metric := NewFileSurvivalMetric()
-
-	assert.Equal(t, "file_survival", metric.Name())
-	assert.Equal(t, "File Survival Statistics", metric.DisplayName())
-	assert.Equal(t, "list", metric.Type())
-	assert.NotEmpty(t, metric.Description())
-}
-
 func TestFileSurvivalMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	metric := NewFileSurvivalMetric()
 	input := FileSurvivalInput{FileOwnership: nil}
 
-	result := metric.Compute(input)
+	result := computeFileSurvival(input)
 
 	assert.Empty(t, result)
 }
@@ -190,7 +163,6 @@ func TestFileSurvivalMetric_Empty(t *testing.T) {
 func TestFileSurvivalMetric_SingleFile(t *testing.T) {
 	t.Parallel()
 
-	metric := NewFileSurvivalMetric()
 	input := FileSurvivalInput{
 		FileOwnership: map[string]map[int]int{
 			testFilePath1: {0: 100},
@@ -198,7 +170,7 @@ func TestFileSurvivalMetric_SingleFile(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeFileSurvival(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, testFilePath1, result[0].Path)
@@ -211,7 +183,6 @@ func TestFileSurvivalMetric_SingleFile(t *testing.T) {
 func TestFileSurvivalMetric_MultipleOwners(t *testing.T) {
 	t.Parallel()
 
-	metric := NewFileSurvivalMetric()
 	input := FileSurvivalInput{
 		FileOwnership: map[string]map[int]int{
 			testFilePath1: {0: 70, 1: 30},
@@ -219,7 +190,7 @@ func TestFileSurvivalMetric_MultipleOwners(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1, testDevName2},
 	}
 
-	result := metric.Compute(input)
+	result := computeFileSurvival(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, int64(100), result[0].CurrentLines)
@@ -231,7 +202,6 @@ func TestFileSurvivalMetric_MultipleOwners(t *testing.T) {
 func TestFileSurvivalMetric_UnknownOwner(t *testing.T) {
 	t.Parallel()
 
-	metric := NewFileSurvivalMetric()
 	input := FileSurvivalInput{
 		FileOwnership: map[string]map[int]int{
 			testFilePath1: {999: 100},
@@ -239,7 +209,7 @@ func TestFileSurvivalMetric_UnknownOwner(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeFileSurvival(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 999, result[0].TopOwnerID)
@@ -248,24 +218,12 @@ func TestFileSurvivalMetric_UnknownOwner(t *testing.T) {
 
 // --- DeveloperSurvivalMetric Tests ---.
 
-func TestDeveloperSurvivalMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	metric := NewDeveloperSurvivalMetric()
-
-	assert.Equal(t, "developer_survival", metric.Name())
-	assert.Equal(t, "Developer Code Survival", metric.DisplayName())
-	assert.Equal(t, "list", metric.Type())
-	assert.NotEmpty(t, metric.Description())
-}
-
 func TestDeveloperSurvivalMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	metric := NewDeveloperSurvivalMetric()
 	input := DeveloperSurvivalInput{PeopleHistories: nil}
 
-	result := metric.Compute(input)
+	result := computeDeveloperSurvivalList(input)
 
 	assert.Empty(t, result)
 }
@@ -273,7 +231,6 @@ func TestDeveloperSurvivalMetric_Empty(t *testing.T) {
 func TestDeveloperSurvivalMetric_SingleDeveloper(t *testing.T) {
 	t.Parallel()
 
-	metric := NewDeveloperSurvivalMetric()
 	input := DeveloperSurvivalInput{
 		PeopleHistories: []DenseHistory{
 			{{100, 200}, {80, 150}}, // Peak=300, Current=230.
@@ -281,7 +238,7 @@ func TestDeveloperSurvivalMetric_SingleDeveloper(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeDeveloperSurvivalList(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].ID)
@@ -294,13 +251,12 @@ func TestDeveloperSurvivalMetric_SingleDeveloper(t *testing.T) {
 func TestDeveloperSurvivalMetric_EmptyHistory(t *testing.T) {
 	t.Parallel()
 
-	metric := NewDeveloperSurvivalMetric()
 	input := DeveloperSurvivalInput{
 		PeopleHistories:    []DenseHistory{{}},
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeDeveloperSurvivalList(input)
 
 	assert.Empty(t, result)
 }
@@ -308,7 +264,6 @@ func TestDeveloperSurvivalMetric_EmptyHistory(t *testing.T) {
 func TestDeveloperSurvivalMetric_ZeroPeakLines(t *testing.T) {
 	t.Parallel()
 
-	metric := NewDeveloperSurvivalMetric()
 	input := DeveloperSurvivalInput{
 		PeopleHistories: []DenseHistory{
 			{{0, 0}},
@@ -316,7 +271,7 @@ func TestDeveloperSurvivalMetric_ZeroPeakLines(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeDeveloperSurvivalList(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, int64(0), result[0].PeakLines)
@@ -325,24 +280,12 @@ func TestDeveloperSurvivalMetric_ZeroPeakLines(t *testing.T) {
 
 // --- InteractionMetric Tests ---.
 
-func TestInteractionMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	metric := NewInteractionMetric()
-
-	assert.Equal(t, "developer_interaction", metric.Name())
-	assert.Equal(t, "Developer Interaction Matrix", metric.DisplayName())
-	assert.Equal(t, "matrix", metric.Type())
-	assert.NotEmpty(t, metric.Description())
-}
-
 func TestInteractionMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	input := InteractionInput{PeopleMatrix: nil}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	assert.Nil(t, result)
 }
@@ -350,14 +293,13 @@ func TestInteractionMetric_Empty(t *testing.T) {
 func TestInteractionMetric_SelfModify(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	// PeopleMatrix row format: index 0 is special, 1 is self, 2+ are other devs.
 	input := InteractionInput{
 		PeopleMatrix:       DenseHistory{{0, 50, 0}}, // Self-modify at index 0 (maps to -2+0=index 0 being self).
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	// Check we got some interaction data.
 	require.NotEmpty(t, result)
@@ -366,13 +308,12 @@ func TestInteractionMetric_SelfModify(t *testing.T) {
 func TestInteractionMetric_ZeroLinesFiltered(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	input := InteractionInput{
 		PeopleMatrix:       DenseHistory{{0, 0, 0}},
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	assert.Empty(t, result)
 }
@@ -380,13 +321,12 @@ func TestInteractionMetric_ZeroLinesFiltered(t *testing.T) {
 func TestInteractionMetric_EmptyRow(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	input := InteractionInput{
 		PeopleMatrix:       DenseHistory{{}},
 		ReversedPeopleDict: []string{testDevName1},
 	}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	assert.Empty(t, result)
 }
@@ -394,7 +334,6 @@ func TestInteractionMetric_EmptyRow(t *testing.T) {
 func TestInteractionMetric_CrossDeveloper(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	// Row 0: index 0=self, index 2=dev0 modifying
 	// ModifierID = modifierIdx - 2, so index 2 means dev 0.
 	input := InteractionInput{
@@ -404,7 +343,7 @@ func TestInteractionMetric_CrossDeveloper(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1, testDevName2},
 	}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	// Should have entries for both self-modify and cross-dev modify.
 	require.NotEmpty(t, result)
@@ -433,7 +372,6 @@ func TestInteractionMetric_CrossDeveloper(t *testing.T) {
 func TestInteractionMetric_MultipleDevelopers(t *testing.T) {
 	t.Parallel()
 
-	metric := NewInteractionMetric()
 	input := InteractionInput{
 		PeopleMatrix: DenseHistory{
 			{100, 0, 20, 30}, // Author 0.
@@ -442,7 +380,7 @@ func TestInteractionMetric_MultipleDevelopers(t *testing.T) {
 		ReversedPeopleDict: []string{testDevName1, testDevName2},
 	}
 
-	result := metric.Compute(input)
+	result := computeInteraction(input)
 
 	require.NotEmpty(t, result)
 	// Verify we have interaction data from both authors.
@@ -456,28 +394,16 @@ func TestInteractionMetric_MultipleDevelopers(t *testing.T) {
 
 // --- BurndownAggregateMetric Tests ---.
 
-func TestBurndownAggregateMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	metric := NewAggregateMetric()
-
-	assert.Equal(t, "burndown_aggregate", metric.Name())
-	assert.Equal(t, "Burndown Summary", metric.DisplayName())
-	assert.Equal(t, "aggregate", metric.Type())
-	assert.NotEmpty(t, metric.Description())
-}
-
 func TestBurndownAggregateMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	metric := NewAggregateMetric()
 	input := &ReportData{
 		GlobalHistory:   nil,
 		FileHistories:   map[string]DenseHistory{testFilePath1: {{100}}},
 		PeopleHistories: []DenseHistory{{{100}}},
 	}
 
-	result := metric.Compute(input)
+	result := computeAggregate(input)
 
 	assert.Equal(t, 1, result.TrackedFiles)
 	assert.Equal(t, 1, result.TrackedDevelopers)
@@ -487,7 +413,6 @@ func TestBurndownAggregateMetric_Empty(t *testing.T) {
 func TestBurndownAggregateMetric_Compute(t *testing.T) {
 	t.Parallel()
 
-	metric := NewAggregateMetric()
 	input := &ReportData{
 		GlobalHistory: DenseHistory{
 			{100, 200}, // 300 total.
@@ -499,7 +424,7 @@ func TestBurndownAggregateMetric_Compute(t *testing.T) {
 		Sampling:        testSampling,
 	}
 
-	result := metric.Compute(input)
+	result := computeAggregate(input)
 
 	assert.Equal(t, 2, result.TrackedFiles)
 	assert.Equal(t, 2, result.TrackedDevelopers)

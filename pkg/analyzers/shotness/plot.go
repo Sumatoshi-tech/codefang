@@ -2,8 +2,6 @@ package shotness
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"path/filepath"
 	"sort"
 
@@ -39,37 +37,12 @@ var ErrInvalidCounters = errors.New("invalid shotness report: expected []map[int
 // RegisterPlotSections registers the shotness plot section renderer with the analyze package.
 func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
+		return (&Analyzer{}).GenerateSections(report)
 	})
 }
 
-func (s *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	sections, err := s.GenerateSections(report)
-	if err != nil {
-		return err
-	}
-
-	if len(sections) == 0 {
-		renderErr := createEmptyChart().Render(writer)
-		if renderErr != nil {
-			return fmt.Errorf("render empty chart: %w", renderErr)
-		}
-
-		return nil
-	}
-
-	page := plotpage.NewPage(
-		"Shotness Analysis",
-		"Fine-grained analysis of code change patterns at the function/method level",
-	)
-
-	page.Add(sections...)
-
-	return page.Render(writer)
-}
-
 // GenerateSections returns the sections for combined reports.
-func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+func (s *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
 	nodes, counters, err := extractShotnessData(report)
 	if err != nil {
 		return nil, err
@@ -90,7 +63,7 @@ func (s *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 }
 
 // GenerateChart creates a bar chart showing the hottest functions.
-func (s *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+func (s *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	nodes, counters, err := extractShotnessData(report)
 	if err != nil {
 		return nil, err

@@ -6,30 +6,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
-
-// RegisterTickExtractor registers the anomaly analyzer's per-commit extractor
-// with the unified time-series output system.
-func RegisterTickExtractor() {
-	analyze.RegisterTickExtractor("anomaly", extractCommitTimeSeries)
-}
-
-// extractCommitTimeSeries extracts per-commit anomaly metrics from the report.
-func extractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitMetrics, ok := report["commit_metrics"].(map[string]*CommitAnomalyData)
-	if !ok || len(commitMetrics) == 0 {
-		return nil
-	}
-
-	result := make(map[string]any, len(commitMetrics))
-
-	for hash, cm := range commitMetrics {
-		result[hash] = cm
-	}
-
-	return result
-}
 
 // --- Data Types ---.
 
@@ -124,50 +101,16 @@ type ExternalSummary struct {
 
 // --- Metric Implementations ---.
 
-// ListMetric extracts the anomaly list from the report.
-type ListMetric struct {
-	metrics.MetricMeta
-}
-
-// NewListMetric creates the anomaly list metric.
-func NewListMetric() *ListMetric {
-	return &ListMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "anomaly_list",
-			MetricDisplayName: "Anomaly List",
-			MetricDescription: "Commits with anomalous metric values detected by Z-score analysis.",
-			MetricType:        "risk",
-		},
-	}
-}
-
-// Compute extracts the anomaly list.
-func (m *ListMetric) Compute(input *ReportData) []Record {
+// computeList extracts the anomaly list.
+func computeList(input *ReportData) []Record {
 	return input.Anomalies
-}
-
-// AggregateMetric computes summary statistics.
-type AggregateMetric struct {
-	metrics.MetricMeta
-}
-
-// NewAggregateMetric creates the aggregate metric.
-func NewAggregateMetric() *AggregateMetric {
-	return &AggregateMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "anomaly_aggregate",
-			MetricDisplayName: "Anomaly Summary",
-			MetricDescription: "Aggregate statistics for temporal anomaly detection.",
-			MetricType:        "aggregate",
-		},
-	}
 }
 
 // percentMultiplier converts fractions to percentages.
 const percentMultiplier = 100
 
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+// computeAggregate calculates aggregate statistics.
+func computeAggregate(input *ReportData) AggregateData {
 	totalTicks := len(input.TickMetrics)
 	totalAnomalies := len(input.Anomalies)
 
@@ -214,25 +157,8 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	}
 }
 
-// TimeSeriesMetric computes the time series with anomaly annotations.
-type TimeSeriesMetric struct {
-	metrics.MetricMeta
-}
-
-// NewTimeSeriesMetric creates the time series metric.
-func NewTimeSeriesMetric() *TimeSeriesMetric {
-	return &TimeSeriesMetric{
-		MetricMeta: metrics.MetricMeta{
-			MetricName:        "anomaly_time_series",
-			MetricDisplayName: "Anomaly Time Series",
-			MetricDescription: "Per-tick metrics with anomaly annotations.",
-			MetricType:        "time_series",
-		},
-	}
-}
-
-// Compute builds the annotated time series.
-func (m *TimeSeriesMetric) Compute(input *ReportData) []TimeSeriesEntry {
+// computeTimeSeries builds the annotated time series.
+func computeTimeSeries(input *ReportData) []TimeSeriesEntry {
 	ticks := sortedTickKeys(input.TickMetrics)
 
 	// Build anomaly set for O(1) lookup.
@@ -349,6 +275,7 @@ func aggregateTickFromCommits(hashes []gitlib.Hash, commitMetrics map[string]*Co
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
+// Expects canonical format: commit_metrics and commits_by_tick.
 func ParseReportData(report analyze.Report) (*ReportData, error) {
 	data := &ReportData{}
 
@@ -362,13 +289,6 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 
 	if hasCommit && hasTicks && len(commitMetrics) > 0 {
 		data.TickMetrics = AggregateCommitsToTicks(commitMetrics, commitsByTick)
-	}
-
-	// Fall back to pre-aggregated per-tick data (backward compat).
-	if len(data.TickMetrics) == 0 {
-		if v, ok := report["tick_metrics"].(map[int]*TickMetrics); ok {
-			data.TickMetrics = v
-		}
 	}
 
 	if data.TickMetrics == nil {
@@ -429,19 +349,10 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	anomalyMetric := NewListMetric()
-	anomalies := anomalyMetric.Compute(input)
-
-	tsMetric := NewTimeSeriesMetric()
-	timeSeries := tsMetric.Compute(input)
-
-	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
-
 	return &ComputedMetrics{
-		Anomalies:         anomalies,
-		TimeSeries:        timeSeries,
-		Aggregate:         aggregate,
+		Anomalies:         computeList(input),
+		TimeSeries:        computeTimeSeries(input),
+		Aggregate:         computeAggregate(input),
 		ExternalAnomalies: input.ExternalAnomalies,
 		ExternalSummaries: input.ExternalSummaries,
 	}, nil

@@ -7,12 +7,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
 	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
 	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
 )
@@ -27,13 +22,8 @@ func TestAllAnalyzers_ImplementCheckpointable(t *testing.T) {
 		analyzer checkpoint.Checkpointable
 	}{
 		{"burndown", &burndown.HistoryAnalyzer{}},
-		{"devs", &devs.HistoryAnalyzer{}},
 		{"couples", &couples.HistoryAnalyzer{}},
-		{"file_history", &filehistory.Analyzer{}},
-		{"shotness", &shotness.HistoryAnalyzer{}},
-		{"sentiment", &sentiment.HistoryAnalyzer{}},
-		{"imports", &imports.HistoryAnalyzer{}},
-		{"typos", &typos.HistoryAnalyzer{}},
+		{"file_history", filehistory.NewAnalyzer()},
 	}
 
 	for _, tt := range tests {
@@ -61,13 +51,8 @@ func TestAllAnalyzers_ImplementHibernatable(t *testing.T) {
 		analyzer streaming.Hibernatable
 	}{
 		{"burndown", &burndown.HistoryAnalyzer{}},
-		{"devs", &devs.HistoryAnalyzer{}},
 		{"couples", &couples.HistoryAnalyzer{}},
-		{"file_history", &filehistory.Analyzer{}},
-		{"shotness", &shotness.HistoryAnalyzer{}},
-		{"sentiment", &sentiment.HistoryAnalyzer{}},
-		{"imports", &imports.HistoryAnalyzer{}},
-		{"typos", &typos.HistoryAnalyzer{}},
+		{"file_history", filehistory.NewAnalyzer()},
 	}
 
 	for _, tt := range tests {
@@ -113,17 +98,6 @@ func TestAllAnalyzers_CheckpointRoundTrip(t *testing.T) {
 			},
 		},
 		{
-			name: "devs",
-			setup: func(t *testing.T) checkpoint.Checkpointable {
-				t.Helper()
-
-				d := &devs.HistoryAnalyzer{}
-				require.NoError(t, d.Initialize(nil))
-
-				return d
-			},
-		},
-		{
 			name: "couples",
 			setup: func(t *testing.T) checkpoint.Checkpointable {
 				t.Helper()
@@ -139,54 +113,10 @@ func TestAllAnalyzers_CheckpointRoundTrip(t *testing.T) {
 			setup: func(t *testing.T) checkpoint.Checkpointable {
 				t.Helper()
 
-				f := &filehistory.Analyzer{}
+				f := filehistory.NewAnalyzer()
 				require.NoError(t, f.Initialize(nil))
 
 				return f
-			},
-		},
-		{
-			name: "shotness",
-			setup: func(t *testing.T) checkpoint.Checkpointable {
-				t.Helper()
-
-				s := &shotness.HistoryAnalyzer{}
-				require.NoError(t, s.Initialize(nil))
-
-				return s
-			},
-		},
-		{
-			name: "sentiment",
-			setup: func(t *testing.T) checkpoint.Checkpointable {
-				t.Helper()
-
-				s := &sentiment.HistoryAnalyzer{}
-				require.NoError(t, s.Initialize(nil))
-
-				return s
-			},
-		},
-		{
-			name: "imports",
-			setup: func(t *testing.T) checkpoint.Checkpointable {
-				t.Helper()
-
-				i := &imports.HistoryAnalyzer{}
-				require.NoError(t, i.Initialize(nil))
-
-				return i
-			},
-		},
-		{
-			name: "typos",
-			setup: func(t *testing.T) checkpoint.Checkpointable {
-				t.Helper()
-
-				ty := &typos.HistoryAnalyzer{}
-				require.NoError(t, ty.Initialize(nil))
-
-				return ty
 			},
 		},
 	}
@@ -236,17 +166,6 @@ func TestAllAnalyzers_HibernateBootCycle(t *testing.T) {
 			},
 		},
 		{
-			name: "devs",
-			setup: func(t *testing.T) streaming.Hibernatable {
-				t.Helper()
-
-				d := &devs.HistoryAnalyzer{}
-				require.NoError(t, d.Initialize(nil))
-
-				return d
-			},
-		},
-		{
 			name: "couples",
 			setup: func(t *testing.T) streaming.Hibernatable {
 				t.Helper()
@@ -262,54 +181,10 @@ func TestAllAnalyzers_HibernateBootCycle(t *testing.T) {
 			setup: func(t *testing.T) streaming.Hibernatable {
 				t.Helper()
 
-				f := &filehistory.Analyzer{}
+				f := filehistory.NewAnalyzer()
 				require.NoError(t, f.Initialize(nil))
 
 				return f
-			},
-		},
-		{
-			name: "shotness",
-			setup: func(t *testing.T) streaming.Hibernatable {
-				t.Helper()
-
-				s := &shotness.HistoryAnalyzer{}
-				require.NoError(t, s.Initialize(nil))
-
-				return s
-			},
-		},
-		{
-			name: "sentiment",
-			setup: func(t *testing.T) streaming.Hibernatable {
-				t.Helper()
-
-				s := &sentiment.HistoryAnalyzer{}
-				require.NoError(t, s.Initialize(nil))
-
-				return s
-			},
-		},
-		{
-			name: "imports",
-			setup: func(t *testing.T) streaming.Hibernatable {
-				t.Helper()
-
-				i := &imports.HistoryAnalyzer{}
-				require.NoError(t, i.Initialize(nil))
-
-				return i
-			},
-		},
-		{
-			name: "typos",
-			setup: func(t *testing.T) streaming.Hibernatable {
-				t.Helper()
-
-				ty := &typos.HistoryAnalyzer{}
-				require.NoError(t, ty.Initialize(nil))
-
-				return ty
 			},
 		},
 	}

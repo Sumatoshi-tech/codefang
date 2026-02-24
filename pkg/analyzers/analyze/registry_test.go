@@ -64,13 +64,26 @@ func (s *stubHistoryAnalyzer) Descriptor() analyze.Descriptor {
 func (s *stubHistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return nil
 }
-func (s *stubHistoryAnalyzer) Configure(_ map[string]any) error                        { return nil }
-func (s *stubHistoryAnalyzer) Initialize(_ *gitlib.Repository) error                   { return nil }
-func (s *stubHistoryAnalyzer) Consume(_ context.Context, _ *analyze.Context) error     { return nil }
-func (s *stubHistoryAnalyzer) Finalize() (analyze.Report, error)                       { return analyze.Report{}, nil }
+func (s *stubHistoryAnalyzer) Configure(_ map[string]any) error      { return nil }
+func (s *stubHistoryAnalyzer) Initialize(_ *gitlib.Repository) error { return nil }
+func (s *stubHistoryAnalyzer) Consume(_ context.Context, _ *analyze.Context) (analyze.TC, error) {
+	return analyze.TC{}, nil
+}
 func (s *stubHistoryAnalyzer) Fork(_ int) []analyze.HistoryAnalyzer                    { return nil }
 func (s *stubHistoryAnalyzer) Merge(_ []analyze.HistoryAnalyzer)                       {}
 func (s *stubHistoryAnalyzer) Serialize(_ analyze.Report, _ string, _ io.Writer) error { return nil }
+func (s *stubHistoryAnalyzer) WorkingStateSize() int64                                 { return 0 }
+func (s *stubHistoryAnalyzer) AvgTCSize() int64                                        { return 0 }
+func (s *stubHistoryAnalyzer) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return nil
+}
+func (s *stubHistoryAnalyzer) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+func (s *stubHistoryAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
+}
 
 func TestRegistry_AllStableOrder(t *testing.T) {
 	t.Parallel()

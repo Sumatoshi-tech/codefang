@@ -262,19 +262,34 @@ func buildMCPLeaves(
 		"file-history": &filehistory.Analyzer{
 			Identity: identity, TreeDiff: treeDiff, LineStats: lineStats,
 		},
-		"imports": &imports.HistoryAnalyzer{
-			TreeDiff: treeDiff, BlobCache: blobCache,
-			Identity: identity, Ticks: ticks,
-		},
-		"sentiment": &sentiment.HistoryAnalyzer{
-			UAST: uastChanges, Ticks: ticks,
-		},
-		"shotness": &shotness.HistoryAnalyzer{
-			FileDiff: fileDiff, UAST: uastChanges,
-		},
-		"typos": &typos.HistoryAnalyzer{
-			UAST: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
-		},
+		"imports": func() *imports.HistoryAnalyzer {
+			a := imports.NewHistoryAnalyzer()
+			a.TreeDiff = treeDiff
+			a.BlobCache = blobCache
+			a.Identity = identity
+			a.Ticks = ticks
+			return a
+		}(),
+		"sentiment": func() *sentiment.Analyzer {
+			a := sentiment.NewAnalyzer()
+			a.UAST = uastChanges
+			a.Ticks = ticks
+			return a
+		}(),
+		"shotness": func() *shotness.Analyzer {
+			a := shotness.NewAnalyzer()
+			a.FileDiff = fileDiff
+			a.UAST = uastChanges
+
+			return a
+		}(),
+		"typos": func() *typos.Analyzer {
+			a := typos.NewAnalyzer()
+			a.UAST = uastChanges
+			a.BlobCache = blobCache
+			a.FileDiff = fileDiff
+			return a
+		}(),
 	}
 }
 

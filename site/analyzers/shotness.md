@@ -42,7 +42,19 @@ For each commit:
 2. Apply the `dsl_struct` query to select target nodes (e.g., functions)
 3. Apply the `dsl_name` query to extract the name of each node
 4. Map diff hunks to nodes using line-range overlaps
-5. Record which nodes were touched and update their counters and coupling matrix
+5. Emit a per-commit TC (Transient Commit result) with touched node deltas and coupling pairs
+
+After all commits are processed, the Aggregator accumulates TCs into a final report with sorted nodes and a sparse co-change matrix.
+
+### Architecture
+
+The shotness analyzer follows the **TC/Aggregator** pattern:
+
+- **Consume phase**: Per-commit processing builds working state (`nodes`, `files` maps for deletion/rename tracking) and emits a `TC{Data: *CommitData}` with node touch deltas and coupling pairs.
+- **Aggregation phase**: The `Aggregator` accumulates node counts and coupling matrices from the TC stream. It supports disk-backed spilling via `SpillStore` for memory-bounded operation.
+- **Serialization phase**: `SerializeTICKs()` converts aggregated tick data into the `Nodes`/`Counters` report consumed by `ComputeAllMetrics()` and plot generation.
+
+The `nodes` map remains in the analyzer as working state because `handleDeletion`, `handleInsertion`, `handleModification`, and `applyRename` read and mutate it during `Consume()`. The aggregator maintains its own separate accumulation of counts and couplings.
 
 ---
 
@@ -153,5 +165,6 @@ history:
 - **UAST required**: Only languages with UAST parser support are analyzed. Files in unsupported languages are skipped entirely.
 - **CPU intensive**: The analyzer performs UAST parsing on both the before and after versions of every changed file in every commit. This makes it one of the most expensive analyzers. It benefits from parallel execution.
 - **Name collisions**: If two functions in different files have the same name, they are tracked as distinct nodes (the file path is part of the key). However, if a file is renamed, the analyzer updates all associated nodes.
+- **Shallow extraction within a file**: When multiple structural nodes in the same file share the same extracted name (e.g., nested functions with identical names), only one is tracked. The last one encountered wins. Qualified paths (e.g., `OuterClass.innerMethod`) are not built.
 - **DSL limitations**: The DSL query must match nodes that have position information (`Pos` field) in the UAST. Nodes without position data cannot be mapped to diff hunks.
 - **Large functions**: A change anywhere within a function's line range counts as a change to that function. Very large functions (hundreds of lines) will have inflated change counts.

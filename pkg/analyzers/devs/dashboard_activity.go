@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/plotpage"
 )
@@ -40,14 +39,71 @@ func createActivityChart(data *DashboardData) *charts.Line {
 		xLabels[i] = strconv.Itoa(ad.Tick)
 	}
 
-	line := charts.NewLine()
-	configureActivityChart(line)
-	line.SetXAxis(xLabels)
+	nameByID := make(map[int]string)
+	for _, dev := range data.Metrics.Developers {
+		nameByID[dev.ID] = dev.Name
+	}
 
-	addDevSeriesTo(line, topDevs, data)
-	addOthersSeriesTo(line, topDevs, data)
+	series := make([]plotpage.LineSeries, 0, len(topDevs)+1)
+
+	series = append(series, buildTopDevSeries(data, topDevs, nameByID)...)
+
+	if len(data.Metrics.Developers) > maxDevs {
+		series = append(series, buildOthersSeries(data, topDevs))
+	}
+
+	co := plotpage.DefaultChartOpts()
+	line := plotpage.BuildLineChart(co, xLabels, series, "Commits")
+
+	// Set specific title overrides.
+	line.SetGlobalOptions(
+		charts.WithTitleOpts(co.Title("Developer Activity Over Time", "Stacked area showing contribution velocity (commits per tick)")),
+	)
 
 	return line
+}
+
+func buildTopDevSeries(data *DashboardData, topDevs []int, nameByID map[int]string) []plotpage.LineSeries {
+	series := make([]plotpage.LineSeries, 0, len(topDevs))
+
+	for _, devID := range topDevs {
+		seriesData := make([]plotpage.SeriesData, len(data.Metrics.Activity))
+		for i, ad := range data.Metrics.Activity {
+			seriesData[i] = ad.ByDeveloper[devID]
+		}
+
+		series = append(series, plotpage.LineSeries{
+			Name:        nameByID[devID],
+			Data:        seriesData,
+			Stack:       "total",
+			AreaOpacity: float32(areaOpacityNormal),
+		})
+	}
+
+	return series
+}
+
+func buildOthersSeries(data *DashboardData, topDevs []int) plotpage.LineSeries {
+	othersData := make([]plotpage.SeriesData, len(data.Metrics.Activity))
+
+	for i, ad := range data.Metrics.Activity {
+		total := 0
+
+		for devID, commits := range ad.ByDeveloper {
+			if !slices.Contains(topDevs, devID) {
+				total += commits
+			}
+		}
+
+		othersData[i] = total
+	}
+
+	return plotpage.LineSeries{
+		Name:        "Others",
+		Data:        othersData,
+		Stack:       "total",
+		AreaOpacity: float32(areaOpacityOther),
+	}
 }
 
 func getTopDevIDs(developers []DeveloperData, limit int) []int {
@@ -62,63 +118,4 @@ func getTopDevIDs(developers []DeveloperData, limit int) []int {
 	}
 
 	return ids
-}
-
-func configureActivityChart(line *charts.Line) {
-	co := plotpage.DefaultChartOpts()
-	line.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", lineChartHeight)),
-		charts.WithTitleOpts(co.Title("Developer Activity Over Time", "Stacked area showing contribution velocity (commits per tick)")),
-		charts.WithTooltipOpts(co.Tooltip("axis")),
-		charts.WithLegendOpts(co.Legend()),
-		charts.WithGridOpts(co.Grid()),
-		charts.WithDataZoomOpts(co.DataZoom()...),
-		charts.WithXAxisOpts(co.XAxis("Time (tick)")),
-		charts.WithYAxisOpts(co.YAxis("Commits")),
-	)
-}
-
-func addDevSeriesTo(line *charts.Line, devIDs []int, data *DashboardData) {
-	nameByID := make(map[int]string)
-
-	for _, dev := range data.Metrics.Developers {
-		nameByID[dev.ID] = dev.Name
-	}
-
-	for _, devID := range devIDs {
-		seriesData := make([]opts.LineData, len(data.Metrics.Activity))
-		for i, ad := range data.Metrics.Activity {
-			seriesData[i] = opts.LineData{Value: ad.ByDeveloper[devID]}
-		}
-
-		line.AddSeries(nameByID[devID], seriesData,
-			charts.WithLineChartOpts(opts.LineChart{Stack: "total"}),
-			charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacityNormal)}),
-		)
-	}
-}
-
-func addOthersSeriesTo(line *charts.Line, topDevs []int, data *DashboardData) {
-	if len(data.Metrics.Developers) <= maxDevs {
-		return
-	}
-
-	othersData := make([]opts.LineData, len(data.Metrics.Activity))
-
-	for i, ad := range data.Metrics.Activity {
-		total := 0
-
-		for devID, commits := range ad.ByDeveloper {
-			if !slices.Contains(topDevs, devID) {
-				total += commits
-			}
-		}
-
-		othersData[i] = opts.LineData{Value: total}
-	}
-
-	line.AddSeries("Others", othersData,
-		charts.WithLineChartOpts(opts.LineChart{Stack: "total"}),
-		charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacityOther)}),
-	)
 }

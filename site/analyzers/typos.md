@@ -21,6 +21,18 @@ codefang run -a history/typos --typos-max-distance 3 .
 
 ---
 
+## Architecture
+
+The typos analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` computes diffs, identifies line pairs within Levenshtein distance, and extracts UAST identifier changes. Per-commit typos are returned as `TC{Data: []Typo}`. The analyzer retains no per-commit state; only the `lcontext` (Levenshtein context) is kept as working state.
+2. **Aggregation phase**: A `typos.Aggregator` collects TCs into a `SliceSpillStore[Typo]`. `FlushTick()` deduplicates typos by `wrong|correct` key (keeping the first occurrence), returning a `TickData` with the unique set.
+3. **Serialization phase**: `SerializeTICKs()` assembles all tick data into an `analyze.Report{"typos": allTypos}`, then delegates to `ComputeAllMetrics()` for JSON, YAML, binary, or HTML plot output.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
 ## What It Measures
 
 ### Typo-Fix Pair Detection

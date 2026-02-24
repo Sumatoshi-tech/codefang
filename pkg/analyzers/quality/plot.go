@@ -2,7 +2,6 @@ package quality
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -19,23 +18,8 @@ const (
 	maxStatsColumns  = 4
 )
 
-func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
-	sections, err := h.GenerateSections(report)
-	if err != nil {
-		return err
-	}
-
-	page := plotpage.NewPage(
-		"Code Quality Over Time",
-		"Complexity, Halstead, and quality metrics tracked across commit history",
-	)
-	page.Add(sections...)
-
-	return page.Render(writer)
-}
-
 // GenerateSections returns the plot sections for combined reports.
-func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+func (a *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
 	computed, err := ComputeAllMetrics(report)
 	if err != nil {
 		return nil, err
@@ -223,6 +207,6 @@ func createEmptyChart(title string) *charts.Line {
 // RegisterPlotSections registers the quality plot section renderer with the analyze package.
 func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/quality", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
+		return (&Analyzer{}).GenerateSections(report)
 	})
 }

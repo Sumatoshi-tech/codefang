@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -165,11 +167,6 @@ func NewRunCommand() *cobra.Command {
 	sentiment.RegisterTimeSeriesExtractor()
 	renderer.RegisterPlotRenderer()
 
-	anomaly.RegisterTickExtractor()
-	devs.RegisterTickExtractor()
-	quality.RegisterTickExtractor()
-	sentiment.RegisterTickExtractor()
-
 	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry, observability.Init)
 }
 
@@ -197,7 +194,8 @@ func newRunCommandWithDeps(
 
 	cmd.Flags().StringSliceVarP(&rc.analyzerIDs, "analyzers", "a", nil,
 		"Analyzer IDs or glob patterns (example: static/complexity,history/*,*)")
-	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON, "Output format: json, text, compact, yaml, plot, bin, timeseries")
+	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON,
+		"Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact")
 	cmd.Flags().StringVar(&rc.inputPath, "input", "", "Input report path for cross-format conversion")
 	cmd.Flags().StringVar(&rc.inputFormat, "input-format", analyze.InputFormatAuto, "Input format: auto, json, bin")
 	cmd.Flags().IntVar(&rc.gogc, "gogc", 0, "GC percent for history pipeline (0 = auto, >0 = exact)")
@@ -639,15 +637,22 @@ func runHistoryAnalyzers(
 	defer stopProfiler()
 	defer framework.MaybeWriteHeapProfile(opts.HeapProfile, nil)
 
+	configureLibgit2MemoryLimits(opts.MemoryBudget)
+
 	result, err := initHistoryPipeline(ctx, path, analyzerIDs, format, opts)
 	if err != nil {
 		return err
 	}
 	defer result.repository.Free()
 
+	if result.commitIter != nil {
+		defer result.commitIter.Close()
+	}
+
 	return executeHistoryPipeline(
-		ctx, result.pipeline, path, result.selectedLeaves, result.facts,
-		result.commits, result.analyzerKeys, result.format, opts, result.repository, writer,
+		ctx, result.pipeline, path, result.selectedLeaves,
+		result.commits, result.commitIter, result.commitCount,
+		result.analyzerKeys, result.format, opts, result.repository, writer,
 	)
 }
 
@@ -655,10 +660,11 @@ func runHistoryAnalyzers(
 type initResult struct {
 	pipeline       *historyPipeline
 	repository     *gitlib.Repository
-	commits        []*gitlib.Commit
+	commits        []*gitlib.Commit   // Used only for HeadOnly mode.
+	commitIter     *gitlib.CommitIter // Iterator for streaming mode.
+	commitCount    int                // Total commits for streaming mode.
 	selectedLeaves []analyze.HistoryAnalyzer
 	analyzerKeys   []string
-	facts          map[string]any
 	format         string
 }
 
@@ -699,26 +705,38 @@ func initHistoryPipeline(
 		opts.FirstParent = true
 	}
 
-	//nolint:contextcheck // LoadCommits API doesn't accept context yet.
-	commits, err := gitlib.LoadCommits(repository, gitlib.CommitLoadOptions{
-		Limit:       opts.Limit,
-		FirstParent: opts.FirstParent,
-		HeadOnly:    opts.Head,
-		Since:       opts.Since,
-	})
-	if err != nil {
-		repository.Free()
-
-		return initResult{}, err
+	// HeadOnly mode: load a single commit, no iterator needed.
+	if opts.Head {
+		return initHeadOnly(ctx, repository, pl, analyzerKeys, normalizedFormat, initSpan)
 	}
 
-	facts := buildFacts(pl)
+	// Streaming mode: count commits and create a reverse iterator.
+	return initStreamingIterator(repository, pl, analyzerKeys, normalizedFormat, opts, initSpan)
+}
 
-	selectedLeaves, err := selectLeaves(pl.Leaves, analyzerKeys, facts)
-	if err != nil {
+// initHeadOnly loads only the HEAD commit and returns an initResult for head-only analysis.
+func initHeadOnly(
+	ctx context.Context,
+	repository *gitlib.Repository,
+	pl *historyPipeline,
+	analyzerKeys []string,
+	normalizedFormat string,
+	initSpan trace.Span,
+) (initResult, error) {
+	commits, loadErr := gitlib.LoadCommits(ctx, repository, gitlib.CommitLoadOptions{
+		HeadOnly: true,
+	})
+	if loadErr != nil {
 		repository.Free()
 
-		return initResult{}, err
+		return initResult{}, loadErr
+	}
+
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	if configErr != nil {
+		repository.Free()
+
+		return initResult{}, configErr
 	}
 
 	initSpan.SetAttributes(
@@ -732,9 +750,98 @@ func initHistoryPipeline(
 		commits:        commits,
 		selectedLeaves: selectedLeaves,
 		analyzerKeys:   analyzerKeys,
-		facts:          facts,
 		format:         normalizedFormat,
 	}, nil
+}
+
+// initStreamingIterator counts commits and creates a reverse iterator for streaming analysis.
+func initStreamingIterator(
+	repository *gitlib.Repository,
+	pl *historyPipeline,
+	analyzerKeys []string,
+	normalizedFormat string,
+	opts HistoryRunOptions,
+	initSpan trace.Span,
+) (initResult, error) {
+	logOpts := &gitlib.LogOptions{
+		FirstParent: opts.FirstParent,
+	}
+
+	if opts.Since != "" {
+		sinceTime, parseErr := gitlib.ParseTime(opts.Since)
+		if parseErr != nil {
+			repository.Free()
+
+			return initResult{}, fmt.Errorf("invalid time format for --since: %w", parseErr)
+		}
+
+		logOpts.Since = &sinceTime
+	}
+
+	commitCount, err := repository.CommitCount(logOpts)
+	if err != nil {
+		repository.Free()
+
+		return initResult{}, fmt.Errorf("failed to count commits: %w", err)
+	}
+
+	if opts.Limit > 0 && opts.Limit < commitCount {
+		commitCount = opts.Limit
+	}
+
+	// Reverse is implicitly handled by the backend Log() implementation
+	// for --first-parent.
+	logOpts.Reverse = true
+
+	iter, err := repository.Log(logOpts)
+	if err != nil {
+		repository.Free()
+
+		return initResult{}, fmt.Errorf("failed to create commit iterator: %w", err)
+	}
+
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	if configErr != nil {
+		iter.Close()
+		repository.Free()
+
+		return initResult{}, configErr
+	}
+
+	initSpan.SetAttributes(
+		attribute.Int("init.commits", commitCount),
+		attribute.Int("init.analyzers", len(analyzerKeys)),
+		attribute.Bool("init.iterator_mode", true),
+	)
+
+	return initResult{
+		pipeline:       pl,
+		repository:     repository,
+		commitIter:     iter,
+		commitCount:    commitCount,
+		selectedLeaves: selectedLeaves,
+		analyzerKeys:   analyzerKeys,
+		format:         normalizedFormat,
+	}, nil
+}
+
+// configureAndSelect configures core analyzers with facts and selects leaf analyzers.
+func configureAndSelect(pl *historyPipeline, analyzerKeys []string) ([]analyze.HistoryAnalyzer, error) {
+	facts := buildFacts(pl)
+
+	// Configure core (plumbing) analyzers first so they can publish facts
+	// (e.g. TicksSinceStart publishes FactCommitsByTick) that leaves depend on.
+	err := configureAnalyzers(pl.Core, facts)
+	if err != nil {
+		return nil, err
+	}
+
+	selectedLeaves, err := selectLeaves(pl.Leaves, analyzerKeys, facts)
+	if err != nil {
+		return nil, err
+	}
+
+	return selectedLeaves, nil
 }
 
 func executeHistoryPipeline(
@@ -742,19 +849,17 @@ func executeHistoryPipeline(
 	pl *historyPipeline,
 	path string,
 	selectedLeaves []analyze.HistoryAnalyzer,
-	facts map[string]any,
 	commits []*gitlib.Commit,
+	commitIter *gitlib.CommitIter,
+	commitCount int,
 	analyzerKeys []string,
 	normalizedFormat string,
 	opts HistoryRunOptions,
 	repository *gitlib.Repository,
 	writer io.Writer,
 ) error {
-	err := configureAnalyzers(pl.Core, facts)
-	if err != nil {
-		return err
-	}
-
+	// Core analyzers are already configured in initHistoryPipeline (before leaf
+	// selection) so that plumbing facts are available when leaves Configure().
 	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pl.Core)+len(selectedLeaves))
 	allAnalyzers = append(allAnalyzers, pl.Core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
@@ -774,6 +879,8 @@ func executeHistoryPipeline(
 		return err
 	}
 
+	coordConfig.FirstParent = opts.FirstParent
+
 	if !needsUAST(selectedLeaves) {
 		coordConfig.UASTPipelineWorkers = 0
 	}
@@ -789,14 +896,15 @@ func executeHistoryPipeline(
 	done := red.TrackInflight(ctx, "cli.run")
 	runStart := time.Now()
 
-	results, err := framework.RunStreaming(ctx, runner, commits, allAnalyzers, framework.StreamingConfig{
-		MemBudget:       memBudget,
-		Checkpoint:      buildCheckpointParams(opts),
-		RepoPath:        path,
-		AnalyzerNames:   analyzerKeys,
-		DebugTrace:      opts.DebugTrace,
-		AnalysisMetrics: analysisMetrics,
-	})
+	streamConfig := buildStreamingConfig(path, analyzerKeys, memBudget, opts, analysisMetrics, normalizedFormat, writer)
+
+	var results map[analyze.HistoryAnalyzer]analyze.Report
+
+	if commitIter != nil {
+		results, err = framework.RunStreamingFromIterator(ctx, runner, commitIter, commitCount, allAnalyzers, streamConfig)
+	} else {
+		results, err = framework.RunStreaming(ctx, runner, commits, allAnalyzers, streamConfig)
+	}
 
 	recordRunCompletion(ctx, red, done, runStart, err)
 
@@ -804,8 +912,49 @@ func executeHistoryPipeline(
 		return fmt.Errorf("pipeline execution failed: %w", err)
 	}
 
+	// In NDJSON mode, output was already written by the sink.
+	if normalizedFormat == analyze.FormatNDJSON {
+		return nil
+	}
+
 	enrichAnomalyReport(selectedLeaves, results)
 
+	return renderReport(ctx, selectedLeaves, results, normalizedFormat, writer)
+}
+
+// buildStreamingConfig creates a StreamingConfig, wiring a TCSink when NDJSON format is requested.
+func buildStreamingConfig(
+	path string, analyzerKeys []string, memBudget int64,
+	opts HistoryRunOptions, analysisMetrics *observability.AnalysisMetrics,
+	normalizedFormat string, writer io.Writer,
+) framework.StreamingConfig {
+	cfg := framework.StreamingConfig{
+		MemBudget:       memBudget,
+		Logger:          slog.Default(),
+		Checkpoint:      buildCheckpointParams(opts),
+		RepoPath:        path,
+		AnalyzerNames:   analyzerKeys,
+		DebugTrace:      opts.DebugTrace,
+		AnalysisMetrics: analysisMetrics,
+	}
+
+	// NDJSON mode: write one JSON line per TC directly to writer, bypass aggregators.
+	if normalizedFormat == analyze.FormatNDJSON {
+		sink := analyze.NewStreamingSink(writer)
+		cfg.TCSink = sink.WriteTC
+	}
+
+	return cfg
+}
+
+// renderReport writes analysis results in the requested format, wrapped in a tracing span.
+func renderReport(
+	ctx context.Context,
+	selectedLeaves []analyze.HistoryAnalyzer,
+	results map[analyze.HistoryAnalyzer]analyze.Report,
+	normalizedFormat string,
+	writer io.Writer,
+) error {
 	tr := otel.Tracer("codefang")
 	_, reportSpan := tr.Start(ctx, "codefang.report",
 		trace.WithAttributes(
@@ -858,12 +1007,12 @@ func enrichAnomalyReport(
 	leaves []analyze.HistoryAnalyzer,
 	results map[analyze.HistoryAnalyzer]analyze.Report,
 ) {
-	var anomalyAnalyzer *anomaly.HistoryAnalyzer
+	var anomalyAnalyzer *anomaly.Analyzer
 
 	var anomalyReport analyze.Report
 
 	for _, leaf := range leaves {
-		if a, ok := leaf.(*anomaly.HistoryAnalyzer); ok {
+		if a, ok := leaf.(*anomaly.Analyzer); ok {
 			anomalyAnalyzer = a
 			anomalyReport = results[leaf]
 
@@ -1069,6 +1218,43 @@ func (rc *RunCommand) progressf(silent bool, writer io.Writer, format string, ar
 	_, _ = fmt.Fprintf(writer, "progress: "+format+"\n", args...)
 }
 
+// configureLibgit2MemoryLimits sets libgit2 global mwindow and object cache
+// limits proportional to the memory budget. Must be called before opening
+// any repository handles. When budgetStr is empty, uses auto-detected budget.
+func configureLibgit2MemoryLimits(budgetStr string) {
+	var budgetBytes int64
+
+	if budgetStr != "" {
+		parsed, err := humanize.ParseBytes(budgetStr)
+		if err == nil {
+			budgetBytes = framework.SafeInt64(parsed)
+		}
+	}
+
+	if budgetBytes == 0 {
+		budgetBytes = framework.DefaultMemoryBudget()
+	}
+
+	if budgetBytes <= 0 {
+		return
+	}
+
+	limits := budget.NativeLimitsForBudget(budgetBytes)
+
+	err := gitlib.ConfigureMemoryLimits(limits.MwindowMappedLimit, limits.CacheMaxSize, limits.MallocArenaMax)
+	if err != nil {
+		slog.Default().Warn("failed to configure libgit2 memory limits", "error", err)
+
+		return
+	}
+
+	slog.Default().Info("native memory limits configured",
+		"budget_mib", budgetBytes/budget.MiB,
+		"mwindow_limit_mib", limits.MwindowMappedLimit/budget.MiB,
+		"cache_limit_mib", limits.CacheMaxSize/budget.MiB,
+		"malloc_arena_max", limits.MallocArenaMax)
+}
+
 func suppressStandardLogger(silent bool) func() {
 	if !silent {
 		return func() {}
@@ -1092,7 +1278,7 @@ type historyPipeline struct {
 	Leaves map[string]analyze.HistoryAnalyzer
 }
 
-func buildPipeline(repository *gitlib.Repository) *historyPipeline {
+func buildPipeline(repository *gitlib.Repository) *historyPipeline { //nolint:funlen // Expected length for pipeline initialization.
 	treeDiff := &plumbing.TreeDiffAnalyzer{Repository: repository}
 	identity := &plumbing.IdentityDetector{}
 	ticks := &plumbing.TicksSinceStart{}
@@ -1107,27 +1293,89 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline {
 			treeDiff, identity, ticks, blobCache, fileDiff, lineStats, langDetect, uastChanges,
 		},
 		Leaves: map[string]analyze.HistoryAnalyzer{
-			"anomaly": &anomaly.HistoryAnalyzer{
-				TreeDiff: treeDiff, Ticks: ticks, LineStats: lineStats,
-				Languages: langDetect, Identity: identity,
-			},
-			"burndown": &burndown.HistoryAnalyzer{
-				BlobCache: blobCache, Ticks: ticks, Identity: identity, FileDiff: fileDiff, TreeDiff: treeDiff,
-			},
-			"couples": &couples.HistoryAnalyzer{Identity: identity, TreeDiff: treeDiff},
-			"devs": &devs.HistoryAnalyzer{
-				Identity: identity, TreeDiff: treeDiff, Ticks: ticks, Languages: langDetect, LineStats: lineStats,
-			},
-			"file-history": &filehistory.Analyzer{Identity: identity, TreeDiff: treeDiff, LineStats: lineStats},
-			"imports": &imports.HistoryAnalyzer{
-				TreeDiff: treeDiff, BlobCache: blobCache, Identity: identity, Ticks: ticks,
-			},
-			"quality":   &quality.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
-			"sentiment": &sentiment.HistoryAnalyzer{UAST: uastChanges, Ticks: ticks},
-			"shotness":  &shotness.HistoryAnalyzer{FileDiff: fileDiff, UAST: uastChanges},
-			"typos": &typos.HistoryAnalyzer{
-				UAST: uastChanges, BlobCache: blobCache, FileDiff: fileDiff,
-			},
+			"anomaly": func() *anomaly.Analyzer {
+				a := anomaly.NewAnalyzer()
+				a.TreeDiff = treeDiff
+				a.Ticks = ticks
+				a.LineStats = lineStats
+				a.Languages = langDetect
+				a.Identity = identity
+
+				return a
+			}(),
+			"burndown": func() *burndown.HistoryAnalyzer {
+				a := burndown.NewHistoryAnalyzer()
+				a.BlobCache = blobCache
+				a.Ticks = ticks
+				a.Identity = identity
+				a.FileDiff = fileDiff
+				a.TreeDiff = treeDiff
+
+				return a
+			}(),
+			"couples": func() *couples.HistoryAnalyzer {
+				a := couples.NewHistoryAnalyzer()
+				a.Identity = identity
+				a.TreeDiff = treeDiff
+
+				return a
+			}(),
+			"devs": func() *devs.Analyzer {
+				a := devs.NewAnalyzer()
+				a.Identity = identity
+				a.TreeDiff = treeDiff
+				a.Ticks = ticks
+				a.Languages = langDetect
+				a.LineStats = lineStats
+
+				return a
+			}(),
+			"file-history": func() *filehistory.HistoryAnalyzer {
+				a := filehistory.NewAnalyzer()
+				a.Identity = identity
+				a.TreeDiff = treeDiff
+				a.LineStats = lineStats
+
+				return a
+			}(),
+			"imports": func() *imports.HistoryAnalyzer {
+				a := imports.NewHistoryAnalyzer()
+				a.TreeDiff = treeDiff
+				a.BlobCache = blobCache
+				a.Identity = identity
+				a.Ticks = ticks
+
+				return a
+			}(),
+			"quality": func() *quality.Analyzer {
+				a := quality.NewAnalyzer()
+				a.UAST = uastChanges
+				a.Ticks = ticks
+
+				return a
+			}(),
+			"sentiment": func() *sentiment.Analyzer {
+				a := sentiment.NewAnalyzer()
+				a.UAST = uastChanges
+				a.Ticks = ticks
+
+				return a
+			}(),
+			"shotness": func() *shotness.Analyzer {
+				a := shotness.NewAnalyzer()
+				a.FileDiff = fileDiff
+				a.UAST = uastChanges
+
+				return a
+			}(),
+			"typos": func() *typos.Analyzer {
+				a := typos.NewAnalyzer()
+				a.UAST = uastChanges
+				a.BlobCache = blobCache
+				a.FileDiff = fileDiff
+
+				return a
+			}(),
 		},
 	}
 }

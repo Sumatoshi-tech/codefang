@@ -14,6 +14,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 )
@@ -38,6 +39,37 @@ type Runner struct {
 	// are leaf analyzers that can be parallelized via Fork/Merge.
 	// Set to 0 to disable parallel leaf consumption.
 	CoreCount int
+
+	// MemBudget is the user's memory budget in bytes. When positive, overrides
+	// the system-RAM-based debug.SetMemoryLimit with a budget-aligned value.
+	MemBudget int64
+
+	// aggregators holds one aggregator per analyzer slot (indexed same as Analyzers).
+	// nil for core analyzers and leaf analyzers without aggregators (e.g. file_history).
+	aggregators []analyze.Aggregator
+
+	// tickProvider and idProvider are discovered from core analyzers during initAggregators.
+	// Used to stamp TCs with tick/author metadata before feeding to aggregators.
+	tickProvider *plumbing.TicksSinceStart
+	idProvider   *plumbing.IdentityDetector
+
+	// commitMeta accumulates per-commit metadata (timestamp, author) during TC consumption.
+	// Injected into Reports by FinalizeWithAggregators for timeseries output.
+	commitMeta map[string]analyze.CommitMeta
+
+	// TCSink, when set, receives every non-nil TC as commits are consumed.
+	// Used by NDJSON streaming output. When set, aggregators are not created
+	// and FinalizeWithAggregators is not called.
+	TCSink analyze.TCSink
+
+	// AggSpillBudget is the maximum bytes of aggregator state to keep in memory
+	// before spilling to disk. Computed by ComputeSchedule from the memory budget.
+	// Zero means no limit (unlimited budget or budget too small to decompose).
+	AggSpillBudget int64
+
+	// tcBytesAccumulated tracks total TC payload bytes consumed since last reset.
+	// Used by three-metric adaptive feedback to measure TC size per commit.
+	tcBytesAccumulated int64
 
 	runtimeTuningOnce sync.Once
 	runtimeBallast    []byte
@@ -85,19 +117,10 @@ func (runner *Runner) Run(ctx context.Context, commits []*gitlib.Commit) (map[an
 		}
 	}
 
+	runner.initAggregators()
+
 	if len(commits) == 0 {
-		reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
-
-		for _, a := range runner.Analyzers {
-			rep, err := a.Finalize()
-			if err != nil {
-				return nil, err
-			}
-
-			reports[a] = rep
-		}
-
-		return reports, nil
+		return runner.FinalizeWithAggregators(ctx)
 	}
 
 	return runner.runInternal(ctx, commits)
@@ -110,21 +133,11 @@ func (runner *Runner) runInternal(ctx context.Context, commits []*gitlib.Commit)
 		return nil, processErr
 	}
 
-	reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
-
-	for _, a := range runner.Analyzers {
-		rep, finalizeErr := a.Finalize()
-		if finalizeErr != nil {
-			return nil, finalizeErr
-		}
-
-		reports[a] = rep
-	}
-
-	return reports, nil
+	return runner.FinalizeWithAggregators(ctx)
 }
 
-// Initialize initializes all analyzers. Call once before processing chunks.
+// Initialize initializes all analyzers and creates aggregators.
+// Call once before processing chunks.
 func (runner *Runner) Initialize() error {
 	for _, a := range runner.Analyzers {
 		err := a.Initialize(runner.Repo)
@@ -133,7 +146,343 @@ func (runner *Runner) Initialize() error {
 		}
 	}
 
+	runner.initAggregators()
+
 	return nil
+}
+
+// initAggregators creates aggregators for leaf analyzers and discovers
+// plumbing providers (tick + identity) from core analyzers.
+// Called once after all analyzers are initialized.
+func (runner *Runner) initAggregators() {
+	runner.aggregators = make([]analyze.Aggregator, len(runner.Analyzers))
+	runner.commitMeta = make(map[string]analyze.CommitMeta)
+
+	for i, a := range runner.Analyzers {
+		if i < runner.CoreCount {
+			// Discover plumbing providers from core analyzers.
+			if tp, ok := a.(*plumbing.TicksSinceStart); ok {
+				runner.tickProvider = tp
+			}
+
+			if id, ok := a.(*plumbing.IdentityDetector); ok {
+				runner.idProvider = id
+			}
+
+			continue
+		}
+
+		// When TCSink is set (NDJSON mode), TCs go directly to the sink
+		// and aggregators are not needed.
+		if runner.TCSink != nil {
+			continue
+		}
+
+		agg := a.NewAggregator(analyze.AggregatorOptions{
+			SpillBudget: runner.AggSpillBudget,
+		})
+		runner.aggregators[i] = agg // nil for analyzers without aggregators.
+	}
+}
+
+// InitializeForResume initializes all analyzers and recreates aggregators
+// with saved spill state from a checkpoint. Called instead of Initialize()
+// when resuming from a checkpoint (startChunk > 0).
+func (runner *Runner) InitializeForResume(aggSpills []checkpoint.AggregatorSpillEntry) error {
+	for _, a := range runner.Analyzers {
+		err := a.Initialize(runner.Repo)
+		if err != nil {
+			return err
+		}
+	}
+
+	runner.initAggregators()
+
+	// Restore spill state for aggregators that have saved spill dirs.
+	for i, agg := range runner.aggregators {
+		if agg == nil || i >= len(aggSpills) {
+			continue
+		}
+
+		entry := aggSpills[i]
+		if entry.Dir == "" {
+			continue
+		}
+
+		agg.RestoreSpillState(analyze.AggregatorSpillInfo{
+			Dir:   entry.Dir,
+			Count: entry.Count,
+		})
+	}
+
+	return nil
+}
+
+// AggregatorSpills returns the current spill state of all aggregators
+// for checkpoint persistence.
+func (runner *Runner) AggregatorSpills() []checkpoint.AggregatorSpillEntry {
+	spills := make([]checkpoint.AggregatorSpillEntry, len(runner.aggregators))
+
+	for i, agg := range runner.aggregators {
+		if agg == nil {
+			continue
+		}
+
+		info := agg.SpillState()
+		spills[i] = checkpoint.AggregatorSpillEntry{
+			Dir:   info.Dir,
+			Count: info.Count,
+		}
+	}
+
+	return spills
+}
+
+// SpillAggregators forces all aggregators to flush their in-memory state
+// to disk. Called before saving a checkpoint so that spill files are complete.
+func (runner *Runner) SpillAggregators() error {
+	for _, agg := range runner.aggregators {
+		if agg == nil {
+			continue
+		}
+
+		_, err := agg.Spill()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// addTC stamps a TC with tick/author/timestamp metadata and routes it to
+// either the TCSink (NDJSON mode) or the corresponding aggregator.
+// Skips TCs with nil Data.
+func (runner *Runner) addTC(tc analyze.TC, idx int, ac *analyze.Context) {
+	if tc.Data == nil {
+		return
+	}
+
+	if runner.tickProvider != nil {
+		tc.Tick = runner.tickProvider.Tick
+	}
+
+	if runner.idProvider != nil {
+		tc.AuthorID = runner.idProvider.AuthorID
+	}
+
+	tc.Timestamp = ac.Time
+	runner.recordCommitMeta(tc)
+
+	if runner.TCSink != nil {
+		runner.sendToSink(tc, idx)
+
+		return
+	}
+
+	if runner.aggregators[idx] == nil {
+		return
+	}
+
+	// Track TC count for per-chunk metrics.
+	runner.tcBytesAccumulated++
+
+	addErr := runner.aggregators[idx].Add(tc)
+	if addErr != nil {
+		// Add errors are programming errors (type mismatch). Log is not available
+		// here, so we silently discard. The aggregator remains in a valid state.
+		return
+	}
+}
+
+// AggregatorStateSize returns the sum of EstimatedStateSize() across all
+// non-nil aggregators. Used for three-metric adaptive feedback.
+func (runner *Runner) AggregatorStateSize() int64 {
+	var total int64
+
+	for _, agg := range runner.aggregators {
+		if agg != nil {
+			total += agg.EstimatedStateSize()
+		}
+	}
+
+	return total
+}
+
+// TCCountAccumulated returns the number of TCs added since the last reset.
+func (runner *Runner) TCCountAccumulated() int64 {
+	return runner.tcBytesAccumulated
+}
+
+// ResetTCCount resets the per-chunk TC counter.
+func (runner *Runner) ResetTCCount() {
+	runner.tcBytesAccumulated = 0
+}
+
+// recordCommitMeta stores per-commit metadata from a stamped TC.
+// Deduplicates by commit hash — the same commit produces identical metadata
+// regardless of which analyzer emitted the TC.
+func (runner *Runner) recordCommitMeta(tc analyze.TC) {
+	hashStr := tc.CommitHash.String()
+	if _, exists := runner.commitMeta[hashStr]; exists {
+		return
+	}
+
+	var ts string
+	if !tc.Timestamp.IsZero() {
+		ts = tc.Timestamp.Format(time.RFC3339)
+	}
+
+	runner.commitMeta[hashStr] = analyze.CommitMeta{
+		Hash:      hashStr,
+		Tick:      tc.Tick,
+		Timestamp: ts,
+		Author:    runner.authorName(tc.AuthorID),
+	}
+}
+
+// authorName resolves an AuthorID to a human-readable name via ReversedPeopleDict.
+// Returns empty string when no identity detector is configured or AuthorID is out of bounds.
+func (runner *Runner) authorName(authorID int) string {
+	if runner.idProvider == nil {
+		return ""
+	}
+
+	dict := runner.idProvider.ReversedPeopleDict
+	if authorID < 0 || authorID >= len(dict) {
+		return ""
+	}
+
+	return dict[authorID]
+}
+
+// analyzerIndex builds a reverse map from analyzer to its index in runner.Analyzers.
+func (runner *Runner) analyzerIndex() map[analyze.HistoryAnalyzer]int {
+	m := make(map[analyze.HistoryAnalyzer]int, len(runner.Analyzers))
+	for i, a := range runner.Analyzers {
+		m[a] = i
+	}
+
+	return m
+}
+
+// drainWorkerTCs feeds buffered TCs from parallel workers into aggregators or TCSink.
+func (runner *Runner) drainWorkerTCs(workers []*leafWorker) {
+	tcsByIdx := make([][]bufferedTC, len(runner.Analyzers))
+
+	for _, worker := range workers {
+		for _, btc := range worker.tcs {
+			runner.recordCommitMeta(btc.tc)
+			tcsByIdx[btc.idx] = append(tcsByIdx[btc.idx], btc)
+		}
+	}
+
+	var wg sync.WaitGroup
+
+	for _, tcs := range tcsByIdx {
+		if len(tcs) == 0 {
+			continue
+		}
+
+		wg.Add(1)
+
+		go func(tcs []bufferedTC) {
+			defer wg.Done()
+
+			for _, btc := range tcs {
+				runner.routeBufferedTC(btc)
+			}
+		}(tcs)
+	}
+
+	wg.Wait()
+}
+
+// sendToSink dispatches a TC to the TCSink callback. Errors are silently
+// discarded — sink failures (e.g. broken pipe) should not halt the pipeline.
+func (runner *Runner) sendToSink(tc analyze.TC, idx int) {
+	sinkErr := runner.TCSink(tc, runner.Analyzers[idx].Flag())
+	if sinkErr != nil {
+		return
+	}
+}
+
+// routeBufferedTC sends a single buffered TC to the TCSink or its aggregator.
+func (runner *Runner) routeBufferedTC(btc bufferedTC) {
+	if runner.TCSink != nil {
+		runner.sendToSink(btc.tc, btc.idx)
+
+		return
+	}
+
+	agg := runner.aggregators[btc.idx]
+	if agg == nil {
+		return
+	}
+
+	addErr := agg.Add(btc.tc)
+	if addErr != nil {
+		return
+	}
+}
+
+// mapIndices returns original runner.Analyzers indices for the given leaf analyzers.
+func mapIndices(leaves []analyze.HistoryAnalyzer, idxMap map[analyze.HistoryAnalyzer]int) []int {
+	indices := make([]int, len(leaves))
+	for i, a := range leaves {
+		indices[i] = idxMap[a]
+	}
+
+	return indices
+}
+
+// consumeAll feeds one commit through all analyzers, accumulating per-analyzer durations.
+func (runner *Runner) consumeAll(ctx context.Context, ac *analyze.Context, durations []time.Duration) error {
+	for i, a := range runner.Analyzers {
+		start := time.Now()
+
+		tc, err := a.Consume(ctx, ac)
+
+		durations[i] += time.Since(start)
+
+		if err != nil {
+			return err
+		}
+
+		runner.addTC(tc, i, ac)
+	}
+
+	return nil
+}
+
+// buildLeafWork creates a leafWork with plumbing snapshot and TC stamping metadata.
+func (runner *Runner) buildLeafWork(ac *analyze.Context, snapshotters []analyze.Parallelizable) leafWork {
+	var tick, authorID int
+
+	if runner.tickProvider != nil {
+		tick = runner.tickProvider.Tick
+	}
+
+	if runner.idProvider != nil {
+		authorID = runner.idProvider.AuthorID
+	}
+
+	return leafWork{
+		analyzeCtx: ac,
+		snapshot:   buildCompositeSnapshot(snapshotters),
+		tick:       tick,
+		authorID:   authorID,
+		timestamp:  ac.Time,
+	}
+}
+
+// closeAggregators releases all aggregator resources.
+func (runner *Runner) closeAggregators() {
+	for _, agg := range runner.aggregators {
+		if agg != nil {
+			_ = agg.Close()
+		}
+	}
 }
 
 // ProcessChunk processes a chunk of commits without Initialize/Finalize.
@@ -145,20 +494,88 @@ func (runner *Runner) ProcessChunk(ctx context.Context, commits []*gitlib.Commit
 	return runner.processCommits(ctx, commits, indexOffset, chunkIndex)
 }
 
-// Finalize finalizes all analyzers and returns their reports.
-func (runner *Runner) Finalize() (map[analyze.HistoryAnalyzer]analyze.Report, error) {
-	reports := make(map[analyze.HistoryAnalyzer]analyze.Report)
+// reportFromAggregator collects, flushes, and converts aggregated TICKs to a report.
+func reportFromAggregator(ctx context.Context, agg analyze.Aggregator, a analyze.HistoryAnalyzer) (analyze.Report, error) {
+	collectErr := agg.Collect()
+	if collectErr != nil {
+		return nil, fmt.Errorf("collect %s: %w", a.Name(), collectErr)
+	}
 
-	for _, a := range runner.Analyzers {
-		rep, err := a.Finalize()
+	ticks, flushErr := agg.FlushAllTicks()
+	if flushErr != nil {
+		return nil, fmt.Errorf("flush %s: %w", a.Name(), flushErr)
+	}
+
+	rep, repErr := a.ReportFromTICKs(ctx, ticks)
+	if repErr != nil {
+		return nil, fmt.Errorf("report %s: %w", a.Name(), repErr)
+	}
+
+	return rep, nil
+}
+
+// FinalizeWithAggregators produces reports from all leaf analyzers:
+//   - Analyzers with aggregators: Collect → FlushAllTicks → ReportFromTICKs
+//   - Analyzers without aggregators: store empty report.
+//
+// Closes all aggregators before returning.
+func (runner *Runner) FinalizeWithAggregators(ctx context.Context) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	defer runner.closeAggregators()
+
+	if runner.idProvider != nil {
+		runner.idProvider.FinalizeDict()
+	}
+
+	reports := make(map[analyze.HistoryAnalyzer]analyze.Report, len(runner.Analyzers))
+
+	for i, a := range runner.Analyzers {
+		if i < runner.CoreCount {
+			continue
+		}
+
+		agg := runner.aggregators[i]
+
+		if agg == nil {
+			// Plumbing analyzers and analyzers without aggregators store empty report.
+			reports[a] = analyze.Report{}
+
+			continue
+		}
+
+		rep, err := reportFromAggregator(ctx, agg, a)
 		if err != nil {
 			return nil, err
+		}
+
+		if rep != nil && runner.idProvider != nil && len(runner.idProvider.ReversedPeopleDict) > 0 {
+			rep["ReversedPeopleDict"] = runner.idProvider.ReversedPeopleDict
 		}
 
 		reports[a] = rep
 	}
 
+	runner.injectCommitMeta(reports)
+
 	return reports, nil
+}
+
+// injectCommitMeta adds the accumulated commit metadata into each Report
+// that contains a "commits_by_tick" key. This enables the timeseries output
+// path to populate CommitMeta.Timestamp and CommitMeta.Author.
+func (runner *Runner) injectCommitMeta(reports map[analyze.HistoryAnalyzer]analyze.Report) {
+	if len(runner.commitMeta) == 0 {
+		return
+	}
+
+	for _, report := range reports {
+		if report == nil {
+			continue
+		}
+
+		if _, hasCBT := report["commits_by_tick"]; hasCBT {
+			report[analyze.ReportKeyCommitMeta] = runner.commitMeta
+		}
+	}
 }
 
 // ProcessChunkFromData consumes pre-fetched CommitData through analyzers,
@@ -174,7 +591,7 @@ func (runner *Runner) ProcessChunkFromData(ctx context.Context, data []CommitDat
 		))
 
 	runner.runtimeTuningOnce.Do(func() {
-		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
+		runner.runtimeBallast = applyRuntimeTuning(runner.Config, runner.MemBudget)
 	})
 
 	analyzerDurations := make([]time.Duration, len(runner.Analyzers))
@@ -187,21 +604,14 @@ func (runner *Runner) ProcessChunkFromData(ctx context.Context, data []CommitDat
 			return PipelineStats{}, cd.Error
 		}
 
-		analyzeCtx := buildAnalyzeContext(cd, indexOffset)
+		analyzeCtx := runner.buildAnalyzeContext(cd, indexOffset)
 
-		for i, a := range runner.Analyzers {
-			start := time.Now()
+		consumeErr := runner.consumeAll(ctx, analyzeCtx, analyzerDurations)
+		if consumeErr != nil {
+			observability.RecordSpanError(span, consumeErr, observability.ErrTypeInternal, observability.ErrSourceServer)
+			span.End()
 
-			err := a.Consume(ctx, analyzeCtx)
-
-			analyzerDurations[i] += time.Since(start)
-
-			if err != nil {
-				observability.RecordSpanError(span, err, observability.ErrTypeInternal, observability.ErrSourceServer)
-				span.End()
-
-				return PipelineStats{}, err
-			}
+			return PipelineStats{}, consumeErr
 		}
 	}
 
@@ -214,7 +624,7 @@ func (runner *Runner) ProcessChunkFromData(ctx context.Context, data []CommitDat
 // processCommits processes commits through the pipeline without Initialize/Finalize.
 func (runner *Runner) processCommits(ctx context.Context, commits []*gitlib.Commit, indexOffset, chunkIndex int) (PipelineStats, error) {
 	runner.runtimeTuningOnce.Do(func() {
-		runner.runtimeBallast = applyRuntimeTuning(runner.Config)
+		runner.runtimeBallast = applyRuntimeTuning(runner.Config, runner.MemBudget)
 	})
 
 	w := runner.Config.LeafWorkers
@@ -275,21 +685,14 @@ func (runner *Runner) processCommitsSerial(
 			return PipelineStats{}, data.Error
 		}
 
-		analyzeCtx := buildAnalyzeContext(data, indexOffset)
+		analyzeCtx := runner.buildAnalyzeContext(data, indexOffset)
 
-		for i, a := range runner.Analyzers {
-			start := time.Now()
+		consumeErr := runner.consumeAll(ctx, analyzeCtx, analyzerDurations)
+		if consumeErr != nil {
+			observability.RecordSpanError(span, consumeErr, observability.ErrTypeInternal, observability.ErrSourceServer)
+			span.End()
 
-			err := a.Consume(ctx, analyzeCtx)
-
-			analyzerDurations[i] += time.Since(start)
-
-			if err != nil {
-				observability.RecordSpanError(span, err, observability.ErrTypeInternal, observability.ErrSourceServer)
-				span.End()
-
-				return PipelineStats{}, err
-			}
+			return PipelineStats{}, consumeErr
 		}
 	}
 
@@ -305,16 +708,31 @@ func (runner *Runner) processCommitsSerial(
 type leafWork struct {
 	analyzeCtx *analyze.Context
 	snapshot   analyze.PlumbingSnapshot
+
+	// TC stamping metadata, captured on the main goroutine after core analyzers run.
+	tick      int
+	authorID  int
+	timestamp time.Time
+}
+
+// bufferedTC holds a TC and its original analyzer index for deferred aggregation.
+type bufferedTC struct {
+	tc   analyze.TC
+	idx  int // original index in runner.Analyzers.
+	time time.Time
 }
 
 // leafWorker holds forked leaf analyzers for one worker goroutine.
 type leafWorker struct {
 	leaves    []analyze.HistoryAnalyzer
+	indices   []int // original indices in runner.Analyzers for each leaf.
 	workChan  chan leafWork
 	durations []time.Duration // Accumulated per-leaf-analyzer durations.
+	tcs       []bufferedTC    // buffered TCs for deferred aggregation.
 }
 
 // processWork applies the plumbing snapshot, runs leaf Consume(), then releases snapshot resources.
+// TCs with non-nil Data are buffered for deferred aggregation on the main goroutine.
 func (w *leafWorker) processWork(ctx context.Context, work leafWork) error {
 	for i, leaf := range w.leaves {
 		p, ok := leaf.(analyze.Parallelizable)
@@ -326,12 +744,19 @@ func (w *leafWorker) processWork(ctx context.Context, work leafWork) error {
 
 		start := time.Now()
 
-		consumeErr := leaf.Consume(ctx, work.analyzeCtx)
+		tc, consumeErr := leaf.Consume(ctx, work.analyzeCtx)
 
 		w.durations[i] += time.Since(start)
 
 		if consumeErr != nil {
 			return consumeErr
+		}
+
+		if tc.Data != nil {
+			tc.Tick = work.tick
+			tc.AuthorID = work.authorID
+			tc.Timestamp = work.timestamp
+			w.tcs = append(w.tcs, bufferedTC{tc: tc, idx: w.indices[i], time: work.timestamp})
 		}
 	}
 
@@ -343,7 +768,8 @@ func (w *leafWorker) processWork(ctx context.Context, work leafWork) error {
 
 // newLeafWorkers creates W leaf workers with forked leaf analyzers.
 // Each forked leaf owns independent plumbing struct copies (created by Fork()).
-func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
+// leafIndices maps each leaf position to its original index in runner.Analyzers.
+func newLeafWorkers(leaves []analyze.HistoryAnalyzer, leafIndices []int, w int) []*leafWorker {
 	// leafWorkChanBuffer is the channel buffer size for each leaf worker.
 	// A small buffer allows one commit to be queued while another is being processed.
 	const leafWorkChanBuffer = 2
@@ -353,6 +779,7 @@ func newLeafWorkers(leaves []analyze.HistoryAnalyzer, w int) []*leafWorker {
 	for i := range w {
 		worker := &leafWorker{
 			workChan:  make(chan leafWork, leafWorkChanBuffer),
+			indices:   leafIndices,
 			durations: make([]time.Duration, len(leaves)),
 		}
 
@@ -446,7 +873,7 @@ func buildCompositeSnapshot(snapshotters []analyze.Parallelizable) analyze.Plumb
 		mergeSnapshotScalars(&composite, snap)
 	}
 
-	return composite
+	return composite.Clone()
 }
 
 // mergeSnapshotMaps copies nil reference-type fields (slices and maps) from snap
@@ -515,14 +942,19 @@ func collectSnapshotters(leaves []analyze.HistoryAnalyzer) ([]analyze.Paralleliz
 }
 
 // buildAnalyzeContext creates an analyze.Context from pipeline commit data.
-func buildAnalyzeContext(data CommitData, indexOffset int) *analyze.Context {
+func (runner *Runner) buildAnalyzeContext(data CommitData, indexOffset int) *analyze.Context {
 	commit := data.Commit
+
+	isMerge := commit.NumParents() > 1
+	if runner.Config.FirstParent {
+		isMerge = false
+	}
 
 	return &analyze.Context{
 		Commit:      commit,
 		Index:       data.Index + indexOffset,
 		Time:        commit.Committer().When,
-		IsMerge:     commit.NumParents() > 1,
+		IsMerge:     isMerge,
 		Changes:     data.Changes,
 		BlobCache:   data.BlobCache,
 		FileDiffs:   data.FileDiffs,
@@ -551,19 +983,13 @@ func (runner *Runner) processCommitsHybrid(
 	dataChan := coordinator.Process(ctx, commits)
 
 	core := runner.Analyzers[:runner.CoreCount]
+	idxMap := runner.analyzerIndex()
 
 	numWorkers := runner.Config.LeafWorkers
-	workers := newLeafWorkers(cpuHeavy, numWorkers)
+	workers := newLeafWorkers(cpuHeavy, mapIndices(cpuHeavy, idxMap), numWorkers)
 	wg, workerErrors := startLeafWorkers(ctx, workers)
 
-	// Collect snapshotters from both cpuHeavy and lightweight leaves so the
-	// composite snapshot captures all plumbing fields (e.g. UASTChanges from
-	// cpuHeavy, Changes/BlobCache from lightweight).
-	allParallel := make([]analyze.HistoryAnalyzer, 0, len(cpuHeavy)+len(lightweight))
-	allParallel = append(allParallel, cpuHeavy...)
-	allParallel = append(allParallel, lightweight...)
-
-	snapshotters, snapErr := collectSnapshotters(allParallel)
+	snapshotters, snapErr := collectSnapshotters(append(cpuHeavy, lightweight...))
 	if snapErr != nil {
 		span.End()
 
@@ -574,9 +1000,10 @@ func (runner *Runner) processCommitsHybrid(
 	mainLeaves := make([]analyze.HistoryAnalyzer, 0, len(lightweight)+len(serialLeaves))
 	mainLeaves = append(mainLeaves, lightweight...)
 	mainLeaves = append(mainLeaves, serialLeaves...)
+	mainIndices := mapIndices(mainLeaves, idxMap)
 
 	coreDurations, mainDurations, loopErr := runner.hybridCommitLoop(
-		ctx, dataChan, indexOffset, core, mainLeaves, snapshotters, workers, numWorkers, wg)
+		ctx, dataChan, indexOffset, core, mainLeaves, mainIndices, snapshotters, workers, numWorkers, wg)
 	if loopErr != nil {
 		span.End()
 
@@ -593,6 +1020,9 @@ func (runner *Runner) processCommitsHybrid(
 
 	mergeLeafResults(cpuHeavy, workers)
 
+	// Drain buffered TCs from workers into aggregators on the main goroutine.
+	runner.drainWorkerTCs(workers)
+
 	pStats := coordinator.Stats()
 	setPipelineAttributes(span, pStats)
 	span.End()
@@ -608,12 +1038,14 @@ func (runner *Runner) processCommitsHybrid(
 
 // hybridCommitLoop iterates over pipeline data, dispatching work to parallel workers
 // and running core/serial analyzers on the main goroutine.
+// mainIndices maps each serial leaf position to its original index in runner.Analyzers.
 // Returns accumulated durations for core and main-goroutine leaf analyzers.
 func (runner *Runner) hybridCommitLoop(
 	ctx context.Context,
 	dataChan <-chan CommitData,
 	indexOffset int,
 	core, serialLeaves []analyze.HistoryAnalyzer,
+	mainIndices []int,
 	snapshotters []analyze.Parallelizable,
 	workers []*leafWorker,
 	numWorkers int,
@@ -631,13 +1063,13 @@ func (runner *Runner) hybridCommitLoop(
 			return nil, nil, data.Error
 		}
 
-		analyzeCtx := buildAnalyzeContext(data, indexOffset)
+		analyzeCtx := runner.buildAnalyzeContext(data, indexOffset)
 
 		// Run core (plumbing) analyzers sequentially.
 		for i, a := range core {
 			start := time.Now()
 
-			coreErr := a.Consume(ctx, analyzeCtx)
+			_, coreErr := a.Consume(ctx, analyzeCtx)
 
 			coreDurations[i] += time.Since(start)
 
@@ -651,10 +1083,7 @@ func (runner *Runner) hybridCommitLoop(
 		// Snapshot plumbing state for parallel workers before serial leaves mutate anything.
 		// Build a composite snapshot from ALL parallel leaves so every plumbing field
 		// (Changes, BlobCache, FileDiffs, UAST, Tick, AuthorID, etc.) is captured.
-		work := leafWork{
-			analyzeCtx: analyzeCtx,
-			snapshot:   buildCompositeSnapshot(snapshotters),
-		}
+		work := runner.buildLeafWork(analyzeCtx, snapshotters)
 
 		// Dispatch parallel leaves to a worker.
 		workers[commitIdx%numWorkers].workChan <- work
@@ -663,7 +1092,7 @@ func (runner *Runner) hybridCommitLoop(
 		for i, a := range serialLeaves {
 			start := time.Now()
 
-			leafErr := a.Consume(ctx, analyzeCtx)
+			tc, leafErr := a.Consume(ctx, analyzeCtx)
 
 			mainDurations[i] += time.Since(start)
 
@@ -672,6 +1101,8 @@ func (runner *Runner) hybridCommitLoop(
 
 				return nil, nil, leafErr
 			}
+
+			runner.addTC(tc, mainIndices[i], analyzeCtx)
 		}
 
 		commitIdx++

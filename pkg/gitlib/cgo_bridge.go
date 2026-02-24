@@ -1,8 +1,7 @@
 package gitlib
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/clib -fopenmp
-#cgo LDFLAGS: -fopenmp
+#cgo CFLAGS: -I${SRCDIR}/clib
 #include "codefang_git.h"
 #include <stdlib.h>
 
@@ -23,6 +22,20 @@ func init() {
 	// Initialize C library settings
 	// This sets OMP_NUM_THREADS=1 to prevent thread oversubscription
 	C.cf_init()
+}
+
+// ConfigureMemoryLimits sets libgit2 global memory limits and glibc malloc
+// arena count. mwindowLimit caps mmap'd pack data (default 8 GiB on 64-bit).
+// cacheLimit caps the decompressed object cache (default 256 MiB).
+// mallocArenaMax caps glibc malloc arenas (default 8*cores, causes RSS bloat).
+// Pass 0 for any to leave unchanged. Must be called before opening repos.
+func ConfigureMemoryLimits(mwindowLimit, cacheLimit int64, mallocArenaMax int) error {
+	rc := C.cf_configure_memory(C.size_t(mwindowLimit), C.size_t(cacheLimit), C.int(mallocArenaMax))
+	if rc != 0 {
+		return ErrConfigureMemory
+	}
+
+	return nil
 }
 
 // CGOBridge provides optimized batch operations using the C library.
@@ -504,6 +517,7 @@ var (
 	ErrDiffBinary        = cgoError("diff blob is binary")
 	ErrDiffCompute       = cgoError("diff computation failed")
 	ErrArenaFull         = cgoError("arena full")
+	ErrConfigureMemory   = cgoError("cf_configure_memory failed")
 )
 
 func cgoBlobError(code int) error {

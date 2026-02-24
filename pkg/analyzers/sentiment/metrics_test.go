@@ -53,14 +53,18 @@ func TestParseReportData_Empty(t *testing.T) {
 func TestParseReportData_AllFields(t *testing.T) {
 	t.Parallel()
 
-	emotions := map[int]float32{0: testSentimentPositive, 1: testSentimentNegative}
-	comments := map[int][]string{0: {testComment1}, 1: {testComment2}}
-	commits := map[int][]gitlib.Hash{0: {testHash("abc")}, 1: {testHash("def")}}
+	commentsByCommit := map[string][]string{
+		testHashA: {testComment1},
+		testHashB: {testComment2},
+	}
+	commitsByTick := map[int][]gitlib.Hash{
+		0: {gitlib.NewHash(testHashA)},
+		1: {gitlib.NewHash(testHashB)},
+	}
 
 	report := analyze.Report{
-		"emotions_by_tick": emotions,
-		"comments_by_tick": comments,
-		"commits_by_tick":  commits,
+		"comments_by_commit": commentsByCommit,
+		"commits_by_tick":    commitsByTick,
 	}
 
 	result, err := ParseReportData(report)
@@ -70,8 +74,11 @@ func TestParseReportData_AllFields(t *testing.T) {
 	require.Len(t, result.CommentsByTick, 2)
 	require.Len(t, result.CommitsByTick, 2)
 
-	assert.InDelta(t, testSentimentPositive, result.EmotionsByTick[0], floatDelta)
+	// Real sentiment: "This is a great fix!" → positive; "Why is this so broken?" → negative.
+	assert.InDelta(t, ComputeSentiment([]string{testComment1}), result.EmotionsByTick[0], floatDelta)
+	assert.InDelta(t, ComputeSentiment([]string{testComment2}), result.EmotionsByTick[1], floatDelta)
 	assert.Equal(t, []string{testComment1}, result.CommentsByTick[0])
+	assert.Equal(t, []string{testComment2}, result.CommentsByTick[1])
 }
 
 // --- classifySentiment Tests ---.
@@ -106,24 +113,12 @@ func TestClassifySentiment(t *testing.T) {
 
 // --- SentimentTimeSeriesMetric Tests ---.
 
-func TestNewTimeSeriesMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	m := NewTimeSeriesMetric()
-
-	assert.Equal(t, "sentiment_time_series", m.Name())
-	assert.Equal(t, "Sentiment Time Series", m.DisplayName())
-	assert.Contains(t, m.Description(), "Time series")
-	assert.Equal(t, "time_series", m.Type())
-}
-
 func TestSentimentTimeSeriesMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	m := NewTimeSeriesMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := computeTimeSeries(input)
 
 	assert.Empty(t, result)
 }
@@ -131,14 +126,13 @@ func TestSentimentTimeSeriesMetric_Empty(t *testing.T) {
 func TestSentimentTimeSeriesMetric_SingleTick(t *testing.T) {
 	t.Parallel()
 
-	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentPositive},
 		CommentsByTick: map[int][]string{0: {testComment1, testComment2}},
 		CommitsByTick:  map[int][]gitlib.Hash{0: {testHash("abc"), testHash("def")}},
 	}
 
-	result := m.Compute(input)
+	result := computeTimeSeries(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].Tick)
@@ -151,7 +145,6 @@ func TestSentimentTimeSeriesMetric_SingleTick(t *testing.T) {
 func TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick(t *testing.T) {
 	t.Parallel()
 
-	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			2: testSentimentNeutral,
@@ -160,7 +153,7 @@ func TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeTimeSeries(input)
 
 	require.Len(t, result, 3)
 	// Sorted by tick.
@@ -177,13 +170,12 @@ func TestSentimentTimeSeriesMetric_MultipleTicks_SortedByTick(t *testing.T) {
 func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
 	t.Parallel()
 
-	m := NewTimeSeriesMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentNeutral},
 		// No comments or commits for tick 0.
 	}
 
-	result := m.Compute(input)
+	result := computeTimeSeries(input)
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].CommentCount)
@@ -192,24 +184,12 @@ func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
 
 // --- SentimentTrendMetric Tests ---.
 
-func TestNewTrendMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	m := NewTrendMetric()
-
-	assert.Equal(t, "sentiment_trend", m.Name())
-	assert.Equal(t, "Sentiment Trend", m.DisplayName())
-	assert.Contains(t, m.Description(), "Overall trend")
-	assert.Equal(t, "aggregate", m.Type())
-}
-
 func TestSentimentTrendMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	m := NewTrendMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := computeTrend(input)
 
 	assert.Equal(t, 0, result.StartTick)
 	assert.Equal(t, 0, result.EndTick)
@@ -219,12 +199,11 @@ func TestSentimentTrendMetric_Empty(t *testing.T) {
 func TestSentimentTrendMetric_SingleTick(t *testing.T) {
 	t.Parallel()
 
-	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{0: testSentimentNeutral},
 	}
 
-	result := m.Compute(input)
+	result := computeTrend(input)
 
 	assert.Equal(t, 0, result.StartTick)
 	assert.Equal(t, 0, result.EndTick)
@@ -250,7 +229,6 @@ func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			m := NewTrendMetric()
 			input := &ReportData{
 				EmotionsByTick: map[int]float32{
 					0: tt.startSentiment,
@@ -258,7 +236,7 @@ func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
 				},
 			}
 
-			result := m.Compute(input)
+			result := computeTrend(input)
 
 			assert.Equal(t, tt.expectedTrend, result.TrendDirection)
 			assert.InDelta(t, tt.startSentiment, result.StartSentiment, floatDelta)
@@ -270,7 +248,6 @@ func TestSentimentTrendMetric_TrendDirections(t *testing.T) {
 func TestSentimentTrendMetric_ChangePercent(t *testing.T) {
 	t.Parallel()
 
-	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: 0.5,
@@ -278,7 +255,7 @@ func TestSentimentTrendMetric_ChangePercent(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeTrend(input)
 
 	// Change = (0.75 - 0.5) / 0.5 * 100 = 50%.
 	assert.InDelta(t, 50.0, result.ChangePercent, floatDelta)
@@ -287,7 +264,6 @@ func TestSentimentTrendMetric_ChangePercent(t *testing.T) {
 func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
 	t.Parallel()
 
-	m := NewTrendMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: 0.0,
@@ -295,7 +271,7 @@ func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeTrend(input)
 
 	// Change percent should be 0 when start is 0 (avoid division by zero).
 	assert.InDelta(t, 0.0, result.ChangePercent, floatDelta)
@@ -303,24 +279,12 @@ func TestSentimentTrendMetric_ZeroStartSentiment(t *testing.T) {
 
 // --- LowSentimentPeriodMetric Tests ---.
 
-func TestNewLowSentimentPeriodMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	m := NewLowSentimentPeriodMetric()
-
-	assert.Equal(t, "low_sentiment_periods", m.Name())
-	assert.Equal(t, "Low Sentiment Periods", m.DisplayName())
-	assert.Contains(t, m.Description(), "negative or low sentiment")
-	assert.Equal(t, "risk", m.Type())
-}
-
 func TestLowSentimentPeriodMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := computeLowSentimentPeriods(input)
 
 	assert.Empty(t, result)
 }
@@ -328,7 +292,6 @@ func TestLowSentimentPeriodMetric_Empty(t *testing.T) {
 func TestLowSentimentPeriodMetric_NoLowSentiment(t *testing.T) {
 	t.Parallel()
 
-	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: testSentimentPositive,
@@ -336,7 +299,7 @@ func TestLowSentimentPeriodMetric_NoLowSentiment(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeLowSentimentPeriods(input)
 
 	assert.Empty(t, result)
 }
@@ -359,13 +322,12 @@ func TestLowSentimentPeriodMetric_RiskLevels(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			m := NewLowSentimentPeriodMetric()
 			input := &ReportData{
 				EmotionsByTick: map[int]float32{0: tt.sentiment},
 				CommentsByTick: map[int][]string{0: {testComment2}},
 			}
 
-			result := m.Compute(input)
+			result := computeLowSentimentPeriods(input)
 
 			require.Len(t, result, 1)
 			assert.InDelta(t, tt.sentiment, result[0].Sentiment, floatDelta)
@@ -378,7 +340,6 @@ func TestLowSentimentPeriodMetric_RiskLevels(t *testing.T) {
 func TestLowSentimentPeriodMetric_SortedBySentiment(t *testing.T) {
 	t.Parallel()
 
-	m := NewLowSentimentPeriodMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: 0.3, // MEDIUM.
@@ -387,7 +348,7 @@ func TestLowSentimentPeriodMetric_SortedBySentiment(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeLowSentimentPeriods(input)
 
 	require.Len(t, result, 3)
 	// Sorted by sentiment ascending (worst first).
@@ -398,24 +359,12 @@ func TestLowSentimentPeriodMetric_SortedBySentiment(t *testing.T) {
 
 // --- SentimentAggregateMetric Tests ---.
 
-func TestNewAggregateMetric_Metadata(t *testing.T) {
-	t.Parallel()
-
-	m := NewAggregateMetric()
-
-	assert.Equal(t, "sentiment_aggregate", m.Name())
-	assert.Equal(t, "Sentiment Summary", m.DisplayName())
-	assert.Contains(t, m.Description(), "Aggregate sentiment statistics")
-	assert.Equal(t, "aggregate", m.Type())
-}
-
 func TestSentimentAggregateMetric_Empty(t *testing.T) {
 	t.Parallel()
 
-	m := NewAggregateMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := computeAggregate(input)
 
 	assert.Equal(t, 0, result.TotalTicks)
 	assert.Equal(t, 0, result.TotalComments)
@@ -429,7 +378,6 @@ func TestSentimentAggregateMetric_Empty(t *testing.T) {
 func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
 	t.Parallel()
 
-	m := NewAggregateMetric()
 	input := &ReportData{
 		EmotionsByTick: map[int]float32{
 			0: testSentimentPositive, // positive.
@@ -446,7 +394,7 @@ func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := computeAggregate(input)
 
 	assert.Equal(t, 3, result.TotalTicks)
 	assert.Equal(t, 3, result.TotalComments) // 2 + 1 + 0
@@ -454,7 +402,7 @@ func TestSentimentAggregateMetric_AllClassifications(t *testing.T) {
 
 	// Average = (0.8 + 0.5 + 0.3) / 3 = 0.533...
 	expectedAvg := (testSentimentPositive + testSentimentNeutral + testSentimentNegative) / 3.0
-	assert.InDelta(t, expectedAvg, result.AverageSentiment, floatDelta)
+	assert.InDelta(t, float32(expectedAvg), result.AverageSentiment, floatDelta)
 
 	assert.Equal(t, 1, result.PositiveTicks)
 	assert.Equal(t, 1, result.NeutralTicks)
@@ -480,8 +428,8 @@ func TestAggregateCommitsToTicks_SingleCommitPerTick(t *testing.T) {
 	require.Len(t, cbt, 2)
 	assert.Len(t, cbt[0], 2)
 	assert.Len(t, cbt[1], 1)
-	assert.InDelta(t, mockSentimentValue, ebt[0], floatDelta)
-	assert.InDelta(t, mockSentimentValue, ebt[1], floatDelta)
+	assert.InDelta(t, ComputeSentiment([]string{"comment 1", "comment 2"}), ebt[0], floatDelta)
+	assert.InDelta(t, ComputeSentiment([]string{"comment 3"}), ebt[1], floatDelta)
 }
 
 func TestAggregateCommitsToTicks_MultipleCommitsPerTick(t *testing.T) {
@@ -499,7 +447,7 @@ func TestAggregateCommitsToTicks_MultipleCommitsPerTick(t *testing.T) {
 
 	require.Len(t, cbt, 1)
 	assert.Len(t, cbt[0], 3)
-	assert.InDelta(t, mockSentimentValue, ebt[0], floatDelta)
+	assert.InDelta(t, ComputeSentiment([]string{"comment 1", "comment 2", "comment 3"}), ebt[0], floatDelta)
 }
 
 func TestAggregateCommitsToTicks_Empty(t *testing.T) {
@@ -594,44 +542,44 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 func TestComputeAllMetrics_Full(t *testing.T) {
 	t.Parallel()
 
-	emotions := map[int]float32{
-		0: testSentimentPositive,
-		1: testSentimentNegative,
-		2: testSentimentNeutral,
+	commentsByCommit := map[string][]string{
+		testHashA: {testComment1},
+		testHashB: {testComment2},
+		"cccccccccccccccccccccccccccccccccccccccc": {testComment3},
 	}
-	comments := map[int][]string{
-		0: {testComment1},
-		1: {testComment2},
-	}
-	commits := map[int][]gitlib.Hash{
-		0: {testHash("abc")},
+	commitsByTick := map[int][]gitlib.Hash{
+		0: {gitlib.NewHash(testHashA)},
+		1: {gitlib.NewHash(testHashB)},
+		2: {gitlib.NewHash("cccccccccccccccccccccccccccccccccccccccc")},
 	}
 
 	report := analyze.Report{
-		"emotions_by_tick": emotions,
-		"comments_by_tick": comments,
-		"commits_by_tick":  commits,
+		"comments_by_commit": commentsByCommit,
+		"commits_by_tick":    commitsByTick,
 	}
 
 	result, err := ComputeAllMetrics(report)
 
 	require.NoError(t, err)
 
-	// TimeSeries.
+	// TimeSeries: 3 ticks — positive, negative, neutral from real sentiment.
 	require.Len(t, result.TimeSeries, 3)
+	assert.Equal(t, "positive", result.TimeSeries[0].Classification)
+	assert.Equal(t, "negative", result.TimeSeries[1].Classification)
+	assert.Equal(t, "neutral", result.TimeSeries[2].Classification)
 
-	// Trend.
+	// Trend: positive -> negative -> neutral; start vs end is declining.
 	assert.Equal(t, 0, result.Trend.StartTick)
 	assert.Equal(t, 2, result.Trend.EndTick)
-	assert.Equal(t, "declining", result.Trend.TrendDirection) // 0.8 -> 0.5
+	assert.Equal(t, "declining", result.Trend.TrendDirection)
 
-	// LowSentimentPeriods - only tick 1 with 0.3 sentiment.
+	// LowSentimentPeriods: tick 1 has negative sentiment.
 	require.Len(t, result.LowSentimentPeriods, 1)
 	assert.Equal(t, 1, result.LowSentimentPeriods[0].Tick)
 
-	// Aggregate.
+	// Aggregate: 1 positive, 1 negative, 1 neutral.
 	assert.Equal(t, 3, result.Aggregate.TotalTicks)
 	assert.Equal(t, 1, result.Aggregate.PositiveTicks)
-	assert.Equal(t, 1, result.Aggregate.NeutralTicks)
 	assert.Equal(t, 1, result.Aggregate.NegativeTicks)
+	assert.Equal(t, 1, result.Aggregate.NeutralTicks)
 }

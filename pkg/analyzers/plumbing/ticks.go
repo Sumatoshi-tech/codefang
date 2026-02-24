@@ -102,7 +102,7 @@ func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 }
 
 // Consume processes a single commit with the provided dependency results.
-func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) error {
+func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	commit := ac.Commit
 	index := ac.Index
 
@@ -139,7 +139,7 @@ func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) error 
 
 	t.Tick = tick
 
-	return nil
+	return analyze.TC{}, nil
 }
 
 // FloorTime rounds a timestamp down to the nearest tick boundary.
@@ -150,11 +150,6 @@ func FloorTime(t time.Time, d time.Duration) time.Time {
 	}
 
 	return result
-}
-
-// Finalize completes the analysis and returns the result.
-func (t *TicksSinceStart) Finalize() (analyze.Report, error) {
-	return analyze.Report{}, nil
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -182,6 +177,25 @@ func (t *TicksSinceStart) Serialize(report analyze.Report, format string, writer
 	}
 
 	return nil
+}
+
+// WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.
+func (t *TicksSinceStart) WorkingStateSize() int64 { return 0 }
+
+// AvgTCSize returns 0 — plumbing analyzers do not emit meaningful TC payloads.
+func (t *TicksSinceStart) AvgTCSize() int64 { return 0 }
+
+// NewAggregator returns nil — plumbing analyzers do not aggregate.
+func (t *TicksSinceStart) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator { return nil }
+
+// SerializeTICKs returns ErrNotImplemented — plumbing analyzers do not produce TICKs.
+func (t *TicksSinceStart) SerializeTICKs(_ []analyze.TICK, _ string, _ io.Writer) error {
+	return analyze.ErrNotImplemented
+}
+
+// ReportFromTICKs returns ErrNotImplemented — plumbing analyzers do not produce reports.
+func (t *TicksSinceStart) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return nil, analyze.ErrNotImplemented
 }
 
 // CurrentTick returns the tick value of the last processed commit.

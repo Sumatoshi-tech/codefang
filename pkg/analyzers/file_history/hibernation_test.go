@@ -12,7 +12,7 @@ import (
 func TestHibernate_ClearsMergesMap(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Add some merge entries.
@@ -26,25 +26,21 @@ func TestHibernate_ClearsMergesMap(t *testing.T) {
 	require.Empty(t, h.merges, "merges map should be cleared after hibernate")
 }
 
-func TestHibernate_ClearsLastCommit(t *testing.T) {
+func TestHibernate_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
-	// Set lastCommit to non-nil (using nil check pattern)
-	// We can't easily create a real commit, but we can verify the field exists
-	// and is cleared. For now, just verify Hibernate doesn't error.
+	// Hibernate clears merges; lastCommitHash is preserved for Finalize.
 	err := h.Hibernate()
 	require.NoError(t, err)
-
-	require.Nil(t, h.lastCommit, "lastCommit should be nil after hibernate")
 }
 
 func TestHibernate_PreservesFiles(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Add file history data.
@@ -74,7 +70,7 @@ func TestHibernate_PreservesFiles(t *testing.T) {
 func TestBoot_InitializesMergesMap(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	// Don't initialize - simulate loading from checkpoint with nil merges.
 	h.merges = nil
 
@@ -87,7 +83,7 @@ func TestBoot_InitializesMergesMap(t *testing.T) {
 func TestHibernateBoot_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	h := &Analyzer{}
+	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Set up state.

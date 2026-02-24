@@ -64,7 +64,7 @@ func TestGenerateChart_WithData(t *testing.T) {
 		"TickSize":    24 * time.Hour,
 	}
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	chart, err := b.GenerateChart(report)
 	require.NoError(t, err)
 	require.NotNil(t, chart)
@@ -108,7 +108,7 @@ func TestGenerateChart_YearAggregation(t *testing.T) {
 		"ProjectName":   "codefang",
 	}
 
-	b := &HistoryAnalyzer{}
+	b := NewHistoryAnalyzer()
 	chart, err := b.GenerateChart(report)
 	require.NoError(t, err)
 	require.NotNil(t, chart)

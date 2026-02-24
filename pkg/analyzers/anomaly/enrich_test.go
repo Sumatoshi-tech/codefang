@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 func TestEnrichFromReports_Basic(t *testing.T) {
@@ -21,10 +22,11 @@ func TestEnrichFromReports_Basic(t *testing.T) {
 	})
 
 	anomalyReport := analyze.Report{
-		"anomalies":    []Record{},
-		"tick_metrics": map[int]*TickMetrics{},
-		"threshold":    float32(2.0),
-		"window_size":  3,
+		"anomalies":       []Record{},
+		"commit_metrics":  map[string]*CommitAnomalyData{},
+		"commits_by_tick": map[int][]gitlib.Hash{},
+		"threshold":       float32(2.0),
+		"window_size":     3,
 	}
 
 	otherReports := map[string]analyze.Report{

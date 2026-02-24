@@ -5,28 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"sort"
 )
-
-// TickExtractor extracts per-commit data from a finalized analyzer report.
-// Returns a map of commit hash (hex string) to a JSON-serializable value
-// representing that analyzer's data for the commit. Returns nil if no
-// per-commit data is available.
-type TickExtractor func(report Report) map[string]any
-
-// tickExtractors maps analyzer flag names to their tick extractors.
-var tickExtractors = make(map[string]TickExtractor)
-
-// RegisterTickExtractor registers a tick extractor for the given analyzer flag.
-// Analyzers call this during initialization to opt into unified time-series output.
-func RegisterTickExtractor(analyzerFlag string, fn TickExtractor) {
-	tickExtractors[analyzerFlag] = fn
-}
-
-// TickExtractorFor returns the registered tick extractor for the given flag, or nil.
-func TickExtractorFor(analyzerFlag string) TickExtractor {
-	return tickExtractors[analyzerFlag]
-}
 
 // MergedCommitData holds merged analyzer data for a single commit.
 type MergedCommitData struct {
@@ -79,18 +58,27 @@ type CommitMeta struct {
 	Tick      int    `json:"tick"`
 }
 
-// analyzerData pairs an analyzer flag with its per-commit extracted data.
-type analyzerData struct {
-	flag string
-	data map[string]any
+// CommitTimeSeriesProvider is implemented by analyzers that contribute
+// per-commit data to the unified time-series output (--format timeseries).
+// Replaces the global TickExtractor registry with compile-time interface dispatch.
+type CommitTimeSeriesProvider interface {
+	// ExtractCommitTimeSeries extracts per-commit data from a finalized report.
+	// Returns a map of commit hash (hex string) to a JSON-serializable value.
+	// Returns nil if no per-commit data is available.
+	ExtractCommitTimeSeries(report Report) map[string]any
 }
 
-// BuildMergedTimeSeries builds a unified time-series from multiple analyzer
-// reports. It iterates registered TickExtractors, collects per-commit data
-// from each analyzer, and merges them into MergedCommitData entries ordered
-// by the commit metadata sequence.
-func BuildMergedTimeSeries(
-	reports map[string]Report,
+// AnalyzerData pairs an analyzer flag with its per-commit extracted data.
+type AnalyzerData struct {
+	Flag string
+	Data map[string]any
+}
+
+// BuildMergedTimeSeriesDirect builds a unified time-series from pre-extracted
+// per-analyzer commit data. Callers collect AnalyzerData via
+// CommitTimeSeriesProvider.ExtractCommitTimeSeries on each leaf analyzer.
+func BuildMergedTimeSeriesDirect(
+	active []AnalyzerData,
 	commitMeta []CommitMeta,
 	tickSizeHours float64,
 ) *MergedTimeSeries {
@@ -98,12 +86,10 @@ func BuildMergedTimeSeries(
 		tickSizeHours = defaultTickSizeHours
 	}
 
-	active := collectActiveExtractors(reports)
-
 	analyzerNames := make([]string, len(active))
 
 	for i, a := range active {
-		analyzerNames[i] = a.flag
+		analyzerNames[i] = a.Flag
 	}
 
 	commits := assembleCommits(active, commitMeta)
@@ -116,32 +102,8 @@ func BuildMergedTimeSeries(
 	}
 }
 
-// collectActiveExtractors runs registered TickExtractors against the provided
-// reports and returns only those that produced non-empty per-commit data.
-func collectActiveExtractors(reports map[string]Report) []analyzerData {
-	var active []analyzerData
-
-	flags := sortedReportKeys(reports)
-
-	for _, flag := range flags {
-		extractor := TickExtractorFor(flag)
-		if extractor == nil {
-			continue
-		}
-
-		commitData := extractor(reports[flag])
-		if len(commitData) == 0 {
-			continue
-		}
-
-		active = append(active, analyzerData{flag: flag, data: commitData})
-	}
-
-	return active
-}
-
 // assembleCommits merges per-analyzer data into ordered MergedCommitData entries.
-func assembleCommits(active []analyzerData, commitMeta []CommitMeta) []MergedCommitData {
+func assembleCommits(active []AnalyzerData, commitMeta []CommitMeta) []MergedCommitData {
 	metaByHash := make(map[string]CommitMeta, len(commitMeta))
 	for _, m := range commitMeta {
 		metaByHash[m.Hash] = m
@@ -150,7 +112,7 @@ func assembleCommits(active []analyzerData, commitMeta []CommitMeta) []MergedCom
 	commitSet := make(map[string]struct{})
 
 	for _, a := range active {
-		for hash := range a.data {
+		for hash := range a.Data {
 			commitSet[hash] = struct{}{}
 		}
 	}
@@ -163,8 +125,8 @@ func assembleCommits(active []analyzerData, commitMeta []CommitMeta) []MergedCom
 		analyzerMap := make(map[string]any, len(active))
 
 		for _, a := range active {
-			if v, ok := a.data[hash]; ok {
-				analyzerMap[a.flag] = v
+			if v, ok := a.Data[hash]; ok {
+				analyzerMap[a.Flag] = v
 			}
 		}
 
@@ -205,15 +167,4 @@ func orderCommitsByMeta(meta []CommitMeta, commitSet map[string]struct{}) []stri
 	}
 
 	return ordered
-}
-
-func sortedReportKeys(m map[string]Report) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	return keys
 }

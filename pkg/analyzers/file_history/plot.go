@@ -22,7 +22,7 @@ const (
 // ErrInvalidFiles indicates the report doesn't contain expected files data.
 var ErrInvalidFiles = errors.New("invalid file_history report: expected map[string]FileHistory for Files")
 
-func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
+func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	sections, err := h.GenerateSections(report)
 	if err != nil {
 		return err
@@ -38,7 +38,7 @@ func (h *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 }
 
 // GenerateSections returns the sections for combined reports.
-func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
+func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
 	chart, err := h.buildChart(report)
 	if err != nil {
 		return nil, err
@@ -64,12 +64,12 @@ func (h *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, 
 }
 
 // GenerateChart creates a bar chart showing the most modified files (implements PlotGenerator).
-func (h *Analyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
+func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
 	return h.buildChart(report)
 }
 
 // buildChart creates a bar chart showing the most modified files.
-func (h *Analyzer) buildChart(report analyze.Report) (chart *charts.Bar, buildErr error) {
+func (h *HistoryAnalyzer) buildChart(report analyze.Report) (chart *charts.Bar, buildErr error) {
 	labels, data, err := extractFileHistoryData(report)
 	if err != nil {
 		return nil, err
@@ -79,10 +79,37 @@ func (h *Analyzer) buildChart(report analyze.Report) (chart *charts.Bar, buildEr
 		return createEmptyFileChart(), nil
 	}
 
-	co := plotpage.DefaultChartOpts()
-	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
+	cOpts := plotpage.DefaultChartOpts()
 
-	return createFileHistoryBarChart(labels, data, co, palette), nil
+	// Convert int to any for SeriesData.
+	seriesData := make([]plotpage.SeriesData, len(data))
+	for i, v := range data {
+		seriesData[i] = v
+	}
+
+	series := []plotpage.BarSeries{
+		{
+			Name:  "Commits",
+			Data:  seriesData,
+			Color: plotpage.GetChartPalette(plotpage.ThemeDark).Semantic.Bad,
+		},
+	}
+
+	chart = plotpage.BuildBarChart(cOpts, labels, series, "Commits")
+
+	// Apply custom X axis for rotated labels.
+	chart.SetGlobalOptions(
+		charts.WithXAxisOpts(opts.XAxis{
+			AxisLabel: &opts.AxisLabel{
+				Rotate:   xAxisRotate,
+				Interval: "0",
+				Color:    cOpts.TextMutedColor(),
+			},
+			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: cOpts.AxisColor()}},
+		}),
+	)
+
+	return chart, nil
 }
 
 // fileChurnItem holds a file path and its commit count for sorting.
@@ -185,39 +212,10 @@ func fileHistoryToInt(v any) int {
 	}
 }
 
-func createFileHistoryBarChart(labels []string, data []int, co *plotpage.ChartOpts, palette plotpage.ChartPalette) *charts.Bar {
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(
-		charts.WithInitializationOpts(co.Init("100%", "500px")),
-		charts.WithTooltipOpts(co.Tooltip("axis")),
-		charts.WithGridOpts(co.Grid()),
-		charts.WithDataZoomOpts(co.DataZoom()...),
-		charts.WithXAxisOpts(opts.XAxis{
-			AxisLabel: &opts.AxisLabel{
-				Rotate:   xAxisRotate,
-				Interval: "0",
-				Color:    co.TextMutedColor(),
-			},
-			AxisLine: &opts.AxisLine{LineStyle: &opts.LineStyle{Color: co.AxisColor()}},
-		}),
-		charts.WithYAxisOpts(co.YAxis("Commits")),
-	)
-	bar.SetXAxis(labels)
-
-	barData := make([]opts.BarData, len(data))
-	for i, v := range data {
-		barData[i] = opts.BarData{Value: v}
-	}
-
-	bar.AddSeries("Commits", barData, charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Bad}))
-
-	return bar
-}
-
 // RegisterPlotSections registers the file-history plot section renderer with the analyze package.
 func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/file-history", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&Analyzer{}).GenerateSections(report)
+		return NewAnalyzer().GenerateSections(report)
 	})
 }
 

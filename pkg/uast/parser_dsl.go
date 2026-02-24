@@ -10,7 +10,6 @@ import (
 	"sync"
 	"unsafe"
 
-	forest "github.com/alexaandru/go-sitter-forest"
 	sitter "github.com/alexaandru/go-tree-sitter-bare"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
@@ -103,7 +102,7 @@ func (parser *DSLParser) initializeLanguage() error {
 			}
 		}()
 
-		lang = forest.GetLanguage(parser.langInfo.Name)
+		lang = GetLanguage(parser.langInfo.Name)
 	}()
 
 	if lang == nil {

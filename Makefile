@@ -13,6 +13,9 @@ GIT_COMMIT  = $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 GIT_VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_DATE  = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     = -X $(VERSION_PKG).Version=$(GIT_VERSION) -X $(VERSION_PKG).Commit=$(GIT_COMMIT) -X $(VERSION_PKG).Date=$(BUILD_DATE)
+ifdef STATIC
+LDFLAGS    += -extldflags=-static
+endif
 
 # libgit2 vendored build configuration
 LIBGIT2_DIR := third_party/libgit2
@@ -52,6 +55,9 @@ help:
 	@echo "  dev-service      - Start backend only (legacy)"
 	@echo "  compare-burndown - Run burndown and compare with Hercules reference (REPO=~/sources/iortcw, FP=1 for --first-parent)"
 	@echo "  clean            - Clean build artifacts"
+	@echo ""
+	@echo "Variables:"
+	@echo "  STATIC=1         - Build fully-static binaries (requires musl/Alpine or static libs)"
 
 # Pre-compile UAST mappings for faster startup
 precompile: libgit2
@@ -59,7 +65,7 @@ precompile: libgit2
 	@mkdir -p ${GOBIN}
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go run ./tools/precompgen/precompile.go -o pkg/uast/embedded_mappings.gen.go
 
 # Generate UAST mappings for all languages
@@ -73,7 +79,7 @@ schemas: libgit2
 	@echo "Generating JSON schemas..."
 	@PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go run ./tools/schemagen/schemagen.go -o docs/schemas
 	@echo "✓ Schemas generated in docs/schemas/"
 
@@ -95,14 +101,14 @@ install: all
 test: all
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go test ./...
 
 # Run all tests with verbose output
 testv: all
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go test ./... -v
 
 # Run UAST performance benchmarks (comprehensive suite with organized results)
@@ -292,7 +298,7 @@ lint:
 	GOCACHE=$(LINT_GOCACHE) \
 	GOLANGCI_LINT_CACHE=$(LINT_GOLANGCI_CACHE) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 $(GOLINT) run $(INTERNAL_PKGS)
 	@echo "Running deadcode analysis..."
 	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh -test $(DEADCODE_PKGS)
@@ -385,13 +391,13 @@ uast-test:
 ${GOBIN}/uast${EXE}: cmd/uast/*.go pkg/uast/*.go pkg/uast/*/*.go pkg/uast/*/*/*.go
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/uast${EXE} ./cmd/uast
 
 ${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go pkg/analyzers/*/*.go libgit2
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
-	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lz -lssl -lcrypto -lpthread" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/codefang${EXE} ./cmd/codefang
 
 # Build the development service
@@ -512,7 +518,8 @@ $(LIBGIT2_INSTALL)/lib64/libgit2.a:
 		-DBUILD_TESTS=OFF \
 		-DBUILD_CLI=OFF \
 		-DUSE_SSH=OFF \
-		-DUSE_HTTPS=OpenSSL
+		-DUSE_HTTPS=OFF \
+		-DUSE_BUNDLED_ZLIB=ON
 	cd $(LIBGIT2_BUILD) && cmake --build . --parallel
 	cd $(LIBGIT2_BUILD) && cmake --install .
 	@echo "✓ libgit2 built and installed to $(LIBGIT2_INSTALL)"
