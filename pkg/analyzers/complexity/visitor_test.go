@@ -45,5 +45,6 @@ func TestVisitor_Basic(t *testing.T) {
 
 	assert.Equal(t, 1, report["total_functions"])
 	assert.Equal(t, 3, report["total_complexity"]) // 1 (base) + 1 (if) + 1 (nested if).
-	assert.Equal(t, 3, report["nesting_depth"])    // Max nesting depth (Function -> If -> If).
+	assert.Equal(t, 2, report["nesting_depth"])    // Max control-flow nesting depth (If -> If).
+	assert.Equal(t, 2, report["cognitive_complexity"])
 }
