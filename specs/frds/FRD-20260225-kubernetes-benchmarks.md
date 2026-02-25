@@ -22,27 +22,32 @@ benchmark target: large, real-world, well-known, and publicly accessible.
 - Code counting tools (scc, tokei, cloc, gocloc)
 - Cyclomatic complexity tools (gocyclo, lizard, codefang)
 - AST parsing tools (uast, ast-grep)
+- Git history analysis (hercules v10.7.2 vs codefang: burndown, couples, devs)
 - Wall-clock time, peak RSS memory, CPU utilization
 - Reproducible benchmark scripts
 - Plot generation for visual comparison
 
 ### Out of Scope
-- Git history analysis (requires deep clone, separate benchmark)
 - SonarQube/PMD (require server infrastructure)
 - IDE integrations and language server benchmarks
 
 ## Deliverables
 
-1. `tools/benchmark/kubernetes_benchmark.py` — Main benchmark runner
-2. `tools/benchmark/kubernetes_benchmark_fixup.py` — Fix-up runner for retries
-3. `tools/benchmark/kubernetes_benchmark_plots.py` — Plot generator
-4. `docs/benchmarks/kubernetes_benchmark_results.json` — Raw JSON results
-5. `docs/benchmarks/benchmark_*.png` — 9 performance comparison charts
-6. `docs/benchmarks/KUBERNETES_BENCHMARK.md` — Full documentation with analysis
+1. `tools/benchmark/kubernetes_benchmark.py` — Static analysis benchmark runner
+2. `tools/benchmark/kubernetes_benchmark_plots.py` — Static analysis plot generator
+3. `tools/benchmark/kubernetes_benchmark_fixup.py` — Fix-up runner for retries
+4. `tools/benchmark/kubernetes_hercules_benchmark.py` — Hercules vs codefang runner
+5. `tools/benchmark/kubernetes_hercules_plots.py` — Hercules plot generator
+6. `docs/benchmarks/kubernetes_benchmark_results.json` — Static analysis results
+7. `docs/benchmarks/kubernetes_hercules_benchmark_results.json` — History results
+8. `docs/benchmarks/benchmark_*.png` — 9 static analysis charts
+9. `docs/benchmarks/hercules_*.png` — 5 hercules comparison charts
+10. `docs/benchmarks/KUBERNETES_BENCHMARK.md` — Full documentation with analysis
 
 ## Acceptance Criteria
 
-- [x] All tools benchmarked successfully (13 benchmark configurations)
+- [x] All static tools benchmarked (13 configurations)
+- [x] Hercules vs codefang benchmarked (12 configurations: 3 analyzers x 2 scales x 2 tools)
 - [x] Results include wall time, peak RSS, CPU utilization
 - [x] Multiple runs per tool (1 warmup + 3 measured) for statistical validity
 - [x] Plots generated with multiple tools on same charts
@@ -51,6 +56,8 @@ benchmark target: large, real-world, well-known, and publicly accessible.
 - [x] Trade-off analysis between speed and depth of analysis
 
 ## Key Results
+
+### Static Analysis
 
 | Tool       | Category    | Time (s) | RSS (MB) | CPU % |
 |------------|-------------|----------|----------|-------|
@@ -61,5 +68,16 @@ benchmark target: large, real-world, well-known, and publicly accessible.
 | ast-grep   | AST Batch   | 5.38     | 143      | 387%  |
 | uast       | AST Batch   | 55.48    | 2,779    | 381%  |
 
-Codefang is 2.1x faster than lizard for complexity analysis while providing
-deeper multi-language AST-aware analysis.
+### History Analysis (1000 commits)
+
+| Tool      | Analyzer | Time (s) | RSS (MB) | Speedup |
+|-----------|----------|----------|----------|---------|
+| codefang  | burndown | 1.47     | 323      | 28.7x   |
+| hercules  | burndown | 42.16    | 1,576    | —       |
+| codefang  | couples  | 3.77     | 1,942    | 19.1x   |
+| hercules  | couples  | 72.11    | 1,578    | —       |
+| codefang  | devs     | 1.53     | 326      | 28.5x   |
+| hercules  | devs     | 43.68    | 1,577    | —       |
+
+**Headline**: Codefang is **19-29x faster** than Hercules on the same analyzers,
+with **4-5x less memory** for burndown/devs.
