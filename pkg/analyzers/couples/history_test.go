@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -85,8 +86,8 @@ func TestHistoryAnalyzer_Consume_ReturnsTC(t *testing.T) {
 	cd, ok := tc.Data.(*CommitData)
 	require.True(t, ok, "expected *CommitData")
 	assert.ElementsMatch(t, []string{"f1", "f2"}, cd.CouplingFiles)
-	assert.Equal(t, 0, cd.AuthorFiles["f1"]) // The author ID is 0 from c.Identity.AuthorID = 0.
-	assert.Equal(t, 0, cd.AuthorFiles["f2"])
+	assert.Equal(t, 1, cd.AuthorFiles["f1"]) // Touch count = 1 per file per commit.
+	assert.Equal(t, 1, cd.AuthorFiles["f2"])
 	assert.True(t, cd.CommitCounted)
 	assert.Empty(t, cd.Renames)
 
@@ -127,7 +128,7 @@ func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	require.True(t, ok)
 	// Deletes don't add to coupling context.
 	assert.Empty(t, cd.CouplingFiles)
-	assert.Equal(t, 0, cd.AuthorFiles["f1"]) // The author ID is 0 from c.Identity.AuthorID = 0.
+	assert.Equal(t, 1, cd.AuthorFiles["f1"]) // Touch count = 1 (deletes still record author touch).
 }
 
 func TestHistoryAnalyzer_Consume_Rename(t *testing.T) {
@@ -238,10 +239,11 @@ func TestHistoryAnalyzer_Consume_MergeMode(t *testing.T) {
 
 	cd, ok := tc.Data.(*CommitData)
 	require.True(t, ok)
-	// existing.go should be filtered out (already seen in merge mode).
+	// existing.go should be filtered from coupling context (already seen in merge mode),
+	// but author attribution should still be recorded for ownership tracking.
 	assert.Equal(t, []string{"new.go"}, cd.CouplingFiles)
-	assert.Equal(t, 0, cd.AuthorFiles["new.go"]) // The author ID is 0 from c.Identity.AuthorID = 0.
-	assert.Zero(t, cd.AuthorFiles["existing.go"])
+	assert.Equal(t, 1, cd.AuthorFiles["new.go"])      // Touch count = 1 per file per commit.
+	assert.Equal(t, 1, cd.AuthorFiles["existing.go"]) // Author touch recorded even for seen files.
 }
 
 func TestHistoryAnalyzer_Fork_WorkingStateOnly(t *testing.T) {
@@ -305,7 +307,7 @@ func TestHistoryAnalyzer_Merge_WorkingState(t *testing.T) {
 func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 	t.Parallel()
 
-	c := &HistoryAnalyzer{}
+	c := NewHistoryAnalyzer()
 
 	fm := []map[int]int64{{1: 3}, {0: 3}}
 	pm := []map[int]int64{{1: 5}, {0: 5}}
@@ -338,7 +340,7 @@ func TestHistoryAnalyzer_Serialize_JSON(t *testing.T) {
 func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
 	t.Parallel()
 
-	c := &HistoryAnalyzer{}
+	c := NewHistoryAnalyzer()
 
 	fm := []map[int]int64{{1: 3}, {0: 3}}
 	pm := []map[int]int64{{1: 5}, {0: 5}}
@@ -367,7 +369,7 @@ func TestHistoryAnalyzer_Serialize_YAML(t *testing.T) {
 func TestHistoryAnalyzer_Serialize_Binary(t *testing.T) {
 	t.Parallel()
 
-	c := &HistoryAnalyzer{}
+	c := NewHistoryAnalyzer()
 
 	report := analyze.Report{
 		"Files":              []string{"f1.go"},
@@ -386,6 +388,86 @@ func TestHistoryAnalyzer_Serialize_Binary(t *testing.T) {
 	if buf.Len() == 0 {
 		t.Error("expected output for binary format")
 	}
+}
+
+func TestHistoryAnalyzer_Consume_OversizedChangeset(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber: 1,
+		Identity:     &plumbing.IdentityDetector{},
+		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+	}
+	require.NoError(t, c.Initialize(nil))
+
+	// Create a changeset larger than the maximum meaningful context size.
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	changes := make(gitlib.Changes, CouplesMaximumMeaningfulContextSize+1)
+
+	for i := range changes {
+		changes[i] = &gitlib.Change{
+			Action: gitlib.Insert,
+			To:     gitlib.ChangeEntry{Name: fmt.Sprintf("f%d.go", i), Hash: hash},
+		}
+	}
+
+	c.TreeDiff.Changes = changes
+	c.Identity.AuthorID = 0
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c600000000000000000000000000000000000006"),
+		gitlib.Signature{When: time.Now()},
+		"mass_change",
+	)
+
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok)
+	// Oversized changeset should produce empty coupling data.
+	assert.Empty(t, cd.CouplingFiles)
+	assert.Empty(t, cd.AuthorFiles)
+	assert.True(t, cd.CommitCounted)
+}
+
+func TestHistoryAnalyzer_Consume_ExactMaxChangeset(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{
+		PeopleNumber: 1,
+		Identity:     &plumbing.IdentityDetector{},
+		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+	}
+	require.NoError(t, c.Initialize(nil))
+
+	// Exactly at the limit — should still be processed.
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	changes := make(gitlib.Changes, CouplesMaximumMeaningfulContextSize)
+
+	for i := range changes {
+		changes[i] = &gitlib.Change{
+			Action: gitlib.Insert,
+			To:     gitlib.ChangeEntry{Name: fmt.Sprintf("f%d.go", i), Hash: hash},
+		}
+	}
+
+	c.TreeDiff.Changes = changes
+	c.Identity.AuthorID = 0
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c700000000000000000000000000000000000007"),
+		gitlib.Signature{When: time.Now()},
+		"exact_limit",
+	)
+
+	tc, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok)
+	// Exactly at limit should still be processed.
+	assert.Len(t, cd.CouplingFiles, CouplesMaximumMeaningfulContextSize)
 }
 
 func TestHistoryAnalyzer_Misc(t *testing.T) {
