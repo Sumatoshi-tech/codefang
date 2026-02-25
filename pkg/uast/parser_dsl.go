@@ -52,9 +52,10 @@ type DSLParser struct {
 	mappingRules    []mapping.Rule
 	ruleIndex       map[string]int
 	symbolNames     []string
-	internedTypes   map[string]node.Type // pre-interned Type values from DSL rules.
-	internedRoles   map[string]node.Role // pre-interned Role values from DSL rules.
+	internedTypes   map[string]node.Type
+	internedRoles   map[string]node.Role
 	tsParserPool    sync.Pool
+	parseCtxPool    sync.Pool
 	IncludeUnmapped bool
 }
 
@@ -182,8 +183,9 @@ func (parser *DSLParser) Parse(ctx context.Context, _ string, content []byte) (*
 		return nil, errNoRootNode
 	}
 
-	pctx := parser.newParseContext(tree, content)
+	pctx := parser.acquireParseContext(tree, content)
 	canonical := pctx.toCanonicalNode(root, "")
+	parser.releaseParseContext(pctx)
 
 	return canonical, nil
 }
@@ -236,23 +238,48 @@ type parseContext struct {
 	includeUnmapped bool
 }
 
-// newParseContext creates a parseContext for a single Parse() call.
-func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
-	return &parseContext{
-		tree:            tree,
-		alloc:           &node.Allocator{},
-		language:        parser.langInfo.Name,
-		source:          content,
-		mappingRules:    parser.mappingRules,
-		ruleIndex:       parser.ruleIndex,
-		symbolNames:     parser.symbolNames,
-		internedTypes:   parser.internedTypes,
-		internedRoles:   parser.internedRoles,
-		interner:        make(map[string]string, initialInternerCapacity),
-		batchChildren:   make([]batchChildInfo, 0, initialBatchChildrenBuffer),
-		patternMatcher:  parser.patternMatcher,
-		includeUnmapped: parser.IncludeUnmapped,
+// acquireParseContext returns a parseContext from the pool or creates a new one.
+// The interner map is cleared (not re-allocated) to avoid GC pressure.
+func (parser *DSLParser) acquireParseContext(tree *sitter.Tree, content []byte) *parseContext {
+	var pctx *parseContext
+
+	if pooled, ok := parser.parseCtxPool.Get().(*parseContext); ok {
+		pctx = pooled
+		clear(pctx.interner)
+		pctx.batchChildren = pctx.batchChildren[:0]
+		pctx.cursors = pctx.cursors[:0]
+	} else {
+		pctx = &parseContext{
+			alloc:    &node.Allocator{},
+			interner: make(map[string]string, initialInternerCapacity),
+		}
 	}
+
+	pctx.tree = tree
+	pctx.language = parser.langInfo.Name
+	pctx.source = content
+	pctx.mappingRules = parser.mappingRules
+	pctx.ruleIndex = parser.ruleIndex
+	pctx.symbolNames = parser.symbolNames
+	pctx.internedTypes = parser.internedTypes
+	pctx.internedRoles = parser.internedRoles
+	pctx.patternMatcher = parser.patternMatcher
+	pctx.includeUnmapped = parser.IncludeUnmapped
+
+	return pctx
+}
+
+// releaseParseContext returns a parseContext to the pool.
+// Per-parse references are cleared to allow GC of file-specific data.
+func (parser *DSLParser) releaseParseContext(pctx *parseContext) {
+	pctx.tree = nil
+	pctx.source = nil
+	parser.parseCtxPool.Put(pctx)
+}
+
+// newParseContext is a convenience alias used by tests and benchmarks.
+func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
+	return parser.acquireParseContext(tree, content)
 }
 
 // getCursor returns a TreeCursor from the pool, or creates a new one.

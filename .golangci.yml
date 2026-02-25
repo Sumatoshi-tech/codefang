@@ -220,6 +220,7 @@ linters:
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
         - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.StaticAnalyzer
+        - github\.com/Sumatoshi-tech/codefang/pkg/uast\.LanguageParser
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.DSLNode
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.ValueExtractor
