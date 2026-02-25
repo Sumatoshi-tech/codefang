@@ -118,9 +118,9 @@ func TestFunctionCohesionMetric_Compute(t *testing.T) {
 	assert.Equal(t, testFunctionName3, result[0].Name)
 	assert.Equal(t, "Poor", result[0].QualityLevel)
 	assert.Equal(t, testFunctionName2, result[1].Name)
-	assert.Equal(t, "Fair", result[1].QualityLevel)
+	assert.Equal(t, "Good", result[1].QualityLevel) // 0.5 >= 0.4 = Good.
 	assert.Equal(t, testFunctionName1, result[2].Name)
-	assert.Equal(t, "Excellent", result[2].QualityLevel)
+	assert.Equal(t, "Excellent", result[2].QualityLevel) // 0.9 >= 0.6 = Excellent.
 }
 
 // --- classifyCohesionQuality Tests ---.
@@ -134,10 +134,10 @@ func TestClassifyCohesionQuality(t *testing.T) {
 		want     string
 	}{
 		{"Excellent - 0.9", 0.9, "Excellent"},
-		{"Excellent - 0.8", 0.8, "Excellent"},
-		{"Good - 0.7", 0.7, "Good"},
-		{"Good - 0.6", 0.6, "Good"},
-		{"Fair - 0.5", 0.5, "Fair"},
+		{"Excellent - 0.6", 0.6, "Excellent"},
+		{"Good - 0.5", 0.5, "Good"},
+		{"Good - 0.4", 0.4, "Good"},
+		{"Fair - 0.35", 0.35, "Fair"},
 		{"Fair - 0.3", 0.3, "Fair"},
 		{"Poor - 0.2", 0.2, "Poor"},
 		{"Poor - 0.0", 0.0, "Poor"},
@@ -186,20 +186,20 @@ func TestCohesionDistributionMetric_Compute(t *testing.T) {
 	metric := NewDistributionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Cohesion: 0.9},  // Excellent.
-			{Cohesion: 0.85}, // Excellent.
-			{Cohesion: 0.7},  // Good.
-			{Cohesion: 0.5},  // Fair.
-			{Cohesion: 0.4},  // Fair.
-			{Cohesion: 0.1},  // Poor.
+			{Cohesion: 0.9},  // Excellent (>=0.6).
+			{Cohesion: 0.7},  // Excellent (>=0.6).
+			{Cohesion: 0.5},  // Good (>=0.4).
+			{Cohesion: 0.4},  // Good (>=0.4).
+			{Cohesion: 0.35}, // Fair (>=0.3).
+			{Cohesion: 0.1},  // Poor (<0.3).
 		},
 	}
 
 	result := metric.Compute(input)
 
 	assert.Equal(t, 2, result.Excellent)
-	assert.Equal(t, 1, result.Good)
-	assert.Equal(t, 2, result.Fair)
+	assert.Equal(t, 2, result.Good)
+	assert.Equal(t, 1, result.Fair)
 	assert.Equal(t, 1, result.Poor)
 }
 
@@ -248,7 +248,7 @@ func TestLowCohesionFunctionMetric_MediumRisk(t *testing.T) {
 	metric := NewLowCohesionFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Name: testFunctionName1, Cohesion: 0.4}, // Fair but below Good.
+			{Name: testFunctionName1, Cohesion: 0.35}, // Fair but below Good (0.4).
 		},
 	}
 
@@ -282,9 +282,9 @@ func TestLowCohesionFunctionMetric_SortedByCohesion(t *testing.T) {
 	metric := NewLowCohesionFunctionMetric()
 	input := &ReportData{
 		Functions: []FunctionData{
-			{Name: testFunctionName1, Cohesion: 0.4},
+			{Name: testFunctionName1, Cohesion: 0.35},
 			{Name: testFunctionName2, Cohesion: 0.1},
-			{Name: testFunctionName3, Cohesion: 0.5},
+			{Name: testFunctionName3, Cohesion: 0.38},
 		},
 	}
 
@@ -353,8 +353,8 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 		"total_functions": testTotalFunctions,
 		"cohesion_score":  testCohesionScore,
 		"functions": []map[string]any{
-			{"name": testFunctionName1, "cohesion": 0.9},
-			{"name": testFunctionName2, "cohesion": 0.2},
+			{"name": testFunctionName1, "cohesion": 0.9}, // Excellent (>=0.6).
+			{"name": testFunctionName2, "cohesion": 0.2}, // Poor (<0.3).
 		},
 	}
 
@@ -363,7 +363,7 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Len(t, result.FunctionCohesion, 2)
-	assert.Len(t, result.LowCohesionFunctions, 1)
+	assert.Len(t, result.LowCohesionFunctions, 1) // 0.2 is below Good (0.4).
 	assert.Equal(t, 1, result.Distribution.Excellent)
 	assert.Equal(t, 1, result.Distribution.Poor)
 }

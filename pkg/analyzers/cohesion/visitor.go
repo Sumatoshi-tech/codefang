@@ -64,10 +64,9 @@ func (v *Visitor) GetReport() analyze.Report {
 		return analyzer.buildEmptyResult()
 	}
 
-	// Calculate cohesion metrics for collected functions.
-	for i := range v.functions {
-		v.functions[i].Cohesion = analyzer.calculateFunctionLevelCohesion(v.functions[i])
-	}
+	// Compute per-function cohesion using variable sharing ratio.
+	// This requires the full list of functions to determine shared variables.
+	analyzer.computePerFunctionCohesion(v.functions)
 
 	metrics := analyzer.calculateMetrics(v.functions)
 

@@ -188,11 +188,27 @@ func (svc *StaticService) processFile(
 		return true
 	}
 
+	StampSourceFile(reportMap, filePath)
+
 	state.mu.Lock()
 	aggregateFolderAnalysis(reportMap, aggregators)
 	state.mu.Unlock()
 
 	return false
+}
+
+// StampSourceFile adds "_source_file" metadata to every collection item in each report.
+// This allows downstream consumers (e.g., plot generators) to group results by file/package.
+func StampSourceFile(reports map[string]Report, filePath string) {
+	for _, report := range reports {
+		for _, val := range report {
+			if collection, ok := val.([]map[string]any); ok {
+				for _, item := range collection {
+					item["_source_file"] = filePath
+				}
+			}
+		}
+	}
 }
 
 // ShouldSkipFolderNode decides whether a folder walk entry should be skipped.

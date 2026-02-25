@@ -9,16 +9,16 @@ import (
 func newTestCohesionReport() analyze.Report {
 	return analyze.Report{
 		"total_functions":   5,
-		"lcom":              1.5,
+		"lcom":              0.3,
 		"cohesion_score":    0.7,
 		"function_cohesion": 0.65,
 		"message":           "Good cohesion - functions have reasonable focus",
 		"functions": []map[string]any{
 			{"name": "ProcessData", "cohesion": 0.9},
-			{"name": "HandleRequest", "cohesion": 0.7},
-			{"name": "ParseConfig", "cohesion": 0.5},
+			{"name": "HandleRequest", "cohesion": 0.5},
+			{"name": "ParseConfig", "cohesion": 0.35},
 			{"name": "ValidateInput", "cohesion": 0.2},
-			{"name": "FormatOutput", "cohesion": 0.85},
+			{"name": "FormatOutput", "cohesion": 0.7},
 		},
 	}
 }
@@ -118,9 +118,9 @@ func TestCohesionDistribution(t *testing.T) {
 	if len(dist) != expectedCategories {
 		t.Fatalf("Distribution() count = %d, want %d", len(dist), expectedCategories)
 	}
-	// Excellent (>0.8): ProcessData(0.9), FormatOutput(0.85) = 2
-	// Good (0.6-0.8): HandleRequest(0.7) = 1
-	// Fair (0.3-0.6): ParseConfig(0.5) = 1
+	// Excellent (>=0.6): ProcessData(0.9), FormatOutput(0.7) = 2
+	// Good (0.4-0.6): HandleRequest(0.5) = 1
+	// Fair (0.3-0.4): ParseConfig(0.35) = 1
 	// Poor (<0.3): ValidateInput(0.2) = 1.
 	const expectedExcellent = 2
 
@@ -167,7 +167,7 @@ func TestCohesionTopIssues_SortedAscending(t *testing.T) {
 	if len(issues) != topN {
 		t.Fatalf("TopIssues(%d) count = %d, want %d", topN, len(issues), topN)
 	}
-	// Lowest cohesion first: ValidateInput(0.2), ParseConfig(0.5).
+	// Lowest cohesion first: ValidateInput(0.2), ParseConfig(0.35).
 	if issues[0].Name != "ValidateInput" {
 		t.Errorf("issues[0].Name = %q, want %q", issues[0].Name, "ValidateInput")
 	}
@@ -181,7 +181,7 @@ func TestCohesionTopIssues_Severity(t *testing.T) {
 	const topN = 3
 
 	issues := section.TopIssues(topN)
-	// ValidateInput(0.2) -> poor, ParseConfig(0.5) -> fair, HandleRequest(0.7) -> good.
+	// ValidateInput(0.2) -> poor (<0.3), ParseConfig(0.35) -> fair (<0.4), HandleRequest(0.5) -> good (>=0.4).
 	if issues[0].Severity != analyze.SeverityPoor {
 		t.Errorf("issues[0].Severity = %q, want %q", issues[0].Severity, analyze.SeverityPoor)
 	}
