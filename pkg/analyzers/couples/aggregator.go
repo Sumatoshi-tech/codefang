@@ -239,8 +239,19 @@ func ticksToReport(
 	lastCommit analyze.CommitLike,
 ) analyze.Report {
 	mergedFiles := make(map[string]map[string]int)
-	mergedPeople := make([]map[string]int, peopleNumber+1)
 
+	// Determine the actual people count from tick data, which may exceed
+	// the initial peopleNumber when authors are discovered incrementally.
+	actualPeople := peopleNumber + 1
+
+	for _, tick := range ticks {
+		td, ok := tick.Data.(*TickData)
+		if ok && td != nil && len(td.People) > actualPeople {
+			actualPeople = len(td.People)
+		}
+	}
+
+	mergedPeople := make([]map[string]int, actualPeople)
 	for i := range mergedPeople {
 		mergedPeople[i] = make(map[string]int)
 	}
@@ -259,8 +270,10 @@ func ticksToReport(
 		mergedRenames = append(mergedRenames, td.Renames...)
 	}
 
+	effectivePeopleNumber := actualPeople - 1
+
 	return buildReport(ctx, mergedFiles, mergedPeople, mergedRenames,
-		reversedNames, peopleNumber, lastCommit)
+		reversedNames, effectivePeopleNumber, lastCommit)
 }
 
 // mergeTickFiles additively merges per-tick file couplings into the accumulator.
