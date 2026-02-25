@@ -13,13 +13,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
-// PrecompiledMapping represents the pre-compiled mapping data
+// PrecompiledMapping represents the pre-compiled mapping data.
 type PrecompiledMapping struct {
-	Language   string                 `json:"language"`
-	Extensions []string               `json:"extensions"`
-	Rules      []mapping.Rule         `json:"rules"`
-	Patterns   map[string]interface{} `json:"patterns"`
-	CompiledAt string                 `json:"compiled_at"`
+	Language   string         `json:"language"`
+	Extensions []string       `json:"extensions"`
+	Rules      []mapping.Rule `json:"rules"`
+	Patterns   map[string]any `json:"patterns"`
+	CompiledAt string         `json:"compiled_at"`
 }
 
 // bloomSize is the bit-array length for the extension bloom filter.
@@ -27,12 +27,15 @@ type PrecompiledMapping struct {
 // gives a false-positive rate under 5%.
 const bloomSize = 512
 
+// bloomWord is the number of bits per word in the bloom filter bit-array.
+const bloomWord = 64
+
 // Loader loads UAST parsers for different languages.
 type Loader struct {
 	embedFS    fs.FS
 	parsers    map[string]LanguageParser
 	extensions map[string]LanguageParser
-	extBloom   [bloomSize / 64]uint64
+	extBloom   [bloomSize / bloomWord]uint64
 }
 
 // NewLoader creates a new loader with the given embedded filesystem.
@@ -93,9 +96,9 @@ func (l *Loader) loadFromFiles() {
 		return
 	}
 
-	err := fs.WalkDir(l.embedFS, "uastmaps", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := fs.WalkDir(l.embedFS, "uastmaps", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 
 		if d.IsDir() {
@@ -106,15 +109,16 @@ func (l *Loader) loadFromFiles() {
 			return nil
 		}
 
-		file, err := l.embedFS.Open(path)
-		if err != nil {
-			return err
+		file, openErr := l.embedFS.Open(path)
+		if openErr != nil {
+			return fmt.Errorf("opening %s: %w", path, openErr)
 		}
 		defer file.Close()
 
-		p, err := l.LoadParser(file)
-		if err != nil {
-			slog.Default().Warn("failed to load parser", "file", d.Name(), "error", err)
+		p, loadErr := l.LoadParser(file)
+		if loadErr != nil {
+			slog.Default().Warn("failed to load parser", "file", d.Name(), "error", loadErr)
+
 			return nil
 		}
 
@@ -128,31 +132,32 @@ func (l *Loader) loadFromFiles() {
 
 		return nil
 	})
-
 	if err != nil {
 		slog.Default().Error("error discovering parsers", "error", err)
 	}
 }
 
-// LoadParser loads a parser by reading the uastmap file through the reader
+// LoadParser loads a parser by reading the uastmap file through the reader.
 func (l *Loader) LoadParser(reader io.Reader) (LanguageParser, error) {
 	dslp := NewDSLParser(reader)
 
-	var err error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("panic while loading parser: %v", r)
-			}
-		}()
-		err = dslp.Load()
-	}()
-
-	if err != nil {
-		return nil, err
+	loadErr := safeLoadParser(dslp)
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	return dslp, nil
+}
+
+// safeLoadParser calls dslp.Load with panic recovery.
+func safeLoadParser(dslp *DSLParser) (loadErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			loadErr = fmt.Errorf("%w: %v", errParserLoadPanic, r)
+		}
+	}()
+
+	return dslp.Load()
 }
 
 // LanguageParser returns the parser for the given file extension.
@@ -160,6 +165,7 @@ func (l *Loader) LoadParser(reader io.Reader) (LanguageParser, error) {
 // is definitely not registered, the map lookup is skipped entirely.
 func (l *Loader) LanguageParser(extension string) (LanguageParser, bool) {
 	ext := strings.ToLower(extension)
+
 	if !l.bloomMayContain(ext) {
 		return nil, false
 	}
@@ -171,20 +177,20 @@ func (l *Loader) LanguageParser(extension string) (LanguageParser, bool) {
 
 func (l *Loader) bloomAdd(ext string) {
 	h1, h2 := bloomHashes(ext)
-	l.extBloom[h1/64] |= 1 << (h1 % 64)
-	l.extBloom[h2/64] |= 1 << (h2 % 64)
+	l.extBloom[h1/bloomWord] |= 1 << (h1 % bloomWord)
+	l.extBloom[h2/bloomWord] |= 1 << (h2 % bloomWord)
 }
 
 func (l *Loader) bloomMayContain(ext string) bool {
 	h1, h2 := bloomHashes(ext)
 
-	return l.extBloom[h1/64]&(1<<(h1%64)) != 0 &&
-		l.extBloom[h2/64]&(1<<(h2%64)) != 0
+	return l.extBloom[h1/bloomWord]&(1<<(h1%bloomWord)) != 0 &&
+		l.extBloom[h2/bloomWord]&(1<<(h2%bloomWord)) != 0
 }
 
 // bloomHashes returns two independent bit positions for a bloom filter.
 // Uses FNV-1a variant with two different seeds for the two hash functions.
-func bloomHashes(s string) (uint, uint) {
+func bloomHashes(s string) (pos1, pos2 uint) {
 	const (
 		fnvBasis1 uint = 14695981039346656037
 		fnvBasis2 uint = 17316225907498340287
@@ -243,8 +249,10 @@ func (lp *lazyDSLParser) init() {
 	})
 }
 
+// Parse initializes the underlying DSL parser on first call, then delegates.
 func (lp *lazyDSLParser) Parse(ctx context.Context, filename string, content []byte) (*node.Node, error) {
 	lp.init()
+
 	if lp.initErr != nil {
 		return nil, lp.initErr
 	}
@@ -252,16 +260,20 @@ func (lp *lazyDSLParser) Parse(ctx context.Context, filename string, content []b
 	return lp.parser.Parse(ctx, filename, content)
 }
 
+// Language returns the language name without triggering initialization.
 func (lp *lazyDSLParser) Language() string {
 	return lp.language
 }
 
+// Extensions returns supported file extensions without triggering initialization.
 func (lp *lazyDSLParser) Extensions() []string {
 	return lp.extensions
 }
 
+// GetOriginalDSL returns the original DSL content (triggers initialization).
 func (lp *lazyDSLParser) GetOriginalDSL() string {
 	lp.init()
+
 	if lp.parser == nil {
 		return ""
 	}

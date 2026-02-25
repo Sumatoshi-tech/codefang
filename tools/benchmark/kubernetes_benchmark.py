@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -29,7 +29,8 @@ MEASURED_RUNS = 3
 K8S_REPO = "/tmp/benchmark-repos/kubernetes"
 UAST_BIN = "/workspace/build/bin/uast"
 CODEFANG_BIN = "/workspace/build/bin/codefang"
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = "kubernetes_benchmark_results.json"
 
 @dataclass

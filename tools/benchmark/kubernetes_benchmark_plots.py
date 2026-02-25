@@ -10,6 +10,7 @@ Reads kubernetes_benchmark_results.json and produces:
   5. Radar/spider chart for multi-dimensional comparison
 """
 
+import datetime
 import json
 import os
 import sys
@@ -21,7 +22,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = datetime.date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = os.path.join(OUTPUT_DIR, "kubernetes_benchmark_results.json")
 
 TOOL_COLORS = {

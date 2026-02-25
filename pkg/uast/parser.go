@@ -21,6 +21,7 @@ var (
 	errNoFileExtension = errors.New("no file extension found")
 	errNoParser        = errors.New("no parser found for extension")
 	errMappingNotFound = errors.New("mapping not found")
+	errParserLoadPanic = errors.New("panic while loading parser")
 )
 
 // Parser implements LanguageParser using embedded parsers.

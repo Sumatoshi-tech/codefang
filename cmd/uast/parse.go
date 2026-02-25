@@ -30,9 +30,11 @@ const (
 )
 
 func parseCmd() *cobra.Command {
-	var lang, output, format string
-	var workers int
-	var progress, all bool
+	var (
+		lang, output, format string
+		workers              int
+		progress, all        bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "parse [files...]",
@@ -70,17 +72,9 @@ func runParse(files []string, lang, output, format string, progress, all bool, w
 		return fmt.Errorf("failed to initialize parser: %w", err)
 	}
 
-	if all {
-		var cerr error
-
-		files, cerr = collectSourceFiles(".", parser)
-		if cerr != nil {
-			return fmt.Errorf("failed to collect source files: %w", cerr)
-		}
-
-		if len(files) == 0 {
-			return ErrNoSourceFiles
-		}
+	files, err = resolveFiles(files, all, parser)
+	if err != nil {
+		return err
 	}
 
 	if len(files) == 0 {
@@ -91,11 +85,31 @@ func runParse(files []string, lang, output, format string, progress, all bool, w
 		fmt.Fprintf(os.Stderr, "Parsing %d files...\n", len(files))
 	}
 
-	useParallel := len(files) > 1 && format == formatNone
-	if useParallel {
-		return runParseParallel(parser, files, lang, format, progress, workers)
+	if len(files) > 1 && format == formatNone {
+		return runParseParallel(files, lang, progress, workers)
 	}
 
+	return parseFilesSequential(parser, files, lang, output, format, progress, writer)
+}
+
+func resolveFiles(files []string, all bool, parser *uast.Parser) ([]string, error) {
+	if !all {
+		return files, nil
+	}
+
+	collected, err := collectSourceFiles(".", parser)
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect source files: %w", err)
+	}
+
+	if len(collected) == 0 {
+		return nil, ErrNoSourceFiles
+	}
+
+	return collected, nil
+}
+
+func parseFilesSequential(parser *uast.Parser, files []string, lang, output, format string, progress bool, writer io.Writer) error {
 	for idx, file := range files {
 		if progress {
 			fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", idx+1, len(files), file)
@@ -112,7 +126,7 @@ func runParse(files []string, lang, output, format string, progress, all bool, w
 
 // runParseParallel processes files concurrently using a worker pool.
 // Each worker gets its own Parser instance to avoid contention.
-func runParseParallel(sharedParser *uast.Parser, files []string, lang, format string, progress bool, workers int) error {
+func runParseParallel(files []string, lang string, progress bool, workers int) error {
 	if workers <= 0 {
 		workers = runtime.NumCPU()
 	}
@@ -121,76 +135,72 @@ func runParseParallel(sharedParser *uast.Parser, files []string, lang, format st
 		workers = len(files)
 	}
 
-	fileCh := make(chan indexedFile, workers)
-	var firstErr atomic.Value
-	var completed atomic.Int64
-	total := int64(len(files))
+	state := &parallelState{total: int64(len(files))}
+	fileCh := make(chan string, workers)
 
 	var wg sync.WaitGroup
 
 	for range workers {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			// Each goroutine creates its own parser to avoid contention on
-			// tree-sitter parser pool and interner state.
-			workerParser, perr := uast.NewParser()
-			if perr != nil {
-				firstErr.CompareAndSwap(nil, perr)
-				return
-			}
-
-			for item := range fileCh {
-				if firstErr.Load() != nil {
-					return
-				}
-
-				perr := parseOnly(workerParser, item.path, lang)
-				if perr != nil {
-					firstErr.CompareAndSwap(nil, fmt.Errorf("failed to parse %s: %w", item.path, perr))
-
-					return
-				}
-
-				done := completed.Add(1)
-				if progress {
-					fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", done, total, item.path)
-				}
-			}
-		}()
+		wg.Go(func() {
+			state.worker(fileCh, lang, progress)
+		})
 	}
 
-	for i, f := range files {
-		if firstErr.Load() != nil {
+	for _, f := range files {
+		if state.firstErr.Load() != nil {
 			break
 		}
 
-		fileCh <- indexedFile{index: i, path: f}
+		fileCh <- f
 	}
 
 	close(fileCh)
 	wg.Wait()
 
-	if errVal := firstErr.Load(); errVal != nil {
+	if errVal := state.firstErr.Load(); errVal != nil {
 		if err, ok := errVal.(error); ok {
 			return err
 		}
 	}
 
-	_ = sharedParser
-
 	return nil
 }
 
-type indexedFile struct {
-	index int
-	path  string
+type parallelState struct {
+	firstErr  atomic.Value
+	completed atomic.Int64
+	total     int64
 }
 
-// parseOnly parses a file without serialization — used in parallel mode
-// where format is "none".
+func (s *parallelState) worker(fileCh <-chan string, lang string, progress bool) {
+	workerParser, initErr := uast.NewParser()
+	if initErr != nil {
+		s.firstErr.CompareAndSwap(nil, initErr)
+
+		return
+	}
+
+	for path := range fileCh {
+		if s.firstErr.Load() != nil {
+			return
+		}
+
+		parseErr := parseOnly(workerParser, path, lang)
+		if parseErr != nil {
+			s.firstErr.CompareAndSwap(nil, fmt.Errorf("failed to parse %s: %w", path, parseErr))
+
+			return
+		}
+
+		done := s.completed.Add(1)
+
+		if progress {
+			fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", done, s.total, path)
+		}
+	}
+}
+
+// parseOnly parses a file without serialization — used in parallel mode.
 func parseOnly(parser *uast.Parser, file, lang string) error {
 	code, resolvedPath, err := safeReadFile(file)
 	if err != nil {
@@ -203,12 +213,11 @@ func parseOnly(parser *uast.Parser, file, lang string) error {
 		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
 	}
 
-	parsedNode, err := parser.Parse(context.Background(), filename, code)
-	if err != nil {
-		return err
+	parsedNode, parseErr := parser.Parse(context.Background(), filename, code)
+	if parseErr != nil {
+		return parseErr
 	}
 
-	// Keep the node alive to prevent the compiler from optimizing away the parse.
 	runtime.KeepAlive(parsedNode)
 
 	return nil
@@ -319,9 +328,9 @@ func outputNode(parsedNode *node.Node, output, format string, writer io.Writer) 
 func collectSourceFiles(dir string, parser *uast.Parser) ([]string, error) {
 	var files []string
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 
 		if info.IsDir() {
@@ -347,8 +356,6 @@ func collectSourceFiles(dir string, parser *uast.Parser) ([]string, error) {
 
 // isHiddenDir returns true for directories that start with a dot (e.g. .git),
 // except for "." and ".." which are filesystem navigation entries.
-// No other directories are excluded; file filtering is handled by
-// parser.IsSupported which checks registered language extensions.
 func isHiddenDir(name string) bool {
 	return len(name) > 1 && name[0] == '.'
 }

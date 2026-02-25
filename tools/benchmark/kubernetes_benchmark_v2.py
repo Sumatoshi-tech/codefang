@@ -10,14 +10,15 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 WARMUP_RUNS = 1
 MEASURED_RUNS = 3
 K8S_REPO = "/tmp/benchmark-repos/kubernetes"
 UAST_BIN = "/workspace/build/bin/uast"
 CODEFANG_BIN = "/workspace/build/bin/codefang"
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = os.path.join(OUTPUT_DIR, "kubernetes_benchmark_v2_results.json")
 
 

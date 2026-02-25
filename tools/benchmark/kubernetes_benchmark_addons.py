@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Add missing benchmarks to the main results file."""
 
+import datetime
 import json
 import os
 import re
@@ -12,7 +13,8 @@ WARMUP_RUNS = 1
 MEASURED_RUNS = 3
 K8S_REPO = "/tmp/benchmark-repos/kubernetes"
 UAST_BIN = "/workspace/build/bin/uast"
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = datetime.date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = os.path.join(OUTPUT_DIR, "kubernetes_benchmark_results.json")
 LARGE_GO_FILE = f"{K8S_REPO}/pkg/apis/core/validation/validation_test.go"
 LARGE_FILE_LINES = "30478"

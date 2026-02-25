@@ -10,6 +10,7 @@ Produces:
   5. Combined dashboard
 """
 
+import datetime
 import json
 import os
 
@@ -18,7 +19,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = datetime.date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = os.path.join(OUTPUT_DIR, "kubernetes_hercules_benchmark_results.json")
 
 TOOL_COLORS = {

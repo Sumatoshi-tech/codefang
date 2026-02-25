@@ -8,6 +8,7 @@ results into the main kubernetes_benchmark_results.json.
 Usage: python3 tools/benchmark/kubernetes_benchmark_fixup.py
 """
 
+import datetime
 import json
 import os
 import re
@@ -20,7 +21,8 @@ MEASURED_RUNS = 3
 K8S_REPO = "/tmp/benchmark-repos/kubernetes"
 UAST_BIN = "/workspace/build/bin/uast"
 CODEFANG_BIN = "/workspace/build/bin/codefang"
-OUTPUT_DIR = "/workspace/docs/benchmarks"
+_BENCH_DATE = datetime.date.today().isoformat()
+OUTPUT_DIR = f"/workspace/docs/benchmarks/{_BENCH_DATE}"
 RESULTS_FILE = os.path.join(OUTPUT_DIR, "kubernetes_benchmark_results.json")
 
 
