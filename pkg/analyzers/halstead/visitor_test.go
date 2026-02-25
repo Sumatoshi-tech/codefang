@@ -63,7 +63,7 @@ func TestVisitor_Basic(t *testing.T) {
 	require.True(t, ok, "type assertion failed for operands")
 
 	assert.Len(t, ops, 1, "Operators count")
-	assert.Len(t, operands, 3, "Operands count")
+	assert.Len(t, operands, 2, "Operands count")
 
 	// 1 operator (+), 2 operands (a, b)
 	// Distinct Operators: 1

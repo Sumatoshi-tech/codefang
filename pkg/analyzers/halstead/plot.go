@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	topFunctionsLimit = 20
+	topFunctionsLimit = 12
 	xAxisRotate       = 45
 	emptyChartHeight  = "400px"
 	pieRadius         = "60%"
-	scatterSymbolSize = 15
-	maxSymbolSize     = 50
+	scatterSymbolSize = 12
+	maxSymbolSize     = 45
 	bugsMultiplier    = 10
 	volumeLow         = 100
 	volumeMedium      = 1000
@@ -27,6 +27,7 @@ const (
 	effortMedium      = 10000
 	difficultyLow     = 5
 	difficultyMedium  = 15
+	difficultyHigh    = 30
 )
 
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
@@ -72,45 +73,40 @@ func (h *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, 
 	return []plotpage.Section{
 		{
 			Title:    "Top Functions by Effort",
-			Subtitle: "Functions ranked by programming effort required (higher = more effort).",
+			Subtitle: "Most expensive functions first; start review from the top.",
 			Chart:    effortChart,
 			Hint: plotpage.Hint{
 				Title: "How to interpret:",
 				Items: []string{
-					"<strong>Effort</strong> = Volume × Difficulty (mental effort to understand code)",
-					"<strong>Green bars</strong> = Low effort functions",
-					"<strong>Yellow bars</strong> = Medium effort functions",
-					"<strong>Red bars</strong> = High effort functions",
-					"<strong>Action:</strong> Prioritize refactoring high-effort functions",
+					"<strong>Effort</strong> = Volume × Difficulty (higher means harder to maintain)",
+					"<strong>Green</strong> = monitor, <strong>Yellow</strong> = schedule cleanup, <strong>Red</strong> = refactor now",
+					"<strong>Tip:</strong> Start with red bars to reduce risk fastest",
 				},
 			},
 		},
 		{
 			Title:    "Volume vs Difficulty",
-			Subtitle: "Scatter plot showing relationship between code volume and difficulty.",
+			Subtitle: "Risk map by size (x), difficulty (y), and bug estimate (bubble size).",
 			Chart:    scatterChart,
 			Hint: plotpage.Hint{
 				Title: "How to interpret:",
 				Items: []string{
-					"<strong>Volume</strong> = Code size (operators and operands)",
-					"<strong>Difficulty</strong> = How hard to write/understand",
-					"<strong>Bottom-left</strong> = Simple, easy functions (ideal)",
-					"<strong>Top-right</strong> = Complex, hard functions (refactor)",
-					"<strong>Bubble size</strong> = Estimated bugs (larger = more bugs)",
+					"<strong>Bottom-left</strong> points are healthiest",
+					"<strong>Top-right</strong> points are highest risk",
+					"<strong>Bubble size</strong> reflects estimated bugs",
+					"<strong>Color</strong> reflects risk zone (green/yellow/red)",
 				},
 			},
 		},
 		{
 			Title:    "Volume Distribution",
-			Subtitle: "Distribution of functions by code volume category.",
+			Subtitle: "Portfolio split by Halstead volume buckets.",
 			Chart:    pieChart,
 			Hint: plotpage.Hint{
 				Title: "How to interpret:",
 				Items: []string{
-					"<strong>Low (≤100)</strong> = Small, well-structured functions",
-					"<strong>Medium (101-1000)</strong> = Medium-sized functions",
-					"<strong>High (1001-5000)</strong> = Large functions, consider splitting",
-					"<strong>Very High (>5000)</strong> = Very large, definitely split",
+					"<strong>Low (≤100)</strong> = usually easy to maintain",
+					"<strong>High / Very High</strong> concentration means decomposition debt",
 				},
 			},
 		},
@@ -296,9 +292,11 @@ func createVolumeVsDifficultyChart(functions []map[string]any, co *plotpage.Char
 		charts.WithGridOpts(co.Grid()),
 	)
 
-	scatterData := make([]opts.ScatterData, len(functions))
+	lowRiskData := make([]opts.ScatterData, 0, len(functions))
+	mediumRiskData := make([]opts.ScatterData, 0, len(functions))
+	highRiskData := make([]opts.ScatterData, 0, len(functions))
 
-	for i, fn := range functions {
+	for _, fn := range functions {
 		volume := getVolumeValue(fn)
 		difficulty := getDifficultyValue(fn)
 		bugs := getDeliveredBugsValue(fn)
@@ -309,18 +307,59 @@ func createVolumeVsDifficultyChart(functions []map[string]any, co *plotpage.Char
 		}
 
 		symbolSize := min(scatterSymbolSize+int(bugs*bugsMultiplier), maxSymbolSize)
-
-		scatterData[i] = opts.ScatterData{
+		point := opts.ScatterData{
 			Value:      []any{volume, difficulty, name},
 			SymbolSize: symbolSize,
 		}
+
+		switch classifyScatterRisk(volume, difficulty, bugs) {
+		case riskHigh:
+			highRiskData = append(highRiskData, point)
+		case riskMedium:
+			mediumRiskData = append(mediumRiskData, point)
+		case riskLow:
+			lowRiskData = append(lowRiskData, point)
+		}
 	}
 
-	scatter.AddSeries("Functions", scatterData,
-		charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Primary[1]}),
-	)
+	if len(lowRiskData) > 0 {
+		scatter.AddSeries("Low risk", lowRiskData,
+			charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Good}),
+		)
+	}
+
+	if len(mediumRiskData) > 0 {
+		scatter.AddSeries("Medium risk", mediumRiskData,
+			charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Warning}),
+		)
+	}
+
+	if len(highRiskData) > 0 {
+		scatter.AddSeries("High risk", highRiskData,
+			charts.WithItemStyleOpts(opts.ItemStyle{Color: palette.Semantic.Bad}),
+		)
+	}
 
 	return scatter
+}
+
+type scatterRisk int
+
+const (
+	riskLow scatterRisk = iota
+	riskMedium
+	riskHigh
+)
+
+func classifyScatterRisk(volume, difficulty, bugs float64) scatterRisk {
+	switch {
+	case volume >= volumeHigh || difficulty >= difficultyHigh || bugs >= 1.0:
+		return riskHigh
+	case volume >= volumeMedium || difficulty >= difficultyMedium || bugs >= 0.3:
+		return riskMedium
+	default:
+		return riskLow
+	}
 }
 
 func (h *Analyzer) generateVolumePieChart(report analyze.Report) *charts.Pie {

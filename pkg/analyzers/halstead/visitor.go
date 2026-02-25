@@ -17,6 +17,7 @@ type Visitor struct {
 	detector        *OperatorOperandDetector
 	functionMetrics map[string]*FunctionHalsteadMetrics
 	contexts        []*halsteadContext
+	nodeStack       []*node.Node
 }
 
 // NewVisitor creates a new Visitor.
@@ -26,17 +27,21 @@ func NewVisitor() *Visitor {
 		metrics:         NewMetricsCalculator(),
 		detector:        NewOperatorOperandDetector(),
 		functionMetrics: make(map[string]*FunctionHalsteadMetrics),
+		nodeStack:       make([]*node.Node, 0),
 	}
 }
 
 // OnEnter is called when entering a node during AST traversal.
 func (v *Visitor) OnEnter(n *node.Node, _ int) {
+	parent := v.currentNode()
+	v.nodeStack = append(v.nodeStack, n)
+
 	if v.isFunction(n) {
 		v.pushContext(n)
 	}
 
 	if ctx := v.currentContext(); ctx != nil {
-		v.processNode(ctx, n)
+		v.processNode(ctx, n, parent)
 	}
 }
 
@@ -44,6 +49,10 @@ func (v *Visitor) OnEnter(n *node.Node, _ int) {
 func (v *Visitor) OnExit(n *node.Node, _ int) {
 	if v.isFunction(n) {
 		v.popContext()
+	}
+
+	if len(v.nodeStack) > 0 {
+		v.nodeStack = v.nodeStack[:len(v.nodeStack)-1]
 	}
 }
 
@@ -116,6 +125,14 @@ func (v *Visitor) currentContext() *halsteadContext {
 	return v.contexts[len(v.contexts)-1]
 }
 
+func (v *Visitor) currentNode() *node.Node {
+	if len(v.nodeStack) == 0 {
+		return nil
+	}
+
+	return v.nodeStack[len(v.nodeStack)-1]
+}
+
 func (v *Visitor) sumMap(m map[string]int) int {
 	sum := 0
 	for _, count := range m {
@@ -125,12 +142,38 @@ func (v *Visitor) sumMap(m map[string]int) int {
 	return sum
 }
 
-func (v *Visitor) processNode(ctx *halsteadContext, n *node.Node) {
-	if v.detector.IsOperator(n) {
-		operator := v.detector.GetOperatorName(n)
-		ctx.metrics.Operators[string(operator)]++
-	} else if v.detector.IsOperand(n) {
-		operand := v.detector.GetOperandName(n)
-		ctx.metrics.Operands[string(operand)]++
+func (v *Visitor) processNode(ctx *halsteadContext, n, parent *node.Node) {
+	if v.recordOperator(ctx, n) {
+		return
 	}
+
+	v.recordOperand(ctx, n, parent)
+}
+
+func (v *Visitor) recordOperator(ctx *halsteadContext, target *node.Node) bool {
+	if !v.detector.IsOperator(target) {
+		return false
+	}
+
+	operator := v.detector.GetOperatorName(target)
+	if operator == "" {
+		return true
+	}
+
+	ctx.metrics.Operators[string(operator)]++
+
+	return true
+}
+
+func (v *Visitor) recordOperand(ctx *halsteadContext, target, parent *node.Node) {
+	if !v.detector.IsOperand(target) || !v.detector.shouldCountOperand(target, parent) {
+		return
+	}
+
+	operand := v.detector.GetOperandName(target)
+	if operand == "" {
+		return
+	}
+
+	ctx.metrics.Operands[string(operand)]++
 }

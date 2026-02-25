@@ -23,6 +23,10 @@ const (
 
 	// MetricTotalFunctions is the label for the total functions metric.
 	MetricTotalFunctions = "Total Functions"
+	MetricDistinctOps    = "Distinct Operators (n1)"
+	MetricDistinctOpnds  = "Distinct Operands (n2)"
+	MetricTotalOps       = "Total Operators (N1)"
+	MetricTotalOpnds     = "Total Operands (N2)"
 	MetricVocabulary     = "Vocabulary"
 	MetricVolume         = "Volume"
 	MetricDifficulty     = "Difficulty"
@@ -55,6 +59,7 @@ const (
 	KeyFuncName       = "name"
 	KeyFuncEffort     = "effort"
 	KeyFuncVolume     = "volume"
+	KeyFuncBugs       = "delivered_bugs"
 
 	// DefaultStatusMessage is the fallback message when no Halstead data is available.
 	DefaultStatusMessage = "No Halstead data available"
@@ -94,6 +99,10 @@ func NewReportSection(report analyze.Report) *ReportSection {
 func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
 		{Label: MetricTotalFunctions, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyTotalFunctions))},
+		{Label: MetricDistinctOps, Value: reportutil.FormatInt(reportutil.GetInt(s.report, "distinct_operators"))},
+		{Label: MetricDistinctOpnds, Value: reportutil.FormatInt(reportutil.GetInt(s.report, "distinct_operands"))},
+		{Label: MetricTotalOps, Value: reportutil.FormatInt(reportutil.GetInt(s.report, "total_operators"))},
+		{Label: MetricTotalOpnds, Value: reportutil.FormatInt(reportutil.GetInt(s.report, "total_operands"))},
 		{Label: MetricVocabulary, Value: reportutil.FormatInt(reportutil.GetInt(s.report, KeyVocabulary))},
 		{Label: MetricVolume, Value: reportutil.FormatFloat(reportutil.GetFloat64(s.report, KeyVolume))},
 		{Label: MetricDifficulty, Value: reportutil.FormatFloat(reportutil.GetFloat64(s.report, KeyDifficulty))},
@@ -151,10 +160,12 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 	for _, fn := range functions {
 		name := reportutil.MapString(fn, KeyFuncName)
 		effort := reportutil.MapFloat64(fn, KeyFuncEffort)
+		volume := reportutil.MapFloat64(fn, KeyFuncVolume)
+		bugs := reportutil.MapFloat64(fn, KeyFuncBugs)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
-			Value:    reportutil.FormatFloat(effort),
-			Severity: severityForEffort(effort),
+			Value:    formatIssueValue(effort, volume, bugs),
+			Severity: severityForFunction(effort, bugs),
 		})
 	}
 
@@ -207,15 +218,22 @@ func categorizeVolume(functions []map[string]any) volumeDistCounts {
 
 // --- Severity helpers ---.
 
-func severityForEffort(effort float64) string {
-	switch {
-	case effort >= IssueSeverityPoorMin:
+func severityForFunction(effort, bugs float64) string {
+	if effort >= IssueSeverityPoorMin || bugs >= 1.0 {
 		return analyze.SeverityPoor
-	case effort >= IssueSeverityFairMin:
-		return analyze.SeverityFair
-	default:
-		return analyze.SeverityGood
 	}
+
+	if effort >= IssueSeverityFairMin || bugs >= 0.3 {
+		return analyze.SeverityFair
+	}
+
+	return analyze.SeverityGood
+}
+
+func formatIssueValue(effort, volume, bugs float64) string {
+	return "effort=" + reportutil.FormatFloat(effort) +
+		" | vol=" + reportutil.FormatFloat(volume) +
+		" | bugs=" + reportutil.FormatFloat(bugs)
 }
 
 // CreateReportSection creates a ReportSection from report data.

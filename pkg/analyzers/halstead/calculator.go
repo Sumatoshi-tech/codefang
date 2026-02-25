@@ -16,8 +16,6 @@ const (
 	TimeConstant = 18.0
 	// BugConstant is the standard constant used in delivered bugs estimation.
 	BugConstant = 3000.0
-	// BugExponent is the exponent used in delivered bugs calculation.
-	BugExponent = 2.0 / 3.0
 	// DifficultyDivisor is used in the difficulty formula: n1/2 * (N2/n2).
 	DifficultyDivisor = 2.0
 )
@@ -138,11 +136,6 @@ func (c *MetricsCalculator) CalculateHalsteadMetrics(metrics halsteadMetrics) {
 
 	metrics.setTimeToProgram(timeToProgram)
 
-	var deliveredBugs float64
-
-	if effort > 0 {
-		deliveredBugs = math.Pow(effort, BugExponent) / BugConstant
-	}
-
-	metrics.setDeliveredBugs(deliveredBugs)
+	// Use the commonly adopted Halstead delivered bugs approximation: B = V / 3000.
+	metrics.setDeliveredBugs(volume / BugConstant)
 }
