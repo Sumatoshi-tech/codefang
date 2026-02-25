@@ -115,10 +115,10 @@ func TestCohesionGetCohesionMessage(t *testing.T) {
 		score    float64
 	}{
 		{"Excellent", 0.9},
-		{"Excellent", 0.8},
-		{"Good", 0.7},
-		{"Good", 0.6},
-		{"Fair", 0.5},
+		{"Excellent", 0.7},
+		{"Good", 0.5},
+		{"Good", 0.4},
+		{"Fair", 0.35},
 		{"Fair", 0.3},
 		{"Poor", 0.2},
 		{"Poor", 0.1},

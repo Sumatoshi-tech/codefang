@@ -100,6 +100,7 @@ type LowCohesionFunctionData struct {
 type AggregateData struct {
 	TotalFunctions   int     `json:"total_functions"   yaml:"total_functions"`
 	LCOM             float64 `json:"lcom"              yaml:"lcom"`
+	LCOMVariant      string  `json:"lcom_variant"      yaml:"lcom_variant"`
 	CohesionScore    float64 `json:"cohesion_score"    yaml:"cohesion_score"`
 	FunctionCohesion float64 `json:"function_cohesion" yaml:"function_cohesion"`
 	HealthScore      float64 `json:"health_score"      yaml:"health_score"`
@@ -119,8 +120,9 @@ func NewFunctionCohesionMetric() *FunctionCohesionMetric {
 		MetricMeta: metrics.MetricMeta{
 			MetricName:        "function_cohesion",
 			MetricDisplayName: "Function Cohesion",
-			MetricDescription: "Per-function cohesion scores measuring how well variables are shared " +
-				"across methods. Higher scores (closer to 1.0) indicate better cohesion.",
+			MetricDescription: "Per-function cohesion scores based on variable sharing ratio. " +
+				"Measures what fraction of a function's variables are shared with other functions. " +
+				"Higher scores (closer to 1.0) indicate better cohesion.",
 			MetricType: "list",
 		},
 	}
@@ -128,8 +130,8 @@ func NewFunctionCohesionMetric() *FunctionCohesionMetric {
 
 // Cohesion quality thresholds.
 const (
-	CohesionThresholdExcellent = 0.8
-	CohesionThresholdGood      = 0.6
+	CohesionThresholdExcellent = 0.6
+	CohesionThresholdGood      = 0.4
 	CohesionThresholdFair      = 0.3
 
 	// Health score multiplier (converts 0-1 score to 0-100).
@@ -183,7 +185,7 @@ func NewDistributionMetric() *DistributionMetric {
 			MetricName:        "cohesion_distribution",
 			MetricDisplayName: "Cohesion Distribution",
 			MetricDescription: "Distribution of functions by cohesion quality level. " +
-				"Excellent (>=0.8), Good (>=0.6), Fair (>=0.3), Poor (<0.3).",
+				"Excellent (>=0.6), Good (>=0.4), Fair (>=0.3), Poor (<0.3).",
 			MetricType: "aggregate",
 		},
 	}
@@ -273,7 +275,7 @@ func NewAggregateMetric() *AggregateMetric {
 		MetricMeta: metrics.MetricMeta{
 			MetricName:        "cohesion_aggregate",
 			MetricDisplayName: "Cohesion Summary",
-			MetricDescription: "Aggregate cohesion statistics including LCOM (Lack of Cohesion of Methods) " +
+			MetricDescription: "Aggregate cohesion statistics including LCOM-HS (Henderson-Sellers) " +
 				"and normalized cohesion scores. Health score indicates overall design quality (0-100).",
 			MetricType: "aggregate",
 		},
@@ -285,6 +287,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	agg := AggregateData{
 		TotalFunctions:   input.TotalFunctions,
 		LCOM:             input.LCOM,
+		LCOMVariant:      "LCOM-HS (Henderson-Sellers)",
 		CohesionScore:    input.CohesionScore,
 		FunctionCohesion: input.FunctionCohesion,
 		Message:          input.Message,

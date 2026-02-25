@@ -170,6 +170,56 @@ func TestAllStaticAnalyzers_UniversalOutputFormats(t *testing.T) {
 	}
 }
 
+func TestStampSourceFile(t *testing.T) {
+	t.Parallel()
+
+	reports := map[string]analyze.Report{
+		"cohesion": {
+			"total_functions": 2,
+			"functions": []map[string]any{
+				{"name": "fnA", "cohesion": 0.8},
+				{"name": "fnB", "cohesion": 0.3},
+			},
+		},
+	}
+
+	analyze.StampSourceFile(reports, "/repo/pkg/auth/handler.go")
+
+	functions, ok := reports["cohesion"]["functions"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, functions, 2)
+
+	for _, fn := range functions {
+		require.Equal(t, "/repo/pkg/auth/handler.go", fn["_source_file"])
+	}
+}
+
+func TestStampSourceFile_EmptyReport(t *testing.T) {
+	t.Parallel()
+
+	reports := map[string]analyze.Report{}
+
+	require.NotPanics(t, func() {
+		analyze.StampSourceFile(reports, "/some/path.go")
+	})
+}
+
+func TestStampSourceFile_NoCollections(t *testing.T) {
+	t.Parallel()
+
+	reports := map[string]analyze.Report{
+		"cohesion": {
+			"total_functions": 5,
+			"lcom":            0.3,
+			"message":         "ok",
+		},
+	}
+
+	require.NotPanics(t, func() {
+		analyze.StampSourceFile(reports, "/some/path.go")
+	})
+}
+
 func testStaticAnalyzers() []analyze.StaticAnalyzer {
 	return []analyze.StaticAnalyzer{
 		complexity.NewAnalyzer(),

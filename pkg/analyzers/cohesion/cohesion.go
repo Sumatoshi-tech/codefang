@@ -17,21 +17,29 @@ import (
 )
 
 const (
-	cohesionThresholdHigh   = 0.8
+	// Cohesion assessment thresholds (higher cohesion is better).
+	cohesionThresholdHigh   = 0.6
 	cohesionThresholdLow    = 0.3
-	cohesionThresholdMedium = 0.6
-	countThresholdHigh      = 3
-	lineCountThresholdHigh  = 10
-	magic0p2                = 0.2
-	magic0p3                = 0.3
-	magic0p5                = 0.5
-	magic0p6                = 0.6
-	magic0p7                = 0.7
-	magic0p8                = 0.8
-	magic2p0                = 2.0
-	magic30                 = 30
-	magic4p0                = 4.0
-	magic7                  = 7
+	cohesionThresholdMedium = 0.4
+
+	// Variable count assessment thresholds.
+	countThresholdHigh     = 3
+	lineCountThresholdHigh = 10
+
+	// LCOM-HS thresholds (lower LCOM is better: 0 = perfect, 1 = no cohesion).
+	lcomThresholdGreen  = 0.3
+	lcomThresholdYellow = 0.6
+
+	// Cohesion score thresholds (higher is better).
+	cohesionScoreGreen  = 0.7
+	cohesionScoreYellow = 0.4
+
+	// Function cohesion thresholds (higher is better).
+	funcCohesionGreen  = 0.6
+	funcCohesionYellow = 0.3
+
+	magic7  = 7
+	magic30 = 30
 )
 
 // Name returns the analyzer name.
@@ -54,7 +62,7 @@ func (c *Analyzer) Descriptor() analyze.Descriptor {
 	return analyze.NewDescriptor(
 		analyze.ModeStatic,
 		c.Name(),
-		"Calculates LCOM and cohesion metrics.",
+		"Calculates LCOM-HS (Henderson-Sellers) and cohesion metrics.",
 	)
 }
 
@@ -69,22 +77,24 @@ func (c *Analyzer) Configure(_ map[string]any) error {
 }
 
 // Thresholds returns the color-coded thresholds for cohesion metrics.
+// LCOM-HS: lower is better (0 = perfect cohesion, 1 = no cohesion).
+// Cohesion score and function cohesion: higher is better.
 func (c *Analyzer) Thresholds() analyze.Thresholds {
 	return analyze.Thresholds{
 		"lcom": {
-			"red":    magic4p0,
-			"yellow": magic2p0,
-			"green":  1.0,
+			"green":  lcomThresholdGreen,
+			"yellow": lcomThresholdYellow,
+			"red":    1.0,
 		},
 		"cohesion_score": {
-			"red":    magic0p3,
-			"yellow": magic0p6,
-			"green":  magic0p8,
+			"red":    cohesionScoreYellow,
+			"yellow": cohesionScoreGreen,
+			"green":  1.0,
 		},
 		"function_cohesion": {
-			"red":    magic0p2,
-			"yellow": magic0p5,
-			"green":  magic0p7,
+			"red":    funcCohesionYellow,
+			"yellow": funcCohesionGreen,
+			"green":  1.0,
 		},
 	}
 }
@@ -109,10 +119,22 @@ func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 		return c.buildEmptyResult(), nil
 	}
 
+	// Compute per-function cohesion using variable sharing ratio.
+	// This requires the full list of functions to determine shared variables.
+	c.computePerFunctionCohesion(functions)
+
 	metrics := c.calculateMetrics(functions)
 	result := c.buildResult(functions, metrics)
 
 	return result, nil
+}
+
+// computePerFunctionCohesion computes per-function cohesion scores using the
+// variable sharing ratio. Must be called after all functions are extracted.
+func (c *Analyzer) computePerFunctionCohesion(functions []Function) {
+	for i := range functions {
+		functions[i].Cohesion = c.calculateFunctionLevelCohesion(functions[i], functions)
+	}
 }
 
 // buildEmptyResult creates an empty result when no functions are found.
@@ -346,21 +368,19 @@ func (c *Analyzer) extractFunctionsFromNodes(nodes []*node.Node) []Function {
 }
 
 // extractFunction extracts function data from a node.
+// Cohesion is set to 0.0 here; it is computed later in computePerFunctionCohesion
+// once all functions are available for variable sharing analysis.
 func (c *Analyzer) extractFunction(n *node.Node) Function {
 	variables := c.extractVariables(n)
 	name := c.extractFunctionName(n)
 	lineCount := c.traverser.CountLines(n)
 
-	function := Function{
+	return Function{
 		Name:      name,
 		LineCount: lineCount,
 		Variables: variables,
 		Cohesion:  0.0,
 	}
-
-	function.Cohesion = c.calculateFunctionLevelCohesion(function)
-
-	return function
 }
 
 // extractFunctionName extracts the function name from a node.

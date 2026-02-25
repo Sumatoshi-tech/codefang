@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	scoreThresholdHigh   = 0.8
+	scoreThresholdHigh   = 0.7
 	scoreThresholdLow    = 0.3
-	scoreThresholdMedium = 0.6
+	scoreThresholdMedium = 0.4
 )
 
 // Aggregator aggregates results from multiple cohesion analyses.

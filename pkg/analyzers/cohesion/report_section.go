@@ -18,16 +18,16 @@ const (
 	MetricFunctionCohesion = "Avg Cohesion"
 
 	// DistExcellentMin and related constants define distribution thresholds for function cohesion.
-	DistExcellentMin   = 0.8
-	DistGoodMin        = 0.6
+	DistExcellentMin   = 0.6
+	DistGoodMin        = 0.4
 	DistFairMin        = 0.3
-	DistLabelExcellent = "Excellent (>0.8)"
-	DistLabelGood      = "Good (0.6-0.8)"
-	DistLabelFair      = "Fair (0.3-0.6)"
+	DistLabelExcellent = "Excellent (>0.6)"
+	DistLabelGood      = "Good (0.4-0.6)"
+	DistLabelFair      = "Fair (0.3-0.4)"
 	DistLabelPoor      = "Poor (<0.3)"
 
 	// IssueSeverityFairMax and related constants define issue severity thresholds.
-	IssueSeverityFairMax = 0.6
+	IssueSeverityFairMax = 0.4
 	IssueSeverityPoorMax = 0.3
 	IssueValuePrefix     = "cohesion="
 

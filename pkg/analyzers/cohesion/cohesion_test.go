@@ -40,18 +40,18 @@ func TestAnalyzer_Thresholds(t *testing.T) {
 		}
 	}
 
-	// Check specific threshold values.
+	// LCOM-HS thresholds: lower is better.
 	if lcom, exists := thresholds["lcom"]; exists {
-		if red, ok := lcom["red"].(float64); !ok || red != 4.0 {
-			t.Errorf("Expected LCOM red threshold to be 4.0, got %v", red)
+		if green, ok := lcom["green"].(float64); !ok || green != 0.3 {
+			t.Errorf("Expected LCOM green threshold to be 0.3, got %v", green)
 		}
 
-		if yellow, ok := lcom["yellow"].(float64); !ok || yellow != 2.0 {
-			t.Errorf("Expected LCOM yellow threshold to be 2.0, got %v", yellow)
+		if yellow, ok := lcom["yellow"].(float64); !ok || yellow != 0.6 {
+			t.Errorf("Expected LCOM yellow threshold to be 0.6, got %v", yellow)
 		}
 
-		if green, ok := lcom["green"].(float64); !ok || green != 1.0 {
-			t.Errorf("Expected LCOM green threshold to be 1.0, got %v", green)
+		if red, ok := lcom["red"].(float64); !ok || red != 1.0 {
+			t.Errorf("Expected LCOM red threshold to be 1.0, got %v", red)
 		}
 	}
 }
@@ -186,7 +186,7 @@ func TestAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
 	root := &node.Node{
 		Type: "File",
 		Children: []*node.Node{
-			// Function 1.
+			// Function 1: uses sharedVar and localVar1.
 			{
 				Type:  "Function",
 				Roles: []node.Role{"Function", "Declaration"},
@@ -218,7 +218,7 @@ func TestAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
 					},
 				},
 			},
-			// Function 2.
+			// Function 2: uses sharedVar and localVar2.
 			{
 				Type:  "Function",
 				Roles: []node.Role{"Function", "Declaration"},
@@ -263,12 +263,12 @@ func TestAnalyzer_Analyze_MultipleFunctions(t *testing.T) {
 		t.Errorf("Expected total_functions to be 2, got %v", totalFunctions)
 	}
 
-	// Functions share a variable, so LCOM should be lower (can be negative when functions share many variables).
-	if lcom, ok := report["lcom"].(float64); !ok {
-		t.Errorf("Expected lcom to be a float64, got %v", lcom)
+	// LCOM-HS: 3 unique vars (sharedVar, localVar1, localVar2).
+	// sharedVar accessed by 2 functions, localVar1 by 1, localVar2 by 1 = sumMA = 4.
+	// LCOM = 1 - 4/(2*3) = 1 - 0.667 = 0.333.
+	if lcom, ok := report["lcom"].(float64); ok {
+		assert.InDelta(t, 1.0/3.0, lcom, 0.01, "LCOM-HS should be ~0.33 for partially shared variables")
 	}
-	// LCOM can be negative when functions share many variables (good cohesion)
-	// LCOM can be positive when functions don't share variables (poor cohesion).
 }
 
 func TestAnalyzer_FormatReport(t *testing.T) {
@@ -279,7 +279,7 @@ func TestAnalyzer_FormatReport(t *testing.T) {
 	// Create a test report.
 	report := analyze.Report{
 		"total_functions":   2,
-		"lcom":              1.5,
+		"lcom":              0.3,
 		"cohesion_score":    0.7,
 		"function_cohesion": 0.6,
 		"message":           "Good cohesion - functions are generally well-organized",
@@ -365,6 +365,11 @@ func TestAnalyzer_FormatReportJSON(t *testing.T) {
 	assert.Contains(t, jsonData, "distribution")
 	assert.Contains(t, jsonData, "low_cohesion_functions")
 	assert.Contains(t, jsonData, "aggregate")
+
+	// Verify LCOM variant is present in aggregate.
+	if agg, ok := jsonData["aggregate"].(map[string]any); ok {
+		assert.Equal(t, "LCOM-HS (Henderson-Sellers)", agg["lcom_variant"])
+	}
 }
 
 func TestAnalyzer_CreateAggregator(t *testing.T) {
@@ -392,9 +397,9 @@ func TestAggregator_Aggregate(t *testing.T) {
 	results := map[string]analyze.Report{
 		"file1": {
 			"total_functions":   2,
-			"lcom":              1.0,
-			"cohesion_score":    0.8,
-			"function_cohesion": 0.7,
+			"lcom":              0.3,
+			"cohesion_score":    0.7,
+			"function_cohesion": 0.6,
 			"functions": []map[string]any{
 				{
 					"name":           "function1",
@@ -406,7 +411,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 					"name":           "function2",
 					"line_count":     8,
 					"variable_count": 4,
-					"cohesion":       0.6,
+					"cohesion":       0.5,
 				},
 			},
 		},
@@ -435,12 +440,9 @@ func TestAggregator_Aggregate(t *testing.T) {
 		t.Errorf("Expected total_functions to be 3, got %v", totalFunctions)
 	}
 
-	if lcom, ok := result["lcom"].(float64); !ok || lcom != 0.5 {
-		t.Errorf("Expected lcom to be 0.5, got %v", lcom)
-	}
-
-	if cohesionScore, ok := result["cohesion_score"].(float64); !ok || cohesionScore != 0.9 {
-		t.Errorf("Expected cohesion_score to be 0.9, got %v", cohesionScore)
+	// Aggregation averages numeric keys: (0.3 + 0.0) / 2 = 0.15.
+	if lcom, ok := result["lcom"].(float64); ok {
+		assert.InDelta(t, 0.15, lcom, 0.01, "LCOM should be average of file LCOMs")
 	}
 
 	if functions, ok := result["functions"].([]map[string]any); !ok || len(functions) != 3 {
@@ -457,8 +459,8 @@ func TestAggregator_GetResult(t *testing.T) {
 	results := map[string]analyze.Report{
 		"file1": {
 			"total_functions":   2,
-			"lcom":              2.0,
-			"cohesion_score":    1.5,
+			"lcom":              0.4,
+			"cohesion_score":    0.6,
 			"function_cohesion": 0.8,
 			"functions": []map[string]any{
 				{
@@ -485,12 +487,8 @@ func TestAggregator_GetResult(t *testing.T) {
 		t.Errorf("Expected total_functions to be 2, got %v", totalFunctions)
 	}
 
-	if lcom, ok := result["lcom"].(float64); !ok || lcom != 2.0 {
-		t.Errorf("Expected lcom to be 2.0, got %v", lcom)
-	}
-
-	if cohesionScore, ok := result["cohesion_score"].(float64); !ok || cohesionScore != 1.5 {
-		t.Errorf("Expected cohesion_score to be 1.5, got %v", cohesionScore)
+	if lcom, ok := result["lcom"].(float64); !ok || lcom != 0.4 {
+		t.Errorf("Expected lcom to be 0.4, got %v", lcom)
 	}
 
 	if functions, ok := result["functions"].([]map[string]any); !ok || len(functions) != 2 {
@@ -519,32 +517,11 @@ func TestAggregator_GetResult_NoFunctions(t *testing.T) {
 	}
 }
 
+// TestAnalyzer_HelperFunctions tests core calculation helpers.
 func TestAnalyzer_HelperFunctions(t *testing.T) {
 	t.Parallel()
 
 	analyzer := NewAnalyzer()
-
-	// Test haveSharedVariables.
-	fn1 := Function{
-		Name:      "func1",
-		Variables: []string{"a", "b", "c"},
-	}
-	fn2 := Function{
-		Name:      "func2",
-		Variables: []string{"b", "d", "e"},
-	}
-	fn3 := Function{
-		Name:      "func3",
-		Variables: []string{"x", "y", "z"},
-	}
-
-	if !analyzer.haveSharedVariables(fn1, fn2) {
-		t.Error("Expected fn1 and fn2 to have shared variables")
-	}
-
-	if analyzer.haveSharedVariables(fn1, fn3) {
-		t.Error("Expected fn1 and fn3 to not have shared variables")
-	}
 
 	// Test calculateCohesionScore.
 	score1 := analyzer.calculateCohesionScore(0.0, 1)
@@ -552,10 +529,9 @@ func TestAnalyzer_HelperFunctions(t *testing.T) {
 		t.Errorf("Expected cohesion score to be 1.0 for single function, got %f", score1)
 	}
 
-	score2 := analyzer.calculateCohesionScore(2.0, 3)
-	if score2 <= 0.0 || score2 > 1.0 {
-		t.Errorf("Expected cohesion score to be between 0 and 1, got %f", score2)
-	}
+	// LCOM-HS of 0.3 -> cohesion = 1.0 - 0.3 = 0.7.
+	score2 := analyzer.calculateCohesionScore(0.3, 3)
+	assert.InDelta(t, 0.7, score2, 0.001)
 
 	// Test calculateFunctionCohesion.
 	functions := []Function{
@@ -570,15 +546,143 @@ func TestAnalyzer_HelperFunctions(t *testing.T) {
 		t.Errorf("Expected average cohesion to be %f, got %f", expected, avgCohesion)
 	}
 
-	// Test getCohesionMessage.
-	message1 := analyzer.getCohesionMessage(0.9)
+	// Test getCohesionMessage with new thresholds.
+	message1 := analyzer.getCohesionMessage(0.8)
 	if !strings.Contains(message1, "Excellent") {
-		t.Errorf("Expected excellent message for score 0.9, got: %s", message1)
+		t.Errorf("Expected excellent message for score 0.8, got: %s", message1)
 	}
 
 	message2 := analyzer.getCohesionMessage(0.2)
 	if !strings.Contains(message2, "Poor") {
 		t.Errorf("Expected poor message for score 0.2, got: %s", message2)
+	}
+}
+
+// TestCalculateLCOM_HS verifies the Henderson-Sellers LCOM formula against known answers.
+func TestCalculateLCOM_HS(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	testCases := []struct {
+		name      string
+		functions []Function
+		expected  float64
+	}{
+		{
+			name:      "empty function list",
+			functions: []Function{},
+			expected:  0.0,
+		},
+		{
+			name:      "single function",
+			functions: []Function{{Name: "f1", Variables: []string{"a", "b"}}},
+			expected:  0.0,
+		},
+		{
+			name: "perfect cohesion - all functions share all variables",
+			functions: []Function{
+				{Name: "f1", Variables: []string{"a", "b"}},
+				{Name: "f2", Variables: []string{"a", "b"}},
+			},
+			// 2 vars, each accessed by 2 funcs: sumMA = 4, LCOM = 1 - 4/(2*2) = 0.0.
+			expected: 0.0,
+		},
+		{
+			name: "no cohesion - no shared variables",
+			functions: []Function{
+				{Name: "f1", Variables: []string{"a"}},
+				{Name: "f2", Variables: []string{"b"}},
+			},
+			// 2 vars, each accessed by 1 func: sumMA = 2, LCOM = 1 - 2/(2*2) = 0.5.
+			expected: 0.5,
+		},
+		{
+			name: "partial sharing - 3 functions, 4 vars",
+			functions: []Function{
+				{Name: "f1", Variables: []string{"a", "b"}},
+				{Name: "f2", Variables: []string{"b", "c"}},
+				{Name: "f3", Variables: []string{"c", "d"}},
+			},
+			// 4 unique vars: a(1), b(2), c(2), d(1). sumMA = 6.
+			// LCOM = 1 - 6/(3*4) = 1 - 0.5 = 0.5.
+			expected: 0.5,
+		},
+		{
+			name: "no variables at all",
+			functions: []Function{
+				{Name: "f1", Variables: []string{}},
+				{Name: "f2", Variables: []string{}},
+			},
+			expected: 0.0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := analyzer.calculateLCOM(tc.functions)
+			assert.InDelta(t, tc.expected, result, 0.001,
+				"LCOM-HS mismatch for %s", tc.name)
+		})
+	}
+}
+
+// TestVariableSharingRatio verifies the function-level sharing ratio metric.
+func TestVariableSharingRatio(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	allFunctions := []Function{
+		{Name: "f1", Variables: []string{"shared", "local1"}},
+		{Name: "f2", Variables: []string{"shared", "local2"}},
+		{Name: "f3", Variables: []string{"isolated"}},
+	}
+
+	testCases := []struct {
+		name     string
+		fn       Function
+		expected float64
+	}{
+		{
+			name: "f1 - one shared, one local",
+			fn:   allFunctions[0],
+			// "shared" is in f2, "local1" is not in f2 or f3.
+			// shared=1, total=2, cohesion=0.5.
+			expected: 0.5,
+		},
+		{
+			name: "f2 - one shared, one local",
+			fn:   allFunctions[1],
+			// "shared" is in f1, "local2" is not elsewhere.
+			// shared=1, total=2, cohesion=0.5.
+			expected: 0.5,
+		},
+		{
+			name: "f3 - completely isolated",
+			fn:   allFunctions[2],
+			// "isolated" is not in f1 or f2.
+			// shared=0, total=1, cohesion=0.0.
+			expected: 0.0,
+		},
+		{
+			name: "function with no variables",
+			fn:   Function{Name: "empty", Variables: []string{}},
+			// No variables -> perfect cohesion (trivial function).
+			expected: 1.0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := analyzer.calculateFunctionLevelCohesion(tc.fn, allFunctions)
+			assert.InDelta(t, tc.expected, result, 0.001,
+				"Sharing ratio mismatch for %s", tc.name)
+		})
 	}
 }
 
@@ -599,121 +703,20 @@ func TestAnalyzer_EdgeCases(t *testing.T) {
 		t.Errorf("Expected LCOM to be 0.0 for single function, got %f", lcom)
 	}
 
-	// Test function-level cohesion with zero lines.
-	fn := Function{LineCount: 0, Variables: []string{"a", "b"}}
+	// Test function-level cohesion with no variables (trivial function).
+	allFns := []Function{{Name: "f1", Variables: []string{}}}
+	cohesion := analyzer.calculateFunctionLevelCohesion(allFns[0], allFns)
+	assert.InDelta(t, 1.0, cohesion, 0.001, "Function with no variables should have perfect cohesion")
 
-	cohesion := analyzer.calculateFunctionLevelCohesion(fn)
-	if cohesion != 1.0 {
-		t.Errorf("Expected cohesion to be 1.0 for zero lines, got %f", cohesion)
+	// Test function-level cohesion where all variables are shared.
+	allFns = []Function{
+		{Name: "f1", Variables: []string{"a", "b"}},
+		{Name: "f2", Variables: []string{"a", "b"}},
 	}
-
-	// Test function-level cohesion with high variable density.
-	fn = Function{LineCount: 2, Variables: []string{"a", "b", "c", "d", "e"}}
-
-	cohesion = analyzer.calculateFunctionLevelCohesion(fn)
-	if cohesion < 0.0 || cohesion > 1.0 {
-		t.Errorf("Expected cohesion to be between 0 and 1, got %f", cohesion)
-	}
+	cohesion = analyzer.calculateFunctionLevelCohesion(allFns[0], allFns)
+	assert.InDelta(t, 1.0, cohesion, 0.001, "Function with all shared variables should have perfect cohesion")
 }
 
-func TestAnalyzer_ImprovedFunctionCohesion(t *testing.T) {
-	t.Parallel()
-
-	analyzer := NewAnalyzer()
-
-	testCases := []struct {
-		name        string
-		description string
-		function    Function
-		expectedMin float64
-		expectedMax float64
-	}{
-		{
-			name: "Small function with few variables",
-			function: Function{
-				Name:      "register",
-				LineCount: 3,
-				Variables: []string{"analyzer", "name"},
-			},
-			expectedMin: 1.0,
-			expectedMax: 1.0,
-			description: "Small, focused functions should have perfect cohesion",
-		},
-		{
-			name: "Small function at boundary",
-			function: Function{
-				Name:      "process",
-				LineCount: 5,
-				Variables: []string{"input", "output", "temp"},
-			},
-			expectedMin: 1.0,
-			expectedMax: 1.0,
-			description: "Small functions with 3 or fewer variables should have perfect cohesion",
-		},
-		{
-			name: "Small function with more variables",
-			function: Function{
-				Name:      "validate",
-				LineCount: 4,
-				Variables: []string{"a", "b", "c", "d", "e"},
-			},
-			expectedMin: 0.7,
-			expectedMax: 0.8,
-			description: "Small functions with more variables should have gentle penalty",
-		},
-		{
-			name: "Medium function with low density",
-			function: Function{
-				Name:      "process",
-				LineCount: 10,
-				Variables: []string{"input", "output", "temp"},
-			},
-			expectedMin: 0.7,
-			expectedMax: 1.0,
-			description: "Medium functions with low variable density should have good cohesion",
-		},
-		{
-			name: "Large function with moderate density",
-			function: Function{
-				Name:      "complex",
-				LineCount: 20,
-				Variables: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
-			},
-			expectedMin: 0.2,
-			expectedMax: 0.8,
-			description: "Large functions should use logarithmic scaling",
-		},
-		{
-			name: "Single line function",
-			function: Function{
-				Name:      "getter",
-				LineCount: 1,
-				Variables: []string{"field"},
-			},
-			expectedMin: 1.0,
-			expectedMax: 1.0,
-			description: "Single line functions should have perfect cohesion",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			cohesion := analyzer.calculateFunctionLevelCohesion(tc.function)
-
-			if cohesion < tc.expectedMin || cohesion > tc.expectedMax {
-				t.Errorf("%s: Expected cohesion between %.2f and %.2f, got %.2f",
-					tc.description, tc.expectedMin, tc.expectedMax, cohesion)
-			}
-
-			// Ensure cohesion is always between 0 and 1.
-			if cohesion < 0.0 || cohesion > 1.0 {
-				t.Errorf("Cohesion must be between 0 and 1, got %.2f", cohesion)
-			}
-		})
-	}
-}
 func TestAnalyzer_Integration(t *testing.T) {
 	t.Parallel()
 
@@ -870,6 +873,12 @@ func TestAnalyzer_Integration(t *testing.T) {
 		}
 	}
 
+	// LCOM should be valid (0-1 range for LCOM-HS).
+	if lcom, ok := report["lcom"].(float64); ok {
+		assert.GreaterOrEqual(t, lcom, 0.0)
+		assert.LessOrEqual(t, lcom, 1.0)
+	}
+
 	// Test aggregator with this result.
 	aggregator := analyzer.CreateAggregator()
 	results := map[string]analyze.Report{"test": report}
@@ -968,7 +977,7 @@ func createBenchmarkResults() map[string]analyze.Report {
 	for i := range 10 {
 		results[fmt.Sprintf("file%d", i)] = analyze.Report{
 			"total_functions":   5,
-			"lcom":              float64(i),
+			"lcom":              float64(i) * 0.1,
 			"cohesion_score":    0.5 + float64(i)*0.05,
 			"function_cohesion": 0.6 + float64(i)*0.04,
 			"functions": []map[string]any{
@@ -994,8 +1003,8 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 
 	report := analyze.Report{
 		"total_functions":   3,
-		"lcom":              2.5,
-		"cohesion_score":    0.7,
+		"lcom":              0.25,
+		"cohesion_score":    0.75,
 		"function_cohesion": 0.65,
 		"message":           "Test message",
 		"functions": []map[string]any{
@@ -1012,4 +1021,192 @@ func TestAnalyzer_FormatReportYAML(t *testing.T) {
 	assert.Contains(t, output, "function_cohesion:")
 	assert.Contains(t, output, "distribution:")
 	assert.Contains(t, output, "aggregate:")
+	assert.Contains(t, output, "lcom_variant:")
+}
+
+// --- Coverage for uncovered methods ---.
+
+func TestAnalyzer_Flag(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	assert.Equal(t, "cohesion-analysis", analyzer.Flag())
+}
+
+func TestAnalyzer_Description(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	desc := analyzer.Description()
+	assert.Contains(t, desc, "LCOM-HS")
+}
+
+func TestAnalyzer_Descriptor(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	d := analyzer.Descriptor()
+	assert.Equal(t, "static/cohesion", d.ID)
+	assert.Contains(t, d.Description, "Henderson-Sellers")
+	assert.Equal(t, analyze.ModeStatic, d.Mode)
+}
+
+func TestAnalyzer_ListConfigurationOptions(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	opts := analyzer.ListConfigurationOptions()
+	assert.Empty(t, opts)
+}
+
+func TestAnalyzer_Configure(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	err := analyzer.Configure(map[string]any{"key": "value"})
+	assert.NoError(t, err)
+}
+
+func TestAnalyzer_CreateVisitor(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+	visitor := analyzer.CreateVisitor()
+	assert.NotNil(t, visitor)
+}
+
+func TestAnalyzer_FormatReportBinary(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	report := analyze.Report{
+		"total_functions":   2,
+		"lcom":              0.2,
+		"cohesion_score":    0.8,
+		"function_cohesion": 0.7,
+		"message":           "Good cohesion",
+		"functions": []map[string]any{
+			{"name": "fn1", "cohesion": 0.9},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := analyzer.FormatReportBinary(report, &buf)
+	require.NoError(t, err)
+	assert.Positive(t, buf.Len())
+}
+
+func TestAnalyzer_GetCohesionAssessment(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	tests := []struct {
+		cohesion float64
+		contains string
+	}{
+		{0.8, "Excellent"},
+		{0.6, "Excellent"},
+		{0.5, "Good"},
+		{0.4, "Good"},
+		{0.35, "Fair"},
+		{0.3, "Fair"},
+		{0.2, "Poor"},
+		{0.0, "Poor"},
+	}
+
+	for _, tt := range tests {
+		result := analyzer.getCohesionAssessment(tt.cohesion)
+		assert.Contains(t, result, tt.contains, "cohesion=%.2f", tt.cohesion)
+	}
+}
+
+func TestAnalyzer_GetVariableAssessment(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	tests := []struct {
+		count    int
+		contains string
+	}{
+		{1, "Few"},
+		{3, "Few"},
+		{5, "Moderate"},
+		{7, "Moderate"},
+		{8, "Many"},
+		{20, "Many"},
+	}
+
+	for _, tt := range tests {
+		result := analyzer.getVariableAssessment(tt.count)
+		assert.Contains(t, result, tt.contains, "count=%d", tt.count)
+	}
+}
+
+func TestAnalyzer_GetSizeAssessment(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	tests := []struct {
+		lineCount int
+		contains  string
+	}{
+		{5, "Small"},
+		{10, "Small"},
+		{15, "Medium"},
+		{30, "Medium"},
+		{31, "Large"},
+		{100, "Large"},
+	}
+
+	for _, tt := range tests {
+		result := analyzer.getSizeAssessment(tt.lineCount)
+		assert.Contains(t, result, tt.contains, "lineCount=%d", tt.lineCount)
+	}
+}
+
+func TestAnalyzer_GetCohesionMessage_AllBranches(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	tests := []struct {
+		score    float64
+		contains string
+	}{
+		{0.8, "Excellent"},
+		{0.7, "Excellent"},
+		{0.5, "Good"},
+		{0.4, "Good"},
+		{0.35, "Fair"},
+		{0.3, "Fair"},
+		{0.2, "Poor"},
+		{0.0, "Poor"},
+	}
+
+	for _, tt := range tests {
+		result := analyzer.getCohesionMessage(tt.score)
+		assert.Contains(t, result, tt.contains, "score=%.2f", tt.score)
+	}
+}
+
+func TestAnalyzer_CreateReportSection(t *testing.T) {
+	t.Parallel()
+
+	analyzer := NewAnalyzer()
+
+	report := analyze.Report{
+		"total_functions":   2,
+		"lcom":              0.3,
+		"cohesion_score":    0.7,
+		"function_cohesion": 0.6,
+		"message":           "Test message",
+	}
+
+	section := analyzer.CreateReportSection(report)
+	assert.NotNil(t, section)
 }
