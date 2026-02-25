@@ -130,13 +130,17 @@ func (m *FileCouplingMetric) Compute(input *ReportData) []FileCouplingData {
 
 			file2 := input.Files[j]
 
-			// Calculate coupling strength (normalized by max possible).
-			maxChanges := max(coChanges, row[i])
+			// Calculate coupling strength using code-maat formula:
+			// degree = co_changes / average(revisions_file1, revisions_file2)
+			// where revisions = diagonal element (self-change count).
+			selfI := row[i]                       // file1 self-changes.
+			selfJ := input.FilesMatrix[j][j]      // file2 self-changes.
+			avgRevs := float64(selfI+selfJ) / 2.0 //nolint:mnd // average of two values.
 
 			var strength float64
 
-			if maxChanges > 0 {
-				strength = float64(coChanges) / float64(maxChanges)
+			if avgRevs > 0 {
+				strength = min(float64(coChanges)/avgRevs, 1.0)
 			}
 
 			result = append(result, FileCouplingData{
@@ -179,7 +183,7 @@ func (m *DeveloperCouplingMetric) Compute(input *ReportData) []DeveloperCoupling
 	result := make([]DeveloperCouplingData, 0, len(input.PeopleMatrix))
 
 	for i, row := range input.PeopleMatrix {
-		couplings := computeDevCouplings(i, row, input.ReversedPeopleDict)
+		couplings := computeDevCouplings(i, row, input.PeopleMatrix, input.ReversedPeopleDict)
 		result = append(result, couplings...)
 	}
 
@@ -190,7 +194,7 @@ func (m *DeveloperCouplingMetric) Compute(input *ReportData) []DeveloperCoupling
 	return result
 }
 
-func computeDevCouplings(devIdx int, row map[int]int64, names []string) []DeveloperCouplingData {
+func computeDevCouplings(devIdx int, row map[int]int64, matrix []map[int]int64, names []string) []DeveloperCouplingData {
 	dev1 := getDevName(devIdx, names)
 
 	var result []DeveloperCouplingData
@@ -200,20 +204,28 @@ func computeDevCouplings(devIdx int, row map[int]int64, names []string) []Develo
 			continue
 		}
 
-		coupling := buildCouplingData(dev1, j, sharedChanges, row[devIdx], names)
+		selfDev2 := int64(0)
+		if j < len(matrix) {
+			selfDev2 = matrix[j][j]
+		}
+
+		coupling := buildCouplingData(dev1, j, sharedChanges, row[devIdx], selfDev2, names)
 		result = append(result, coupling)
 	}
 
 	return result
 }
 
-func buildCouplingData(dev1 string, dev2Idx int, sharedChanges, selfChanges int64, names []string) DeveloperCouplingData {
+func buildCouplingData(dev1 string, dev2Idx int, sharedChanges, selfDev1, selfDev2 int64, names []string) DeveloperCouplingData {
 	dev2 := getDevName(dev2Idx, names)
-	maxChanges := max(sharedChanges, selfChanges)
+
+	// Coupling strength using code-maat formula:
+	// degree = shared_changes / average(self_dev1, self_dev2), capped at 1.0.
+	avgRevs := float64(selfDev1+selfDev2) / 2.0 //nolint:mnd // average of two values.
 
 	var strength float64
-	if maxChanges > 0 {
-		strength = float64(sharedChanges) / float64(maxChanges)
+	if avgRevs > 0 {
+		strength = min(float64(sharedChanges)/avgRevs, 1.0)
 	}
 
 	return DeveloperCouplingData{
@@ -302,6 +314,28 @@ func NewAggregateMetric() *AggregateMetric {
 	}
 }
 
+// aggregateAccum accumulates statistics while iterating file pairs.
+type aggregateAccum struct {
+	totalCoChanges int64
+	pairCount      int
+	highlyCoupled  int
+	totalStrength  float64
+}
+
+func (a *aggregateAccum) addPair(coChanges, selfI, selfJ int64) {
+	a.totalCoChanges += coChanges
+	a.pairCount++
+
+	if coChanges >= CouplingThresholdHigh {
+		a.highlyCoupled++
+	}
+
+	avgRevs := float64(selfI+selfJ) / 2.0 //nolint:mnd // average of two values.
+	if avgRevs > 0 {
+		a.totalStrength += min(float64(coChanges)/avgRevs, 1.0)
+	}
+}
+
 // Compute calculates aggregate statistics.
 func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 	agg := AggregateData{
@@ -309,37 +343,132 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 		TotalDevelopers: len(input.ReversedPeopleDict),
 	}
 
-	var totalCoChanges int64
-
-	var pairCount int
-
-	var highlyCouplded int
+	var acc aggregateAccum
 
 	for i, row := range input.FilesMatrix {
 		for j, coChanges := range row {
-			if j <= i {
+			if j <= i || coChanges <= 0 {
 				continue
 			}
 
-			if coChanges > 0 {
-				totalCoChanges += coChanges
-				pairCount++
+			acc.addPair(coChanges, row[i], input.FilesMatrix[j][j])
+		}
+	}
 
-				if coChanges >= CouplingThresholdHigh {
-					highlyCouplded++
-				}
+	agg.TotalCoChanges = acc.totalCoChanges
+	agg.HighlyCoupledPairs = acc.highlyCoupled
+
+	if acc.pairCount > 0 {
+		agg.AvgCouplingStrength = acc.totalStrength / float64(acc.pairCount)
+	}
+
+	return agg
+}
+
+// --- Data Reduction / Bucketing (used by both text and plot renderers) ---.
+
+// OwnershipBucket categorizes files by their contributor count.
+type OwnershipBucket struct {
+	Label string `json:"label" yaml:"label"`
+	Count int    `json:"count" yaml:"count"`
+}
+
+// Ownership contributor count thresholds.
+const (
+	ownershipFewThreshold      = 3
+	ownershipModerateThreshold = 5
+)
+
+// BucketOwnership groups file ownership data into contributor count categories.
+func BucketOwnership(ownership []FileOwnershipData) []OwnershipBucket {
+	single, few, moderate, many := 0, 0, 0, 0
+
+	for _, fo := range ownership {
+		switch {
+		case fo.Contributors <= 1:
+			single++
+		case fo.Contributors <= ownershipFewThreshold:
+			few++
+		case fo.Contributors <= ownershipModerateThreshold:
+			moderate++
+		default:
+			many++
+		}
+	}
+
+	return []OwnershipBucket{
+		{Label: "Single owner", Count: single},
+		{Label: "2-3 owners", Count: few},
+		{Label: "4-5 owners", Count: moderate},
+		{Label: "6+ owners", Count: many},
+	}
+}
+
+// SortOwnershipByRisk returns a copy sorted by contributors ascending (highest risk first).
+func SortOwnershipByRisk(ownership []FileOwnershipData) []FileOwnershipData {
+	sorted := make([]FileOwnershipData, len(ownership))
+	copy(sorted, ownership)
+
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Contributors < sorted[j].Contributors
+	})
+
+	return sorted
+}
+
+// FilterTopDevs limits a developer coupling matrix to the top N developers
+// ranked by diagonal value (activity). Returns the original data if within limit.
+func FilterTopDevs(matrix []map[int]int64, names []string, limit int) (filtered []map[int]int64, filteredNames []string) {
+	if len(names) <= limit {
+		return matrix, names
+	}
+
+	// Rank developers by diagonal value (self-activity).
+	type devActivity struct {
+		idx      int
+		activity int64
+	}
+
+	devs := make([]devActivity, len(names))
+	for i := range names {
+		devs[i] = devActivity{idx: i, activity: matrix[i][i]}
+	}
+
+	sort.Slice(devs, func(a, b int) bool {
+		return devs[a].activity > devs[b].activity
+	})
+
+	// Take top N.
+	topN := devs[:limit]
+
+	// Build index mapping: old index → new index.
+	oldToNew := make(map[int]int, limit)
+	newNames := make([]string, limit)
+
+	for newIdx, d := range topN {
+		oldToNew[d.idx] = newIdx
+		newNames[newIdx] = names[d.idx]
+	}
+
+	// Build filtered sub-matrix.
+	newMatrix := make([]map[int]int64, limit)
+	for i := range newMatrix {
+		newMatrix[i] = make(map[int]int64)
+	}
+
+	for _, d := range topN {
+		oldI := d.idx
+		newI := oldToNew[oldI]
+
+		for oldJ, val := range matrix[oldI] {
+			newJ, ok := oldToNew[oldJ]
+			if ok {
+				newMatrix[newI][newJ] = val
 			}
 		}
 	}
 
-	agg.TotalCoChanges = totalCoChanges
-	agg.HighlyCoupledPairs = highlyCouplded
-
-	if pairCount > 0 {
-		agg.AvgCouplingStrength = float64(totalCoChanges) / float64(pairCount)
-	}
-
-	return agg
+	return newMatrix, newNames
 }
 
 // --- Computed Metrics ---.

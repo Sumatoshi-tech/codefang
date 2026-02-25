@@ -108,8 +108,8 @@ func TestFileCouplingMetric_SinglePair(t *testing.T) {
 	assert.Equal(t, testFile1, result[0].File1)
 	assert.Equal(t, testFile2, result[0].File2)
 	assert.Equal(t, int64(5), result[0].CoChanges)
-	// Strength = 5 / max(5, 10) = 5/10 = 0.5.
-	assert.InDelta(t, 0.5, result[0].Strength, floatDelta)
+	// Strength = co_changes / avg(self_file1, self_file2) = 5 / avg(10, 8) = 5/9 ≈ 0.556.
+	assert.InDelta(t, 5.0/9.0, result[0].Strength, floatDelta)
 }
 
 func TestFileCouplingMetric_MultiplePairs_SortedByCoChanges(t *testing.T) {
@@ -213,8 +213,8 @@ func TestDeveloperCouplingMetric_SinglePair(t *testing.T) {
 	assert.Equal(t, testDev1, result[0].Developer1)
 	assert.Equal(t, testDev2, result[0].Developer2)
 	assert.Equal(t, int64(10), result[0].SharedFiles)
-	// Strength = 10 / max(10, 20) = 0.5.
-	assert.InDelta(t, 0.5, result[0].Strength, floatDelta)
+	// Strength = shared / avg(self_dev1, self_dev2) = 10 / avg(20, 15) = 10/17.5 ≈ 0.571.
+	assert.InDelta(t, 10.0/17.5, result[0].Strength, floatDelta)
 }
 
 func TestDeveloperCouplingMetric_MultiplePairs_SortedBySharedFiles(t *testing.T) {
@@ -424,8 +424,12 @@ func TestCouplesAggregateMetric_WithData(t *testing.T) {
 	assert.Equal(t, 2, result.TotalDevelopers)
 	// Total co-changes = 15 + 5 + 3 = 23 (upper triangle only).
 	assert.Equal(t, int64(23), result.TotalCoChanges)
-	// 3 pairs with non-zero changes.
-	assert.InDelta(t, 23.0/3.0, result.AvgCouplingStrength, floatDelta)
+	// AvgCouplingStrength = average of per-pair strengths using code-maat formula:
+	//   file1-file2: min(15/avg(10,8), 1.0) = min(15/9, 1.0) = 1.0
+	//   file1-file3: 5/avg(10,6) = 5/8 = 0.625
+	//   file2-file3: 3/avg(8,6) = 3/7 ≈ 0.4286
+	//   avg = (1.0 + 0.625 + 0.4286) / 3 ≈ 0.6845
+	assert.InDelta(t, (1.0+5.0/8.0+3.0/7.0)/3.0, result.AvgCouplingStrength, floatDelta)
 	// Highly coupled pairs (>= 10): 15 only.
 	assert.Equal(t, 1, result.HighlyCoupledPairs)
 }
@@ -543,4 +547,120 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 	result := m.ToYAML()
 
 	assert.Equal(t, m, result)
+}
+
+// --- BucketOwnership Tests ---.
+
+func TestBucketOwnership_Empty(t *testing.T) {
+	t.Parallel()
+
+	buckets := BucketOwnership(nil)
+	require.Len(t, buckets, 4)
+
+	for _, b := range buckets {
+		assert.Zero(t, b.Count)
+	}
+}
+
+func TestBucketOwnership_AllCategories(t *testing.T) {
+	t.Parallel()
+
+	ownership := []FileOwnershipData{
+		{File: "a.go", Contributors: 0},  // Single.
+		{File: "b.go", Contributors: 1},  // Single.
+		{File: "c.go", Contributors: 2},  // Few (2-3).
+		{File: "d.go", Contributors: 3},  // Few (2-3).
+		{File: "e.go", Contributors: 4},  // Moderate (4-5).
+		{File: "f.go", Contributors: 5},  // Moderate (4-5).
+		{File: "g.go", Contributors: 6},  // Many (6+).
+		{File: "h.go", Contributors: 10}, // Many (6+).
+	}
+
+	buckets := BucketOwnership(ownership)
+	require.Len(t, buckets, 4)
+
+	assert.Equal(t, "Single owner", buckets[0].Label)
+	assert.Equal(t, 2, buckets[0].Count)
+
+	assert.Equal(t, "2-3 owners", buckets[1].Label)
+	assert.Equal(t, 2, buckets[1].Count)
+
+	assert.Equal(t, "4-5 owners", buckets[2].Label)
+	assert.Equal(t, 2, buckets[2].Count)
+
+	assert.Equal(t, "6+ owners", buckets[3].Label)
+	assert.Equal(t, 2, buckets[3].Count)
+}
+
+// --- SortOwnershipByRisk Tests ---.
+
+func TestSortOwnershipByRisk_SortsAscending(t *testing.T) {
+	t.Parallel()
+
+	ownership := []FileOwnershipData{
+		{File: "a.go", Contributors: 5},
+		{File: "b.go", Contributors: 1},
+		{File: "c.go", Contributors: 3},
+	}
+
+	sorted := SortOwnershipByRisk(ownership)
+	require.Len(t, sorted, 3)
+	assert.Equal(t, "b.go", sorted[0].File) // 1 = highest risk.
+	assert.Equal(t, "c.go", sorted[1].File) // 3
+	assert.Equal(t, "a.go", sorted[2].File) // 5 = lowest risk.
+}
+
+func TestSortOwnershipByRisk_DoesNotMutateOriginal(t *testing.T) {
+	t.Parallel()
+
+	ownership := []FileOwnershipData{
+		{File: "a.go", Contributors: 5},
+		{File: "b.go", Contributors: 1},
+	}
+
+	sorted := SortOwnershipByRisk(ownership)
+
+	// Original should remain unchanged.
+	assert.Equal(t, "a.go", ownership[0].File)
+	assert.Equal(t, "b.go", sorted[0].File)
+}
+
+// --- FilterTopDevs Tests ---.
+
+func TestFilterTopDevs_UnderLimit(t *testing.T) {
+	t.Parallel()
+
+	matrix := []map[int]int64{
+		{0: 10, 1: 3},
+		{0: 3, 1: 20},
+	}
+	names := []string{"alice", "bob"}
+
+	fm, fn := FilterTopDevs(matrix, names, 5)
+	assert.Equal(t, matrix, fm)
+	assert.Equal(t, names, fn)
+}
+
+func TestFilterTopDevs_OverLimit(t *testing.T) {
+	t.Parallel()
+
+	// 3 devs, limit to 2: charlie (diag=30) and bob (diag=20) should remain.
+	matrix := []map[int]int64{
+		{0: 10, 1: 5, 2: 2},
+		{0: 5, 1: 20, 2: 8},
+		{0: 2, 1: 8, 2: 30},
+	}
+	names := []string{"alice", "bob", "charlie"}
+
+	fm, fn := FilterTopDevs(matrix, names, 2)
+	require.Len(t, fn, 2)
+	require.Len(t, fm, 2)
+
+	// Top 2 by diagonal: charlie (30), bob (20).
+	assert.Equal(t, "charlie", fn[0])
+	assert.Equal(t, "bob", fn[1])
+
+	// Verify coupling between charlie and bob is preserved.
+	assert.Equal(t, int64(8), fm[0][1])
+	assert.Equal(t, int64(8), fm[1][0])
 }

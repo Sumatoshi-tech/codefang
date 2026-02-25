@@ -3,16 +3,11 @@ package couples
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/identity"
@@ -166,6 +161,12 @@ func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 		CommitCounted: true,
 	}
 
+	// Skip oversized changesets — mass changes (formatting, license headers,
+	// dependency bumps) produce noise rather than meaningful coupling signal.
+	if len(c.TreeDiff.Changes) > CouplesMaximumMeaningfulContextSize {
+		return analyze.TC{Data: &data}, nil
+	}
+
 	for _, change := range c.TreeDiff.Changes {
 		c.processChange(change, mergeMode, author, &data)
 	}
@@ -201,19 +202,21 @@ func (c *HistoryAnalyzer) processChange(change *gitlib.Change, mergeMode bool, a
 		c.seenFiles[name] = true
 
 		if author != identity.AuthorMissing {
-			data.AuthorFiles[name] = author
+			data.AuthorFiles[name] = 1
 		}
 
 		return
 	}
 
 	if !c.seenFiles[name] {
-		// Merge mode and not delete.
+		// Merge mode: only add to coupling context if file not seen before.
 		data.CouplingFiles = append(data.CouplingFiles, name)
+	}
 
-		if author != identity.AuthorMissing {
-			data.AuthorFiles[name] = author
-		}
+	// Always record author touch, even for previously-seen files in merge mode.
+	// This mirrors the devs analyzer pattern: coupling dedup ≠ ownership dedup.
+	if author != identity.AuthorMissing {
+		data.AuthorFiles[name] = 1
 	}
 }
 
@@ -389,66 +392,17 @@ func (c *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
 }
 
 // Serialize writes the analysis result to the given writer.
+// Text and plot formats are handled here; JSON/YAML/Binary delegate to the base.
 func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	switch format {
-	case analyze.FormatJSON:
-		return c.serializeJSON(result, writer)
-	case analyze.FormatYAML:
-		return c.serializeYAML(result, writer)
-	case analyze.FormatPlot:
+	if format == analyze.FormatText {
+		return c.generateText(result, writer)
+	}
+
+	if format == analyze.FormatPlot {
 		return c.generatePlot(result, writer)
-	case analyze.FormatBinary:
-		return c.serializeBinary(result, writer)
-	default:
-		return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
-	}
-}
-
-func (c *HistoryAnalyzer) serializeJSON(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
 	}
 
-	err = json.NewEncoder(writer).Encode(metrics)
-	if err != nil {
-		return fmt.Errorf("json encode: %w", err)
-	}
-
-	return nil
-}
-
-func (c *HistoryAnalyzer) serializeYAML(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
-	}
-
-	data, err := yaml.Marshal(metrics)
-	if err != nil {
-		return fmt.Errorf("yaml marshal: %w", err)
-	}
-
-	_, err = writer.Write(data)
-	if err != nil {
-		return fmt.Errorf("yaml write: %w", err)
-	}
-
-	return nil
-}
-
-func (c *HistoryAnalyzer) serializeBinary(result analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(result)
-	if err != nil {
-		metrics = &ComputedMetrics{}
-	}
-
-	err = reportutil.EncodeBinaryEnvelope(metrics, writer)
-	if err != nil {
-		return fmt.Errorf("binary encode: %w", err)
-	}
-
-	return nil
+	return c.BaseHistoryAnalyzer.Serialize(result, format, writer)
 }
 
 // NewAggregator creates a new aggregator for this analyzer.
