@@ -36,6 +36,7 @@ type FunctionData struct {
 	Effort            float64
 	TimeToProgram     float64
 	DeliveredBugs     float64
+	EstimatedLength   float64
 	DistinctOperators int
 	DistinctOperands  int
 	TotalOperators    int
@@ -175,6 +176,10 @@ func parseFunctionData(fn map[string]any) FunctionData {
 
 	if v, ok := fn["length"].(int); ok {
 		fd.Length = v
+	}
+
+	if v, ok := fn["estimated_length"].(float64); ok {
+		fd.EstimatedLength = v
 	}
 
 	return fd

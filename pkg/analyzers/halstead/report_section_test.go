@@ -120,7 +120,7 @@ func TestHalsteadKeyMetrics_Count(t *testing.T) {
 
 	section := NewReportSection(newTestHalsteadReport())
 
-	const expectedCount = 6
+	const expectedCount = 10
 
 	metrics := section.KeyMetrics()
 	if len(metrics) != expectedCount {
@@ -135,7 +135,8 @@ func TestHalsteadKeyMetrics_Labels(t *testing.T) {
 	metrics := section.KeyMetrics()
 
 	expectedLabels := []string{
-		MetricTotalFunctions, MetricVocabulary, MetricVolume,
+		MetricTotalFunctions, MetricDistinctOps, MetricDistinctOpnds,
+		MetricTotalOps, MetricTotalOpnds, MetricVocabulary, MetricVolume,
 		MetricDifficulty, MetricEffort, MetricEstBugs,
 	}
 	for i, expected := range expectedLabels {

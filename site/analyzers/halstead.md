@@ -7,13 +7,14 @@ The Halstead analyzer computes **Halstead complexity metrics** (1977) based on o
 ## Quick Start
 
 ```bash
-uast parse main.go | codefang analyze -a halstead
-```
+# Analyze a repository or directory
+codefang run -a static/halstead .
 
-Or analyze an entire directory:
+# Human-readable terminal output
+codefang run -a static/halstead --format text .
 
-```bash
-codefang analyze -a halstead ./src/
+# Interactive plots
+codefang run -a static/halstead --format plot . > halstead.html
 ```
 
 ---
@@ -39,6 +40,16 @@ The Halstead model treats a program as a sequence of **operators** (keywords, sy
 !!! info "Key insight"
     **Volume** measures the size of the implementation. **Difficulty** captures how error-prone it is. Their product, **Effort**, is the best single number for comparing overall complexity.
 
+### Counting policy
+
+Codefang computes Halstead metrics from UAST with a lexical-first policy:
+
+- Counts lexical operands (`Identifier`, `Literal`, `Field`) and operator nodes/roles.
+- Excludes structural wrappers and declaration-only artifacts from operand counts.
+- Uses explicit operator properties when available, then token extraction fallback.
+
+This improves stability across languages and avoids pseudo-operands like structural `Parameter` nodes.
+
 ---
 
 ## Configuration Options
@@ -51,53 +62,35 @@ The Halstead analyzer uses the UAST directly and has no analyzer-specific config
 
 ---
 
-## Example Output
+## Output Interpretation
 
-=== "JSON"
+### Terminal (text/summary)
 
-    ```json
-    {
-      "halstead": {
-        "functions": [
-          {
-            "name": "processFile",
-            "file": "main.go",
-            "line": 42,
-            "n1": 15,
-            "n2": 22,
-            "N1": 48,
-            "N2": 53,
-            "vocabulary": 37,
-            "length": 101,
-            "volume": 526.3,
-            "difficulty": 18.1,
-            "effort": 9521.0,
-            "time": 529.0,
-            "bugs": 0.18
-          }
-        ],
-        "summary": {
-          "total_functions": 1,
-          "total_volume": 526.3,
-          "avg_difficulty": 18.1,
-          "total_estimated_bugs": 0.18
-        }
-      }
-    }
-    ```
+The section now surfaces foundational counts before derived metrics:
 
-=== "Text"
+- `Distinct Operators (n1)`
+- `Distinct Operands (n2)`
+- `Total Operators (N1)`
+- `Total Operands (N2)`
+- `Vocabulary`, `Volume`, `Difficulty`, `Effort`, `Est. Bugs`
 
-    ```
-    Halstead Complexity Metrics
-      processFile (main.go:42)
-        vocabulary=37  length=101  volume=526.3
-        difficulty=18.1  effort=9521  time=529s  bugs=0.18
+Top issues include compact multi-signal context:
 
-    Summary: 1 function, total volume=526.3, est. bugs=0.18
-    ```
+- `effort=<...> | vol=<...> | bugs=<...>`
 
----
+Severity is determined from both effort and bug estimate.
+
+### Plot
+
+The plot report includes:
+
+1. **Top Functions by Effort** (Top 12, highest first)
+2. **Volume vs Difficulty** risk map:
+   - X: volume
+   - Y: difficulty
+   - bubble size: estimated bugs
+   - color: low/medium/high risk bucket
+3. **Volume Distribution** by bucket (`Low`, `Medium`, `High`, `Very High`)
 
 ## Use Cases
 
@@ -110,7 +103,8 @@ The Halstead analyzer uses the UAST directly and has no analyzer-specific config
 
 ## Limitations
 
-- **Operator classification**: The UAST-based operator/operand classification may differ slightly from the original Halstead definitions, which were designed for Fortran. Results are internally consistent but may not match tools that use language-specific tokenizers.
+- **Cross-tool variance**: Language-specific tools (for example, Python- or ESTree-only analyzers) can differ in tokenization and counting policy. Compare trends within one toolchain rather than mixing absolute numbers across tools.
+- **Operator classification**: UAST-based classification targets cross-language consistency, not byte-for-byte parity with each language parser.
 - **Estimation accuracy**: The Bugs and Time formulas are empirical approximations from the 1970s. Treat them as relative indicators, not precise predictions.
 - **Macro expansion**: Halstead metrics count tokens as written, not as expanded. Heavy use of macros or code generation can skew results.
 - **Comments excluded**: Comments and whitespace are excluded from Halstead counts (by design).
