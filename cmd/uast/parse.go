@@ -325,8 +325,7 @@ func collectSourceFiles(dir string, parser *uast.Parser) ([]string, error) {
 		}
 
 		if info.IsDir() {
-			base := filepath.Base(path)
-			if base == ".git" || base == "vendor" || base == "node_modules" {
+			if isHiddenDir(filepath.Base(path)) {
 				return filepath.SkipDir
 			}
 
@@ -344,4 +343,12 @@ func collectSourceFiles(dir string, parser *uast.Parser) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// isHiddenDir returns true for directories that start with a dot (e.g. .git),
+// except for "." and ".." which are filesystem navigation entries.
+// No other directories are excluded; file filtering is handled by
+// parser.IsSupported which checks registered language extensions.
+func isHiddenDir(name string) bool {
+	return len(name) > 1 && name[0] == '.'
 }

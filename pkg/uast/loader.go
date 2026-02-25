@@ -22,11 +22,17 @@ type PrecompiledMapping struct {
 	CompiledAt string                 `json:"compiled_at"`
 }
 
+// bloomSize is the bit-array length for the extension bloom filter.
+// With ~200 registered extensions and 2 hash functions, 512 bits
+// gives a false-positive rate under 5%.
+const bloomSize = 512
+
 // Loader loads UAST parsers for different languages.
 type Loader struct {
 	embedFS    fs.FS
 	parsers    map[string]LanguageParser
 	extensions map[string]LanguageParser
+	extBloom   [bloomSize / 64]uint64
 }
 
 // NewLoader creates a new loader with the given embedded filesystem.
@@ -65,13 +71,17 @@ func (l *Loader) loadFromEmbeddedMappings() bool {
 // loadFromEmbeddedMappingsLazy registers lazy-initialized parsers.
 // Tree-sitter language initialization is deferred until first parse call,
 // avoiding the O(N) startup cost of initializing all 60+ languages.
+// Extensions are added to a bloom filter for fast negative lookups during
+// directory walking.
 func (l *Loader) loadFromEmbeddedMappingsLazy() bool {
 	for _, pm := range embeddedMappingsData {
 		lazy := newLazyDSLParser(pm)
 		l.parsers[pm.Language] = lazy
 
 		for _, ext := range pm.Extensions {
-			l.extensions[strings.ToLower(ext)] = lazy
+			lower := strings.ToLower(ext)
+			l.extensions[lower] = lazy
+			l.bloomAdd(lower)
 		}
 	}
 
@@ -111,7 +121,9 @@ func (l *Loader) loadFromFiles() {
 		l.parsers[p.Language()] = p
 
 		for _, ext := range p.Extensions() {
-			l.extensions[strings.ToLower(ext)] = p
+			lower := strings.ToLower(ext)
+			l.extensions[lower] = p
+			l.bloomAdd(lower)
 		}
 
 		return nil
@@ -144,9 +156,51 @@ func (l *Loader) LoadParser(reader io.Reader) (LanguageParser, error) {
 }
 
 // LanguageParser returns the parser for the given file extension.
+// A bloom filter provides a fast negative check: if the extension
+// is definitely not registered, the map lookup is skipped entirely.
 func (l *Loader) LanguageParser(extension string) (LanguageParser, bool) {
-	parser, exists := l.extensions[strings.ToLower(extension)]
+	ext := strings.ToLower(extension)
+	if !l.bloomMayContain(ext) {
+		return nil, false
+	}
+
+	parser, exists := l.extensions[ext]
+
 	return parser, exists
+}
+
+func (l *Loader) bloomAdd(ext string) {
+	h1, h2 := bloomHashes(ext)
+	l.extBloom[h1/64] |= 1 << (h1 % 64)
+	l.extBloom[h2/64] |= 1 << (h2 % 64)
+}
+
+func (l *Loader) bloomMayContain(ext string) bool {
+	h1, h2 := bloomHashes(ext)
+
+	return l.extBloom[h1/64]&(1<<(h1%64)) != 0 &&
+		l.extBloom[h2/64]&(1<<(h2%64)) != 0
+}
+
+// bloomHashes returns two independent bit positions for a bloom filter.
+// Uses FNV-1a variant with two different seeds for the two hash functions.
+func bloomHashes(s string) (uint, uint) {
+	const (
+		fnvBasis1 uint = 14695981039346656037
+		fnvBasis2 uint = 17316225907498340287
+		fnvPrime  uint = 1099511628211
+	)
+
+	h1, h2 := fnvBasis1, fnvBasis2
+
+	for i := range len(s) {
+		h1 ^= uint(s[i])
+		h1 *= fnvPrime
+		h2 ^= uint(s[i])
+		h2 *= fnvPrime
+	}
+
+	return h1 % bloomSize, h2 % bloomSize
 }
 
 // GetParsers returns all loaded parsers.

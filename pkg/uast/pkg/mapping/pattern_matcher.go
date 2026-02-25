@@ -103,7 +103,6 @@ func matchTreeSitterQuery(query *sitter.Query, cursor *sitter.QueryCursor, tsNod
 		return nil, errNilQueryArg
 	}
 
-	// Use Matches with dereferenced node.
 	matches := cursor.Matches(query, *tsNode, source)
 
 	match := matches.Next()
@@ -111,7 +110,7 @@ func matchTreeSitterQuery(query *sitter.Query, cursor *sitter.QueryCursor, tsNod
 		return nil, errNoMatch
 	}
 
-	captures := make(map[string]string)
+	captures := make(map[string]string, len(match.Captures))
 
 	for _, cap := range match.Captures {
 		name := query.CaptureNameForID(cap.Index)

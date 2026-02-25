@@ -73,9 +73,10 @@ func (parser *Parser) loadCustomParsers() {
 		// Register the parser with the loader.
 		parser.loader.parsers[langParser.Language()] = langParser
 
-		// Register extensions.
 		for _, ext := range langParser.Extensions() {
-			parser.loader.extensions[strings.ToLower(ext)] = langParser
+			lower := strings.ToLower(ext)
+			parser.loader.extensions[lower] = langParser
+			parser.loader.bloomAdd(lower)
 		}
 	}
 }
