@@ -1,0 +1,534 @@
+{
+  "metadata": {
+    "title": "Kubernetes Codebase Performance Benchmark",
+    "target_repo": "kubernetes/kubernetes",
+    "target_stats": {
+      "total_files": 28275,
+      "go_files": 16620,
+      "go_lines": 4939520
+    },
+    "system": {
+      "cpu_model": "Intel(R) Xeon(R) Processor",
+      "cpu_cores": 4,
+      "memory_total": "15.6 GB",
+      "os": "Linux 6.1.147",
+      "arch": "x86_64",
+      "go_version": "go version go1.26.0 linux/amd64",
+      "python_version": "3.12.3",
+      "timestamp": "2026-02-25T07:26:00.048734+00:00"
+    },
+    "config": {
+      "warmup_runs": 1,
+      "measured_runs": 3
+    }
+  },
+  "results": [
+    {
+      "tool": "scc",
+      "category": "code_counting",
+      "description": "Lines of code, comments, blanks, complexity (Go, 250+ langs)",
+      "version": "scc version 3.6.0",
+      "runs": [
+        {
+          "wall_time_s": 0.56,
+          "peak_rss_mb": 210.6,
+          "cpu_percent": 334.0,
+          "user_time_s": 1.42,
+          "sys_time_s": 0.45
+        },
+        {
+          "wall_time_s": 0.56,
+          "peak_rss_mb": 198.6,
+          "cpu_percent": 331.0,
+          "user_time_s": 1.41,
+          "sys_time_s": 0.45
+        },
+        {
+          "wall_time_s": 0.55,
+          "peak_rss_mb": 216.5,
+          "cpu_percent": 334.0,
+          "user_time_s": 1.32,
+          "sys_time_s": 0.53
+        }
+      ],
+      "avg_wall_time_s": 0.557,
+      "avg_peak_rss_mb": 208.6,
+      "avg_cpu_percent": 333.0,
+      "min_wall_time_s": 0.55,
+      "max_wall_time_s": 0.56,
+      "median_wall_time_s": 0.56,
+      "stddev_wall_time_s": 0.005,
+      "command": "scc --no-cocomo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "tokei",
+      "category": "code_counting",
+      "description": "Lines of code, comments, blanks (Rust, fast)",
+      "version": "tokei 12.1.2 compiled with serialization support: json, cbor, yaml",
+      "runs": [
+        {
+          "wall_time_s": 0.54,
+          "peak_rss_mb": 40.7,
+          "cpu_percent": 331.0,
+          "user_time_s": 1.24,
+          "sys_time_s": 0.55
+        },
+        {
+          "wall_time_s": 0.57,
+          "peak_rss_mb": 39.3,
+          "cpu_percent": 333.0,
+          "user_time_s": 1.27,
+          "sys_time_s": 0.63
+        },
+        {
+          "wall_time_s": 0.56,
+          "peak_rss_mb": 39.8,
+          "cpu_percent": 332.0,
+          "user_time_s": 1.31,
+          "sys_time_s": 0.55
+        }
+      ],
+      "avg_wall_time_s": 0.557,
+      "avg_peak_rss_mb": 39.9,
+      "avg_cpu_percent": 332.0,
+      "min_wall_time_s": 0.54,
+      "max_wall_time_s": 0.57,
+      "median_wall_time_s": 0.56,
+      "stddev_wall_time_s": 0.012,
+      "command": "tokei /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "cloc",
+      "category": "code_counting",
+      "description": "Lines of code, comments, blanks (Perl, classic)",
+      "version": "1.98",
+      "runs": [
+        {
+          "wall_time_s": 64.29,
+          "peak_rss_mb": 116.4,
+          "cpu_percent": 99.0,
+          "user_time_s": 63.02,
+          "sys_time_s": 1.24
+        },
+        {
+          "wall_time_s": 63.83,
+          "peak_rss_mb": 116.4,
+          "cpu_percent": 99.0,
+          "user_time_s": 62.71,
+          "sys_time_s": 1.1
+        },
+        {
+          "wall_time_s": 64.42,
+          "peak_rss_mb": 114.6,
+          "cpu_percent": 99.0,
+          "user_time_s": 63.27,
+          "sys_time_s": 1.13
+        }
+      ],
+      "avg_wall_time_s": 64.18,
+      "avg_peak_rss_mb": 115.8,
+      "avg_cpu_percent": 99.0,
+      "min_wall_time_s": 63.83,
+      "max_wall_time_s": 64.42,
+      "median_wall_time_s": 64.29,
+      "stddev_wall_time_s": 0.253,
+      "command": "cloc --quiet /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "gocloc",
+      "category": "code_counting",
+      "description": "Lines of code, comments, blanks (Go)",
+      "version": "latest",
+      "runs": [
+        {
+          "wall_time_s": 1.57,
+          "peak_rss_mb": 46.4,
+          "cpu_percent": 121.0,
+          "user_time_s": 1.4,
+          "sys_time_s": 0.49
+        },
+        {
+          "wall_time_s": 1.6,
+          "peak_rss_mb": 47.8,
+          "cpu_percent": 120.0,
+          "user_time_s": 1.48,
+          "sys_time_s": 0.44
+        },
+        {
+          "wall_time_s": 1.57,
+          "peak_rss_mb": 47.7,
+          "cpu_percent": 121.0,
+          "user_time_s": 1.45,
+          "sys_time_s": 0.46
+        }
+      ],
+      "avg_wall_time_s": 1.58,
+      "avg_peak_rss_mb": 47.3,
+      "avg_cpu_percent": 120.7,
+      "min_wall_time_s": 1.57,
+      "max_wall_time_s": 1.6,
+      "median_wall_time_s": 1.57,
+      "stddev_wall_time_s": 0.014,
+      "command": "gocloc /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "lizard",
+      "category": "complexity",
+      "description": "Cyclomatic complexity, all languages (Python)",
+      "version": "1.21.0",
+      "runs": [
+        {
+          "wall_time_s": 83.34,
+          "peak_rss_mb": 260.4,
+          "cpu_percent": 99.0,
+          "user_time_s": 82.64,
+          "sys_time_s": 0.69
+        },
+        {
+          "wall_time_s": 83.24,
+          "peak_rss_mb": 260.3,
+          "cpu_percent": 99.0,
+          "user_time_s": 82.37,
+          "sys_time_s": 0.84
+        },
+        {
+          "wall_time_s": 85.09,
+          "peak_rss_mb": 260.0,
+          "cpu_percent": 99.0,
+          "user_time_s": 84.39,
+          "sys_time_s": 0.68
+        }
+      ],
+      "avg_wall_time_s": 83.89,
+      "avg_peak_rss_mb": 260.2,
+      "avg_cpu_percent": 99.0,
+      "min_wall_time_s": 83.24,
+      "max_wall_time_s": 85.09,
+      "median_wall_time_s": 83.34,
+      "stddev_wall_time_s": 0.85,
+      "command": "lizard -l go /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "gocyclo",
+      "category": "complexity",
+      "description": "Cyclomatic complexity, Go only (Go)",
+      "version": "latest",
+      "runs": [
+        {
+          "wall_time_s": 2.83,
+          "peak_rss_mb": 49.8,
+          "cpu_percent": 123.0,
+          "user_time_s": 3.13,
+          "sys_time_s": 0.36
+        },
+        {
+          "wall_time_s": 2.79,
+          "peak_rss_mb": 52.3,
+          "cpu_percent": 123.0,
+          "user_time_s": 3.12,
+          "sys_time_s": 0.31
+        },
+        {
+          "wall_time_s": 2.76,
+          "peak_rss_mb": 50.7,
+          "cpu_percent": 123.0,
+          "user_time_s": 3.1,
+          "sys_time_s": 0.31
+        }
+      ],
+      "avg_wall_time_s": 2.793,
+      "avg_peak_rss_mb": 50.9,
+      "avg_cpu_percent": 123.0,
+      "min_wall_time_s": 2.76,
+      "max_wall_time_s": 2.83,
+      "median_wall_time_s": 2.79,
+      "stddev_wall_time_s": 0.029,
+      "command": "gocyclo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "codefang",
+      "category": "complexity",
+      "description": "Cyclomatic + cognitive complexity, multi-lang via UAST (Go+C)",
+      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "runs": [
+        {
+          "wall_time_s": 38.59,
+          "peak_rss_mb": 876.7,
+          "cpu_percent": 375.0,
+          "user_time_s": 142.04,
+          "sys_time_s": 3.04
+        },
+        {
+          "wall_time_s": 39.99,
+          "peak_rss_mb": 851.8,
+          "cpu_percent": 376.0,
+          "user_time_s": 147.63,
+          "sys_time_s": 2.94
+        },
+        {
+          "wall_time_s": 39.39,
+          "peak_rss_mb": 880.5,
+          "cpu_percent": 376.0,
+          "user_time_s": 145.12,
+          "sys_time_s": 3.29
+        }
+      ],
+      "avg_wall_time_s": 39.323,
+      "avg_peak_rss_mb": 869.7,
+      "avg_cpu_percent": 375.7,
+      "min_wall_time_s": 38.59,
+      "max_wall_time_s": 39.99,
+      "median_wall_time_s": 39.39,
+      "stddev_wall_time_s": 0.573,
+      "command": "/workspace/build/bin/codefang run -a static/complexity --format compact /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "uast",
+      "category": "ast_parse_batch",
+      "description": "Parse all Go files to UAST (16k+ files, batch)",
+      "version": "dev",
+      "runs": [
+        {
+          "wall_time_s": 56.08,
+          "peak_rss_mb": 3203.7,
+          "cpu_percent": 380.0,
+          "user_time_s": 186.45,
+          "sys_time_s": 26.65
+        },
+        {
+          "wall_time_s": 56.05,
+          "peak_rss_mb": 2673.1,
+          "cpu_percent": 379.0,
+          "user_time_s": 187.35,
+          "sys_time_s": 25.43
+        },
+        {
+          "wall_time_s": 54.32,
+          "peak_rss_mb": 2459.2,
+          "cpu_percent": 384.0,
+          "user_time_s": 185.2,
+          "sys_time_s": 23.9
+        }
+      ],
+      "avg_wall_time_s": 55.483,
+      "avg_peak_rss_mb": 2778.7,
+      "avg_cpu_percent": 381.0,
+      "min_wall_time_s": 54.32,
+      "max_wall_time_s": 56.08,
+      "median_wall_time_s": 56.05,
+      "stddev_wall_time_s": 0.823,
+      "command": "find /tmp/benchmark-repos/kubernetes -name \"*.go\" -not -path \"*/vendor/*\" -print0 | xargs -0 -P 4 -n 500 /workspace/build/bin/uast parse > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "ast-grep",
+      "category": "ast_parse_batch",
+      "description": "Search all Go files for function pattern (16k+ files)",
+      "version": "0.41.0",
+      "runs": [
+        {
+          "wall_time_s": 5.28,
+          "peak_rss_mb": 119.3,
+          "cpu_percent": 391.0,
+          "user_time_s": 20.15,
+          "sys_time_s": 0.57
+        },
+        {
+          "wall_time_s": 5.52,
+          "peak_rss_mb": 166.3,
+          "cpu_percent": 377.0,
+          "user_time_s": 20.32,
+          "sys_time_s": 0.52
+        },
+        {
+          "wall_time_s": 5.35,
+          "peak_rss_mb": 143.8,
+          "cpu_percent": 392.0,
+          "user_time_s": 20.45,
+          "sys_time_s": 0.56
+        }
+      ],
+      "avg_wall_time_s": 5.383,
+      "avg_peak_rss_mb": 143.1,
+      "avg_cpu_percent": 386.7,
+      "min_wall_time_s": 5.28,
+      "max_wall_time_s": 5.52,
+      "median_wall_time_s": 5.35,
+      "stddev_wall_time_s": 0.101,
+      "command": "sg -p \"func \\$NAME\" --lang go /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "scc",
+      "category": "complexity_detail",
+      "description": "SCC with complexity calculation enabled",
+      "version": "scc version 3.6.0",
+      "runs": [
+        {
+          "wall_time_s": 2.51,
+          "peak_rss_mb": 281.0,
+          "cpu_percent": 151.0,
+          "user_time_s": 3.31,
+          "sys_time_s": 0.48
+        },
+        {
+          "wall_time_s": 2.66,
+          "peak_rss_mb": 285.4,
+          "cpu_percent": 149.0,
+          "user_time_s": 3.53,
+          "sys_time_s": 0.44
+        },
+        {
+          "wall_time_s": 2.56,
+          "peak_rss_mb": 297.1,
+          "cpu_percent": 151.0,
+          "user_time_s": 3.41,
+          "sys_time_s": 0.45
+        }
+      ],
+      "avg_wall_time_s": 2.577,
+      "avg_peak_rss_mb": 287.8,
+      "avg_cpu_percent": 150.3,
+      "min_wall_time_s": 2.51,
+      "max_wall_time_s": 2.66,
+      "median_wall_time_s": 2.56,
+      "stddev_wall_time_s": 0.062,
+      "command": "scc --by-file --no-cocomo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "codefang",
+      "category": "complexity_detail",
+      "description": "Codefang full static complexity analysis",
+      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "runs": [
+        {
+          "wall_time_s": 38.94,
+          "peak_rss_mb": 862.4,
+          "cpu_percent": 375.0,
+          "user_time_s": 143.16,
+          "sys_time_s": 2.95
+        },
+        {
+          "wall_time_s": 37.69,
+          "peak_rss_mb": 949.4,
+          "cpu_percent": 375.0,
+          "user_time_s": 138.2,
+          "sys_time_s": 3.24
+        },
+        {
+          "wall_time_s": 39.97,
+          "peak_rss_mb": 927.2,
+          "cpu_percent": 376.0,
+          "user_time_s": 146.96,
+          "sys_time_s": 3.39
+        }
+      ],
+      "avg_wall_time_s": 38.867,
+      "avg_peak_rss_mb": 913.0,
+      "avg_cpu_percent": 375.3,
+      "min_wall_time_s": 37.69,
+      "max_wall_time_s": 39.97,
+      "median_wall_time_s": 38.94,
+      "stddev_wall_time_s": 0.932,
+      "command": "/workspace/build/bin/codefang run -a static/complexity --format json /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "uast",
+      "category": "ast_parse_single",
+      "description": "Parse single file to UAST (30478 lines)",
+      "version": "dev",
+      "runs": [
+        {
+          "wall_time_s": 0.97,
+          "peak_rss_mb": 364.2,
+          "cpu_percent": 130.0,
+          "user_time_s": 1.08,
+          "sys_time_s": 0.18
+        },
+        {
+          "wall_time_s": 1.0,
+          "peak_rss_mb": 400.6,
+          "cpu_percent": 130.0,
+          "user_time_s": 1.05,
+          "sys_time_s": 0.25
+        },
+        {
+          "wall_time_s": 1.0,
+          "peak_rss_mb": 400.9,
+          "cpu_percent": 132.0,
+          "user_time_s": 1.07,
+          "sys_time_s": 0.25
+        }
+      ],
+      "avg_wall_time_s": 0.99,
+      "avg_peak_rss_mb": 388.6,
+      "avg_cpu_percent": 130.7,
+      "min_wall_time_s": 0.97,
+      "max_wall_time_s": 1.0,
+      "median_wall_time_s": 1.0,
+      "stddev_wall_time_s": 0.014,
+      "command": "/workspace/build/bin/uast parse /tmp/benchmark-repos/kubernetes/pkg/apis/core/validation/validation_test.go > /dev/null 2>&1",
+      "success": true,
+      "error": ""
+    },
+    {
+      "tool": "ast-grep",
+      "category": "ast_parse_single",
+      "description": "Parse + search single file (30478 lines)",
+      "version": "0.41.0",
+      "runs": [
+        {
+          "wall_time_s": 0.18,
+          "peak_rss_mb": 38.4,
+          "cpu_percent": 101.0,
+          "user_time_s": 0.16,
+          "sys_time_s": 0.02
+        },
+        {
+          "wall_time_s": 0.17,
+          "peak_rss_mb": 36.4,
+          "cpu_percent": 100.0,
+          "user_time_s": 0.17,
+          "sys_time_s": 0.0
+        },
+        {
+          "wall_time_s": 0.18,
+          "peak_rss_mb": 36.6,
+          "cpu_percent": 102.0,
+          "user_time_s": 0.17,
+          "sys_time_s": 0.01
+        }
+      ],
+      "avg_wall_time_s": 0.177,
+      "avg_peak_rss_mb": 37.1,
+      "avg_cpu_percent": 101.0,
+      "min_wall_time_s": 0.17,
+      "max_wall_time_s": 0.18,
+      "median_wall_time_s": 0.18,
+      "stddev_wall_time_s": 0.005,
+      "command": "sg -p \"func \\$NAME\" --lang go /tmp/benchmark-repos/kubernetes/pkg/apis/core/validation/validation_test.go > /dev/null 2>&1; true",
+      "success": true,
+      "error": ""
+    }
+  ]
+}
