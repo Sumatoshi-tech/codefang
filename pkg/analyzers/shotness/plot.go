@@ -2,6 +2,8 @@ package shotness
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 
@@ -39,6 +41,18 @@ func RegisterPlotSections() {
 	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
 		return (&Analyzer{}).GenerateSections(report)
 	})
+}
+
+func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
+	sections, err := s.GenerateSections(report)
+	if err != nil {
+		return fmt.Errorf("generate sections: %w", err)
+	}
+
+	page := plotpage.NewPage("Shotness Analysis", "Function-level change frequency and coupling")
+	page.Add(sections...)
+
+	return page.Render(writer)
 }
 
 // GenerateSections returns the sections for combined reports.

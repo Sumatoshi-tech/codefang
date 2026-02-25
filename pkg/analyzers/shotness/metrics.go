@@ -43,11 +43,12 @@ type NodeHotnessData struct {
 
 // NodeCouplingData contains coupling between code nodes.
 type NodeCouplingData struct {
-	Node1Name string `json:"node1_name" yaml:"node1_name"`
-	Node1File string `json:"node1_file" yaml:"node1_file"`
-	Node2Name string `json:"node2_name" yaml:"node2_name"`
-	Node2File string `json:"node2_file" yaml:"node2_file"`
-	CoChanges int    `json:"co_changes" yaml:"co_changes"`
+	Node1Name string  `json:"node1_name"        yaml:"node1_name"`
+	Node1File string  `json:"node1_file"        yaml:"node1_file"`
+	Node2Name string  `json:"node2_name"        yaml:"node2_name"`
+	Node2File string  `json:"node2_file"        yaml:"node2_file"`
+	CoChanges int     `json:"co_changes"        yaml:"co_changes"`
+	Strength  float64 `json:"coupling_strength" yaml:"coupling_strength"`
 }
 
 // HotspotNodeData identifies hot nodes that change frequently.
@@ -61,20 +62,18 @@ type HotspotNodeData struct {
 
 // AggregateData contains summary statistics.
 type AggregateData struct {
-	TotalNodes        int     `json:"total_nodes"          yaml:"total_nodes"`
-	TotalChanges      int     `json:"total_changes"        yaml:"total_changes"`
-	TotalCouplings    int     `json:"total_couplings"      yaml:"total_couplings"`
-	AvgChangesPerNode float64 `json:"avg_changes_per_node" yaml:"avg_changes_per_node"`
-	HotNodes          int     `json:"hot_nodes"            yaml:"hot_nodes"`
+	TotalNodes          int     `json:"total_nodes"           yaml:"total_nodes"`
+	TotalChanges        int     `json:"total_changes"         yaml:"total_changes"`
+	TotalCouplings      int     `json:"total_couplings"       yaml:"total_couplings"`
+	AvgChangesPerNode   float64 `json:"avg_changes_per_node"  yaml:"avg_changes_per_node"`
+	AvgCouplingStrength float64 `json:"avg_coupling_strength" yaml:"avg_coupling_strength"`
+	HotNodes            int     `json:"hot_nodes"             yaml:"hot_nodes"`
 }
 
 // Hotspot thresholds.
 const (
 	HotspotThresholdHigh   = 20
 	HotspotThresholdMedium = 10
-
-	// Coupling divisor for strength calculation.
-	couplingDivisor = 2
 )
 
 // --- Pure Metric Functions ---.
@@ -128,7 +127,8 @@ func computeNodeHotness(input *ReportData) []NodeHotnessData {
 	return result
 }
 
-// computeNodeCoupling calculates node coupling data.
+// computeNodeCoupling calculates node coupling data with normalized strength.
+// Strength formula: co_changes(A,B) / max(changes(A), changes(B)).
 func computeNodeCoupling(input *ReportData) []NodeCouplingData {
 	var result []NodeCouplingData
 
@@ -138,10 +138,11 @@ func computeNodeCoupling(input *ReportData) []NodeCouplingData {
 		}
 
 		node1 := input.Nodes[i]
+		selfChangesI := counters[i]
 
 		for j, coChanges := range counters {
 			if j <= i || j >= len(input.Nodes) {
-				continue // Skip self and lower triangle.
+				continue
 			}
 
 			if coChanges == 0 {
@@ -150,17 +151,24 @@ func computeNodeCoupling(input *ReportData) []NodeCouplingData {
 
 			node2 := input.Nodes[j]
 
+			selfChangesJ := 0
+			if j < len(input.Counters) {
+				selfChangesJ = input.Counters[j][j]
+			}
+
+			strength := computeCouplingStrength(coChanges, selfChangesI, selfChangesJ)
+
 			result = append(result, NodeCouplingData{
 				Node1Name: node1.Name,
 				Node1File: node1.File,
 				Node2Name: node2.Name,
 				Node2File: node2.File,
 				CoChanges: coChanges,
+				Strength:  strength,
 			})
 		}
 	}
 
-	// Sort by co-changes descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].CoChanges > result[j].CoChanges
 	})
@@ -168,22 +176,41 @@ func computeNodeCoupling(input *ReportData) []NodeCouplingData {
 	return result
 }
 
+// computeCouplingStrength returns normalized coupling confidence in [0, 1].
+// Formula: co_changes / max(co_changes, changes_a, changes_b).
+// Including co_changes in the denominator guarantees the result never exceeds 1.
+func computeCouplingStrength(coChanges, changesA, changesB int) float64 {
+	maxChanges := max(coChanges, max(changesA, changesB))
+	if maxChanges <= 0 {
+		return 0
+	}
+
+	return float64(coChanges) / float64(maxChanges)
+}
+
+// Risk level constants.
+const (
+	RiskLevelHigh   = "HIGH"
+	RiskLevelMedium = "MEDIUM"
+	RiskLevelLow    = "LOW"
+)
+
 func classifyChangeRisk(changeCount int) string {
 	switch {
 	case changeCount >= HotspotThresholdHigh:
-		return "HIGH"
+		return RiskLevelHigh
 	case changeCount >= HotspotThresholdMedium:
-		return "MEDIUM"
+		return RiskLevelMedium
 	default:
-		return ""
+		return RiskLevelLow
 	}
 }
 
-// computeHotspotNodes identifies hotspot nodes.
+// computeHotspotNodes identifies hotspot nodes (MEDIUM and HIGH risk only).
 func computeHotspotNodes(input *ReportData) []HotspotNodeData {
 	var result []HotspotNodeData
 
-	for i, node := range input.Nodes {
+	for i, n := range input.Nodes {
 		if i >= len(input.Counters) {
 			continue
 		}
@@ -196,20 +223,19 @@ func computeHotspotNodes(input *ReportData) []HotspotNodeData {
 		}
 
 		riskLevel := classifyChangeRisk(changeCount)
-		if riskLevel == "" {
-			continue // Skip low-risk nodes.
+		if riskLevel == RiskLevelLow {
+			continue
 		}
 
 		result = append(result, HotspotNodeData{
-			Name:        node.Name,
-			Type:        node.Type,
-			File:        node.File,
+			Name:        n.Name,
+			Type:        n.Type,
+			File:        n.File,
 			ChangeCount: changeCount,
 			RiskLevel:   riskLevel,
 		})
 	}
 
-	// Sort by change count descending.
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ChangeCount > result[j].ChangeCount
 	})
@@ -225,28 +251,45 @@ func computeAggregate(input *ReportData) AggregateData {
 
 	var totalChanges, totalCouplings, hotNodes int
 
+	var strengthSum float64
+
+	var pairCount int
+
 	for i, counters := range input.Counters {
-		if selfCount, ok := counters[i]; ok {
-			totalChanges += selfCount
-			if selfCount >= HotspotThresholdMedium {
-				hotNodes++
-			}
+		selfI := counters[i]
+		totalChanges += selfI
+
+		if selfI >= HotspotThresholdMedium {
+			hotNodes++
 		}
 
-		// Count couplings (non-self entries).
-		for j := range counters {
-			if j != i {
-				totalCouplings++
+		for j, coChanges := range counters {
+			if j <= i || coChanges == 0 {
+				continue
 			}
+
+			totalCouplings++
+			pairCount++
+
+			selfJ := 0
+			if j < len(input.Counters) {
+				selfJ = input.Counters[j][j]
+			}
+
+			strengthSum += computeCouplingStrength(coChanges, selfI, selfJ)
 		}
 	}
 
 	agg.TotalChanges = totalChanges
-	agg.TotalCouplings = totalCouplings / couplingDivisor // Divide by 2 since counted twice.
+	agg.TotalCouplings = totalCouplings
 	agg.HotNodes = hotNodes
 
 	if agg.TotalNodes > 0 {
 		agg.AvgChangesPerNode = float64(totalChanges) / float64(agg.TotalNodes)
+	}
+
+	if pairCount > 0 {
+		agg.AvgCouplingStrength = strengthSum / float64(pairCount)
 	}
 
 	return agg
