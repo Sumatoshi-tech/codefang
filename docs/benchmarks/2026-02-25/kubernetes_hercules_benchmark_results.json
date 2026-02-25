@@ -1,0 +1,521 @@
+{
+  "metadata": {
+    "title": "Hercules vs Codefang: Git History Analyzer Benchmark",
+    "target_repo": "kubernetes/kubernetes",
+    "target_stats": {
+      "first_parent_commits": 57049
+    },
+    "system": {
+      "cpu_model": "Intel(R) Xeon(R) Processor",
+      "cpu_cores": 4,
+      "os": "Linux 6.1.147"
+    },
+    "tools": {
+      "hercules": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "codefang": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)"
+    },
+    "config": {
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "commit_scales": [
+        500,
+        1000
+      ]
+    },
+    "timestamp": "2026-02-25T21:37:55.619051+00:00"
+  },
+  "results": [
+    {
+      "tool": "hercules",
+      "analyzer": "burndown",
+      "commits": 500,
+      "description": "Hercules Code survival over time (line age tracking)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 21.74,
+          "peak_rss_mb": 1417.2,
+          "cpu_percent": 110.0,
+          "user_time_s": 20.14,
+          "sys_time_s": 3.81
+        },
+        {
+          "wall_time_s": 22.04,
+          "peak_rss_mb": 1429.8,
+          "cpu_percent": 109.0,
+          "user_time_s": 20.37,
+          "sys_time_s": 3.84
+        },
+        {
+          "wall_time_s": 21.66,
+          "peak_rss_mb": 1409.3,
+          "cpu_percent": 109.0,
+          "user_time_s": 19.86,
+          "sys_time_s": 3.9
+        }
+      ],
+      "avg_wall_time_s": 21.813,
+      "avg_peak_rss_mb": 1418.8,
+      "avg_cpu_percent": 109.3,
+      "min_wall_time_s": 21.66,
+      "max_wall_time_s": 22.04,
+      "median_wall_time_s": 21.74,
+      "stddev_wall_time_s": 0.164,
+      "command": "/tmp/hercules --burndown --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "burndown",
+      "commits": 500,
+      "description": "Codefang Code survival over time (line age tracking)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 1.12,
+          "peak_rss_mb": 269.2,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.11
+        },
+        {
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 271.5,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.17,
+          "sys_time_s": 0.14
+        },
+        {
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 276.0,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.2,
+          "sys_time_s": 0.12
+        }
+      ],
+      "avg_wall_time_s": 1.113,
+      "avg_peak_rss_mb": 272.2,
+      "avg_cpu_percent": 118.0,
+      "min_wall_time_s": 1.11,
+      "max_wall_time_s": 1.12,
+      "median_wall_time_s": 1.11,
+      "stddev_wall_time_s": 0.005,
+      "command": "/workspace/build/bin/codefang run -a history/burndown --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 19.6
+    },
+    {
+      "tool": "hercules",
+      "analyzer": "couples",
+      "commits": 500,
+      "description": "Hercules File coupling analysis (co-change frequency)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 48.6,
+          "peak_rss_mb": 1387.4,
+          "cpu_percent": 104.0,
+          "user_time_s": 46.66,
+          "sys_time_s": 4.04
+        },
+        {
+          "wall_time_s": 49.21,
+          "peak_rss_mb": 1381.6,
+          "cpu_percent": 104.0,
+          "user_time_s": 47.09,
+          "sys_time_s": 4.27
+        },
+        {
+          "wall_time_s": 49.19,
+          "peak_rss_mb": 1411.6,
+          "cpu_percent": 104.0,
+          "user_time_s": 47.03,
+          "sys_time_s": 4.46
+        }
+      ],
+      "avg_wall_time_s": 49.0,
+      "avg_peak_rss_mb": 1393.5,
+      "avg_cpu_percent": 104.0,
+      "min_wall_time_s": 48.6,
+      "max_wall_time_s": 49.21,
+      "median_wall_time_s": 49.19,
+      "stddev_wall_time_s": 0.283,
+      "command": "/tmp/hercules --couples --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "couples",
+      "commits": 500,
+      "description": "Codefang File coupling analysis (co-change frequency)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 2.35,
+          "peak_rss_mb": 1254.7,
+          "cpu_percent": 131.0,
+          "user_time_s": 2.46,
+          "sys_time_s": 0.63
+        },
+        {
+          "wall_time_s": 2.37,
+          "peak_rss_mb": 1330.6,
+          "cpu_percent": 137.0,
+          "user_time_s": 2.63,
+          "sys_time_s": 0.62
+        },
+        {
+          "wall_time_s": 2.36,
+          "peak_rss_mb": 1164.3,
+          "cpu_percent": 137.0,
+          "user_time_s": 2.66,
+          "sys_time_s": 0.59
+        }
+      ],
+      "avg_wall_time_s": 2.36,
+      "avg_peak_rss_mb": 1249.9,
+      "avg_cpu_percent": 135.0,
+      "min_wall_time_s": 2.35,
+      "max_wall_time_s": 2.37,
+      "median_wall_time_s": 2.36,
+      "stddev_wall_time_s": 0.008,
+      "command": "/workspace/build/bin/codefang run -a history/couples --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 20.8
+    },
+    {
+      "tool": "hercules",
+      "analyzer": "devs",
+      "commits": 500,
+      "description": "Hercules Developer activity (commits, additions, deletions per author)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 22.29,
+          "peak_rss_mb": 1430.1,
+          "cpu_percent": 107.0,
+          "user_time_s": 19.99,
+          "sys_time_s": 3.87
+        },
+        {
+          "wall_time_s": 22.47,
+          "peak_rss_mb": 1415.0,
+          "cpu_percent": 107.0,
+          "user_time_s": 20.24,
+          "sys_time_s": 3.88
+        },
+        {
+          "wall_time_s": 22.64,
+          "peak_rss_mb": 1402.2,
+          "cpu_percent": 107.0,
+          "user_time_s": 20.65,
+          "sys_time_s": 3.7
+        }
+      ],
+      "avg_wall_time_s": 22.467,
+      "avg_peak_rss_mb": 1415.8,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 22.29,
+      "max_wall_time_s": 22.64,
+      "median_wall_time_s": 22.47,
+      "stddev_wall_time_s": 0.143,
+      "command": "/tmp/hercules --devs --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "devs",
+      "commits": 500,
+      "description": "Codefang Developer activity (commits, additions, deletions per author)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 1.13,
+          "peak_rss_mb": 274.4,
+          "cpu_percent": 117.0,
+          "user_time_s": 1.23,
+          "sys_time_s": 0.09
+        },
+        {
+          "wall_time_s": 1.12,
+          "peak_rss_mb": 260.6,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.18,
+          "sys_time_s": 0.14
+        },
+        {
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 256.4,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.09
+        }
+      ],
+      "avg_wall_time_s": 1.12,
+      "avg_peak_rss_mb": 263.8,
+      "avg_cpu_percent": 117.7,
+      "min_wall_time_s": 1.11,
+      "max_wall_time_s": 1.13,
+      "median_wall_time_s": 1.12,
+      "stddev_wall_time_s": 0.008,
+      "command": "/workspace/build/bin/codefang run -a history/devs --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 20.1
+    },
+    {
+      "tool": "hercules",
+      "analyzer": "burndown",
+      "commits": 1000,
+      "description": "Hercules Code survival over time (line age tracking)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 40.67,
+          "peak_rss_mb": 1583.4,
+          "cpu_percent": 110.0,
+          "user_time_s": 38.13,
+          "sys_time_s": 6.98
+        },
+        {
+          "wall_time_s": 40.39,
+          "peak_rss_mb": 1599.7,
+          "cpu_percent": 110.0,
+          "user_time_s": 37.97,
+          "sys_time_s": 6.73
+        },
+        {
+          "wall_time_s": 41.75,
+          "peak_rss_mb": 1516.1,
+          "cpu_percent": 110.0,
+          "user_time_s": 39.25,
+          "sys_time_s": 6.99
+        }
+      ],
+      "avg_wall_time_s": 40.937,
+      "avg_peak_rss_mb": 1566.4,
+      "avg_cpu_percent": 110.0,
+      "min_wall_time_s": 40.39,
+      "max_wall_time_s": 41.75,
+      "median_wall_time_s": 40.67,
+      "stddev_wall_time_s": 0.586,
+      "command": "/tmp/hercules --burndown --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "burndown",
+      "commits": 1000,
+      "description": "Codefang Code survival over time (line age tracking)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 1.41,
+          "peak_rss_mb": 310.0,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.59,
+          "sys_time_s": 0.17
+        },
+        {
+          "wall_time_s": 1.4,
+          "peak_rss_mb": 365.7,
+          "cpu_percent": 125.0,
+          "user_time_s": 1.58,
+          "sys_time_s": 0.17
+        },
+        {
+          "wall_time_s": 1.38,
+          "peak_rss_mb": 311.7,
+          "cpu_percent": 125.0,
+          "user_time_s": 1.59,
+          "sys_time_s": 0.13
+        }
+      ],
+      "avg_wall_time_s": 1.397,
+      "avg_peak_rss_mb": 329.1,
+      "avg_cpu_percent": 124.7,
+      "min_wall_time_s": 1.38,
+      "max_wall_time_s": 1.41,
+      "median_wall_time_s": 1.4,
+      "stddev_wall_time_s": 0.012,
+      "command": "/workspace/build/bin/codefang run -a history/burndown --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 29.3
+    },
+    {
+      "tool": "hercules",
+      "analyzer": "couples",
+      "commits": 1000,
+      "description": "Hercules File coupling analysis (co-change frequency)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 69.23,
+          "peak_rss_mb": 1563.3,
+          "cpu_percent": 107.0,
+          "user_time_s": 66.89,
+          "sys_time_s": 7.44
+        },
+        {
+          "wall_time_s": 68.84,
+          "peak_rss_mb": 1513.3,
+          "cpu_percent": 107.0,
+          "user_time_s": 66.78,
+          "sys_time_s": 7.15
+        },
+        {
+          "wall_time_s": 70.2,
+          "peak_rss_mb": 1573.1,
+          "cpu_percent": 107.0,
+          "user_time_s": 67.78,
+          "sys_time_s": 7.59
+        }
+      ],
+      "avg_wall_time_s": 69.423,
+      "avg_peak_rss_mb": 1549.9,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 68.84,
+      "max_wall_time_s": 70.2,
+      "median_wall_time_s": 69.23,
+      "stddev_wall_time_s": 0.572,
+      "command": "/tmp/hercules --couples --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "couples",
+      "commits": 1000,
+      "description": "Codefang File coupling analysis (co-change frequency)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 3.44,
+          "peak_rss_mb": 1798.8,
+          "cpu_percent": 141.0,
+          "user_time_s": 3.89,
+          "sys_time_s": 0.98
+        },
+        {
+          "wall_time_s": 3.4,
+          "peak_rss_mb": 1707.9,
+          "cpu_percent": 143.0,
+          "user_time_s": 4.06,
+          "sys_time_s": 0.83
+        },
+        {
+          "wall_time_s": 3.43,
+          "peak_rss_mb": 1882.8,
+          "cpu_percent": 135.0,
+          "user_time_s": 3.69,
+          "sys_time_s": 0.96
+        }
+      ],
+      "avg_wall_time_s": 3.423,
+      "avg_peak_rss_mb": 1796.5,
+      "avg_cpu_percent": 139.7,
+      "min_wall_time_s": 3.4,
+      "max_wall_time_s": 3.44,
+      "median_wall_time_s": 3.43,
+      "stddev_wall_time_s": 0.017,
+      "command": "/workspace/build/bin/codefang run -a history/couples --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 20.3
+    },
+    {
+      "tool": "hercules",
+      "analyzer": "devs",
+      "commits": 1000,
+      "description": "Hercules Developer activity (commits, additions, deletions per author)",
+      "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
+      "runs": [
+        {
+          "wall_time_s": 40.95,
+          "peak_rss_mb": 1563.0,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.13,
+          "sys_time_s": 6.72
+        },
+        {
+          "wall_time_s": 41.76,
+          "peak_rss_mb": 1512.4,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.77,
+          "sys_time_s": 7.05
+        },
+        {
+          "wall_time_s": 41.37,
+          "peak_rss_mb": 1532.6,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.46,
+          "sys_time_s": 7.02
+        }
+      ],
+      "avg_wall_time_s": 41.36,
+      "avg_peak_rss_mb": 1536.0,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 40.95,
+      "max_wall_time_s": 41.76,
+      "median_wall_time_s": 41.37,
+      "stddev_wall_time_s": 0.331,
+      "command": "/tmp/hercules --devs --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 0.0
+    },
+    {
+      "tool": "codefang",
+      "analyzer": "devs",
+      "commits": 1000,
+      "description": "Codefang Developer activity (commits, additions, deletions per author)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
+      "runs": [
+        {
+          "wall_time_s": 1.46,
+          "peak_rss_mb": 317.4,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.61,
+          "sys_time_s": 0.2
+        },
+        {
+          "wall_time_s": 1.42,
+          "peak_rss_mb": 324.5,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.6,
+          "sys_time_s": 0.16
+        },
+        {
+          "wall_time_s": 1.45,
+          "peak_rss_mb": 312.9,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.61,
+          "sys_time_s": 0.18
+        }
+      ],
+      "avg_wall_time_s": 1.443,
+      "avg_peak_rss_mb": 318.3,
+      "avg_cpu_percent": 124.0,
+      "min_wall_time_s": 1.42,
+      "max_wall_time_s": 1.46,
+      "median_wall_time_s": 1.45,
+      "stddev_wall_time_s": 0.017,
+      "command": "/workspace/build/bin/codefang run -a history/devs --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
+      "success": true,
+      "error": "",
+      "speedup": 28.7
+    }
+  ]
+}
