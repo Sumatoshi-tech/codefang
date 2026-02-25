@@ -3,12 +3,15 @@ package shotness
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -453,4 +456,538 @@ func TestAnalyzer_Serialize_YAML_UsesComputedMetrics(t *testing.T) {
 	assert.Contains(t, output, "node_coupling:")
 	assert.Contains(t, output, "hotspot_nodes:")
 	assert.Contains(t, output, "aggregate:")
+}
+
+func TestNodeSummary_String(t *testing.T) {
+	t.Parallel()
+
+	ns := NodeSummary{Type: "Function", Name: "foo", File: "main.go"}
+	assert.Equal(t, "Function_foo_main.go", ns.String())
+}
+
+func TestAnalyzer_CPUHeavy(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	assert.True(t, s.CPUHeavy())
+}
+
+func TestAnalyzer_SequentialOnly(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	assert.False(t, s.SequentialOnly())
+}
+
+func TestAnalyzer_NeedsUAST(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	assert.True(t, s.NeedsUAST())
+}
+
+func TestShouldConsumeCommit_SingleParent(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	commit := &mockCommit{hash: [20]byte{1}, parents: 1}
+	assert.True(t, s.shouldConsumeCommit(commit))
+}
+
+func TestShouldConsumeCommit_FirstMerge(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	commit := &mockCommit{hash: [20]byte{1}, parents: 2}
+	assert.True(t, s.shouldConsumeCommit(commit))
+}
+
+func TestShouldConsumeCommit_DuplicateMerge(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	commit := &mockCommit{hash: [20]byte{1}, parents: 2}
+	assert.True(t, s.shouldConsumeCommit(commit))
+	assert.False(t, s.shouldConsumeCommit(commit))
+}
+
+func TestAddNode_NewNode(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	n := &node.Node{Type: "Function", Token: "test"}
+	allNodes := map[string]bool{}
+
+	s.addNode("testFunc", n, "main.go", allNodes)
+
+	assert.True(t, allNodes["Function_testFunc_main.go"])
+	assert.NotNil(t, s.nodes["Function_testFunc_main.go"])
+	assert.Equal(t, 1, s.nodes["Function_testFunc_main.go"].Count)
+}
+
+func TestAddNode_ExistingNode_DifferentCommit(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	n := &node.Node{Type: "Function", Token: "test"}
+	allNodes := map[string]bool{}
+
+	s.addNode("testFunc", n, "main.go", allNodes)
+
+	// Second time with fresh allNodes.
+	allNodes2 := map[string]bool{}
+	s.addNode("testFunc", n, "main.go", allNodes2)
+
+	assert.Equal(t, 2, s.nodes["Function_testFunc_main.go"].Count)
+}
+
+func TestAddNode_ExistingNode_SameCommit(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	n := &node.Node{Type: "Function", Token: "test"}
+	allNodes := map[string]bool{}
+
+	s.addNode("testFunc", n, "main.go", allNodes)
+	s.addNode("testFunc", n, "main.go", allNodes)
+
+	// Same commit: should not increment count.
+	assert.Equal(t, 1, s.nodes["Function_testFunc_main.go"].Count)
+}
+
+func TestUpdateCouplings(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	s.nodes["a"] = &nodeShotness{Count: 1, Couples: map[string]int{}}
+	s.nodes["b"] = &nodeShotness{Count: 1, Couples: map[string]int{}}
+
+	allNodes := map[string]bool{"a": true, "b": true}
+	s.updateCouplings(allNodes)
+
+	assert.Equal(t, 1, s.nodes["a"].Couples["b"])
+	assert.Equal(t, 1, s.nodes["b"].Couples["a"])
+}
+
+func TestApplyRename(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	key := "Function_foo_old.go"
+	s.nodes[key] = &nodeShotness{
+		Summary: NodeSummary{Type: "Function", Name: "foo", File: "old.go"},
+		Count:   5,
+		Couples: map[string]int{},
+	}
+	s.files["old.go"] = map[string]*nodeShotness{key: s.nodes[key]}
+
+	s.applyRename("old.go", "new.go")
+
+	newKey := "Function_foo_new.go"
+
+	assert.Nil(t, s.nodes[key])
+	assert.NotNil(t, s.nodes[newKey])
+	assert.Equal(t, "new.go", s.nodes[newKey].Summary.File)
+	assert.NotNil(t, s.files["new.go"])
+	assert.Nil(t, s.files["old.go"])
+}
+
+func TestGenLine2Node(t *testing.T) {
+	t.Parallel()
+
+	n := &node.Node{
+		Type: "Function",
+		Pos:  &node.Positions{StartLine: 2, EndLine: 4},
+	}
+
+	result := genLine2Node(map[string]*node.Node{"fn": n}, 5)
+	require.Len(t, result, 5)
+	assert.Nil(t, result[0])    // Line 1.
+	assert.Len(t, result[1], 1) // Line 2.
+	assert.Len(t, result[2], 1) // Line 3.
+	assert.Len(t, result[3], 1) // Line 4.
+	assert.Nil(t, result[4])    // Line 5.
+}
+
+func TestGenLine2Node_NilPos(t *testing.T) {
+	t.Parallel()
+
+	n := &node.Node{Type: "Function", Pos: nil}
+
+	result := genLine2Node(map[string]*node.Node{"fn": n}, 3)
+	require.Len(t, result, 3)
+	assert.Nil(t, result[0])
+	assert.Nil(t, result[1])
+	assert.Nil(t, result[2])
+}
+
+func TestResolveEndLine_WithEndLine(t *testing.T) {
+	t.Parallel()
+
+	n := &node.Node{
+		Pos: &node.Positions{StartLine: 5, EndLine: 10},
+	}
+
+	assert.Equal(t, 10, resolveEndLine(n, n.Pos))
+}
+
+func TestResolveEndLine_WalksChildren(t *testing.T) {
+	t.Parallel()
+
+	child := &node.Node{
+		Pos: &node.Positions{StartLine: 8, EndLine: 15},
+	}
+	parent := &node.Node{
+		Pos:      &node.Positions{StartLine: 5, EndLine: 5},
+		Children: []*node.Node{child},
+	}
+
+	assert.Equal(t, 15, resolveEndLine(parent, parent.Pos))
+}
+
+func TestReverseNodeMap(t *testing.T) {
+	t.Parallel()
+
+	n1 := &node.Node{ID: "id1"}
+	n2 := &node.Node{ID: "id2"}
+
+	result := reverseNodeMap(map[string]*node.Node{"name1": n1, "name2": n2})
+	assert.Equal(t, "name1", result["id1"])
+	assert.Equal(t, "name2", result["id2"])
+}
+
+func TestRebuildFilesMap(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	s.nodes["Function_foo_a.go"] = &nodeShotness{
+		Summary: NodeSummary{Type: "Function", Name: "foo", File: "a.go"},
+		Count:   1,
+		Couples: map[string]int{},
+	}
+	s.nodes["Function_bar_b.go"] = &nodeShotness{
+		Summary: NodeSummary{Type: "Function", Name: "bar", File: "b.go"},
+		Count:   2,
+		Couples: map[string]int{},
+	}
+
+	s.rebuildFilesMap()
+
+	assert.Len(t, s.files, 2)
+	assert.NotNil(t, s.files["a.go"]["Function_foo_a.go"])
+	assert.NotNil(t, s.files["b.go"]["Function_bar_b.go"])
+}
+
+func TestExtractTC(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickData)
+
+	cd := &CommitData{
+		NodesTouched: map[string]NodeDelta{
+			"Function_foo_a.go": {
+				Summary:    NodeSummary{Type: "Function", Name: "foo", File: "a.go"},
+				CountDelta: 1,
+			},
+		},
+		Couples: []CouplingPair{},
+	}
+
+	tc := analyze.TC{Tick: 0, Data: cd}
+
+	err := extractTC(tc, byTick)
+	require.NoError(t, err)
+	require.Contains(t, byTick, 0)
+	assert.Equal(t, 1, byTick[0].Nodes["Function_foo_a.go"].Count)
+}
+
+func TestExtractTC_NilData(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickData)
+	tc := analyze.TC{Tick: 0, Data: nil}
+
+	err := extractTC(tc, byTick)
+	require.NoError(t, err)
+	assert.Empty(t, byTick)
+}
+
+func TestExtractTC_WrongDataType(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickData)
+	tc := analyze.TC{Tick: 0, Data: "not_commit_data"}
+
+	err := extractTC(tc, byTick)
+	require.NoError(t, err)
+	assert.Empty(t, byTick)
+}
+
+func TestExtractTC_WithCouples(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickData)
+
+	cd := &CommitData{
+		NodesTouched: map[string]NodeDelta{
+			"a": {Summary: NodeSummary{Name: "foo"}, CountDelta: 1},
+			"b": {Summary: NodeSummary{Name: "bar"}, CountDelta: 1},
+		},
+		Couples: []CouplingPair{{Key1: "a", Key2: "b"}},
+	}
+
+	err := extractTC(analyze.TC{Tick: 0, Data: cd}, byTick)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, byTick[0].Nodes["a"].Couples["b"])
+	assert.Equal(t, 1, byTick[0].Nodes["b"].Couples["a"])
+}
+
+func TestMergeState_BothNil(t *testing.T) {
+	t.Parallel()
+
+	result := mergeState(nil, nil)
+	assert.Nil(t, result)
+}
+
+func TestMergeState_ExistingNil(t *testing.T) {
+	t.Parallel()
+
+	incoming := &TickData{Nodes: map[string]*nodeShotnessData{"a": {Count: 1}}}
+	result := mergeState(nil, incoming)
+	assert.Equal(t, incoming, result)
+}
+
+func TestMergeState_IncomingNil(t *testing.T) {
+	t.Parallel()
+
+	existing := &TickData{Nodes: map[string]*nodeShotnessData{"a": {Count: 1}}}
+	result := mergeState(existing, nil)
+	assert.Equal(t, existing, result)
+}
+
+func TestMergeState_BothPresent(t *testing.T) {
+	t.Parallel()
+
+	existing := &TickData{Nodes: map[string]*nodeShotnessData{
+		"a": {Count: 5, Couples: map[string]int{"b": 2}},
+	}}
+	incoming := &TickData{Nodes: map[string]*nodeShotnessData{
+		"a": {Count: 3, Couples: map[string]int{"b": 1, "c": 4}},
+		"d": {Count: 7, Couples: map[string]int{}},
+	}}
+
+	result := mergeState(existing, incoming)
+	assert.Equal(t, 8, result.Nodes["a"].Count)
+	assert.Equal(t, 3, result.Nodes["a"].Couples["b"])
+	assert.Equal(t, 4, result.Nodes["a"].Couples["c"])
+	assert.Equal(t, 7, result.Nodes["d"].Count)
+}
+
+func TestMergeState_NilNodesMap(t *testing.T) {
+	t.Parallel()
+
+	existing := &TickData{Nodes: nil}
+	incoming := &TickData{Nodes: map[string]*nodeShotnessData{
+		"a": {Count: 1, Couples: map[string]int{}},
+	}}
+
+	result := mergeState(existing, incoming)
+	assert.NotNil(t, result.Nodes)
+	assert.Equal(t, 1, result.Nodes["a"].Count)
+}
+
+func TestSizeState_Nil(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, int64(0), sizeState(nil))
+}
+
+func TestSizeState_WithData(t *testing.T) {
+	t.Parallel()
+
+	state := &TickData{Nodes: map[string]*nodeShotnessData{
+		"a": {Count: 1, Couples: map[string]int{"b": 1, "c": 2}},
+	}}
+
+	size := sizeState(state)
+	assert.Positive(t, size)
+}
+
+func TestBuildTick_Nil(t *testing.T) {
+	t.Parallel()
+
+	tick, err := buildTick(5, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 5, tick.Tick)
+}
+
+func TestBuildTick_WithData(t *testing.T) {
+	t.Parallel()
+
+	state := &TickData{Nodes: map[string]*nodeShotnessData{
+		"a": {Count: 1},
+	}}
+
+	tick, err := buildTick(3, state)
+	require.NoError(t, err)
+	assert.Equal(t, 3, tick.Tick)
+	assert.Equal(t, state, tick.Data)
+}
+
+func TestCopyIntMap(t *testing.T) {
+	t.Parallel()
+
+	src := map[string]int{"a": 1, "b": 2}
+	dst := copyIntMap(src)
+
+	assert.Equal(t, src, dst)
+
+	dst["c"] = 3
+
+	assert.NotContains(t, src, "c")
+}
+
+func TestComputeMetricsSafe_EmptyReport(t *testing.T) {
+	t.Parallel()
+
+	result, err := computeMetricsSafe(analyze.Report{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+}
+
+func TestComputeMetricsSafe_WithData(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"Nodes": []NodeSummary{
+			{Type: "Function", Name: "foo", File: "a.go"},
+		},
+		"Counters": []map[int]int{
+			{0: 10},
+		},
+	}
+
+	result, err := computeMetricsSafe(report)
+	require.NoError(t, err)
+	assert.Len(t, result.NodeHotness, 1)
+}
+
+func TestComputedMetrics_AnalyzerName(t *testing.T) {
+	t.Parallel()
+
+	m := &ComputedMetrics{}
+	assert.Equal(t, "shotness", m.AnalyzerName())
+}
+
+func TestComputedMetrics_ToJSON(t *testing.T) {
+	t.Parallel()
+
+	m := &ComputedMetrics{}
+	assert.Equal(t, m, m.ToJSON())
+}
+
+func TestComputedMetrics_ToYAML(t *testing.T) {
+	t.Parallel()
+
+	m := &ComputedMetrics{}
+	assert.Equal(t, m, m.ToYAML())
+}
+
+func TestConfigure_WithFacts(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	err := s.Configure(map[string]any{
+		ConfigShotnessDSLStruct: "filter(.roles has \"Class\")",
+		ConfigShotnessDSLName:   ".props.className",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "filter(.roles has \"Class\")", s.DSLStruct)
+	assert.Equal(t, ".props.className", s.DSLName)
+}
+
+func TestConfigure_Defaults(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	err := s.Configure(map[string]any{})
+	require.NoError(t, err)
+	assert.Equal(t, DefaultShotnessDSLStruct, s.DSLStruct)
+	assert.Equal(t, DefaultShotnessDSLName, s.DSLName)
+}
+
+func TestHandleDeletion(t *testing.T) {
+	t.Parallel()
+
+	s := NewAnalyzer()
+	require.NoError(t, s.Initialize(nil))
+
+	key := "Function_foo_deleted.go"
+	s.nodes[key] = &nodeShotness{
+		Summary: NodeSummary{Type: "Function", Name: "foo", File: "deleted.go"},
+		Count:   3,
+		Couples: map[string]int{},
+	}
+	s.files["deleted.go"] = map[string]*nodeShotness{key: s.nodes[key]}
+
+	change := uast.Change{
+		Change: &gitlib.Change{
+			From: gitlib.ChangeEntry{Name: "deleted.go"},
+		},
+	}
+
+	s.handleDeletion(change)
+
+	assert.Nil(t, s.nodes[key])
+	assert.Nil(t, s.files["deleted.go"])
+}
+
+// errMockNotImpl is returned by mock methods that are not implemented.
+var errMockNotImpl = errors.New("mock: not implemented")
+
+type mockCommit struct {
+	hash    gitlib.Hash
+	parents int
+}
+
+func (m *mockCommit) Hash() gitlib.Hash           { return m.hash }
+func (m *mockCommit) NumParents() int             { return m.parents }
+func (m *mockCommit) Author() gitlib.Signature    { return gitlib.Signature{} }
+func (m *mockCommit) Committer() gitlib.Signature { return gitlib.Signature{} }
+func (m *mockCommit) Message() string             { return "" }
+
+func (m *mockCommit) Parent(_ int) (*gitlib.Commit, error) {
+	return nil, errMockNotImpl
+}
+
+func (m *mockCommit) Tree() (*gitlib.Tree, error) {
+	return nil, errMockNotImpl
+}
+
+func (m *mockCommit) Files() (*gitlib.FileIter, error) {
+	return nil, errMockNotImpl
+}
+
+func (m *mockCommit) File(_ string) (*gitlib.File, error) {
+	return nil, errMockNotImpl
 }

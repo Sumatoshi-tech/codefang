@@ -227,11 +227,11 @@ func TestHotspotNodeMetric_ValidData(t *testing.T) {
 
 	// Should be sorted by change count descending.
 	assert.Equal(t, testNodeName2, result[0].Name)
-	assert.Equal(t, "HIGH", result[0].RiskLevel)
+	assert.Equal(t, RiskLevelHigh, result[0].RiskLevel)
 	assert.Equal(t, HotspotThresholdHigh, result[0].ChangeCount)
 
 	assert.Equal(t, testNodeName3, result[1].Name)
-	assert.Equal(t, "MEDIUM", result[1].RiskLevel)
+	assert.Equal(t, RiskLevelMedium, result[1].RiskLevel)
 	assert.Equal(t, HotspotThresholdMedium, result[1].ChangeCount)
 }
 
@@ -269,9 +269,10 @@ func TestAggregateMetric_ValidData(t *testing.T) {
 
 	assert.Equal(t, 2, result.TotalNodes)
 	assert.Equal(t, HotspotThresholdHigh+10, result.TotalChanges) // Total is 30.
-	assert.Equal(t, 1, result.TotalCouplings)                     // Computed as half of 2.
+	assert.Equal(t, 1, result.TotalCouplings)                     // Upper triangle only.
 	assert.InDelta(t, 15.0, result.AvgChangesPerNode, floatDelta) // Average is 15.0.
 	assert.Equal(t, 2, result.HotNodes)                           // Both nodes are hot.
+	assert.InDelta(t, 0.25, result.AvgCouplingStrength, floatDelta)
 }
 
 func TestClassifyChangeRisk(t *testing.T) {
@@ -282,11 +283,11 @@ func TestClassifyChangeRisk(t *testing.T) {
 		count    int
 		expected string
 	}{
-		{"Low Risk", HotspotThresholdMedium - 1, ""},
-		{"Medium Risk Min", HotspotThresholdMedium, "MEDIUM"},
-		{"Medium Risk Max", HotspotThresholdHigh - 1, "MEDIUM"},
-		{"High Risk Min", HotspotThresholdHigh, "HIGH"},
-		{"High Risk Max", HotspotThresholdHigh + 100, "HIGH"},
+		{"Low Risk", HotspotThresholdMedium - 1, RiskLevelLow},
+		{"Medium Risk Min", HotspotThresholdMedium, RiskLevelMedium},
+		{"Medium Risk Max", HotspotThresholdHigh - 1, RiskLevelMedium},
+		{"High Risk Min", HotspotThresholdHigh, RiskLevelHigh},
+		{"High Risk Max", HotspotThresholdHigh + 100, RiskLevelHigh},
 	}
 
 	for _, tt := range tests {
@@ -296,4 +297,73 @@ func TestClassifyChangeRisk(t *testing.T) {
 			assert.Equal(t, tt.expected, classifyChangeRisk(tt.count))
 		})
 	}
+}
+
+// --- Coupling Strength Tests ---.
+
+func TestComputeCouplingStrength_Basic(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		co       int
+		a        int
+		b        int
+		expected float64
+	}{
+		{"equal changes", 5, 5, 5, 1.0},
+		{"half coupled", 5, 10, 10, 0.5},
+		{"asymmetric", 3, 3, 10, 0.3},
+		{"zero max", 0, 0, 0, 0.0},
+		{"co exceeds self", 5, 3, 4, 1.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := computeCouplingStrength(tt.co, tt.a, tt.b)
+			assert.InDelta(t, tt.expected, result, floatDelta)
+		})
+	}
+}
+
+func TestNodeCouplingMetric_IncludesStrength(t *testing.T) {
+	t.Parallel()
+
+	input := &ReportData{
+		Nodes: []NodeSummary{
+			{Name: testNodeName1, Type: testNodeType, File: testFile1},
+			{Name: testNodeName2, Type: testNodeType, File: testFile2},
+		},
+		Counters: []map[int]int{
+			{0: 10, 1: 5},
+			{0: 5, 1: 20},
+		},
+	}
+
+	result := computeNodeCoupling(input)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, 5, result[0].CoChanges)
+	assert.InDelta(t, 0.25, result[0].Strength, floatDelta)
+}
+
+func TestAggregateMetric_IncludesAvgCouplingStrength(t *testing.T) {
+	t.Parallel()
+
+	input := &ReportData{
+		Nodes: []NodeSummary{
+			{Name: testNodeName1},
+			{Name: testNodeName2},
+		},
+		Counters: []map[int]int{
+			{0: 10, 1: 5},
+			{0: 5, 1: 10},
+		},
+	}
+
+	result := computeAggregate(input)
+
+	assert.InDelta(t, 0.5, result.AvgCouplingStrength, floatDelta)
 }
