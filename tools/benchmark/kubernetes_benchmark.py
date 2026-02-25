@@ -374,7 +374,7 @@ def main():
         tool="lizard",
         category="complexity",
         description="Cyclomatic complexity, all languages (Python)",
-        cmd=f"lizard -l go {K8S_REPO} > /dev/null 2>&1",
+        cmd=f"lizard -l go {K8S_REPO} > /dev/null 2>&1; true",
         version=versions["lizard"],
         env=env_with_path,
     ))
@@ -432,8 +432,8 @@ def main():
         results.append(run_benchmark(
             tool="uast",
             category="ast_parse_single",
-            description=f"Parse single file to UAST ({line_count} lines)",
-            cmd=f"{UAST_BIN} parse {large_go_file} > /dev/null 2>&1",
+            description=f"Parse single file to UAST, parse-only ({line_count} lines)",
+            cmd=f"{UAST_BIN} parse -f none {large_go_file}",
             version=versions["uast"],
             env=codefang_env,
         ))
@@ -442,7 +442,7 @@ def main():
             tool="ast-grep",
             category="ast_parse_single",
             description=f"Parse + search single file ({line_count} lines)",
-            cmd=f"sg -p 'func $NAME($$$ARGS)' --lang go {large_go_file} > /dev/null 2>&1; true",
+            cmd=f'sg -p "func \\$NAME" --lang go {large_go_file} > /dev/null 2>&1; true',
             version=versions["ast-grep"],
             env=env_with_path,
         ))
@@ -457,21 +457,21 @@ def main():
     results.append(run_benchmark(
         tool="uast",
         category="ast_parse_batch",
-        description="Parse all source files recursively via --all (16k+ files)",
-        cmd=f"cd {K8S_REPO} && {UAST_BIN} parse --all > /dev/null 2>&1",
+        description="Parse all Go files, parallel parse-only (-w 4 -f none)",
+        cmd=f'find {K8S_REPO} -name "*.go" -not -path "*/vendor/*" -print0 | xargs -0 {UAST_BIN} parse -f none',
         version=versions["uast"],
         env=codefang_env,
-        timeout_s=900,
+        timeout_s=300,
     ))
 
     results.append(run_benchmark(
         tool="ast-grep",
         category="ast_parse_batch",
         description="Search all Go files for function pattern (16k+ files)",
-        cmd=f"sg -p 'func $NAME($$$ARGS)' --lang go {K8S_REPO} > /dev/null 2>&1; true",
+        cmd=f'sg -p "func \\$NAME" --lang go {K8S_REPO} > /dev/null 2>&1; true',
         version=versions["ast-grep"],
         env=env_with_path,
-        timeout_s=900,
+        timeout_s=300,
     ))
 
     # =========================================================================

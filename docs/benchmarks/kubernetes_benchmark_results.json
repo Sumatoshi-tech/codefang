@@ -15,7 +15,7 @@
       "arch": "x86_64",
       "go_version": "go version go1.26.0 linux/amd64",
       "python_version": "3.12.3",
-      "timestamp": "2026-02-25T07:26:00.048734+00:00"
+      "timestamp": "2026-02-25T21:03:26.787511+00:00"
     },
     "config": {
       "warmup_runs": 1,
@@ -30,33 +30,33 @@
       "version": "scc version 3.6.0",
       "runs": [
         {
-          "wall_time_s": 0.56,
-          "peak_rss_mb": 210.6,
-          "cpu_percent": 334.0,
-          "user_time_s": 1.42,
-          "sys_time_s": 0.45
+          "wall_time_s": 0.48,
+          "peak_rss_mb": 209.5,
+          "cpu_percent": 329.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.38
         },
         {
-          "wall_time_s": 0.56,
-          "peak_rss_mb": 198.6,
-          "cpu_percent": 331.0,
-          "user_time_s": 1.41,
-          "sys_time_s": 0.45
+          "wall_time_s": 0.49,
+          "peak_rss_mb": 217.4,
+          "cpu_percent": 325.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.38
         },
         {
-          "wall_time_s": 0.55,
-          "peak_rss_mb": 216.5,
-          "cpu_percent": 334.0,
-          "user_time_s": 1.32,
-          "sys_time_s": 0.53
+          "wall_time_s": 0.48,
+          "peak_rss_mb": 205.0,
+          "cpu_percent": 329.0,
+          "user_time_s": 1.27,
+          "sys_time_s": 0.32
         }
       ],
-      "avg_wall_time_s": 0.557,
-      "avg_peak_rss_mb": 208.6,
-      "avg_cpu_percent": 333.0,
-      "min_wall_time_s": 0.55,
-      "max_wall_time_s": 0.56,
-      "median_wall_time_s": 0.56,
+      "avg_wall_time_s": 0.483,
+      "avg_peak_rss_mb": 210.6,
+      "avg_cpu_percent": 327.7,
+      "min_wall_time_s": 0.48,
+      "max_wall_time_s": 0.49,
+      "median_wall_time_s": 0.48,
       "stddev_wall_time_s": 0.005,
       "command": "scc --no-cocomo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
@@ -69,34 +69,34 @@
       "version": "tokei 12.1.2 compiled with serialization support: json, cbor, yaml",
       "runs": [
         {
-          "wall_time_s": 0.54,
-          "peak_rss_mb": 40.7,
-          "cpu_percent": 331.0,
-          "user_time_s": 1.24,
-          "sys_time_s": 0.55
-        },
-        {
-          "wall_time_s": 0.57,
-          "peak_rss_mb": 39.3,
-          "cpu_percent": 333.0,
-          "user_time_s": 1.27,
-          "sys_time_s": 0.63
-        },
-        {
           "wall_time_s": 0.56,
-          "peak_rss_mb": 39.8,
-          "cpu_percent": 332.0,
-          "user_time_s": 1.31,
-          "sys_time_s": 0.55
+          "peak_rss_mb": 37.5,
+          "cpu_percent": 361.0,
+          "user_time_s": 1.76,
+          "sys_time_s": 0.28
+        },
+        {
+          "wall_time_s": 0.42,
+          "peak_rss_mb": 37.1,
+          "cpu_percent": 350.0,
+          "user_time_s": 1.16,
+          "sys_time_s": 0.32
+        },
+        {
+          "wall_time_s": 0.42,
+          "peak_rss_mb": 39.6,
+          "cpu_percent": 348.0,
+          "user_time_s": 1.16,
+          "sys_time_s": 0.31
         }
       ],
-      "avg_wall_time_s": 0.557,
-      "avg_peak_rss_mb": 39.9,
-      "avg_cpu_percent": 332.0,
-      "min_wall_time_s": 0.54,
-      "max_wall_time_s": 0.57,
-      "median_wall_time_s": 0.56,
-      "stddev_wall_time_s": 0.012,
+      "avg_wall_time_s": 0.467,
+      "avg_peak_rss_mb": 38.1,
+      "avg_cpu_percent": 353.0,
+      "min_wall_time_s": 0.42,
+      "max_wall_time_s": 0.56,
+      "median_wall_time_s": 0.42,
+      "stddev_wall_time_s": 0.066,
       "command": "tokei /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -108,34 +108,34 @@
       "version": "1.98",
       "runs": [
         {
-          "wall_time_s": 64.29,
-          "peak_rss_mb": 116.4,
+          "wall_time_s": 62.88,
+          "peak_rss_mb": 116.2,
           "cpu_percent": 99.0,
-          "user_time_s": 63.02,
-          "sys_time_s": 1.24
+          "user_time_s": 62.01,
+          "sys_time_s": 0.86
         },
         {
-          "wall_time_s": 63.83,
-          "peak_rss_mb": 116.4,
+          "wall_time_s": 62.5,
+          "peak_rss_mb": 116.2,
           "cpu_percent": 99.0,
-          "user_time_s": 62.71,
-          "sys_time_s": 1.1
+          "user_time_s": 61.67,
+          "sys_time_s": 0.81
         },
         {
-          "wall_time_s": 64.42,
-          "peak_rss_mb": 114.6,
+          "wall_time_s": 63.09,
+          "peak_rss_mb": 116.2,
           "cpu_percent": 99.0,
-          "user_time_s": 63.27,
-          "sys_time_s": 1.13
+          "user_time_s": 62.13,
+          "sys_time_s": 0.93
         }
       ],
-      "avg_wall_time_s": 64.18,
-      "avg_peak_rss_mb": 115.8,
+      "avg_wall_time_s": 62.823,
+      "avg_peak_rss_mb": 116.2,
       "avg_cpu_percent": 99.0,
-      "min_wall_time_s": 63.83,
-      "max_wall_time_s": 64.42,
-      "median_wall_time_s": 64.29,
-      "stddev_wall_time_s": 0.253,
+      "min_wall_time_s": 62.5,
+      "max_wall_time_s": 63.09,
+      "median_wall_time_s": 62.88,
+      "stddev_wall_time_s": 0.244,
       "command": "cloc --quiet /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -147,34 +147,34 @@
       "version": "latest",
       "runs": [
         {
-          "wall_time_s": 1.57,
-          "peak_rss_mb": 46.4,
-          "cpu_percent": 121.0,
-          "user_time_s": 1.4,
-          "sys_time_s": 0.49
-        },
-        {
-          "wall_time_s": 1.6,
-          "peak_rss_mb": 47.8,
-          "cpu_percent": 120.0,
-          "user_time_s": 1.48,
-          "sys_time_s": 0.44
-        },
-        {
-          "wall_time_s": 1.57,
-          "peak_rss_mb": 47.7,
-          "cpu_percent": 121.0,
-          "user_time_s": 1.45,
+          "wall_time_s": 1.37,
+          "peak_rss_mb": 47.6,
+          "cpu_percent": 119.0,
+          "user_time_s": 1.17,
           "sys_time_s": 0.46
+        },
+        {
+          "wall_time_s": 1.38,
+          "peak_rss_mb": 48.0,
+          "cpu_percent": 119.0,
+          "user_time_s": 1.19,
+          "sys_time_s": 0.45
+        },
+        {
+          "wall_time_s": 1.38,
+          "peak_rss_mb": 47.1,
+          "cpu_percent": 119.0,
+          "user_time_s": 1.17,
+          "sys_time_s": 0.48
         }
       ],
-      "avg_wall_time_s": 1.58,
-      "avg_peak_rss_mb": 47.3,
-      "avg_cpu_percent": 120.7,
-      "min_wall_time_s": 1.57,
-      "max_wall_time_s": 1.6,
-      "median_wall_time_s": 1.57,
-      "stddev_wall_time_s": 0.014,
+      "avg_wall_time_s": 1.377,
+      "avg_peak_rss_mb": 47.6,
+      "avg_cpu_percent": 119.0,
+      "min_wall_time_s": 1.37,
+      "max_wall_time_s": 1.38,
+      "median_wall_time_s": 1.38,
+      "stddev_wall_time_s": 0.005,
       "command": "gocloc /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -186,34 +186,34 @@
       "version": "1.21.0",
       "runs": [
         {
-          "wall_time_s": 83.34,
-          "peak_rss_mb": 260.4,
-          "cpu_percent": 99.0,
-          "user_time_s": 82.64,
-          "sys_time_s": 0.69
-        },
-        {
-          "wall_time_s": 83.24,
-          "peak_rss_mb": 260.3,
-          "cpu_percent": 99.0,
-          "user_time_s": 82.37,
-          "sys_time_s": 0.84
-        },
-        {
-          "wall_time_s": 85.09,
+          "wall_time_s": 82.22,
           "peak_rss_mb": 260.0,
           "cpu_percent": 99.0,
-          "user_time_s": 84.39,
-          "sys_time_s": 0.68
+          "user_time_s": 81.58,
+          "sys_time_s": 0.62
+        },
+        {
+          "wall_time_s": 82.39,
+          "peak_rss_mb": 260.1,
+          "cpu_percent": 99.0,
+          "user_time_s": 81.79,
+          "sys_time_s": 0.59
+        },
+        {
+          "wall_time_s": 81.98,
+          "peak_rss_mb": 260.0,
+          "cpu_percent": 99.0,
+          "user_time_s": 81.4,
+          "sys_time_s": 0.58
         }
       ],
-      "avg_wall_time_s": 83.89,
-      "avg_peak_rss_mb": 260.2,
+      "avg_wall_time_s": 82.197,
+      "avg_peak_rss_mb": 260.0,
       "avg_cpu_percent": 99.0,
-      "min_wall_time_s": 83.24,
-      "max_wall_time_s": 85.09,
-      "median_wall_time_s": 83.34,
-      "stddev_wall_time_s": 0.85,
+      "min_wall_time_s": 81.98,
+      "max_wall_time_s": 82.39,
+      "median_wall_time_s": 82.22,
+      "stddev_wall_time_s": 0.168,
       "command": "lizard -l go /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
       "success": true,
       "error": ""
@@ -225,34 +225,34 @@
       "version": "latest",
       "runs": [
         {
-          "wall_time_s": 2.83,
-          "peak_rss_mb": 49.8,
-          "cpu_percent": 123.0,
-          "user_time_s": 3.13,
-          "sys_time_s": 0.36
-        },
-        {
-          "wall_time_s": 2.79,
-          "peak_rss_mb": 52.3,
-          "cpu_percent": 123.0,
-          "user_time_s": 3.12,
-          "sys_time_s": 0.31
-        },
-        {
-          "wall_time_s": 2.76,
+          "wall_time_s": 2.68,
           "peak_rss_mb": 50.7,
-          "cpu_percent": 123.0,
-          "user_time_s": 3.1,
-          "sys_time_s": 0.31
+          "cpu_percent": 122.0,
+          "user_time_s": 3.09,
+          "sys_time_s": 0.19
+        },
+        {
+          "wall_time_s": 2.68,
+          "peak_rss_mb": 51.0,
+          "cpu_percent": 122.0,
+          "user_time_s": 3.06,
+          "sys_time_s": 0.23
+        },
+        {
+          "wall_time_s": 2.68,
+          "peak_rss_mb": 49.6,
+          "cpu_percent": 122.0,
+          "user_time_s": 3.07,
+          "sys_time_s": 0.21
         }
       ],
-      "avg_wall_time_s": 2.793,
-      "avg_peak_rss_mb": 50.9,
-      "avg_cpu_percent": 123.0,
-      "min_wall_time_s": 2.76,
-      "max_wall_time_s": 2.83,
-      "median_wall_time_s": 2.79,
-      "stddev_wall_time_s": 0.029,
+      "avg_wall_time_s": 2.68,
+      "avg_peak_rss_mb": 50.4,
+      "avg_cpu_percent": 122.0,
+      "min_wall_time_s": 2.68,
+      "max_wall_time_s": 2.68,
+      "median_wall_time_s": 2.68,
+      "stddev_wall_time_s": 0.0,
       "command": "gocyclo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
       "success": true,
       "error": ""
@@ -261,37 +261,37 @@
       "tool": "codefang",
       "category": "complexity",
       "description": "Cyclomatic + cognitive complexity, multi-lang via UAST (Go+C)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 38.59,
-          "peak_rss_mb": 876.7,
-          "cpu_percent": 375.0,
-          "user_time_s": 142.04,
-          "sys_time_s": 3.04
+          "wall_time_s": 34.91,
+          "peak_rss_mb": 847.3,
+          "cpu_percent": 377.0,
+          "user_time_s": 129.64,
+          "sys_time_s": 2.02
         },
         {
-          "wall_time_s": 39.99,
-          "peak_rss_mb": 851.8,
-          "cpu_percent": 376.0,
-          "user_time_s": 147.63,
-          "sys_time_s": 2.94
+          "wall_time_s": 36.02,
+          "peak_rss_mb": 819.6,
+          "cpu_percent": 377.0,
+          "user_time_s": 133.86,
+          "sys_time_s": 2.03
         },
         {
-          "wall_time_s": 39.39,
-          "peak_rss_mb": 880.5,
+          "wall_time_s": 35.0,
+          "peak_rss_mb": 880.9,
           "cpu_percent": 376.0,
-          "user_time_s": 145.12,
-          "sys_time_s": 3.29
+          "user_time_s": 130.0,
+          "sys_time_s": 1.85
         }
       ],
-      "avg_wall_time_s": 39.323,
-      "avg_peak_rss_mb": 869.7,
-      "avg_cpu_percent": 375.7,
-      "min_wall_time_s": 38.59,
-      "max_wall_time_s": 39.99,
-      "median_wall_time_s": 39.39,
-      "stddev_wall_time_s": 0.573,
+      "avg_wall_time_s": 35.31,
+      "avg_peak_rss_mb": 849.3,
+      "avg_cpu_percent": 376.7,
+      "min_wall_time_s": 34.91,
+      "max_wall_time_s": 36.02,
+      "median_wall_time_s": 35.0,
+      "stddev_wall_time_s": 0.503,
       "command": "/workspace/build/bin/codefang run -a static/complexity --format compact /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -299,39 +299,39 @@
     {
       "tool": "uast",
       "category": "ast_parse_batch",
-      "description": "Parse all Go files to UAST (16k+ files, batch)",
-      "version": "dev",
+      "description": "Parse all Go files, parallel parse-only (-w 4 -f none)",
+      "version": "uast b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:14Z)",
       "runs": [
         {
-          "wall_time_s": 56.08,
-          "peak_rss_mb": 3203.7,
-          "cpu_percent": 380.0,
-          "user_time_s": 186.45,
-          "sys_time_s": 26.65
+          "wall_time_s": 12.05,
+          "peak_rss_mb": 263.8,
+          "cpu_percent": 364.0,
+          "user_time_s": 42.71,
+          "sys_time_s": 1.19
         },
         {
-          "wall_time_s": 56.05,
-          "peak_rss_mb": 2673.1,
-          "cpu_percent": 379.0,
-          "user_time_s": 187.35,
-          "sys_time_s": 25.43
+          "wall_time_s": 11.97,
+          "peak_rss_mb": 261.6,
+          "cpu_percent": 363.0,
+          "user_time_s": 42.38,
+          "sys_time_s": 1.18
         },
         {
-          "wall_time_s": 54.32,
-          "peak_rss_mb": 2459.2,
-          "cpu_percent": 384.0,
-          "user_time_s": 185.2,
-          "sys_time_s": 23.9
+          "wall_time_s": 12.0,
+          "peak_rss_mb": 250.6,
+          "cpu_percent": 363.0,
+          "user_time_s": 42.43,
+          "sys_time_s": 1.21
         }
       ],
-      "avg_wall_time_s": 55.483,
-      "avg_peak_rss_mb": 2778.7,
-      "avg_cpu_percent": 381.0,
-      "min_wall_time_s": 54.32,
-      "max_wall_time_s": 56.08,
-      "median_wall_time_s": 56.05,
-      "stddev_wall_time_s": 0.823,
-      "command": "find /tmp/benchmark-repos/kubernetes -name \"*.go\" -not -path \"*/vendor/*\" -print0 | xargs -0 -P 4 -n 500 /workspace/build/bin/uast parse > /dev/null 2>&1",
+      "avg_wall_time_s": 12.007,
+      "avg_peak_rss_mb": 258.7,
+      "avg_cpu_percent": 363.3,
+      "min_wall_time_s": 11.97,
+      "max_wall_time_s": 12.05,
+      "median_wall_time_s": 12.0,
+      "stddev_wall_time_s": 0.033,
+      "command": "find /tmp/benchmark-repos/kubernetes -name \"*.go\" -not -path \"*/vendor/*\" -print0 | xargs -0 /workspace/build/bin/uast parse -f none",
       "success": true,
       "error": ""
     },
@@ -339,37 +339,37 @@
       "tool": "ast-grep",
       "category": "ast_parse_batch",
       "description": "Search all Go files for function pattern (16k+ files)",
-      "version": "0.41.0",
+      "version": "ast-grep 0.41.0",
       "runs": [
         {
-          "wall_time_s": 5.28,
-          "peak_rss_mb": 119.3,
+          "wall_time_s": 5.2,
+          "peak_rss_mb": 132.4,
           "cpu_percent": 391.0,
-          "user_time_s": 20.15,
-          "sys_time_s": 0.57
+          "user_time_s": 19.9,
+          "sys_time_s": 0.49
         },
         {
-          "wall_time_s": 5.52,
-          "peak_rss_mb": 166.3,
-          "cpu_percent": 377.0,
-          "user_time_s": 20.32,
-          "sys_time_s": 0.52
+          "wall_time_s": 5.3,
+          "peak_rss_mb": 118.2,
+          "cpu_percent": 385.0,
+          "user_time_s": 20.02,
+          "sys_time_s": 0.4
         },
         {
-          "wall_time_s": 5.35,
-          "peak_rss_mb": 143.8,
-          "cpu_percent": 392.0,
-          "user_time_s": 20.45,
-          "sys_time_s": 0.56
+          "wall_time_s": 5.32,
+          "peak_rss_mb": 123.2,
+          "cpu_percent": 388.0,
+          "user_time_s": 20.2,
+          "sys_time_s": 0.46
         }
       ],
-      "avg_wall_time_s": 5.383,
-      "avg_peak_rss_mb": 143.1,
-      "avg_cpu_percent": 386.7,
-      "min_wall_time_s": 5.28,
-      "max_wall_time_s": 5.52,
-      "median_wall_time_s": 5.35,
-      "stddev_wall_time_s": 0.101,
+      "avg_wall_time_s": 5.273,
+      "avg_peak_rss_mb": 124.6,
+      "avg_cpu_percent": 388.0,
+      "min_wall_time_s": 5.2,
+      "max_wall_time_s": 5.32,
+      "median_wall_time_s": 5.3,
+      "stddev_wall_time_s": 0.052,
       "command": "sg -p \"func \\$NAME\" --lang go /tmp/benchmark-repos/kubernetes > /dev/null 2>&1; true",
       "success": true,
       "error": ""
@@ -381,34 +381,34 @@
       "version": "scc version 3.6.0",
       "runs": [
         {
+          "wall_time_s": 2.48,
+          "peak_rss_mb": 302.8,
+          "cpu_percent": 147.0,
+          "user_time_s": 3.29,
+          "sys_time_s": 0.36
+        },
+        {
           "wall_time_s": 2.51,
-          "peak_rss_mb": 281.0,
-          "cpu_percent": 151.0,
-          "user_time_s": 3.31,
-          "sys_time_s": 0.48
+          "peak_rss_mb": 300.5,
+          "cpu_percent": 147.0,
+          "user_time_s": 3.3,
+          "sys_time_s": 0.4
         },
         {
-          "wall_time_s": 2.66,
+          "wall_time_s": 2.53,
           "peak_rss_mb": 285.4,
-          "cpu_percent": 149.0,
-          "user_time_s": 3.53,
-          "sys_time_s": 0.44
-        },
-        {
-          "wall_time_s": 2.56,
-          "peak_rss_mb": 297.1,
-          "cpu_percent": 151.0,
-          "user_time_s": 3.41,
-          "sys_time_s": 0.45
+          "cpu_percent": 148.0,
+          "user_time_s": 3.32,
+          "sys_time_s": 0.43
         }
       ],
-      "avg_wall_time_s": 2.577,
-      "avg_peak_rss_mb": 287.8,
-      "avg_cpu_percent": 150.3,
-      "min_wall_time_s": 2.51,
-      "max_wall_time_s": 2.66,
-      "median_wall_time_s": 2.56,
-      "stddev_wall_time_s": 0.062,
+      "avg_wall_time_s": 2.507,
+      "avg_peak_rss_mb": 296.2,
+      "avg_cpu_percent": 147.3,
+      "min_wall_time_s": 2.48,
+      "max_wall_time_s": 2.53,
+      "median_wall_time_s": 2.51,
+      "stddev_wall_time_s": 0.021,
       "command": "scc --by-file --no-cocomo /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -417,37 +417,37 @@
       "tool": "codefang",
       "category": "complexity_detail",
       "description": "Codefang full static complexity analysis",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 38.94,
-          "peak_rss_mb": 862.4,
+          "wall_time_s": 36.84,
+          "peak_rss_mb": 978.5,
           "cpu_percent": 375.0,
-          "user_time_s": 143.16,
-          "sys_time_s": 2.95
+          "user_time_s": 135.7,
+          "sys_time_s": 2.59
         },
         {
-          "wall_time_s": 37.69,
-          "peak_rss_mb": 949.4,
+          "wall_time_s": 35.54,
+          "peak_rss_mb": 915.2,
           "cpu_percent": 375.0,
-          "user_time_s": 138.2,
-          "sys_time_s": 3.24
+          "user_time_s": 131.18,
+          "sys_time_s": 2.27
         },
         {
-          "wall_time_s": 39.97,
-          "peak_rss_mb": 927.2,
-          "cpu_percent": 376.0,
-          "user_time_s": 146.96,
-          "sys_time_s": 3.39
+          "wall_time_s": 35.41,
+          "peak_rss_mb": 895.6,
+          "cpu_percent": 374.0,
+          "user_time_s": 130.23,
+          "sys_time_s": 2.57
         }
       ],
-      "avg_wall_time_s": 38.867,
-      "avg_peak_rss_mb": 913.0,
-      "avg_cpu_percent": 375.3,
-      "min_wall_time_s": 37.69,
-      "max_wall_time_s": 39.97,
-      "median_wall_time_s": 38.94,
-      "stddev_wall_time_s": 0.932,
+      "avg_wall_time_s": 35.93,
+      "avg_peak_rss_mb": 929.8,
+      "avg_cpu_percent": 374.7,
+      "min_wall_time_s": 35.41,
+      "max_wall_time_s": 36.84,
+      "median_wall_time_s": 35.54,
+      "stddev_wall_time_s": 0.646,
       "command": "/workspace/build/bin/codefang run -a static/complexity --format json /tmp/benchmark-repos/kubernetes > /dev/null 2>&1",
       "success": true,
       "error": ""
@@ -455,39 +455,39 @@
     {
       "tool": "uast",
       "category": "ast_parse_single",
-      "description": "Parse single file to UAST (30478 lines)",
+      "description": "Parse single file to UAST, parse-only (30478 lines)",
       "version": "dev",
       "runs": [
         {
-          "wall_time_s": 0.97,
-          "peak_rss_mb": 364.2,
-          "cpu_percent": 130.0,
-          "user_time_s": 1.08,
-          "sys_time_s": 0.18
+          "wall_time_s": 0.4,
+          "peak_rss_mb": 70.5,
+          "cpu_percent": 105.0,
+          "user_time_s": 0.38,
+          "sys_time_s": 0.04
         },
         {
-          "wall_time_s": 1.0,
-          "peak_rss_mb": 400.6,
-          "cpu_percent": 130.0,
-          "user_time_s": 1.05,
-          "sys_time_s": 0.25
+          "wall_time_s": 0.39,
+          "peak_rss_mb": 70.7,
+          "cpu_percent": 105.0,
+          "user_time_s": 0.39,
+          "sys_time_s": 0.02
         },
         {
-          "wall_time_s": 1.0,
-          "peak_rss_mb": 400.9,
-          "cpu_percent": 132.0,
-          "user_time_s": 1.07,
-          "sys_time_s": 0.25
+          "wall_time_s": 0.4,
+          "peak_rss_mb": 70.4,
+          "cpu_percent": 104.0,
+          "user_time_s": 0.39,
+          "sys_time_s": 0.03
         }
       ],
-      "avg_wall_time_s": 0.99,
-      "avg_peak_rss_mb": 388.6,
-      "avg_cpu_percent": 130.7,
-      "min_wall_time_s": 0.97,
-      "max_wall_time_s": 1.0,
-      "median_wall_time_s": 1.0,
-      "stddev_wall_time_s": 0.014,
-      "command": "/workspace/build/bin/uast parse /tmp/benchmark-repos/kubernetes/pkg/apis/core/validation/validation_test.go > /dev/null 2>&1",
+      "avg_wall_time_s": 0.397,
+      "avg_peak_rss_mb": 70.5,
+      "avg_cpu_percent": 104.7,
+      "min_wall_time_s": 0.39,
+      "max_wall_time_s": 0.4,
+      "median_wall_time_s": 0.4,
+      "stddev_wall_time_s": 0.005,
+      "command": "/workspace/build/bin/uast parse -f none /tmp/benchmark-repos/kubernetes/pkg/apis/core/validation/validation_test.go",
       "success": true,
       "error": ""
     },
@@ -499,28 +499,28 @@
       "runs": [
         {
           "wall_time_s": 0.18,
-          "peak_rss_mb": 38.4,
+          "peak_rss_mb": 36.0,
           "cpu_percent": 101.0,
-          "user_time_s": 0.16,
+          "user_time_s": 0.15,
           "sys_time_s": 0.02
         },
         {
-          "wall_time_s": 0.17,
-          "peak_rss_mb": 36.4,
-          "cpu_percent": 100.0,
-          "user_time_s": 0.17,
-          "sys_time_s": 0.0
+          "wall_time_s": 0.18,
+          "peak_rss_mb": 35.5,
+          "cpu_percent": 101.0,
+          "user_time_s": 0.16,
+          "sys_time_s": 0.01
         },
         {
-          "wall_time_s": 0.18,
-          "peak_rss_mb": 36.6,
-          "cpu_percent": 102.0,
-          "user_time_s": 0.17,
+          "wall_time_s": 0.17,
+          "peak_rss_mb": 35.4,
+          "cpu_percent": 101.0,
+          "user_time_s": 0.15,
           "sys_time_s": 0.01
         }
       ],
       "avg_wall_time_s": 0.177,
-      "avg_peak_rss_mb": 37.1,
+      "avg_peak_rss_mb": 35.6,
       "avg_cpu_percent": 101.0,
       "min_wall_time_s": 0.17,
       "max_wall_time_s": 0.18,

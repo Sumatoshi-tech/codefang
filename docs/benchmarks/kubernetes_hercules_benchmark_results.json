@@ -12,7 +12,7 @@
     },
     "tools": {
       "hercules": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
-      "codefang": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)"
+      "codefang": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)"
     },
     "config": {
       "warmup_runs": 1,
@@ -22,7 +22,7 @@
         1000
       ]
     },
-    "timestamp": "2026-02-25T08:26:57.393269+00:00"
+    "timestamp": "2026-02-25T21:37:55.619051+00:00"
   },
   "results": [
     {
@@ -33,34 +33,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 22.29,
-          "peak_rss_mb": 1423.6,
+          "wall_time_s": 21.74,
+          "peak_rss_mb": 1417.2,
           "cpu_percent": 110.0,
-          "user_time_s": 20.66,
-          "sys_time_s": 4.03
+          "user_time_s": 20.14,
+          "sys_time_s": 3.81
         },
         {
-          "wall_time_s": 22.67,
-          "peak_rss_mb": 1420.6,
-          "cpu_percent": 110.0,
-          "user_time_s": 21.37,
-          "sys_time_s": 3.78
+          "wall_time_s": 22.04,
+          "peak_rss_mb": 1429.8,
+          "cpu_percent": 109.0,
+          "user_time_s": 20.37,
+          "sys_time_s": 3.84
         },
         {
-          "wall_time_s": 22.28,
-          "peak_rss_mb": 1427.5,
-          "cpu_percent": 110.0,
-          "user_time_s": 20.98,
-          "sys_time_s": 3.73
+          "wall_time_s": 21.66,
+          "peak_rss_mb": 1409.3,
+          "cpu_percent": 109.0,
+          "user_time_s": 19.86,
+          "sys_time_s": 3.9
         }
       ],
-      "avg_wall_time_s": 22.413,
-      "avg_peak_rss_mb": 1423.9,
-      "avg_cpu_percent": 110.0,
-      "min_wall_time_s": 22.28,
-      "max_wall_time_s": 22.67,
-      "median_wall_time_s": 22.29,
-      "stddev_wall_time_s": 0.182,
+      "avg_wall_time_s": 21.813,
+      "avg_peak_rss_mb": 1418.8,
+      "avg_cpu_percent": 109.3,
+      "min_wall_time_s": 21.66,
+      "max_wall_time_s": 22.04,
+      "median_wall_time_s": 21.74,
+      "stddev_wall_time_s": 0.164,
       "command": "/tmp/hercules --burndown --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -71,41 +71,41 @@
       "analyzer": "burndown",
       "commits": 500,
       "description": "Codefang Code survival over time (line age tracking)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 1.1,
-          "peak_rss_mb": 266.5,
-          "cpu_percent": 120.0,
-          "user_time_s": 1.16,
-          "sys_time_s": 0.16
+          "wall_time_s": 1.12,
+          "peak_rss_mb": 269.2,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.11
         },
         {
-          "wall_time_s": 1.18,
-          "peak_rss_mb": 273.3,
-          "cpu_percent": 120.0,
-          "user_time_s": 1.24,
-          "sys_time_s": 0.17
-        },
-        {
-          "wall_time_s": 1.14,
-          "peak_rss_mb": 280.4,
-          "cpu_percent": 119.0,
-          "user_time_s": 1.21,
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 271.5,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.17,
           "sys_time_s": 0.14
+        },
+        {
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 276.0,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.2,
+          "sys_time_s": 0.12
         }
       ],
-      "avg_wall_time_s": 1.14,
-      "avg_peak_rss_mb": 273.4,
-      "avg_cpu_percent": 119.7,
-      "min_wall_time_s": 1.1,
-      "max_wall_time_s": 1.18,
-      "median_wall_time_s": 1.14,
-      "stddev_wall_time_s": 0.033,
+      "avg_wall_time_s": 1.113,
+      "avg_peak_rss_mb": 272.2,
+      "avg_cpu_percent": 118.0,
+      "min_wall_time_s": 1.11,
+      "max_wall_time_s": 1.12,
+      "median_wall_time_s": 1.11,
+      "stddev_wall_time_s": 0.005,
       "command": "/workspace/build/bin/codefang run -a history/burndown --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 19.7
+      "speedup": 19.6
     },
     {
       "tool": "hercules",
@@ -115,34 +115,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 49.58,
-          "peak_rss_mb": 1413.0,
+          "wall_time_s": 48.6,
+          "peak_rss_mb": 1387.4,
           "cpu_percent": 104.0,
-          "user_time_s": 48.0,
-          "sys_time_s": 4.05
+          "user_time_s": 46.66,
+          "sys_time_s": 4.04
         },
         {
-          "wall_time_s": 50.37,
-          "peak_rss_mb": 1448.6,
-          "cpu_percent": 105.0,
-          "user_time_s": 48.63,
-          "sys_time_s": 4.31
+          "wall_time_s": 49.21,
+          "peak_rss_mb": 1381.6,
+          "cpu_percent": 104.0,
+          "user_time_s": 47.09,
+          "sys_time_s": 4.27
         },
         {
-          "wall_time_s": 48.65,
-          "peak_rss_mb": 1453.0,
-          "cpu_percent": 105.0,
-          "user_time_s": 46.96,
-          "sys_time_s": 4.19
+          "wall_time_s": 49.19,
+          "peak_rss_mb": 1411.6,
+          "cpu_percent": 104.0,
+          "user_time_s": 47.03,
+          "sys_time_s": 4.46
         }
       ],
-      "avg_wall_time_s": 49.533,
-      "avg_peak_rss_mb": 1438.2,
-      "avg_cpu_percent": 104.7,
-      "min_wall_time_s": 48.65,
-      "max_wall_time_s": 50.37,
-      "median_wall_time_s": 49.58,
-      "stddev_wall_time_s": 0.703,
+      "avg_wall_time_s": 49.0,
+      "avg_peak_rss_mb": 1393.5,
+      "avg_cpu_percent": 104.0,
+      "min_wall_time_s": 48.6,
+      "max_wall_time_s": 49.21,
+      "median_wall_time_s": 49.19,
+      "stddev_wall_time_s": 0.283,
       "command": "/tmp/hercules --couples --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -153,41 +153,41 @@
       "analyzer": "couples",
       "commits": 500,
       "description": "Codefang File coupling analysis (co-change frequency)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 2.47,
-          "peak_rss_mb": 1163.6,
-          "cpu_percent": 138.0,
-          "user_time_s": 2.85,
-          "sys_time_s": 0.58
+          "wall_time_s": 2.35,
+          "peak_rss_mb": 1254.7,
+          "cpu_percent": 131.0,
+          "user_time_s": 2.46,
+          "sys_time_s": 0.63
         },
         {
-          "wall_time_s": 2.52,
-          "peak_rss_mb": 1266.8,
-          "cpu_percent": 135.0,
-          "user_time_s": 2.72,
-          "sys_time_s": 0.69
+          "wall_time_s": 2.37,
+          "peak_rss_mb": 1330.6,
+          "cpu_percent": 137.0,
+          "user_time_s": 2.63,
+          "sys_time_s": 0.62
         },
         {
-          "wall_time_s": 2.43,
-          "peak_rss_mb": 1085.2,
-          "cpu_percent": 133.0,
-          "user_time_s": 2.68,
-          "sys_time_s": 0.56
+          "wall_time_s": 2.36,
+          "peak_rss_mb": 1164.3,
+          "cpu_percent": 137.0,
+          "user_time_s": 2.66,
+          "sys_time_s": 0.59
         }
       ],
-      "avg_wall_time_s": 2.473,
-      "avg_peak_rss_mb": 1171.9,
-      "avg_cpu_percent": 135.3,
-      "min_wall_time_s": 2.43,
-      "max_wall_time_s": 2.52,
-      "median_wall_time_s": 2.47,
-      "stddev_wall_time_s": 0.037,
+      "avg_wall_time_s": 2.36,
+      "avg_peak_rss_mb": 1249.9,
+      "avg_cpu_percent": 135.0,
+      "min_wall_time_s": 2.35,
+      "max_wall_time_s": 2.37,
+      "median_wall_time_s": 2.36,
+      "stddev_wall_time_s": 0.008,
       "command": "/workspace/build/bin/codefang run -a history/couples --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 20.0
+      "speedup": 20.8
     },
     {
       "tool": "hercules",
@@ -197,34 +197,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 22.96,
-          "peak_rss_mb": 1410.5,
+          "wall_time_s": 22.29,
+          "peak_rss_mb": 1430.1,
           "cpu_percent": 107.0,
-          "user_time_s": 20.91,
+          "user_time_s": 19.99,
+          "sys_time_s": 3.87
+        },
+        {
+          "wall_time_s": 22.47,
+          "peak_rss_mb": 1415.0,
+          "cpu_percent": 107.0,
+          "user_time_s": 20.24,
           "sys_time_s": 3.88
         },
         {
-          "wall_time_s": 22.94,
-          "peak_rss_mb": 1421.1,
-          "cpu_percent": 108.0,
-          "user_time_s": 21.02,
-          "sys_time_s": 3.76
-        },
-        {
-          "wall_time_s": 22.73,
-          "peak_rss_mb": 1439.3,
+          "wall_time_s": 22.64,
+          "peak_rss_mb": 1402.2,
           "cpu_percent": 107.0,
-          "user_time_s": 20.52,
-          "sys_time_s": 3.99
+          "user_time_s": 20.65,
+          "sys_time_s": 3.7
         }
       ],
-      "avg_wall_time_s": 22.877,
-      "avg_peak_rss_mb": 1423.6,
-      "avg_cpu_percent": 107.3,
-      "min_wall_time_s": 22.73,
-      "max_wall_time_s": 22.96,
-      "median_wall_time_s": 22.94,
-      "stddev_wall_time_s": 0.104,
+      "avg_wall_time_s": 22.467,
+      "avg_peak_rss_mb": 1415.8,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 22.29,
+      "max_wall_time_s": 22.64,
+      "median_wall_time_s": 22.47,
+      "stddev_wall_time_s": 0.143,
       "command": "/tmp/hercules --devs --first-parent --commits /tmp/k8s_500_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -235,41 +235,41 @@
       "analyzer": "devs",
       "commits": 500,
       "description": "Codefang Developer activity (commits, additions, deletions per author)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
+          "wall_time_s": 1.13,
+          "peak_rss_mb": 274.4,
+          "cpu_percent": 117.0,
+          "user_time_s": 1.23,
+          "sys_time_s": 0.09
+        },
+        {
           "wall_time_s": 1.12,
-          "peak_rss_mb": 266.2,
-          "cpu_percent": 119.0,
-          "user_time_s": 1.19,
+          "peak_rss_mb": 260.6,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.18,
           "sys_time_s": 0.14
         },
         {
-          "wall_time_s": 1.16,
-          "peak_rss_mb": 274.4,
-          "cpu_percent": 120.0,
-          "user_time_s": 1.28,
-          "sys_time_s": 0.1
-        },
-        {
-          "wall_time_s": 1.16,
-          "peak_rss_mb": 273.1,
-          "cpu_percent": 117.0,
-          "user_time_s": 1.25,
-          "sys_time_s": 0.12
+          "wall_time_s": 1.11,
+          "peak_rss_mb": 256.4,
+          "cpu_percent": 118.0,
+          "user_time_s": 1.22,
+          "sys_time_s": 0.09
         }
       ],
-      "avg_wall_time_s": 1.147,
-      "avg_peak_rss_mb": 271.2,
-      "avg_cpu_percent": 118.7,
-      "min_wall_time_s": 1.12,
-      "max_wall_time_s": 1.16,
-      "median_wall_time_s": 1.16,
-      "stddev_wall_time_s": 0.019,
+      "avg_wall_time_s": 1.12,
+      "avg_peak_rss_mb": 263.8,
+      "avg_cpu_percent": 117.7,
+      "min_wall_time_s": 1.11,
+      "max_wall_time_s": 1.13,
+      "median_wall_time_s": 1.12,
+      "stddev_wall_time_s": 0.008,
       "command": "/workspace/build/bin/codefang run -a history/devs --format yaml --first-parent --limit 500 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 19.9
+      "speedup": 20.1
     },
     {
       "tool": "hercules",
@@ -279,34 +279,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 42.19,
-          "peak_rss_mb": 1585.4,
-          "cpu_percent": 111.0,
-          "user_time_s": 39.87,
-          "sys_time_s": 7.16
+          "wall_time_s": 40.67,
+          "peak_rss_mb": 1583.4,
+          "cpu_percent": 110.0,
+          "user_time_s": 38.13,
+          "sys_time_s": 6.98
         },
         {
-          "wall_time_s": 42.07,
-          "peak_rss_mb": 1596.8,
-          "cpu_percent": 111.0,
-          "user_time_s": 39.92,
-          "sys_time_s": 6.96
+          "wall_time_s": 40.39,
+          "peak_rss_mb": 1599.7,
+          "cpu_percent": 110.0,
+          "user_time_s": 37.97,
+          "sys_time_s": 6.73
         },
         {
-          "wall_time_s": 42.21,
-          "peak_rss_mb": 1544.2,
-          "cpu_percent": 111.0,
-          "user_time_s": 40.1,
+          "wall_time_s": 41.75,
+          "peak_rss_mb": 1516.1,
+          "cpu_percent": 110.0,
+          "user_time_s": 39.25,
           "sys_time_s": 6.99
         }
       ],
-      "avg_wall_time_s": 42.157,
-      "avg_peak_rss_mb": 1575.5,
-      "avg_cpu_percent": 111.0,
-      "min_wall_time_s": 42.07,
-      "max_wall_time_s": 42.21,
-      "median_wall_time_s": 42.19,
-      "stddev_wall_time_s": 0.062,
+      "avg_wall_time_s": 40.937,
+      "avg_peak_rss_mb": 1566.4,
+      "avg_cpu_percent": 110.0,
+      "min_wall_time_s": 40.39,
+      "max_wall_time_s": 41.75,
+      "median_wall_time_s": 40.67,
+      "stddev_wall_time_s": 0.586,
       "command": "/tmp/hercules --burndown --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -317,41 +317,41 @@
       "analyzer": "burndown",
       "commits": 1000,
       "description": "Codefang Code survival over time (line age tracking)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 1.46,
-          "peak_rss_mb": 320.3,
-          "cpu_percent": 125.0,
-          "user_time_s": 1.66,
+          "wall_time_s": 1.41,
+          "peak_rss_mb": 310.0,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.59,
           "sys_time_s": 0.17
         },
         {
-          "wall_time_s": 1.47,
-          "peak_rss_mb": 330.7,
+          "wall_time_s": 1.4,
+          "peak_rss_mb": 365.7,
           "cpu_percent": 125.0,
-          "user_time_s": 1.64,
-          "sys_time_s": 0.2
+          "user_time_s": 1.58,
+          "sys_time_s": 0.17
         },
         {
-          "wall_time_s": 1.47,
-          "peak_rss_mb": 317.9,
+          "wall_time_s": 1.38,
+          "peak_rss_mb": 311.7,
           "cpu_percent": 125.0,
-          "user_time_s": 1.63,
-          "sys_time_s": 0.2
+          "user_time_s": 1.59,
+          "sys_time_s": 0.13
         }
       ],
-      "avg_wall_time_s": 1.467,
-      "avg_peak_rss_mb": 323.0,
-      "avg_cpu_percent": 125.0,
-      "min_wall_time_s": 1.46,
-      "max_wall_time_s": 1.47,
-      "median_wall_time_s": 1.47,
-      "stddev_wall_time_s": 0.005,
+      "avg_wall_time_s": 1.397,
+      "avg_peak_rss_mb": 329.1,
+      "avg_cpu_percent": 124.7,
+      "min_wall_time_s": 1.38,
+      "max_wall_time_s": 1.41,
+      "median_wall_time_s": 1.4,
+      "stddev_wall_time_s": 0.012,
       "command": "/workspace/build/bin/codefang run -a history/burndown --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 28.7
+      "speedup": 29.3
     },
     {
       "tool": "hercules",
@@ -361,34 +361,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 72.33,
-          "peak_rss_mb": 1580.7,
-          "cpu_percent": 108.0,
-          "user_time_s": 70.91,
-          "sys_time_s": 7.56
+          "wall_time_s": 69.23,
+          "peak_rss_mb": 1563.3,
+          "cpu_percent": 107.0,
+          "user_time_s": 66.89,
+          "sys_time_s": 7.44
         },
         {
-          "wall_time_s": 72.05,
-          "peak_rss_mb": 1581.1,
-          "cpu_percent": 108.0,
-          "user_time_s": 70.46,
+          "wall_time_s": 68.84,
+          "peak_rss_mb": 1513.3,
+          "cpu_percent": 107.0,
+          "user_time_s": 66.78,
+          "sys_time_s": 7.15
+        },
+        {
+          "wall_time_s": 70.2,
+          "peak_rss_mb": 1573.1,
+          "cpu_percent": 107.0,
+          "user_time_s": 67.78,
           "sys_time_s": 7.59
-        },
-        {
-          "wall_time_s": 71.94,
-          "peak_rss_mb": 1571.7,
-          "cpu_percent": 108.0,
-          "user_time_s": 70.66,
-          "sys_time_s": 7.25
         }
       ],
-      "avg_wall_time_s": 72.107,
-      "avg_peak_rss_mb": 1577.8,
-      "avg_cpu_percent": 108.0,
-      "min_wall_time_s": 71.94,
-      "max_wall_time_s": 72.33,
-      "median_wall_time_s": 72.05,
-      "stddev_wall_time_s": 0.164,
+      "avg_wall_time_s": 69.423,
+      "avg_peak_rss_mb": 1549.9,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 68.84,
+      "max_wall_time_s": 70.2,
+      "median_wall_time_s": 69.23,
+      "stddev_wall_time_s": 0.572,
       "command": "/tmp/hercules --couples --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -399,41 +399,41 @@
       "analyzer": "couples",
       "commits": 1000,
       "description": "Codefang File coupling analysis (co-change frequency)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 4.07,
-          "peak_rss_mb": 1992.8,
+          "wall_time_s": 3.44,
+          "peak_rss_mb": 1798.8,
+          "cpu_percent": 141.0,
+          "user_time_s": 3.89,
+          "sys_time_s": 0.98
+        },
+        {
+          "wall_time_s": 3.4,
+          "peak_rss_mb": 1707.9,
           "cpu_percent": 143.0,
-          "user_time_s": 4.6,
-          "sys_time_s": 1.25
+          "user_time_s": 4.06,
+          "sys_time_s": 0.83
         },
         {
-          "wall_time_s": 3.69,
-          "peak_rss_mb": 1975.1,
-          "cpu_percent": 144.0,
-          "user_time_s": 4.26,
-          "sys_time_s": 1.07
-        },
-        {
-          "wall_time_s": 3.56,
-          "peak_rss_mb": 1859.5,
-          "cpu_percent": 137.0,
-          "user_time_s": 4.02,
-          "sys_time_s": 0.89
+          "wall_time_s": 3.43,
+          "peak_rss_mb": 1882.8,
+          "cpu_percent": 135.0,
+          "user_time_s": 3.69,
+          "sys_time_s": 0.96
         }
       ],
-      "avg_wall_time_s": 3.773,
-      "avg_peak_rss_mb": 1942.5,
-      "avg_cpu_percent": 141.3,
-      "min_wall_time_s": 3.56,
-      "max_wall_time_s": 4.07,
-      "median_wall_time_s": 3.69,
-      "stddev_wall_time_s": 0.216,
+      "avg_wall_time_s": 3.423,
+      "avg_peak_rss_mb": 1796.5,
+      "avg_cpu_percent": 139.7,
+      "min_wall_time_s": 3.4,
+      "max_wall_time_s": 3.44,
+      "median_wall_time_s": 3.43,
+      "stddev_wall_time_s": 0.017,
       "command": "/workspace/build/bin/codefang run -a history/couples --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 19.1
+      "speedup": 20.3
     },
     {
       "tool": "hercules",
@@ -443,34 +443,34 @@
       "version": "Version: 10\nGit:     6959c0d102ed485929385d87c56a9910551ad0b1",
       "runs": [
         {
-          "wall_time_s": 43.81,
-          "peak_rss_mb": 1577.0,
-          "cpu_percent": 108.0,
-          "user_time_s": 40.38,
-          "sys_time_s": 7.06
+          "wall_time_s": 40.95,
+          "peak_rss_mb": 1563.0,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.13,
+          "sys_time_s": 6.72
         },
         {
-          "wall_time_s": 43.53,
-          "peak_rss_mb": 1577.9,
-          "cpu_percent": 108.0,
-          "user_time_s": 40.18,
-          "sys_time_s": 6.96
+          "wall_time_s": 41.76,
+          "peak_rss_mb": 1512.4,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.77,
+          "sys_time_s": 7.05
         },
         {
-          "wall_time_s": 43.7,
-          "peak_rss_mb": 1576.9,
-          "cpu_percent": 108.0,
-          "user_time_s": 40.18,
-          "sys_time_s": 7.17
+          "wall_time_s": 41.37,
+          "peak_rss_mb": 1532.6,
+          "cpu_percent": 107.0,
+          "user_time_s": 37.46,
+          "sys_time_s": 7.02
         }
       ],
-      "avg_wall_time_s": 43.68,
-      "avg_peak_rss_mb": 1577.3,
-      "avg_cpu_percent": 108.0,
-      "min_wall_time_s": 43.53,
-      "max_wall_time_s": 43.81,
-      "median_wall_time_s": 43.7,
-      "stddev_wall_time_s": 0.115,
+      "avg_wall_time_s": 41.36,
+      "avg_peak_rss_mb": 1536.0,
+      "avg_cpu_percent": 107.0,
+      "min_wall_time_s": 40.95,
+      "max_wall_time_s": 41.76,
+      "median_wall_time_s": 41.37,
+      "stddev_wall_time_s": 0.331,
       "command": "/tmp/hercules --devs --first-parent --commits /tmp/k8s_1000_commits.txt /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
@@ -481,41 +481,41 @@
       "analyzer": "devs",
       "commits": 1000,
       "description": "Codefang Developer activity (commits, additions, deletions per author)",
-      "version": "codefang 9319ff5 (commit: 9319ff5, built: 2026-02-25T07:17:01Z)",
+      "version": "codefang b6eebf9-dirty (commit: b6eebf9, built: 2026-02-25T20:57:17Z)",
       "runs": [
         {
-          "wall_time_s": 1.53,
-          "peak_rss_mb": 319.0,
+          "wall_time_s": 1.46,
+          "peak_rss_mb": 317.4,
           "cpu_percent": 124.0,
-          "user_time_s": 1.74,
-          "sys_time_s": 0.15
+          "user_time_s": 1.61,
+          "sys_time_s": 0.2
         },
         {
-          "wall_time_s": 1.54,
-          "peak_rss_mb": 336.9,
-          "cpu_percent": 122.0,
-          "user_time_s": 1.67,
-          "sys_time_s": 0.22
+          "wall_time_s": 1.42,
+          "peak_rss_mb": 324.5,
+          "cpu_percent": 124.0,
+          "user_time_s": 1.6,
+          "sys_time_s": 0.16
         },
         {
-          "wall_time_s": 1.52,
-          "peak_rss_mb": 322.6,
+          "wall_time_s": 1.45,
+          "peak_rss_mb": 312.9,
           "cpu_percent": 124.0,
-          "user_time_s": 1.7,
-          "sys_time_s": 0.19
+          "user_time_s": 1.61,
+          "sys_time_s": 0.18
         }
       ],
-      "avg_wall_time_s": 1.53,
-      "avg_peak_rss_mb": 326.2,
-      "avg_cpu_percent": 123.3,
-      "min_wall_time_s": 1.52,
-      "max_wall_time_s": 1.54,
-      "median_wall_time_s": 1.53,
-      "stddev_wall_time_s": 0.008,
+      "avg_wall_time_s": 1.443,
+      "avg_peak_rss_mb": 318.3,
+      "avg_cpu_percent": 124.0,
+      "min_wall_time_s": 1.42,
+      "max_wall_time_s": 1.46,
+      "median_wall_time_s": 1.45,
+      "stddev_wall_time_s": 0.017,
       "command": "/workspace/build/bin/codefang run -a history/devs --format yaml --first-parent --limit 1000 /tmp/benchmark-repos/kubernetes-history > /dev/null 2>&1",
       "success": true,
       "error": "",
-      "speedup": 28.5
+      "speedup": 28.7
     }
   ]
 }

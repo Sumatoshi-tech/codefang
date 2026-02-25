@@ -58,30 +58,30 @@ Filesystem caches were warm after the warmup run.
 
 | Tool       | Category             | Avg Time (s) | Peak RSS (MB) | CPU % | Notes |
 |------------|----------------------|--------------|---------------|-------|-------|
-| **tokei**  | Code Counting        | **0.56**     | **40**        | 332%  | Fastest counter, lowest memory |
-| **scc**    | Code Counting        | **0.56**     | 209           | 333%  | Tied fastest, adds complexity metrics |
-| **gocloc** | Code Counting        | 1.58         | 47            | 121%  | 3x slower, low memory |
-| **cloc**   | Code Counting        | 64.18        | 116           | 99%   | 115x slower (single-threaded Perl) |
-| **gocyclo**| Complexity           | **2.79**     | **51**        | 123%  | Fastest Go-only complexity |
-| **codefang**| Complexity          | 39.32        | 870           | 376%  | Multi-lang UAST-based, deepest analysis |
-| **lizard** | Complexity           | 83.89        | 260           | 99%   | Single-threaded Python |
-| **scc**    | Complexity (detail)  | **2.58**     | 288           | 150%  | Line-level counting complexity |
-| **codefang**| Complexity (detail) | 38.87        | 913           | 375%  | Full AST-aware function-level metrics |
-| **ast-grep**| AST Parse (single)  | **0.18**     | **37**        | 101%  | Pattern match only, 30k-line file |
-| **uast**   | AST Parse (single)   | 0.99         | 389           | 131%  | Full UAST transformation, 30k-line file |
-| **ast-grep**| AST Parse (batch)   | **5.38**     | **143**       | 387%  | Pattern search across 16k+ files |
-| **uast**   | AST Parse (batch)    | 55.48        | 2,779         | 381%  | Full UAST transform, 16k+ Go files |
+| **tokei**  | Code Counting        | **0.47**     | **38**        | 353%  | Fastest counter, lowest memory |
+| **scc**    | Code Counting        | **0.48**     | 211           | 328%  | Tied fastest, adds complexity metrics |
+| **gocloc** | Code Counting        | 1.38         | 48            | 119%  | 3x slower, low memory |
+| **cloc**   | Code Counting        | 62.82        | 116           | 99%   | 130x slower (single-threaded Perl) |
+| **gocyclo**| Complexity           | **2.68**     | **50**        | 122%  | Fastest Go-only complexity |
+| **codefang**| Complexity          | 35.31        | 849           | 377%  | Multi-lang UAST-based, deepest analysis |
+| **lizard** | Complexity           | 82.20        | 260           | 99%   | Single-threaded Python |
+| **scc**    | Complexity (detail)  | **2.51**     | 296           | 147%  | Line-level counting complexity |
+| **codefang**| Complexity (detail) | 35.93        | 930           | 375%  | Full AST-aware function-level metrics |
+| **ast-grep**| AST Parse (single)  | **0.18**     | **36**        | 101%  | Pattern match only, 30k-line file |
+| **uast**   | AST Parse (single)   | 0.40         | 70            | 105%  | Full UAST parse-only, 30k-line file |
+| **ast-grep**| AST Parse (batch)   | **5.27**     | **125**       | 388%  | Pattern search across 16k+ files |
+| **uast**   | AST Parse (batch)    | 12.01        | 259           | 363%  | Full UAST parse-only, 16k+ Go files |
 
 #### Git History Analysis (1000 first-parent commits)
 
 | Tool         | Analyzer  | Avg Time (s) | Peak RSS (MB) | CPU % | Speedup |
 |--------------|-----------|--------------|---------------|-------|---------|
-| **codefang** | burndown  | **1.47**     | **323**       | 125%  | **28.7x** |
-| hercules     | burndown  | 42.16        | 1,576         | 111%  | —       |
-| **codefang** | couples   | **3.77**     | 1,942         | 141%  | **19.1x** |
-| hercules     | couples   | 72.11        | 1,578         | 108%  | —       |
-| **codefang** | devs      | **1.53**     | **326**       | 123%  | **28.5x** |
-| hercules     | devs      | 43.68        | 1,577         | 108%  | —       |
+| **codefang** | burndown  | **1.40**     | **329**       | 125%  | **29.3x** |
+| hercules     | burndown  | 40.94        | 1,566         | 110%  | —       |
+| **codefang** | couples   | **3.42**     | 1,796         | 140%  | **20.3x** |
+| hercules     | couples   | 69.42        | 1,550         | 107%  | —       |
+| **codefang** | devs      | **1.44**     | **318**       | 124%  | **28.7x** |
+| hercules     | devs      | 41.36        | 1,536         | 107%  | —       |
 
 ---
 
@@ -94,15 +94,15 @@ codebase (~28k files, ~5M lines of Go).
 
 | Tool     | Time (s) | Peak RSS (MB) | CPU % | Speedup vs cloc |
 |----------|----------|---------------|-------|-----------------|
-| scc      | 0.56     | 209           | 333%  | **115x**        |
-| tokei    | 0.56     | 40            | 332%  | **115x**        |
-| gocloc   | 1.58     | 47            | 121%  | **41x**         |
-| cloc     | 64.18    | 116           | 99%   | 1x (baseline)   |
+| tokei    | 0.47     | 38            | 353%  | **134x**        |
+| scc      | 0.48     | 211           | 328%  | **131x**        |
+| gocloc   | 1.38     | 48            | 119%  | **46x**         |
+| cloc     | 62.82    | 116           | 99%   | 1x (baseline)   |
 
 **Key findings:**
-- **scc** and **tokei** are tied at ~0.56s, both leveraging multi-core parallelism (330%+ CPU).
-- **tokei** achieves this with only **40 MB** of RAM (5x less than scc).
-- **cloc** is 115x slower due to single-threaded Perl execution.
+- **tokei** and **scc** are tied at ~0.5s, both leveraging multi-core parallelism (330%+ CPU).
+- **tokei** achieves this with only **38 MB** of RAM (5.5x less than scc).
+- **cloc** is 130x slower due to single-threaded Perl execution.
 - **gocloc** is a solid middle ground: 3x slower than scc/tokei but very lean on memory.
 
 ---
@@ -115,19 +115,19 @@ Measuring function-level cyclomatic complexity across all Go files.
 
 | Tool      | Time (s) | Peak RSS (MB) | CPU % | Depth of Analysis |
 |-----------|----------|---------------|-------|-------------------|
-| gocyclo   | 2.79     | 51            | 123%  | Go-only cyclomatic |
-| codefang  | 39.32    | 870           | 376%  | Multi-lang cyclomatic + cognitive via UAST |
-| lizard    | 83.89    | 260           | 99%   | Multi-lang cyclomatic |
+| gocyclo   | 2.68     | 50            | 122%  | Go-only cyclomatic |
+| codefang  | 35.31    | 849           | 377%  | Multi-lang cyclomatic + cognitive via UAST |
+| lizard    | 82.20    | 260           | 99%   | Multi-lang cyclomatic |
 
 **Key findings:**
-- **gocyclo** is the fastest for Go-only cyclomatic complexity (2.8s) but provides
+- **gocyclo** is the fastest for Go-only cyclomatic complexity (2.7s) but provides
   no cross-language support and no cognitive complexity metrics.
-- **codefang** is 14x slower than gocyclo but provides:
+- **codefang** is 13x slower than gocyclo but provides:
   - Multi-language support (60+ languages via UAST)
   - Both cyclomatic AND cognitive complexity
   - Function-level AST-aware analysis (not regex-based)
-  - Full utilization of all CPU cores (376%)
-- **codefang** is **2.1x faster** than lizard while providing deeper analysis.
+  - Full utilization of all CPU cores (377%)
+- **codefang** is **2.3x faster** than lizard while providing deeper analysis.
 - **lizard** is bottlenecked by single-threaded Python (99% CPU, single core).
 
 ### Complexity Detail: scc vs codefang
@@ -136,12 +136,12 @@ Measuring function-level cyclomatic complexity across all Go files.
 
 | Tool      | Time (s) | Peak RSS (MB) | Analysis Depth |
 |-----------|----------|---------------|----------------|
-| scc       | 2.58     | 288           | Line-based complexity estimate |
-| codefang  | 38.87    | 913           | AST-aware function-level metrics |
+| scc       | 2.51     | 296           | Line-based complexity estimate |
+| codefang  | 35.93    | 930           | AST-aware function-level metrics |
 
 scc's "complexity" is a line-based heuristic (counting branches/keywords), while
 codefang performs full AST parsing through UAST and computes precise cyclomatic +
-cognitive complexity per function. The ~15x time difference reflects the depth
+cognitive complexity per function. The ~14x time difference reflects the depth
 difference: line scanning vs. full semantic analysis.
 
 ---
@@ -156,12 +156,13 @@ Parsing a single large Go file (`validation_test.go`).
 
 | Tool      | Time (s) | Peak RSS (MB) | Operation |
 |-----------|----------|---------------|-----------|
-| ast-grep  | 0.18     | 37            | Pattern match (tree-sitter parse + search) |
-| uast      | 0.99     | 389           | Full UAST transformation (tree-sitter → UAST) |
+| ast-grep  | 0.18     | 36            | Pattern match (tree-sitter parse + search) |
+| uast      | 0.40     | 70            | Full UAST parse-only (lazy loading, pooled context) |
 
-**Key finding:** uast performs a full semantic transformation from raw tree-sitter
-AST to Universal AST with DSL-based mappings, which is ~5x slower but produces a
-language-independent representation that codefang analyzers consume.
+**Key finding:** After optimization (lazy language loading, parseContext pooling),
+uast is only ~2.2x slower than ast-grep on a single file, down from 5.5x before.
+Memory dropped from 389 MB to 70 MB (5.6x reduction) thanks to lazy loading —
+only the Go parser is initialized, not all 60+ languages.
 
 ### Batch (16,620 Go files)
 
@@ -171,15 +172,16 @@ Processing all Go files in the Kubernetes repository.
 
 | Tool      | Time (s) | Peak RSS (MB) | CPU % | Operation |
 |-----------|----------|---------------|-------|-----------|
-| ast-grep  | 5.38     | 143           | 387%  | Pattern search across all files |
-| uast      | 55.48    | 2,779         | 381%  | Full UAST transformation |
+| ast-grep  | 5.27     | 125           | 388%  | Pattern search across all files |
+| uast      | 12.01    | 259           | 363%  | Full UAST parse-only (parse + DSL transform) |
 
 **Key findings:**
-- ast-grep is ~10x faster because it only performs pattern matching on raw
-  tree-sitter AST nodes, while uast does full semantic transformation.
-- uast's higher memory usage reflects loading the DSL mapping engine and
-  producing rich UAST output for each file.
-- Both tools utilize all CPU cores effectively (380%+ on 4 cores).
+- ast-grep is ~2.3x faster because it only performs pattern matching on raw
+  tree-sitter AST nodes, while uast does full UAST semantic transformation.
+- After optimization, the gap narrowed from 10.3x to 2.3x through parser reuse,
+  parseContext pooling, bloom filter for extension lookup, and lazy loading.
+- Memory dropped from 2,779 MB to 259 MB (10.7x reduction).
+- Both tools utilize all CPU cores effectively (360%+ on 4 cores).
 
 ---
 
@@ -204,12 +206,12 @@ replaced.
 
 | Tool      | Commits | Time (s) | Peak RSS (MB) | CPU % | Speedup |
 |-----------|---------|----------|---------------|-------|---------|
-| hercules  | 500     | 22.41    | 1,424         | 110%  | —       |
-| codefang  | 500     | **1.14** | **273**       | 120%  | **19.7x** |
-| hercules  | 1000    | 42.16    | 1,576         | 111%  | —       |
-| codefang  | 1000    | **1.47** | **323**       | 125%  | **28.7x** |
+| hercules  | 500     | 21.81    | 1,419         | 109%  | —       |
+| codefang  | 500     | **1.11** | **272**       | 118%  | **19.6x** |
+| hercules  | 1000    | 40.94    | 1,566         | 110%  | —       |
+| codefang  | 1000    | **1.40** | **329**       | 125%  | **29.3x** |
 
-At 1000 commits, codefang is **28.7x faster** and uses **4.9x less memory**.
+At 1000 commits, codefang is **29.3x faster** and uses **4.8x less memory**.
 
 ### Couples (File Coupling Analysis)
 
@@ -217,10 +219,10 @@ Detects files that frequently change together — a code smell indicator.
 
 | Tool      | Commits | Time (s) | Peak RSS (MB) | CPU % | Speedup |
 |-----------|---------|----------|---------------|-------|---------|
-| hercules  | 500     | 49.53    | 1,438         | 105%  | —       |
-| codefang  | 500     | **2.47** | 1,172         | 135%  | **20.0x** |
-| hercules  | 1000    | 72.11    | 1,578         | 108%  | —       |
-| codefang  | 1000    | **3.77** | 1,942         | 141%  | **19.1x** |
+| hercules  | 500     | 49.00    | 1,394         | 104%  | —       |
+| codefang  | 500     | **2.36** | 1,250         | 135%  | **20.8x** |
+| hercules  | 1000    | 69.42    | 1,550         | 107%  | —       |
+| codefang  | 1000    | **3.42** | 1,796         | 140%  | **20.3x** |
 
 Codefang is **~20x faster** for couples analysis. Memory is comparable because
 both tools build in-memory co-change matrices.
@@ -231,12 +233,12 @@ Tracks commits, additions, and deletions per author over time.
 
 | Tool      | Commits | Time (s) | Peak RSS (MB) | CPU % | Speedup |
 |-----------|---------|----------|---------------|-------|---------|
-| hercules  | 500     | 22.88    | 1,424         | 107%  | —       |
-| codefang  | 500     | **1.15** | **271**       | 119%  | **19.9x** |
-| hercules  | 1000    | 43.68    | 1,577         | 108%  | —       |
-| codefang  | 1000    | **1.53** | **326**       | 123%  | **28.5x** |
+| hercules  | 500     | 22.47    | 1,416         | 107%  | —       |
+| codefang  | 500     | **1.12** | **264**       | 118%  | **20.1x** |
+| hercules  | 1000    | 41.36    | 1,536         | 107%  | —       |
+| codefang  | 1000    | **1.44** | **318**       | 124%  | **28.7x** |
 
-At 1000 commits, codefang is **28.5x faster** with **4.8x less memory**.
+At 1000 commits, codefang is **28.7x faster** with **4.8x less memory**.
 
 ### Time Comparison
 
@@ -296,24 +298,28 @@ repositories.
 
 ### Where codefang/uast excel
 
-1. **19-29x faster than hercules**: On the same git history analyzers (burndown,
+1. **20-29x faster than hercules**: On the same git history analyzers (burndown,
    couples, devs), codefang demolishes its predecessor. The speedup grows with
    repository size.
 
 2. **4-5x less memory than hercules**: For burndown and devs analysis, codefang
    uses ~300 MB vs hercules' ~1,500 MB.
 
-3. **Depth of analysis**: codefang provides AST-aware, function-level cyclomatic AND
+3. **UAST batch parse optimized**: After parser reuse, parseContext pooling, lazy
+   language loading, and bloom filter optimizations, uast batch parse improved from
+   55s/2,779 MB to **12s/259 MB** — a **4.6x speedup** and **10.7x memory reduction**.
+
+4. **Depth of analysis**: codefang provides AST-aware, function-level cyclomatic AND
    cognitive complexity across 60+ languages. No other tested tool matches this.
 
-4. **Multi-core utilization**: codefang/uast use ~375% CPU on 4 cores, while
+5. **Multi-core utilization**: codefang/uast use ~375% CPU on 4 cores, while
    single-threaded competitors (cloc, lizard) are stuck at 99%.
 
-5. **vs lizard**: codefang is **2.1x faster** while providing deeper analysis
+6. **vs lizard**: codefang is **2.3x faster** while providing deeper analysis
    (cognitive complexity, UAST-based, multi-language). Lizard's Python runtime is
    the bottleneck.
 
-6. **Unified pipeline**: `uast parse | codefang analyze` provides a complete code
+7. **Unified pipeline**: `uast parse | codefang analyze` provides a complete code
    intelligence pipeline that no single competitor offers.
 
 ### Where competitors excel
@@ -322,20 +328,22 @@ repositories.
    They don't parse ASTs, which is both their strength (speed) and limitation (no
    semantic understanding).
 
-2. **gocyclo**: For Go-only cyclomatic complexity, gocyclo is ~14x faster than
+2. **gocyclo**: For Go-only cyclomatic complexity, gocyclo is ~13x faster than
    codefang. The trade-off: no multi-language support, no cognitive complexity,
    no UAST transformation.
 
-3. **ast-grep**: For AST pattern matching, ast-grep is ~10x faster than uast batch
-   parsing. ast-grep works directly on tree-sitter ASTs without UAST transformation.
+3. **ast-grep**: For AST pattern matching, ast-grep is ~2.3x faster than uast batch
+   parsing (down from 10.3x before optimization). ast-grep works directly on
+   tree-sitter ASTs without UAST transformation.
 
 ### The trade-off
 
 | Dimension          | hercules         | codefang/uast               | Fast tools (scc, etc.) |
 |--------------------|------------------|-----------------------------|------------------------|
-| History speed      | 22-72s (500-1k)  | **1-4s (19-29x faster)**    | N/A                    |
-| History memory     | 1,400-1,580 MB   | **270-1,940 MB**            | N/A                    |
-| Static speed       | N/A              | 39s                         | **0.5-2.8s**           |
+| History speed      | 22-69s (500-1k)  | **1-3s (20-29x faster)**    | N/A                    |
+| History memory     | 1,400-1,570 MB   | **260-1,800 MB**            | N/A                    |
+| Static speed       | N/A              | 35s                         | **0.5-2.7s**           |
+| UAST parse (batch) | N/A              | 12s (259 MB)                | 5.3s (125 MB)          |
 | Languages          | Limited          | 60+ via UAST                | Limited/single         |
 | Analysis depth     | Line diffs       | Full AST semantic analysis  | Line/regex heuristics  |
 | Cognitive metrics  | No               | Yes                         | No                     |
