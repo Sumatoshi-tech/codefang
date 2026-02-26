@@ -38,6 +38,16 @@ func ConfigureMemoryLimits(mwindowLimit, cacheLimit int64, mallocArenaMax int) e
 	return nil
 }
 
+// ReleaseNativeMemory returns free native memory pages to the OS.
+// On glibc systems, calls malloc_trim(0) to release freed pages from all
+// malloc arenas. This is the C-side equivalent of debug.FreeOSMemory()
+// for Go heap. Should be called between streaming chunks after bulk
+// libgit2 operations that allocate and free large amounts of native memory.
+// Returns true if memory was actually released.
+func ReleaseNativeMemory() bool {
+	return C.cf_release_native_memory() != 0
+}
+
 // CGOBridge provides optimized batch operations using the C library.
 // It minimizes CGO overhead by processing multiple items per call.
 type CGOBridge struct {

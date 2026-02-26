@@ -1,0 +1,568 @@
+package halstead
+
+import (
+	"fmt"
+	"io"
+
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/terminal"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/cms"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
+)
+
+// Configuration constants for Halstead analysis.
+const (
+	// MaxDepthValue is the default maximum UAST traversal depth for Halstead analysis.
+	MaxDepthValue = 10
+	magic1000_1   = 1000
+	magic30       = 30
+	magic5        = 5
+	magic5000     = 5000
+	magic50000    = 50000
+)
+
+// CMS integration constants for streaming frequency counting.
+const (
+	// cmsTokenThreshold is the minimum total tokens (operators + operands) before CMS is activated.
+	cmsTokenThreshold = 1000
+
+	// cmsEpsilon controls CMS approximation error bound (overestimation < epsilon * totalCount).
+	cmsEpsilon = 0.001
+
+	// cmsDelta controls CMS failure probability (1 - delta confidence).
+	cmsDelta = 0.01
+)
+
+// Analyzer provides Halstead complexity measures analysis.
+type Analyzer struct {
+	// Traverser handles UAST traversal and node finding.
+	traverser *common.UASTTraverser
+	// Extractor handles data extraction from UAST nodes.
+	extractor *common.DataExtractor
+	// Metrics handles Halstead metrics calculations.
+	metrics *MetricsCalculator
+	// Detector handles operator and operand detection.
+	detector *OperatorOperandDetector
+	// Formatter handles report formatting and output.
+	formatter *ReportFormatter
+}
+
+// NewAnalyzer creates a new Analyzer with common modules.
+func NewAnalyzer() *Analyzer {
+	// Configure UAST traverser with advanced filtering.
+	traversalConfig := common.TraversalConfig{
+		Filters: []common.NodeFilter{
+			{
+				Types:    []string{node.UASTFunction, node.UASTMethod},
+				Roles:    []string{node.RoleFunction, node.RoleDeclaration},
+				MinLines: 1,
+			},
+		},
+		MaxDepth:    MaxDepthValue,
+		IncludeRoot: false,
+	}
+
+	// Configure data extractor with Halstead-specific extractors.
+	extractionConfig := common.ExtractionConfig{
+		DefaultExtractors: true,
+		NameExtractors: map[string]common.NameExtractor{
+			"function_name": common.ExtractFunctionName,
+			"operator_name": extractOperatorName,
+			"operand_name":  extractOperandName,
+		},
+	}
+
+	return &Analyzer{
+		traverser: common.NewUASTTraverser(traversalConfig),
+		extractor: common.NewDataExtractor(extractionConfig),
+		metrics:   NewMetricsCalculator(),
+		detector:  NewOperatorOperandDetector(),
+		formatter: NewReportFormatter(),
+	}
+}
+
+// extractOperatorName extracts operator name from a node.
+func extractOperatorName(n *node.Node) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+
+	return string(n.Type), true
+}
+
+// extractOperandName extracts operand name from a node.
+func extractOperandName(target *node.Node) (string, bool) {
+	if target == nil {
+		return "", false
+	}
+
+	// Try to extract from token first.
+	if target.Token != "" {
+		return target.Token, true
+	}
+
+	// Try to extract from properties.
+	if target.Props != nil {
+		if name, ok := target.Props["name"]; ok {
+			return name, true
+		}
+	}
+
+	// Fallback to node type.
+	return string(target.Type), true
+}
+
+// Metrics holds all Halstead complexity measures.
+type Metrics struct {
+	Functions               map[string]*FunctionHalsteadMetrics `json:"functions"`
+	EstimatedLength         float64                             `json:"estimated_length"`
+	EstimatedTotalOperators int64                               `json:"estimated_total_operators" yaml:"estimated_total_operators"`
+	EstimatedTotalOperands  int64                               `json:"estimated_total_operands"  yaml:"estimated_total_operands"`
+	TotalOperators          int                                 `json:"total_operators"`
+	TotalOperands           int                                 `json:"total_operands"`
+	Vocabulary              int                                 `json:"vocabulary"`
+	Length                  int                                 `json:"length"`
+	DistinctOperators       int                                 `json:"distinct_operators"`
+	Volume                  float64                             `json:"volume"`
+	Difficulty              float64                             `json:"difficulty"`
+	Effort                  float64                             `json:"effort"`
+	TimeToProgram           float64                             `json:"time_to_program"`
+	DeliveredBugs           float64                             `json:"delivered_bugs"`
+	DistinctOperands        int                                 `json:"distinct_operands"`
+}
+
+// FunctionHalsteadMetrics contains Halstead metrics for a single function.
+type FunctionHalsteadMetrics struct {
+	Operands                map[string]int `json:"operands"`
+	Operators               map[string]int `json:"operators"`
+	OperatorSketch          *cms.Sketch    `json:"-"                         yaml:"-"`
+	OperandSketch           *cms.Sketch    `json:"-"                         yaml:"-"`
+	Name                    string         `json:"name"`
+	EstimatedTotalOperators int64          `json:"estimated_total_operators" yaml:"estimated_total_operators"`
+	EstimatedTotalOperands  int64          `json:"estimated_total_operands"  yaml:"estimated_total_operands"`
+	Length                  int            `json:"length"`
+	TotalOperands           int            `json:"total_operands"`
+	Vocabulary              int            `json:"vocabulary"`
+	TotalOperators          int            `json:"total_operators"`
+	EstimatedLength         float64        `json:"estimated_length"`
+	Volume                  float64        `json:"volume"`
+	Difficulty              float64        `json:"difficulty"`
+	Effort                  float64        `json:"effort"`
+	TimeToProgram           float64        `json:"time_to_program"`
+	DeliveredBugs           float64        `json:"delivered_bugs"`
+	DistinctOperands        int            `json:"distinct_operands"`
+	DistinctOperators       int            `json:"distinct_operators"`
+}
+
+// Config holds configuration for Halstead analysis.
+type Config struct {
+	// IncludeFunctionBreakdown determines whether to include per-function metrics.
+	IncludeFunctionBreakdown bool
+	// IncludeTimeEstimate determines whether to calculate time to program estimates.
+	IncludeTimeEstimate bool
+	// IncludeBugEstimate determines whether to calculate delivered bug estimates.
+	IncludeBugEstimate bool
+}
+
+// Name returns the analyzer name.
+func (h *Analyzer) Name() string {
+	return "halstead"
+}
+
+// Flag returns the CLI flag for the analyzer.
+func (h *Analyzer) Flag() string {
+	return "halstead-analysis"
+}
+
+// Description returns the analyzer description.
+func (h *Analyzer) Description() string {
+	return h.Descriptor().Description
+}
+
+// Descriptor returns stable analyzer metadata.
+func (h *Analyzer) Descriptor() analyze.Descriptor {
+	return analyze.NewDescriptor(
+		analyze.ModeStatic,
+		h.Name(),
+		"Calculates Halstead complexity metrics.",
+	)
+}
+
+// ListConfigurationOptions returns the configuration options for the analyzer.
+func (h *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
+	return []pipeline.ConfigurationOption{}
+}
+
+// Configure configures the analyzer.
+func (h *Analyzer) Configure(_ map[string]any) error {
+	return nil
+}
+
+// Thresholds returns the color-coded thresholds for Halstead metrics.
+func (h *Analyzer) Thresholds() analyze.Thresholds {
+	return analyze.Thresholds{
+		"volume": {
+			"green":  magic100,
+			"yellow": magic1000,
+			"red":    magic5000,
+		},
+		"difficulty": {
+			"green":  magic5,
+			"yellow": magic15,
+			"red":    magic30,
+		},
+		"effort": {
+			"green":  magic1000_1,
+			"yellow": magic10000,
+			"red":    magic50000,
+		},
+	}
+}
+
+// CreateAggregator returns a new aggregator for Halstead analysis.
+func (h *Analyzer) CreateAggregator() analyze.ResultAggregator {
+	return NewAggregator()
+}
+
+// CreateVisitor creates a new visitor for Halstead analysis.
+func (h *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
+	return NewVisitor()
+}
+
+// Analyze performs Halstead analysis on the UAST.
+func (h *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
+	if root == nil {
+		return nil, analyze.ErrNilRootNode
+	}
+
+	functions := h.findFunctions(root)
+
+	if len(functions) == 0 {
+		return h.buildEmptyResult("No functions found"), nil
+	}
+
+	functionMetrics := h.calculateAllFunctionMetrics(functions)
+	fileMetrics := h.calculateFileLevelMetrics(functionMetrics)
+	detailedFunctionsTable := h.buildDetailedFunctionsTable(functionMetrics)
+	functionDetails := h.buildFunctionDetails(functionMetrics)
+	message := h.formatter.GetHalsteadMessage(fileMetrics.Volume, fileMetrics.Difficulty, fileMetrics.Effort)
+
+	return h.buildResult(fileMetrics, detailedFunctionsTable, functionDetails, message), nil
+}
+
+// FormatReport formats the analysis report for display.
+func (h *Analyzer) FormatReport(report analyze.Report, w io.Writer) error {
+	section := NewReportSection(report)
+	config := terminal.NewConfig()
+	r := renderer.NewSectionRenderer(config.Width, false, config.NoColor)
+
+	_, err := fmt.Fprint(w, r.Render(section))
+	if err != nil {
+		return fmt.Errorf("formatreport: %w", err)
+	}
+
+	return nil
+}
+
+// FormatReportJSON formats the analysis report as JSON.
+func (h *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportJSON(report, w)
+}
+
+// FormatReportYAML formats the analysis report as YAML.
+func (h *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportYAML(report, w)
+}
+
+// FormatReportBinary formats the analysis report as binary envelope.
+func (h *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error {
+	return h.formatter.FormatReportBinary(report, w)
+}
+
+// buildEmptyResult creates an empty result for cases with no functions.
+func (h *Analyzer) buildEmptyResult(message string) analyze.Report {
+	return common.NewResultBuilder().BuildCustomEmptyResult(map[string]any{
+		"total_functions":    0,
+		"volume":             0.0,
+		"difficulty":         0.0,
+		"effort":             0.0,
+		"time_to_program":    0.0,
+		"delivered_bugs":     0.0,
+		"distinct_operators": 0,
+		"distinct_operands":  0,
+		"total_operators":    0,
+		"total_operands":     0,
+		"vocabulary":         0,
+		"length":             0,
+		"estimated_length":   0.0,
+		"message":            message,
+	})
+}
+
+// calculateAllFunctionMetrics calculates metrics for all functions.
+func (h *Analyzer) calculateAllFunctionMetrics(functions []*node.Node) map[string]*FunctionHalsteadMetrics {
+	functionMetrics := make(map[string]*FunctionHalsteadMetrics)
+
+	for _, fn := range functions {
+		funcName := h.getFunctionName(fn)
+		funcMetrics := h.calculateFunctionHalsteadMetrics(fn)
+		funcMetrics.Name = funcName
+		functionMetrics[funcName] = funcMetrics
+	}
+
+	return functionMetrics
+}
+
+// getFunctionName extracts function name with fallback to anonymous for unnamed functions.
+func (h *Analyzer) getFunctionName(fn *node.Node) string {
+	funcName := h.extractFunctionName(fn)
+	if funcName == "" {
+		return "anonymous"
+	}
+
+	return funcName
+}
+
+// calculateFileLevelMetrics calculates file-level metrics from function metrics.
+func (h *Analyzer) calculateFileLevelMetrics(functionMetrics map[string]*FunctionHalsteadMetrics) *Metrics {
+	fileOperators := make(map[string]int)
+	fileOperands := make(map[string]int)
+
+	var estTotalOps, estTotalOpnds int64
+
+	for _, fn := range functionMetrics {
+		h.aggregateOperatorsAndOperandsFromMetrics(fn, fileOperators, fileOperands)
+		estTotalOps += fn.EstimatedTotalOperators
+		estTotalOpnds += fn.EstimatedTotalOperands
+	}
+
+	fileMetrics := &Metrics{
+		DistinctOperators:       len(fileOperators),
+		DistinctOperands:        len(fileOperands),
+		TotalOperators:          h.metrics.SumMap(fileOperators),
+		TotalOperands:           h.metrics.SumMap(fileOperands),
+		EstimatedTotalOperators: estTotalOps,
+		EstimatedTotalOperands:  estTotalOpnds,
+		Functions:               functionMetrics,
+	}
+
+	h.metrics.CalculateHalsteadMetrics(fileMetrics)
+
+	return fileMetrics
+}
+
+// aggregateOperatorsAndOperandsFromMetrics aggregates operators and operands from function metrics.
+func (h *Analyzer) aggregateOperatorsAndOperandsFromMetrics(
+	fn *FunctionHalsteadMetrics, operators, operands map[string]int,
+) {
+	for operator, count := range fn.Operators {
+		operators[operator] += count
+	}
+
+	for operand, count := range fn.Operands {
+		operands[operand] += count
+	}
+}
+
+// buildDetailedFunctionsTable creates the detailed functions table for display.
+func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics map[string]*FunctionHalsteadMetrics) []map[string]any {
+	detailedFunctionsTable := make([]map[string]any, 0, len(functionMetrics))
+
+	for _, fn := range functionMetrics {
+		functionData := h.buildFunctionTableEntry(fn)
+		detailedFunctionsTable = append(detailedFunctionsTable, functionData)
+	}
+
+	return detailedFunctionsTable
+}
+
+// buildFunctionTableEntry creates a single function table entry with metrics and assessments.
+func (h *Analyzer) buildFunctionTableEntry(fn *FunctionHalsteadMetrics) map[string]any {
+	return map[string]any{
+		"name":                      fn.Name,
+		"volume":                    fn.Volume,
+		"difficulty":                fn.Difficulty,
+		"effort":                    fn.Effort,
+		"time_to_program":           fn.TimeToProgram,
+		"delivered_bugs":            fn.DeliveredBugs,
+		"distinct_operators":        fn.DistinctOperators,
+		"distinct_operands":         fn.DistinctOperands,
+		"total_operators":           fn.TotalOperators,
+		"total_operands":            fn.TotalOperands,
+		"vocabulary":                fn.Vocabulary,
+		"length":                    fn.Length,
+		"estimated_length":          fn.EstimatedLength,
+		"estimated_total_operators": fn.EstimatedTotalOperators,
+		"estimated_total_operands":  fn.EstimatedTotalOperands,
+		"volume_assessment":         h.formatter.GetVolumeAssessment(fn.Volume),
+		"difficulty_assessment":     h.formatter.GetDifficultyAssessment(fn.Difficulty),
+		"effort_assessment":         h.formatter.GetEffortAssessment(fn.Effort),
+		"operators":                 fn.Operators,
+		"operands":                  fn.Operands,
+	}
+}
+
+// buildFunctionDetails creates simplified function details for result.
+func (h *Analyzer) buildFunctionDetails(functionMetrics map[string]*FunctionHalsteadMetrics) []map[string]any {
+	functionDetails := make([]map[string]any, 0, len(functionMetrics))
+
+	for _, fn := range functionMetrics {
+		functionData := h.buildFunctionDetailEntry(fn)
+		functionDetails = append(functionDetails, functionData)
+	}
+
+	return functionDetails
+}
+
+// buildFunctionDetailEntry creates a single function detail entry with comprehensive metrics.
+func (h *Analyzer) buildFunctionDetailEntry(fn *FunctionHalsteadMetrics) map[string]any {
+	return map[string]any{
+		"name":                      fn.Name,
+		"volume":                    fn.Volume,
+		"difficulty":                fn.Difficulty,
+		"effort":                    fn.Effort,
+		"time_to_program":           fn.TimeToProgram,
+		"delivered_bugs":            fn.DeliveredBugs,
+		"distinct_operators":        fn.DistinctOperators,
+		"distinct_operands":         fn.DistinctOperands,
+		"total_operators":           fn.TotalOperators,
+		"total_operands":            fn.TotalOperands,
+		"vocabulary":                fn.Vocabulary,
+		"length":                    fn.Length,
+		"estimated_length":          fn.EstimatedLength,
+		"estimated_total_operators": fn.EstimatedTotalOperators,
+		"estimated_total_operands":  fn.EstimatedTotalOperands,
+		"operators":                 fn.Operators,
+		"operands":                  fn.Operands,
+	}
+}
+
+// buildResult constructs the final analysis result.
+func (h *Analyzer) buildResult(
+	fileMetrics *Metrics, detailedFunctionsTable, functionDetails []map[string]any, message string,
+) analyze.Report {
+	metrics := map[string]any{
+		"volume":                    fileMetrics.Volume,
+		"difficulty":                fileMetrics.Difficulty,
+		"effort":                    fileMetrics.Effort,
+		"time_to_program":           fileMetrics.TimeToProgram,
+		"delivered_bugs":            fileMetrics.DeliveredBugs,
+		"distinct_operators":        fileMetrics.DistinctOperators,
+		"distinct_operands":         fileMetrics.DistinctOperands,
+		"total_operators":           fileMetrics.TotalOperators,
+		"total_operands":            fileMetrics.TotalOperands,
+		"vocabulary":                fileMetrics.Vocabulary,
+		"length":                    fileMetrics.Length,
+		"estimated_length":          fileMetrics.EstimatedLength,
+		"estimated_total_operators": fileMetrics.EstimatedTotalOperators,
+		"estimated_total_operands":  fileMetrics.EstimatedTotalOperands,
+		"total_functions":           len(functionDetails),
+	}
+
+	result := common.NewResultBuilder().BuildCollectionResult(
+		"halstead",
+		"functions",
+		detailedFunctionsTable,
+		metrics,
+		message,
+	)
+
+	return result
+}
+
+// findFunctions finds all functions using the enhanced traverser.
+func (h *Analyzer) findFunctions(root *node.Node) []*node.Node {
+	functionNodes := h.traverser.FindNodesByType(root, []string{node.UASTFunction, node.UASTMethod})
+	roleNodes := h.traverser.FindNodesByRoles(root, []string{node.RoleFunction})
+
+	allNodes := make(map[*node.Node]bool)
+	for _, node := range functionNodes {
+		allNodes[node] = true
+	}
+
+	for _, node := range roleNodes {
+		allNodes[node] = true
+	}
+
+	// Convert back to slice.
+	functions := make([]*node.Node, 0, len(allNodes))
+	for node := range allNodes {
+		functions = append(functions, node)
+	}
+
+	return functions
+}
+
+// extractFunctionName extracts the function name using common extractor.
+func (h *Analyzer) extractFunctionName(n *node.Node) string {
+	if name, ok := h.extractor.ExtractName(n, "function_name"); ok && name != "" {
+		return name
+	}
+
+	if name, ok := common.ExtractFunctionName(n); ok && name != "" {
+		return name
+	}
+
+	return ""
+}
+
+// calculateFunctionHalsteadMetrics calculates Halstead metrics for a single function.
+func (h *Analyzer) calculateFunctionHalsteadMetrics(fn *node.Node) *FunctionHalsteadMetrics {
+	operators := make(map[string]int)
+	operands := make(map[string]int)
+
+	h.detector.CollectOperatorsAndOperands(fn, operators, operands)
+
+	totalOps := h.metrics.SumMap(operators)
+	totalOpnds := h.metrics.SumMap(operands)
+
+	metrics := &FunctionHalsteadMetrics{
+		DistinctOperators: len(operators),
+		DistinctOperands:  len(operands),
+		TotalOperators:    totalOps,
+		TotalOperands:     totalOpnds,
+		Operators:         operators,
+		Operands:          operands,
+	}
+
+	// Activate CMS for large functions (above token threshold).
+	totalTokens := totalOps + totalOpnds
+	if totalTokens >= cmsTokenThreshold {
+		populateCMSSketches(metrics)
+	}
+
+	h.metrics.CalculateHalsteadMetrics(metrics)
+
+	return metrics
+}
+
+// populateCMSSketches creates CMS sketches from the existing operator/operand maps
+// and populates estimated total fields. Called when a function exceeds cmsTokenThreshold.
+func populateCMSSketches(metrics *FunctionHalsteadMetrics) {
+	opSketch, err := cms.New(cmsEpsilon, cmsDelta)
+	if err != nil {
+		return
+	}
+
+	for key, count := range metrics.Operators {
+		opSketch.Add([]byte(key), int64(count))
+	}
+
+	metrics.OperatorSketch = opSketch
+
+	opndSketch, err := cms.New(cmsEpsilon, cmsDelta)
+	if err != nil {
+		return
+	}
+
+	for key, count := range metrics.Operands {
+		opndSketch.Add([]byte(key), int64(count))
+	}
+
+	metrics.OperandSketch = opndSketch
+	metrics.EstimatedTotalOperators = opSketch.TotalCount()
+	metrics.EstimatedTotalOperands = opndSketch.TotalCount()
+}

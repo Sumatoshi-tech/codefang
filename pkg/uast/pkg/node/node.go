@@ -416,15 +416,30 @@ func (targetNode *Node) ReplaceChild(old, replacement *Node) bool {
 }
 
 // VisitPreOrder visits all nodes in pre-order (root, then children left-to-right).
-// Now uses the final optimized implementation with strict depth limiting.
+// Uses direct iterative traversal with a callback — no goroutine or channel overhead.
 func (targetNode *Node) VisitPreOrder(fn func(*Node)) {
 	if targetNode == nil {
 		return
 	}
 
-	// Use the channel-based optimized version and consume it.
-	for visitNode := range preOrder(targetNode) {
-		fn(visitNode)
+	stack := make([]*Node, 0, defaultStackCap)
+	stack = append(stack, targetNode)
+
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		curr := stack[last]
+		stack = stack[:last]
+
+		if curr == nil {
+			continue
+		}
+
+		fn(curr)
+
+		// Push children in reverse for left-to-right pre-order.
+		for idx := len(curr.Children) - 1; idx >= 0; idx-- {
+			stack = append(stack, curr.Children[idx])
+		}
 	}
 }
 
@@ -782,13 +797,12 @@ func findNodesWithPredicate(targetNode *Node, predicate func(*Node) bool) []*Nod
 
 func pushReversedChildren(targetNode *Node, stack *[]*Node) {
 	children := targetNode.Children
-	reversed := make([]*Node, len(children))
 
-	for idx := range children {
-		reversed[len(reversed)-1-idx] = children[idx]
+	// Push children in reverse order directly onto the stack without
+	// allocating an intermediate reversed slice.
+	for idx := len(children) - 1; idx >= 0; idx-- {
+		*stack = append(*stack, children[idx])
 	}
-
-	*stack = append(*stack, reversed...)
 }
 
 func findAncestors(targetNode, target *Node) []*Node {
@@ -802,9 +816,17 @@ func findAncestors(targetNode, target *Node) []*Node {
 			return top.parent
 		}
 
-		ancestorPath := append(append([]*Node{}, top.parent...), top.node)
+		childCount := len(top.node.Children)
+		if childCount == 0 {
+			continue
+		}
 
-		for idx := len(top.node.Children) - 1; idx >= 0; idx-- {
+		// Build the ancestor path once per parent node instead of per-child.
+		ancestorPath := make([]*Node, len(top.parent)+1)
+		copy(ancestorPath, top.parent)
+		ancestorPath[len(top.parent)] = top.node
+
+		for idx := childCount - 1; idx >= 0; idx-- {
 			stack = append(stack, nodeAncestorFrame{
 				node:   top.node.Children[idx],
 				parent: ancestorPath,
@@ -1057,35 +1079,28 @@ func processRemainingNodesPostOrderDepthLimited(targetNode *Node, fn func(*Node)
 }
 
 // processRemainingNodesPostOrderIterative processes remaining nodes for post-order iteratively.
+// Uses an index-based frame stack instead of a visited map to eliminate O(n)
+// map allocation and per-node map lookups.
 func processRemainingNodesPostOrderIterative(targetNode *Node, fn func(*Node)) {
-	stack, visited := initializePostOrderIterative(targetNode)
+	stack := make([]postOrderFrame, 0, iterativeQueueInitCap)
+	stack = append(stack, postOrderFrame{node: targetNode, index: 0})
 
 	for len(stack) > 0 {
-		curr := stack[len(stack)-1]
+		top := &stack[len(stack)-1]
 
-		if visited[curr] {
-			fn(curr)
+		if top.index < len(top.node.Children) {
+			child := top.node.Children[top.index]
+			top.index++
 
-			stack = stack[:len(stack)-1]
+			stack = append(stack, postOrderFrame{node: child, index: 0})
 
 			continue
 		}
 
-		visited[curr] = true
+		fn(top.node)
 
-		for idx := len(curr.Children) - 1; idx >= 0; idx-- {
-			stack = append(stack, curr.Children[idx])
-		}
+		stack = stack[:len(stack)-1]
 	}
-}
-
-func initializePostOrderIterative(targetNode *Node) (stack []*Node, visited map[*Node]bool) {
-	stack = make([]*Node, 0, iterativeQueueInitCap)
-	visited = make(map[*Node]bool)
-
-	stack = append(stack, targetNode)
-
-	return stack, visited
 }
 
 // AssignStableIDs assigns a stable id to each node in the tree based on its content and position.
@@ -1141,13 +1156,14 @@ func writeNodeContentToHash(hasher hash.Hash, targetNode *Node) {
 }
 
 // writePositionToHash writes position information to the hash.
+// Uses a stack-allocated array instead of heap-allocated slice.
 func writePositionToHash(hasher hash.Hash, pos *Positions) {
-	buf := make([]byte, hashBufSize*posBufFields)
+	var buf [hashBufSize * posBufFields]byte
 
-	writeStartPosition(buf, pos)
-	writeEndPosition(buf, pos)
+	writeStartPosition(buf[:], pos)
+	writeEndPosition(buf[:], pos)
 
-	hasher.Write(buf)
+	hasher.Write(buf[:])
 }
 
 func writeStartPosition(buf []byte, pos *Positions) {

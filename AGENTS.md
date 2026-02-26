@@ -256,7 +256,7 @@ type AnalyzerPool struct {
 
 ### Analyzer Pattern
 ```go
-// pkg/analyzers/analyze/analyzer.go
+// internal/analyzers/analyze/analyzer.go
 type Analyzer interface {
     Name() string
     Description() string
@@ -281,7 +281,7 @@ type Analyzer interface {
 
 ### Factory Pattern
 ```go
-// pkg/analyzers/factory.go
+// internal/analyzers/factory.go
 f := factory.NewFactory()
 analyzer, _ := f.GetAnalyzer("complexity")
 result, _ := analyzer.Analyze(ctx, input)
@@ -324,16 +324,24 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/report` - Output formatting (JSON, table, HTML)
 
 **Analyzers:**
-- `pkg/analyzers/complexity` - Cyclomatic complexity
-- `pkg/analyzers/cohesion` - LCOM metrics
-- `pkg/analyzers/halstead` - Halstead complexity metrics
-- `pkg/analyzers/sentiment` - Comment sentiment analysis
-- `pkg/analyzers/burndown` - Code survival over time
-- `pkg/analyzers/couples` - File coupling analysis
+- `internal/analyzers/complexity` - Cyclomatic complexity
+- `internal/analyzers/cohesion` - LCOM metrics
+- `internal/analyzers/halstead` - Halstead complexity metrics
+- `internal/analyzers/sentiment` - Comment sentiment analysis
+- `internal/analyzers/burndown` - Code survival over time
+- `internal/analyzers/couples` - File coupling analysis
+
+**Data Structures:**
+- `pkg/alg/bloom` - Probabilistic Bloom filter for fast set membership testing
+- `pkg/alg/hll` - HyperLogLog cardinality estimator with LogLog-Beta bias correction
+- `pkg/alg/cms` - Count-Min Sketch for bounded-overestimation frequency estimation
+
+**Caching:**
+- `internal/cache` - LRU blob cache with Bloom pre-filter, hash sets, generic blob cache
 
 **Infrastructure:**
 - `pkg/gitlib` - Git history mining (libgit2-based)
-- `pkg/framework` - Analysis pipeline orchestration
+- `internal/framework` - Analysis pipeline orchestration
 - `pkg/version` - Build version info
 
 ---

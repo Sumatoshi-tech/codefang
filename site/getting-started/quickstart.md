@@ -70,7 +70,7 @@ codefang run -a static/complexity --format text .
     ===============================
 
     static/complexity:
-      pkg/framework/runner.go
+      internal/framework/runner.go
         Function RunPipeline        -- Cyclomatic: 12  Cognitive: 8
         Function initWorkers        -- Cyclomatic: 4   Cognitive: 3
       cmd/codefang/commands/run.go

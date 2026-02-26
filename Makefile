@@ -284,8 +284,8 @@ GOLINT=$(or $(shell command -v golangci-lint 2>/dev/null),$(GOPATH_BIN)/golangci
 DEADCODE=$(or $(shell command -v deadcode 2>/dev/null),$(GOPATH_BIN)/deadcode)
 
 # Package paths for linting
-INTERNAL_PKGS=./cmd/... ./pkg/...
-DEADCODE_PKGS=./cmd/... ./pkg/...
+INTERNAL_PKGS=./cmd/... ./pkg/... ./internal/...
+DEADCODE_PKGS=./cmd/... ./pkg/... ./internal/...
 LINT_GOCACHE?=/tmp/codefang-go-cache
 LINT_GOLANGCI_CACHE?=/tmp/codefang-golangci-lint-cache
 
@@ -394,7 +394,7 @@ ${GOBIN}/uast${EXE}: cmd/uast/*.go pkg/uast/*.go pkg/uast/*/*.go pkg/uast/*/*/*.
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go build -tags "$(TAGS)" -ldflags "$(LDFLAGS)" -o ${GOBIN}/uast${EXE} ./cmd/uast
 
-${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go pkg/analyzers/*/*.go libgit2
+${GOBIN}/codefang${EXE}: cmd/codefang/*.go cmd/codefang/commands/*.go internal/analyzers/*/*.go libgit2
 	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \

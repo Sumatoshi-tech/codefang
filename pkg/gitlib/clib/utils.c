@@ -60,6 +60,24 @@ int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int 
 }
 
 /*
+ * Release native memory back to the OS.
+ *
+ * On glibc, calls malloc_trim(0) which returns all free pages from
+ * malloc arenas to the operating system. This is the native-side
+ * counterpart to Go's debug.FreeOSMemory(). Should be called between
+ * streaming chunks after bulk free() cycles from libgit2 operations.
+ *
+ * Returns 1 if memory was actually returned to the OS, 0 otherwise.
+ */
+int cf_release_native_memory(void) {
+#ifdef __GLIBC__
+    return malloc_trim(0);
+#else
+    return 0;
+#endif
+}
+
+/*
  * Count lines in a buffer.
  *
  * Matches Go's CountLines behavior:
