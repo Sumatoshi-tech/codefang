@@ -8,6 +8,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func DetectAnomalies(scores []float64, threshold float64) []int {
+	var anomalies []int
+
+	for i, score := range scores {
+		if math.Abs(score) > threshold {
+			anomalies = append(anomalies, i)
+		}
+	}
+
+	return anomalies
+}
+
 func TestComputeZScores_BasicSpike(t *testing.T) {
 	t.Parallel()
 

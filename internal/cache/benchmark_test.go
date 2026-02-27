@@ -25,12 +25,6 @@ const (
 
 	// benchBlobSize is the blob data size used in benchmarks (64 bytes).
 	benchBlobSize = 64
-
-	// benchBloomSetElements is the number of elements for BloomHashSet benchmarks.
-	benchBloomSetElements = 100_000
-
-	// benchBloomSetFPRate is the false-positive rate for BloomHashSet benchmarks.
-	benchBloomSetFPRate = 0.01
 )
 
 // benchBlob returns a reusable test blob for benchmarks.
@@ -118,91 +112,5 @@ func BenchmarkLRUPut(b *testing.B) {
 
 	for i := range b.N {
 		lru.Put(makeTestHashU16(uint16(i%benchPreloadCount)), blob)
-	}
-}
-
-// benchHashU32 creates a Hash from a uint32, spreading bytes across the first 4 positions.
-func benchHashU32(val uint32) gitlib.Hash {
-	var h gitlib.Hash
-
-	h[0] = byte(val >> 24)
-	h[1] = byte(val >> 16)
-	h[2] = byte(val >> 8)
-	h[3] = byte(val)
-
-	return h
-}
-
-// BenchmarkBloomHashSet_Add benchmarks BloomHashSet Add throughput.
-func BenchmarkBloomHashSet_Add(b *testing.B) {
-	bs, err := cache.NewBloomHashSet(benchBloomSetElements, benchBloomSetFPRate)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.ResetTimer()
-
-	for i := range b.N {
-		bs.Add(benchHashU32(uint32(i)))
-	}
-}
-
-// BenchmarkBloomHashSet_Contains benchmarks BloomHashSet Contains throughput.
-func BenchmarkBloomHashSet_Contains(b *testing.B) {
-	bs, err := cache.NewBloomHashSet(benchBloomSetElements, benchBloomSetFPRate)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	// Preload elements.
-	for i := range benchBloomSetElements {
-		bs.Add(benchHashU32(uint32(i)))
-	}
-
-	b.ResetTimer()
-
-	for i := range b.N {
-		bs.Contains(benchHashU32(uint32(i % benchBloomSetElements)))
-	}
-}
-
-// BenchmarkHashSet_Add benchmarks exact HashSet Add throughput for comparison.
-func BenchmarkHashSet_Add(b *testing.B) {
-	hs := cache.NewHashSet()
-
-	b.ResetTimer()
-
-	for i := range b.N {
-		hs.Add(benchHashU32(uint32(i)))
-	}
-}
-
-// BenchmarkHashSet_Contains benchmarks exact HashSet Contains throughput for comparison.
-func BenchmarkHashSet_Contains(b *testing.B) {
-	hs := cache.NewHashSet()
-
-	// Preload elements.
-	for i := range benchBloomSetElements {
-		hs.Add(benchHashU32(uint32(i)))
-	}
-
-	b.ResetTimer()
-
-	for i := range b.N {
-		hs.Contains(benchHashU32(uint32(i % benchBloomSetElements)))
-	}
-}
-
-// BenchmarkBloomHashSet_Memory reports BloomHashSet memory for 100K elements.
-func BenchmarkBloomHashSet_Memory(b *testing.B) {
-	for range b.N {
-		bs, err := cache.NewBloomHashSet(benchBloomSetElements, benchBloomSetFPRate)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		for i := range benchBloomSetElements {
-			bs.Add(benchHashU32(uint32(i)))
-		}
 	}
 }

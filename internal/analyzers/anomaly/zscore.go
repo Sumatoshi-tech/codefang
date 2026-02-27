@@ -57,20 +57,6 @@ func ComputeZScores(values []float64, window int) []float64 {
 	return scores
 }
 
-// DetectAnomalies returns the indices where the absolute Z-score exceeds
-// the given threshold.
-func DetectAnomalies(scores []float64, threshold float64) []int {
-	var anomalies []int
-
-	for i, score := range scores {
-		if math.Abs(score) > threshold {
-			anomalies = append(anomalies, i)
-		}
-	}
-
-	return anomalies
-}
-
 // MeanStdDev computes the population mean and standard deviation of the
 // given values. Returns (0, 0) for empty input.
 func MeanStdDev(values []float64) (mean, stddev float64) {

@@ -300,8 +300,8 @@ lint:
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 $(GOLINT) run $(INTERNAL_PKGS)
-	@echo "Running deadcode analysis..."
-	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh -test $(DEADCODE_PKGS)
+	@echo "Running deadcode analysis (production)..."
+	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh $(DEADCODE_PKGS)
 	@echo "✓ Linting complete"
 
 ## deadcode: Run deadcode analysis with whitelist filter (fails if dead code found)

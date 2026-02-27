@@ -333,26 +333,6 @@ func (tt *treapTimeline) Nodes() int {
 	return tt.nodeCount(tt.root)
 }
 
-func (tt *treapTimeline) nodeDepth(n *treapNode) int {
-	if n == nil {
-		return 0
-	}
-
-	leftDepth := tt.nodeDepth(n.left)
-	rightDepth := tt.nodeDepth(n.right)
-
-	if leftDepth > rightDepth {
-		return leftDepth + 1
-	}
-
-	return rightDepth + 1
-}
-
-// maxDepth returns the maximum depth of the treap (0 for nil root).
-func (tt *treapTimeline) maxDepth() int {
-	return tt.nodeDepth(tt.root)
-}
-
 // Validate panics if timeline invariants are violated.
 func (tt *treapTimeline) Validate() {
 	if tt.root == nil {

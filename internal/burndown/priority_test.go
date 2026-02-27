@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+func (tt *treapTimeline) nodeDepth(n *treapNode) int {
+	if n == nil {
+		return 0
+	}
+
+	leftDepth := tt.nodeDepth(n.left)
+	rightDepth := tt.nodeDepth(n.right)
+
+	if leftDepth > rightDepth {
+		return leftDepth + 1
+	}
+
+	return rightDepth + 1
+}
+
+func (tt *treapTimeline) maxDepth() int {
+	return tt.nodeDepth(tt.root)
+}
+
 // Test constants for xorshift64 and randomized priority tests.
 const (
 	// prioTestSeed is a non-zero seed for deterministic PRNG tests.

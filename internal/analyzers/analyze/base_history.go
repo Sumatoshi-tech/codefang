@@ -17,6 +17,14 @@ import (
 // ErrMissingComputeMetrics is returned when Serialize is called but ComputeMetricsFn is nil.
 var ErrMissingComputeMetrics = errors.New("missing ComputeMetricsFn hook")
 
+// metricsSerializer matches metricsSerializer to break the import cycle
+// between analyze and renderer. Go's structural typing ensures all ComputedMetrics
+// types satisfy this interface without an explicit dependency.
+type metricsSerializer interface {
+	ToJSON() any
+	ToYAML() any
+}
+
 // MetricComputer defines how raw report data is converted to typed metrics.
 type MetricComputer[M any] func(Report) (M, error)
 
@@ -91,6 +99,16 @@ func (b *BaseHistoryAnalyzer[M]) Configure(_ map[string]any) error {
 	return nil
 }
 
+// resolveSerializeTarget returns the format-appropriate representation of metrics.
+// If metrics implements metricsSerializer, the format-specific method is called.
+func resolveSerializeTarget(metrics any, toFn func(metricsSerializer) any) any {
+	if mo, ok := metrics.(metricsSerializer); ok {
+		return toFn(mo)
+	}
+
+	return metrics
+}
+
 // Serialize dynamically uses ComputeMetricsFn and standard encodings.
 func (b *BaseHistoryAnalyzer[M]) Serialize(result Report, format string, writer io.Writer) error {
 	if b.ComputeMetricsFn == nil {
@@ -104,21 +122,30 @@ func (b *BaseHistoryAnalyzer[M]) Serialize(result Report, format string, writer 
 
 	switch format {
 	case FormatJSON:
-		errJSON := json.NewEncoder(writer).Encode(metrics)
+		target := resolveSerializeTarget(metrics, metricsSerializer.ToJSON)
+
+		data, errJSON := json.Marshal(target)
 		if errJSON != nil {
 			return fmt.Errorf("json encode: %w", errJSON)
 		}
 
+		_, errWrite := writer.Write(data)
+		if errWrite != nil {
+			return fmt.Errorf("json write: %w", errWrite)
+		}
+
 		return nil
 	case FormatYAML:
-		data, errYAML := yaml.Marshal(metrics)
+		target := resolveSerializeTarget(metrics, metricsSerializer.ToYAML)
+
+		data, errYAML := yaml.Marshal(target)
 		if errYAML != nil {
 			return fmt.Errorf("yaml marshal: %w", errYAML)
 		}
 
-		_, errYAMLWrite := writer.Write(data)
-		if errYAMLWrite != nil {
-			return fmt.Errorf("yaml write: %w", errYAMLWrite)
+		_, errWrite := writer.Write(data)
+		if errWrite != nil {
+			return fmt.Errorf("yaml write: %w", errWrite)
 		}
 
 		return nil

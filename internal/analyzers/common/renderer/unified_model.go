@@ -26,16 +26,6 @@ const UnifiedModelVersion = analyze.UnifiedModelVersion
 // ErrInvalidUnifiedModel indicates malformed canonical conversion data.
 var ErrInvalidUnifiedModel = analyze.ErrInvalidUnifiedModel
 
-// NewUnifiedModel delegates to analyze.NewUnifiedModel.
-func NewUnifiedModel(results []AnalyzerResult) UnifiedModel {
-	return analyze.NewUnifiedModel(results)
-}
-
-// ParseUnifiedModelJSON delegates to analyze.ParseUnifiedModelJSON.
-func ParseUnifiedModelJSON(data []byte) (UnifiedModel, error) {
-	return analyze.ParseUnifiedModelJSON(data)
-}
-
 // RegisterPlotRenderer registers the unified model plot renderer with the analyze package.
 func RegisterPlotRenderer() {
 	analyze.RegisterPlotRenderer(RenderUnifiedModelPlot)

@@ -30,11 +30,6 @@ func NewJSONCodec() *JSONCodec {
 	return &JSONCodec{Indent: "  "}
 }
 
-// NewCompactJSONCodec creates a JSON codec without indentation.
-func NewCompactJSONCodec() *JSONCodec {
-	return &JSONCodec{Indent: ""}
-}
-
 // Encode implements Codec.Encode using JSON encoding.
 func (c *JSONCodec) Encode(w io.Writer, state any) error {
 	encoder := json.NewEncoder(w)

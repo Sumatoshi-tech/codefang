@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/internal/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
@@ -175,7 +176,7 @@ func TestSpanAttributes_CacheStats(t *testing.T) {
 
 	config := framework.DefaultCoordinatorConfig()
 	config.UASTPipelineWorkers = 0
-	config.BlobCacheSize = framework.DefaultGlobalCacheSize
+	config.BlobCacheSize = cache.DefaultLRUCacheSize
 
 	runner := framework.NewRunnerWithConfig(libRepo, repo.Path(), config, &plumbing.TreeDiffAnalyzer{})
 	runner.Tracer = tracer

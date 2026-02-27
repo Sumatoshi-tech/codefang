@@ -154,13 +154,6 @@ func NewBadge(text string) *Badge {
 	return &Badge{Text: text, Variant: BadgeSoft, Color: BadgeDefault}
 }
 
-// WithVariant sets the badge variant.
-func (b *Badge) WithVariant(v BadgeVariant) *Badge {
-	b.Variant = v
-
-	return b
-}
-
 // WithColor sets the badge color.
 func (b *Badge) WithColor(c BadgeColor) *Badge {
 	b.Color = c

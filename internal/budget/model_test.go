@@ -8,6 +8,16 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/framework"
 )
 
+// EstimateMemoryUsage calculates the estimated memory usage for a given configuration.
+func EstimateMemoryUsage(cfg framework.CoordinatorConfig) int64 {
+	workerMemory := int64(cfg.Workers) * (RepoHandleSize + int64(cfg.BlobArenaSize))
+	nativeMemory := int64(cfg.Workers) * WorkerNativeOverhead
+	cacheMemory := cfg.BlobCacheSize + int64(cfg.DiffCacheSize)*AvgDiffSize
+	bufferMemory := int64(cfg.BufferSize) * AvgCommitDataSize
+
+	return BaseOverhead + workerMemory + nativeMemory + cacheMemory + bufferMemory
+}
+
 func TestEstimateMemoryUsage_DefaultConfig(t *testing.T) {
 	t.Parallel()
 

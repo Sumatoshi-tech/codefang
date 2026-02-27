@@ -157,23 +157,6 @@ var posPool = sync.Pool{
 	},
 }
 
-// NewPositions returns a Positions from the pool, initialized with the given values.
-func NewPositions(startLine, startCol, startOffset, endLine, endCol, endOffset uint) *Positions {
-	pos, ok := posPool.Get().(*Positions)
-	if !ok {
-		pos = &Positions{}
-	}
-
-	pos.StartLine = startLine
-	pos.StartCol = startCol
-	pos.StartOffset = startOffset
-	pos.EndLine = endLine
-	pos.EndCol = endCol
-	pos.EndOffset = endOffset
-
-	return pos
-}
-
 // Release returns a Positions to the pool for reuse.
 func (p *Positions) Release() {
 	*p = Positions{}
@@ -306,20 +289,7 @@ func New(nodeID string, nodeType Type, token string, roles []Role, pos *Position
 
 // NewNodeWithToken creates a new Node with type and token.
 func NewNodeWithToken(nodeType Type, token string) *Node {
-	poolNode, ok := nodePool.Get().(*Node)
-	if !ok {
-		poolNode = &Node{}
-	}
-
-	poolNode.ID = ""
-	poolNode.Type = nodeType
-	poolNode.Token = token
-	poolNode.Roles = nil
-	poolNode.Pos = nil
-	poolNode.Props = nil
-	poolNode.Children = nil
-
-	return poolNode
+	return New("", nodeType, token, nil, nil, nil)
 }
 
 // NewLiteralNode creates a new Node for literal values.

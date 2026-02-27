@@ -275,11 +275,6 @@ func NewAdaptivePlanner(totalCommits int, memBudget, declaredGrowth, pipelineOve
 	}
 }
 
-// InitialPlan returns the first set of chunk boundaries using the declared growth rate.
-func (ap *AdaptivePlanner) InitialPlan() []ChunkBounds {
-	return ap.buildPlanner(ap.declaredGrowth).Plan()
-}
-
 // Replan examines three per-chunk metric observations (working state growth,
 // TC payload size, aggregator state growth) and, if any metric diverges from
 // prediction by more than replanThreshold, re-computes chunk boundaries for
@@ -367,16 +362,6 @@ func (ap *AdaptivePlanner) Stats() AdaptiveStats {
 		FinalTCSize:       ap.tcEMA.value,
 		FinalAggGrowth:    ap.aggEMA.value,
 	}
-}
-
-// TotalCommits returns the total number of commits being planned.
-func (ap *AdaptivePlanner) TotalCommits() int {
-	return ap.totalCommits
-}
-
-// DeclaredGrowth returns the initial declared growth rate in bytes/commit.
-func (ap *AdaptivePlanner) DeclaredGrowth() int64 {
-	return ap.declaredGrowth
 }
 
 func (ap *AdaptivePlanner) buildPlanner(growth int64) *Planner {

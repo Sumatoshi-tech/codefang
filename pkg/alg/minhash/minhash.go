@@ -133,38 +133,6 @@ func (s *Signature) Similarity(other *Signature) (float64, error) {
 	return float64(matches) / float64(len(s.mins)), nil
 }
 
-// Merge updates this signature with the element-wise minimum of this and
-// other, implementing union estimation. Returns an error if sizes differ
-// or other is nil.
-func (s *Signature) Merge(other *Signature) error {
-	if other == nil {
-		return ErrNilSignature
-	}
-
-	// Self-merge is a no-op: min(a, a) = a.
-	if s == other {
-		return nil
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	other.mu.Lock()
-	defer other.mu.Unlock()
-
-	if len(s.mins) != len(other.mins) {
-		return ErrSizeMismatch
-	}
-
-	for i := range s.mins {
-		if other.mins[i] < s.mins[i] {
-			s.mins[i] = other.mins[i]
-		}
-	}
-
-	return nil
-}
-
 // Bytes serializes the signature to a compact binary format.
 // Format: [numHashes as uint32 big-endian (4 bytes)] + [mins as []uint64 big-endian].
 func (s *Signature) Bytes() []byte {
@@ -182,79 +150,9 @@ func (s *Signature) Bytes() []byte {
 	return data
 }
 
-// FromBytes deserializes a signature from binary data produced by Bytes.
-func FromBytes(data []byte) (*Signature, error) {
-	if len(data) < HeaderSize {
-		return nil, ErrInvalidData
-	}
-
-	numHashes := int(binary.BigEndian.Uint32(data[:HeaderSize]))
-	if numHashes <= 0 {
-		return nil, ErrZeroNumHashes
-	}
-
-	expectedLen := HeaderSize + numHashes*BytesPerHash
-	if len(data) != expectedLen {
-		return nil, ErrInvalidData
-	}
-
-	mins := make([]uint64, numHashes)
-
-	for i := range numHashes {
-		offset := HeaderSize + i*BytesPerHash
-		mins[i] = binary.BigEndian.Uint64(data[offset : offset+BytesPerHash])
-	}
-
-	return &Signature{
-		mins:  mins,
-		seeds: generateSeeds(numHashes),
-	}, nil
-}
-
 // Len returns the number of hash functions in the signature.
 func (s *Signature) Len() int {
 	return len(s.mins)
-}
-
-// Reset clears the signature, setting all minimums back to [math.MaxUint64].
-func (s *Signature) Reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for i := range s.mins {
-		s.mins[i] = math.MaxUint64
-	}
-}
-
-// Clone creates an independent deep copy of the signature.
-func (s *Signature) Clone() *Signature {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	mins := make([]uint64, len(s.mins))
-	copy(mins, s.mins)
-
-	seeds := make([]uint64, len(s.seeds))
-	copy(seeds, s.seeds)
-
-	return &Signature{
-		mins:  mins,
-		seeds: seeds,
-	}
-}
-
-// IsEmpty returns true if no tokens have been added to the signature.
-func (s *Signature) IsEmpty() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, v := range s.mins {
-		if v != math.MaxUint64 {
-			return false
-		}
-	}
-
-	return true
 }
 
 // fnvHash computes a 64-bit FNV-1a hash of the given data.

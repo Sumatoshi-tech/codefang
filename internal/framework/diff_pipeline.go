@@ -31,11 +31,6 @@ type DiffPipeline struct {
 	DiffCache      *DiffCache
 }
 
-// NewDiffPipeline creates a new diff pipeline.
-func NewDiffPipeline(workerChan chan<- gitlib.WorkerRequest, bufferSize int) *DiffPipeline {
-	return NewDiffPipelineWithCache(workerChan, bufferSize, nil)
-}
-
 // NewDiffPipelineWithCache creates a new diff pipeline with an optional diff cache.
 func NewDiffPipelineWithCache(workerChan chan<- gitlib.WorkerRequest, bufferSize int, cache *DiffCache) *DiffPipeline {
 	if bufferSize <= 0 {

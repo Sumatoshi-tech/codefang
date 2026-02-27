@@ -7,6 +7,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func (ap *AdaptivePlanner) InitialPlan() []ChunkBounds {
+	return ap.buildPlanner(ap.declaredGrowth).Plan()
+}
+
+func (ap *AdaptivePlanner) TotalCommits() int {
+	return ap.totalCommits
+}
+
+func (ap *AdaptivePlanner) DeclaredGrowth() int64 {
+	return ap.declaredGrowth
+}
+
 func TestPlanner_SmallRepo_SingleChunk(t *testing.T) {
 	t.Parallel()
 

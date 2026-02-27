@@ -14,6 +14,33 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+// isDecisionPoint checks whether a node contributes to cyclomatic complexity
+// using only AST metadata (Props["operator"]). Test helper for unit testing
+// decision point classification.
+func (c *Analyzer) isDecisionPoint(target *node.Node) bool {
+	if target == nil {
+		return false
+	}
+
+	switch target.Type {
+	case node.UASTIf, node.UASTLoop, node.UASTCatch:
+		return true
+	case node.UASTCase:
+		if !isDefaultCase(target) {
+			return true
+		}
+	case node.UASTBinaryOp:
+		op := target.Props["operator"]
+		if op == "" {
+			return false
+		}
+
+		return isLogicalOperatorToken(op)
+	}
+
+	return false
+}
+
 func TestAnalyzer_Basic(t *testing.T) {
 	t.Parallel()
 

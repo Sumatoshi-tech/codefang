@@ -1,3 +1,4 @@
+// Package cache provides LRU blob caching with Bloom pre-filter and cost-based eviction.
 package cache
 
 import (
@@ -285,6 +286,12 @@ func (c *LRUBlobCache) Stats() LRUStats {
 		MaxSize:       c.maxSize,
 	}
 }
+
+// CacheHits returns the total cache hit count (atomic, lock-free).
+func (c *LRUBlobCache) CacheHits() int64 { return c.hits.Load() }
+
+// CacheMisses returns the total cache miss count (atomic, lock-free).
+func (c *LRUBlobCache) CacheMisses() int64 { return c.misses.Load() }
 
 // LRUStats holds cache performance metrics.
 type LRUStats struct {

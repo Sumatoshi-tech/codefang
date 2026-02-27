@@ -1,13 +1,10 @@
 package analyze
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
-	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
 )
 
 // UnifiedModelVersion is the schema version for converted run outputs.
@@ -251,7 +248,7 @@ func DecodeBinaryInputModel(
 	orderedIDs []string,
 	registry *Registry,
 ) (UnifiedModel, error) {
-	payloads, err := decodeBinaryEnvelopes(input)
+	payloads, err := reportutil.DecodeBinaryEnvelopes(input)
 	if err != nil {
 		return UnifiedModel{}, fmt.Errorf("decode binary envelopes: %w", err)
 	}
@@ -362,7 +359,7 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 
 		return nil
 	case FormatBinary:
-		err := encodeBinaryEnvelope(model, writer)
+		err := reportutil.EncodeBinaryEnvelope(model, writer)
 		if err != nil {
 			return fmt.Errorf("encode converted binary: %w", err)
 		}
@@ -379,82 +376,6 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedFormat, outputFormat)
 	}
-}
-
-const (
-	binaryMagic      = "CFB1"
-	binaryHeaderSize = 8
-)
-
-var (
-	errInvalidBinaryEnvelope = errors.New("invalid binary envelope")
-	errBinaryPayloadTooLarge = errors.New("binary payload too large")
-)
-
-func encodeBinaryEnvelope(value any, writer io.Writer) error {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("marshal binary payload: %w", err)
-	}
-
-	if len(payload) > math.MaxUint32 {
-		return fmt.Errorf("%w: %d bytes", errBinaryPayloadTooLarge, len(payload))
-	}
-
-	header := make([]byte, binaryHeaderSize)
-	copy(header[:4], binaryMagic)
-	binary.LittleEndian.PutUint32(header[4:], safeconv.MustIntToUint32(len(payload)))
-
-	_, err = writer.Write(header)
-	if err != nil {
-		return fmt.Errorf("write binary header: %w", err)
-	}
-
-	_, err = writer.Write(payload)
-	if err != nil {
-		return fmt.Errorf("write binary payload: %w", err)
-	}
-
-	return nil
-}
-
-func decodeBinaryEnvelope(reader io.Reader) ([]byte, error) {
-	header := make([]byte, binaryHeaderSize)
-
-	_, err := io.ReadFull(reader, header)
-	if err != nil {
-		return nil, errors.Join(errInvalidBinaryEnvelope, err)
-	}
-
-	if !bytes.Equal(header[:4], []byte(binaryMagic)) {
-		return nil, fmt.Errorf("%w: bad magic", errInvalidBinaryEnvelope)
-	}
-
-	payloadLen := binary.LittleEndian.Uint32(header[4:])
-	payload := make([]byte, payloadLen)
-
-	_, err = io.ReadFull(reader, payload)
-	if err != nil {
-		return nil, errors.Join(errInvalidBinaryEnvelope, err)
-	}
-
-	return payload, nil
-}
-
-func decodeBinaryEnvelopes(data []byte) ([][]byte, error) {
-	reader := bytes.NewReader(data)
-	payloads := make([][]byte, 0)
-
-	for reader.Len() > 0 {
-		payload, err := decodeBinaryEnvelope(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		payloads = append(payloads, payload)
-	}
-
-	return payloads, nil
 }
 
 // writeConvertedTimeSeries builds merged timeseries from a unified model's

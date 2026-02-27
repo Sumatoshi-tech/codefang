@@ -5,6 +5,7 @@ import (
 	"maps"
 	"sync"
 
+	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -26,18 +27,8 @@ type BlobPipeline struct {
 	PoolWorkerChan chan<- gitlib.WorkerRequest
 	BufferSize     int
 	WorkerCount    int
-	BlobCache      *GlobalBlobCache
+	BlobCache      *cache.LRUBlobCache
 	ArenaSize      int
-}
-
-// NewBlobPipeline creates a new blob pipeline.
-func NewBlobPipeline(
-	seqChan chan<- gitlib.WorkerRequest,
-	poolChan chan<- gitlib.WorkerRequest,
-	bufferSize int,
-	workerCount int,
-) *BlobPipeline {
-	return NewBlobPipelineWithCache(seqChan, poolChan, bufferSize, workerCount, nil)
 }
 
 // NewBlobPipelineWithCache creates a new blob pipeline with an optional global blob cache.
@@ -46,7 +37,7 @@ func NewBlobPipelineWithCache(
 	poolChan chan<- gitlib.WorkerRequest,
 	bufferSize int,
 	workerCount int,
-	cache *GlobalBlobCache,
+	blobCache *cache.LRUBlobCache,
 ) *BlobPipeline {
 	if bufferSize <= 0 {
 		bufferSize = 1
@@ -61,7 +52,7 @@ func NewBlobPipelineWithCache(
 		PoolWorkerChan: poolChan,
 		BufferSize:     bufferSize,
 		WorkerCount:    workerCount,
-		BlobCache:      cache,
+		BlobCache:      blobCache,
 		ArenaSize:      DefaultBlobBatchArenaSize,
 	}
 }
@@ -311,13 +302,13 @@ func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out
 
 // collectBlobResponse waits for and collects the blob response.
 func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bool {
-	// Initialize cache with hits we already have.
-	cache := make(map[gitlib.Hash]*gitlib.CachedBlob)
-	maps.Copy(cache, job.cacheHits)
+	// Initialize collected blobs with hits we already have.
+	blobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
+	maps.Copy(blobs, job.cacheHits)
 
 	// If no batch request was needed, we are done.
 	if job.batchState == nil || len(job.batchState.respChans) == 0 {
-		job.data.BlobCache = cache
+		job.data.BlobCache = blobs
 
 		return true
 	}
@@ -361,14 +352,14 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	// Now grab from shared results what this job needs.
 	for _, h := range job.neededHash {
 		// If it wasn't in cacheHits, check shared results.
-		if _, ok := cache[h]; !ok {
+		if _, ok := blobs[h]; !ok {
 			if blob, found := job.batchState.results[h]; found {
-				cache[h] = blob
+				blobs[h] = blob
 			}
 		}
 	}
 
-	job.data.BlobCache = cache
+	job.data.BlobCache = blobs
 
 	return true
 }

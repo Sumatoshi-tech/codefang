@@ -27,14 +27,6 @@ func RegisterTimeSeriesExtractor(analyzerFlag string, fn TimeSeriesExtractor) {
 	timeSeriesExtractors[analyzerFlag] = fn
 }
 
-// TimeSeriesExtractorFor returns the registered extractor for the given flag, or nil.
-func TimeSeriesExtractorFor(analyzerFlag string) TimeSeriesExtractor {
-	timeSeriesExtractorsMu.RLock()
-	defer timeSeriesExtractorsMu.RUnlock()
-
-	return timeSeriesExtractors[analyzerFlag]
-}
-
 // snapshotExtractors returns a shallow copy of the registered extractors under the read lock.
 func snapshotExtractors() map[string]TimeSeriesExtractor {
 	timeSeriesExtractorsMu.RLock()

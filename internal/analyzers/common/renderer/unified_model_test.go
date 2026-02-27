@@ -10,6 +10,14 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
+func NewUnifiedModel(results []AnalyzerResult) UnifiedModel {
+	return analyze.NewUnifiedModel(results)
+}
+
+func ParseUnifiedModelJSON(data []byte) (UnifiedModel, error) {
+	return analyze.ParseUnifiedModelJSON(data)
+}
+
 func TestParseUnifiedModelJSON(t *testing.T) {
 	t.Parallel()
 

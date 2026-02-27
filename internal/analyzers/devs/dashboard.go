@@ -200,28 +200,3 @@ func anonymousID(index int) string {
 
 	return string(letters[first-1]) + string(letters[second])
 }
-
-// IdentityAuditEntry represents a developer identity for auditing.
-type IdentityAuditEntry struct {
-	CanonicalName string
-	CommitCount   int
-}
-
-// GenerateIdentityAudit creates an audit list of developer identities.
-func GenerateIdentityAudit(report analyze.Report) []IdentityAuditEntry {
-	metrics, err := ComputeAllMetrics(report)
-	if err != nil {
-		return nil
-	}
-
-	entries := make([]IdentityAuditEntry, len(metrics.Developers))
-
-	for i, d := range metrics.Developers {
-		entries[i] = IdentityAuditEntry{
-			CanonicalName: d.Name,
-			CommitCount:   d.Commits,
-		}
-	}
-
-	return entries
-}

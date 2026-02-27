@@ -3,6 +3,7 @@ package sentiment
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"maps"
 	"regexp"
@@ -118,8 +119,12 @@ func (s *Analyzer) CPUHeavy() bool {
 }
 
 // Serialize writes the analysis result to the given writer.
-// Overrides base to add plot format support.
+// Overrides base to add text and plot format support.
 func (s *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
+	if format == analyze.FormatText {
+		return s.generateText(result, writer)
+	}
+
 	if format == analyze.FormatPlot {
 		return s.generatePlot(result, writer)
 	}
@@ -128,18 +133,36 @@ func (s *Analyzer) Serialize(result analyze.Report, format string, writer io.Wri
 }
 
 // SerializeTICKs converts aggregated TICKs into the final report and serializes it.
-// Overrides base to add plot format support.
+// Overrides base to add text and plot format support.
 func (s *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
+	if format == analyze.FormatText || format == analyze.FormatPlot {
 		report, err := s.ReportFromTICKs(context.Background(), ticks)
 		if err != nil {
 			return err
+		}
+
+		if format == analyze.FormatText {
+			return s.generateText(report, writer)
 		}
 
 		return s.generatePlot(report, writer)
 	}
 
 	return s.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
+}
+
+func (s *Analyzer) generateText(report analyze.Report, writer io.Writer) error {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		return fmt.Errorf("compute metrics: %w", err)
+	}
+
+	_, err = io.WriteString(writer, RenderTerminal(metrics))
+	if err != nil {
+		return fmt.Errorf("write text report: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {

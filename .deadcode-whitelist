@@ -1,29 +1,28 @@
-# Deadcode whitelist - functions intentionally kept
-# Format: file:function_name (function_name must match exactly)
+# Deadcode whitelist — exact qualified function names as printed by deadcode.
+# One entry per line. Lines starting with # are comments.
+#
+# These functions are unreachable from the production binary's main() but are
+# required by test code in external test packages (package foo_test) or by
+# _test.go files in other packages. They cannot be moved to _test.go files.
 
-# Interface implementation methods in test files
-# These satisfy interfaces at compile-time via: var _ Interface = (*Type)(nil)
-# mockReportSection implements ReportSection interface
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.SectionTitle
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.Score
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.ScoreLabel
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.StatusMessage
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.KeyMetrics
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.Distribution
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.TopIssues
-pkg/analyzers/analyze/report_section_test.go:mockReportSection.AllIssues
+# --- Auto-generated PEG parser code (pigeon) — cannot be modified ---
+Pretty
+Size
 
-# CacheStatsProvider interface (observability.CacheStatsProvider)
-# Called via interface at runtime; wired in cmd/codefang/commands/run.go
-pkg/framework/blob_cache.go:GlobalBlobCache.CacheHits
-pkg/framework/blob_cache.go:GlobalBlobCache.CacheMisses
-pkg/framework/diff_cache.go:DiffCache.CacheHits
-pkg/framework/diff_cache.go:DiffCache.CacheMisses
-
-# Auto-generated parser code (pigeon PEG parser)
-# These functions are generated and cannot be modified
-pkg/uast/pkg/mapping/mapping.peg.go:Pretty
-pkg/uast/pkg/mapping/mapping.peg.go:Size
-pkg/uast/pkg/node/dsl_parser.peg.go:Pretty
-pkg/uast/pkg/node/dsl_parser.peg.go:Size
-pkg/analyzers/file_history/history.go:Analyzer
+# --- pkg/gitlib: test helpers used by internal/cache, internal/framework, ---
+# --- internal/analyzers/{plumbing,devs,anomaly,couples,file_history,sentiment} ---
+NewCachedBlobForTest
+NewCachedBlobWithHashForTest
+NewTestCommit
+TestCommit.Hash
+TestCommit.Author
+TestCommit.Committer
+TestCommit.Message
+TestCommit.NumParents
+TestCommit.Parent
+TestCommit.Tree
+TestCommit.Files
+TestCommit.File
+TestCommit.Free
+TestSignature
+NewCommitForTest

@@ -1,6 +1,8 @@
 package clones
 
 import (
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,18 +11,106 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
 )
 
-// Synergy test constants.
+// Synergy threshold constants.
 const (
-	testFileA              = "pkg/foo.go"
-	testFileB              = "pkg/bar.go"
-	testFileC              = "pkg/baz.go"
-	testHighCoupling       = 0.8
-	testLowCoupling        = 0.2
-	testHighSimilarity     = 0.9
-	testLowSimilarity      = 0.6
-	testSynergyFloatDelta  = 0.001
-	testCouplingAtBoundary = 0.3
+	synergyCouplingThreshold   = 0.3
+	synergySimilarityThreshold = 0.8
+	testFileA                  = "pkg/foo.go"
+	testFileB                  = "pkg/bar.go"
+	testFileC                  = "pkg/baz.go"
+	testHighCoupling           = 0.8
+	testLowCoupling            = 0.2
+	testHighSimilarity         = 0.9
+	testLowSimilarity          = 0.6
+	testSynergyFloatDelta      = 0.001
+	testCouplingAtBoundary     = 0.3
 )
+
+// RefactoringSignal represents a cross-referenced signal from coupling and clone analysis.
+type RefactoringSignal struct {
+	FileA            string
+	FileB            string
+	CouplingStrength float64
+	CloneSimilarity  float64
+	Recommendation   string
+}
+
+// ComputeSynergy cross-references couples coupling data with clone detection pairs.
+func ComputeSynergy(couplingData []couples.FileCouplingData, clonePairs []ClonePair) []RefactoringSignal {
+	if len(couplingData) == 0 || len(clonePairs) == 0 {
+		return nil
+	}
+
+	cloneLookup := buildCloneLookup(clonePairs)
+
+	var signals []RefactoringSignal
+
+	for _, coupling := range couplingData {
+		if coupling.Strength <= synergyCouplingThreshold {
+			continue
+		}
+
+		signal, ok := matchCouplingWithClones(coupling, cloneLookup)
+		if ok {
+			signals = append(signals, signal)
+		}
+	}
+
+	sortSignalsByStrength(signals)
+
+	return signals
+}
+
+type cloneLookupEntry struct {
+	maxSimilarity float64
+}
+
+func buildCloneLookup(clonePairs []ClonePair) map[string]cloneLookupEntry {
+	lookup := make(map[string]cloneLookupEntry, len(clonePairs))
+
+	for _, pair := range clonePairs {
+		key := clonePairKey(pair.FuncA, pair.FuncB)
+		entry := lookup[key]
+
+		if pair.Similarity > entry.maxSimilarity {
+			entry.maxSimilarity = pair.Similarity
+		}
+
+		lookup[key] = entry
+	}
+
+	return lookup
+}
+
+func matchCouplingWithClones(coupling couples.FileCouplingData, cloneLookup map[string]cloneLookupEntry) (RefactoringSignal, bool) {
+	key := clonePairKey(coupling.File1, coupling.File2)
+
+	entry, found := cloneLookup[key]
+	if !found || entry.maxSimilarity <= synergySimilarityThreshold {
+		return RefactoringSignal{}, false
+	}
+
+	return RefactoringSignal{
+		FileA:            coupling.File1,
+		FileB:            coupling.File2,
+		CouplingStrength: coupling.Strength,
+		CloneSimilarity:  entry.maxSimilarity,
+		Recommendation:   buildRecommendation(coupling.File1, coupling.File2),
+	}, true
+}
+
+func buildRecommendation(fileA, fileB string) string {
+	return fmt.Sprintf("Files %s and %s are tightly coupled and contain similar code. Consider extracting shared logic.", fileA, fileB)
+}
+
+func sortSignalsByStrength(signals []RefactoringSignal) {
+	sort.Slice(signals, func(i, j int) bool {
+		strengthI := signals[i].CouplingStrength * signals[i].CloneSimilarity
+		strengthJ := signals[j].CouplingStrength * signals[j].CloneSimilarity
+
+		return strengthI > strengthJ
+	})
+}
 
 // TestComputeSynergy_BothEmpty verifies empty inputs produce nil.
 func TestComputeSynergy_BothEmpty(t *testing.T) {

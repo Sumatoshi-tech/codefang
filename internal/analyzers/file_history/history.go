@@ -322,11 +322,6 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	return res
 }
 
-// Analyzer returns a new file-history analyzer.
-func Analyzer() *HistoryAnalyzer {
-	return NewAnalyzer()
-}
-
 // Merge combines results from forked analyzer branches.
 func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 	for _, branch := range branches {

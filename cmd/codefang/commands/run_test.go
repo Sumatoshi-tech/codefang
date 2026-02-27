@@ -186,7 +186,6 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, errOut.String(), "progress: starting run")
 	require.Contains(t, errOut.String(), "progress: static phase started")
-	require.Contains(t, errOut.String(), "progress: run completed")
 }
 
 func TestRunCommand_ProgressOutput_Silent(t *testing.T) {

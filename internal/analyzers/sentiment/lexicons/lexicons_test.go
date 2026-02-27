@@ -7,6 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func AllLanguages() []Language {
+	langs := make([]Language, 0, len(languageRegistry))
+	for lang := range languageRegistry {
+		langs = append(langs, lang)
+	}
+
+	return langs
+}
+
+func LanguageName(lang Language) string {
+	if info, ok := languageRegistry[lang]; ok {
+		return info.name
+	}
+
+	return string(lang)
+}
+
+func ForLanguage(lang Language) []Entry {
+	if info, ok := languageRegistry[lang]; ok {
+		return info.loader()
+	}
+
+	return nil
+}
+
+func LanguageCount() int {
+	return len(languageRegistry)
+}
+
 func TestAllLanguages(t *testing.T) {
 	t.Parallel()
 

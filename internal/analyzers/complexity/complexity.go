@@ -1,13 +1,10 @@
 package complexity
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
@@ -178,12 +175,12 @@ func (c *Analyzer) FormatReportJSON(report analyze.Report, w io.Writer) error {
 		metrics = &ComputedMetrics{}
 	}
 
-	jsonData, err := json.MarshalIndent(metrics, "", "  ")
+	data, err := renderer.RenderMetricsJSON(metrics)
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
 	}
 
-	_, err = fmt.Fprint(w, string(jsonData))
+	_, err = w.Write(data)
 	if err != nil {
 		return fmt.Errorf("formatreportjson: %w", err)
 	}
@@ -198,7 +195,7 @@ func (c *Analyzer) FormatReportYAML(report analyze.Report, w io.Writer) error {
 		metrics = &ComputedMetrics{}
 	}
 
-	data, err := yaml.Marshal(metrics)
+	data, err := renderer.RenderMetricsYAML(metrics)
 	if err != nil {
 		return fmt.Errorf("formatreportyaml: %w", err)
 	}
@@ -562,11 +559,6 @@ func (c *Analyzer) countReturnStatements(fn *node.Node) int {
 	returnStmts := c.traverser.FindNodesByRoles(fn, []string{node.RoleReturn})
 
 	return len(returnNodes) + len(returnStmts)
-}
-
-// isDecisionPoint checks if a node represents a decision point.
-func (c *Analyzer) isDecisionPoint(target *node.Node) bool {
-	return c.isDecisionPointWithSource(target, functionSourceContext{})
 }
 
 func (c *Analyzer) isDecisionPointWithSource(target *node.Node, sourceCtx functionSourceContext) bool {

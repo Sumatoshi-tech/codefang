@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+// WithTheme sets the page theme (test helper).
+func (p *Page) WithTheme(theme Theme) *Page {
+	p.Theme = theme
+
+	return p
+}
+
+// WithVariant sets the badge variant (test helper).
+func (b *Badge) WithVariant(v BadgeVariant) *Badge {
+	b.Variant = v
+
+	return b
+}
+
 func TestPageRenderDarkDefault(t *testing.T) {
 	t.Parallel()
 

@@ -8,6 +8,11 @@ import (
 	"testing"
 )
 
+// NewCompactJSONCodec creates a JSON codec without indentation.
+func NewCompactJSONCodec() *JSONCodec {
+	return &JSONCodec{Indent: ""}
+}
+
 // testState is a simple struct for testing codecs.
 type testState struct {
 	Name   string         `json:"name"`

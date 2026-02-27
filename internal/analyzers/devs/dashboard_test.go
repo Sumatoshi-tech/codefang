@@ -12,6 +12,31 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+// IdentityAuditEntry represents a developer identity for auditing.
+type IdentityAuditEntry struct {
+	CanonicalName string
+	CommitCount   int
+}
+
+// GenerateIdentityAudit creates an audit list of developer identities.
+func GenerateIdentityAudit(report analyze.Report) []IdentityAuditEntry {
+	metrics, err := ComputeAllMetrics(report)
+	if err != nil {
+		return nil
+	}
+
+	entries := make([]IdentityAuditEntry, len(metrics.Developers))
+
+	for i, d := range metrics.Developers {
+		entries[i] = IdentityAuditEntry{
+			CanonicalName: d.Name,
+			CommitCount:   d.Commits,
+		}
+	}
+
+	return entries
+}
+
 // ticksToCanonicalReport converts legacy Ticks format to canonical CommitDevData+CommitsByTick.
 func ticksToCanonicalReport(ticks map[int]map[int]*DevTick, names []string) analyze.Report {
 	commitDevData := make(map[string]*CommitDevData)

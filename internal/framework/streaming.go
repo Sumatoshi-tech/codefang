@@ -65,6 +65,9 @@ const maxStreamingBuffering = 3
 // The scheduler determines the buffering factor (single/double/triple) based on the
 // memory budget. Higher buffering factors overlap more pipeline phases with analyzer
 // consumption but require smaller chunks.
+//
+// When the commit set is trivially small (single commit) and no streaming features are
+// needed, delegates to Runner.Run for simplicity and lower overhead.
 func RunStreaming(
 	ctx context.Context,
 	runner *Runner,
@@ -72,6 +75,12 @@ func RunStreaming(
 	analyzers []analyze.HistoryAnalyzer,
 	config StreamingConfig,
 ) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	// Short-circuit: for a single commit with no TCSink or checkpoint,
+	// Runner.Run is simpler and avoids streaming overhead.
+	if len(commits) == 1 && config.TCSink == nil && config.Checkpoint.Dir == "" {
+		return runner.Run(ctx, commits)
+	}
+
 	logger := config.logger()
 	growthPerCommit := aggregateStateGrowth(analyzers, runner.CoreCount)
 	pipelineOverhead := runner.Config.EstimatedOverhead()

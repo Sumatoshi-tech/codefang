@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
@@ -152,7 +153,7 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		CommitBatchSize:     defaultCommitBatchSize,
 		Workers:             workers,
 		BufferSize:          workers * bufferSizeMultiplier, // Scale buffer with workers to keep them fed.
-		BlobCacheSize:       DefaultGlobalCacheSize,
+		BlobCacheSize:       cache.DefaultLRUCacheSize,
 		DiffCacheSize:       DefaultDiffCacheSize,
 		UASTPipelineWorkers: uastWorkers,
 		LeafWorkers:         leafWorkers,
@@ -197,7 +198,7 @@ type Coordinator struct {
 	blobPipeline   *BlobPipeline
 	diffPipeline   *DiffPipeline
 	uastPipeline   *UASTPipeline
-	blobCache      *GlobalBlobCache
+	blobCache      *cache.LRUBlobCache
 	diffCache      *DiffCache
 
 	// Workers.
@@ -246,9 +247,9 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 	}
 
 	// Create blob cache if configured.
-	var blobCache *GlobalBlobCache
+	var blobCache *cache.LRUBlobCache
 	if config.BlobCacheSize > 0 {
-		blobCache = NewGlobalBlobCache(config.BlobCacheSize)
+		blobCache = cache.NewLRUBlobCache(config.BlobCacheSize)
 	}
 
 	// Create diff cache if configured.
@@ -573,17 +574,4 @@ func signalOnDrain[T any](src <-chan T) (forwarded <-chan T, drained <-chan stru
 	}()
 
 	return out, sig
-}
-
-// ProcessSingle processes a single commit.
-func (c *Coordinator) ProcessSingle(ctx context.Context, commit *gitlib.Commit, _ int) CommitData {
-	commits := []*gitlib.Commit{commit}
-	ch := c.Process(ctx, commits)
-
-	return <-ch
-}
-
-// Config returns the coordinator configuration.
-func (c *Coordinator) Config() CoordinatorConfig {
-	return c.config
 }

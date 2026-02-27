@@ -25,6 +25,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/anomaly"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/burndown"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/clones"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
@@ -41,6 +42,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/typos"
 	"github.com/Sumatoshi-tech/codefang/internal/budget"
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
+	cfgpkg "github.com/Sumatoshi-tech/codefang/internal/config"
 	"github.com/Sumatoshi-tech/codefang/internal/framework"
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -93,6 +95,8 @@ type HistoryRunOptions struct {
 	ClearCheckpoint bool
 
 	DebugTrace bool
+
+	ConfigFile string
 }
 
 var (
@@ -141,6 +145,10 @@ type RunCommand struct {
 	checkpointDir   string
 	clearCheckpoint bool
 
+	configFile      string
+	listAnalyzers   bool
+	diagnosticsAddr string
+
 	staticExec        staticExecutor
 	historyExec       historyExecutor
 	registryFn        registryProvider
@@ -151,6 +159,7 @@ type RunCommand struct {
 func NewRunCommand() *cobra.Command {
 	anomaly.RegisterPlotSections()
 	burndown.RegisterPlotSections()
+	clones.RegisterPlotSections()
 	cohesion.RegisterPlotSections()
 	comments.RegisterPlotSections()
 	complexity.RegisterPlotSections()
@@ -228,11 +237,19 @@ func newRunCommandWithDeps(
 	cmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
 	cmd.Flags().BoolVar(&rc.clearCheckpoint, "clear-checkpoint", false, "Clear existing checkpoint before run")
 
+	cmd.Flags().StringVar(&rc.configFile, "config", "", "Configuration file path (default: .codefang.yaml in CWD or $HOME)")
+	cmd.Flags().BoolVar(&rc.listAnalyzers, "list-analyzers", false, "List all available analyzer IDs and exit")
+	cmd.Flags().StringVar(
+		&rc.diagnosticsAddr, "diagnostics-addr", "",
+		"Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)",
+	)
+
 	registerAnalyzerFlags(cmd)
 
 	return cmd
 }
 
+//nolint:funlen // tracing + diagnostics setup require extra statements.
 func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 	providers, err := rc.initObservability()
 	if err != nil {
@@ -274,11 +291,28 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 	silent := rc.isSilent(cmd)
 	progressWriter := cmd.ErrOrStderr()
 
+	if rc.diagnosticsAddr != "" {
+		diagServer, diagErr := observability.NewDiagnosticsServer(rc.diagnosticsAddr, providers.Meter)
+		if diagErr != nil {
+			return fmt.Errorf("start diagnostics server: %w", diagErr)
+		}
+
+		defer diagServer.Close()
+
+		rc.progressf(silent, progressWriter, "diagnostics server listening on %s", diagServer.Addr())
+	}
+
 	rc.progressf(silent, progressWriter, "starting run path=%s", path)
 
 	registry, err := rc.registryFn()
 	if err != nil {
 		return err
+	}
+
+	if rc.listAnalyzers {
+		rc.printAnalyzerList(cmd.OutOrStdout(), registry)
+
+		return nil
 	}
 
 	ids, err := registry.SelectedIDs(rc.analyzerIDs)
@@ -297,21 +331,11 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 
 	rc.progressf(silent, progressWriter, "selected analyzers: total=%d", len(ids))
 
-	var runErr error
-
 	if rc.inputPath != "" {
-		runErr = rc.runInputConversion(cmd.OutOrStdout(), registry, ids, silent, progressWriter)
-	} else {
-		runErr = rc.runDirect(ctx, path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
+		return rc.runInputConversion(cmd.OutOrStdout(), registry, ids, silent, progressWriter)
 	}
 
-	if runErr != nil {
-		return runErr
-	}
-
-	rc.progressf(silent, progressWriter, "run completed")
-
-	return nil
+	return rc.runDirect(ctx, path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
 }
 
 func (rc *RunCommand) initObservability() (observability.Providers, error) {
@@ -581,6 +605,7 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 		CheckpointDir:   rc.checkpointDir,
 		ClearCheckpoint: rc.clearCheckpoint,
 		DebugTrace:      rc.debugTrace,
+		ConfigFile:      rc.configFile,
 	}
 
 	if cmd.Flags().Changed("checkpoint") {
@@ -602,6 +627,27 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 	}
 
 	return opts
+}
+
+func (rc *RunCommand) printAnalyzerList(writer io.Writer, registry *analyze.Registry) {
+	staticIDs := registry.IDsByMode(analyze.ModeStatic)
+	historyIDs := registry.IDsByMode(analyze.ModeHistory)
+
+	fmt.Fprintf(writer, "Static analyzers (%d):\n", len(staticIDs))
+
+	for _, id := range staticIDs {
+		desc, _ := registry.Descriptor(id)
+		fmt.Fprintf(writer, "  %-30s %s\n", id, desc.Description)
+	}
+
+	fmt.Fprintf(writer, "\nHistory analyzers (%d):\n", len(historyIDs))
+
+	for _, id := range historyIDs {
+		desc, _ := registry.Descriptor(id)
+		fmt.Fprintf(writer, "  %-30s %s\n", id, desc.Description)
+	}
+
+	fmt.Fprintf(writer, "\nTotal: %d analyzers\n", len(registry.All()))
 }
 
 func defaultRegistry() (*analyze.Registry, error) {
@@ -707,7 +753,7 @@ func initHistoryPipeline(
 
 	// HeadOnly mode: load a single commit, no iterator needed.
 	if opts.Head {
-		return initHeadOnly(ctx, repository, pl, analyzerKeys, normalizedFormat, initSpan)
+		return initHeadOnly(ctx, repository, pl, analyzerKeys, normalizedFormat, opts.ConfigFile, initSpan)
 	}
 
 	// Streaming mode: count commits and create a reverse iterator.
@@ -721,6 +767,7 @@ func initHeadOnly(
 	pl *historyPipeline,
 	analyzerKeys []string,
 	normalizedFormat string,
+	configFile string,
 	initSpan trace.Span,
 ) (initResult, error) {
 	commits, loadErr := gitlib.LoadCommits(ctx, repository, gitlib.CommitLoadOptions{
@@ -732,7 +779,7 @@ func initHeadOnly(
 		return initResult{}, loadErr
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, configFile)
 	if configErr != nil {
 		repository.Free()
 
@@ -800,7 +847,7 @@ func initStreamingIterator(
 		return initResult{}, fmt.Errorf("failed to create commit iterator: %w", err)
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, opts.ConfigFile)
 	if configErr != nil {
 		iter.Close()
 		repository.Free()
@@ -826,8 +873,18 @@ func initStreamingIterator(
 }
 
 // configureAndSelect configures core analyzers with facts and selects leaf analyzers.
-func configureAndSelect(pl *historyPipeline, analyzerKeys []string) ([]analyze.HistoryAnalyzer, error) {
+// When configFile is non-empty, it loads analyzer settings from the given config file
+// and applies them to facts before configuring analyzers.
+func configureAndSelect(pl *historyPipeline, analyzerKeys []string, configFile string) ([]analyze.HistoryAnalyzer, error) {
 	facts := buildFacts(pl)
+
+	// Apply file-based configuration if provided.
+	cfg, cfgErr := cfgpkg.LoadConfig(configFile)
+	if cfgErr != nil {
+		return nil, fmt.Errorf("load config: %w", cfgErr)
+	}
+
+	cfg.ApplyToFacts(facts)
 
 	// Configure core (plumbing) analyzers first so they can publish facts
 	// (e.g. TicksSinceStart publishes FactCommitsByTick) that leaves depend on.
@@ -1399,6 +1456,7 @@ func defaultHistoryLeaves() []analyze.HistoryAnalyzer {
 
 func defaultStaticAnalyzers() []analyze.StaticAnalyzer {
 	return []analyze.StaticAnalyzer{
+		clones.NewAnalyzer(),
 		complexity.NewAnalyzer(),
 		comments.NewAnalyzer(),
 		halstead.NewAnalyzer(),

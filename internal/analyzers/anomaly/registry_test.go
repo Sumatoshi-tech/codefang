@@ -9,6 +9,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
+func TimeSeriesExtractorFor(analyzerFlag string) TimeSeriesExtractor {
+	timeSeriesExtractorsMu.RLock()
+	defer timeSeriesExtractorsMu.RUnlock()
+
+	return timeSeriesExtractors[analyzerFlag]
+}
+
 // withIsolatedRegistry saves the global extractors, replaces them with an empty
 // map, and restores the originals when the test finishes. All access goes
 // through the mutex so there is no race with other parallel tests.

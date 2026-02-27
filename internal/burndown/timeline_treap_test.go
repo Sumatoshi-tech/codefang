@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+// NewFileWithTimeline creates a File with the given timeline.
+func NewFileWithTimeline(timeline Timeline, updaters ...Updater) *File {
+	return &File{timeline: timeline, updaters: updaters}
+}
+
 // TestTreapTimeline_ReplaceAndIterate verifies Replace/Iterate/Len/Nodes/Validate
 // for the implicit treap timeline (same semantics as rbtree).
 func TestTreapTimeline_ReplaceAndIterate(t *testing.T) {

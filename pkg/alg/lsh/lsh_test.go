@@ -11,6 +11,32 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/minhash"
 )
 
+func (idx *Index) Size() int {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	return len(idx.sigs)
+}
+
+func (idx *Index) Clear() {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	for i := range idx.bands {
+		idx.bands[i] = make(map[uint64]map[string]bool)
+	}
+
+	idx.sigs = make(map[string]*minhash.Signature)
+}
+
+func (idx *Index) NumBands() int {
+	return idx.numBands
+}
+
+func (idx *Index) NumRows() int {
+	return idx.numRows
+}
+
 // Test constants for LSH tests.
 const (
 	// testBands is the default number of bands for tests.

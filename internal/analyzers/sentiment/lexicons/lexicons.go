@@ -97,35 +97,6 @@ var languageRegistry = map[Language]struct {
 	LangVietnamese: {"Vietnamese", vietnameseLexicon},
 }
 
-// AllLanguages returns all supported lexicon languages.
-func AllLanguages() []Language {
-	langs := make([]Language, 0, len(languageRegistry))
-	for lang := range languageRegistry {
-		langs = append(langs, lang)
-	}
-
-	return langs
-}
-
-// LanguageName returns the display name for a language code.
-func LanguageName(lang Language) string {
-	if info, ok := languageRegistry[lang]; ok {
-		return info.name
-	}
-
-	return string(lang)
-}
-
-// ForLanguage returns the lexicon entries for the given language.
-// Returns nil if the language is not supported.
-func ForLanguage(lang Language) []Entry {
-	if info, ok := languageRegistry[lang]; ok {
-		return info.loader()
-	}
-
-	return nil
-}
-
 // All returns combined lexicon entries from all supported languages.
 func All() []Entry {
 	all := make([]Entry, 0, EntryCount())
@@ -135,11 +106,6 @@ func All() []Entry {
 	}
 
 	return all
-}
-
-// LanguageCount returns the number of supported languages.
-func LanguageCount() int {
-	return len(languageRegistry)
 }
 
 // EntryCount returns the total number of lexicon entries across all languages.

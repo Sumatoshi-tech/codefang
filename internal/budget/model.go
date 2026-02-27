@@ -1,10 +1,6 @@
 // Package budget provides memory budget calculation and auto-tuning for codefang history analysis.
 package budget
 
-import (
-	"github.com/Sumatoshi-tech/codefang/internal/framework"
-)
-
 // Size unit multipliers (binary, 1024-based).
 const (
 	KiB = 1024
@@ -91,15 +87,4 @@ func NativeLimitsForBudget(budget int64) NativeLimits {
 		CacheMaxSize:       cache,
 		MallocArenaMax:     DefaultMallocArenaMax,
 	}
-}
-
-// EstimateMemoryUsage calculates the estimated memory usage for a given configuration.
-// The formula is: BaseOverhead + WorkerMemory + NativeOverhead + CacheMemory + BufferMemory.
-func EstimateMemoryUsage(cfg framework.CoordinatorConfig) int64 {
-	workerMemory := int64(cfg.Workers) * (RepoHandleSize + int64(cfg.BlobArenaSize))
-	nativeMemory := int64(cfg.Workers) * WorkerNativeOverhead
-	cacheMemory := cfg.BlobCacheSize + int64(cfg.DiffCacheSize)*AvgDiffSize
-	bufferMemory := int64(cfg.BufferSize) * AvgCommitDataSize
-
-	return BaseOverhead + workerMemory + nativeMemory + cacheMemory + bufferMemory
 }

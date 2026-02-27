@@ -1,6 +1,7 @@
 package minhash
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
@@ -9,6 +10,100 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func (s *Signature) Merge(other *Signature) error {
+	if other == nil {
+		return ErrNilSignature
+	}
+
+	if s == other {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	other.mu.Lock()
+	defer other.mu.Unlock()
+
+	if len(s.mins) != len(other.mins) {
+		return ErrSizeMismatch
+	}
+
+	for i := range s.mins {
+		if other.mins[i] < s.mins[i] {
+			s.mins[i] = other.mins[i]
+		}
+	}
+
+	return nil
+}
+
+func FromBytes(data []byte) (*Signature, error) {
+	if len(data) < HeaderSize {
+		return nil, ErrInvalidData
+	}
+
+	numHashes := int(binary.BigEndian.Uint32(data[:HeaderSize]))
+	if numHashes <= 0 {
+		return nil, ErrZeroNumHashes
+	}
+
+	expectedLen := HeaderSize + numHashes*BytesPerHash
+	if len(data) != expectedLen {
+		return nil, ErrInvalidData
+	}
+
+	mins := make([]uint64, numHashes)
+
+	for i := range numHashes {
+		offset := HeaderSize + i*BytesPerHash
+		mins[i] = binary.BigEndian.Uint64(data[offset : offset+BytesPerHash])
+	}
+
+	return &Signature{
+		mins:  mins,
+		seeds: generateSeeds(numHashes),
+	}, nil
+}
+
+func (s *Signature) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.mins {
+		s.mins[i] = math.MaxUint64
+	}
+}
+
+func (s *Signature) Clone() *Signature {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	mins := make([]uint64, len(s.mins))
+	copy(mins, s.mins)
+
+	seeds := make([]uint64, len(s.seeds))
+	copy(seeds, s.seeds)
+
+	return &Signature{
+		mins:  mins,
+		seeds: seeds,
+	}
+}
+
+func (s *Signature) IsEmpty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, v := range s.mins {
+		if v != math.MaxUint64 {
+			return false
+		}
+	}
+
+	return true
+}
 
 // Test constants for MinHash tests.
 const (

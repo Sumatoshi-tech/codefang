@@ -52,12 +52,6 @@ func NewFile(time, length int, updaters ...Updater) *File {
 	return file
 }
 
-// NewFileWithTimeline creates a File with the given timeline (e.g. NewTreapTimeline).
-// Used for tests and when using a timeline that does not require an allocator.
-func NewFileWithTimeline(timeline Timeline, updaters ...Updater) *File {
-	return &File{timeline: timeline, updaters: updaters}
-}
-
 // NewFileFromSegments creates a File from serialized segments without triggering updaters.
 func NewFileFromSegments(segs []Segment, updaters ...Updater) *File {
 	timeline := &treapTimeline{}

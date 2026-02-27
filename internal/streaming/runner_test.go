@@ -25,6 +25,30 @@ func (m *mockHibernatable) Boot() error {
 	return nil
 }
 
+// hibernateAll calls Hibernate on all hibernatable analyzers.
+func hibernateAll(analyzers []Hibernatable) error {
+	for _, h := range analyzers {
+		err := h.Hibernate()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// bootAll calls Boot on all hibernatable analyzers.
+func bootAll(analyzers []Hibernatable) error {
+	for _, h := range analyzers {
+		err := h.Boot()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func TestHibernateAnalyzers_SingleChunk_NoHibernation(t *testing.T) {
 	t.Parallel()
 

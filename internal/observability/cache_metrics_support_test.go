@@ -25,7 +25,7 @@ func RegisterCacheMetrics(mt metric.Meter, blob, diff CacheStatsProvider) error 
 	providers := make([]struct {
 		name     string
 		provider CacheStatsProvider
-	}, 0, 2) //nolint:mnd // Two cache types: blob and diff.
+	}, 0, 2) // Two cache types: blob and diff.
 
 	if blob != nil {
 		providers = append(providers, struct {

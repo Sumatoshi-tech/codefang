@@ -75,13 +75,6 @@ func NewPage(title, description string) *Page {
 	}
 }
 
-// WithTheme sets the theme for the page.
-func (p *Page) WithTheme(theme Theme) *Page {
-	p.Theme = theme
-
-	return p
-}
-
 // Add appends sections to the page.
 func (p *Page) Add(sections ...Section) {
 	p.Sections = append(p.Sections, sections...)

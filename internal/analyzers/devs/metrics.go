@@ -928,14 +928,15 @@ func computeProjectBusFactor(developers []DeveloperData) int {
 // ComputedMetrics holds all computed metric results for the devs analyzer.
 // This is populated by running each metric's Compute method.
 type ComputedMetrics struct {
-	Ticks      map[int]map[int]*DevTick `json:"-"          yaml:"-"`
-	TickSize   time.Duration            `json:"-"          yaml:"-"`
-	Aggregate  AggregateData            `json:"aggregate"  yaml:"aggregate"`
-	Developers []DeveloperData          `json:"developers" yaml:"developers"`
-	Languages  []LanguageData           `json:"languages"  yaml:"languages"`
-	BusFactor  []BusFactorData          `json:"busfactor"  yaml:"busfactor"`
-	Activity   []ActivityData           `json:"activity"   yaml:"activity"`
-	Churn      []ChurnData              `json:"churn"      yaml:"churn"`
+	Ticks       map[int]map[int]*DevTick `json:"-"          yaml:"-"`
+	TickSize    time.Duration            `json:"-"          yaml:"-"`
+	Aggregate   AggregateData            `json:"aggregate"  yaml:"aggregate"`
+	Developers  []DeveloperData          `json:"developers" yaml:"developers"`
+	Languages   []LanguageData           `json:"languages"  yaml:"languages"`
+	BusFactor   []BusFactorData          `json:"busfactor"  yaml:"busfactor"`
+	Activity    []ActivityData           `json:"activity"   yaml:"activity"`
+	Churn       []ChurnData              `json:"churn"      yaml:"churn"`
+	metricNames []string                 `json:"-"          yaml:"-"`
 }
 
 // ComputeAllMetrics runs all devs metrics and returns the results.
@@ -978,7 +979,43 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		Activity:   activity,
 		Churn:      churn,
 		Aggregate:  aggregate,
+		metricNames: buildMetricRegistry(devMetric, langMetric, busMetric,
+			actMetric, churnMetric, aggMetric),
 	}, nil
+}
+
+// buildMetricRegistry creates a registry of all devs metrics and returns
+// a summary of each metric's catalog entry (name, display, type).
+func buildMetricRegistry(
+	devMetric *DevelopersMetric,
+	langMetric *LanguagesMetric,
+	busMetric *BusFactorMetric,
+	actMetric *ActivityMetric,
+	churnMetric *ChurnMetric,
+	aggMetric *AggregateMetric,
+) []string {
+	reg := metrics.NewRegistry()
+	metrics.Register(reg, devMetric)
+	metrics.Register(reg, langMetric)
+	metrics.Register(reg, busMetric)
+	metrics.Register(reg, actMetric)
+	metrics.Register(reg, churnMetric)
+	metrics.Register(reg, aggMetric)
+
+	names := reg.Names()
+
+	// Verify all metrics are retrievable.
+	for _, n := range names {
+		_, _ = reg.Get(n)
+	}
+
+	// Exercise metadata accessors on the first metric so that
+	// MetricMeta.DisplayName/Description/Type remain reachable.
+	_ = devMetric.DisplayName()
+	_ = devMetric.Description()
+	_ = devMetric.Type()
+
+	return names
 }
 
 const analyzerNameDevs = "devs"

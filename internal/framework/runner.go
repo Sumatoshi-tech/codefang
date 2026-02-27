@@ -78,12 +78,6 @@ type Runner struct {
 // tracerName is the default OTel tracer name for the framework package.
 const tracerName = "codefang"
 
-// NewRunner creates a new Runner for the given repository and analyzers.
-// Uses DefaultCoordinatorConfig(). Use NewRunnerWithConfig for custom configuration.
-func NewRunner(repo *gitlib.Repository, repoPath string, analyzers ...analyze.HistoryAnalyzer) *Runner {
-	return NewRunnerWithConfig(repo, repoPath, DefaultCoordinatorConfig(), analyzers...)
-}
-
 // NewRunnerWithConfig creates a new Runner with custom coordinator configuration.
 func NewRunnerWithConfig(
 	repo *gitlib.Repository,
@@ -123,11 +117,6 @@ func (runner *Runner) Run(ctx context.Context, commits []*gitlib.Commit) (map[an
 		return runner.FinalizeWithAggregators(ctx)
 	}
 
-	return runner.runInternal(ctx, commits)
-}
-
-// runInternal uses the Coordinator to process commits (batch blob + batch diff in C), then feeds analyzers.
-func (runner *Runner) runInternal(ctx context.Context, commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
 	_, processErr := runner.processCommits(ctx, commits, 0, 0)
 	if processErr != nil {
 		return nil, processErr

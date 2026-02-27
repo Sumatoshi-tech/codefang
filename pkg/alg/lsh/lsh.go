@@ -167,36 +167,6 @@ func (idx *Index) QueryThreshold(sig *minhash.Signature, threshold float64) ([]s
 	return result, nil
 }
 
-// Size returns the number of indexed signatures.
-func (idx *Index) Size() int {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
-	return len(idx.sigs)
-}
-
-// Clear removes all indexed signatures and empties all buckets.
-func (idx *Index) Clear() {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
-
-	for i := range idx.bands {
-		idx.bands[i] = make(map[uint64]map[string]bool)
-	}
-
-	idx.sigs = make(map[string]*minhash.Signature)
-}
-
-// NumBands returns the number of bands in the index.
-func (idx *Index) NumBands() int {
-	return idx.numBands
-}
-
-// NumRows returns the number of rows per band in the index.
-func (idx *Index) NumRows() int {
-	return idx.numRows
-}
-
 // removeLocked removes a signature from all band buckets. Must be called with mu held.
 func (idx *Index) removeLocked(id string, sig *minhash.Signature) {
 	bandHashes := idx.computeBandHashes(sig)

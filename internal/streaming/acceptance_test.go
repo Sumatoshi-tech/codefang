@@ -73,7 +73,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 
 	// --- Non-streaming baseline ---.
 	baselineAnalyzers, baselineLeaf := buildPipeline()
-	runner1 := framework.NewRunner(libRepo, repoPath, baselineAnalyzers...)
+	runner1 := framework.NewRunnerWithConfig(libRepo, repoPath, framework.DefaultCoordinatorConfig(), baselineAnalyzers...)
 	baselineResults, err := runner1.Run(context.Background(), commits)
 	require.NoError(t, err, "non-streaming Run")
 	baselineYAML := serializeReport(t, baselineLeaf, baselineResults[baselineLeaf])
@@ -81,7 +81,7 @@ func TestAcceptance_StreamingMatchesBaseline(t *testing.T) {
 
 	// --- Streaming mode ---.
 	streamAnalyzers, streamLeaf := buildPipeline()
-	runner2 := framework.NewRunner(libRepo, repoPath, streamAnalyzers...)
+	runner2 := framework.NewRunnerWithConfig(libRepo, repoPath, framework.DefaultCoordinatorConfig(), streamAnalyzers...)
 
 	require.NoError(t, runner2.Initialize(), "streaming Initialize")
 
