@@ -155,6 +155,20 @@ func WriteMergedTimeSeries(ts *MergedTimeSeries, writer io.Writer) error {
 	return nil
 }
 
+// WriteTimeSeriesNDJSON writes a MergedTimeSeries as NDJSON — one JSON line per commit.
+func WriteTimeSeriesNDJSON(ts *MergedTimeSeries, writer io.Writer) error {
+	encoder := json.NewEncoder(writer)
+
+	for i := range ts.Commits {
+		err := encoder.Encode(ts.Commits[i])
+		if err != nil {
+			return fmt.Errorf("encode timeseries ndjson line: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // orderCommitsByMeta returns commit hashes in the order they appear in
 // commitMeta, filtering to only those present in commitSet.
 func orderCommitsByMeta(meta []CommitMeta, commitSet map[string]struct{}) []string {

@@ -12,6 +12,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/burndown"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 func newTestAggregator(opts ...func(*Aggregator)) *Aggregator {
@@ -1233,4 +1234,145 @@ func TestMergeTickPeopleHistories_Growth(t *testing.T) {
 
 	require.Len(t, merged.PeopleHistories, 4)
 	assert.Equal(t, int64(50), merged.PeopleHistories[3][0][0])
+}
+
+// --- CommitStats tracking tests ---.
+
+func TestAggregator_Add_TracksCommitStats(t *testing.T) {
+	t.Parallel()
+
+	agg := newTestAggregator()
+
+	hash := gitlib.NewHash("aabbccdd00112233445566778899aabbccddeeff")
+
+	err := agg.Add(analyze.TC{
+		Data: &CommitResult{
+			GlobalDeltas: sparseHistory{1: {1: 50, 0: -10}},
+			LinesAdded:   50,
+			LinesRemoved: 10,
+		},
+		Tick:       1,
+		CommitHash: hash,
+	})
+	require.NoError(t, err)
+
+	hashStr := hash.String()
+	require.Contains(t, agg.commitStats, hashStr)
+	assert.Equal(t, int64(50), agg.commitStats[hashStr].LinesAdded)
+	assert.Equal(t, int64(10), agg.commitStats[hashStr].LinesRemoved)
+	require.Contains(t, agg.commitsByTick, 1)
+	assert.Len(t, agg.commitsByTick[1], 1)
+}
+
+func TestAggregator_Add_SkipsZeroHash(t *testing.T) {
+	t.Parallel()
+
+	agg := newTestAggregator()
+
+	err := agg.Add(analyze.TC{
+		Data: &CommitResult{
+			GlobalDeltas: sparseHistory{1: {0: 100}},
+			LinesAdded:   100,
+		},
+		Tick: 1,
+	})
+	require.NoError(t, err)
+
+	assert.Empty(t, agg.commitStats)
+	assert.Empty(t, agg.commitsByTick)
+}
+
+func TestAggregator_FlushTick_IncludesCommitStats(t *testing.T) {
+	t.Parallel()
+
+	agg := newTestAggregator()
+
+	hash := gitlib.NewHash("aabbccdd00112233445566778899aabbccddeeff")
+
+	err := agg.Add(analyze.TC{
+		Data: &CommitResult{
+			GlobalDeltas: sparseHistory{1: {1: 50}},
+			LinesAdded:   50,
+		},
+		Tick:       1,
+		CommitHash: hash,
+	})
+	require.NoError(t, err)
+
+	tick, err := agg.FlushTick(1)
+	require.NoError(t, err)
+
+	tr, ok := tick.Data.(*TickResult)
+	require.True(t, ok)
+	require.NotNil(t, tr.CommitStats)
+	assert.Contains(t, tr.CommitStats, hash.String())
+}
+
+func TestTicksToReport_IncludesCommitStats(t *testing.T) {
+	t.Parallel()
+
+	hashStr := "aabbccdd00112233445566778899aabbccddeeff"
+
+	ticks := []analyze.TICK{
+		{
+			Tick: 1,
+			Data: &TickResult{
+				GlobalHistory: sparseHistory{1: {0: 100}},
+				CommitStats: map[string]*BurndownCommitSummary{
+					hashStr: {LinesAdded: 100, LinesRemoved: 5},
+				},
+			},
+		},
+	}
+
+	report := ticksToReport(context.Background(), ticks, 30, 30, 0, false, 24*time.Hour, nil, nil)
+
+	cs, ok := report["commit_stats"].(map[string]*BurndownCommitSummary)
+	require.True(t, ok)
+	require.Contains(t, cs, hashStr)
+	assert.Equal(t, int64(100), cs[hashStr].LinesAdded)
+	assert.Equal(t, int64(5), cs[hashStr].LinesRemoved)
+
+	cbt, ok := report["commits_by_tick"].(map[int][]gitlib.Hash)
+	require.True(t, ok)
+	require.Contains(t, cbt, 1)
+	assert.Len(t, cbt[1], 1)
+}
+
+// --- ExtractCommitTimeSeries Tests ---.
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	hashStr := "aabbccdd00112233445566778899aabbccddeeff"
+	report := analyze.Report{
+		"commit_stats": map[string]*BurndownCommitSummary{
+			hashStr: {LinesAdded: 42, LinesRemoved: 7},
+		},
+	}
+
+	result := b.ExtractCommitTimeSeries(report)
+	require.NotNil(t, result)
+	require.Contains(t, result, hashStr)
+
+	entry, ok := result[hashStr].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, int64(42), entry["lines_added"])
+	assert.Equal(t, int64(7), entry["lines_removed"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	b := NewHistoryAnalyzer()
+
+	result := b.ExtractCommitTimeSeries(analyze.Report{})
+	assert.Nil(t, result)
+
+	result = b.ExtractCommitTimeSeries(analyze.Report{
+		"commit_stats": map[string]*BurndownCommitSummary{},
+	})
+	assert.Nil(t, result)
 }

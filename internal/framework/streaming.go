@@ -2,11 +2,13 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -19,6 +21,9 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/streaming"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
+
+// errMissingInterfaces is returned when leaf analyzers lack required streaming interfaces.
+var errMissingInterfaces = errors.New("streaming: leaf analyzers missing required interfaces")
 
 // StreamingConfig holds configuration for streaming pipeline execution.
 type StreamingConfig struct {
@@ -46,6 +51,16 @@ type StreamingConfig struct {
 	// AggSpillBudget is the maximum bytes of aggregator state to keep in memory
 	// before spilling to disk. Computed by ComputeSchedule. Zero means no limit.
 	AggSpillBudget int64
+
+	// OnChunkComplete, when set, is called after each chunk finishes processing.
+	// Used by streaming timeseries NDJSON to drain per-commit data from aggregators
+	// between chunks, keeping memory bounded by chunk size.
+	OnChunkComplete func(runner *Runner) error
+
+	// SkipFinalize, when true, causes RunStreaming/RunStreamingFromIterator to
+	// return empty reports instead of calling FinalizeWithAggregators. Used when
+	// OnChunkComplete already handles output (e.g. streaming timeseries NDJSON).
+	SkipFinalize bool
 }
 
 // logger returns the configured logger, or a discard logger if nil.
@@ -68,7 +83,7 @@ const maxStreamingBuffering = 3
 //
 // When the commit set is trivially small (single commit) and no streaming features are
 // needed, delegates to Runner.Run for simplicity and lower overhead.
-func RunStreaming(
+func RunStreaming( //nolint:funlen // sequential pipeline setup.
 	ctx context.Context,
 	runner *Runner,
 	commits []*gitlib.Commit,
@@ -113,6 +128,11 @@ func RunStreaming(
 	runner.TCSink = config.TCSink
 	runner.AggSpillBudget = schedule.AggSpillBudget
 
+	err := validateStreamingInterfaces(analyzers, runner.CoreCount)
+	if err != nil {
+		return nil, err
+	}
+
 	hibernatables := collectHibernatables(analyzers)
 	spillCleaners := collectSpillCleaners(analyzers)
 	checkpointables := collectCheckpointables(analyzers)
@@ -137,7 +157,7 @@ func RunStreaming(
 		return nil, initErr
 	}
 
-	_, err := runChunks(ctx, logger, runner, commits, chunks, useDoubleBuffer,
+	_, err = runChunks(ctx, logger, runner, commits, chunks, useDoubleBuffer,
 		hibernatables, checkpointables, cpManager, config, startChunk, ap)
 	if err != nil {
 		return nil, err
@@ -150,9 +170,9 @@ func RunStreaming(
 		}
 	}
 
-	// In TCSink mode (NDJSON), output was already written by the sink.
-	// Return empty (non-nil) map — callers skip report rendering in this mode.
-	if config.TCSink != nil {
+	// In TCSink mode (NDJSON) or SkipFinalize mode (streaming timeseries NDJSON),
+	// output was already written. Return empty (non-nil) map.
+	if config.TCSink != nil || config.SkipFinalize {
 		return make(map[analyze.HistoryAnalyzer]analyze.Report), nil
 	}
 
@@ -164,7 +184,7 @@ func RunStreaming(
 // iterator and freed after processing, keeping memory usage proportional to
 // chunk size rather than total repository size. Double-buffering is not supported
 // in iterator mode; use RunStreaming with a pre-loaded slice for that.
-func RunStreamingFromIterator(
+func RunStreamingFromIterator( //nolint:funlen // sequential pipeline setup.
 	ctx context.Context,
 	runner *Runner,
 	iter *gitlib.CommitIter,
@@ -193,6 +213,11 @@ func RunStreamingFromIterator(
 	runner.MemBudget = config.MemBudget
 	runner.TCSink = config.TCSink
 	runner.AggSpillBudget = schedule.AggSpillBudget
+
+	err := validateStreamingInterfaces(analyzers, runner.CoreCount)
+	if err != nil {
+		return nil, err
+	}
 
 	hibernatables := collectHibernatables(analyzers)
 	spillCleaners := collectSpillCleaners(analyzers)
@@ -226,7 +251,7 @@ func RunStreamingFromIterator(
 		return nil, initErr
 	}
 
-	_, err := runChunksFromIterator(ctx, logger, runner, iter, commitCount,
+	_, err = runChunksFromIterator(ctx, logger, runner, iter, commitCount,
 		chunks, hibernatables, checkpointables, cpManager, config, startChunk, ap)
 	if err != nil {
 		return nil, err
@@ -239,9 +264,9 @@ func RunStreamingFromIterator(
 		}
 	}
 
-	// In TCSink mode (NDJSON), output was already written by the sink.
-	// Return empty (non-nil) map — callers skip report rendering in this mode.
-	if config.TCSink != nil {
+	// In TCSink mode (NDJSON) or SkipFinalize mode (streaming timeseries NDJSON),
+	// output was already written. Return empty (non-nil) map.
+	if config.TCSink != nil || config.SkipFinalize {
 		return make(map[analyze.HistoryAnalyzer]analyze.Report), nil
 	}
 
@@ -277,7 +302,7 @@ func runChunksFromIterator(
 	stats, err := processChunksFromIterator(
 		ctx, logger, runner, iter, commitCount, chunks, hibernatables, checkpointables,
 		cpManager, config.RepoPath, config.AnalyzerNames, startChunk,
-		ap, config.MemBudget,
+		ap, config.MemBudget, config.OnChunkComplete,
 	)
 
 	setAnalysisSpanAttributes(analysisSpan, stats)
@@ -320,13 +345,13 @@ func runChunks(
 		stats, err = processChunksDoubleBuffered(
 			ctx, logger, runner, commits, chunks, hibernatables, checkpointables,
 			cpManager, config.RepoPath, config.AnalyzerNames, startChunk,
-			ap, config.MemBudget,
+			ap, config.MemBudget, config.OnChunkComplete,
 		)
 	} else {
 		stats, err = processChunksWithCheckpoint(
 			ctx, logger, runner, commits, chunks, hibernatables, checkpointables,
 			cpManager, config.RepoPath, config.AnalyzerNames, startChunk,
-			ap, config.MemBudget,
+			ap, config.MemBudget, config.OnChunkComplete,
 		)
 	}
 
@@ -547,6 +572,28 @@ func splitStateGrowth(analyzers []analyze.HistoryAnalyzer, coreCount int) (workS
 	return workState, tcSize
 }
 
+// validateStreamingInterfaces checks that all leaf analyzers implement the
+// required streaming interfaces. Returns an error listing non-compliant analyzers.
+func validateStreamingInterfaces(analyzers []analyze.HistoryAnalyzer, coreCount int) error {
+	var missing []string
+
+	for i, a := range analyzers {
+		if i < coreCount {
+			continue // Skip plumbing analyzers.
+		}
+
+		if _, ok := a.(streaming.Hibernatable); !ok {
+			missing = append(missing, a.Name()+": Hibernatable")
+		}
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: %s", errMissingInterfaces, strings.Join(missing, "; "))
+	}
+
+	return nil
+}
+
 func collectHibernatables(analyzers []analyze.HistoryAnalyzer) []streaming.Hibernatable {
 	var hibernatables []streaming.Hibernatable
 
@@ -616,6 +663,7 @@ func processChunksWithCheckpoint(
 	startChunk int,
 	ap *streaming.AdaptivePlanner,
 	memBudget int64,
+	onChunkComplete func(runner *Runner) error,
 ) (chunkStats, error) {
 	var stats chunkStats
 
@@ -666,6 +714,13 @@ func processChunksWithCheckpoint(
 		handleMemoryPressure(ctx, logger, after, memBudget)
 
 		saveChunkCheckpoint(ctx, logger, runner, cpManager, checkpointables, commits, chunk, chunks, i, repoPath, analyzerNames)
+
+		if onChunkComplete != nil {
+			cbErr := onChunkComplete(runner)
+			if cbErr != nil {
+				return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", i+1, cbErr)
+			}
+		}
 	}
 
 	return stats, nil
@@ -674,7 +729,7 @@ func processChunksWithCheckpoint(
 // processChunksFromIterator loads commits chunk-at-a-time from the iterator,
 // processes each chunk, and frees the commits after processing. This keeps
 // memory proportional to chunk size rather than total repository size.
-func processChunksFromIterator(
+func processChunksFromIterator( //nolint:funlen,gocognit // sequential chunk processing loop.
 	ctx context.Context,
 	logger *slog.Logger,
 	runner *Runner,
@@ -689,6 +744,7 @@ func processChunksFromIterator(
 	startChunk int,
 	ap *streaming.AdaptivePlanner,
 	memBudget int64,
+	onChunkComplete func(runner *Runner) error,
 ) (chunkStats, error) {
 	var stats chunkStats
 
@@ -753,6 +809,13 @@ func processChunksFromIterator(
 		freeCommits(chunkCommits)
 
 		handleMemoryPressure(ctx, logger, after, memBudget)
+
+		if onChunkComplete != nil {
+			cbErr := onChunkComplete(runner)
+			if cbErr != nil {
+				return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", i+1, cbErr)
+			}
+		}
 	}
 
 	return stats, nil
@@ -858,13 +921,14 @@ type doubleBufferState struct {
 	logger          *slog.Logger
 	ap              *streaming.AdaptivePlanner
 	memBudget       int64
+	onChunkComplete func(runner *Runner) error
 }
 
 // processChunksDoubleBuffered overlaps chunk K+1's pipeline with chunk K's
 // analyzer consumption. The first chunk runs normally (no prefetch available).
 // For each subsequent chunk, the pipeline was started during the previous
 // chunk's consumption, so data is immediately available.
-func processChunksDoubleBuffered(
+func processChunksDoubleBuffered( //nolint:funlen,gocognit // sequential double-buffered chunk processing.
 	ctx context.Context,
 	logger *slog.Logger,
 	runner *Runner,
@@ -878,6 +942,7 @@ func processChunksDoubleBuffered(
 	startChunk int,
 	ap *streaming.AdaptivePlanner,
 	memBudget int64,
+	onChunkComplete func(runner *Runner) error,
 ) (chunkStats, error) {
 	var stats chunkStats
 
@@ -893,6 +958,7 @@ func processChunksDoubleBuffered(
 		logger:          logger,
 		ap:              ap,
 		memBudget:       memBudget,
+		onChunkComplete: onChunkComplete,
 	}
 
 	for idx := startChunk; idx < len(st.chunks); idx++ {
@@ -920,6 +986,15 @@ func processChunksDoubleBuffered(
 
 		handleMemoryPressure(ctx, logger, after, st.memBudget)
 
+		if st.onChunkComplete != nil {
+			cbErr := st.onChunkComplete(st.runner)
+			if cbErr != nil {
+				drainPrefetch(prefetch)
+
+				return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", idx+1, cbErr)
+			}
+		}
+
 		consumed, consumeDur, consumePStats, consumeErr := st.consumePrefetched(ctx, idx, prefetch)
 		if consumeErr != nil {
 			return stats, consumeErr
@@ -928,6 +1003,14 @@ func processChunksDoubleBuffered(
 		if consumed {
 			stats.record(consumeDur, idx+1, st.chunks[idx+1])
 			stats.pipeline.Add(consumePStats)
+
+			if st.onChunkComplete != nil {
+				cbErr := st.onChunkComplete(st.runner)
+				if cbErr != nil {
+					//nolint:mnd // idx+2 is the prefetched chunk number.
+					return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", idx+2, cbErr)
+				}
+			}
 
 			idx++ // Skip the prefetched chunk in the loop.
 		}
@@ -1238,10 +1321,19 @@ func buildReplanObservation(
 
 	aggSizeAfter := runner.AggregatorStateSize()
 	aggDelta := aggSizeAfter - aggSizeBefore
-	heapDelta := after.HeapInuse - before.HeapInuse
 
-	// Work growth = total heap delta minus aggregator delta, per commit.
-	workDelta := heapDelta - aggDelta
+	// Use RSS delta when available (captures Go heap + native C memory from
+	// libgit2/tree-sitter). Falls back to HeapInuse on non-Linux platforms.
+	totalDelta := after.HeapInuse - before.HeapInuse
+	if after.RSS > 0 && before.RSS > 0 {
+		rssDelta := after.RSS - before.RSS
+		if rssDelta > totalDelta {
+			totalDelta = rssDelta
+		}
+	}
+
+	// Work growth = total memory delta minus aggregator delta, per commit.
+	workDelta := totalDelta - aggDelta
 	workGrowth := workDelta / commitsInChunk
 
 	// TC payload per commit: count * declared average size / commits.
@@ -1274,9 +1366,13 @@ func logChunkMemory(
 		growthPerCommit = (after.HeapInuse - before.HeapInuse) / commitsInChunk
 	}
 
+	// Use max(HeapInuse, RSS) for budget comparison — RSS captures native C
+	// memory (libgit2, tree-sitter) that HeapInuse misses.
+	effectiveUsage := max(after.HeapInuse, after.RSS)
+
 	var budgetPct float64
 	if memBudget > 0 {
-		budgetPct = float64(after.HeapInuse) * percentScale / float64(memBudget)
+		budgetPct = float64(effectiveUsage) * percentScale / float64(memBudget)
 	}
 
 	streaming.LogChunkMemory(ctx, logger, streaming.ChunkMemoryLog{
@@ -1284,6 +1380,7 @@ func logChunkMemory(
 		HeapBefore:      before.HeapInuse,
 		HeapAfter:       after.HeapInuse,
 		SysAfter:        after.Sys,
+		RSSAfter:        after.RSS,
 		BudgetUsedPct:   budgetPct,
 		GrowthPerCommit: growthPerCommit,
 		EMAGrowthRate:   ap.Stats().FinalGrowthRate,
@@ -1302,14 +1399,19 @@ func handleMemoryPressure(
 	ctx context.Context, logger *slog.Logger,
 	snapshot streaming.HeapSnapshot, memBudget int64,
 ) {
-	pressure := streaming.CheckMemoryPressure(snapshot.HeapInuse, memBudget)
+	// Use max(HeapInuse, RSS) for pressure detection — RSS captures native C
+	// memory (libgit2, tree-sitter) that HeapInuse misses.
+	effectiveUsage := max(snapshot.HeapInuse, snapshot.RSS)
+
+	pressure := streaming.CheckMemoryPressure(effectiveUsage, memBudget)
 
 	switch pressure {
 	case streaming.PressureCritical:
 		logger.WarnContext(ctx, "streaming: memory pressure critical, forcing GC",
 			"heap_mib", snapshot.HeapInuse/streaming.MiB,
+			"rss_mib", snapshot.RSS/streaming.MiB,
 			"budget_mib", memBudget/streaming.MiB,
-			"usage_pct", float64(snapshot.HeapInuse)*percentScale/float64(memBudget))
+			"usage_pct", float64(effectiveUsage)*percentScale/float64(memBudget))
 
 		runtime.GC()
 		debug.FreeOSMemory()
@@ -1318,8 +1420,9 @@ func handleMemoryPressure(
 	case streaming.PressureWarning:
 		logger.WarnContext(ctx, "streaming: memory pressure warning",
 			"heap_mib", snapshot.HeapInuse/streaming.MiB,
+			"rss_mib", snapshot.RSS/streaming.MiB,
 			"budget_mib", memBudget/streaming.MiB,
-			"usage_pct", float64(snapshot.HeapInuse)*percentScale/float64(memBudget))
+			"usage_pct", float64(effectiveUsage)*percentScale/float64(memBudget))
 
 	case streaming.PressureNone:
 		// No action needed.

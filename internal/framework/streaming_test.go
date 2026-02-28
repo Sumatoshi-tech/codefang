@@ -190,7 +190,7 @@ func TestProcessChunksDoubleBuffered_IdenticalOutput(t *testing.T) {
 	_, dbErr := processChunksDoubleBuffered(
 		context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)),
 		dbRunner, commits, chunks, nil, nil, nil, repo.Path(), nil, 0,
-		ap, 0,
+		ap, 0, nil,
 	)
 	if dbErr != nil {
 		t.Fatalf("processChunksDoubleBuffered: %v", dbErr)

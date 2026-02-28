@@ -20,6 +20,20 @@ type CommitResult struct {
 	// TrackFiles and PeopleNumber > 0. This is a snapshot of current
 	// state, not a delta — each commit's snapshot replaces the previous.
 	FileOwnership map[PathID]map[int]int
+
+	// LinesAdded is the number of new lines introduced by this commit.
+	// Derived from GlobalDeltas entries where prevTick == curTick and delta > 0.
+	LinesAdded int64
+
+	// LinesRemoved is the number of lines removed by this commit.
+	// Derived from GlobalDeltas entries where delta < 0 (absolute value).
+	LinesRemoved int64
+}
+
+// BurndownCommitSummary holds per-commit summary data for timeseries output.
+type BurndownCommitSummary struct { //nolint:revive // used across packages.
+	LinesAdded   int64 `json:"lines_added"`
+	LinesRemoved int64 `json:"lines_removed"`
 }
 
 // TickResult holds the aggregated burndown state for a single tick,
@@ -30,6 +44,7 @@ type TickResult struct {
 	Matrix          []map[int]int64
 	FileHistories   map[PathID]sparseHistory
 	FileOwnership   map[PathID]map[int]int
+	CommitStats     map[string]*BurndownCommitSummary
 }
 
 // deltaBuffer holds per-commit delta accumulation for a single shard.

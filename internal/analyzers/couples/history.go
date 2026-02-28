@@ -10,12 +10,23 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
 const (
 	readBufferSize = 32 * 1024 // 32KB read buffer.
+
+	// seenFilesBloomExpected is the expected number of unique file paths for the Bloom filter.
+	// Overestimating is cheap (extra memory is ~10 bits per element); underestimating
+	// degrades the false-positive rate. 100K covers very large monorepos.
+	seenFilesBloomExpected = 100_000
+
+	// seenFilesBloomFP is the target false-positive rate for the seen-files Bloom filter.
+	// A false positive conservatively excludes a file from the coupling context in merge mode,
+	// which has negligible impact on coupling quality.
+	seenFilesBloomFP = 0.01
 )
 
 // ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
@@ -30,10 +41,10 @@ type HistoryAnalyzer struct {
 	TreeDiff           *plumbing.TreeDiffAnalyzer
 	Identity           *plumbing.IdentityDetector
 	lastCommit         analyze.CommitLike
-	merges             map[gitlib.Hash]bool
+	merges             *analyze.MergeTracker
 	reversedPeopleDict []string
 	PeopleNumber       int
-	seenFiles          map[string]bool
+	seenFiles          *bloom.Filter
 }
 
 // NewHistoryAnalyzer creates a new HistoryAnalyzer.
@@ -122,10 +133,21 @@ func (c *HistoryAnalyzer) MapDependencies() []string {
 	return []string{}
 }
 
+// newSeenFilesFilter creates a Bloom filter for tracking seen file paths.
+func newSeenFilesFilter() *bloom.Filter {
+	// Error is structurally impossible: constants are valid.
+	f, err := bloom.NewWithEstimates(seenFilesBloomExpected, seenFilesBloomFP)
+	if err != nil {
+		panic("couples: seen-files bloom filter initialization failed: " + err.Error())
+	}
+
+	return f
+}
+
 // Initialize prepares the analyzer for processing commits.
 func (c *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
-	c.seenFiles = map[string]bool{}
-	c.merges = map[gitlib.Hash]bool{}
+	c.seenFiles = newSeenFilesFilter()
+	c.merges = analyze.NewMergeTracker()
 
 	return nil
 }
@@ -139,11 +161,9 @@ func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 	commit := ac.Commit
 
 	if commit.NumParents() > 1 {
-		if c.merges[commit.Hash()] {
+		if c.merges.SeenOrAdd(commit.Hash()) {
 			return analyze.TC{Data: &CommitData{}}, nil
 		}
-
-		c.merges[commit.Hash()] = true
 	}
 
 	mergeMode := ac.IsMerge
@@ -171,7 +191,10 @@ func (c *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 		c.processChange(change, mergeMode, author, &data)
 	}
 
-	return analyze.TC{Data: &data}, nil
+	return analyze.TC{
+		Data:       &data,
+		CommitHash: ac.Commit.Hash(),
+	}, nil
 }
 
 func (c *HistoryAnalyzer) processChange(change *gitlib.Change, mergeMode bool, author int, data *CommitData) {
@@ -199,7 +222,7 @@ func (c *HistoryAnalyzer) processChange(change *gitlib.Change, mergeMode bool, a
 			data.CouplingFiles = append(data.CouplingFiles, name)
 		}
 
-		c.seenFiles[name] = true
+		c.seenFiles.Add([]byte(name))
 
 		if author != identity.AuthorMissing {
 			data.AuthorFiles[name] = 1
@@ -208,7 +231,7 @@ func (c *HistoryAnalyzer) processChange(change *gitlib.Change, mergeMode bool, a
 		return
 	}
 
-	if !c.seenFiles[name] {
+	if !c.seenFiles.Test([]byte(name)) {
 		// Merge mode: only add to coupling context if file not seen before.
 		data.CouplingFiles = append(data.CouplingFiles, name)
 	}
@@ -404,7 +427,7 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
 			PeopleNumber:       c.PeopleNumber,
 			reversedPeopleDict: c.reversedPeopleDict,
-			seenFiles:          make(map[string]bool),
+			seenFiles:          newSeenFilesFilter(),
 		}
 		if c.BaseHistoryAnalyzer != nil {
 			clone.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
@@ -416,7 +439,7 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			}
 		}
 		// Initialize independent state for each fork.
-		clone.merges = make(map[gitlib.Hash]bool)
+		clone.merges = analyze.NewMergeTracker()
 
 		res[i] = clone
 	}
@@ -432,19 +455,13 @@ func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 			continue
 		}
 
-		c.mergeMerges(other.merges)
+		// Merge trackers are not combined: each fork processes a disjoint
+		// subset of commits, so merge dedup state stays independent.
 
 		// Keep the latest lastCommit for aggregator/ticksToReport file line counts.
 		if other.lastCommit != nil {
 			c.lastCommit = other.lastCommit
 		}
-	}
-}
-
-// mergeMerges combines merge commit tracking from another analyzer.
-func (c *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
-	for hash := range other {
-		c.merges[hash] = true
 	}
 }
 
@@ -465,4 +482,24 @@ func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 // NewAggregator creates a new aggregator for this analyzer.
 func (c *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
 	return newAggregator(opts, c.PeopleNumber, c.reversedPeopleDict, c.lastCommit)
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It extracts per-commit coupling summary data for the unified timeseries output.
+func (c *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitStats, ok := report["commit_stats"].(map[string]*CouplesCommitSummary)
+	if !ok || len(commitStats) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitStats))
+
+	for hash, cs := range commitStats {
+		result[hash] = map[string]any{
+			"files_touched": cs.FilesTouched,
+			"author_id":     cs.AuthorID,
+		}
+	}
+
+	return result
 }

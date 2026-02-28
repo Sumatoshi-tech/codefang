@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 // Memory estimation constants for aggregator state size.
@@ -43,6 +44,10 @@ type Aggregator struct {
 	lastTick int
 	endTime  time.Time
 
+	// Per-commit tracking for timeseries output.
+	commitStats   map[string]*BurndownCommitSummary
+	commitsByTick map[int][]gitlib.Hash
+
 	// Spill state.
 	spillDir string
 	spillN   int
@@ -61,6 +66,8 @@ func newAggregator(
 		globalHistory:      sparseHistory{},
 		peopleHistories:    map[int]sparseHistory{},
 		fileHistories:      map[PathID]sparseHistory{},
+		commitStats:        make(map[string]*BurndownCommitSummary),
+		commitsByTick:      make(map[int][]gitlib.Hash),
 		opts:               opts,
 		granularity:        granularity,
 		sampling:           sampling,
@@ -89,6 +96,15 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 
 	if len(cr.FileOwnership) > 0 {
 		a.mergeFileOwnership(cr.FileOwnership)
+	}
+
+	if !tc.CommitHash.IsZero() {
+		hashStr := tc.CommitHash.String()
+		a.commitStats[hashStr] = &BurndownCommitSummary{
+			LinesAdded:   cr.LinesAdded,
+			LinesRemoved: cr.LinesRemoved,
+		}
+		a.commitsByTick[tc.Tick] = append(a.commitsByTick[tc.Tick], tc.CommitHash)
 	}
 
 	if tc.Tick > a.lastTick {
@@ -146,6 +162,7 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 		Matrix:          a.cloneMatrix(),
 		FileHistories:   a.cloneFileHistories(),
 		FileOwnership:   a.cloneFileOwnership(),
+		CommitStats:     a.commitStats,
 	}
 
 	return analyze.TICK{
@@ -252,6 +269,15 @@ type spillSnapshot struct {
 	Matrix          []map[int]int64
 	FileHistories   map[PathID]sparseHistory
 	FileOwnership   map[PathID]map[int]int
+}
+
+// DiscardState clears all in-memory cumulative state without serialization.
+func (a *Aggregator) DiscardState() {
+	a.globalHistory = sparseHistory{}
+	a.peopleHistories = map[int]sparseHistory{}
+	a.matrix = nil
+	a.fileHistories = map[PathID]sparseHistory{}
+	a.fileOwnership = nil
 }
 
 // Spill writes accumulated state to disk to free memory.
@@ -430,6 +456,28 @@ func (a *Aggregator) RestoreSpillState(info analyze.AggregatorSpillInfo) {
 	a.spillN = info.Count
 }
 
+// DrainCommitStats implements analyze.CommitStatsDrainer.
+// It extracts and clears per-commit data, returning the same shape as ExtractCommitTimeSeries.
+func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if len(a.commitStats) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(a.commitStats))
+	for hash, cs := range a.commitStats {
+		result[hash] = map[string]any{
+			"lines_added":   cs.LinesAdded,
+			"lines_removed": cs.LinesRemoved,
+		}
+	}
+
+	cbt := a.commitsByTick
+	a.commitStats = make(map[string]*BurndownCommitSummary)
+	a.commitsByTick = make(map[int][]gitlib.Hash)
+
+	return result, cbt
+}
+
 // Close releases all resources. Idempotent.
 func (a *Aggregator) Close() error {
 	if a.closed {
@@ -490,6 +538,13 @@ func ticksToReport(
 		addFilesToReport(report, merged, converter, lastTick, pathInterner)
 	}
 
+	// Add per-commit stats for timeseries output.
+	mergedCommitStats, commitsByTick := mergeTickCommitStats(ticks)
+	if len(mergedCommitStats) > 0 {
+		report["commit_stats"] = mergedCommitStats
+		report["commits_by_tick"] = commitsByTick
+	}
+
 	return report
 }
 
@@ -543,6 +598,26 @@ func mergeTickFileOwnership(merged *TickResult, src map[PathID]map[int]int) {
 	}
 
 	maps.Copy(merged.FileOwnership, src)
+}
+
+// mergeTickCommitStats collects per-commit stats from all ticks.
+func mergeTickCommitStats(ticks []analyze.TICK) (mergedStats map[string]*BurndownCommitSummary, commitsByTick map[int][]gitlib.Hash) {
+	mergedStats = make(map[string]*BurndownCommitSummary)
+	commitsByTick = make(map[int][]gitlib.Hash)
+
+	for _, tick := range ticks {
+		tr, ok := tick.Data.(*TickResult)
+		if !ok || tr == nil {
+			continue
+		}
+
+		for hash, stats := range tr.CommitStats {
+			mergedStats[hash] = stats
+			commitsByTick[tick.Tick] = append(commitsByTick[tick.Tick], gitlib.NewHash(hash))
+		}
+	}
+
+	return mergedStats, commitsByTick
 }
 
 func mergeTickPeopleHistories(merged *TickResult, src []sparseHistory) {

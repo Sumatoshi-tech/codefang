@@ -5,11 +5,16 @@ import (
 	"sync/atomic"
 
 	"github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 // DefaultDiffCacheSize is the default maximum number of diff entries to cache.
 const DefaultDiffCacheSize = 10000
+
+// diffBloomFPRate is the false-positive rate for the Bloom pre-filter.
+// At 1%, 99% of definite cache misses are short-circuited without lock acquisition.
+const diffBloomFPRate = 0.01
 
 // DiffKey uniquely identifies a diff computation by blob hashes.
 type DiffKey struct {
@@ -27,30 +32,58 @@ type diffCacheEntry struct {
 
 // DiffCache provides an LRU cache for diff results.
 // It caches computed diffs to avoid redundant diff computations.
+// A Bloom filter pre-filters Get lookups to skip lock acquisition for definite misses.
 type DiffCache struct {
 	mu         sync.RWMutex
 	entries    map[DiffKey]*diffCacheEntry
+	filter     *bloom.Filter
 	head       *diffCacheEntry // Most recently used.
 	tail       *diffCacheEntry // Least recently used.
 	maxEntries int
 	hits       atomic.Int64
 	misses     atomic.Int64
+	bloomSkips atomic.Int64
 }
 
 // NewDiffCache creates a new diff cache with the specified maximum entries.
+// A Bloom filter is initialized to pre-filter lookups, sized for maxEntries.
 func NewDiffCache(maxEntries int) *DiffCache {
 	if maxEntries <= 0 {
 		maxEntries = DefaultDiffCacheSize
 	}
 
+	// Error is structurally impossible: maxEntries > 0 and diffBloomFPRate is in (0, 1).
+	bf, err := bloom.NewWithEstimates(uint(maxEntries), diffBloomFPRate)
+	if err != nil {
+		panic("diff_cache: bloom filter initialization failed: " + err.Error())
+	}
+
 	return &DiffCache{
 		entries:    make(map[DiffKey]*diffCacheEntry),
+		filter:     bf,
 		maxEntries: maxEntries,
 	}
 }
 
+// diffKeyBloomBytes returns the concatenated hash bytes for Bloom filter lookup.
+func diffKeyBloomBytes(key DiffKey) []byte {
+	var buf [2 * gitlib.HashSize]byte
+	copy(buf[:gitlib.HashSize], key.OldHash[:])
+	copy(buf[gitlib.HashSize:], key.NewHash[:])
+
+	return buf[:]
+}
+
 // Get retrieves a cached diff result.
+// Uses a Bloom filter to skip lock acquisition for definite cache misses.
 func (c *DiffCache) Get(key DiffKey) (plumbing.FileDiffData, bool) {
+	if !c.filter.Test(diffKeyBloomBytes(key)) {
+		c.bloomSkips.Add(1)
+		c.misses.Add(1)
+
+		return plumbing.FileDiffData{}, false
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -88,6 +121,7 @@ func (c *DiffCache) Put(key DiffKey, diff plumbing.FileDiffData) {
 
 	c.entries[key] = entry
 	c.addToFront(entry)
+	c.filter.Add(diffKeyBloomBytes(key))
 
 	// Evict if over capacity.
 	for len(c.entries) > c.maxEntries {
@@ -95,7 +129,7 @@ func (c *DiffCache) Put(key DiffKey, diff plumbing.FileDiffData) {
 	}
 }
 
-// Clear removes all entries from the cache.
+// Clear removes all entries from the cache and resets the Bloom filter.
 func (c *DiffCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -103,6 +137,7 @@ func (c *DiffCache) Clear() {
 	c.entries = make(map[DiffKey]*diffCacheEntry)
 	c.head = nil
 	c.tail = nil
+	c.filter.Reset()
 }
 
 // CacheHits returns the total cache hit count (atomic, lock-free).
@@ -115,6 +150,7 @@ func (c *DiffCache) CacheMisses() int64 { return c.misses.Load() }
 type DiffCacheStats struct {
 	Hits       int64
 	Misses     int64
+	BloomSkips int64 // Lookups short-circuited by the Bloom pre-filter.
 	Entries    int
 	MaxEntries int
 }
@@ -137,6 +173,7 @@ func (c *DiffCache) Stats() DiffCacheStats {
 	return DiffCacheStats{
 		Hits:       c.hits.Load(),
 		Misses:     c.misses.Load(),
+		BloomSkips: c.bloomSkips.Load(),
 		Entries:    len(c.entries),
 		MaxEntries: c.maxEntries,
 	}

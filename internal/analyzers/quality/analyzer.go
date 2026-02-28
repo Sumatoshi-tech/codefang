@@ -114,7 +114,10 @@ func NewAnalyzer() *Analyzer {
 			return ComputeAllMetrics(report)
 		},
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
-			return analyze.NewGenericAggregator[*tickAccumulator, *TickData](opts, extractTC, mergeState, sizeState, buildTick)
+			agg := analyze.NewGenericAggregator[*tickAccumulator, *TickData](opts, extractTC, mergeState, sizeState, buildTick)
+			agg.DrainCommitDataFn = drainQualityCommitData
+
+			return agg
 		},
 	}
 
@@ -439,4 +442,63 @@ func buildCommitsByTickFromTicks(ticks []analyze.TICK) map[int][]gitlib.Hash {
 	}
 
 	return ct
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It converts per-commit TickQuality data into summary statistics for the
+// unified timeseries output, covering complexity, halstead, comments, and cohesion.
+func (a *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitQuality, ok := report["commit_quality"].(map[string]*TickQuality)
+	if !ok || len(commitQuality) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitQuality))
+
+	for hash, tq := range commitQuality {
+		stats := computeTickStats(tq)
+		result[hash] = map[string]any{
+			"complexity_median":      stats.ComplexityMedian,
+			"cognitive_median":       medianFloat(tq.Cognitives),
+			"max_complexity":         stats.MaxComplexity,
+			"functions":              stats.TotalFunctions,
+			"halstead_vol_median":    stats.HalsteadVolMedian,
+			"halstead_effort_median": medianFloat(tq.HalsteadEfforts),
+			"delivered_bugs_sum":     stats.DeliveredBugsSum,
+			"comment_score_min":      stats.CommentScoreMin,
+			"doc_coverage_mean":      stats.DocCoverageMean,
+			"cohesion_min":           stats.CohesionMin,
+			"files_analyzed":         stats.FilesAnalyzed,
+		}
+	}
+
+	return result
+}
+
+func drainQualityCommitData(state *tickAccumulator) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.commitQuality) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.commitQuality))
+	for hash, tq := range state.commitQuality {
+		stats := computeTickStats(tq)
+		result[hash] = map[string]any{
+			"complexity_median":      stats.ComplexityMedian,
+			"cognitive_median":       medianFloat(tq.Cognitives),
+			"max_complexity":         stats.MaxComplexity,
+			"functions":              stats.TotalFunctions,
+			"halstead_vol_median":    stats.HalsteadVolMedian,
+			"halstead_effort_median": medianFloat(tq.HalsteadEfforts),
+			"delivered_bugs_sum":     stats.DeliveredBugsSum,
+			"comment_score_min":      stats.CommentScoreMin,
+			"doc_coverage_mean":      stats.DocCoverageMean,
+			"cohesion_min":           stats.CohesionMin,
+			"files_analyzed":         stats.FilesAnalyzed,
+		}
+	}
+
+	state.commitQuality = make(map[string]*TickQuality)
+
+	return result, nil
 }

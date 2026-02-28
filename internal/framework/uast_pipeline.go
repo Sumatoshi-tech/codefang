@@ -105,6 +105,8 @@ func (p *UASTPipeline) startWorkers(ctx context.Context, jobs <-chan *uastSlot) 
 
 			for slot := range jobs {
 				slot.data.UASTChanges = p.parseCommitChanges(ctx, slot.data.Changes, slot.data.BlobCache)
+
+				uast.MallocTrim()
 				close(slot.done)
 			}
 		}()
@@ -137,6 +139,13 @@ func (p *UASTPipeline) emit(ctx context.Context, slots <-chan *uastSlot, out cha
 // intraCommitParallelThreshold is the minimum number of file changes in a commit
 // before intra-commit parallelism is used. Below this, sequential parsing is faster.
 const intraCommitParallelThreshold = 4
+
+// maxUASTBlobSize is the maximum blob size (in bytes) for UAST parsing.
+// Files larger than this are skipped — they are typically generated code
+// (protobuf, deepcopy, mock) where structural coupling analysis produces
+// noise, and their tree-sitter parse trees consume hundreds of MB of CGO
+// memory that the Go GC cannot track or reclaim.
+const maxUASTBlobSize = 256 * 1024 // 256 KiB.
 
 // parseCommitChanges parses UAST for all file changes in a commit.
 // For commits with many files, parsing is done in parallel across files.
@@ -267,6 +276,10 @@ func (p *UASTPipeline) parseBlob(
 	}
 
 	if !p.Parser.IsSupported(filename) {
+		return nil
+	}
+
+	if len(blob.Data) > maxUASTBlobSize {
 		return nil
 	}
 

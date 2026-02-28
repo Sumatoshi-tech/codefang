@@ -10,7 +10,8 @@ import (
 )
 
 // Visitor implements the AnalysisVisitor interface for clone detection.
-// It collects function nodes during traversal and performs clone detection on exit.
+// It collects function nodes during traversal and exports MinHash signatures
+// for cross-file clone detection by the aggregator.
 type Visitor struct {
 	functions []*node.Node
 	shingler  *Shingler
@@ -35,37 +36,16 @@ func (v *Visitor) OnExit(_ *node.Node, _ int) {
 	// No action needed on exit.
 }
 
-// GetReport returns the clone detection report.
+// GetReport returns the clone detection report with function signatures.
+// Detection is deferred to the aggregator for cross-file comparison.
 func (v *Visitor) GetReport() analyze.Report {
 	if len(v.functions) == 0 {
 		return buildEmptyReport(msgNoFunctions)
 	}
 
-	pairs := v.detectClones()
-
-	return buildVisitorReport(len(v.functions), pairs)
-}
-
-// detectClones builds MinHash signatures and uses LSH to find clone pairs.
-func (v *Visitor) detectClones() []ClonePair {
 	entries := v.buildSignatures()
-	if len(entries) == 0 {
-		return nil
-	}
 
-	idx, err := lsh.New(numBands, numRows)
-	if err != nil {
-		return nil
-	}
-
-	for _, entry := range entries {
-		insertErr := idx.Insert(entry.name, entry.sig)
-		if insertErr != nil {
-			continue
-		}
-	}
-
-	return findClonePairs(entries, idx)
+	return buildSignatureReport(len(v.functions), entries)
 }
 
 // buildSignatures computes MinHash signatures for all collected functions.
@@ -96,6 +76,29 @@ func (v *Visitor) buildSignatures() []funcEntry {
 	}
 
 	return entries
+}
+
+// buildSignatureReport constructs a report that exports function signatures
+// for the aggregator to perform cross-file clone detection.
+func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Report {
+	sigEntries := make([]map[string]any, 0, len(entries))
+
+	for _, e := range entries {
+		sigEntries = append(sigEntries, map[string]any{
+			"name": e.name,
+			"sig":  e.sig,
+		})
+	}
+
+	return analyze.Report{
+		keyAnalyzerName:    analyzerName,
+		keyTotalFunctions:  totalFunctions,
+		keyTotalClonePairs: 0,
+		keyCloneRatio:      0.0,
+		keyClonePairs:      []map[string]any{},
+		keyMessage:         msgNoClones,
+		keyFuncSignatures:  sigEntries,
+	}
 }
 
 // findClonePairs queries the LSH index and collects unique clone pairs.
@@ -184,30 +187,4 @@ func computeClonePair(entry funcEntry, candidateID string, sigMap map[string]*mi
 		Similarity: similarity,
 		CloneType:  classifyCloneType(similarity),
 	}, true
-}
-
-// buildVisitorReport constructs the analysis report from visitor data.
-func buildVisitorReport(totalFunctions int, pairs []ClonePair) analyze.Report {
-	cloneRatio := computeCloneRatio(len(pairs), totalFunctions)
-	message := cloneMessage(len(pairs))
-
-	pairsForReport := make([]map[string]any, 0, len(pairs))
-
-	for _, p := range pairs {
-		pairsForReport = append(pairsForReport, map[string]any{
-			"func_a":     p.FuncA,
-			"func_b":     p.FuncB,
-			"similarity": p.Similarity,
-			"clone_type": p.CloneType,
-		})
-	}
-
-	return analyze.Report{
-		keyAnalyzerName:    analyzerName,
-		keyTotalFunctions:  totalFunctions,
-		keyTotalClonePairs: len(pairs),
-		keyCloneRatio:      cloneRatio,
-		keyClonePairs:      pairsForReport,
-		keyMessage:         message,
-	}
 }

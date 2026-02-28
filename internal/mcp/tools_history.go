@@ -264,8 +264,7 @@ func buildMCPLeaves(
 		},
 		"imports": func() *imports.HistoryAnalyzer {
 			a := imports.NewHistoryAnalyzer()
-			a.TreeDiff = treeDiff
-			a.BlobCache = blobCache
+			a.UAST = uastChanges
 			a.Identity = identity
 			a.Ticks = ticks
 			return a

@@ -2,33 +2,21 @@ package imports
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"sync"
+	"maps"
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
-	"github.com/Sumatoshi-tech/codefang/internal/importmodel"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
-	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
 const (
-	defaultGoroutines       = 4
-	defaultMaxFileSizeShift = 20
-	defaultTickHours        = 24
-	estimatedImportSize     = 24
+	defaultTickHours    = 24
+	estimatedImportSize = 24
 )
-
-// ErrParserNotInitialized indicates the UAST parser is not initialized.
-var ErrParserNotInitialized = errors.New("parser not initialized")
-
-// ErrUnsupportedLanguage indicates the language is not supported.
-var ErrUnsupportedLanguage = errors.New("unsupported language")
 
 // Map maps file paths to their import lists.
 // author -> lang -> import -> tick -> count.
@@ -41,38 +29,42 @@ type ImportEntry struct {
 	Import string
 }
 
+// ImportsCommitSummary holds per-commit summary data for timeseries output.
+type ImportsCommitSummary struct { //nolint:revive // used across packages.
+	ImportCount int            `json:"import_count"`
+	Languages   map[string]int `json:"languages"`
+}
+
 // TickData is the per-tick aggregated payload stored in analyze.TICK.Data.
 // It holds the accumulated 4-level imports map for the tick.
 type TickData struct {
-	Imports Map
+	Imports     Map
+	CommitStats map[string]*ImportsCommitSummary
 }
 
 // tickAccumulator holds the in-memory state during aggregation for a single tick.
 type tickAccumulator struct {
-	imports Map
+	imports     Map
+	commitStats map[string]*ImportsCommitSummary
 }
 
 // HistoryAnalyzer tracks import usage across commit history.
+// It consumes pre-parsed UAST trees from the framework's UAST pipeline
+// rather than maintaining its own tree-sitter parser.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
 
-	TreeDiff           *plumbing.TreeDiffAnalyzer
-	BlobCache          *plumbing.BlobCacheAnalyzer
+	UAST               *plumbing.UASTChangesAnalyzer
 	Identity           *plumbing.IdentityDetector
 	Ticks              *plumbing.TicksSinceStart
-	parser             *uast.Parser
 	reversedPeopleDict []string
 	TickSize           time.Duration
-	Goroutines         int
-	MaxFileSize        int
 }
 
 // NewHistoryAnalyzer creates a new HistoryAnalyzer.
 func NewHistoryAnalyzer() *HistoryAnalyzer {
 	a := &HistoryAnalyzer{
-		Goroutines:  defaultGoroutines,
-		MaxFileSize: 1 << defaultMaxFileSizeShift,
-		TickSize:    defaultTickHours * time.Hour,
+		TickSize: defaultTickHours * time.Hour,
 	}
 
 	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
@@ -90,13 +82,16 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			return ComputeAllMetrics(report)
 		},
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
-			return analyze.NewGenericAggregator[*tickAccumulator, *TickData](
+			agg := analyze.NewGenericAggregator[*tickAccumulator, *TickData](
 				opts,
 				a.extractTC,
 				a.mergeState,
 				a.sizeState,
 				a.buildTick,
 			)
+			agg.DrainCommitDataFn = drainImportsCommitData
+
+			return agg
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
 			return ticksToReport(ctx, ticks, a.reversedPeopleDict, a.TickSize)
@@ -118,22 +113,7 @@ func (h *HistoryAnalyzer) Flag() string {
 
 // ListConfigurationOptions returns the configuration options for the analyzer.
 func (h *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
-	return []pipeline.ConfigurationOption{
-		{
-			Name:        "Imports.Goroutines",
-			Description: "Specifies the number of goroutines to run in parallel for the imports extraction.",
-			Flag:        "import-goroutines",
-			Type:        pipeline.IntConfigurationOption,
-			Default:     defaultGoroutines,
-		},
-		{
-			Name:        "Imports.MaxFileSize",
-			Description: "Specifies the file size threshold. Files that exceed it are ignored.",
-			Flag:        "import-max-file-size",
-			Type:        pipeline.IntConfigurationOption,
-			Default:     1 << defaultMaxFileSizeShift,
-		},
-	}
+	return nil
 }
 
 // Configure sets up the analyzer with the provided facts.
@@ -146,14 +126,6 @@ func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
 		h.TickSize = val
 	}
 
-	if val, exists := facts["Imports.Goroutines"].(int); exists {
-		h.Goroutines = val
-	}
-
-	if val, exists := facts["Imports.MaxFileSize"].(int); exists {
-		h.MaxFileSize = val
-	}
-
 	return nil
 }
 
@@ -163,150 +135,46 @@ func (h *HistoryAnalyzer) Initialize(_ *gitlib.Repository) error {
 		h.TickSize = time.Hour * defaultTickHours
 	}
 
-	if h.Goroutines < 1 {
-		h.Goroutines = defaultGoroutines
-	}
-
-	if h.MaxFileSize == 0 {
-		h.MaxFileSize = 1 << defaultMaxFileSizeShift
-	}
-
-	// Initialize UAST parser.
-	var err error
-
-	h.parser, err = uast.NewParser()
-	if err != nil {
-		return fmt.Errorf("failed to initialize UAST parser: %w", err)
-	}
-
 	return nil
 }
 
-func (h *HistoryAnalyzer) extractImports(ctx context.Context, name string, data []byte) (*importmodel.File, error) {
-	if h.parser == nil {
-		return nil, ErrParserNotInitialized
-	}
+// NeedsUAST returns true to enable the framework's UAST pipeline.
+func (h *HistoryAnalyzer) NeedsUAST() bool { return true }
 
-	// Check if supported.
-	if !h.parser.IsSupported(name) {
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedLanguage, name)
-	}
-
-	// Parse.
-	root, err := h.parser.Parse(ctx, name, data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract imports using logic from analyzer.go (in same package).
-	imports := extractImportsFromUAST(root)
-
-	// Determine language.
-	lang := h.parser.GetLanguage(name)
-	if lang == "" {
-		lang = "uast"
-	}
-
-	return &importmodel.File{
-		Lang:    lang,
-		Imports: imports,
-	}, nil
-}
-
-// extractImportsParallel spins up a worker pool to parse changed files in
-// parallel and returns per-blob import results.
-func (h *HistoryAnalyzer) extractImportsParallel(
-	ctx context.Context,
-	changes gitlib.Changes,
-	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
-) map[gitlib.Hash]importmodel.File {
-	extracted := map[gitlib.Hash]importmodel.File{}
-	jobs := make(chan *gitlib.Change, h.Goroutines)
-
-	var (
-		mu sync.Mutex
-		wg sync.WaitGroup
-	)
-
-	wg.Add(h.Goroutines)
-
-	for range h.Goroutines {
-		go func() {
-			defer wg.Done()
-
-			h.processImportJobs(ctx, jobs, cache, &mu, extracted)
-		}()
-	}
-
-	dispatchImportJobs(changes, jobs)
-	wg.Wait()
-
-	return extracted
-}
-
-// processImportJobs reads changes from the jobs channel, extracts imports from
-// each blob, and stores results in the extracted map under lock.
-func (h *HistoryAnalyzer) processImportJobs(
-	ctx context.Context,
-	jobs <-chan *gitlib.Change,
-	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
-	mu *sync.Mutex,
-	extracted map[gitlib.Hash]importmodel.File,
-) {
-	for change := range jobs {
-		blob := cache[change.To.Hash]
-		if blob == nil || blob.Size() > int64(h.MaxFileSize) {
-			continue
-		}
-
-		file, err := h.extractImports(ctx, change.To.Name, blob.Data)
-		if err != nil {
-			continue
-		}
-
-		mu.Lock()
-
-		extracted[change.To.Hash] = *file
-
-		mu.Unlock()
-	}
-}
-
-// dispatchImportJobs sends modified or inserted changes to the jobs channel.
-func dispatchImportJobs(changes gitlib.Changes, jobs chan<- *gitlib.Change) {
-	for _, change := range changes {
-		switch change.Action {
-		case gitlib.Modify, gitlib.Insert:
-			jobs <- change
-		case gitlib.Delete:
-			continue
-		}
-	}
-
-	close(jobs)
-}
-
-// Consume processes a single commit with the provided dependency results.
-func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) (analyze.TC, error) {
-	if h.parser == nil {
-		return analyze.TC{}, ErrParserNotInitialized
-	}
-
-	extracted := h.extractImportsParallel(ctx, h.TreeDiff.Changes, h.BlobCache.Cache)
+// Consume processes a single commit using pre-parsed UAST trees from the
+// framework's pipeline.
+func (h *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC, error) {
+	changesList := h.UAST.Changes(ctx)
 
 	var entries []ImportEntry
 
-	for _, file := range extracted {
-		for _, imp := range file.Imports {
+	for _, change := range changesList {
+		// Only extract imports from the "after" version (Insert or Modify).
+		if change.After == nil {
+			continue
+		}
+
+		imports := extractImportsFromUAST(change.After)
+		if len(imports) == 0 {
+			continue
+		}
+
+		lang := h.UAST.GetLanguage(change.Change.To.Name)
+		if lang == "" {
+			lang = "uast"
+		}
+
+		for _, imp := range imports {
 			entries = append(entries, ImportEntry{
-				Lang:   file.Lang,
+				Lang:   lang,
 				Import: imp,
 			})
 		}
 	}
 
 	tc := analyze.TC{
-		Tick: h.Ticks.Tick,
+		Tick:       h.Ticks.Tick,
+		CommitHash: ac.Commit.Hash(),
 	}
 
 	if len(entries) > 0 {
@@ -318,8 +186,6 @@ func (h *HistoryAnalyzer) Consume(ctx context.Context, _ *analyze.Context) (anal
 
 	return tc, nil
 }
-
-// GenericAggregator Delegates.
 
 func (h *HistoryAnalyzer) extractTC(tc analyze.TC, byTick map[int]*tickAccumulator) error {
 	if tc.Data == nil {
@@ -343,17 +209,38 @@ func (h *HistoryAnalyzer) extractTC(tc analyze.TC, byTick map[int]*tickAccumulat
 
 	acc, exists := byTick[tc.Tick]
 	if !exists {
-		acc = &tickAccumulator{imports: make(Map)}
+		acc = &tickAccumulator{
+			imports:     make(Map),
+			commitStats: make(map[string]*ImportsCommitSummary),
+		}
 		byTick[tc.Tick] = acc
 	}
 
 	addEntriesToMap(acc.imports, entries, authorID, tc.Tick)
+
+	if !tc.CommitHash.IsZero() {
+		languages := make(map[string]int)
+		for _, e := range entries {
+			languages[e.Lang]++
+		}
+
+		acc.commitStats[tc.CommitHash.String()] = &ImportsCommitSummary{
+			ImportCount: len(entries),
+			Languages:   languages,
+		}
+	}
 
 	return nil
 }
 
 func (h *HistoryAnalyzer) mergeState(dst, src *tickAccumulator) *tickAccumulator {
 	mergeImportMaps(dst.imports, src.imports)
+
+	if dst.commitStats == nil {
+		dst.commitStats = make(map[string]*ImportsCommitSummary)
+	}
+
+	maps.Copy(dst.commitStats, src.commitStats)
 
 	return dst
 }
@@ -376,7 +263,8 @@ func (h *HistoryAnalyzer) buildTick(tick int, acc *tickAccumulator) (analyze.TIC
 	return analyze.TICK{
 		Tick: tick,
 		Data: &TickData{
-			Imports: acc.imports,
+			Imports:     acc.imports,
+			CommitStats: acc.commitStats,
 		},
 	}, nil
 }
@@ -389,6 +277,44 @@ func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 // ReportFromTICKs converts aggregated TICKs into a Report.
 func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
 	return ticksToReport(ctx, ticks, h.reversedPeopleDict, h.TickSize), nil
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It extracts per-commit import usage data for the unified timeseries output.
+func (h *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitStats, ok := report["commit_stats"].(map[string]*ImportsCommitSummary)
+	if !ok || len(commitStats) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitStats))
+
+	for hash, cs := range commitStats {
+		result[hash] = map[string]any{
+			"import_count": cs.ImportCount,
+			"languages":    cs.Languages,
+		}
+	}
+
+	return result
+}
+
+func drainImportsCommitData(state *tickAccumulator) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.commitStats) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.commitStats))
+	for hash, cs := range state.commitStats {
+		result[hash] = map[string]any{
+			"import_count": cs.ImportCount,
+			"languages":    cs.Languages,
+		}
+	}
+
+	state.commitStats = make(map[string]*ImportsCommitSummary)
+
+	return result, nil
 }
 
 // Helper methods.
@@ -463,6 +389,8 @@ func ticksToReport(
 	tickSize time.Duration,
 ) analyze.Report {
 	merged := Map{}
+	commitStats := make(map[string]*ImportsCommitSummary)
+	commitsByTick := make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
 		td, ok := tick.Data.(*TickData)
@@ -471,22 +399,33 @@ func ticksToReport(
 		}
 
 		mergeImportMaps(merged, td.Imports)
+
+		for hash, cs := range td.CommitStats {
+			commitStats[hash] = cs
+			commitsByTick[tick.Tick] = append(commitsByTick[tick.Tick], gitlib.NewHash(hash))
+		}
 	}
 
-	return analyze.Report{
+	report := analyze.Report{
 		"imports":      merged,
 		"author_index": reversedPeopleDict,
 		"tick_size":    tickSize,
 	}
+
+	if len(commitStats) > 0 {
+		report["commit_stats"] = commitStats
+		report["commits_by_tick"] = commitsByTick
+	}
+
+	return report
 }
 
 // SnapshotPlumbing captures the current plumbing output state for one commit.
 func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{
-		Changes:   h.TreeDiff.Changes,
-		BlobCache: h.BlobCache.Cache,
-		Tick:      h.Ticks.Tick,
-		AuthorID:  h.Identity.AuthorID,
+		UASTChanges: h.UAST.TransferChanges(),
+		Tick:        h.Ticks.Tick,
+		AuthorID:    h.Identity.AuthorID,
 	}
 }
 
@@ -497,14 +436,20 @@ func (h *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 		return
 	}
 
-	h.TreeDiff.Changes = snapshot.Changes
-	h.BlobCache.Cache = snapshot.BlobCache
+	h.UAST.SetChanges(snapshot.UASTChanges)
 	h.Ticks.Tick = snapshot.Tick
 	h.Identity.AuthorID = snapshot.AuthorID
 }
 
-// ReleaseSnapshot releases any resources owned by the snapshot.
-func (h *HistoryAnalyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
+// ReleaseSnapshot releases UAST trees owned by the snapshot.
+func (h *HistoryAnalyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
+	ss, ok := snap.(plumbing.Snapshot)
+	if !ok {
+		return
+	}
+
+	plumbing.ReleaseSnapshotUAST(ss)
+}
 
 // Fork creates a copy of the analyzer for parallel processing.
 // Each fork gets independent mutable state while sharing read-only config.
@@ -513,15 +458,11 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	for i := range n {
 		clone := &HistoryAnalyzer{
 			BaseHistoryAnalyzer: h.BaseHistoryAnalyzer,
-			TreeDiff:            &plumbing.TreeDiffAnalyzer{},
-			BlobCache:           &plumbing.BlobCacheAnalyzer{},
+			UAST:                &plumbing.UASTChangesAnalyzer{},
 			Identity:            &plumbing.IdentityDetector{},
 			Ticks:               &plumbing.TicksSinceStart{},
 			reversedPeopleDict:  h.reversedPeopleDict,
 			TickSize:            h.TickSize,
-			Goroutines:          h.Goroutines,
-			MaxFileSize:         h.MaxFileSize,
-			parser:              h.parser, // Parser is thread-safe for reads.
 		}
 
 		forks[i] = clone

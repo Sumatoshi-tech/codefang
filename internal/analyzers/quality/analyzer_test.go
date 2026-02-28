@@ -643,3 +643,70 @@ func buildTestQualityReport() analyze.Report {
 		},
 	}
 }
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	hashA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	report := analyze.Report{
+		"commit_quality": map[string]*TickQuality{
+			hashA: {
+				Complexities:    []float64{10, 20},
+				Cognitives:      []float64{5, 8},
+				MaxComplexities: []int{12, 18},
+				Functions:       []int{3, 5},
+				HalsteadVolumes: []float64{100, 200},
+				HalsteadEfforts: []float64{50, 100},
+				DeliveredBugs:   []float64{0.1, 0.2},
+				CommentScores:   []float64{0.5, 0.7},
+				DocCoverages:    []float64{0.6, 0.8},
+				CohesionScores:  []float64{0.8, 0.9},
+			},
+			hashB: {
+				Complexities:    []float64{30},
+				Cognitives:      []float64{15},
+				MaxComplexities: []int{25},
+				Functions:       []int{7},
+				HalsteadVolumes: []float64{300},
+				HalsteadEfforts: []float64{150},
+				DeliveredBugs:   []float64{0.3},
+				CommentScores:   []float64{0.9},
+				DocCoverages:    []float64{0.95},
+				CohesionScores:  []float64{1.0},
+			},
+		},
+	}
+
+	a := &Analyzer{}
+	result := a.ExtractCommitTimeSeries(report)
+
+	require.Len(t, result, 2)
+
+	entryA, ok := result[hashA].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 15.0, entryA["complexity_median"], 0.01)
+	assert.Equal(t, 18, entryA["max_complexity"])
+	assert.Equal(t, 8, entryA["functions"])
+	assert.InDelta(t, 0.3, entryA["delivered_bugs_sum"], 0.01)
+	assert.InDelta(t, 0.5, entryA["comment_score_min"], 0.01)
+	assert.InDelta(t, 0.8, entryA["cohesion_min"], 0.01)
+	assert.Equal(t, 2, entryA["files_analyzed"])
+
+	entryB, ok := result[hashB].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 30.0, entryB["complexity_median"], 0.01)
+	assert.Equal(t, 1, entryB["files_analyzed"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	a := &Analyzer{}
+
+	assert.Nil(t, a.ExtractCommitTimeSeries(analyze.Report{}))
+	assert.Nil(t, a.ExtractCommitTimeSeries(analyze.Report{
+		"commit_quality": map[string]*TickQuality{},
+	}))
+}

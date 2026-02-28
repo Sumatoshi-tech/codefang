@@ -454,8 +454,27 @@ func (b *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 	b.lastCommitTime = ac.Time
 
 	result := b.collectDeltas()
+	computeCommitLineStats(result, tick)
 
-	return analyze.TC{Data: result}, nil
+	return analyze.TC{
+		Data:       result,
+		CommitHash: ac.Commit.Hash(),
+	}, nil
+}
+
+// computeCommitLineStats derives LinesAdded/LinesRemoved from GlobalDeltas.
+func computeCommitLineStats(cr *CommitResult, curTick int) {
+	if cr == nil || len(cr.GlobalDeltas) == 0 {
+		return
+	}
+
+	for prevTick, delta := range cr.GlobalDeltas[curTick] {
+		if prevTick == curTick && delta > 0 {
+			cr.LinesAdded += delta
+		} else if delta < 0 {
+			cr.LinesRemoved += -delta
+		}
+	}
 }
 
 // ConsumePrepared processes a pre-prepared commit.
@@ -956,6 +975,26 @@ func (b *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 		b.TrackFiles, b.TickSize,
 		b.reversedPeopleDict, b.pathInterner,
 	)
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It extracts per-commit burndown summary data for the unified timeseries output.
+func (b *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitStats, ok := report["commit_stats"].(map[string]*BurndownCommitSummary)
+	if !ok || len(commitStats) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitStats))
+
+	for hash, cs := range commitStats {
+		result[hash] = map[string]any{
+			"lines_added":   cs.LinesAdded,
+			"lines_removed": cs.LinesRemoved,
+		}
+	}
+
+	return result
 }
 
 // Helpers.

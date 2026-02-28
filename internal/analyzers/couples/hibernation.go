@@ -1,13 +1,15 @@
 package couples
 
-import "github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+import "github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 
 // Hibernate compresses the analyzer's state to reduce memory usage.
 // Clears ephemeral working state that is chunk-scoped.
 func (c *HistoryAnalyzer) Hibernate() error {
-	// Clear merges map - only used to prevent double-counting
+	// Reset merge tracker - only used to prevent double-counting
 	// within a chunk. Between chunks, we won't see same commits.
-	c.merges = make(map[gitlib.Hash]bool)
+	if c.merges != nil {
+		c.merges.Reset()
+	}
 
 	// Clear lastCommit reference to allow GC.
 	c.lastCommit = nil
@@ -16,10 +18,10 @@ func (c *HistoryAnalyzer) Hibernate() error {
 }
 
 // Boot restores the analyzer from hibernated state.
-// Re-initializes the merges map for the next chunk.
+// Re-initializes the merge tracker for the next chunk.
 func (c *HistoryAnalyzer) Boot() error {
 	if c.merges == nil {
-		c.merges = make(map[gitlib.Hash]bool)
+		c.merges = analyze.NewMergeTracker()
 	}
 
 	return nil

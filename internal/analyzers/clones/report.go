@@ -34,6 +34,7 @@ const (
 	keyTotalFunctions  = "total_functions"
 	keyMessage         = "message"
 	keyCloneRatio      = "clone_ratio"
+	keyFuncSignatures  = "_func_signatures"
 )
 
 // ClonePair represents a detected clone relationship between two functions.
@@ -120,11 +121,28 @@ func extractClonePairs(report map[string]any) []ClonePair {
 		return pairs
 	}
 
-	return extractClonePairsFromMaps(raw)
+	// Direct []map[string]any — produced by the aggregator's GetResult().
+	if maps, mapsOK := raw.([]map[string]any); mapsOK {
+		return clonePairsFromMaps(maps)
+	}
+
+	// []any — produced by JSON decoding.
+	return extractClonePairsFromAny(raw)
 }
 
-// extractClonePairsFromMaps handles JSON-decoded clone pairs.
-func extractClonePairsFromMaps(raw any) []ClonePair {
+// clonePairsFromMaps converts a []map[string]any slice to []ClonePair.
+func clonePairsFromMaps(maps []map[string]any) []ClonePair {
+	pairs := make([]ClonePair, 0, len(maps))
+
+	for _, m := range maps {
+		pairs = append(pairs, clonePairFromMap(m))
+	}
+
+	return pairs
+}
+
+// extractClonePairsFromAny handles JSON-decoded clone pairs stored as []any.
+func extractClonePairsFromAny(raw any) []ClonePair {
 	items, ok := raw.([]any)
 	if !ok {
 		return nil

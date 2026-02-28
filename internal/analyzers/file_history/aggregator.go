@@ -15,11 +15,24 @@ const (
 	hashEntryBytes        = 24
 )
 
+// FileHistoryCommitSummary holds per-commit summary data for timeseries output.
+type FileHistoryCommitSummary struct { //nolint:revive // used across packages.
+	FilesTouched int `json:"files_touched"`
+	LinesAdded   int `json:"lines_added"`
+	LinesRemoved int `json:"lines_removed"`
+	LinesChanged int `json:"lines_changed"`
+	Inserts      int `json:"inserts"`
+	Deletes      int `json:"deletes"`
+	Modifies     int `json:"modifies"`
+}
+
 // Aggregator implements analyze.Aggregator for the file history analyzer.
 // It accumulates file histories and line stats from the TC stream.
 type Aggregator struct {
 	files          *spillstore.SpillStore[FileHistory]
 	lastCommitHash gitlib.Hash
+	commitStats    map[string]*FileHistoryCommitSummary
+	commitsByTick  map[int][]gitlib.Hash
 	opts           analyze.AggregatorOptions
 	closed         bool
 }
@@ -27,8 +40,10 @@ type Aggregator struct {
 // NewAggregator creates a new aggregator for the file history analyzer.
 func NewAggregator(opts analyze.AggregatorOptions) *Aggregator {
 	return &Aggregator{
-		files: spillstore.New[FileHistory](),
-		opts:  opts,
+		files:         spillstore.New[FileHistory](),
+		commitStats:   make(map[string]*FileHistoryCommitSummary),
+		commitsByTick: make(map[int][]gitlib.Hash),
+		opts:          opts,
 	}
 }
 
@@ -46,6 +61,10 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 	a.applyPathActions(cd.PathActions)
 	a.applyLineStatUpdates(cd.LineStatUpdates)
 
+	if !tc.CommitHash.IsZero() {
+		a.trackCommitStats(tc, cd)
+	}
+
 	if a.opts.SpillBudget > 0 && a.EstimatedStateSize() > a.opts.SpillBudget {
 		_, err := a.Spill()
 		if err != nil {
@@ -54,6 +73,35 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 	}
 
 	return nil
+}
+
+func (a *Aggregator) trackCommitStats(tc analyze.TC, cd *CommitData) {
+	summary := &FileHistoryCommitSummary{
+		FilesTouched: len(cd.PathActions),
+	}
+
+	for _, pa := range cd.PathActions {
+		switch pa.Action {
+		case gitlib.Insert:
+			summary.Inserts++
+		case gitlib.Delete:
+			summary.Deletes++
+		case gitlib.Modify:
+			summary.Modifies++
+		default:
+			summary.Modifies++
+		}
+	}
+
+	for _, u := range cd.LineStatUpdates {
+		summary.LinesAdded += u.Stats.Added
+		summary.LinesRemoved += u.Stats.Removed
+		summary.LinesChanged += u.Stats.Changed
+	}
+
+	hashStr := tc.CommitHash.String()
+	a.commitStats[hashStr] = summary
+	a.commitsByTick[tc.Tick] = append(a.commitsByTick[tc.Tick], tc.CommitHash)
 }
 
 func (a *Aggregator) applyPathActions(actions []PathAction) {
@@ -171,6 +219,8 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 		Data: &TickData{
 			Files:          files,
 			LastCommitHash: a.lastCommitHash,
+			CommitStats:    a.commitStats,
+			CommitsByTick:  a.commitsByTick,
 		},
 	}, nil
 }
@@ -187,6 +237,11 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 	}
 
 	return []analyze.TICK{t}, nil
+}
+
+// DiscardState clears all in-memory cumulative state without serialization.
+func (a *Aggregator) DiscardState() {
+	a.files = spillstore.New[FileHistory]()
 }
 
 // Spill writes accumulated state to disk to free memory.
@@ -268,6 +323,33 @@ func (a *Aggregator) RestoreSpillState(info analyze.AggregatorSpillInfo) {
 	a.files.RestoreFromDir(info.Dir, info.Count)
 }
 
+// DrainCommitStats implements analyze.CommitStatsDrainer.
+// It extracts and clears per-commit data, returning the same shape as ExtractCommitTimeSeries.
+func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if len(a.commitStats) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(a.commitStats))
+	for hash, cs := range a.commitStats {
+		result[hash] = map[string]any{
+			"files_touched": cs.FilesTouched,
+			"lines_added":   cs.LinesAdded,
+			"lines_removed": cs.LinesRemoved,
+			"lines_changed": cs.LinesChanged,
+			"inserts":       cs.Inserts,
+			"deletes":       cs.Deletes,
+			"modifies":      cs.Modifies,
+		}
+	}
+
+	cbt := a.commitsByTick
+	a.commitStats = make(map[string]*FileHistoryCommitSummary)
+	a.commitsByTick = make(map[int][]gitlib.Hash)
+
+	return result, cbt
+}
+
 // Close releases all resources. Idempotent.
 func (a *Aggregator) Close() error {
 	if a.closed {
@@ -284,21 +366,52 @@ func (a *Aggregator) Close() error {
 type TickData struct {
 	Files          map[string]FileHistory
 	LastCommitHash gitlib.Hash
+	CommitStats    map[string]*FileHistoryCommitSummary
+	CommitsByTick  map[int][]gitlib.Hash
 }
 
 // TicksToReport builds the analyze.Report from TICKs.
 // Requires repo for filtering by last commit's file tree.
 func TicksToReport(ctx context.Context, ticks []analyze.TICK, repo *gitlib.Repository) analyze.Report {
 	files := mergeTicksIntoFiles(ticks)
+	commitStats, commitsByTick := mergeTickCommitData(ticks)
 
 	lastCommitHash := extractLastCommitHash(ticks)
+
+	var report analyze.Report
 	if lastCommitHash.IsZero() || repo == nil {
-		return analyze.Report{"Files": files}
+		report = analyze.Report{"Files": files}
+	} else {
+		filtered := filterFilesByLastCommit(ctx, repo, lastCommitHash, files)
+		report = analyze.Report{"Files": filtered}
 	}
 
-	filtered := filterFilesByLastCommit(ctx, repo, lastCommitHash, files)
+	if len(commitStats) > 0 {
+		report["commit_stats"] = commitStats
+		report["commits_by_tick"] = commitsByTick
+	}
 
-	return analyze.Report{"Files": filtered}
+	return report
+}
+
+func mergeTickCommitData(ticks []analyze.TICK) (commitStats map[string]*FileHistoryCommitSummary, commitsByTick map[int][]gitlib.Hash) {
+	commitStats = make(map[string]*FileHistoryCommitSummary)
+	commitsByTick = make(map[int][]gitlib.Hash)
+
+	for _, tick := range ticks {
+		td, ok := tick.Data.(*TickData)
+		if !ok || td == nil {
+			continue
+		}
+
+		maps.Copy(commitStats, td.CommitStats)
+
+		for t, hashes := range td.CommitsByTick {
+			commitsByTick[t] = append(commitsByTick[t], hashes...)
+		}
+	}
+
+	return commitStats, commitsByTick
 }
 
 func mergeTicksIntoFiles(ticks []analyze.TICK) map[string]FileHistory {

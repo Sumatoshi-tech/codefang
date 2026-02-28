@@ -89,7 +89,6 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
-		Couples: map[string]int{"func2": 3},
 	}
 
 	forks := s.Fork(2)
@@ -108,7 +107,6 @@ func TestFork_CreatesIndependentCopies(t *testing.T) {
 	fork1.nodes["newFunc"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "newFunc", File: "a.go"},
 		Count:   1,
-		Couples: map[string]int{},
 	}
 
 	require.Len(t, fork1.nodes, 1)
@@ -180,7 +178,6 @@ func TestMerge_CombinesNodes(t *testing.T) {
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
-		Couples: map[string]int{},
 	}
 
 	// Create a branch with different node.
@@ -189,7 +186,6 @@ func TestMerge_CombinesNodes(t *testing.T) {
 	branch.nodes["func2"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func2", File: "test.go"},
 		Count:   3,
-		Couples: map[string]int{},
 	}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
@@ -212,7 +208,6 @@ func TestMerge_SumsNodeCounts(t *testing.T) {
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
-		Couples: map[string]int{},
 	}
 
 	// Branch has same node with count 3.
@@ -221,7 +216,6 @@ func TestMerge_SumsNodeCounts(t *testing.T) {
 	branch.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   3,
-		Couples: map[string]int{},
 	}
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
@@ -230,7 +224,7 @@ func TestMerge_SumsNodeCounts(t *testing.T) {
 	require.Equal(t, 8, s.nodes["func1"].Count)
 }
 
-func TestMerge_CombinesCouples(t *testing.T) {
+func TestMerge_MultipleBranches(t *testing.T) {
 	t.Parallel()
 
 	s := NewAnalyzer()
@@ -239,25 +233,29 @@ func TestMerge_CombinesCouples(t *testing.T) {
 	s.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   5,
-		Couples: map[string]int{"func2": 2},
 	}
 
-	branch := NewAnalyzer()
-	require.NoError(t, branch.Initialize(nil))
-	branch.nodes["func1"] = &nodeShotness{
+	branch1 := NewAnalyzer()
+	require.NoError(t, branch1.Initialize(nil))
+	branch1.nodes["func1"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
 		Count:   3,
-		Couples: map[string]int{"func2": 4, "func3": 1},
 	}
 
-	s.Merge([]analyze.HistoryAnalyzer{branch})
+	branch2 := NewAnalyzer()
+	require.NoError(t, branch2.Initialize(nil))
+	branch2.nodes["func1"] = &nodeShotness{
+		Summary: NodeSummary{Type: "Function", Name: "func1", File: "test.go"},
+		Count:   2,
+	}
 
-	// Couples should be summed.
-	require.Equal(t, 6, s.nodes["func1"].Couples["func2"])
-	require.Equal(t, 1, s.nodes["func1"].Couples["func3"])
+	s.Merge([]analyze.HistoryAnalyzer{branch1, branch2})
+
+	// Counts from all branches should be summed.
+	require.Equal(t, 10, s.nodes["func1"].Count)
 }
 
-func TestMerge_CombinesMerges(t *testing.T) {
+func TestMerge_DoesNotCombineMergeTrackers(t *testing.T) {
 	t.Parallel()
 
 	s := NewAnalyzer()
@@ -266,17 +264,18 @@ func TestMerge_CombinesMerges(t *testing.T) {
 	branch := NewAnalyzer()
 	require.NoError(t, branch.Initialize(nil))
 
-	// Add merges to branch.
+	// Add merges to branch via SeenOrAdd.
 	hash1 := [20]byte{1, 2, 3}
 	hash2 := [20]byte{4, 5, 6}
-	branch.merges[hash1] = true
-	branch.merges[hash2] = true
+
+	branch.merges.SeenOrAdd(hash1)
+	branch.merges.SeenOrAdd(hash2)
 
 	s.Merge([]analyze.HistoryAnalyzer{branch})
 
-	require.Len(t, s.merges, 2)
-	require.True(t, s.merges[hash1])
-	require.True(t, s.merges[hash2])
+	// Merge trackers are not combined: each fork processes a disjoint
+	// subset of commits, so merge dedup state stays independent.
+	require.False(t, s.merges.SeenOrAdd(hash1), "parent should not have branch's merges")
 }
 
 func TestNewAggregator_ReturnsAggregator(t *testing.T) {
@@ -341,12 +340,10 @@ func TestBuildCommitData_WithNodes(t *testing.T) {
 	s.nodes["Function_foo_main.go"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "foo", File: "main.go"},
 		Count:   3,
-		Couples: map[string]int{},
 	}
 	s.nodes["Function_bar_main.go"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "bar", File: "main.go"},
 		Count:   1,
-		Couples: map[string]int{},
 	}
 
 	allNodes := map[string]bool{
@@ -362,36 +359,8 @@ func TestBuildCommitData_WithNodes(t *testing.T) {
 	assert.Equal(t, 1, cd.NodesTouched["Function_foo_main.go"].CountDelta)
 	assert.Equal(t, "foo", cd.NodesTouched["Function_foo_main.go"].Summary.Name)
 
-	// Verify coupling pairs (canonical ordering).
-	assert.Len(t, cd.Couples, 1)
-	assert.Equal(t, "Function_bar_main.go", cd.Couples[0].Key1)
-	assert.Equal(t, "Function_foo_main.go", cd.Couples[0].Key2)
-}
-
-func TestBuildCouplingPairs_Empty(t *testing.T) {
-	t.Parallel()
-
-	pairs := buildCouplingPairs(map[string]bool{})
-	assert.Empty(t, pairs)
-}
-
-func TestBuildCouplingPairs_SingleNode(t *testing.T) {
-	t.Parallel()
-
-	pairs := buildCouplingPairs(map[string]bool{"a": true})
-	assert.Empty(t, pairs)
-}
-
-func TestBuildCouplingPairs_MultipleNodes(t *testing.T) {
-	t.Parallel()
-
-	pairs := buildCouplingPairs(map[string]bool{"c": true, "a": true, "b": true})
-
-	// Should have 3 pairs: (a,b), (a,c), (b,c).
-	assert.Len(t, pairs, 3)
-	assert.Equal(t, CouplingPair{Key1: "a", Key2: "b"}, pairs[0])
-	assert.Equal(t, CouplingPair{Key1: "a", Key2: "c"}, pairs[1])
-	assert.Equal(t, CouplingPair{Key1: "b", Key2: "c"}, pairs[2])
+	// Coupling pairs are no longer pre-computed in CommitData;
+	// they are derived inline by the aggregator from NodesTouched.
 }
 
 func TestAnalyzer_Serialize_JSON_UsesComputedMetrics(t *testing.T) {
@@ -567,22 +536,6 @@ func TestAddNode_ExistingNode_SameCommit(t *testing.T) {
 	assert.Equal(t, 1, s.nodes["Function_testFunc_main.go"].Count)
 }
 
-func TestUpdateCouplings(t *testing.T) {
-	t.Parallel()
-
-	s := NewAnalyzer()
-	require.NoError(t, s.Initialize(nil))
-
-	s.nodes["a"] = &nodeShotness{Count: 1, Couples: map[string]int{}}
-	s.nodes["b"] = &nodeShotness{Count: 1, Couples: map[string]int{}}
-
-	allNodes := map[string]bool{"a": true, "b": true}
-	s.updateCouplings(allNodes)
-
-	assert.Equal(t, 1, s.nodes["a"].Couples["b"])
-	assert.Equal(t, 1, s.nodes["b"].Couples["a"])
-}
-
 func TestApplyRename(t *testing.T) {
 	t.Parallel()
 
@@ -593,7 +546,6 @@ func TestApplyRename(t *testing.T) {
 	s.nodes[key] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "foo", File: "old.go"},
 		Count:   5,
-		Couples: map[string]int{},
 	}
 	s.files["old.go"] = map[string]*nodeShotness{key: s.nodes[key]}
 
@@ -681,12 +633,10 @@ func TestRebuildFilesMap(t *testing.T) {
 	s.nodes["Function_foo_a.go"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "foo", File: "a.go"},
 		Count:   1,
-		Couples: map[string]int{},
 	}
 	s.nodes["Function_bar_b.go"] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "bar", File: "b.go"},
 		Count:   2,
-		Couples: map[string]int{},
 	}
 
 	s.rebuildFilesMap()
@@ -708,7 +658,6 @@ func TestExtractTC(t *testing.T) {
 				CountDelta: 1,
 			},
 		},
-		Couples: []CouplingPair{},
 	}
 
 	tc := analyze.TC{Tick: 0, Data: cd}
@@ -746,12 +695,12 @@ func TestExtractTC_WithCouples(t *testing.T) {
 
 	byTick := make(map[int]*TickData)
 
+	// Coupling pairs are now computed inline from NodesTouched keys.
 	cd := &CommitData{
 		NodesTouched: map[string]NodeDelta{
 			"a": {Summary: NodeSummary{Name: "foo"}, CountDelta: 1},
 			"b": {Summary: NodeSummary{Name: "bar"}, CountDelta: 1},
 		},
-		Couples: []CouplingPair{{Key1: "a", Key2: "b"}},
 	}
 
 	err := extractTC(analyze.TC{Tick: 0, Data: cd}, byTick)
@@ -759,6 +708,41 @@ func TestExtractTC_WithCouples(t *testing.T) {
 
 	assert.Equal(t, 1, byTick[0].Nodes["a"].Couples["b"])
 	assert.Equal(t, 1, byTick[0].Nodes["b"].Couples["a"])
+}
+
+func TestExtractTC_CouplingCapped(t *testing.T) {
+	t.Parallel()
+
+	byTick := make(map[int]*TickData)
+
+	// Create a commit touching more than maxCouplingNodes nodes.
+	nodesTouched := make(map[string]NodeDelta, maxCouplingNodes+10)
+	for i := range maxCouplingNodes + 10 {
+		key := "Function_fn" + string(rune('A'+i/26)) + string(rune('a'+i%26)) + "_file.go"
+		nodesTouched[key] = NodeDelta{
+			Summary:    NodeSummary{Type: "Function", Name: key, File: "file.go"},
+			CountDelta: 1,
+		}
+	}
+
+	cd := &CommitData{NodesTouched: nodesTouched}
+	hash := gitlib.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+	err := extractTC(analyze.TC{Tick: 0, Data: cd, CommitHash: hash}, byTick)
+	require.NoError(t, err)
+
+	// All nodes should be recorded.
+	assert.Len(t, byTick[0].Nodes, maxCouplingNodes+10)
+
+	// But coupling maps should be empty (capped).
+	for _, nd := range byTick[0].Nodes {
+		assert.Empty(t, nd.Couples, "coupling should be skipped for large commits")
+	}
+
+	// Coupling pair count should still be recorded in commit stats.
+	n := maxCouplingNodes + 10
+	expectedPairs := n * (n - 1) / 2
+	assert.Equal(t, expectedPairs, byTick[0].CommitStats[hash.String()].CouplingPairs)
 }
 
 func TestMergeState_BothNil(t *testing.T) {
@@ -946,7 +930,6 @@ func TestHandleDeletion(t *testing.T) {
 	s.nodes[key] = &nodeShotness{
 		Summary: NodeSummary{Type: "Function", Name: "foo", File: "deleted.go"},
 		Count:   3,
-		Couples: map[string]int{},
 	}
 	s.files["deleted.go"] = map[string]*nodeShotness{key: s.nodes[key]}
 
@@ -990,4 +973,40 @@ func (m *mockCommit) Files() (*gitlib.FileIter, error) {
 
 func (m *mockCommit) File(_ string) (*gitlib.File, error) {
 	return nil, errMockNotImpl
+}
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	hashA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	report := analyze.Report{
+		"commit_stats": map[string]*ShotnessCommitSummary{
+			hashA: {NodesTouched: 5, CouplingPairs: 10},
+			hashB: {NodesTouched: 2, CouplingPairs: 1},
+		},
+	}
+
+	s := &Analyzer{}
+	result := s.ExtractCommitTimeSeries(report)
+
+	require.Len(t, result, 2)
+
+	entryA, ok := result[hashA].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 5, entryA["nodes_touched"])
+	assert.Equal(t, 10, entryA["coupling_pairs"])
+
+	entryB, ok := result[hashB].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 2, entryB["nodes_touched"])
+	assert.Equal(t, 1, entryB["coupling_pairs"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	s := &Analyzer{}
+	assert.Nil(t, s.ExtractCommitTimeSeries(analyze.Report{}))
 }

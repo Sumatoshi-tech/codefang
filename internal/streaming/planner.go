@@ -1,7 +1,10 @@
 package streaming
 
 import (
+	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -158,6 +161,7 @@ type HeapSnapshot struct {
 	HeapInuse int64
 	HeapAlloc int64
 	Sys       int64 // Total bytes obtained from the OS (Go runtime).
+	RSS       int64 // Resident set size (Go + native C memory).
 	NumGC     uint32
 	TakenAtNS int64
 }
@@ -171,9 +175,32 @@ func TakeHeapSnapshot() HeapSnapshot {
 		HeapInuse: int64(m.HeapInuse),
 		HeapAlloc: int64(m.HeapAlloc),
 		Sys:       int64(m.Sys),
+		RSS:       readRSSBytes(),
 		NumGC:     m.NumGC,
 		TakenAtNS: time.Now().UnixNano(),
 	}
+}
+
+// readRSSBytes reads the process RSS from /proc/self/statm.
+// Returns 0 on non-Linux platforms or on error.
+func readRSSBytes() int64 {
+	data, err := os.ReadFile("/proc/self/statm")
+	if err != nil {
+		return 0
+	}
+
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 { //nolint:mnd // statm fields: [0]=size, [1]=resident.
+		return 0
+	}
+
+	// Field 1 is resident pages.
+	pages, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return pages * int64(os.Getpagesize())
 }
 
 // emaGrowthRate holds an exponentially-weighted moving average of the

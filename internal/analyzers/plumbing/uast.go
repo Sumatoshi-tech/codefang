@@ -248,6 +248,11 @@ func (c *UASTChangesAnalyzer) parseAfterVersion(
 	return c.parseBlob(ctx, change.To.Hash, change.To.Name, cache)
 }
 
+// maxUASTBlobSize is the maximum blob size (in bytes) for UAST parsing.
+// Files larger than this are skipped — they are typically generated code
+// whose tree-sitter parse trees consume hundreds of MB of CGO memory.
+const maxUASTBlobSize = 256 * 1024 // 256 KiB.
+
 // parseBlob parses a blob into a UAST node if the file is supported.
 func (c *UASTChangesAnalyzer) parseBlob(
 	ctx context.Context,
@@ -261,6 +266,10 @@ func (c *UASTChangesAnalyzer) parseBlob(
 	}
 
 	if !c.parser.IsSupported(filename) {
+		return nil
+	}
+
+	if len(blob.Data) > maxUASTBlobSize {
 		return nil
 	}
 
@@ -319,6 +328,16 @@ func (c *UASTChangesAnalyzer) Serialize(report analyze.Report, format string, wr
 	}
 
 	return nil
+}
+
+// GetLanguage returns the language name for the given filename, or empty string if unsupported.
+// This delegates to the underlying parser without performing any tree-sitter parsing.
+func (c *UASTChangesAnalyzer) GetLanguage(filename string) string {
+	if c.parser == nil {
+		return ""
+	}
+
+	return c.parser.GetLanguage(filename)
 }
 
 // WorkingStateSize returns 0 — plumbing analyzers are excluded from budget planning.

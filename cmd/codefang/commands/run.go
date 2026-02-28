@@ -95,6 +95,7 @@ type HistoryRunOptions struct {
 	ClearCheckpoint bool
 
 	DebugTrace bool
+	NDJSON     bool
 
 	ConfigFile string
 }
@@ -144,6 +145,8 @@ type RunCommand struct {
 
 	checkpointDir   string
 	clearCheckpoint bool
+
+	ndjson bool
 
 	configFile      string
 	listAnalyzers   bool
@@ -205,6 +208,7 @@ func newRunCommandWithDeps(
 		"Analyzer IDs or glob patterns (example: static/complexity,history/*,*)")
 	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON,
 		"Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact")
+	cmd.Flags().BoolVar(&rc.ndjson, "ndjson", false, "With --format timeseries: emit one JSON line per commit (NDJSON)")
 	cmd.Flags().StringVar(&rc.inputPath, "input", "", "Input report path for cross-format conversion")
 	cmd.Flags().StringVar(&rc.inputFormat, "input-format", analyze.InputFormatAuto, "Input format: auto, json, bin")
 	cmd.Flags().IntVar(&rc.gogc, "gogc", 0, "GC percent for history pipeline (0 = auto, >0 = exact)")
@@ -573,9 +577,15 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	startedAt = time.Now()
 
+	// Apply --ndjson modifier to timeseries format.
+	renderFormat := outputFormat
+	if rc.ndjson && renderFormat == analyze.FormatTimeSeries {
+		renderFormat = analyze.FormatTimeSeriesNDJSON
+	}
+
 	rc.progressf(silent, progressWriter, "combined output rendering started")
 
-	err = analyze.WriteConvertedOutput(model, outputFormat, writer)
+	err = analyze.WriteConvertedOutput(model, renderFormat, writer)
 	if err != nil {
 		return fmt.Errorf("render combined output: %w", err)
 	}
@@ -605,6 +615,7 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 		CheckpointDir:   rc.checkpointDir,
 		ClearCheckpoint: rc.clearCheckpoint,
 		DebugTrace:      rc.debugTrace,
+		NDJSON:          rc.ndjson,
 		ConfigFile:      rc.configFile,
 	}
 
@@ -695,10 +706,16 @@ func runHistoryAnalyzers(
 		defer result.commitIter.Close()
 	}
 
+	// Apply --ndjson modifier: timeseries → timeseries+ndjson.
+	pipelineFormat := result.format
+	if opts.NDJSON && pipelineFormat == analyze.FormatTimeSeries {
+		pipelineFormat = analyze.FormatTimeSeriesNDJSON
+	}
+
 	return executeHistoryPipeline(
 		ctx, result.pipeline, path, result.selectedLeaves,
 		result.commits, result.commitIter, result.commitCount,
-		result.analyzerKeys, result.format, opts, result.repository, writer,
+		result.analyzerKeys, pipelineFormat, opts, result.repository, writer,
 	)
 }
 
@@ -953,7 +970,7 @@ func executeHistoryPipeline(
 	done := red.TrackInflight(ctx, "cli.run")
 	runStart := time.Now()
 
-	streamConfig := buildStreamingConfig(path, analyzerKeys, memBudget, opts, analysisMetrics, normalizedFormat, writer)
+	streamConfig := buildStreamingConfig(path, analyzerKeys, memBudget, opts, analysisMetrics, normalizedFormat, writer, selectedLeaves)
 
 	var results map[analyze.HistoryAnalyzer]analyze.Report
 
@@ -969,8 +986,8 @@ func executeHistoryPipeline(
 		return fmt.Errorf("pipeline execution failed: %w", err)
 	}
 
-	// In NDJSON mode, output was already written by the sink.
-	if normalizedFormat == analyze.FormatNDJSON {
+	// In NDJSON and streaming timeseries NDJSON modes, output was already written.
+	if normalizedFormat == analyze.FormatNDJSON || normalizedFormat == analyze.FormatTimeSeriesNDJSON {
 		return nil
 	}
 
@@ -979,11 +996,13 @@ func executeHistoryPipeline(
 	return renderReport(ctx, selectedLeaves, results, normalizedFormat, writer)
 }
 
-// buildStreamingConfig creates a StreamingConfig, wiring a TCSink when NDJSON format is requested.
+// buildStreamingConfig creates a StreamingConfig, wiring a TCSink when NDJSON format is requested,
+// or a TimeSeriesChunkFlusher when streaming timeseries NDJSON is requested.
 func buildStreamingConfig(
 	path string, analyzerKeys []string, memBudget int64,
 	opts HistoryRunOptions, analysisMetrics *observability.AnalysisMetrics,
 	normalizedFormat string, writer io.Writer,
+	selectedLeaves []analyze.HistoryAnalyzer,
 ) framework.StreamingConfig {
 	cfg := framework.StreamingConfig{
 		MemBudget:       memBudget,
@@ -999,6 +1018,34 @@ func buildStreamingConfig(
 	if normalizedFormat == analyze.FormatNDJSON {
 		sink := analyze.NewStreamingSink(writer)
 		cfg.TCSink = sink.WriteTC
+	}
+
+	// Streaming timeseries NDJSON: drain per-commit data after each chunk,
+	// write NDJSON lines, spill cumulative aggregator state to disk, and
+	// skip final report generation. Spilling frees O(files²) coupling
+	// matrices and O(files×ticks) burndown histories that would otherwise
+	// grow unbounded across chunks.
+	if normalizedFormat == analyze.FormatTimeSeriesNDJSON {
+		flusher := analyze.NewTimeSeriesChunkFlusher(writer, selectedLeaves)
+		cfg.OnChunkComplete = func(runner *framework.Runner) error {
+			meta := runner.DrainCommitMeta()
+			aggs := runner.LeafAggregators()
+
+			_, err := flusher.Flush(aggs, meta)
+			if err != nil {
+				return err
+			}
+
+			// Discard cumulative state from both aggregators and leaf analyzers.
+			// Since SkipFinalize is true, no final report will be generated.
+			// Aggregator state: coupling matrices, burndown histories, etc.
+			// Leaf analyzer state: shotness node coupling maps (O(N²)), etc.
+			runner.DiscardAggregatorState()
+			runner.DiscardLeafAnalyzerState()
+
+			return nil
+		}
+		cfg.SkipFinalize = true
 	}
 
 	return cfg
@@ -1397,8 +1444,7 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline { //nolint:fu
 			}(),
 			"imports": func() *imports.HistoryAnalyzer {
 				a := imports.NewHistoryAnalyzer()
-				a.TreeDiff = treeDiff
-				a.BlobCache = blobCache
+				a.UAST = uastChanges
 				a.Identity = identity
 				a.Ticks = ticks
 

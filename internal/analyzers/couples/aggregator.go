@@ -24,6 +24,12 @@ const (
 	personCommitBytes      = 8
 )
 
+// CouplesCommitSummary holds per-commit summary data for timeseries output.
+type CouplesCommitSummary struct { //nolint:revive // used across packages.
+	FilesTouched int `json:"files_touched"`
+	AuthorID     int `json:"author_id"`
+}
+
 // Aggregator implements analyze.Aggregator for the couples analyzer.
 // It accumulates the file co-occurrence matrix, per-person file touches,
 // per-person commit counts, and rename tracking from the TC stream.
@@ -32,6 +38,8 @@ type Aggregator struct {
 	people        []map[string]int
 	peopleCommits []int
 	renames       []RenamePair
+	commitStats   map[string]*CouplesCommitSummary
+	commitsByTick map[int][]gitlib.Hash
 	opts          analyze.AggregatorOptions
 	peopleNumber  int
 	reversedNames []string
@@ -54,6 +62,8 @@ func newAggregator(
 		files:         spillstore.New[map[string]int](),
 		people:        people,
 		peopleCommits: make([]int, peopleNumber+1),
+		commitStats:   make(map[string]*CouplesCommitSummary),
+		commitsByTick: make(map[int][]gitlib.Hash),
 		opts:          opts,
 		peopleNumber:  peopleNumber,
 		reversedNames: reversedNames,
@@ -78,6 +88,15 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 	a.addAuthorFiles(cd.AuthorFiles, author)
 	a.addFileCouplings(cd.CouplingFiles)
 	a.renames = append(a.renames, cd.Renames...)
+
+	if !tc.CommitHash.IsZero() {
+		hashStr := tc.CommitHash.String()
+		a.commitStats[hashStr] = &CouplesCommitSummary{
+			FilesTouched: len(cd.CouplingFiles),
+			AuthorID:     author,
+		}
+		a.commitsByTick[tc.Tick] = append(a.commitsByTick[tc.Tick], tc.CommitHash)
+	}
 
 	if a.opts.SpillBudget > 0 && a.EstimatedStateSize() > a.opts.SpillBudget {
 		_, err := a.Spill()
@@ -159,6 +178,7 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 		People:        copyPeopleSlice(a.people),
 		PeopleCommits: copyIntSlice(a.peopleCommits),
 		Renames:       a.renames,
+		CommitStats:   a.commitStats,
 	}
 
 	return analyze.TICK{
@@ -180,6 +200,19 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 	}
 
 	return []analyze.TICK{t}, nil
+}
+
+// DiscardState clears all in-memory cumulative state without serialization.
+func (a *Aggregator) DiscardState() {
+	a.files = spillstore.New[map[string]int]()
+
+	a.people = make([]map[string]int, a.peopleNumber+1)
+	for i := range a.people {
+		a.people[i] = make(map[string]int)
+	}
+
+	a.peopleCommits = make([]int, a.peopleNumber+1)
+	a.renames = nil
 }
 
 // Spill writes accumulated file coupling state to disk to free memory.
@@ -240,6 +273,28 @@ func (a *Aggregator) RestoreSpillState(info analyze.AggregatorSpillInfo) {
 	a.files.RestoreFromDir(info.Dir, info.Count)
 }
 
+// DrainCommitStats implements analyze.CommitStatsDrainer.
+// It extracts and clears per-commit data, returning the same shape as ExtractCommitTimeSeries.
+func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if len(a.commitStats) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(a.commitStats))
+	for hash, cs := range a.commitStats {
+		result[hash] = map[string]any{
+			"files_touched": cs.FilesTouched,
+			"author_id":     cs.AuthorID,
+		}
+	}
+
+	cbt := a.commitsByTick
+	a.commitStats = make(map[string]*CouplesCommitSummary)
+	a.commitsByTick = make(map[int][]gitlib.Hash)
+
+	return result, cbt
+}
+
 // Close releases all resources. Idempotent.
 func (a *Aggregator) Close() error {
 	if a.closed {
@@ -281,6 +336,9 @@ func ticksToReport(
 
 	var mergedRenames []RenamePair
 
+	mergedCommitStats := make(map[string]*CouplesCommitSummary)
+	commitsByTick := make(map[int][]gitlib.Hash)
+
 	for _, tick := range ticks {
 		td, ok := tick.Data.(*TickData)
 		if !ok || td == nil {
@@ -291,12 +349,24 @@ func ticksToReport(
 		mergeTickPeople(mergedPeople, td.People)
 
 		mergedRenames = append(mergedRenames, td.Renames...)
+
+		for hash, stats := range td.CommitStats {
+			mergedCommitStats[hash] = stats
+			commitsByTick[tick.Tick] = append(commitsByTick[tick.Tick], gitlib.NewHash(hash))
+		}
 	}
 
 	effectivePeopleNumber := actualPeople - 1
 
-	return buildReport(ctx, mergedFiles, mergedPeople, mergedRenames,
+	report := buildReport(ctx, mergedFiles, mergedPeople, mergedRenames,
 		reversedNames, effectivePeopleNumber, lastCommit)
+
+	if len(mergedCommitStats) > 0 {
+		report["commit_stats"] = mergedCommitStats
+		report["commits_by_tick"] = commitsByTick
+	}
+
+	return report
 }
 
 // mergeTickFiles additively merges per-tick file couplings into the accumulator.

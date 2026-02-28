@@ -25,7 +25,7 @@ type HistoryAnalyzer struct {
 	files          map[string]*FileHistory
 	lastCommitHash gitlib.Hash
 	repo           *gitlib.Repository
-	merges         map[gitlib.Hash]bool
+	merges         *analyze.MergeTracker
 }
 
 // FileHistory holds the change history for a single file.
@@ -41,7 +41,7 @@ func NewAnalyzer() *HistoryAnalyzer {
 		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 		LineStats: &plumbing.LinesStatsCalculator{},
 		files:     make(map[string]*FileHistory),
-		merges:    make(map[gitlib.Hash]bool),
+		merges:    analyze.NewMergeTracker(),
 	}
 
 	ha.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
@@ -92,7 +92,7 @@ func (h *HistoryAnalyzer) Configure(_ map[string]any) error {
 // Initialize prepares the analyzer for processing commits.
 func (h *HistoryAnalyzer) Initialize(repo *gitlib.Repository) error {
 	h.files = map[string]*FileHistory{}
-	h.merges = map[gitlib.Hash]bool{}
+	h.merges = analyze.NewMergeTracker()
 	h.repo = repo
 
 	return nil
@@ -104,11 +104,9 @@ func (h *HistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
 
 	if commit.NumParents() > 1 {
-		if h.merges[commit.Hash()] {
+		if h.merges.SeenOrAdd(commit.Hash()) {
 			return false
 		}
-
-		h.merges[commit.Hash()] = true
 	}
 
 	return !ctx.IsMerge
@@ -331,7 +329,8 @@ func (h *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 		}
 
 		h.mergeFiles(other.files)
-		h.mergeMerges(other.merges)
+		// Merge trackers are not combined: each fork processes a disjoint
+		// subset of commits, so merge dedup state stays independent.
 
 		// Keep the latest lastCommitHash so Finalize can filter deleted files.
 		if !other.lastCommitHash.IsZero() {
@@ -368,13 +367,6 @@ func (h *HistoryAnalyzer) mergeFiles(other map[string]*FileHistory) {
 
 		// Append hashes.
 		fh.Hashes = append(fh.Hashes, otherFH.Hashes...)
-	}
-}
-
-// mergeMerges combines merge commit tracking from another analyzer.
-func (h *HistoryAnalyzer) mergeMerges(other map[gitlib.Hash]bool) {
-	for hash := range other {
-		h.merges[hash] = true
 	}
 }
 
@@ -434,4 +426,29 @@ func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 // ReportFromTICKs converts aggregated TICKs into a Report.
 func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
 	return TicksToReport(ctx, ticks, h.repo), nil
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It extracts per-commit file change summary data for the unified timeseries output.
+func (h *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitStats, ok := report["commit_stats"].(map[string]*FileHistoryCommitSummary)
+	if !ok || len(commitStats) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitStats))
+
+	for hash, cs := range commitStats {
+		result[hash] = map[string]any{
+			"files_touched": cs.FilesTouched,
+			"lines_added":   cs.LinesAdded,
+			"lines_removed": cs.LinesRemoved,
+			"lines_changed": cs.LinesChanged,
+			"inserts":       cs.Inserts,
+			"deletes":       cs.Deletes,
+			"modifies":      cs.Modifies,
+		}
+	}
+
+	return result
 }

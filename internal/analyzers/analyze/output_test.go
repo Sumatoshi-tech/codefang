@@ -80,6 +80,17 @@ func TestBuildOrderedCommitMetaFromReports_WithoutMetadata(t *testing.T) {
 	assert.Empty(t, meta[0].Author)
 }
 
+func TestOutputHistoryResults_TimeSeriesNDJSON(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	// FormatTimeSeriesNDJSON with no leaves/results produces empty output.
+	err := OutputHistoryResults(nil, nil, FormatTimeSeriesNDJSON, &buf)
+	require.NoError(t, err)
+	assert.Empty(t, buf.String())
+}
+
 func TestBuildOrderedCommitMetaFromReports_PartialMetadata(t *testing.T) {
 	t.Parallel()
 

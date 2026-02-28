@@ -27,7 +27,7 @@ type Analyzer struct {
 	UAST      *plumbing.UASTChangesAnalyzer
 	nodes     map[string]*nodeShotness
 	files     map[string]map[string]*nodeShotness
-	merges    map[gitlib.Hash]bool
+	merges    *analyze.MergeTracker
 	DSLStruct string
 	DSLName   string
 }
@@ -40,26 +40,26 @@ type NodeDelta struct {
 	CountDelta int
 }
 
-// CouplingPair represents two nodes that were co-changed in the same commit.
-// Key1 < Key2 by convention (canonical ordering).
-type CouplingPair struct {
-	Key1 string
-	Key2 string
-}
-
 // CommitData is the per-commit TC payload emitted by Consume().
-// It captures per-commit node touch deltas and coupling pairs.
+// It captures per-commit node touch deltas; coupling pairs are derived
+// inline by the aggregator from NodesTouched keys to avoid O(N²) allocation.
 type CommitData struct {
 	// NodesTouched maps node key to its delta for this commit.
 	NodesTouched map[string]NodeDelta
-	// Couples lists pairs of co-changed nodes in this commit.
-	Couples []CouplingPair
+}
+
+// ShotnessCommitSummary holds per-commit summary data for timeseries output.
+type ShotnessCommitSummary struct { //nolint:revive // used across packages.
+	NodesTouched  int `json:"nodes_touched"`
+	CouplingPairs int `json:"coupling_pairs"`
 }
 
 // TickData is the per-tick aggregated payload stored in analyze.TICK.Data.
 type TickData struct {
 	// Nodes maps node key to accumulated node data.
 	Nodes map[string]*nodeShotnessData
+	// CommitStats holds per-commit summary data for timeseries output.
+	CommitStats map[string]*ShotnessCommitSummary
 }
 
 // nodeShotnessData is the aggregator's per-node accumulation state.
@@ -70,7 +70,6 @@ type nodeShotnessData struct {
 }
 
 type nodeShotness struct {
-	Couples map[string]int
 	Summary NodeSummary
 	Count   int
 }
@@ -95,6 +94,14 @@ const (
 	DefaultShotnessDSLStruct = "filter(.roles has \"Function\")"
 	// DefaultShotnessDSLName is the default DSL expression for extracting names.
 	DefaultShotnessDSLName = ".props.name"
+
+	// maxCouplingNodes caps the number of touched nodes per commit for coupling
+	// pair computation. With N nodes, coupling generates N*(N-1)/2 pairs — at
+	// N=500 that's 124,750 pairs (~12 MB of aggregator map entries). Beyond this
+	// threshold the commit is a mass refactor and coupling signal is noise; we
+	// still record the node touches and coupling pair count but skip the O(N²)
+	// map updates.
+	maxCouplingNodes = 500
 )
 
 // NewAnalyzer creates a new shotness analyzer.
@@ -181,7 +188,7 @@ func (s *Analyzer) Configure(facts map[string]any) error {
 func (s *Analyzer) Initialize(_ *gitlib.Repository) error {
 	s.nodes = map[string]*nodeShotness{}
 	s.files = map[string]map[string]*nodeShotness{}
-	s.merges = map[gitlib.Hash]bool{}
+	s.merges = analyze.NewMergeTracker()
 
 	return nil
 }
@@ -193,13 +200,7 @@ func (s *Analyzer) shouldConsumeCommit(commit analyze.CommitLike) bool {
 		return true
 	}
 
-	if s.merges[commit.Hash()] {
-		return false
-	}
-
-	s.merges[commit.Hash()] = true
-
-	return true
+	return !s.merges.SeenOrAdd(commit.Hash())
 }
 
 // addNode registers or increments a node in the analyzer's tracking state.
@@ -219,8 +220,7 @@ func (s *Analyzer) addNode(name string, n *node.Node, fileName string, allNodes 
 	}
 
 	if count == 0 {
-		s.nodes[key] = &nodeShotness{
-			Summary: nodeSummary, Count: 1, Couples: map[string]int{}}
+		s.nodes[key] = &nodeShotness{Summary: nodeSummary, Count: 1}
 
 		fmap := s.files[nodeSummary.File]
 		if fmap == nil {
@@ -236,12 +236,6 @@ func (s *Analyzer) addNode(name string, n *node.Node, fileName string, allNodes 
 
 // handleDeletion removes all nodes and file entries associated with a deleted file.
 func (s *Analyzer) handleDeletion(change uast.Change) {
-	for key, summary := range s.files[change.Change.From.Name] {
-		for subkey := range summary.Couples {
-			delete(s.nodes[subkey].Couples, key)
-		}
-	}
-
 	for key := range s.files[change.Change.From.Name] {
 		delete(s.nodes, key)
 	}
@@ -356,85 +350,10 @@ func (s *Analyzer) applyRename(oldName, newName string) {
 		newFile[newKey] = ns
 
 		s.nodes[newKey] = ns
-
-		for coupleKey, count := range ns.Couples {
-			coupleCouples := s.nodes[coupleKey].Couples
-			delete(coupleCouples, oldKey)
-			coupleCouples[newKey] = count
-		}
-	}
-
-	for key := range oldFile {
-		delete(s.nodes, key)
+		delete(s.nodes, oldKey)
 	}
 
 	delete(s.files, oldName)
-}
-
-// couplingKeyThreshold is the node count above which we pre-collect keys
-// into a slice for better cache locality during the N² pair iteration.
-const couplingKeyThreshold = 50
-
-// updateCouplings increments the coupling counters between all co-changed nodes.
-//
-// For larger node sets, pre-collects keys into a slice to improve cache
-// locality during the N² pair iteration, and pre-looks up node pointers.
-func (s *Analyzer) updateCouplings(allNodes map[string]bool) {
-	n := len(allNodes)
-	if n <= 1 {
-		return
-	}
-
-	if n < couplingKeyThreshold {
-		s.updateCouplingsSmall(allNodes)
-	} else {
-		s.updateCouplingsLarge(allNodes, n)
-	}
-}
-
-// updateCouplingsSmall handles the direct map iteration path for small node sets.
-func (s *Analyzer) updateCouplingsSmall(allNodes map[string]bool) {
-	for keyi := range allNodes {
-		ns, ok := s.nodes[keyi]
-		if !ok {
-			continue
-		}
-
-		for keyj := range allNodes {
-			if keyi != keyj {
-				ns.Couples[keyj]++
-			}
-		}
-	}
-}
-
-// updateCouplingsLarge pre-collects keys and node pointers for cache-friendly N² iteration.
-func (s *Analyzer) updateCouplingsLarge(allNodes map[string]bool, n int) {
-	type keyNode struct {
-		key  string
-		node *nodeShotness
-	}
-
-	entries := make([]keyNode, 0, n)
-
-	for k := range allNodes {
-		if ns, ok := s.nodes[k]; ok {
-			entries = append(entries, keyNode{key: k, node: ns})
-		}
-	}
-
-	keys := make([]string, len(entries))
-	for i, e := range entries {
-		keys[i] = e.key
-	}
-
-	for _, entry := range entries {
-		for _, k := range keys {
-			if entry.key != k {
-				entry.node.Couples[k]++
-			}
-		}
-	}
 }
 
 // genLine2Node builds a mapping from line numbers to UAST nodes that span each line.
@@ -516,14 +435,15 @@ func (s *Analyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC
 		}
 	}
 
-	s.updateCouplings(allNodes)
-
 	cd := s.buildCommitData(allNodes)
 	if cd == nil {
 		return analyze.TC{}, nil
 	}
 
-	return analyze.TC{Data: cd}, nil
+	return analyze.TC{
+		Data:       cd,
+		CommitHash: ac.Commit.Hash(),
+	}, nil
 }
 
 // buildCommitData extracts per-commit deltas from the set of touched nodes.
@@ -546,42 +466,9 @@ func (s *Analyzer) buildCommitData(allNodes map[string]bool) *CommitData {
 		}
 	}
 
-	couples := buildCouplingPairs(allNodes)
-
 	return &CommitData{
 		NodesTouched: nodesTouched,
-		Couples:      couples,
 	}
-}
-
-// buildCouplingPairs creates canonical coupling pairs from the set of co-changed nodes.
-// Each pair has Key1 < Key2 to avoid duplicates.
-//
-// Pre-allocates the pairs slice to N*(N-1)/2 capacity to avoid repeated
-// slice growth during the O(N²) pair generation.
-func buildCouplingPairs(allNodes map[string]bool) []CouplingPair {
-	n := len(allNodes)
-	if n < 2 { //nolint:mnd // trivial threshold.
-		return nil
-	}
-
-	keys := make([]string, 0, n)
-	for key := range allNodes {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	pairCount := n * (n - 1) / 2 //nolint:mnd // N choose 2.
-	pairs := make([]CouplingPair, 0, pairCount)
-
-	for i, key1 := range keys {
-		for _, key2 := range keys[i+1:] {
-			pairs = append(pairs, CouplingPair{Key1: key1, Key2: key2})
-		}
-	}
-
-	return pairs
 }
 
 // Fork creates a copy of the analyzer for parallel processing.
@@ -598,7 +485,7 @@ func (s *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 		// Initialize independent state for each fork.
 		clone.nodes = make(map[string]*nodeShotness)
 		clone.files = make(map[string]map[string]*nodeShotness)
-		clone.merges = make(map[gitlib.Hash]bool)
+		clone.merges = analyze.NewMergeTracker()
 
 		res[i] = clone
 	}
@@ -615,41 +502,37 @@ func (s *Analyzer) Merge(branches []analyze.HistoryAnalyzer) {
 		}
 
 		s.mergeNodes(other.nodes)
-		s.mergeMerges(other.merges)
+		// Merge trackers are not combined: each fork processes a disjoint
+		// subset of commits, so merge dedup state doesn't need unification.
 	}
 
 	// Rebuild files map from merged nodes.
 	s.rebuildFilesMap()
 }
 
-// mergeNodes combines node data from another analyzer.
+// mergeNodes combines node data from another analyzer branch.
+// Only node counts and summaries are merged; coupling data is accumulated
+// independently by the aggregator from per-commit TCs.
 func (s *Analyzer) mergeNodes(other map[string]*nodeShotness) {
 	for key, otherNode := range other {
-		if s.nodes[key] == nil {
+		if existing := s.nodes[key]; existing != nil {
+			existing.Count += otherNode.Count
+		} else {
 			s.nodes[key] = &nodeShotness{
 				Summary: otherNode.Summary,
 				Count:   otherNode.Count,
-				Couples: make(map[string]int),
-			}
-
-			maps.Copy(s.nodes[key].Couples, otherNode.Couples)
-		} else {
-			// Sum counts.
-			s.nodes[key].Count += otherNode.Count
-
-			// Sum couples.
-			for ck, cv := range otherNode.Couples {
-				s.nodes[key].Couples[ck] += cv
 			}
 		}
 	}
 }
 
-// mergeMerges combines merge tracking from another analyzer.
-func (s *Analyzer) mergeMerges(other map[gitlib.Hash]bool) {
-	for hash := range other {
-		s.merges[hash] = true
-	}
+// DiscardState clears cumulative node coupling state. In streaming timeseries
+// mode, per-commit data is already captured in the TC; the accumulated nodes
+// map (which grows O(N²) with coupling pairs) is only needed for the final
+// report and can be discarded between chunks.
+func (s *Analyzer) DiscardState() {
+	s.nodes = map[string]*nodeShotness{}
+	s.files = map[string]map[string]*nodeShotness{}
 }
 
 // SequentialOnly returns false because shotness analysis can be parallelized.
@@ -705,16 +588,37 @@ func (s *Analyzer) rebuildFilesMap() {
 }
 
 func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return analyze.NewGenericAggregator[*TickData, *TickData](
+	agg := analyze.NewGenericAggregator[*TickData, *TickData](
 		opts,
 		extractTC,
 		mergeState,
 		sizeState,
 		buildTick,
 	)
+	agg.DrainCommitDataFn = drainShotnessCommitData
+
+	return agg
 }
 
-func extractTC(tc analyze.TC, byTick map[int]*TickData) error {
+func drainShotnessCommitData(state *TickData) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.CommitStats) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.CommitStats))
+	for hash, cs := range state.CommitStats {
+		result[hash] = map[string]any{
+			"nodes_touched":  cs.NodesTouched,
+			"coupling_pairs": cs.CouplingPairs,
+		}
+	}
+
+	state.CommitStats = make(map[string]*ShotnessCommitSummary)
+
+	return result, nil
+}
+
+func extractTC(tc analyze.TC, byTick map[int]*TickData) error { //nolint:gocognit // coupling pair computation with threshold logic.
 	cd, ok := tc.Data.(*CommitData)
 	if !ok || cd == nil {
 		return nil
@@ -726,7 +630,10 @@ func extractTC(tc analyze.TC, byTick map[int]*TickData) error {
 
 	acc, ok := byTick[tick]
 	if !ok {
-		acc = &TickData{Nodes: make(map[string]*nodeShotnessData)}
+		acc = &TickData{
+			Nodes:       make(map[string]*nodeShotnessData),
+			CommitStats: make(map[string]*ShotnessCommitSummary),
+		}
 		byTick[tick] = acc
 	}
 
@@ -743,13 +650,42 @@ func extractTC(tc analyze.TC, byTick map[int]*TickData) error {
 		nd.Count += delta.CountDelta
 	}
 
-	for _, cp := range cd.Couples {
-		if nd, exists := acc.Nodes[cp.Key1]; exists {
-			nd.Couples[cp.Key2]++
+	// Compute coupling pairs inline from NodesTouched keys, avoiding
+	// the O(N²) allocation of a []CouplingPair slice. Skip when too many
+	// nodes are touched (mass refactor — coupling signal is noise).
+	n := len(cd.NodesTouched)
+	couplingPairs := 0
+
+	if n >= 2 && n <= maxCouplingNodes {
+		keys := make([]string, 0, n)
+		for key := range cd.NodesTouched {
+			keys = append(keys, key)
 		}
 
-		if nd, exists := acc.Nodes[cp.Key2]; exists {
-			nd.Couples[cp.Key1]++
+		sort.Strings(keys)
+
+		for i, key1 := range keys {
+			for _, key2 := range keys[i+1:] {
+				if nd, exists := acc.Nodes[key1]; exists {
+					nd.Couples[key2]++
+				}
+
+				if nd, exists := acc.Nodes[key2]; exists {
+					nd.Couples[key1]++
+				}
+			}
+		}
+
+		couplingPairs = n * (n - 1) / 2 //nolint:mnd // N choose 2.
+	} else if n >= 2 { //nolint:mnd // need at least 2 for pairs.
+		// Record the theoretical count but skip the expensive computation.
+		couplingPairs = n * (n - 1) / 2 //nolint:mnd // N choose 2.
+	}
+
+	if !tc.CommitHash.IsZero() {
+		acc.CommitStats[tc.CommitHash.String()] = &ShotnessCommitSummary{
+			NodesTouched:  len(cd.NodesTouched),
+			CouplingPairs: couplingPairs,
 		}
 	}
 
@@ -768,6 +704,12 @@ func mergeState(existing, incoming *TickData) *TickData {
 	if existing.Nodes == nil {
 		existing.Nodes = make(map[string]*nodeShotnessData)
 	}
+
+	if existing.CommitStats == nil {
+		existing.CommitStats = make(map[string]*ShotnessCommitSummary)
+	}
+
+	maps.Copy(existing.CommitStats, incoming.CommitStats)
 
 	for key, incNode := range incoming.Nodes {
 		exNode, found := existing.Nodes[key]
@@ -818,8 +760,11 @@ func buildTick(tick int, state *TickData) (analyze.TICK, error) {
 	}, nil
 }
 
+//nolint:gocognit // tick merge with node coupling accumulation.
 func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
 	merged := make(map[string]*nodeShotnessData)
+	commitStats := make(map[string]*ShotnessCommitSummary)
+	commitsByTick := make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
 		td, ok := tick.Data.(*TickData)
@@ -842,9 +787,21 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
 				}
 			}
 		}
+
+		for hash, cs := range td.CommitStats {
+			commitStats[hash] = cs
+			commitsByTick[tick.Tick] = append(commitsByTick[tick.Tick], gitlib.NewHash(hash))
+		}
 	}
 
-	return buildReportFromMerged(merged)
+	report := buildReportFromMerged(merged)
+
+	if len(commitStats) > 0 {
+		report["commit_stats"] = commitStats
+		report["commits_by_tick"] = commitsByTick
+	}
+
+	return report
 }
 
 // buildReportFromMerged builds the Nodes/Counters report from merged node data.
@@ -932,4 +889,24 @@ func reverseNodeMap(nodes map[string]*node.Node) map[string]string {
 	}
 
 	return res
+}
+
+// ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
+// It extracts per-commit structural hotspot data for the unified timeseries output.
+func (s *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
+	commitStats, ok := report["commit_stats"].(map[string]*ShotnessCommitSummary)
+	if !ok || len(commitStats) == 0 {
+		return nil
+	}
+
+	result := make(map[string]any, len(commitStats))
+
+	for hash, cs := range commitStats {
+		result[hash] = map[string]any{
+			"nodes_touched":  cs.NodesTouched,
+			"coupling_pairs": cs.CouplingPairs,
+		}
+	}
+
+	return result
 }

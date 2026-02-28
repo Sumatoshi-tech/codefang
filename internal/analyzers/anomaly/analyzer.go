@@ -351,13 +351,31 @@ type TickData struct {
 }
 
 func newAggregator(opts analyze.AggregatorOptions, _ float32, _ int) analyze.Aggregator {
-	return analyze.NewGenericAggregator[*tickAccumulator, *TickData](
+	agg := analyze.NewGenericAggregator[*tickAccumulator, *TickData](
 		opts,
 		extractTC,
 		mergeState,
 		sizeState,
 		buildTick,
 	)
+	agg.DrainCommitDataFn = drainAnomalyCommitData
+
+	return agg
+}
+
+func drainAnomalyCommitData(state *tickAccumulator) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.commitMetrics) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.commitMetrics))
+	for hash, cm := range state.commitMetrics {
+		result[hash] = cm
+	}
+
+	state.commitMetrics = make(map[string]*CommitAnomalyData)
+
+	return result, nil
 }
 
 func extractTC(tc analyze.TC, byTick map[int]*tickAccumulator) error {

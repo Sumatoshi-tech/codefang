@@ -92,8 +92,8 @@ func TestHistoryAnalyzer_Consume_ReturnsTC(t *testing.T) {
 	assert.Empty(t, cd.Renames)
 
 	// seenFiles should be updated.
-	assert.True(t, c.seenFiles["f1"])
-	assert.True(t, c.seenFiles["f2"])
+	assert.True(t, c.seenFiles.Test([]byte("f1")))
+	assert.True(t, c.seenFiles.Test([]byte("f2")))
 }
 
 func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
@@ -196,7 +196,7 @@ func TestHistoryAnalyzer_Consume_MergeDedup(t *testing.T) {
 	cd1, ok := tc1.Data.(*CommitData)
 	require.True(t, ok)
 	assert.True(t, cd1.CommitCounted)
-	assert.True(t, c.merges[commit.Hash()])
+	assert.True(t, c.merges.SeenOrAdd(commit.Hash()), "merge commit should already be tracked")
 
 	// Second pass: shouldConsume=false (duplicate merge).
 	tc2, err := c.Consume(context.Background(), &analyze.Context{Commit: commit})
@@ -219,7 +219,7 @@ func TestHistoryAnalyzer_Consume_MergeMode(t *testing.T) {
 	require.NoError(t, c.Initialize(nil))
 
 	// Pre-populate seenFiles.
-	c.seenFiles["existing.go"] = true
+	c.seenFiles.Add([]byte("existing.go"))
 
 	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
 	change1 := &gitlib.Change{Action: gitlib.Insert, To: gitlib.ChangeEntry{Name: "existing.go", Hash: hash}}
@@ -252,8 +252,8 @@ func TestHistoryAnalyzer_Fork_WorkingStateOnly(t *testing.T) {
 	c := &HistoryAnalyzer{
 		PeopleNumber:       2,
 		reversedPeopleDict: []string{"alice", "bob"},
-		seenFiles:          make(map[string]bool),
-		merges:             make(map[gitlib.Hash]bool),
+		seenFiles:          newSeenFilesFilter(),
+		merges:             analyze.NewMergeTracker(),
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -277,15 +277,15 @@ func TestHistoryAnalyzer_Merge_WorkingState(t *testing.T) {
 	require.NoError(t, main.Initialize(nil))
 
 	hash1 := gitlib.NewHash("1111111111111111111111111111111111111111")
-	main.merges[hash1] = true
-	main.seenFiles["a.go"] = true
+	main.merges.SeenOrAdd(hash1)
+	main.seenFiles.Add([]byte("a.go"))
 
 	branch := &HistoryAnalyzer{PeopleNumber: 1}
 	require.NoError(t, branch.Initialize(nil))
 
 	hash2 := gitlib.NewHash("2222222222222222222222222222222222222222")
-	branch.merges[hash2] = true
-	branch.seenFiles["b.go"] = true
+	branch.merges.SeenOrAdd(hash2)
+	branch.seenFiles.Add([]byte("b.go"))
 
 	commit := gitlib.NewTestCommit(
 		gitlib.NewHash("c500000000000000000000000000000000000005"),
@@ -296,11 +296,12 @@ func TestHistoryAnalyzer_Merge_WorkingState(t *testing.T) {
 
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	assert.True(t, main.merges[hash1])
-	assert.True(t, main.merges[hash2])
-	assert.True(t, main.seenFiles["a.go"])
-	// b.go shouldn't be here since Merge only merges lastCommit and merges in new architecture.
-	assert.False(t, main.seenFiles["b.go"])
+	assert.True(t, main.merges.SeenOrAdd(hash1), "hash1 should still be in main's tracker")
+	// Merge trackers are not combined — each fork processes disjoint commits.
+	assert.False(t, main.merges.SeenOrAdd(hash2), "hash2 should NOT be in main's tracker (independent forks)")
+	assert.True(t, main.seenFiles.Test([]byte("a.go")))
+	// seenFiles also stays independent — each fork gets its own filter.
+	assert.False(t, main.seenFiles.Test([]byte("b.go")))
 	assert.Equal(t, commit, main.lastCommit)
 }
 
@@ -490,8 +491,8 @@ func TestHistoryAnalyzer_NewAggregator(t *testing.T) {
 	c := &HistoryAnalyzer{
 		PeopleNumber:       2,
 		reversedPeopleDict: []string{"alice", "bob"},
-		seenFiles:          make(map[string]bool),
-		merges:             make(map[gitlib.Hash]bool),
+		seenFiles:          newSeenFilesFilter(),
+		merges:             analyze.NewMergeTracker(),
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -529,4 +530,44 @@ func TestHistoryAnalyzer_SerializeTICKs(t *testing.T) {
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
 	assert.Contains(t, result, "file_coupling")
+}
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	hashA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	report := analyze.Report{
+		"commit_stats": map[string]*CouplesCommitSummary{
+			hashA: {FilesTouched: 5, AuthorID: 0},
+			hashB: {FilesTouched: 3, AuthorID: 1},
+		},
+	}
+
+	c := &HistoryAnalyzer{}
+	result := c.ExtractCommitTimeSeries(report)
+
+	require.Len(t, result, 2)
+
+	entryA, ok := result[hashA].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 5, entryA["files_touched"])
+	assert.Equal(t, 0, entryA["author_id"])
+
+	entryB, ok := result[hashB].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 3, entryB["files_touched"])
+	assert.Equal(t, 1, entryB["author_id"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	c := &HistoryAnalyzer{}
+
+	assert.Nil(t, c.ExtractCommitTimeSeries(analyze.Report{}))
+	assert.Nil(t, c.ExtractCommitTimeSeries(analyze.Report{
+		"commit_stats": map[string]*CouplesCommitSummary{},
+	}))
 }

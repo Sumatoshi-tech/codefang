@@ -2,10 +2,12 @@ package analyze
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/spillstore"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 // GenericAggregator manages per-tick state accumulation, spilling, and collection.
@@ -21,6 +23,11 @@ type GenericAggregator[S any, T any] struct {
 	MergeStateFn func(S, S) S
 	SizeStateFn  func(S) int64
 	BuildTickFn  func(int, S) (TICK, error)
+
+	// DrainCommitDataFn extracts and clears per-commit data from a tick
+	// accumulator state. Returns summarized per-commit data and commit ordering.
+	// When nil, DrainCommitStats returns nil (CommitStatsDrainer not satisfied).
+	DrainCommitDataFn func(S) (map[string]any, map[int][]gitlib.Hash)
 }
 
 // NewGenericAggregator is a helper to create and initialize a GenericAggregator.
@@ -174,6 +181,11 @@ func (a *GenericAggregator[S, T]) RestoreSpillState(info AggregatorSpillInfo) {
 	}
 }
 
+// DiscardState clears all in-memory cumulative state without serialization.
+func (a *GenericAggregator[S, T]) DiscardState() {
+	a.ByTick = make(map[int]S)
+}
+
 // Close releases all resources. Idempotent.
 func (a *GenericAggregator[S, T]) Close() error {
 	if a.SpillStore != nil {
@@ -183,6 +195,40 @@ func (a *GenericAggregator[S, T]) Close() error {
 	a.ByTick = nil
 
 	return nil
+}
+
+// DrainCommitStats implements CommitStatsDrainer when DrainCommitDataFn is set.
+// Iterates all tick accumulators, extracts per-commit data, and merges the results.
+func (a *GenericAggregator[S, T]) DrainCommitStats() (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if a.DrainCommitDataFn == nil {
+		return nil, nil
+	}
+
+	var allCommitData map[string]any
+
+	var allCommitsByTick map[int][]gitlib.Hash
+
+	for _, state := range a.ByTick {
+		cd, cbt := a.DrainCommitDataFn(state)
+
+		if len(cd) > 0 {
+			if allCommitData == nil {
+				allCommitData = make(map[string]any, len(cd))
+			}
+
+			maps.Copy(allCommitData, cd)
+		}
+
+		for tick, hashes := range cbt {
+			if allCommitsByTick == nil {
+				allCommitsByTick = make(map[int][]gitlib.Hash, len(cbt))
+			}
+
+			allCommitsByTick[tick] = append(allCommitsByTick[tick], hashes...)
+		}
+	}
+
+	return allCommitData, allCommitsByTick
 }
 
 // Internal helpers for keys.

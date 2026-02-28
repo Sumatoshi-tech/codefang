@@ -8,13 +8,15 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
+const testAuthorAlice = "alice"
+
 func TestMergedCommitData_MarshalJSON_Flattened(t *testing.T) {
 	t.Parallel()
 
 	entry := analyze.MergedCommitData{
 		Hash:      "abc123",
 		Timestamp: "2024-01-15T10:30:00Z",
-		Author:    "alice",
+		Author:    testAuthorAlice,
 		Tick:      0,
 		Analyzers: map[string]any{
 			"quality": map[string]any{"complexity_median": 5.2},
@@ -37,7 +39,7 @@ func TestMergedCommitData_MarshalJSON_Flattened(t *testing.T) {
 		t.Errorf("expected hash=abc123, got %v", result["hash"])
 	}
 
-	if result["author"] != "alice" {
+	if result["author"] != testAuthorAlice {
 		t.Errorf("expected author=alice, got %v", result["author"])
 	}
 
@@ -106,7 +108,7 @@ func TestBuildMergedTimeSeriesDirect_SingleAnalyzer(t *testing.T) {
 	}
 
 	meta := []analyze.CommitMeta{
-		{Hash: "aaa111", Timestamp: "2024-01-01T00:00:00Z", Author: "alice", Tick: 0},
+		{Hash: "aaa111", Timestamp: "2024-01-01T00:00:00Z", Author: testAuthorAlice, Tick: 0},
 		{Hash: "bbb222", Timestamp: "2024-01-02T00:00:00Z", Author: "bob", Tick: 1},
 	}
 
@@ -132,7 +134,7 @@ func TestBuildMergedTimeSeriesDirect_SingleAnalyzer(t *testing.T) {
 		t.Errorf("expected second commit=bbb222, got %s", ts.Commits[1].Hash)
 	}
 
-	if ts.Commits[0].Author != "alice" {
+	if ts.Commits[0].Author != testAuthorAlice {
 		t.Errorf("expected author=alice, got %s", ts.Commits[0].Author)
 	}
 
@@ -164,7 +166,7 @@ func TestBuildMergedTimeSeriesDirect_MultiAnalyzer(t *testing.T) {
 	}
 
 	meta := []analyze.CommitMeta{
-		{Hash: "commit1", Timestamp: "2024-01-01T00:00:00Z", Author: "alice", Tick: 0},
+		{Hash: "commit1", Timestamp: "2024-01-01T00:00:00Z", Author: testAuthorAlice, Tick: 0},
 	}
 
 	ts := analyze.BuildMergedTimeSeriesDirect(active, meta, 0)
@@ -278,7 +280,7 @@ func TestWriteMergedTimeSeries_ValidJSON(t *testing.T) {
 			{
 				Hash:      "abc",
 				Timestamp: "2024-01-01T00:00:00Z",
-				Author:    "alice",
+				Author:    testAuthorAlice,
 				Tick:      0,
 				Analyzers: map[string]any{"quality": map[string]any{"score": 5}},
 			},
@@ -301,5 +303,119 @@ func TestWriteMergedTimeSeries_ValidJSON(t *testing.T) {
 
 	if parsed["version"] != analyze.TimeSeriesModelVersion {
 		t.Errorf("expected version=%s, got %v", analyze.TimeSeriesModelVersion, parsed["version"])
+	}
+}
+
+func TestWriteTimeSeriesNDJSON_OneLinePerCommit(t *testing.T) {
+	t.Parallel()
+
+	ts := &analyze.MergedTimeSeries{
+		Version:       analyze.TimeSeriesModelVersion,
+		TickSizeHours: 24,
+		Analyzers:     []string{"quality", "burndown"},
+		Commits: []analyze.MergedCommitData{
+			{
+				Hash:      "abc",
+				Timestamp: "2024-01-01T00:00:00Z",
+				Author:    testAuthorAlice,
+				Tick:      0,
+				Analyzers: map[string]any{"quality": map[string]any{"score": 5}},
+			},
+			{
+				Hash:      "def",
+				Timestamp: "2024-01-02T00:00:00Z",
+				Author:    "bob",
+				Tick:      1,
+				Analyzers: map[string]any{
+					"quality":  map[string]any{"score": 8},
+					"burndown": map[string]any{"lines_added": 10},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	err := analyze.WriteTimeSeriesNDJSON(ts, &buf)
+	if err != nil {
+		t.Fatalf("WriteTimeSeriesNDJSON failed: %v", err)
+	}
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	// Each line must be valid JSON.
+	var first map[string]any
+
+	err = json.Unmarshal(lines[0], &first)
+	if err != nil {
+		t.Fatalf("line 0 is not valid JSON: %v", err)
+	}
+
+	if first["hash"] != "abc" {
+		t.Errorf("expected hash=abc, got %v", first["hash"])
+	}
+
+	if first["author"] != testAuthorAlice {
+		t.Errorf("expected author=alice, got %v", first["author"])
+	}
+
+	// Verify analyzer data is flattened into the line.
+	qualityRaw, ok := first["quality"]
+	if !ok {
+		t.Fatal("expected 'quality' key in first line")
+	}
+
+	qualityMap, ok := qualityRaw.(map[string]any)
+	if !ok {
+		t.Fatalf("expected quality to be map, got %T", qualityRaw)
+	}
+
+	if qualityMap["score"] != float64(5) {
+		t.Errorf("expected score=5, got %v", qualityMap["score"])
+	}
+
+	var second map[string]any
+
+	err = json.Unmarshal(lines[1], &second)
+	if err != nil {
+		t.Fatalf("line 1 is not valid JSON: %v", err)
+	}
+
+	if second["hash"] != "def" {
+		t.Errorf("expected hash=def, got %v", second["hash"])
+	}
+
+	// Second line should have both analyzer keys.
+	if _, hasQuality := second["quality"]; !hasQuality {
+		t.Error("expected 'quality' in second line")
+	}
+
+	if _, hasBurndown := second["burndown"]; !hasBurndown {
+		t.Error("expected 'burndown' in second line")
+	}
+}
+
+func TestWriteTimeSeriesNDJSON_Empty(t *testing.T) {
+	t.Parallel()
+
+	ts := &analyze.MergedTimeSeries{
+		Version:       analyze.TimeSeriesModelVersion,
+		TickSizeHours: 24,
+		Analyzers:     []string{},
+		Commits:       nil,
+	}
+
+	var buf bytes.Buffer
+
+	err := analyze.WriteTimeSeriesNDJSON(ts, &buf)
+	if err != nil {
+		t.Fatalf("WriteTimeSeriesNDJSON failed: %v", err)
+	}
+
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output, got %q", buf.String())
 	}
 }

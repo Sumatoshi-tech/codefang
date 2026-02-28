@@ -58,7 +58,7 @@ type Analyzer struct {
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
 	commitsByTick        map[int][]gitlib.Hash
-	merges               map[gitlib.Hash]bool // working state for merge dedup.
+	merges               *analyze.MergeTracker
 	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
@@ -143,7 +143,7 @@ func (a *Analyzer) Initialize(_ *gitlib.Repository) error {
 		a.tickSize = defaultHoursPerDay * time.Hour // Default fallback.
 	}
 
-	a.merges = map[gitlib.Hash]bool{}
+	a.merges = analyze.NewMergeTracker()
 
 	return nil
 }
@@ -154,11 +154,9 @@ func (a *Analyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, 
 	commitHash := commit.Hash()
 
 	if commit.NumParents() > 1 {
-		if a.merges[commitHash] {
+		if a.merges.SeenOrAdd(commitHash) {
 			return analyze.TC{}, nil
 		}
-
-		a.merges[commitHash] = true
 	}
 
 	treeDiff := a.TreeDiff.Changes
@@ -409,13 +407,43 @@ func buildTick(tick int, state *TickDevData) (analyze.TICK, error) {
 }
 
 func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return analyze.NewGenericAggregator[*TickDevData, *TickDevData](
+	agg := analyze.NewGenericAggregator[*TickDevData, *TickDevData](
 		opts,
 		extractTC,
 		mergeState,
 		sizeState,
 		buildTick,
 	)
+	agg.DrainCommitDataFn = drainDevCommitData
+
+	return agg
+}
+
+func drainDevCommitData(state *TickDevData) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.DevData) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.DevData))
+	for hash, cdd := range state.DevData {
+		entry := map[string]any{
+			"commits":       cdd.Commits,
+			"lines_added":   cdd.Added,
+			"lines_removed": cdd.Removed,
+			"lines_changed": cdd.Changed,
+			"net_change":    cdd.Added - cdd.Removed,
+			"author_id":     cdd.AuthorID,
+		}
+		if len(cdd.Languages) > 0 {
+			entry["languages"] = cdd.Languages
+		}
+
+		result[hash] = entry
+	}
+
+	state.DevData = make(map[string]*CommitDevData)
+
+	return result, nil
 }
 
 func mergeCommitDevData(existing, incoming *CommitDevData) *CommitDevData {

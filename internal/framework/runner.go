@@ -244,6 +244,43 @@ func (runner *Runner) SpillAggregators() error {
 	return nil
 }
 
+// DiscardAggregatorState clears all in-memory cumulative state from
+// aggregators without serialization. Used in streaming timeseries NDJSON
+// mode where per-commit data is drained each chunk and cumulative state
+// (coupling matrices, burndown histories) is never needed for a final report.
+func (runner *Runner) DiscardAggregatorState() {
+	for _, agg := range runner.aggregators {
+		if agg == nil {
+			continue
+		}
+
+		if d, ok := agg.(analyze.StateDiscarder); ok {
+			d.DiscardState()
+		}
+	}
+}
+
+// DiscardLeafAnalyzerState clears cumulative state from leaf history analyzers
+// that implement analyze.StateDiscarder. This complements DiscardAggregatorState
+// by freeing state held directly in analyzers (e.g. shotness node coupling maps)
+// rather than in aggregators.
+func (runner *Runner) DiscardLeafAnalyzerState() {
+	for _, leaf := range runner.LeafAnalyzers() {
+		if d, ok := leaf.(analyze.StateDiscarder); ok {
+			d.DiscardState()
+		}
+	}
+}
+
+// LeafAnalyzers returns the history analyzers registered as leaves (non-plumbing).
+func (runner *Runner) LeafAnalyzers() []analyze.HistoryAnalyzer {
+	if runner.CoreCount >= len(runner.Analyzers) {
+		return nil
+	}
+
+	return runner.Analyzers[runner.CoreCount:]
+}
+
 // addTC stamps a TC with tick/author/timestamp metadata and routes it to
 // either the TCSink (NDJSON mode) or the corresponding aggregator.
 // Skips TCs with nil Data.
@@ -565,6 +602,25 @@ func (runner *Runner) injectCommitMeta(reports map[analyze.HistoryAnalyzer]analy
 			report[analyze.ReportKeyCommitMeta] = runner.commitMeta
 		}
 	}
+}
+
+// DrainCommitMeta returns the accumulated per-commit metadata and resets the map.
+// Used by streaming timeseries NDJSON to extract metadata between chunks.
+func (runner *Runner) DrainCommitMeta() map[string]analyze.CommitMeta {
+	meta := runner.commitMeta
+	runner.commitMeta = make(map[string]analyze.CommitMeta)
+
+	return meta
+}
+
+// LeafAggregators returns the aggregators for leaf analyzers (indices >= CoreCount).
+// Used by streaming timeseries NDJSON to drain per-commit data between chunks.
+func (runner *Runner) LeafAggregators() []analyze.Aggregator {
+	if runner.CoreCount >= len(runner.aggregators) {
+		return nil
+	}
+
+	return runner.aggregators[runner.CoreCount:]
 }
 
 // ProcessChunkFromData consumes pre-fetched CommitData through analyzers,

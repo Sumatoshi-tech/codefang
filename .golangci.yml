@@ -478,6 +478,8 @@ linters:
         linters: [godot]
       - path: pkg/uast/cgo_named_children_batch\.go
         linters: [godot]
+      - path: pkg/uast/malloc_linux\.go
+        linters: [godot]
 
       # CGO file: gocritic false positives on CGO-generated code (dupImport, dupSubExpr, underef).
       - path: pkg/gitlib/cgo_bridge\.go

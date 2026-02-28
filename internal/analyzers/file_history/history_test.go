@@ -166,7 +166,7 @@ func TestAnalyzer_Merge(t *testing.T) {
 		t.Fatalf("Consume failed: %v", err)
 	}
 
-	if !h.merges[commit.Hash()] {
+	if !h.merges.SeenOrAdd(commit.Hash()) {
 		t.Error("expected merge to be recorded")
 	}
 
@@ -403,21 +403,58 @@ func TestMerge_CombinesPeopleStats(t *testing.T) {
 	require.Equal(t, 3, stats.Removed)
 }
 
-func TestMerge_CombinesMerges(t *testing.T) {
+func TestMerge_DoesNotCombineMerges(t *testing.T) {
 	t.Parallel()
 
 	main := NewAnalyzer()
 	require.NoError(t, main.Initialize(nil))
-	main.merges[gitlib.NewHash("abc123")] = true
+	main.merges.SeenOrAdd(gitlib.NewHash("abc123"))
 
 	branch := NewAnalyzer()
 	require.NoError(t, branch.Initialize(nil))
-	branch.merges[gitlib.NewHash("def456")] = true
+	branch.merges.SeenOrAdd(gitlib.NewHash("def456"))
 
 	main.Merge([]analyze.HistoryAnalyzer{branch})
 
-	// Both merges should be present.
-	require.Len(t, main.merges, 2)
-	require.True(t, main.merges[gitlib.NewHash("abc123")])
-	require.True(t, main.merges[gitlib.NewHash("def456")])
+	// Merge trackers are not combined: each fork processes a disjoint
+	// subset of commits, so merge dedup state stays independent.
+	// Main should still have its own merge but NOT the branch's merge.
+	require.True(t, main.merges.SeenOrAdd(gitlib.NewHash("abc123")), "main's own merge should still be present")
+	require.False(t, main.merges.SeenOrAdd(gitlib.NewHash("def456")), "branch merge should NOT be in main's tracker")
+}
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	hashA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	report := analyze.Report{
+		"commit_stats": map[string]*FileHistoryCommitSummary{
+			hashA: {FilesTouched: 3, LinesAdded: 50, LinesRemoved: 10, LinesChanged: 5, Inserts: 1, Deletes: 0, Modifies: 2},
+			hashB: {FilesTouched: 1, LinesAdded: 20, LinesRemoved: 0, LinesChanged: 0, Inserts: 1, Deletes: 0, Modifies: 0},
+		},
+	}
+
+	h := &HistoryAnalyzer{}
+	result := h.ExtractCommitTimeSeries(report)
+
+	require.Len(t, result, 2)
+
+	entryA, ok := result[hashA].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 3, entryA["files_touched"])
+	assert.Equal(t, 50, entryA["lines_added"])
+	assert.Equal(t, 10, entryA["lines_removed"])
+	assert.Equal(t, 5, entryA["lines_changed"])
+	assert.Equal(t, 1, entryA["inserts"])
+	assert.Equal(t, 0, entryA["deletes"])
+	assert.Equal(t, 2, entryA["modifies"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	h := &HistoryAnalyzer{}
+	assert.Nil(t, h.ExtractCommitTimeSeries(analyze.Report{}))
 }

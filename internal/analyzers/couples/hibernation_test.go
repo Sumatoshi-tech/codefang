@@ -14,14 +14,14 @@ func TestHibernate_ClearsMerges(t *testing.T) {
 	c := &HistoryAnalyzer{}
 	require.NoError(t, c.Initialize(nil))
 
-	c.merges[gitlib.NewHash("abc123")] = true
-	c.merges[gitlib.NewHash("def456")] = true
-	require.Len(t, c.merges, 2)
+	c.merges.SeenOrAdd(gitlib.NewHash("abc123"))
+	c.merges.SeenOrAdd(gitlib.NewHash("def456"))
 
 	err := c.Hibernate()
 	require.NoError(t, err)
 
-	require.Empty(t, c.merges)
+	// After reset, previously-seen hashes should not be recognized.
+	require.False(t, c.merges.SeenOrAdd(gitlib.NewHash("abc123")), "tracker should be cleared after hibernate")
 }
 
 func TestHibernate_ClearsLastCommit(t *testing.T) {
@@ -57,13 +57,13 @@ func TestHibernateBootCycle_PreservesSeenFiles(t *testing.T) {
 	c := &HistoryAnalyzer{}
 	require.NoError(t, c.Initialize(nil))
 
-	c.seenFiles["a.go"] = true
-	c.seenFiles["b.go"] = true
+	c.seenFiles.Add([]byte("a.go"))
+	c.seenFiles.Add([]byte("b.go"))
 
 	require.NoError(t, c.Hibernate())
 	require.NoError(t, c.Boot())
 
 	// seenFiles should be preserved across hibernate/boot.
-	require.True(t, c.seenFiles["a.go"])
-	require.True(t, c.seenFiles["b.go"])
+	require.True(t, c.seenFiles.Test([]byte("a.go")))
+	require.True(t, c.seenFiles.Test([]byte("b.go")))
 }

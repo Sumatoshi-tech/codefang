@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/minhash"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
@@ -594,7 +595,7 @@ func TestVisitor_GetReport_NoFunctions(t *testing.T) {
 	assert.Equal(t, 0, report[keyTotalFunctions])
 }
 
-// TestVisitor_GetReport_WithFunctions verifies visitor collects functions.
+// TestVisitor_GetReport_WithFunctions verifies visitor exports signatures for aggregator.
 func TestVisitor_GetReport_WithFunctions(t *testing.T) {
 	t.Parallel()
 
@@ -618,9 +619,18 @@ func TestVisitor_GetReport_WithFunctions(t *testing.T) {
 	report := v.GetReport()
 	assert.Equal(t, 2, report[keyTotalFunctions])
 
-	totalPairs, ok := report[keyTotalClonePairs].(int)
+	// Detection is deferred to aggregator; visitor reports zero pairs.
+	assert.Equal(t, 0, report[keyTotalClonePairs])
+
+	// Signatures are exported for cross-file detection.
+	sigs, ok := report[keyFuncSignatures].([]map[string]any)
 	require.True(t, ok)
-	assert.GreaterOrEqual(t, totalPairs, 1)
+	assert.Len(t, sigs, 2)
+
+	for _, entry := range sigs {
+		assert.Contains(t, entry, "name")
+		assert.Contains(t, entry, "sig")
+	}
 }
 
 // TestVisitor_OnExit_NoOp verifies OnExit does nothing.
@@ -635,30 +645,78 @@ func TestVisitor_OnExit_NoOp(t *testing.T) {
 	assert.Empty(t, v.functions)
 }
 
-// TestAggregator_Aggregate verifies aggregation of multiple reports.
+// buildTestSignature creates a MinHash signature from the given tokens.
+func buildTestSignature(t *testing.T, tokens []string) *minhash.Signature {
+	t.Helper()
+
+	sig, err := minhash.New(numHashes)
+	require.NoError(t, err)
+
+	for _, token := range tokens {
+		sig.Add([]byte(token))
+	}
+
+	return sig
+}
+
+// buildSignatureReport creates a per-file report with function signatures.
+func buildTestFileReport(t *testing.T, sourceFile string, funcs map[string]*minhash.Signature) analyze.Report {
+	t.Helper()
+
+	sigEntries := make([]map[string]any, 0, len(funcs))
+
+	for name, sig := range funcs {
+		entry := map[string]any{
+			"name": name,
+			"sig":  sig,
+		}
+
+		if sourceFile != "" {
+			entry["_source_file"] = sourceFile
+		}
+
+		sigEntries = append(sigEntries, entry)
+	}
+
+	return analyze.Report{
+		keyAnalyzerName:    analyzerName,
+		keyTotalFunctions:  len(funcs),
+		keyTotalClonePairs: 0,
+		keyCloneRatio:      0.0,
+		keyClonePairs:      []map[string]any{},
+		keyMessage:         msgNoClones,
+		keyFuncSignatures:  sigEntries,
+	}
+}
+
+// TestAggregator_Aggregate verifies aggregation with real signatures.
 func TestAggregator_Aggregate(t *testing.T) {
 	t.Parallel()
 
 	agg := NewAggregator()
 
-	reports := map[string]analyze.Report{
-		"file1": {
-			keyTotalFunctions:  5,
-			keyTotalClonePairs: 2,
-			keyCloneRatio:      0.4,
-			keyMessage:         msgLowClones,
-		},
-		"file2": {
-			keyTotalFunctions:  3,
-			keyTotalClonePairs: 1,
-			keyCloneRatio:      0.33,
-			keyMessage:         msgLowClones,
-		},
-	}
+	tokens := []string{"a", "b", "c", "d", "e"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
 
-	agg.Aggregate(reports)
+	report1 := buildTestFileReport(t, "file1.go", map[string]*minhash.Signature{
+		"Foo": sig1,
+	})
+	report2 := buildTestFileReport(t, "file2.go", map[string]*minhash.Signature{
+		"Bar": sig2,
+	})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+
 	result := agg.GetResult()
 	assert.NotNil(t, result)
+	assert.Equal(t, 2, result[keyTotalFunctions])
+
+	// Identical signatures should be detected as clones.
+	totalPairs, ok := result[keyTotalClonePairs].(int)
+	require.True(t, ok)
+	assert.Equal(t, 1, totalPairs)
 }
 
 // TestAggregator_EmptyResult verifies empty aggregation.
@@ -669,6 +727,109 @@ func TestAggregator_EmptyResult(t *testing.T) {
 	agg.Aggregate(map[string]analyze.Report{})
 	result := agg.GetResult()
 	assert.NotNil(t, result)
+	assert.Equal(t, 0, result[keyTotalFunctions])
+	assert.Equal(t, msgNoFunctions, result[keyMessage])
+}
+
+// TestAggregator_CrossFileClones verifies cross-file detection with qualified names.
+func TestAggregator_CrossFileClones(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+
+	// Two files with identical function signatures.
+	tokens := []string{"x", "y", "z", "w", "v"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
+
+	report1 := buildTestFileReport(t, "pkg/a.go", map[string]*minhash.Signature{
+		"Handler": sig1,
+	})
+	report2 := buildTestFileReport(t, "pkg/b.go", map[string]*minhash.Signature{
+		"Handler": sig2,
+	})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+
+	result := agg.GetResult()
+
+	totalPairs, ok := result[keyTotalClonePairs].(int)
+	require.True(t, ok)
+	assert.Equal(t, 1, totalPairs)
+
+	// Verify qualified names in clone pairs.
+	pairs, pOK := result[keyClonePairs].([]map[string]any)
+	require.True(t, pOK)
+	require.Len(t, pairs, 1)
+
+	funcA, _ := pairs[0]["func_a"].(string) //nolint:errcheck // test assertion follows.
+	funcB, _ := pairs[0]["func_b"].(string) //nolint:errcheck // test assertion follows.
+
+	assert.Contains(t, funcA, "::")
+	assert.Contains(t, funcB, "::")
+
+	// Functions are from different files.
+	assert.NotEqual(t, funcA, funcB)
+}
+
+// TestAggregator_RecomputedCloneRatio verifies ratio is pairs/functions globally.
+func TestAggregator_RecomputedCloneRatio(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+
+	tokens := []string{"a", "b", "c", "d", "e"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
+	sig3 := buildTestSignature(t, []string{"p", "q", "r", "s", "t"})
+
+	report1 := buildTestFileReport(t, "a.go", map[string]*minhash.Signature{
+		"Foo": sig1,
+		"Baz": sig3,
+	})
+	report2 := buildTestFileReport(t, "b.go", map[string]*minhash.Signature{
+		"Bar": sig2,
+	})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+
+	result := agg.GetResult()
+	assert.Equal(t, 3, result[keyTotalFunctions])
+
+	// 1 clone pair / 3 functions = 0.333...
+	ratio, ok := result[keyCloneRatio].(float64)
+	require.True(t, ok)
+	assert.InDelta(t, 1.0/3.0, ratio, testFloatDelta)
+}
+
+// TestAggregator_NoDedupByFuncA verifies multiple pairs sharing func_a name all appear.
+func TestAggregator_NoDedupByFuncA(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+
+	// Three files with same function name "init", all identical signatures.
+	tokens := []string{"a", "b", "c", "d", "e"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
+	sig3 := buildTestSignature(t, tokens)
+
+	report1 := buildTestFileReport(t, "x.go", map[string]*minhash.Signature{"init": sig1})
+	report2 := buildTestFileReport(t, "y.go", map[string]*minhash.Signature{"init": sig2})
+	report3 := buildTestFileReport(t, "z.go", map[string]*minhash.Signature{"init": sig3})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+	agg.Aggregate(map[string]analyze.Report{"clones": report3})
+
+	result := agg.GetResult()
+
+	// 3 identical functions → 3 pairs: (x::init, y::init), (x::init, z::init), (y::init, z::init).
+	totalPairs, ok := result[keyTotalClonePairs].(int)
+	require.True(t, ok)
+	assert.Equal(t, 3, totalPairs)
 }
 
 // TestExtractClonePairs_FromTyped verifies typed clone pair extraction.

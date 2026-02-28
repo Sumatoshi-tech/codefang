@@ -3,7 +3,10 @@ package imports
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
 func TestHistoryAnalyzer_Name(t *testing.T) {
@@ -37,8 +40,50 @@ func TestHistoryAnalyzer_ListConfigurationOptions(t *testing.T) {
 
 	h := NewHistoryAnalyzer()
 
+	// Imports consumes UAST from the framework pipeline; no per-analyzer config options.
 	opts := h.ListConfigurationOptions()
-	if len(opts) == 0 {
-		t.Error("expected options")
+	assert.Empty(t, opts)
+}
+
+func TestExtractCommitTimeSeries(t *testing.T) {
+	t.Parallel()
+
+	h := NewHistoryAnalyzer()
+
+	hashStr := "aabbccdd00112233445566778899aabbccddeeff"
+	report := analyze.Report{
+		"commit_stats": map[string]*ImportsCommitSummary{
+			hashStr: {
+				ImportCount: 5,
+				Languages:   map[string]int{"go": 3, "python": 2},
+			},
+		},
 	}
+
+	result := h.ExtractCommitTimeSeries(report)
+	require.NotNil(t, result)
+	require.Contains(t, result, hashStr)
+
+	entry, ok := result[hashStr].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 5, entry["import_count"])
+
+	langs, ok := entry["languages"].(map[string]int)
+	require.True(t, ok)
+	assert.Equal(t, 3, langs["go"])
+	assert.Equal(t, 2, langs["python"])
+}
+
+func TestExtractCommitTimeSeries_Empty(t *testing.T) {
+	t.Parallel()
+
+	h := NewHistoryAnalyzer()
+
+	result := h.ExtractCommitTimeSeries(analyze.Report{})
+	assert.Nil(t, result)
+
+	result = h.ExtractCommitTimeSeries(analyze.Report{
+		"commit_stats": map[string]*ImportsCommitSummary{},
+	})
+	assert.Nil(t, result)
 }

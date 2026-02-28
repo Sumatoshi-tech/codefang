@@ -44,8 +44,8 @@ func OutputHistoryResults(
 		return nil
 	}
 
-	if format == FormatTimeSeries {
-		return outputMergedTimeSeries(leaves, results, writer)
+	if format == FormatTimeSeries || format == FormatTimeSeriesNDJSON {
+		return outputMergedTimeSeries(leaves, results, format, writer)
 	}
 
 	rawOutput := format == FormatJSON || format == FormatPlot || format == FormatBinary
@@ -82,12 +82,17 @@ func OutputHistoryResults(
 func outputMergedTimeSeries(
 	leaves []HistoryAnalyzer,
 	results map[HistoryAnalyzer]Report,
+	format string,
 	writer io.Writer,
 ) error {
 	active := collectProviderData(leaves, results)
 	commitMeta := buildOrderedCommitMeta(leaves, results)
 
 	ts := BuildMergedTimeSeriesDirect(active, commitMeta, 0)
+
+	if format == FormatTimeSeriesNDJSON {
+		return WriteTimeSeriesNDJSON(ts, writer)
+	}
 
 	return WriteMergedTimeSeries(ts, writer)
 }

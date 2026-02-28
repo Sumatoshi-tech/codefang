@@ -185,6 +185,13 @@ func (t *Analyzer) matchDeleteInsertPairs(
 			continue
 		}
 
+		lenB, lenA := len(linesBefore[lb]), len(linesAfter[la])
+
+		// Length difference alone exceeds the threshold — skip O(N×M) computation.
+		if lenB-lenA > t.MaximumAllowedDistance || lenA-lenB > t.MaximumAllowedDistance {
+			continue
+		}
+
 		dist := t.lcontext.Distance(string(linesBefore[lb]), string(linesAfter[la]))
 		if dist <= t.MaximumAllowedDistance {
 			candidates = append(candidates, candidate{lb, la})
@@ -432,13 +439,49 @@ func buildTick(tick int, state *TickData) (analyze.TICK, error) {
 }
 
 func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return analyze.NewGenericAggregator[*TickData, *TickData](
+	agg := analyze.NewGenericAggregator[*TickData, *TickData](
 		opts,
 		extractTC,
 		mergeState,
 		sizeState,
 		buildTick,
 	)
+	agg.DrainCommitDataFn = drainTyposCommitData
+
+	return agg
+}
+
+func drainTyposCommitData(state *TickData) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.Typos) == 0 {
+		return nil, nil
+	}
+
+	// Group typos by commit hash.
+	byCommit := make(map[string][]Typo)
+
+	for _, t := range state.Typos {
+		hash := t.Commit.String()
+		byCommit[hash] = append(byCommit[hash], t)
+	}
+
+	result := make(map[string]any, len(byCommit))
+	for hash, typos := range byCommit {
+		entries := make([]map[string]any, len(typos))
+		for i, t := range typos {
+			entries[i] = map[string]any{
+				"wrong":   t.Wrong,
+				"correct": t.Correct,
+				"file":    t.File,
+				"line":    t.Line,
+			}
+		}
+
+		result[hash] = entries
+	}
+
+	state.Typos = state.Typos[:0]
+
+	return result, nil
 }
 
 func deduplicateTypos(typos []Typo) []Typo {

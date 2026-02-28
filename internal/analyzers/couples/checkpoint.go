@@ -1,8 +1,9 @@
 package couples
 
 import (
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
-	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
 )
 
 // checkpointBasename is the base filename for checkpoint files.
@@ -10,8 +11,8 @@ const checkpointBasename = "couples_state"
 
 // checkpointState holds the serializable working state of the couples analyzer.
 type checkpointState struct {
-	SeenFiles          []string `json:"seen_files"`
-	Merges             []string `json:"merges"`
+	SeenFilesBloom     []byte   `json:"seen_files_bloom"`
+	MergesBloom        []byte   `json:"merges_bloom"`
 	PeopleNumber       int      `json:"people_number"`
 	ReversedPeopleDict []string `json:"reversed_people_dict"`
 }
@@ -36,19 +37,19 @@ func (c *HistoryAnalyzer) LoadCheckpoint(dir string) error {
 
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
 func (c *HistoryAnalyzer) buildCheckpointState() *checkpointState {
-	seenFiles := make([]string, 0, len(c.seenFiles))
-	for f := range c.seenFiles {
-		seenFiles = append(seenFiles, f)
+	seenData, err := c.seenFiles.MarshalBinary()
+	if err != nil {
+		seenData = nil
 	}
 
-	merges := make([]string, 0, len(c.merges))
-	for hash := range c.merges {
-		merges = append(merges, hash.String())
+	mergesData, err := c.merges.MarshalBinary()
+	if err != nil {
+		mergesData = nil
 	}
 
 	return &checkpointState{
-		SeenFiles:          seenFiles,
-		Merges:             merges,
+		SeenFilesBloom:     seenData,
+		MergesBloom:        mergesData,
 		PeopleNumber:       c.PeopleNumber,
 		ReversedPeopleDict: c.reversedPeopleDict,
 	}
@@ -56,14 +57,30 @@ func (c *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	c.seenFiles = make(map[string]bool, len(state.SeenFiles))
-	for _, f := range state.SeenFiles {
-		c.seenFiles[f] = true
+	if len(state.SeenFilesBloom) > 0 {
+		f := &bloom.Filter{}
+
+		err := f.UnmarshalBinary(state.SeenFilesBloom)
+		if err == nil {
+			c.seenFiles = f
+		} else {
+			c.seenFiles = newSeenFilesFilter()
+		}
+	} else {
+		c.seenFiles = newSeenFilesFilter()
 	}
 
-	c.merges = make(map[gitlib.Hash]bool, len(state.Merges))
-	for _, hashStr := range state.Merges {
-		c.merges[gitlib.NewHash(hashStr)] = true
+	if len(state.MergesBloom) > 0 {
+		mt := analyze.NewMergeTracker()
+
+		err := mt.UnmarshalBinary(state.MergesBloom)
+		if err == nil {
+			c.merges = mt
+		} else {
+			c.merges = analyze.NewMergeTracker()
+		}
+	} else {
+		c.merges = analyze.NewMergeTracker()
 	}
 
 	c.PeopleNumber = state.PeopleNumber
@@ -74,17 +91,23 @@ func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 const checkpointBaseOverhead = 100
 
 // Checkpoint size estimation constants.
-const (
-	bytesPerSeenFile = 60
-	bytesPerMerge    = 44
-	bytesPerPerson   = 50
-)
+const bytesPerPerson = 50
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
 func (c *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(checkpointBaseOverhead)
-	size += int64(len(c.seenFiles)) * bytesPerSeenFile
-	size += int64(len(c.merges)) * bytesPerMerge
+
+	// Bloom filters: 24-byte header + 8 bytes per uint64 word each.
+	if c.seenFiles != nil {
+		size += 24 + int64(c.seenFiles.BitCount()/64+1)*8 //nolint:mnd // bloom filter binary layout constants.
+	}
+
+	// Merge tracker Bloom filter (fixed size based on mergeTrackerExpected).
+	if c.merges != nil {
+		mergesData, _ := c.merges.MarshalBinary() //nolint:errcheck // best-effort size estimation.
+		size += int64(len(mergesData))
+	}
+
 	size += int64(len(c.reversedPeopleDict)) * bytesPerPerson
 
 	return size

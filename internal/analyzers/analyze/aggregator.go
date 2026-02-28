@@ -1,5 +1,7 @@
 package analyze
 
+import "github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+
 // AggregatorFunc is the factory signature for creating an Aggregator
 // from options. Concrete analyzers provide this via their registration.
 type AggregatorFunc func(opts AggregatorOptions) (Aggregator, error)
@@ -46,6 +48,31 @@ type Aggregator interface {
 
 	// Close releases all resources. Idempotent.
 	Close() error
+}
+
+// CommitStatsDrainer allows extracting and clearing per-commit data
+// between chunks during streaming timeseries NDJSON output.
+// Aggregators that store per-commit summary data implement this to
+// enable per-chunk flushing and prevent OOM on large repos.
+type CommitStatsDrainer interface {
+	// DrainCommitStats returns per-commit summary data and per-tick commit
+	// ordering, then clears these maps from the aggregator. Cumulative state
+	// (coupling matrices, burndown histories, etc.) remains intact.
+	//
+	// The returned commitData maps commit hash (hex) to a JSON-serializable
+	// summary (same shape as ExtractCommitTimeSeries output for this analyzer).
+	DrainCommitStats() (commitData map[string]any, commitsByTick map[int][]gitlib.Hash)
+}
+
+// StateDiscarder is an optional interface for aggregators that can discard
+// their in-memory cumulative state without serialization. Used in streaming
+// timeseries NDJSON mode where per-commit data is drained each chunk and
+// cumulative state (coupling matrices, burndown histories) is never needed
+// for a final report.
+type StateDiscarder interface { //nolint:iface // consumed by framework package via type assertion.
+	// DiscardState clears all in-memory cumulative state, freeing memory.
+	// Unlike Spill(), this does not write to disk — the state is permanently lost.
+	DiscardState()
 }
 
 // AggregatorSpillInfo describes the on-disk spill state of an Aggregator.

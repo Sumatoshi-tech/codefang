@@ -24,6 +24,10 @@ const (
 	// FormatNDJSON is the streaming output format that writes one JSON line
 	// per TC as commits are processed. No aggregator, no buffering.
 	FormatNDJSON = "ndjson"
+
+	// FormatTimeSeriesNDJSON is the merged timeseries format written as
+	// one JSON line per commit (NDJSON). Combines --format timeseries with --ndjson.
+	FormatTimeSeriesNDJSON = "timeseries+ndjson"
 )
 
 var (

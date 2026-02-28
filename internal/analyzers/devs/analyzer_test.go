@@ -139,7 +139,7 @@ func TestAnalyzer_Consume_MergeDedup(t *testing.T) {
 	tc1, err := d.Consume(context.Background(), &analyze.Context{Commit: merge, IsMerge: true})
 	require.NoError(t, err)
 	assert.NotNil(t, tc1.Data)
-	assert.True(t, d.merges[mergeHash])
+	assert.True(t, d.merges.SeenOrAdd(mergeHash), "merge should already be tracked")
 
 	// Second merge: deduped (already seen hash).
 	tc2, err := d.Consume(context.Background(), &analyze.Context{Commit: merge, IsMerge: true})
@@ -523,7 +523,7 @@ func newTestDevAnalyzer() *Analyzer {
 	d.Ticks = &plumbing.TicksSinceStart{}
 	d.Languages = langs
 	d.LineStats = &plumbing.LinesStatsCalculator{}
-	d.merges = map[gitlib.Hash]bool{}
+	d.merges = analyze.NewMergeTracker()
 	d.tickSize = 24 * time.Hour
 
 	return d

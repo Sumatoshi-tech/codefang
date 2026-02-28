@@ -31,4 +31,6 @@ type TickData struct {
 	PeopleCommits []int
 	// Renames accumulated during this tick.
 	Renames []RenamePair
+	// CommitStats holds per-commit summary data for timeseries output.
+	CommitStats map[string]*CouplesCommitSummary
 }

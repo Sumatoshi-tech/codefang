@@ -1,6 +1,7 @@
 package filehistory
 
 import (
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -17,8 +18,8 @@ type fileHistoryCheckpoint struct {
 
 // checkpointState holds the serializable state of the file history analyzer.
 type checkpointState struct {
-	Files  map[string]fileHistoryCheckpoint `json:"files"`
-	Merges []string                         `json:"merges"`
+	Files       map[string]fileHistoryCheckpoint `json:"files"`
+	MergesBloom []byte                           `json:"merges_bloom"`
 }
 
 // newPersister creates a checkpoint persister for file history analyzer.
@@ -42,8 +43,7 @@ func (h *HistoryAnalyzer) LoadCheckpoint(dir string) error {
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
 func (h *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 	state := &checkpointState{
-		Files:  make(map[string]fileHistoryCheckpoint, len(h.files)),
-		Merges: make([]string, 0, len(h.merges)),
+		Files: make(map[string]fileHistoryCheckpoint, len(h.files)),
 	}
 
 	// Convert files to serializable form.
@@ -60,9 +60,10 @@ func (h *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		state.Files[name] = cp
 	}
 
-	// Convert merge hashes to strings.
-	for hash := range h.merges {
-		state.Merges = append(state.Merges, hash.String())
+	// Serialize merge tracker.
+	mergesData, err := h.merges.MarshalBinary()
+	if err == nil {
+		state.MergesBloom = mergesData
 	}
 
 	return state
@@ -86,9 +87,17 @@ func (h *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 	}
 
 	// Restore merges.
-	h.merges = make(map[gitlib.Hash]bool, len(state.Merges))
-	for _, hashStr := range state.Merges {
-		h.merges[gitlib.NewHash(hashStr)] = true
+	if len(state.MergesBloom) > 0 {
+		mt := analyze.NewMergeTracker()
+
+		err := mt.UnmarshalBinary(state.MergesBloom)
+		if err == nil {
+			h.merges = mt
+		} else {
+			h.merges = analyze.NewMergeTracker()
+		}
+	} else {
+		h.merges = analyze.NewMergeTracker()
 	}
 }
 
@@ -98,7 +107,6 @@ const (
 	bytesPerFileEntry   = 120
 	bytesPerPersonStats = 40
 	bytesPerHash        = 44
-	bytesPerMergeEntry  = 44
 )
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
@@ -118,8 +126,9 @@ func (h *HistoryAnalyzer) CheckpointSize() int64 {
 		size += int64(len(fh.Hashes) * bytesPerHash)
 	}
 
-	// Count merge entries.
-	size += int64(len(h.merges) * bytesPerMergeEntry)
+	// Merge tracker Bloom filter (fixed size).
+	mergesData, _ := h.merges.MarshalBinary() //nolint:errcheck // best-effort size estimation.
+	size += int64(len(mergesData))
 
 	return size
 }

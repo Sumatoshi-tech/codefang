@@ -18,12 +18,24 @@ import (
 	"sync"
 )
 
+// Sentinel errors for binary deserialization.
+var (
+	errBinaryDataTooShort    = errors.New("bloom: binary data too short")
+	errBinaryDataLenMismatch = errors.New("bloom: binary data length mismatch")
+)
+
 const (
 	// bitsPerWord is the number of bits in each uint64 word.
 	bitsPerWord = 64
 
 	// ln2Squared is ln(2) squared, used in the optimal bit-array size formula.
 	ln2Squared = math.Ln2 * math.Ln2
+
+	// bloomHeaderSize is the byte size of the serialized header (m + k + count).
+	bloomHeaderSize = 24
+
+	// uint64Size is the byte size of a single uint64 word.
+	uint64Size = 8
 )
 
 var (
@@ -182,6 +194,56 @@ func (f *Filter) FillRatio() float64 {
 	}
 
 	return float64(total) / float64(f.m)
+}
+
+// MarshalBinary encodes the filter into a binary format.
+// Layout: [m uint64][k uint64][count uint64][bits...].
+func (f *Filter) MarshalBinary() ([]byte, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	// Header: m + k + count = 3 * 8 bytes.
+	buf := make([]byte, bloomHeaderSize+len(f.bits)*uint64Size)
+	binary.BigEndian.PutUint64(buf[0:uint64Size], uint64(f.m))
+	binary.BigEndian.PutUint64(buf[uint64Size:2*uint64Size], uint64(f.k))
+	binary.BigEndian.PutUint64(buf[2*uint64Size:bloomHeaderSize], uint64(f.count))
+
+	for i, word := range f.bits {
+		binary.BigEndian.PutUint64(buf[bloomHeaderSize+i*uint64Size:bloomHeaderSize+(i+1)*uint64Size], word)
+	}
+
+	return buf, nil
+}
+
+// UnmarshalBinary decodes the filter from a binary format produced by MarshalBinary.
+func (f *Filter) UnmarshalBinary(data []byte) error {
+	if len(data) < bloomHeaderSize {
+		return errBinaryDataTooShort
+	}
+
+	m := binary.BigEndian.Uint64(data[0:uint64Size])
+	k := binary.BigEndian.Uint64(data[uint64Size : 2*uint64Size])
+	count := binary.BigEndian.Uint64(data[2*uint64Size : bloomHeaderSize])
+
+	words := (m + bitsPerWord - 1) / bitsPerWord
+
+	if uint64(len(data)-bloomHeaderSize) != words*uint64Size {
+		return errBinaryDataLenMismatch
+	}
+
+	bitsArr := make([]uint64, words)
+	for i := range bitsArr {
+		bitsArr[i] = binary.BigEndian.Uint64(data[bloomHeaderSize+i*uint64Size : bloomHeaderSize+(i+1)*uint64Size])
+	}
+
+	f.mu.Lock()
+	f.m = uint(m)
+	f.k = uint(k)
+	f.count = uint(count)
+	f.bits = bitsArr
+	f.mu.Unlock()
+
+	return nil
 }
 
 // Reset clears the filter without reallocating the bit array.

@@ -366,7 +366,9 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 
 		return nil
 	case FormatTimeSeries:
-		return writeConvertedTimeSeries(model, writer)
+		return writeConvertedTimeSeries(model, FormatTimeSeries, writer)
+	case FormatTimeSeriesNDJSON:
+		return writeConvertedTimeSeries(model, FormatTimeSeriesNDJSON, writer)
 	case FormatPlot:
 		if plotRendererFn == nil {
 			return fmt.Errorf("%w: plot renderer not registered", ErrUnsupportedFormat)
@@ -380,7 +382,7 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 
 // writeConvertedTimeSeries builds merged timeseries from a unified model's
 // history reports and writes the result to the writer.
-func writeConvertedTimeSeries(model UnifiedModel, writer io.Writer) error {
+func writeConvertedTimeSeries(model UnifiedModel, format string, writer io.Writer) error {
 	reports := make(map[string]Report, len(model.Analyzers))
 
 	for _, ar := range model.Analyzers {
@@ -391,6 +393,10 @@ func writeConvertedTimeSeries(model UnifiedModel, writer io.Writer) error {
 
 	commitMeta := buildOrderedCommitMetaFromReports(reports)
 	ts := BuildMergedTimeSeriesDirect(nil, commitMeta, 0)
+
+	if format == FormatTimeSeriesNDJSON {
+		return WriteTimeSeriesNDJSON(ts, writer)
+	}
 
 	return WriteMergedTimeSeries(ts, writer)
 }

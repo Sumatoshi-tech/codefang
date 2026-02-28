@@ -9,21 +9,21 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-func TestHibernate_ClearsMergesMap(t *testing.T) {
+func TestHibernate_ClearsMergesTracker(t *testing.T) {
 	t.Parallel()
 
 	h := NewAnalyzer()
 	require.NoError(t, h.Initialize(nil))
 
 	// Add some merge entries.
-	h.merges[gitlib.NewHash("abc123")] = true
-	h.merges[gitlib.NewHash("def456")] = true
-	require.Len(t, h.merges, 2)
+	h.merges.SeenOrAdd(gitlib.NewHash("abc123"))
+	h.merges.SeenOrAdd(gitlib.NewHash("def456"))
 
 	err := h.Hibernate()
 	require.NoError(t, err)
 
-	require.Empty(t, h.merges, "merges map should be cleared after hibernate")
+	// After Reset(), the tracker should be empty: previously-added hashes are no longer seen.
+	require.False(t, h.merges.SeenOrAdd(gitlib.NewHash("abc123")), "tracker should be cleared after hibernate")
 }
 
 func TestHibernate_Succeeds(t *testing.T) {
@@ -91,11 +91,12 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 		People: map[int]pkgplumbing.LineStats{0: {Added: 42}},
 		Hashes: []gitlib.Hash{gitlib.NewHash("abc")},
 	}
-	h.merges[gitlib.NewHash("merge1")] = true
+	h.merges.SeenOrAdd(gitlib.NewHash("merge1"))
 
 	// Hibernate.
 	require.NoError(t, h.Hibernate())
-	require.Empty(t, h.merges)
+	// After hibernate, tracker is reset: previously-added hashes are no longer seen.
+	require.False(t, h.merges.SeenOrAdd(gitlib.NewHash("merge1")), "tracker should be cleared after hibernate")
 
 	// Boot.
 	require.NoError(t, h.Boot())
@@ -106,6 +107,6 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	require.Equal(t, 42, h.files["test.go"].People[0].Added)
 
 	// Can add new merges after boot.
-	h.merges[gitlib.NewHash("merge2")] = true
-	require.Len(t, h.merges, 1)
+	require.False(t, h.merges.SeenOrAdd(gitlib.NewHash("merge2")), "new merge should not be seen yet")
+	require.True(t, h.merges.SeenOrAdd(gitlib.NewHash("merge2")), "new merge should be seen after add")
 }

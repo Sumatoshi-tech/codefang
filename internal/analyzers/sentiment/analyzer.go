@@ -588,13 +588,38 @@ func buildTick(tick int, state *tickAccumulator) (analyze.TICK, error) {
 }
 
 func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return analyze.NewGenericAggregator[*tickAccumulator, *TickData](
+	agg := analyze.NewGenericAggregator[*tickAccumulator, *TickData](
 		opts,
 		extractTC,
 		mergeState,
 		sizeState,
 		buildTick,
 	)
+	agg.DrainCommitDataFn = drainSentimentCommitData
+
+	return agg
+}
+
+func drainSentimentCommitData(state *tickAccumulator) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+	if state == nil || len(state.commentsByCommit) == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string]any, len(state.commentsByCommit))
+	for hash, comments := range state.commentsByCommit {
+		entry := map[string]any{
+			"comment_count": len(comments),
+		}
+		if len(comments) > 0 {
+			entry["sentiment"] = ComputeSentiment(comments)
+		}
+
+		result[hash] = entry
+	}
+
+	state.commentsByCommit = make(map[string][]string)
+
+	return result, nil
 }
 
 func ticksToReport(_ context.Context, ticks []analyze.TICK, commitsByTick map[int][]gitlib.Hash) analyze.Report {
