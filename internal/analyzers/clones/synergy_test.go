@@ -65,8 +65,8 @@ type cloneLookupEntry struct {
 	maxSimilarity float64
 }
 
-func buildCloneLookup(clonePairs []ClonePair) map[string]cloneLookupEntry {
-	lookup := make(map[string]cloneLookupEntry, len(clonePairs))
+func buildCloneLookup(clonePairs []ClonePair) map[PairKey]cloneLookupEntry {
+	lookup := make(map[PairKey]cloneLookupEntry, len(clonePairs))
 
 	for _, pair := range clonePairs {
 		key := clonePairKey(pair.FuncA, pair.FuncB)
@@ -82,7 +82,7 @@ func buildCloneLookup(clonePairs []ClonePair) map[string]cloneLookupEntry {
 	return lookup
 }
 
-func matchCouplingWithClones(coupling couples.FileCouplingData, cloneLookup map[string]cloneLookupEntry) (RefactoringSignal, bool) {
+func matchCouplingWithClones(coupling couples.FileCouplingData, cloneLookup map[PairKey]cloneLookupEntry) (RefactoringSignal, bool) {
 	key := clonePairKey(coupling.File1, coupling.File2)
 
 	entry, found := cloneLookup[key]

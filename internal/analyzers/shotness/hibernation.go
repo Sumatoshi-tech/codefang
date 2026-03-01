@@ -15,6 +15,12 @@ func (s *Analyzer) Hibernate() error {
 		s.merges.Reset()
 	}
 
+	// Clear cumulative node/files maps to prevent unbounded growth across
+	// chunks. Per-commit data is captured in TCs; the aggregator accumulates
+	// counts and coupling independently. Within the next chunk, addNode
+	// re-populates s.nodes from UAST processing.
+	s.DiscardState()
+
 	return nil
 }
 
@@ -30,7 +36,7 @@ func (s *Analyzer) Boot() error {
 
 // workingStateSize is the estimated bytes of working state per commit
 // for the shotness analyzer (nodes + files maps grow with unique functions).
-const workingStateSize = 50 * 1024
+const workingStateSize = 2 * 1024
 
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the shotness analyzer (NodeDelta map + coupling pairs).

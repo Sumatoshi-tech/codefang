@@ -1318,7 +1318,7 @@ func TestTicksToReport_IncludesCommitStats(t *testing.T) {
 			Tick: 1,
 			Data: &TickResult{
 				GlobalHistory: sparseHistory{1: {0: 100}},
-				CommitStats: map[string]*BurndownCommitSummary{
+				CommitStats: map[string]*CommitSummary{
 					hashStr: {LinesAdded: 100, LinesRemoved: 5},
 				},
 			},
@@ -1327,7 +1327,7 @@ func TestTicksToReport_IncludesCommitStats(t *testing.T) {
 
 	report := ticksToReport(context.Background(), ticks, 30, 30, 0, false, 24*time.Hour, nil, nil)
 
-	cs, ok := report["commit_stats"].(map[string]*BurndownCommitSummary)
+	cs, ok := report["commit_stats"].(map[string]*CommitSummary)
 	require.True(t, ok)
 	require.Contains(t, cs, hashStr)
 	assert.Equal(t, int64(100), cs[hashStr].LinesAdded)
@@ -1348,7 +1348,7 @@ func TestExtractCommitTimeSeries(t *testing.T) {
 
 	hashStr := "aabbccdd00112233445566778899aabbccddeeff"
 	report := analyze.Report{
-		"commit_stats": map[string]*BurndownCommitSummary{
+		"commit_stats": map[string]*CommitSummary{
 			hashStr: {LinesAdded: 42, LinesRemoved: 7},
 		},
 	}
@@ -1372,7 +1372,7 @@ func TestExtractCommitTimeSeries_Empty(t *testing.T) {
 	assert.Nil(t, result)
 
 	result = b.ExtractCommitTimeSeries(analyze.Report{
-		"commit_stats": map[string]*BurndownCommitSummary{},
+		"commit_stats": map[string]*CommitSummary{},
 	})
 	assert.Nil(t, result)
 }

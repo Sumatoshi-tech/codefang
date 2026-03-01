@@ -7,33 +7,31 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
-// TimeSeriesExtractor extracts tick-indexed dimensions from a finalized report.
-// It returns sorted tick indices and a map of dimension_name -> values (parallel
-// to ticks). Returning nil ticks signals that no data is available.
-type TimeSeriesExtractor func(report analyze.Report) (ticks []int, dimensions map[string][]float64)
+// StoreTimeSeriesExtractor extracts tick-indexed dimensions from a store reader.
+// It is used by analyzers that write structured store kinds.
+type StoreTimeSeriesExtractor func(reader analyze.ReportReader) (ticks []int, dimensions map[string][]float64)
 
-// timeSeriesExtractors maps analyzer flag names to their time series extractors.
 var (
-	timeSeriesExtractorsMu sync.RWMutex
-	timeSeriesExtractors   = make(map[string]TimeSeriesExtractor)
+	storeTimeSeriesExtractorsMu sync.RWMutex
+	storeTimeSeriesExtractors   = make(map[string]StoreTimeSeriesExtractor)
 )
 
-// RegisterTimeSeriesExtractor registers an extractor for the given analyzer flag.
-// Analyzers call this in their init() to opt into cross-analyzer anomaly detection.
-func RegisterTimeSeriesExtractor(analyzerFlag string, fn TimeSeriesExtractor) {
-	timeSeriesExtractorsMu.Lock()
-	defer timeSeriesExtractorsMu.Unlock()
+// RegisterStoreTimeSeriesExtractor registers a store-based extractor for the given
+// analyzer flag.
+func RegisterStoreTimeSeriesExtractor(analyzerFlag string, fn StoreTimeSeriesExtractor) {
+	storeTimeSeriesExtractorsMu.Lock()
+	defer storeTimeSeriesExtractorsMu.Unlock()
 
-	timeSeriesExtractors[analyzerFlag] = fn
+	storeTimeSeriesExtractors[analyzerFlag] = fn
 }
 
-// snapshotExtractors returns a shallow copy of the registered extractors under the read lock.
-func snapshotExtractors() map[string]TimeSeriesExtractor {
-	timeSeriesExtractorsMu.RLock()
-	defer timeSeriesExtractorsMu.RUnlock()
+// snapshotStoreExtractors returns a shallow copy of the registered store extractors.
+func snapshotStoreExtractors() map[string]StoreTimeSeriesExtractor {
+	storeTimeSeriesExtractorsMu.RLock()
+	defer storeTimeSeriesExtractorsMu.RUnlock()
 
-	snap := make(map[string]TimeSeriesExtractor, len(timeSeriesExtractors))
-	maps.Copy(snap, timeSeriesExtractors)
+	snap := make(map[string]StoreTimeSeriesExtractor, len(storeTimeSeriesExtractors))
+	maps.Copy(snap, storeTimeSeriesExtractors)
 
 	return snap
 }

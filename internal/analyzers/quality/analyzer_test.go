@@ -51,7 +51,7 @@ func TestAnalyzer_Initialize(t *testing.T) {
 func TestAnalyzer_Consume_ReturnsTCWithTickQuality(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 	funcNode := buildTestFunctionNode()
 	hash := gitlib.NewHash(testHashA)
 
@@ -75,7 +75,7 @@ func TestAnalyzer_Consume_ReturnsTCWithTickQuality(t *testing.T) {
 func TestAnalyzer_Consume_EmptyChanges(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	ha.UAST.SetChangesForTest(nil)
 	ha.Ticks.Tick = 0
@@ -91,7 +91,7 @@ func TestAnalyzer_Consume_EmptyChanges(t *testing.T) {
 func TestAnalyzer_Consume_DeletedFile(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 	hash := gitlib.NewHash(testHashA)
 
 	// Deleted file: After is nil.
@@ -113,7 +113,7 @@ func TestAnalyzer_Consume_DeletedFile(t *testing.T) {
 func TestAnalyzer_Consume_MultipleFiles(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 	hash := gitlib.NewHash(testHashA)
 
 	funcNode1 := buildTestFunctionNode()
@@ -138,7 +138,7 @@ func TestAnalyzer_Consume_MultipleFiles(t *testing.T) {
 func TestAnalyzer_Consume_NoAccumulation(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 	funcNode := buildTestFunctionNode()
 
 	hash1 := gitlib.NewHash(testHashA)
@@ -176,7 +176,7 @@ func TestAnalyzer_Consume_NoAccumulation(t *testing.T) {
 func TestAnalyzer_Fork_IndependentSubAnalyzers(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	forks := ha.Fork(2)
 	require.Len(t, forks, 2)
@@ -200,8 +200,8 @@ func TestAnalyzer_Fork_IndependentSubAnalyzers(t *testing.T) {
 func TestAnalyzer_Merge_IsNoOp(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
-	branch := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
+	branch := newTestAnalyzer(t)
 
 	// Merge should not panic.
 	ha.Merge([]analyze.HistoryAnalyzer{branch})
@@ -210,7 +210,7 @@ func TestAnalyzer_Merge_IsNoOp(t *testing.T) {
 func TestAnalyzer_Fork_SharesCommitsByTick(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 	ha.commitsByTick = map[int][]gitlib.Hash{
 		0: {gitlib.NewHash(testHashA)},
 	}
@@ -485,13 +485,14 @@ func TestExtractFloat(t *testing.T) {
 
 // --- Helpers ---.
 
-func newTestAnalyzer() *Analyzer {
+func newTestAnalyzer(t testing.TB) *Analyzer {
+	t.Helper()
+
 	ha := NewAnalyzer()
 	ha.UAST = &plumbing.UASTChangesAnalyzer{}
 	ha.Ticks = &plumbing.TicksSinceStart{}
 
-	//nolint:errcheck // test helper; Initialize never errors.
-	ha.Initialize(nil)
+	require.NoError(t, ha.Initialize(nil))
 
 	return ha
 }

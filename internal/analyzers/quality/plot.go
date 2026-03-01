@@ -18,50 +18,6 @@ const (
 	maxStatsColumns  = 4
 )
 
-// GenerateSections returns the plot sections for combined reports.
-func (a *Analyzer) GenerateSections(report analyze.Report) ([]plotpage.Section, error) {
-	computed, err := ComputeAllMetrics(report)
-	if err != nil {
-		return nil, err
-	}
-
-	complexityChart := buildComplexityChart(computed)
-	halsteadChart := buildHalsteadChart(computed)
-	statSection := buildQualityStatsSection(computed)
-
-	return []plotpage.Section{
-		{
-			Title:    "Cyclomatic Complexity Over Time",
-			Subtitle: "Median, mean, and P95 cyclomatic complexity per tick.",
-			Chart:    plotpage.WrapChart(complexityChart),
-			Hint: plotpage.Hint{
-				Title: "How to interpret:",
-				Items: []string{
-					"<b>Median</b> (solid) — robust central tendency, resistant to outliers",
-					"<b>Mean</b> (dashed) — pulled up by complex outlier files; gap with median reveals skew",
-					"<b>P95</b> (dotted) — the 95th percentile; shows worst-case complexity trend",
-					"Rising median trend indicates overall code is becoming harder to maintain",
-					"Large mean/median gap reveals heavy-tailed outliers (generated code, bulk imports)",
-				},
-			},
-		},
-		{
-			Title:    "Halstead Volume Over Time",
-			Subtitle: "Median, mean, and P95 Halstead volume per tick.",
-			Chart:    plotpage.WrapChart(halsteadChart),
-			Hint: plotpage.Hint{
-				Title: "How to interpret:",
-				Items: []string{
-					"Halstead volume measures code size and complexity in information-theoretic terms",
-					"<b>Median</b> shows typical file complexity; <b>P95</b> shows outlier magnitude",
-					"Large gap between mean and median indicates a few very large/complex files dominate",
-				},
-			},
-		},
-		statSection,
-	}, nil
-}
-
 // chartSeries defines a single line series to plot.
 type chartSeries struct {
 	Name      string
@@ -206,7 +162,5 @@ func createEmptyChart(title string) *charts.Line {
 
 // RegisterPlotSections registers the quality plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/quality", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&Analyzer{}).GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("quality", GenerateStoreSections)
 }

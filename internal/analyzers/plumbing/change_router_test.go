@@ -10,6 +10,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+var (
+	errTest   = errors.New("test error")
+	errRename = errors.New("rename error")
+)
+
 func TestChangeRouter_Route(t *testing.T) {
 	t.Parallel()
 
@@ -78,9 +83,8 @@ func TestChangeRouter_Route(t *testing.T) {
 	t.Run("error propagation", func(t *testing.T) {
 		t.Parallel()
 
-		testErr := errors.New("test error") //nolint:err113 // Intended dynamic error for testing.
 		router := &ChangeRouter{
-			OnInsert: func(_ *gitlib.Change) error { return testErr },
+			OnInsert: func(_ *gitlib.Change) error { return errTest },
 		}
 
 		changes := gitlib.Changes{
@@ -88,15 +92,14 @@ func TestChangeRouter_Route(t *testing.T) {
 		}
 
 		err := router.Route(changes)
-		assert.ErrorIs(t, err, testErr)
+		assert.ErrorIs(t, err, errTest)
 	})
 
 	t.Run("rename error propagation", func(t *testing.T) {
 		t.Parallel()
 
-		testErr := errors.New("rename error") //nolint:err113 // Intended dynamic error for testing.
 		router := &ChangeRouter{
-			OnRename: func(_, _ string, _ *gitlib.Change) error { return testErr },
+			OnRename: func(_, _ string, _ *gitlib.Change) error { return errRename },
 		}
 
 		changes := gitlib.Changes{
@@ -104,6 +107,6 @@ func TestChangeRouter_Route(t *testing.T) {
 		}
 
 		err := router.Route(changes)
-		assert.ErrorIs(t, err, testErr)
+		assert.ErrorIs(t, err, errRename)
 	})
 }

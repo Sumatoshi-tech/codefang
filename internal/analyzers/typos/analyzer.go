@@ -264,7 +264,7 @@ func (t *Analyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC
 
 	var typos []Typo
 
-	for _, change := range changes {
+	for change := range changes {
 		if change.Before == nil || change.After == nil {
 			continue
 		}

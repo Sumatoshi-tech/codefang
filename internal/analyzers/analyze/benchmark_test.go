@@ -32,14 +32,24 @@ func generateLargeUAST(depth, breadth int) *node.Node {
 	return n
 }
 
+// Benchmark tree parameters.
+const (
+	benchTreeDepth     = 7
+	benchTreeBreadth   = 4
+	benchVisitorCount  = 4
+	benchVisitorCount8 = 8
+	benchDeepDepth     = 20
+	benchDeepBreadth   = 2
+)
+
 // BenchmarkSinglePass measures the performance of the MultiAnalyzerTraverser
 // which visits the AST once for multiple analyzers.
 func BenchmarkSinglePass(b *testing.B) {
-	root := generateLargeUAST(7, 4)
+	root := generateLargeUAST(benchTreeDepth, benchTreeBreadth)
 	traverser := analyze.NewMultiAnalyzerTraverser()
 
-	// Register 4 visitors (simulating 4 analyzers).
-	for range 4 {
+	// Register visitors (simulating multiple analyzers).
+	for range benchVisitorCount {
 		traverser.RegisterVisitor(&MockNodeVisitor{&MockVisitorAnalyzer{}})
 	}
 
@@ -52,10 +62,10 @@ func BenchmarkSinglePass(b *testing.B) {
 
 // BenchmarkSinglePass_8Visitors measures scaling with 8 visitors.
 func BenchmarkSinglePass_8Visitors(b *testing.B) {
-	root := generateLargeUAST(7, 4)
+	root := generateLargeUAST(benchTreeDepth, benchTreeBreadth)
 	traverser := analyze.NewMultiAnalyzerTraverser()
 
-	for range 8 {
+	for range benchVisitorCount8 {
 		traverser.RegisterVisitor(&MockNodeVisitor{&MockVisitorAnalyzer{}})
 	}
 
@@ -67,13 +77,13 @@ func BenchmarkSinglePass_8Visitors(b *testing.B) {
 }
 
 // BenchmarkSinglePass_DeepTree measures performance on a deep, narrow tree
-// (depth=20, breadth=2 => ~1M nodes). This is the scenario where the old
+// (depth=20, breadth=2 => ~1M nodes), the scenario where the old
 // recursive approach risked stack overflow.
 func BenchmarkSinglePass_DeepTree(b *testing.B) {
-	root := generateLargeUAST(20, 2)
+	root := generateLargeUAST(benchDeepDepth, benchDeepBreadth)
 	traverser := analyze.NewMultiAnalyzerTraverser()
 
-	for range 4 {
+	for range benchVisitorCount {
 		traverser.RegisterVisitor(&MockNodeVisitor{&MockVisitorAnalyzer{}})
 	}
 
@@ -84,29 +94,29 @@ func BenchmarkSinglePass_DeepTree(b *testing.B) {
 	}
 }
 
-// BenchmarkMultiPass measures the performance of sequential traversal
-// simulating the legacy approach where each analyzer traversed the AST independently.
+// BenchmarkMultiPass measures the performance of sequential traversal,
+// simulating the independent approach where each analyzer traversed the AST separately.
 func BenchmarkMultiPass(b *testing.B) {
-	root := generateLargeUAST(7, 4)
+	root := generateLargeUAST(benchTreeDepth, benchTreeBreadth)
 
 	// Create a generic traverser configuration.
 	config := common.TraversalConfig{
 		IncludeRoot: true,
 	}
 
-	// Pre-allocate visitors to simulate 4 distinct analysis passes.
-	visitors := make([]*common.UASTTraverser, 4)
-	for i := range 4 {
+	// Pre-allocate visitors to simulate distinct analysis passes.
+	visitors := make([]*common.UASTTraverser, benchVisitorCount)
+	for i := range benchVisitorCount {
 		visitors[i] = common.NewUASTTraverser(config)
 	}
 
-	// We'll simulate searching for "Leaf" nodes, which requires full traversal.
+	// Simulate searching for "Leaf" nodes, which requires full traversal.
 	nodeTypes := []string{"Leaf"}
 
 	b.ResetTimer()
 
 	for b.Loop() {
-		// Run 4 independent traversals.
+		// Run independent traversals.
 		for _, v := range visitors {
 			_ = v.FindNodesByType(root, nodeTypes)
 		}

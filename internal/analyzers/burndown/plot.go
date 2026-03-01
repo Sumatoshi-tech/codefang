@@ -1,7 +1,6 @@
 package burndown
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -150,59 +149,17 @@ type burndownParams struct {
 func extractParams(report analyze.Report) *burndownParams {
 	globalHistory, histOK := report["GlobalHistory"].(DenseHistory)
 	if !histOK {
-		// Fallback: after binary encode -> JSON decode, "GlobalHistory" becomes
-		// "global_survival" ([]any of map[string]any with band_breakdown).
-		globalHistory = extractDenseHistoryFromBinary(report)
-		if globalHistory == nil {
-			return nil
-		}
+		return nil
 	}
-
-	sampling, granularity := extractSamplingGranularity(report)
 
 	return &burndownParams{
 		globalHistory: globalHistory,
-		sampling:      sampling,
-		granularity:   granularity,
+		sampling:      extractInt(report, "Sampling", 0),
+		granularity:   extractInt(report, "Granularity", 0),
 		tickSize:      extractTickSize(report),
 		endTime:       extractEndTime(report),
 		projectName:   extractProjectName(report),
 	}
-}
-
-// extractSamplingGranularity extracts sampling and granularity from the report,
-// falling back to aggregate inference after binary round-trip.
-func extractSamplingGranularity(report analyze.Report) (sampling, granularity int) {
-	sampling = extractInt(report, "Sampling", 0)
-	granularity = extractInt(report, "Granularity", 0)
-
-	// After binary round-trip, Sampling/Granularity are lost. Infer from aggregate.
-	if sampling == 0 || granularity == 0 {
-		sampling, granularity = inferFromAggregate(report, sampling, granularity)
-	}
-
-	return sampling, granularity
-}
-
-// inferFromAggregate attempts to infer sampling and granularity from the "aggregate" key.
-func inferFromAggregate(report analyze.Report, sampling, granularity int) (outSampling, outGranularity int) {
-	agg, aggOK := report["aggregate"].(map[string]any)
-	if !aggOK {
-		return sampling, granularity
-	}
-
-	numSamples := extractIntFromMap(agg, "num_samples", 0)
-	numBands := extractIntFromMap(agg, "num_bands", 0)
-
-	if sampling == 0 && numSamples > 1 && numBands > 0 {
-		sampling = 1
-	}
-
-	if granularity == 0 && numBands > 0 {
-		granularity = 1
-	}
-
-	return sampling, granularity
 }
 
 // extractTickSize returns the tick size from the report, defaulting to 24 hours.
@@ -235,55 +192,6 @@ func extractProjectName(report analyze.Report) string {
 	return projectName
 }
 
-// extractDenseHistoryFromBinary converts binary-decoded JSON survival data back
-// to DenseHistory. After binary encode -> JSON decode round-trip, survival data
-// is []any where each element is map[string]any with "band_breakdown" ([]any of float64).
-func extractDenseHistoryFromBinary(report analyze.Report) DenseHistory {
-	const key = "global_survival"
-
-	raw, rawOK := report[key]
-	if !rawOK {
-		return nil
-	}
-
-	if raw == nil {
-		return DenseHistory{}
-	}
-
-	list, listOK := raw.([]any)
-	if !listOK {
-		return nil
-	}
-
-	if len(list) == 0 {
-		return DenseHistory{}
-	}
-
-	result := make(DenseHistory, len(list))
-
-	for i, item := range list {
-		m, mOK := item.(map[string]any)
-		if !mOK {
-			continue
-		}
-
-		bands, bandsOK := m["band_breakdown"].([]any)
-		if !bandsOK {
-			continue
-		}
-
-		row := make([]int64, len(bands))
-
-		for j, v := range bands {
-			row[j] = toInt64(v)
-		}
-
-		result[i] = row
-	}
-
-	return result
-}
-
 // extractInt extracts an int from the report, handling float64 from JSON decode.
 func extractInt(report analyze.Report, key string, fallback int) int {
 	if intVal, intOK := report[key].(int); intOK {
@@ -295,40 +203,6 @@ func extractInt(report analyze.Report, key string, fallback int) int {
 	}
 
 	return fallback
-}
-
-// extractIntFromMap extracts an int from a generic map, handling float64 from JSON decode.
-func extractIntFromMap(m map[string]any, key string, fallback int) int {
-	if floatVal, floatOK := m[key].(float64); floatOK {
-		return int(floatVal)
-	}
-
-	if intVal, intOK := m[key].(int); intOK {
-		return intVal
-	}
-
-	return fallback
-}
-
-// toInt64 converts a numeric value (int, float64, etc.) to int64.
-func toInt64(v any) int64 {
-	switch num := v.(type) {
-	case float64:
-		return int64(num)
-	case int64:
-		return num
-	case int:
-		return int64(num)
-	case json.Number:
-		i, err := num.Int64()
-		if err != nil {
-			return 0
-		}
-
-		return i
-	default:
-		return 0
-	}
 }
 
 // GenerateChart implements PlotGenerator interface.
@@ -679,9 +553,7 @@ func bandLabel(bandIdx int, params *burndownParams) string {
 
 // RegisterPlotSections registers the burndown plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/burndown", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("burndown", GenerateStoreSections)
 }
 
 func createEmptyBurndown() *charts.Line {

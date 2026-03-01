@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"io"
 	"os"
@@ -28,7 +29,15 @@ import (
 
 func TestMain(m *testing.M) {
 	renderer.RegisterPlotRenderer()
+	registerGobTypesForTest()
 	os.Exit(m.Run())
+}
+
+func registerGobTypesForTest() {
+	gob.Register(map[string]any{})
+	gob.Register("")
+	gob.Register(0)
+	gob.Register([]string{})
 }
 
 type stubStaticRunAnalyzer struct {
@@ -642,11 +651,16 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputPath := filepath.Join(tmpDir, "out.bin")
 
-	var raw bytes.Buffer
-	require.NoError(t, defaultStaticAnalyzers()[0].FormatReportBinary(analyze.Report{}, &raw))
+	model := analyze.UnifiedModel{
+		Version: analyze.UnifiedModelVersion,
+		Analyzers: []analyze.AnalyzerResult{
+			{ID: "static/complexity", Mode: analyze.ModeStatic, Report: analyze.Report{}},
+			{ID: "history/devs", Mode: analyze.ModeHistory, Report: analyze.Report{}},
+		},
+	}
 
-	testPipeline := buildPipeline(nil)
-	require.NoError(t, testPipeline.Leaves["devs"].Serialize(analyze.Report{}, analyze.FormatBinary, &raw))
+	var raw bytes.Buffer
+	require.NoError(t, reportutil.EncodeBinaryEnvelope(model, &raw))
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(
@@ -739,9 +753,16 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputPath := filepath.Join(tmpDir, "out.bin")
 
+	model := analyze.UnifiedModel{
+		Version: analyze.UnifiedModelVersion,
+		Analyzers: []analyze.AnalyzerResult{
+			{ID: "static/complexity", Mode: analyze.ModeStatic, Report: analyze.Report{"static": true}},
+			{ID: "history/devs", Mode: analyze.ModeHistory, Report: analyze.Report{"history": true}},
+		},
+	}
+
 	var raw bytes.Buffer
-	require.NoError(t, reportutil.EncodeBinaryEnvelope(analyze.Report{"static": true}, &raw))
-	require.NoError(t, reportutil.EncodeBinaryEnvelope(analyze.Report{"history": true}, &raw))
+	require.NoError(t, reportutil.EncodeBinaryEnvelope(model, &raw))
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(

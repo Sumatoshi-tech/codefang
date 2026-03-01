@@ -48,8 +48,8 @@ type CommitData struct {
 	NodesTouched map[string]NodeDelta
 }
 
-// ShotnessCommitSummary holds per-commit summary data for timeseries output.
-type ShotnessCommitSummary struct { //nolint:revive // used across packages.
+// CommitSummary holds per-commit summary data for timeseries output.
+type CommitSummary struct {
 	NodesTouched  int `json:"nodes_touched"`
 	CouplingPairs int `json:"coupling_pairs"`
 }
@@ -59,7 +59,7 @@ type TickData struct {
 	// Nodes maps node key to accumulated node data.
 	Nodes map[string]*nodeShotnessData
 	// CommitStats holds per-commit summary data for timeseries output.
-	CommitStats map[string]*ShotnessCommitSummary
+	CommitStats map[string]*CommitSummary
 }
 
 // nodeShotnessData is the aggregator's per-node accumulation state.
@@ -102,6 +102,14 @@ const (
 	// still record the node touches and coupling pair count but skip the O(N²)
 	// map updates.
 	maxCouplingNodes = 500
+
+	// combinatorialPairDivisor is the divisor in the combination formula
+	// C(n,2) = n*(n-1)/2 for computing the number of coupling pairs.
+	combinatorialPairDivisor = 2
+
+	// minCouplingNodes is the minimum number of touched nodes required
+	// to form at least one coupling pair.
+	minCouplingNodes = 2
 )
 
 // NewAnalyzer creates a new shotness analyzer.
@@ -424,7 +432,7 @@ func (s *Analyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC
 	diffs := s.FileDiff.FileDiffs
 	allNodes := map[string]bool{}
 
-	for _, change := range changesList {
+	for change := range changesList {
 		switch {
 		case change.After == nil:
 			s.handleDeletion(change)
@@ -613,31 +621,48 @@ func drainShotnessCommitData(state *TickData) (stats map[string]any, tickHashes 
 		}
 	}
 
-	state.CommitStats = make(map[string]*ShotnessCommitSummary)
+	state.CommitStats = make(map[string]*CommitSummary)
 
 	return result, nil
 }
 
-func extractTC(tc analyze.TC, byTick map[int]*TickData) error { //nolint:gocognit // coupling pair computation with threshold logic.
+func extractTC(tc analyze.TC, byTick map[int]*TickData) error {
 	cd, ok := tc.Data.(*CommitData)
 	if !ok || cd == nil {
 		return nil
 	}
 
-	// Shotness aggregates cumulatively across all history.
-	// We bucket everything into tc.Tick.
-	tick := tc.Tick
+	acc := getOrCreateTickData(byTick, tc.Tick)
+	accumulateNodes(acc, cd.NodesTouched)
+	couplingPairs := computeCouplingPairs(acc, cd.NodesTouched)
 
+	if !tc.CommitHash.IsZero() {
+		acc.CommitStats[tc.CommitHash.String()] = &CommitSummary{
+			NodesTouched:  len(cd.NodesTouched),
+			CouplingPairs: couplingPairs,
+		}
+	}
+
+	return nil
+}
+
+// getOrCreateTickData returns the TickData for the given tick, creating it if needed.
+func getOrCreateTickData(byTick map[int]*TickData, tick int) *TickData {
 	acc, ok := byTick[tick]
 	if !ok {
 		acc = &TickData{
 			Nodes:       make(map[string]*nodeShotnessData),
-			CommitStats: make(map[string]*ShotnessCommitSummary),
+			CommitStats: make(map[string]*CommitSummary),
 		}
 		byTick[tick] = acc
 	}
 
-	for key, delta := range cd.NodesTouched {
+	return acc
+}
+
+// accumulateNodes merges per-commit node deltas into the tick accumulator.
+func accumulateNodes(acc *TickData, nodesTouched map[string]NodeDelta) {
+	for key, delta := range nodesTouched {
 		nd, exists := acc.Nodes[key]
 		if !exists {
 			nd = &nodeShotnessData{
@@ -649,47 +674,43 @@ func extractTC(tc analyze.TC, byTick map[int]*TickData) error { //nolint:gocogni
 
 		nd.Count += delta.CountDelta
 	}
+}
 
-	// Compute coupling pairs inline from NodesTouched keys, avoiding
-	// the O(N²) allocation of a []CouplingPair slice. Skip when too many
-	// nodes are touched (mass refactor — coupling signal is noise).
-	n := len(cd.NodesTouched)
-	couplingPairs := 0
+// computeCouplingPairs computes coupling pairs from the touched nodes and
+// updates the accumulator's coupling maps. Skips the O(N^2) map updates
+// when too many nodes are touched (mass refactor -- coupling signal is noise).
+func computeCouplingPairs(acc *TickData, nodesTouched map[string]NodeDelta) int {
+	n := len(nodesTouched)
+	if n < minCouplingNodes {
+		return 0
+	}
 
-	if n >= 2 && n <= maxCouplingNodes {
-		keys := make([]string, 0, n)
-		for key := range cd.NodesTouched {
-			keys = append(keys, key)
-		}
+	couplingPairs := n * (n - 1) / combinatorialPairDivisor
 
-		sort.Strings(keys)
+	if n > maxCouplingNodes {
+		return couplingPairs
+	}
 
-		for i, key1 := range keys {
-			for _, key2 := range keys[i+1:] {
-				if nd, exists := acc.Nodes[key1]; exists {
-					nd.Couples[key2]++
-				}
+	keys := make([]string, 0, n)
+	for key := range nodesTouched {
+		keys = append(keys, key)
+	}
 
-				if nd, exists := acc.Nodes[key2]; exists {
-					nd.Couples[key1]++
-				}
+	sort.Strings(keys)
+
+	for i, key1 := range keys {
+		for _, key2 := range keys[i+1:] {
+			if nd, exists := acc.Nodes[key1]; exists {
+				nd.Couples[key2]++
+			}
+
+			if nd, exists := acc.Nodes[key2]; exists {
+				nd.Couples[key1]++
 			}
 		}
-
-		couplingPairs = n * (n - 1) / 2 //nolint:mnd // N choose 2.
-	} else if n >= 2 { //nolint:mnd // need at least 2 for pairs.
-		// Record the theoretical count but skip the expensive computation.
-		couplingPairs = n * (n - 1) / 2 //nolint:mnd // N choose 2.
 	}
 
-	if !tc.CommitHash.IsZero() {
-		acc.CommitStats[tc.CommitHash.String()] = &ShotnessCommitSummary{
-			NodesTouched:  len(cd.NodesTouched),
-			CouplingPairs: couplingPairs,
-		}
-	}
-
-	return nil
+	return couplingPairs
 }
 
 func mergeState(existing, incoming *TickData) *TickData {
@@ -706,7 +727,7 @@ func mergeState(existing, incoming *TickData) *TickData {
 	}
 
 	if existing.CommitStats == nil {
-		existing.CommitStats = make(map[string]*ShotnessCommitSummary)
+		existing.CommitStats = make(map[string]*CommitSummary)
 	}
 
 	maps.Copy(existing.CommitStats, incoming.CommitStats)
@@ -760,10 +781,9 @@ func buildTick(tick int, state *TickData) (analyze.TICK, error) {
 	}, nil
 }
 
-//nolint:gocognit // tick merge with node coupling accumulation.
 func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
 	merged := make(map[string]*nodeShotnessData)
-	commitStats := make(map[string]*ShotnessCommitSummary)
+	commitStats := make(map[string]*CommitSummary)
 	commitsByTick := make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
@@ -772,21 +792,7 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
 			continue
 		}
 
-		for key, nd := range td.Nodes {
-			existing, found := merged[key]
-			if found {
-				existing.Count += nd.Count
-				for ck, cv := range nd.Couples {
-					existing.Couples[ck] += cv
-				}
-			} else {
-				merged[key] = &nodeShotnessData{
-					Summary: nd.Summary,
-					Count:   nd.Count,
-					Couples: copyIntMap(nd.Couples),
-				}
-			}
-		}
+		mergeNodesInto(merged, td.Nodes)
 
 		for hash, cs := range td.CommitStats {
 			commitStats[hash] = cs
@@ -802,6 +808,29 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
 	}
 
 	return report
+}
+
+// mergeNodesInto merges source node data into the destination map,
+// accumulating counts and coupling pairs.
+func mergeNodesInto(dst map[string]*nodeShotnessData, src map[string]*nodeShotnessData) {
+	for key, nd := range src {
+		existing, found := dst[key]
+		if !found {
+			dst[key] = &nodeShotnessData{
+				Summary: nd.Summary,
+				Count:   nd.Count,
+				Couples: copyIntMap(nd.Couples),
+			}
+
+			continue
+		}
+
+		existing.Count += nd.Count
+
+		for ck, cv := range nd.Couples {
+			existing.Couples[ck] += cv
+		}
+	}
 }
 
 // buildReportFromMerged builds the Nodes/Counters report from merged node data.
@@ -894,7 +923,7 @@ func reverseNodeMap(nodes map[string]*node.Node) map[string]string {
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It extracts per-commit structural hotspot data for the unified timeseries output.
 func (s *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitStats, ok := report["commit_stats"].(map[string]*ShotnessCommitSummary)
+	commitStats, ok := report["commit_stats"].(map[string]*CommitSummary)
 	if !ok || len(commitStats) == 0 {
 		return nil
 	}

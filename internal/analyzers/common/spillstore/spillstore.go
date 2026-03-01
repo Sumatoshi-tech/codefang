@@ -20,6 +20,7 @@ import (
 type SpillStore[V any] struct {
 	current map[string]V
 	dir     string // temp directory; created lazily on first Spill.
+	baseDir string // parent directory for temp dirs; "" means os.TempDir().
 	spillN  int    // number of spill files written.
 }
 
@@ -27,6 +28,15 @@ type SpillStore[V any] struct {
 func New[V any]() *SpillStore[V] {
 	return &SpillStore[V]{
 		current: make(map[string]V),
+	}
+}
+
+// NewWithBaseDir creates a SpillStore that creates temp dirs under baseDir
+// instead of the system default. Empty baseDir behaves like New().
+func NewWithBaseDir[V any](baseDir string) *SpillStore[V] {
+	return &SpillStore[V]{
+		current: make(map[string]V),
+		baseDir: baseDir,
 	}
 }
 
@@ -66,7 +76,7 @@ func (s *SpillStore[V]) Spill() error {
 	}
 
 	if s.dir == "" {
-		dir, err := os.MkdirTemp("", "codefang-spill-*")
+		dir, err := os.MkdirTemp(s.baseDir, "codefang-spill-*")
 		if err != nil {
 			return fmt.Errorf("spillstore: create temp dir: %w", err)
 		}
@@ -159,6 +169,29 @@ func (s *SpillStore[V]) RestoreFromDir(dir string, count int) {
 	if s.current == nil {
 		s.current = make(map[string]V)
 	}
+}
+
+// ForEachSpill iterates through all spill files, calling fn for each decoded chunk.
+// Does not clean up spill files or modify the current buffer.
+// Safe to call on a nil receiver (no-op).
+func (s *SpillStore[V]) ForEachSpill(fn func(chunk map[string]V) error) error {
+	if s == nil {
+		return nil
+	}
+
+	for i := range s.spillN {
+		chunk, err := s.readSpillFile(i)
+		if err != nil {
+			return err
+		}
+
+		fnErr := fn(chunk)
+		if fnErr != nil {
+			return fnErr
+		}
+	}
+
+	return nil
 }
 
 // Cleanup removes the temp directory. Safe to call multiple times.

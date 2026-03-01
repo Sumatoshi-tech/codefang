@@ -25,6 +25,11 @@ import (
 // errMissingInterfaces is returned when leaf analyzers lack required streaming interfaces.
 var errMissingInterfaces = errors.New("streaming: leaf analyzers missing required interfaces")
 
+// prefetchChunkDisplayOffset converts a 0-based loop index to the 1-based
+// display number of the *prefetched* (next) chunk: idx + 2 = (idx+1 for
+// 1-basing) + (1 for the prefetched chunk ahead).
+const prefetchChunkDisplayOffset = 2
+
 // StreamingConfig holds configuration for streaming pipeline execution.
 type StreamingConfig struct {
 	MemBudget     int64
@@ -61,6 +66,15 @@ type StreamingConfig struct {
 	// return empty reports instead of calling FinalizeWithAggregators. Used when
 	// OnChunkComplete already handles output (e.g. streaming timeseries NDJSON).
 	SkipFinalize bool
+
+	// ReportStore, when set, causes finalization to write results one-at-a-time
+	// to the store via FinalizeToStore instead of materializing all reports in
+	// memory via FinalizeWithAggregators. Returns empty reports map.
+	ReportStore analyze.ReportStore
+
+	// TmpDir is the parent directory for temporary spill files.
+	// Empty means os.TempDir() (system default).
+	TmpDir string
 }
 
 // logger returns the configured logger, or a discard logger if nil.
@@ -76,6 +90,26 @@ func (c StreamingConfig) logger() *slog.Logger {
 // Triple-buffering prefetches 2 chunks ahead for maximum pipeline overlap.
 const maxStreamingBuffering = 3
 
+// configureRunnerForStreaming applies streaming-specific settings to the runner.
+func configureRunnerForStreaming(runner *Runner, config StreamingConfig, aggSpillBudget int64) {
+	runner.MemBudget = config.MemBudget
+	runner.TCSink = config.TCSink
+	runner.AggSpillBudget = aggSpillBudget
+	runner.TmpDir = config.TmpDir
+}
+
+// clearCheckpointOnCompletion removes the checkpoint directory after all chunks
+// have been processed successfully. Logs a warning on failure.
+func clearCheckpointOnCompletion(ctx context.Context, logger *slog.Logger, cpManager *checkpoint.Manager) {
+	if cpManager == nil {
+		return
+	}
+
+	if clearErr := cpManager.Clear(); clearErr != nil {
+		logger.WarnContext(ctx, "failed to clear checkpoint after completion", "error", clearErr)
+	}
+}
+
 // RunStreaming executes the pipeline in streaming chunks with optional checkpoint support.
 // The scheduler determines the buffering factor (single/double/triple) based on the
 // memory budget. Higher buffering factors overlap more pipeline phases with analyzer
@@ -83,7 +117,7 @@ const maxStreamingBuffering = 3
 //
 // When the commit set is trivially small (single commit) and no streaming features are
 // needed, delegates to Runner.Run for simplicity and lower overhead.
-func RunStreaming( //nolint:funlen // sequential pipeline setup.
+func RunStreaming(
 	ctx context.Context,
 	runner *Runner,
 	commits []*gitlib.Commit,
@@ -124,9 +158,7 @@ func RunStreaming( //nolint:funlen // sequential pipeline setup.
 	ap := streaming.NewAdaptivePlanner(len(commits), config.MemBudget, perSlotGrowth, pipelineOverhead)
 
 	// Align debug.SetMemoryLimit with the user's budget.
-	runner.MemBudget = config.MemBudget
-	runner.TCSink = config.TCSink
-	runner.AggSpillBudget = schedule.AggSpillBudget
+	configureRunnerForStreaming(runner, config, schedule.AggSpillBudget)
 
 	err := validateStreamingInterfaces(analyzers, runner.CoreCount)
 	if err != nil {
@@ -163,12 +195,7 @@ func RunStreaming( //nolint:funlen // sequential pipeline setup.
 		return nil, err
 	}
 
-	if cpManager != nil {
-		clearErr := cpManager.Clear()
-		if clearErr != nil {
-			logger.WarnContext(ctx, "failed to clear checkpoint after completion", "error", clearErr)
-		}
-	}
+	clearCheckpointOnCompletion(ctx, logger, cpManager)
 
 	// In TCSink mode (NDJSON) or SkipFinalize mode (streaming timeseries NDJSON),
 	// output was already written. Return empty (non-nil) map.
@@ -176,7 +203,7 @@ func RunStreaming( //nolint:funlen // sequential pipeline setup.
 		return make(map[analyze.HistoryAnalyzer]analyze.Report), nil
 	}
 
-	return runner.FinalizeWithAggregators(ctx)
+	return finalizeRunner(ctx, runner, config)
 }
 
 // RunStreamingFromIterator executes the pipeline using a commit iterator instead
@@ -184,7 +211,7 @@ func RunStreaming( //nolint:funlen // sequential pipeline setup.
 // iterator and freed after processing, keeping memory usage proportional to
 // chunk size rather than total repository size. Double-buffering is not supported
 // in iterator mode; use RunStreaming with a pre-loaded slice for that.
-func RunStreamingFromIterator( //nolint:funlen // sequential pipeline setup.
+func RunStreamingFromIterator(
 	ctx context.Context,
 	runner *Runner,
 	iter *gitlib.CommitIter,
@@ -210,9 +237,7 @@ func RunStreamingFromIterator( //nolint:funlen // sequential pipeline setup.
 	ap := streaming.NewAdaptivePlanner(commitCount, config.MemBudget, growthPerCommit, pipelineOverhead)
 	chunks := schedule.Chunks
 
-	runner.MemBudget = config.MemBudget
-	runner.TCSink = config.TCSink
-	runner.AggSpillBudget = schedule.AggSpillBudget
+	configureRunnerForStreaming(runner, config, schedule.AggSpillBudget)
 
 	err := validateStreamingInterfaces(analyzers, runner.CoreCount)
 	if err != nil {
@@ -257,16 +282,30 @@ func RunStreamingFromIterator( //nolint:funlen // sequential pipeline setup.
 		return nil, err
 	}
 
-	if cpManager != nil {
-		clearErr := cpManager.Clear()
-		if clearErr != nil {
-			logger.WarnContext(ctx, "failed to clear checkpoint after completion", "error", clearErr)
-		}
-	}
+	clearCheckpointOnCompletion(ctx, logger, cpManager)
 
 	// In TCSink mode (NDJSON) or SkipFinalize mode (streaming timeseries NDJSON),
 	// output was already written. Return empty (non-nil) map.
 	if config.TCSink != nil || config.SkipFinalize {
+		return make(map[analyze.HistoryAnalyzer]analyze.Report), nil
+	}
+
+	return finalizeRunner(ctx, runner, config)
+}
+
+// finalizeRunner dispatches to FinalizeToStore when a ReportStore is configured,
+// otherwise falls back to FinalizeWithAggregators.
+func finalizeRunner(
+	ctx context.Context,
+	runner *Runner,
+	config StreamingConfig,
+) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
+	if config.ReportStore != nil {
+		storeErr := runner.FinalizeToStore(ctx, config.ReportStore)
+		if storeErr != nil {
+			return nil, storeErr
+		}
+
 		return make(map[analyze.HistoryAnalyzer]analyze.Report), nil
 	}
 
@@ -630,6 +669,20 @@ func collectCheckpointables(analyzers []analyze.HistoryAnalyzer) []checkpoint.Ch
 	return checkpointables
 }
 
+// FlushableAnalyzer is optionally implemented by HistoryAnalyzers that hold
+// per-commit state and need to flush it at the end of a chunk to avoid memory leaks.
+type FlushableAnalyzer interface {
+	Flush()
+}
+
+func flushAnalyzers(analyzers []analyze.HistoryAnalyzer) {
+	for _, a := range analyzers {
+		if f, ok := a.(FlushableAnalyzer); ok {
+			f.Flush()
+		}
+	}
+}
+
 func tryResumeFromCheckpoint(
 	cpManager *checkpoint.Manager,
 	checkpointables []checkpoint.Checkpointable,
@@ -715,6 +768,8 @@ func processChunksWithCheckpoint(
 
 		saveChunkCheckpoint(ctx, logger, runner, cpManager, checkpointables, commits, chunk, chunks, i, repoPath, analyzerNames)
 
+		flushAnalyzers(runner.Analyzers)
+
 		if onChunkComplete != nil {
 			cbErr := onChunkComplete(runner)
 			if cbErr != nil {
@@ -729,7 +784,7 @@ func processChunksWithCheckpoint(
 // processChunksFromIterator loads commits chunk-at-a-time from the iterator,
 // processes each chunk, and frees the commits after processing. This keeps
 // memory proportional to chunk size rather than total repository size.
-func processChunksFromIterator( //nolint:funlen,gocognit // sequential chunk processing loop.
+func processChunksFromIterator(
 	ctx context.Context,
 	logger *slog.Logger,
 	runner *Runner,
@@ -786,39 +841,73 @@ func processChunksFromIterator( //nolint:funlen,gocognit // sequential chunk pro
 		stats.pipeline.Add(pStats)
 
 		after := streaming.TakeHeapSnapshot()
-		obs := buildReplanObservation(i, chunk, before, after, aggSizeBefore, runner, chunks)
-		newChunks := ap.Replan(obs)
-		replanned := len(newChunks) != len(chunks)
 
-		logChunkMemory(ctx, logger, ap, chunk, before, after, i, memBudget, replanned)
+		var postErr error
 
-		if replanned {
-			logger.InfoContext(ctx, "streaming[iter]: adaptive replan",
-				"old_chunks", len(chunks), "new_chunks", len(newChunks),
-				"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/streaming.KiB)
-		}
-
-		chunks = newChunks
-
-		saveIteratorCheckpoint(
-			ctx, logger, runner, cpManager, checkpointables, chunkCommits, commitCount,
-			chunk, chunks, i, repoPath, analyzerNames,
-		)
-
-		// Free all commits in this chunk — they are no longer needed.
-		freeCommits(chunkCommits)
-
-		handleMemoryPressure(ctx, logger, after, memBudget)
-
-		if onChunkComplete != nil {
-			cbErr := onChunkComplete(runner)
-			if cbErr != nil {
-				return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", i+1, cbErr)
-			}
+		chunks, postErr = postProcessIteratorChunk(ctx, logger, runner, ap, cpManager,
+			checkpointables, chunkCommits, commitCount, chunk, chunks, i,
+			before, after, aggSizeBefore, repoPath, analyzerNames, memBudget, onChunkComplete)
+		if postErr != nil {
+			return stats, postErr
 		}
 	}
 
 	return stats, nil
+}
+
+// postProcessIteratorChunk handles adaptive replanning, checkpoint saving,
+// commit freeing, flushing, memory pressure, and onChunkComplete for a single
+// iterator-mode chunk. Returns the (possibly replanned) chunks and any error.
+func postProcessIteratorChunk(
+	ctx context.Context,
+	logger *slog.Logger,
+	runner *Runner,
+	ap *streaming.AdaptivePlanner,
+	cpManager *checkpoint.Manager,
+	checkpointables []checkpoint.Checkpointable,
+	chunkCommits []*gitlib.Commit,
+	commitCount int,
+	chunk streaming.ChunkBounds,
+	chunks []streaming.ChunkBounds,
+	chunkIdx int,
+	before, after streaming.HeapSnapshot,
+	aggSizeBefore int64,
+	repoPath string,
+	analyzerNames []string,
+	memBudget int64,
+	onChunkComplete func(runner *Runner) error,
+) ([]streaming.ChunkBounds, error) {
+	obs := buildReplanObservation(chunkIdx, chunk, before, after, aggSizeBefore, runner, chunks)
+	newChunks := ap.Replan(obs)
+	replanned := len(newChunks) != len(chunks)
+
+	logChunkMemory(ctx, logger, ap, chunk, before, after, chunkIdx, memBudget, replanned)
+
+	if replanned {
+		logger.InfoContext(ctx, "streaming[iter]: adaptive replan",
+			"old_chunks", len(chunks), "new_chunks", len(newChunks),
+			"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/streaming.KiB)
+	}
+
+	saveIteratorCheckpoint(
+		ctx, logger, runner, cpManager, checkpointables, chunkCommits, commitCount,
+		chunk, newChunks, chunkIdx, repoPath, analyzerNames,
+	)
+
+	// Free all commits in this chunk — they are no longer needed.
+	freeCommits(chunkCommits)
+
+	flushAnalyzers(runner.Analyzers)
+
+	handleMemoryPressure(ctx, logger, after, memBudget)
+
+	if onChunkComplete != nil {
+		if cbErr := onChunkComplete(runner); cbErr != nil {
+			return newChunks, fmt.Errorf("chunk %d: onChunkComplete: %w", chunkIdx+1, cbErr)
+		}
+	}
+
+	return newChunks, nil
 }
 
 // loadCommitsFromIterator reads n commits from the iterator into a slice.
@@ -928,7 +1017,7 @@ type doubleBufferState struct {
 // analyzer consumption. The first chunk runs normally (no prefetch available).
 // For each subsequent chunk, the pipeline was started during the previous
 // chunk's consumption, so data is immediately available.
-func processChunksDoubleBuffered( //nolint:funlen,gocognit // sequential double-buffered chunk processing.
+func processChunksDoubleBuffered(
 	ctx context.Context,
 	logger *slog.Logger,
 	runner *Runner,
@@ -981,42 +1070,71 @@ func processChunksDoubleBuffered( //nolint:funlen,gocognit // sequential double-
 		stats.record(dur, idx, st.chunks[idx])
 		stats.pipeline.Add(pStats)
 
+		flushAnalyzers(st.runner.Analyzers)
+
 		after := streaming.TakeHeapSnapshot()
 		prefetch = st.replanAndDrainStale(ctx, idx, before, after, aggSizeBefore, prefetchedNext, prefetch)
 
 		handleMemoryPressure(ctx, logger, after, st.memBudget)
 
-		if st.onChunkComplete != nil {
-			cbErr := st.onChunkComplete(st.runner)
-			if cbErr != nil {
-				drainPrefetch(prefetch)
+		if cbErr := st.invokeOnChunkComplete(idx + 1); cbErr != nil {
+			drainPrefetch(prefetch)
 
-				return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", idx+1, cbErr)
-			}
+			return stats, cbErr
 		}
 
-		consumed, consumeDur, consumePStats, consumeErr := st.consumePrefetched(ctx, idx, prefetch)
+		skip, consumeErr := st.consumeAndRecordPrefetch(ctx, idx, prefetch, &stats)
 		if consumeErr != nil {
 			return stats, consumeErr
 		}
 
-		if consumed {
-			stats.record(consumeDur, idx+1, st.chunks[idx+1])
-			stats.pipeline.Add(consumePStats)
-
-			if st.onChunkComplete != nil {
-				cbErr := st.onChunkComplete(st.runner)
-				if cbErr != nil {
-					//nolint:mnd // idx+2 is the prefetched chunk number.
-					return stats, fmt.Errorf("chunk %d: onChunkComplete: %w", idx+2, cbErr)
-				}
-			}
-
+		if skip {
 			idx++ // Skip the prefetched chunk in the loop.
 		}
 	}
 
 	return stats, nil
+}
+
+// invokeOnChunkComplete calls the onChunkComplete callback if set, wrapping
+// any error with the chunk display number.
+func (st *doubleBufferState) invokeOnChunkComplete(chunkDisplayNum int) error {
+	if st.onChunkComplete == nil {
+		return nil
+	}
+
+	if cbErr := st.onChunkComplete(st.runner); cbErr != nil {
+		return fmt.Errorf("chunk %d: onChunkComplete: %w", chunkDisplayNum, cbErr)
+	}
+
+	return nil
+}
+
+// consumeAndRecordPrefetch consumes a prefetched chunk (if available), records
+// its stats, flushes analyzers, and invokes onChunkComplete. Returns true if
+// a prefetched chunk was consumed (caller should skip it in the loop).
+func (st *doubleBufferState) consumeAndRecordPrefetch(
+	ctx context.Context, idx int, prefetch <-chan prefetchedChunk, stats *chunkStats,
+) (bool, error) {
+	consumed, consumeDur, consumePStats, consumeErr := st.consumePrefetched(ctx, idx, prefetch)
+	if consumeErr != nil {
+		return false, consumeErr
+	}
+
+	if !consumed {
+		return false, nil
+	}
+
+	stats.record(consumeDur, idx+1, st.chunks[idx+1])
+	stats.pipeline.Add(consumePStats)
+
+	flushAnalyzers(st.runner.Analyzers)
+
+	if cbErr := st.invokeOnChunkComplete(idx + prefetchChunkDisplayOffset); cbErr != nil {
+		return false, cbErr
+	}
+
+	return true, nil
 }
 
 // replanAndDrainStale runs three-metric adaptive replanning for the double-buffered

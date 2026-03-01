@@ -181,7 +181,7 @@ func TestAnalyzer_SerializeTICKs_YAML(t *testing.T) {
 	assert.Contains(t, output, "aggregate:")
 }
 
-// --- Serialize Tests (legacy path) ---.
+// --- Serialize Tests (in-memory path) ---.
 
 func TestAnalyzer_Serialize_JSON(t *testing.T) {
 	t.Parallel()

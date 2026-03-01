@@ -13,45 +13,49 @@ type ChangeRouter struct {
 }
 
 // Route iterates over the given changes and delegates to the configured handlers.
-//
-//nolint:gocognit // Routing logic has high cognitive complexity.
 func (r *ChangeRouter) Route(changes gitlib.Changes) error {
 	for _, change := range changes {
-		if change.Action == gitlib.Modify && change.From.Name != change.To.Name {
-			if r.OnRename != nil {
-				err := r.OnRename(change.From.Name, change.To.Name, change)
-				if err != nil {
-					return err
-				}
-			}
-
-			continue
-		}
-
-		switch change.Action {
-		case gitlib.Insert:
-			if r.OnInsert != nil {
-				err := r.OnInsert(change)
-				if err != nil {
-					return err
-				}
-			}
-		case gitlib.Delete:
-			if r.OnDelete != nil {
-				err := r.OnDelete(change)
-				if err != nil {
-					return err
-				}
-			}
-		case gitlib.Modify:
-			if r.OnModify != nil {
-				err := r.OnModify(change)
-				if err != nil {
-					return err
-				}
-			}
+		err := r.routeChange(change)
+		if err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// routeChange dispatches a single change to the appropriate handler.
+func (r *ChangeRouter) routeChange(change *gitlib.Change) error {
+	if change.Action == gitlib.Modify && change.From.Name != change.To.Name {
+		return r.handleRename(change)
+	}
+
+	switch change.Action {
+	case gitlib.Insert:
+		return callChangeHandler(r.OnInsert, change)
+	case gitlib.Delete:
+		return callChangeHandler(r.OnDelete, change)
+	case gitlib.Modify:
+		return callChangeHandler(r.OnModify, change)
+	}
+
+	return nil
+}
+
+// handleRename invokes the OnRename handler if it is non-nil.
+func (r *ChangeRouter) handleRename(change *gitlib.Change) error {
+	if r.OnRename == nil {
+		return nil
+	}
+
+	return r.OnRename(change.From.Name, change.To.Name, change)
+}
+
+// callChangeHandler invokes a handler function if it is non-nil.
+func callChangeHandler(handler func(*gitlib.Change) error, change *gitlib.Change) error {
+	if handler == nil {
+		return nil
+	}
+
+	return handler(change)
 }

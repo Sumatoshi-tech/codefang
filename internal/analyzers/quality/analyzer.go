@@ -156,7 +156,7 @@ func (a *Analyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC
 	changes := a.UAST.Changes(ctx)
 	cq := &TickQuality{}
 
-	for _, change := range changes {
+	for change := range changes {
 		if change.After == nil {
 			continue
 		}

@@ -103,7 +103,7 @@ func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Repor
 
 // findClonePairs queries the LSH index and collects unique clone pairs.
 func findClonePairs(entries []funcEntry, idx *lsh.Index) []ClonePair {
-	seen := make(map[string]bool)
+	seen := make(map[PairKey]bool)
 
 	var pairs []ClonePair
 
@@ -141,7 +141,7 @@ func matchCandidates(
 	entry funcEntry,
 	candidates []string,
 	sigMap map[string]*minhash.Signature,
-	seen map[string]bool,
+	seen map[PairKey]bool,
 	pairs []ClonePair,
 ) []ClonePair {
 	for _, candidateID := range candidates {

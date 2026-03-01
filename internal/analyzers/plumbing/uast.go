@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
+	"os"
 	"runtime"
 	"sync"
 
@@ -23,7 +25,8 @@ type UASTChangesAnalyzer struct {
 	Goroutines int
 	parser     *uast.Parser
 	changes    []uast.Change
-	parsed     bool // tracks whether parsing was done for current commit.
+	parsed     bool   // tracks whether parsing was done for current commit.
+	spillPath  string // path to spill file from current commit (for cleanup on next Consume).
 }
 
 const (
@@ -99,21 +102,42 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 	return nil
 }
 
-// Consume resets state for the new commit. Parsing is deferred until Changes() is called.
-// Releases previous commit's UAST trees back to the node/positions pools.
-// If the context contains pre-computed UAST changes from the pipeline, they are used directly.
-func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
+// Flush releases internal UAST trees and temporary files.
+func (c *UASTChangesAnalyzer) Flush() {
 	// Release previous commit's UAST trees back to pools for reuse.
 	for _, ch := range c.changes {
 		node.ReleaseTree(ch.Before)
 		node.ReleaseTree(ch.After)
 	}
 
-	// Use pre-computed UAST changes from the pipeline if available.
-	if ac.UASTChanges != nil {
+	c.changes = nil
+	c.parsed = false
+
+	// Cleanup previous commit's spill file.
+	if c.spillPath != "" {
+		os.Remove(c.spillPath)
+		c.spillPath = ""
+	}
+}
+
+// Consume resets state for the new commit. Parsing is deferred until Changes() is called.
+// Releases previous commit's UAST trees back to the node/positions pools.
+// If the context contains pre-computed UAST changes from the pipeline, they are used directly.
+// If the context contains a spill path, the changes are deserialized eagerly from disk
+// to avoid race conditions when Fork() creates clones sharing this analyzer.
+func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
+	c.Flush()
+
+	switch {
+	case ac.UASTChanges != nil:
+		// Use pre-computed UAST changes from the pipeline if available.
 		c.changes = ac.UASTChanges
 		c.parsed = true
-	} else {
+	case ac.UASTSpillPath != "":
+		// Spilled UAST changes (large commits) — store the path to stream lazily.
+		c.spillPath = ac.UASTSpillPath
+		c.parsed = true
+	default:
 		c.changes = nil
 		c.parsed = false
 	}
@@ -123,22 +147,30 @@ func (c *UASTChangesAnalyzer) Consume(_ context.Context, ac *analyze.Context) (a
 
 // Changes returns parsed UAST changes, parsing lazily on first call per commit.
 // This avoids expensive UAST parsing when downstream analyzers don't need it.
-func (c *UASTChangesAnalyzer) Changes(ctx context.Context) []uast.Change {
-	if c.parsed {
-		return c.changes
+func (c *UASTChangesAnalyzer) Changes(ctx context.Context) iter.Seq[uast.Change] {
+	if c.spillPath != "" {
+		return analyze.StreamUASTChanges(c.spillPath, c.TreeDiff.Changes)
 	}
 
-	c.parsed = true
-	treeChanges := c.TreeDiff.Changes
-	cache := c.BlobCache.Cache
+	if !c.parsed {
+		c.parsed = true
+		treeChanges := c.TreeDiff.Changes
+		cache := c.BlobCache.Cache
 
-	if len(treeChanges) <= 1 || c.Goroutines <= 1 {
-		c.changes = c.changesSequential(ctx, treeChanges, cache)
-	} else {
-		c.changes = c.changesParallel(ctx, treeChanges, cache)
+		if len(treeChanges) <= 1 || c.Goroutines <= 1 {
+			c.changes = c.changesSequential(ctx, treeChanges, cache)
+		} else {
+			c.changes = c.changesParallel(ctx, treeChanges, cache)
+		}
 	}
 
-	return c.changes
+	return func(yield func(uast.Change) bool) {
+		for _, ch := range c.changes {
+			if !yield(ch) {
+				break
+			}
+		}
+	}
 }
 
 // changesSequential parses UAST changes one file at a time.

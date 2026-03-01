@@ -44,6 +44,15 @@ const (
 	keyValue              = 2
 	mrowValue             = 2
 	renameCapDivisor      = 2
+
+	// kib is 1 KiB in bytes.
+	kib = 1024
+
+	// estimatedStateSizeKiB is the per-commit working state growth estimate in KiB.
+	estimatedStateSizeKiB = 950
+
+	// estimatedTCSizeKiB is the per-commit TC payload size estimate in KiB.
+	estimatedTCSizeKiB = 74
 )
 
 // Shard holds per-file burndown data within a partition.
@@ -141,8 +150,8 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 		},
 		Sequential:         true,
 		CPUHeavyFlag:       false,
-		EstimatedStateSize: 950 * 1024, //nolint:mnd // Estimated size.
-		EstimatedTCSize:    74 * 1024,  //nolint:mnd // Estimated size.
+		EstimatedStateSize: estimatedStateSizeKiB * kib,
+		EstimatedTCSize:    estimatedTCSizeKiB * kib,
 		ComputeMetricsFn:   ComputeAllMetrics,
 		AggregatorFn:       ha.NewAggregator,
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
@@ -150,7 +159,7 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 				ctx, ticks,
 				ha.Granularity, ha.Sampling, ha.PeopleNumber,
 				ha.TrackFiles, ha.TickSize,
-				ha.reversedPeopleDict, ha.pathInterner,
+				ha.getReversedPeopleDict(), ha.pathInterner,
 			)
 		},
 	}
@@ -258,6 +267,8 @@ func (b *HistoryAnalyzer) Configure(facts map[string]any) error {
 
 	if val, exists := facts[ConfigBurndownHibernationDirectory].(string); exists {
 		b.HibernationDirectory = val
+	} else if tmpVal, tmpExists := facts[analyze.ConfigTmpDir].(string); tmpExists && tmpVal != "" {
+		b.HibernationDirectory = tmpVal
 	}
 
 	if val, exists := facts[ConfigBurndownDebug].(bool); exists {
@@ -635,7 +646,7 @@ func (b *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			Debug:                b.Debug,
 			TrackFiles:           b.TrackFiles,
 			HibernationToDisk:    b.HibernationToDisk,
-			reversedPeopleDict:   b.reversedPeopleDict,
+			reversedPeopleDict:   b.getReversedPeopleDict(),
 		}
 
 		// Create fresh shards for this fork.
@@ -826,7 +837,7 @@ func (b *HistoryAnalyzer) ensureSpillDir() error {
 		return nil
 	}
 
-	dir, err := os.MkdirTemp("", "codefang-burndown-spill-*")
+	dir, err := os.MkdirTemp(b.HibernationDirectory, "codefang-burndown-spill-*")
 	if err != nil {
 		return fmt.Errorf("create burndown spill dir: %w", err)
 	}
@@ -966,6 +977,14 @@ func (b *HistoryAnalyzer) SerializeTICKs(ticks []analyze.TICK, format string, wr
 	}).SerializeTICKs(ticks, format, writer)
 }
 
+func (b *HistoryAnalyzer) getReversedPeopleDict() []string {
+	if b.Identity != nil && len(b.Identity.ReversedPeopleDict) > 0 {
+		return b.Identity.ReversedPeopleDict
+	}
+
+	return b.reversedPeopleDict
+}
+
 // NewAggregator creates a burndown aggregator that accumulates sparse history
 // deltas from the TC stream and produces dense history matrices for the report.
 func (b *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
@@ -973,14 +992,14 @@ func (b *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 		opts,
 		b.Granularity, b.Sampling, b.PeopleNumber,
 		b.TrackFiles, b.TickSize,
-		b.reversedPeopleDict, b.pathInterner,
+		b.getReversedPeopleDict(), b.pathInterner,
 	)
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It extracts per-commit burndown summary data for the unified timeseries output.
 func (b *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitStats, ok := report["commit_stats"].(map[string]*BurndownCommitSummary)
+	commitStats, ok := report["commit_stats"].(map[string]*CommitSummary)
 	if !ok || len(commitStats) == 0 {
 		return nil
 	}

@@ -10,10 +10,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
-func NewUnifiedModel(results []AnalyzerResult) UnifiedModel {
-	return analyze.NewUnifiedModel(results)
-}
-
 func ParseUnifiedModelJSON(data []byte) (UnifiedModel, error) {
 	return analyze.ParseUnifiedModelJSON(data)
 }
@@ -55,15 +51,18 @@ func TestParseUnifiedModelJSON_RejectsInvalid(t *testing.T) {
 func TestRenderUnifiedModelPlot(t *testing.T) {
 	t.Parallel()
 
-	model := NewUnifiedModel([]AnalyzerResult{
-		{
-			ID:   "history/devs",
-			Mode: analyze.ModeHistory,
-			Report: analyze.Report{
-				"aggregate": map[string]any{"authors": 3},
+	model := UnifiedModel{
+		Version: UnifiedModelVersion,
+		Analyzers: []AnalyzerResult{
+			{
+				ID:   "history/devs",
+				Mode: analyze.ModeHistory,
+				Report: analyze.Report{
+					"aggregate": map[string]any{"authors": 3},
+				},
 			},
 		},
-	})
+	}
 
 	var buf bytes.Buffer
 

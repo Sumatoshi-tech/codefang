@@ -10,39 +10,58 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// RegisterTimeSeriesExtractor registers the quality analyzer's time series
-// extractor with the anomaly package for cross-analyzer anomaly detection.
-func RegisterTimeSeriesExtractor() {
-	anomaly.RegisterTimeSeriesExtractor("quality", extractTimeSeries)
+// Dimension names used by the quality time series extractor.
+const (
+	DimComplexityMedian  = "complexity_median"
+	DimComplexityP95     = "complexity_p95"
+	DimHalsteadVolMedian = "halstead_vol_median"
+	DimDeliveredBugsSum  = "delivered_bugs_sum"
+	DimCommentScoreMin   = "comment_score_min"
+	DimCohesionMin       = "cohesion_min"
+	dimensionCount       = 6
+)
+
+// RegisterStoreTimeSeriesExtractor registers the quality analyzer's store-based
+// time series extractor with the anomaly package for cross-analyzer anomaly detection.
+func RegisterStoreTimeSeriesExtractor() {
+	anomaly.RegisterStoreTimeSeriesExtractor("quality", extractStoreTimeSeries)
 }
 
-func extractTimeSeries(report analyze.Report) (ticks []int, dimensions map[string][]float64) {
-	data, err := ParseReportData(report)
-	if err != nil || len(data.TickQuality) == 0 {
+func extractStoreTimeSeries(reader analyze.ReportReader) (ticks []int, dimensions map[string][]float64) {
+	timeSeries, tsErr := readTimeSeriesIfPresent(reader, reader.Kinds())
+	if tsErr != nil || len(timeSeries) == 0 {
 		return nil, nil
 	}
 
-	ticks = sortedTickKeys(data.TickQuality)
-	dimensions = map[string][]float64{
-		"complexity_median":   make([]float64, len(ticks)),
-		"complexity_p95":      make([]float64, len(ticks)),
-		"halstead_vol_median": make([]float64, len(ticks)),
-		"delivered_bugs_sum":  make([]float64, len(ticks)),
-		"comment_score_min":   make([]float64, len(ticks)),
-		"cohesion_min":        make([]float64, len(ticks)),
-	}
+	ticks = make([]int, len(timeSeries))
+	dimensions = makeDimensionSlices(len(timeSeries))
 
-	for i, tick := range ticks {
-		stats := computeTickStats(data.TickQuality[tick])
-		dimensions["complexity_median"][i] = stats.ComplexityMedian
-		dimensions["complexity_p95"][i] = stats.ComplexityP95
-		dimensions["halstead_vol_median"][i] = stats.HalsteadVolMedian
-		dimensions["delivered_bugs_sum"][i] = stats.DeliveredBugsSum
-		dimensions["comment_score_min"][i] = stats.CommentScoreMin
-		dimensions["cohesion_min"][i] = stats.CohesionMin
+	for i, ts := range timeSeries {
+		ticks[i] = ts.Tick
+		fillDimensionsFromStats(dimensions, i, ts.Stats)
 	}
 
 	return ticks, dimensions
+}
+
+func makeDimensionSlices(n int) map[string][]float64 {
+	return map[string][]float64{
+		DimComplexityMedian:  make([]float64, n),
+		DimComplexityP95:     make([]float64, n),
+		DimHalsteadVolMedian: make([]float64, n),
+		DimDeliveredBugsSum:  make([]float64, n),
+		DimCommentScoreMin:   make([]float64, n),
+		DimCohesionMin:       make([]float64, n),
+	}
+}
+
+func fillDimensionsFromStats(dimensions map[string][]float64, i int, stats TickStats) {
+	dimensions[DimComplexityMedian][i] = stats.ComplexityMedian
+	dimensions[DimComplexityP95][i] = stats.ComplexityP95
+	dimensions[DimHalsteadVolMedian][i] = stats.HalsteadVolMedian
+	dimensions[DimDeliveredBugsSum][i] = stats.DeliveredBugsSum
+	dimensions[DimCommentScoreMin][i] = stats.CommentScoreMin
+	dimensions[DimCohesionMin][i] = stats.CohesionMin
 }
 
 // AggregateCommitsToTicks groups per-commit TickQuality data into per-tick

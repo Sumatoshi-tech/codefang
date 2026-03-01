@@ -2,6 +2,7 @@ package framework_test
 
 import (
 	"context"
+	"encoding/gob"
 	"io"
 	"runtime/debug"
 	"testing"
@@ -932,6 +933,50 @@ func (s *stubLeafWithAgg) NewAggregator(_ analyze.AggregatorOptions) analyze.Agg
 	return s.agg
 }
 
+// stubLeafCapturingOpts captures the AggregatorOptions passed by initAggregators.
+type stubLeafCapturingOpts struct {
+	stubLeaf
+
+	capturedOpts analyze.AggregatorOptions
+	agg          *stubAggregator
+}
+
+func (s *stubLeafCapturingOpts) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
+	s.capturedOpts = opts
+
+	return s.agg
+}
+
+// T-10a: SpillBudget is divided among leaf aggregators (not given full budget to each).
+func TestInitAggregators_DividesSpillBudget(t *testing.T) {
+	t.Parallel()
+
+	const totalBudget = int64(100 * 1024 * 1024) // 100 MiB total.
+
+	leaf1 := &stubLeafCapturingOpts{stubLeaf: stubLeaf{name: "a1"}, agg: &stubAggregator{}}
+	leaf2 := &stubLeafCapturingOpts{stubLeaf: stubLeaf{name: "a2"}, agg: &stubAggregator{}}
+	leaf3 := &stubLeafCapturingOpts{stubLeaf: stubLeaf{name: "a3"}, agg: &stubAggregator{}}
+	leaf4 := &stubLeafCapturingOpts{stubLeaf: stubLeaf{name: "a4"}, agg: &stubAggregator{}}
+	leaf5 := &stubLeafCapturingOpts{stubLeaf: stubLeaf{name: "a5"}, agg: &stubAggregator{}}
+
+	runner := &framework.Runner{
+		Analyzers: []analyze.HistoryAnalyzer{leaf1, leaf2, leaf3, leaf4, leaf5},
+		CoreCount: 0,
+	}
+	runner.AggSpillBudget = totalBudget
+
+	framework.InitAggregatorsForTest(runner)
+
+	// Each of 5 aggregators should get totalBudget/5 = 20 MiB, not 100 MiB.
+	expectedPerAgg := totalBudget / 5
+
+	assert.Equal(t, expectedPerAgg, leaf1.capturedOpts.SpillBudget, "leaf1 should get divided budget")
+	assert.Equal(t, expectedPerAgg, leaf2.capturedOpts.SpillBudget, "leaf2 should get divided budget")
+	assert.Equal(t, expectedPerAgg, leaf3.capturedOpts.SpillBudget, "leaf3 should get divided budget")
+	assert.Equal(t, expectedPerAgg, leaf4.capturedOpts.SpillBudget, "leaf4 should get divided budget")
+	assert.Equal(t, expectedPerAgg, leaf5.capturedOpts.SpillBudget, "leaf5 should get divided budget")
+}
+
 // T-10: AggregatorStateSize sums correctly.
 func TestRunner_AggregatorStateSize(t *testing.T) {
 	t.Parallel()
@@ -1099,4 +1144,263 @@ func TestRunner_InitializeForResume(t *testing.T) {
 	info := aggs[0].SpillState()
 	assert.Equal(t, "/tmp/restored-spill", info.Dir)
 	assert.Equal(t, 7, info.Count)
+}
+
+// FinalizeToStore test stubs follow.
+
+// reportingAggregator returns predefined ticks from FlushAllTicks.
+type reportingAggregator struct {
+	stubAggregator
+
+	ticks  []analyze.TICK
+	closed bool
+}
+
+func (a *reportingAggregator) FlushAllTicks() ([]analyze.TICK, error) {
+	return a.ticks, nil
+}
+
+func (a *reportingAggregator) Close() error {
+	a.closed = true
+
+	return nil
+}
+
+// stubLeafReporting is a leaf with an aggregator that returns a known report.
+type stubLeafReporting struct {
+	stubLeaf
+
+	agg    *reportingAggregator
+	report analyze.Report
+}
+
+func (s *stubLeafReporting) NewAggregator(_ analyze.AggregatorOptions) analyze.Aggregator {
+	return s.agg
+}
+
+func (s *stubLeafReporting) ReportFromTICKs(_ context.Context, _ []analyze.TICK) (analyze.Report, error) {
+	return s.report, nil
+}
+
+// stubStoreWriterLeaf implements StoreWriter. It writes custom records to the store.
+type stubStoreWriterLeaf struct {
+	stubLeafReporting
+
+	writeToStoreCalled bool
+}
+
+func (s *stubStoreWriterLeaf) WriteToStore(_ context.Context, ticks []analyze.TICK, w analyze.ReportWriter) error {
+	s.writeToStoreCalled = true
+
+	for _, tick := range ticks {
+		writeErr := w.Write("custom", tick.Data)
+		if writeErr != nil {
+			return writeErr
+		}
+	}
+
+	return nil
+}
+
+// registerGobTypes registers types needed for gob encoding in FinalizeToStore tests.
+func registerGobTypes() {
+	gob.Register(map[string]any{})
+	gob.Register("")
+	gob.Register(0)
+	gob.Register([]string{})
+}
+
+// FRD: specs/frds/FRD-20260228-runner-integration.md.
+
+func TestFinalizeToStore_NoAggregators(t *testing.T) {
+	t.Parallel()
+
+	registerGobTypes()
+
+	runner := framework.NewRunner(nil, "")
+	framework.InitAggregatorsForTest(runner)
+
+	store := analyze.NewFileReportStore(t.TempDir())
+	defer store.Close()
+
+	err := framework.FinalizeToStoreForTest(context.Background(), runner, store)
+	require.NoError(t, err)
+
+	assert.Empty(t, store.AnalyzerIDs())
+}
+
+func TestFinalizeToStore_RejectsNonStoreWriter(t *testing.T) {
+	t.Parallel()
+
+	registerGobTypes()
+
+	agg := &reportingAggregator{
+		ticks: []analyze.TICK{{Tick: 1, Data: "tick-data"}},
+	}
+	leaf := &stubLeafReporting{
+		stubLeaf: stubLeaf{name: "burndown"},
+		agg:      agg,
+		report:   analyze.Report{"score": "42"},
+	}
+
+	runner := &framework.Runner{
+		Analyzers: []analyze.HistoryAnalyzer{leaf},
+		CoreCount: 0,
+	}
+
+	framework.InitAggregatorsForTest(runner)
+
+	store := analyze.NewFileReportStore(t.TempDir())
+	defer store.Close()
+
+	err := framework.FinalizeToStoreForTest(context.Background(), runner, store)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not implement StoreWriter")
+}
+
+func TestFinalizeToStore_StoreWriter(t *testing.T) {
+	t.Parallel()
+
+	registerGobTypes()
+
+	agg := &reportingAggregator{
+		ticks: []analyze.TICK{
+			{Tick: 1, Data: "alpha"},
+			{Tick: 2, Data: "beta"},
+		},
+	}
+	leaf := &stubStoreWriterLeaf{
+		stubLeafReporting: stubLeafReporting{
+			stubLeaf: stubLeaf{name: "couples"},
+			agg:      agg,
+			report:   analyze.Report{"unused": "value"},
+		},
+	}
+
+	runner := &framework.Runner{
+		Analyzers: []analyze.HistoryAnalyzer{leaf},
+		CoreCount: 0,
+	}
+
+	framework.InitAggregatorsForTest(runner)
+
+	store := analyze.NewFileReportStore(t.TempDir())
+	defer store.Close()
+
+	err := framework.FinalizeToStoreForTest(context.Background(), runner, store)
+	require.NoError(t, err)
+
+	assert.True(t, leaf.writeToStoreCalled, "WriteToStore should have been called")
+
+	// Verify the custom records were written, not the in-memory report.
+	reader, openErr := store.Open("couples")
+	require.NoError(t, openErr)
+
+	assert.Equal(t, []string{"custom"}, reader.Kinds())
+
+	var records []string
+
+	iterErr := reader.Iter("custom", func(raw []byte) error {
+		var s string
+
+		decErr := analyze.GobDecode(raw, &s)
+		if decErr != nil {
+			return decErr
+		}
+
+		records = append(records, s)
+
+		return nil
+	})
+	require.NoError(t, iterErr)
+	require.NoError(t, reader.Close())
+
+	require.Len(t, records, 2)
+	assert.Equal(t, "alpha", records[0])
+	assert.Equal(t, "beta", records[1])
+}
+
+func TestFinalizeToStore_NilsAggregators(t *testing.T) {
+	t.Parallel()
+
+	registerGobTypes()
+
+	agg := &reportingAggregator{
+		ticks: []analyze.TICK{{Tick: 1, Data: "data"}},
+	}
+	leaf := &stubStoreWriterLeaf{
+		stubLeafReporting: stubLeafReporting{
+			stubLeaf: stubLeaf{name: "burndown"},
+			agg:      agg,
+			report:   analyze.Report{"key": "val"},
+		},
+	}
+
+	runner := &framework.Runner{
+		Analyzers: []analyze.HistoryAnalyzer{leaf},
+		CoreCount: 0,
+	}
+
+	framework.InitAggregatorsForTest(runner)
+
+	store := analyze.NewFileReportStore(t.TempDir())
+	defer store.Close()
+
+	err := framework.FinalizeToStoreForTest(context.Background(), runner, store)
+	require.NoError(t, err)
+
+	// After FinalizeToStore, aggregators should be nil'd.
+	aggs := framework.AggregatorsForTest(runner)
+
+	for i, a := range aggs {
+		assert.Nil(t, a, "aggregator[%d] should be nil after FinalizeToStore", i)
+	}
+}
+
+func TestFinalizeToStore_MultipleAnalyzers(t *testing.T) {
+	t.Parallel()
+
+	registerGobTypes()
+
+	agg1 := &reportingAggregator{
+		ticks: []analyze.TICK{{Tick: 1, Data: "tick1"}},
+	}
+	leaf1 := &stubStoreWriterLeaf{
+		stubLeafReporting: stubLeafReporting{
+			stubLeaf: stubLeaf{name: "burndown"},
+			agg:      agg1,
+			report:   analyze.Report{"type": "burndown"},
+		},
+	}
+
+	agg2 := &reportingAggregator{
+		ticks: []analyze.TICK{{Tick: 1, Data: "alpha"}, {Tick: 2, Data: "beta"}},
+	}
+	leaf2 := &stubStoreWriterLeaf{
+		stubLeafReporting: stubLeafReporting{
+			stubLeaf: stubLeaf{name: "couples"},
+			agg:      agg2,
+		},
+	}
+
+	noAggLeaf := &stubLeaf{name: "file_history"}
+
+	runner := &framework.Runner{
+		Analyzers: []analyze.HistoryAnalyzer{leaf1, leaf2, noAggLeaf},
+		CoreCount: 0,
+	}
+
+	framework.InitAggregatorsForTest(runner)
+
+	store := analyze.NewFileReportStore(t.TempDir())
+	defer store.Close()
+
+	err := framework.FinalizeToStoreForTest(context.Background(), runner, store)
+	require.NoError(t, err)
+
+	// Only analyzers with aggregators should be written.
+	ids := store.AnalyzerIDs()
+	require.Len(t, ids, 2)
+	assert.Equal(t, "burndown", ids[0])
+	assert.Equal(t, "couples", ids[1])
 }

@@ -16,10 +16,14 @@ type MergedCommitData struct {
 	Analyzers map[string]any `json:"-"`
 }
 
+// numCommitMetaFields is the number of fixed metadata fields
+// (hash, timestamp, author, tick) serialized alongside analyzer data.
+const numCommitMetaFields = 4
+
 // MarshalJSON flattens commit metadata and per-analyzer data into a single object:
 // {"hash": "...", "timestamp": "...", "author": "...", "tick": N, "quality": {...}, ...}.
 func (m MergedCommitData) MarshalJSON() ([]byte, error) {
-	flat := make(map[string]any, len(m.Analyzers)+4) //nolint:mnd // 4 metadata fields
+	flat := make(map[string]any, len(m.Analyzers)+numCommitMetaFields)
 	flat["hash"] = m.Hash
 	flat["timestamp"] = m.Timestamp
 	flat["author"] = m.Author

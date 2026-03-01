@@ -1,9 +1,15 @@
 package framework
 
 import (
+	"bufio"
 	"context"
+	"encoding/gob"
+	"fmt"
+	"log"
+	"os"
 	"sync"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -104,7 +110,18 @@ func (p *UASTPipeline) startWorkers(ctx context.Context, jobs <-chan *uastSlot) 
 			defer wg.Done()
 
 			for slot := range jobs {
-				slot.data.UASTChanges = p.parseCommitChanges(ctx, slot.data.Changes, slot.data.BlobCache)
+				if len(slot.data.Changes) > uastSpillThreshold {
+					path, err := p.parseCommitAndSpill(ctx, slot.data.Changes, slot.data.BlobCache)
+					if err != nil {
+						log.Printf("UAST spill error: %v", err)
+						// Fallback to in-memory path on spill failure.
+						slot.data.UASTChanges = p.parseCommitChanges(ctx, slot.data.Changes, slot.data.BlobCache)
+					} else {
+						slot.data.UASTSpillPath = path
+					}
+				} else {
+					slot.data.UASTChanges = p.parseCommitChanges(ctx, slot.data.Changes, slot.data.BlobCache)
+				}
 
 				uast.MallocTrim()
 				close(slot.done)
@@ -135,6 +152,16 @@ func (p *UASTPipeline) emit(ctx context.Context, slots <-chan *uastSlot, out cha
 
 	wg.Wait()
 }
+
+// uastSpillThreshold is the number of file changes above which the UAST pipeline
+// spills parsed node trees to disk instead of accumulating them in memory.
+// This bounds peak native memory for monster commits (vendor updates, large PRs)
+// to one tree-sitter C allocation per worker, rather than hundreds.
+const uastSpillThreshold = 32
+
+// uastSpillTrimInterval is how often to call MallocTrim during spill-mode parsing.
+// Every N files, reclaim C arena pages to prevent fragmentation buildup.
+const uastSpillTrimInterval = 16
 
 // intraCommitParallelThreshold is the minimum number of file changes in a commit
 // before intra-commit parallelism is used. Below this, sequential parsing is faster.
@@ -249,6 +276,89 @@ func (p *UASTPipeline) parseCommitParallel(
 	}
 
 	return result
+}
+
+// parseCommitAndSpill parses UAST for a large commit, serializing each file's
+// node tree to a temporary gob file and releasing it immediately. This bounds
+// peak native memory to one tree-sitter C allocation at a time per worker,
+// regardless of how many files the commit touches.
+func (p *UASTPipeline) parseCommitAndSpill(
+	ctx context.Context,
+	changes gitlib.Changes,
+	cache map[gitlib.Hash]*gitlib.CachedBlob,
+) (string, error) {
+	f, err := os.CreateTemp("", "codefang-uast-*.gob")
+	if err != nil {
+		return "", fmt.Errorf("create uast spill file: %w", err)
+	}
+
+	spillPath := f.Name()
+	bw := bufio.NewWriter(f)
+	enc := gob.NewEncoder(bw)
+	wrote := 0
+
+	for i, change := range changes {
+		select {
+		case <-ctx.Done():
+			f.Close()
+			os.Remove(spillPath)
+
+			return "", fmt.Errorf("uast spill canceled: %w", ctx.Err())
+		default:
+		}
+
+		before := p.parseBlob(ctx, change.From.Hash, change.From.Name, cache, change.Action, true)
+		after := p.parseBlob(ctx, change.To.Hash, change.To.Name, cache, change.Action, false)
+
+		if before == nil && after == nil {
+			continue
+		}
+
+		encodeErr := analyze.EncodeUASTRecord(enc, i, before, after)
+		if encodeErr != nil {
+			node.ReleaseTree(before)
+			node.ReleaseTree(after)
+			f.Close()
+			os.Remove(spillPath)
+
+			return "", encodeErr
+		}
+
+		// Release Go node trees immediately — the data is on disk now.
+		node.ReleaseTree(before)
+		node.ReleaseTree(after)
+
+		wrote++
+
+		// Periodically reclaim C arena pages during long sequential parsing.
+		if wrote%uastSpillTrimInterval == 0 {
+			uast.MallocTrim()
+		}
+	}
+
+	flushErr := bw.Flush()
+	if flushErr != nil {
+		f.Close()
+		os.Remove(spillPath)
+
+		return "", fmt.Errorf("flush uast spill: %w", flushErr)
+	}
+
+	closeErr := f.Close()
+	if closeErr != nil {
+		os.Remove(spillPath)
+
+		return "", fmt.Errorf("close uast spill: %w", closeErr)
+	}
+
+	// No parseable files produced any output — clean up empty file.
+	if wrote == 0 {
+		os.Remove(spillPath)
+
+		return "", nil
+	}
+
+	return spillPath, nil
 }
 
 // parseBlob parses a single blob into a UAST node if the file is supported.

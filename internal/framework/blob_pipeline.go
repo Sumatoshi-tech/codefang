@@ -130,7 +130,6 @@ func (p *BlobPipeline) processBatch(
 		}
 
 		req := gitlib.TreeDiffRequest{
-			Ctx:                ctx,
 			PreviousCommitHash: prevHash,
 			CommitHash:         commit.Hash(),
 			Response:           respChan,
@@ -138,7 +137,7 @@ func (p *BlobPipeline) processBatch(
 
 		// Send to POOL workers for parallelism.
 		select {
-		case p.PoolWorkerChan <- req:
+		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
 		case <-ctx.Done():
 			return gitlib.Hash{}
 		}
@@ -232,7 +231,6 @@ func (p *BlobPipeline) processBatch(
 		arena := make([]byte, p.ArenaSize)
 
 		req := gitlib.BlobBatchRequest{
-			Ctx:    ctx,
 			Hashes: chunk,
 			Arena:  arena,
 		}
@@ -241,7 +239,7 @@ func (p *BlobPipeline) processBatch(
 		batchState.respChans = append(batchState.respChans, respChan)
 
 		select {
-		case p.PoolWorkerChan <- req:
+		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
 		case <-ctx.Done():
 			return lastCommitHash
 		}

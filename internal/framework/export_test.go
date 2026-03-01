@@ -340,6 +340,11 @@ func NewRunner(repo *gitlib.Repository, repoPath string, analyzers ...analyze.Hi
 	return NewRunnerWithConfig(repo, repoPath, DefaultCoordinatorConfig(), analyzers...)
 }
 
+// FinalizeToStoreForTest exposes FinalizeToStore for unit testing.
+func FinalizeToStoreForTest(ctx context.Context, runner *Runner, store analyze.ReportStore) error {
+	return runner.FinalizeToStore(ctx, store)
+}
+
 // NewBlobPipeline creates a new blob pipeline without cache (test convenience).
 func NewBlobPipeline(
 	seqChan chan<- gitlib.WorkerRequest,

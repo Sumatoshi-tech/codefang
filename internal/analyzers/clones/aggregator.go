@@ -23,45 +23,61 @@ func NewAggregator() *Aggregator {
 // Aggregate extracts function signatures from per-file reports.
 // Signatures are qualified with the source file path so that
 // same-named functions across files are distinguishable.
-func (a *Aggregator) Aggregate(results map[string]analyze.Report) { //nolint:gocognit // linear extraction from nested report structure.
+func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
 	for _, report := range results {
 		if report == nil {
 			continue
 		}
 
-		if v, ok := report[keyTotalFunctions]; ok {
-			if n, nOK := v.(int); nOK {
-				a.totalFunctions += n
-			}
-		}
+		a.totalFunctions += extractTotalFunctions(report)
+		a.collectSignatures(report)
+	}
+}
 
-		sigs, ok := report[keyFuncSignatures]
-		if !ok {
+// extractTotalFunctions reads the total functions count from a report.
+func extractTotalFunctions(report analyze.Report) int {
+	v, ok := report[keyTotalFunctions]
+	if !ok {
+		return 0
+	}
+
+	n, nOK := v.(int)
+	if !nOK {
+		return 0
+	}
+
+	return n
+}
+
+// collectSignatures extracts function signatures from a single report
+// and appends them to the aggregator's entries.
+func (a *Aggregator) collectSignatures(report analyze.Report) {
+	sigs, ok := report[keyFuncSignatures]
+	if !ok {
+		return
+	}
+
+	sigList, listOK := sigs.([]map[string]any)
+	if !listOK {
+		return
+	}
+
+	sourceFile, _ := extractSourceFile(sigList)
+
+	for _, item := range sigList {
+		name, nameOK := item["name"].(string)
+		sig, sigOK := item["sig"].(*minhash.Signature)
+
+		if !nameOK || !sigOK || sig == nil {
 			continue
 		}
 
-		sigList, listOK := sigs.([]map[string]any)
-		if !listOK {
-			continue
-		}
+		qualified := qualifyFuncName(name, sourceFile)
 
-		sourceFile, _ := extractSourceFile(sigList)
-
-		for _, item := range sigList {
-			name, nameOK := item["name"].(string)
-			sig, sigOK := item["sig"].(*minhash.Signature)
-
-			if !nameOK || !sigOK || sig == nil {
-				continue
-			}
-
-			qualified := qualifyFuncName(name, sourceFile)
-
-			a.entries = append(a.entries, funcEntry{
-				name: qualified,
-				sig:  sig,
-			})
-		}
+		a.entries = append(a.entries, funcEntry{
+			name: qualified,
+			sig:  sig,
+		})
 	}
 }
 

@@ -1,6 +1,7 @@
 package filehistory
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func TestHibernate_Succeeds(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestHibernate_PreservesFiles(t *testing.T) {
+func TestHibernate_ClearsFiles(t *testing.T) {
 	t.Parallel()
 
 	h := NewAnalyzer()
@@ -59,12 +60,9 @@ func TestHibernate_PreservesFiles(t *testing.T) {
 	err := h.Hibernate()
 	require.NoError(t, err)
 
-	// Files must be preserved.
-	require.Len(t, h.files, 2)
-	require.NotNil(t, h.files["main.go"])
-	require.Equal(t, 100, h.files["main.go"].People[0].Added)
-	require.NotNil(t, h.files["util.go"])
-	require.Equal(t, 30, h.files["util.go"].People[1].Added)
+	// Files must be cleared to prevent unbounded cross-chunk growth.
+	// The aggregator independently tracks file history from TCs.
+	require.Empty(t, h.files)
 }
 
 func TestBoot_InitializesMergesMap(t *testing.T) {
@@ -102,11 +100,37 @@ func TestHibernateBoot_RoundTrip(t *testing.T) {
 	require.NoError(t, h.Boot())
 	require.NotNil(t, h.merges)
 
-	// Files still preserved.
-	require.Len(t, h.files, 1)
-	require.Equal(t, 42, h.files["test.go"].People[0].Added)
+	// Files cleared by Hibernate (aggregator tracks them independently).
+	require.Empty(t, h.files)
 
 	// Can add new merges after boot.
 	require.False(t, h.merges.SeenOrAdd(gitlib.NewHash("merge2")), "new merge should not be seen yet")
 	require.True(t, h.merges.SeenOrAdd(gitlib.NewHash("merge2")), "new merge should be seen after add")
+}
+
+func TestHibernate_ClearsFilesMap(t *testing.T) {
+	t.Parallel()
+
+	h := NewAnalyzer()
+	require.NoError(t, h.Initialize(nil))
+
+	// Simulate processing: populate h.files with 1000 file entries.
+	// At kubernetes scale (50K files), this would be 50K × 310B = 15.5 MB.
+	const fileCount = 1000
+	for i := range fileCount {
+		name := fmt.Sprintf("pkg/file_%04d.go", i)
+		h.files[name] = &FileHistory{
+			People: map[int]pkgplumbing.LineStats{0: {Added: 10}},
+			Hashes: []gitlib.Hash{gitlib.NewHash("abc123")},
+		}
+	}
+
+	require.Len(t, h.files, fileCount)
+
+	// Hibernate must clear files to prevent cross-chunk state leak.
+	// The aggregator (SpillStore[FileHistory]) independently tracks file
+	// history from TCs, so h.files is redundant between chunks.
+	require.NoError(t, h.Hibernate())
+	require.Empty(t, h.files,
+		"h.files must be cleared on Hibernate to prevent unbounded growth across chunks")
 }

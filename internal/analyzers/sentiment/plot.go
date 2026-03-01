@@ -39,9 +39,7 @@ const (
 
 // RegisterPlotSections registers the sentiment plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/sentiment", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&Analyzer{}).GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("sentiment", GenerateStoreSections)
 }
 
 // GenerateSections returns the sections for combined reports.

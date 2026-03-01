@@ -15,13 +15,14 @@ import (
 
 // CommitData holds all processed data for a commit.
 type CommitData struct {
-	Commit      *gitlib.Commit
-	Index       int
-	Changes     gitlib.Changes
-	BlobCache   map[gitlib.Hash]*gitlib.CachedBlob
-	FileDiffs   map[string]plumbing.FileDiffData
-	UASTChanges []uast.Change // Pre-computed UAST changes (nil if not computed).
-	Error       error
+	Commit        *gitlib.Commit
+	Index         int
+	Changes       gitlib.Changes
+	BlobCache     map[gitlib.Hash]*gitlib.CachedBlob
+	FileDiffs     map[string]plumbing.FileDiffData
+	UASTChanges   []uast.Change // Pre-computed UAST changes (nil if not computed).
+	UASTSpillPath string        // Path to spilled UAST gob file (empty if in-memory).
+	Error         error
 }
 
 // DiffPipeline processes blob data to compute file diffs.
@@ -98,13 +99,13 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 
 		// Only fire CGO request if there are actual diff requests.
 		if len(currentBatchReqs) > 0 {
-			req := gitlib.DiffBatchRequest{Ctx: ctx, Requests: currentBatchReqs}
+			req := gitlib.DiffBatchRequest{Requests: currentBatchReqs}
 			respChan := make(chan gitlib.DiffBatchResponse, 1)
 			req.Response = respChan
 
 			// Send request.
 			select {
-			case p.PoolWorkerChan <- req:
+			case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
 			case <-ctx.Done():
 				return
 			}

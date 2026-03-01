@@ -136,17 +136,17 @@ func (f *Factory) RunAnalyzer(name string, root *node.Node) (Report, error) {
 
 // analyzerCategories holds categorized analyzers for dispatch.
 type analyzerCategories struct {
-	visitors         []NodeVisitor
-	visitorAnalyzers map[string]AnalysisVisitor
-	legacyAnalyzers  []string
+	visitors             []NodeVisitor
+	visitorAnalyzers     map[string]AnalysisVisitor
+	independentAnalyzers []string
 }
 
-// categorizeAnalyzers splits analyzers into visitor-based and legacy categories.
+// categorizeAnalyzers splits analyzers into visitor-based and independent categories.
 func (f *Factory) categorizeAnalyzers(analyzers []string) (*analyzerCategories, error) {
 	cats := &analyzerCategories{
-		visitors:         make([]NodeVisitor, 0),
-		visitorAnalyzers: make(map[string]AnalysisVisitor),
-		legacyAnalyzers:  make([]string, 0),
+		visitors:             make([]NodeVisitor, 0),
+		visitorAnalyzers:     make(map[string]AnalysisVisitor),
+		independentAnalyzers: make([]string, 0),
 	}
 
 	for _, name := range analyzers {
@@ -160,7 +160,7 @@ func (f *Factory) categorizeAnalyzers(analyzers []string) (*analyzerCategories, 
 			cats.visitors = append(cats.visitors, v)
 			cats.visitorAnalyzers[name] = v
 		} else {
-			cats.legacyAnalyzers = append(cats.legacyAnalyzers, name)
+			cats.independentAnalyzers = append(cats.independentAnalyzers, name)
 		}
 	}
 
@@ -168,7 +168,7 @@ func (f *Factory) categorizeAnalyzers(analyzers []string) (*analyzerCategories, 
 }
 
 func (c *analyzerCategories) totalTasks() int {
-	total := len(c.legacyAnalyzers)
+	total := len(c.independentAnalyzers)
 	if len(c.visitors) > 0 {
 		total++
 	}
@@ -192,7 +192,7 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 	}
 
 	if cats.totalTasks() == 1 || f.maxParallel <= 1 {
-		return f.runSequentially(ctx, root, cats.visitors, cats.visitorAnalyzers, cats.legacyAnalyzers)
+		return f.runSequentially(ctx, root, cats.visitors, cats.visitorAnalyzers, cats.independentAnalyzers)
 	}
 
 	return f.runParallel(ctx, root, cats)
@@ -206,7 +206,7 @@ type parallelState struct {
 	errMu          sync.Mutex
 }
 
-// runParallel executes visitor-based and legacy analyzers concurrently.
+// runParallel executes visitor-based and independent analyzers concurrently.
 func (f *Factory) runParallel(ctx context.Context, root *node.Node, cats *analyzerCategories) (map[string]Report, error) {
 	state := &parallelState{
 		combinedReport: make(map[string]Report),
@@ -222,10 +222,10 @@ func (f *Factory) runParallel(ctx context.Context, root *node.Node, cats *analyz
 		go f.runVisitorsParallel(ctx, root, cats, state, sem, &wg)
 	}
 
-	for _, name := range cats.legacyAnalyzers {
+	for _, name := range cats.independentAnalyzers {
 		wg.Add(1)
 
-		go f.runLegacyParallel(ctx, root, name, state, sem, &wg)
+		go f.runIndependentParallel(ctx, root, name, state, sem, &wg)
 	}
 
 	wg.Wait()
@@ -266,8 +266,8 @@ func (f *Factory) runVisitorsParallel(
 	state.reportMu.Unlock()
 }
 
-// runLegacyParallel runs a single legacy analyzer as a parallel task.
-func (f *Factory) runLegacyParallel(
+// runIndependentParallel runs a single independent analyzer as a parallel task.
+func (f *Factory) runIndependentParallel(
 	ctx context.Context, root *node.Node, name string,
 	state *parallelState, sem chan struct{}, wg *sync.WaitGroup,
 ) {
@@ -303,7 +303,7 @@ func (f *Factory) runSequentially(
 	root *node.Node,
 	visitors []NodeVisitor,
 	visitorAnalyzers map[string]AnalysisVisitor,
-	legacyAnalyzers []string,
+	independentAnalyzers []string,
 ) (map[string]Report, error) {
 	combinedReport := make(map[string]Report)
 
@@ -319,7 +319,7 @@ func (f *Factory) runSequentially(
 		}
 	}
 
-	for _, name := range legacyAnalyzers {
+	for _, name := range independentAnalyzers {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("runsequentially: %w", ctx.Err())
 		}

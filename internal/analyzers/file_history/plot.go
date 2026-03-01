@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
@@ -63,11 +62,6 @@ func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 	}, nil
 }
 
-// GenerateChart creates a bar chart showing the most modified files (implements PlotGenerator).
-func (h *HistoryAnalyzer) GenerateChart(report analyze.Report) (components.Charter, error) {
-	return h.buildChart(report)
-}
-
 // buildChart creates a bar chart showing the most modified files.
 func (h *HistoryAnalyzer) buildChart(report analyze.Report) (chart *charts.Bar, buildErr error) {
 	labels, data, err := extractFileHistoryData(report)
@@ -118,21 +112,17 @@ type fileChurnItem struct {
 	commitCount int
 }
 
-// extractFileHistoryData extracts file names and commit counts from the report,
-// handling both in-memory and binary-decoded JSON key formats.
+// extractFileHistoryData extracts file names and commit counts from the report.
 func extractFileHistoryData(report analyze.Report) (labels []string, data []int, err error) {
+	files, filesOK := report["Files"].(map[string]FileHistory)
+	if !filesOK {
+		return nil, nil, ErrInvalidFiles
+	}
+
 	var items []fileChurnItem
 
-	// Try in-memory key first.
-	if files, filesOK := report["Files"].(map[string]FileHistory); filesOK {
-		for name, hist := range files {
-			items = append(items, fileChurnItem{name, len(hist.Hashes)})
-		}
-	} else {
-		items, err = extractFileChurnFromBinary(report)
-		if err != nil {
-			return nil, nil, err
-		}
+	for name, hist := range files {
+		items = append(items, fileChurnItem{name, len(hist.Hashes)})
 	}
 
 	if len(items) == 0 {
@@ -156,67 +146,9 @@ func extractFileHistoryData(report analyze.Report) (labels []string, data []int,
 	return labels, data, nil
 }
 
-// extractFileChurnFromBinary extracts file churn data from the binary-decoded report format.
-// The "file_churn" key contains []any of map[string]any with "path" and "commit_count" fields.
-func extractFileChurnFromBinary(report analyze.Report) (items []fileChurnItem, err error) {
-	rawChurn, churnOK := report["file_churn"]
-	if !churnOK {
-		return nil, ErrInvalidFiles
-	}
-
-	if rawChurn == nil {
-		return nil, nil
-	}
-
-	churnList, listOK := rawChurn.([]any)
-	if !listOK {
-		return nil, ErrInvalidFiles
-	}
-
-	if len(churnList) == 0 {
-		return nil, nil
-	}
-
-	for _, item := range churnList {
-		m, mOK := item.(map[string]any)
-		if !mOK {
-			continue
-		}
-
-		filePath, ok := m["path"].(string)
-		if !ok {
-			continue
-		}
-
-		count := fileHistoryToInt(m["commit_count"])
-
-		if filePath != "" {
-			items = append(items, fileChurnItem{filePath, count})
-		}
-	}
-
-	return items, nil
-}
-
-// fileHistoryToInt converts a numeric value (int, float64) to int.
-func fileHistoryToInt(v any) int {
-	switch n := v.(type) {
-	case float64:
-		return int(n)
-	case int:
-		return n
-	case int64:
-		return int(n)
-	default:
-		return 0
-	}
-}
-
 // RegisterPlotSections registers the file-history plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/file-history", func(report analyze.Report) ([]plotpage.Section, error) {
-		return NewAnalyzer().GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("file-history", GenerateStoreSections)
 }
 
 func createEmptyFileChart() *charts.Bar {

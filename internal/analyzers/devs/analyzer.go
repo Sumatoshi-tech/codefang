@@ -96,10 +96,18 @@ func NewAnalyzer() *Analyzer {
 	}
 
 	a.TicksToReportFn = func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-		return ticksToReport(ctx, ticks, a.commitsByTick, a.reversedPeopleDict, a.tickSize, a.Anonymize)
+		return ticksToReport(ctx, ticks, a.commitsByTick, a.getReversedPeopleDict(), a.tickSize, a.Anonymize)
 	}
 
 	return a
+}
+
+func (a *Analyzer) getReversedPeopleDict() []string {
+	if a.Identity != nil && len(a.Identity.ReversedPeopleDict) > 0 {
+		return a.Identity.ReversedPeopleDict
+	}
+
+	return a.reversedPeopleDict
 }
 
 func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
@@ -294,7 +302,7 @@ func (a *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io
 	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
 		ComputeMetricsFn: computeMetricsSafe,
 		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, t, a.commitsByTick, a.reversedPeopleDict, a.tickSize, a.Anonymize)
+			return ticksToReport(ctx, t, a.commitsByTick, a.getReversedPeopleDict(), a.tickSize, a.Anonymize)
 		},
 	}).SerializeTICKs(ticks, format, writer)
 }

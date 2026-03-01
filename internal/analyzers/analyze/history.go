@@ -70,6 +70,10 @@ type Context struct {
 	// UASTChanges contains pre-computed UAST changes for this commit.
 	// Populated by the UAST pipeline stage when enabled.
 	UASTChanges []uast.Change
+
+	// UASTSpillPath is the path to a spilled UAST gob file for large commits.
+	// When set, UASTChanges is nil and the changes must be deserialized from disk.
+	UASTSpillPath string
 }
 
 // HistoryAnalyzer interface defines the contract for history-based analyzers.
@@ -109,6 +113,22 @@ type HistoryAnalyzer interface {
 	// Formatting/Serialization.
 	// Format can be: "yaml", "json", or "binary" (protobuf).
 	Serialize(result Report, format string, writer io.Writer) error
+}
+
+// StoreWriter is optionally implemented by HistoryAnalyzers that can write
+// chunked records directly to a ReportWriter, bypassing monolithic Report maps.
+// Analyzers that implement this interface stream records one-at-a-time to the
+// store during FinalizeToStore, keeping memory bounded.
+type StoreWriter interface {
+	WriteToStore(ctx context.Context, ticks []TICK, w ReportWriter) error
+}
+
+// DirectStoreWriter is optionally implemented by HistoryAnalyzers that can write
+// directly from their aggregator state to a ReportWriter.
+// Unlike StoreWriter, this interface receives the aggregator after Collect()
+// without FlushAllTicks, avoiding the deep copy overhead for large state.
+type DirectStoreWriter interface {
+	WriteToStoreFromAggregator(ctx context.Context, agg Aggregator, w ReportWriter) error
 }
 
 // PlumbingSnapshot is an opaque snapshot of plumbing state for one commit.

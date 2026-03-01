@@ -27,7 +27,7 @@ func (m *MockVisitorAnalyzer) Descriptor() analyze.Descriptor {
 func (m *MockVisitorAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption { return nil }
 func (m *MockVisitorAnalyzer) Configure(_ map[string]any) error                         { return nil }
 func (m *MockVisitorAnalyzer) Analyze(_ *node.Node) (analyze.Report, error) {
-	// Legacy analyze shouldn't be called if visitor is used.
+	// Independent analyze shouldn't be called if visitor is used.
 	return analyze.Report{}, nil
 }
 func (m *MockVisitorAnalyzer) Thresholds() analyze.Thresholds { return nil }
@@ -68,7 +68,7 @@ func TestFactory_RunAnalyzers_WithVisitor(t *testing.T) {
 
 	mockAnalyzer := &MockVisitorAnalyzer{}
 	factory := analyze.NewFactory([]analyze.StaticAnalyzer{})
-	factory.RegisterAnalyzer(mockAnalyzer) // Register manually as types might mismatch with legacy interface slice?
+	factory.RegisterAnalyzer(mockAnalyzer) // Register manually as types might mismatch with interface slice.
 	// NewFactory takes []StaticAnalyzer. MockVisitorAnalyzer satisfies StaticAnalyzer.
 	// So explicit registration shouldn't be needed if I passed it to NewFactory.
 

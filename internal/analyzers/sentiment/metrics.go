@@ -8,40 +8,32 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// RegisterTimeSeriesExtractor registers the sentiment analyzer's time series
-// extractor with the anomaly package for cross-analyzer anomaly detection.
-func RegisterTimeSeriesExtractor() {
-	anomaly.RegisterTimeSeriesExtractor("sentiment", extractTimeSeries)
+// DimSentiment is the dimension name for sentiment time series extraction.
+const DimSentiment = "sentiment"
+
+// RegisterStoreTimeSeriesExtractor registers the sentiment analyzer's store-based
+// time series extractor with the anomaly package for cross-analyzer anomaly detection.
+func RegisterStoreTimeSeriesExtractor() {
+	anomaly.RegisterStoreTimeSeriesExtractor("sentiment", extractStoreTimeSeries)
 }
 
-func extractTimeSeries(report analyze.Report) (ticks []int, dimensions map[string][]float64) {
-	data, err := ParseReportData(report)
-	if err != nil || len(data.EmotionsByTick) == 0 {
+func extractStoreTimeSeries(reader analyze.ReportReader) (ticks []int, dimensions map[string][]float64) {
+	timeSeries, tsErr := readTimeSeriesIfPresent(reader, reader.Kinds())
+	if tsErr != nil || len(timeSeries) == 0 {
 		return nil, nil
 	}
 
-	ticks = sortedEmotionTicks(data.EmotionsByTick)
+	ticks = make([]int, len(timeSeries))
 	dimensions = map[string][]float64{
-		"sentiment": make([]float64, len(ticks)),
+		DimSentiment: make([]float64, len(timeSeries)),
 	}
 
-	for i, tick := range ticks {
-		dimensions["sentiment"][i] = float64(data.EmotionsByTick[tick])
+	for i, ts := range timeSeries {
+		ticks[i] = ts.Tick
+		dimensions[DimSentiment][i] = float64(ts.Sentiment)
 	}
 
 	return ticks, dimensions
-}
-
-func sortedEmotionTicks(m map[int]float32) []int {
-	ticks := make([]int, 0, len(m))
-
-	for tick := range m {
-		ticks = append(ticks, tick)
-	}
-
-	sort.Ints(ticks)
-
-	return ticks
 }
 
 // AggregateCommitsToTicks groups per-commit comment data into per-tick

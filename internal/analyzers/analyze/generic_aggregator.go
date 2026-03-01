@@ -41,7 +41,7 @@ func NewGenericAggregator[S any, T any](
 	return &GenericAggregator[S, T]{
 		Opts:         opts,
 		ByTick:       make(map[int]S),
-		SpillStore:   spillstore.New[S](),
+		SpillStore:   spillstore.NewWithBaseDir[S](opts.SpillDir),
 		ExtractTCFn:  extractFn,
 		MergeStateFn: mergeFn,
 		SizeStateFn:  sizeFn,

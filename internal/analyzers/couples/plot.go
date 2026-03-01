@@ -4,11 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
@@ -121,11 +119,6 @@ func (c *HistoryAnalyzer) GenerateSections(report analyze.Report) (sections []pl
 	return result, nil
 }
 
-// GenerateChart implements PlotGenerator interface.
-func (c *HistoryAnalyzer) GenerateChart(report analyze.Report) (charter components.Charter, err error) {
-	return c.buildChart(report)
-}
-
 // buildChart creates a heatmap chart showing developer coupling.
 func (c *HistoryAnalyzer) buildChart(report analyze.Report) (heatMap *charts.HeatMap, err error) {
 	matrix, names, extractErr := extractCouplesData(report)
@@ -157,157 +150,17 @@ func (c *HistoryAnalyzer) buildChart(report analyze.Report) (heatMap *charts.Hea
 	return hm, nil
 }
 
-// tryDirectExtraction attempts to extract the matrix and names using in-memory keys.
-func tryDirectExtraction(report analyze.Report) (matrix []map[int]int64, names []string, matrixFound, namesFound bool) {
-	matrix, matrixFound = report["PeopleMatrix"].([]map[int]int64)
-	names, namesFound = report["ReversedPeopleDict"].([]string)
-
-	return matrix, names, matrixFound, namesFound
-}
-
-// getCouplingList retrieves and validates the raw coupling list from the report.
-// Returns nil list with nil error when the coupling data is absent or empty.
-func getCouplingList(report analyze.Report, matrixFound bool) (couplingList []any, err error) {
-	rawCoupling, present := report["developer_coupling"]
-	if !present {
-		if !matrixFound {
-			return nil, ErrInvalidMatrix
-		}
-
-		return nil, ErrInvalidNames
-	}
-
-	if rawCoupling == nil {
-		return nil, nil
-	}
-
-	list, listValid := rawCoupling.([]any)
-	if !listValid {
-		return nil, ErrInvalidMatrix
-	}
-
-	return list, nil
-}
-
-// collectDeveloperNames gathers unique developer names from coupling entries and returns
-// a sorted slice along with a name-to-index mapping.
-func collectDeveloperNames(couplingList []any) (names []string, nameIdx map[string]int) {
-	nameSet := map[string]bool{}
-
-	for _, item := range couplingList {
-		m, valid := item.(map[string]any)
-		if !valid {
-			continue
-		}
-
-		addDeveloperName(m, "developer1", nameSet)
-		addDeveloperName(m, "developer2", nameSet)
-	}
-
-	names = make([]string, 0, len(nameSet))
-
-	for n := range nameSet {
-		names = append(names, n)
-	}
-
-	sort.Strings(names)
-
-	nameIdx = make(map[string]int, len(names))
-
-	for i, n := range names {
-		nameIdx[n] = i
-	}
-
-	return names, nameIdx
-}
-
-// addDeveloperName extracts a developer name from the map entry and adds it to the set.
-func addDeveloperName(m map[string]any, key string, nameSet map[string]bool) {
-	name, valid := m[key].(string)
-	if !valid {
-		return
-	}
-
-	nameSet[name] = true
-}
-
-// buildCouplingMatrix constructs a symmetric matrix from the coupling list entries.
-func buildCouplingMatrix(couplingList []any, names []string, nameIdx map[string]int) (matrix []map[int]int64) {
-	matrix = make([]map[int]int64, len(names))
-
-	for i := range matrix {
-		matrix[i] = map[int]int64{}
-	}
-
-	for _, item := range couplingList {
-		m, valid := item.(map[string]any)
-		if !valid {
-			continue
-		}
-
-		applyCouplingEntry(m, nameIdx, matrix)
-	}
-
-	return matrix
-}
-
-// applyCouplingEntry processes a single coupling entry and updates the matrix.
-func applyCouplingEntry(entry map[string]any, nameIdx map[string]int, matrix []map[int]int64) {
-	d1, d1Valid := entry["developer1"].(string)
-	d2, d2Valid := entry["developer2"].(string)
-
-	if !d1Valid || !d2Valid {
-		return
-	}
-
-	i1, i1Found := nameIdx[d1]
-	i2, i2Found := nameIdx[d2]
-
-	if !i1Found || !i2Found {
-		return
-	}
-
-	val := extractSharedFileChanges(entry)
-	matrix[i1][i2] = val
-	matrix[i2][i1] = val
-}
-
-// extractSharedFileChanges extracts the shared_file_changes value from a coupling entry.
-func extractSharedFileChanges(m map[string]any) int64 {
-	raw, present := m["shared_file_changes"]
-	if !present {
-		return 0
-	}
-
-	switch v := raw.(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
-	default:
-		return 0
-	}
-}
-
-// extractCouplesData extracts the people matrix and names from the report,
-// handling both in-memory and binary-decoded JSON key formats.
+// extractCouplesData extracts the people matrix and names from the report.
 func extractCouplesData(report analyze.Report) (matrix []map[int]int64, names []string, err error) {
-	matrix, names, matrixFound, namesFound := tryDirectExtraction(report)
-	if matrixFound && namesFound {
-		return matrix, names, nil
+	matrix, matrixOK := report["PeopleMatrix"].([]map[int]int64)
+	if !matrixOK {
+		return nil, nil, ErrInvalidMatrix
 	}
 
-	couplingList, listErr := getCouplingList(report, matrixFound)
-	if listErr != nil {
-		return nil, nil, listErr
+	names, namesOK := report["ReversedPeopleDict"].([]string)
+	if !namesOK {
+		return nil, nil, ErrInvalidNames
 	}
-
-	if len(couplingList) == 0 {
-		return nil, nil, nil
-	}
-
-	names, nameIdx := collectDeveloperNames(couplingList)
-	matrix = buildCouplingMatrix(couplingList, names, nameIdx)
 
 	return matrix, names, nil
 }
@@ -414,9 +267,7 @@ func createHeatMapChart(names []string, maxVal int64, data []opts.HeatMapData, c
 
 // RegisterPlotSections registers the couples plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/couples", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&HistoryAnalyzer{}).GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("couples", GenerateStoreSections)
 }
 
 func createEmptyHeatMap() *charts.HeatMap {
@@ -440,6 +291,35 @@ func buildFileCouplingBarChart(report analyze.Report) *charts.Bar {
 	metric := NewFileCouplingMetric()
 	couples := metric.Compute(input)
 
+	return buildFileCouplingBarChartFromData(couples)
+}
+
+// buildOwnershipPieChart creates a pie chart showing file ownership distribution.
+func buildOwnershipPieChart(report analyze.Report) *charts.Pie {
+	input, err := ParseReportData(report)
+	if err != nil || len(input.Files) == 0 {
+		return nil
+	}
+
+	metric := NewFileOwnershipMetric()
+	ownership := metric.Compute(input)
+
+	return buildOwnershipPieChartFromData(ownership)
+}
+
+// truncatePath shortens a file path for chart labels.
+func truncatePath(path string) string {
+	const maxLen = 30
+
+	if len(path) <= maxLen {
+		return path
+	}
+
+	return "..." + path[len(path)-maxLen+3:]
+}
+
+// buildFileCouplingBarChartFromData creates a bar chart from pre-computed FileCouplingData.
+func buildFileCouplingBarChartFromData(couples []FileCouplingData) *charts.Bar {
 	if len(couples) == 0 {
 		return nil
 	}
@@ -486,16 +366,29 @@ func buildFileCouplingBarChart(report analyze.Report) *charts.Bar {
 	return bar
 }
 
-// buildOwnershipPieChart creates a pie chart showing file ownership distribution.
-func buildOwnershipPieChart(report analyze.Report) *charts.Pie {
-	input, err := ParseReportData(report)
-	if err != nil || len(input.Files) == 0 {
-		return nil
+// buildHeatmapFromMatrix creates a heatmap chart from a pre-computed dev matrix.
+func buildHeatmapFromMatrix(matrix []map[int]int64, names []string) *charts.HeatMap {
+	if len(matrix) == 0 {
+		return createEmptyHeatMap()
 	}
 
-	metric := NewFileOwnershipMetric()
-	ownership := metric.Compute(input)
+	shortNames := shortenDevNames(names)
 
+	co := plotpage.DefaultChartOpts()
+	maxVal := findMaxOffDiagonal(matrix)
+
+	if maxVal == 0 {
+		maxVal = findMaxValue(matrix)
+	}
+
+	data := buildHeatMapData(matrix, names)
+	height := dynamicHeatmapHeight(len(shortNames))
+
+	return createHeatMapChart(shortNames, maxVal, data, co, height)
+}
+
+// buildOwnershipPieChartFromData creates a pie chart from pre-computed FileOwnershipData.
+func buildOwnershipPieChartFromData(ownership []FileOwnershipData) *charts.Pie {
 	if len(ownership) == 0 {
 		return nil
 	}
@@ -545,15 +438,4 @@ func buildOwnershipPieChart(report analyze.Report) *charts.Pie {
 		)
 
 	return pie
-}
-
-// truncatePath shortens a file path for chart labels.
-func truncatePath(path string) string {
-	const maxLen = 30
-
-	if len(path) <= maxLen {
-		return path
-	}
-
-	return "..." + path[len(path)-maxLen+3:]
 }

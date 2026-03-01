@@ -3,6 +3,7 @@ package couples
 import (
 	"context"
 	"maps"
+	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/spillstore"
@@ -17,15 +18,18 @@ const (
 )
 
 // Memory estimation constants for aggregator state size.
+// These account for map entry overhead + string key storage (file paths
+// average ~60 bytes in large repos like kubernetes). Accurate estimates
+// are critical: underestimation delays spills and causes OOM.
 const (
-	fileCouplingEntryBytes = 80 // map entry overhead per file coupling pair.
-	personFileEntryBytes   = 60 // map entry overhead per person-file entry.
+	fileCouplingEntryBytes = 200 // map overhead (80) + key string (~60) + inner key string (~60).
+	personFileEntryBytes   = 130 // map overhead (60) + file path string (~60) + padding.
 	renameEntryBytes       = 100
 	personCommitBytes      = 8
 )
 
-// CouplesCommitSummary holds per-commit summary data for timeseries output.
-type CouplesCommitSummary struct { //nolint:revive // used across packages.
+// CommitSummary holds per-commit summary data for timeseries output.
+type CommitSummary struct {
 	FilesTouched int `json:"files_touched"`
 	AuthorID     int `json:"author_id"`
 }
@@ -38,7 +42,7 @@ type Aggregator struct {
 	people        []map[string]int
 	peopleCommits []int
 	renames       []RenamePair
-	commitStats   map[string]*CouplesCommitSummary
+	commitStats   map[string]*CommitSummary
 	commitsByTick map[int][]gitlib.Hash
 	opts          analyze.AggregatorOptions
 	peopleNumber  int
@@ -59,10 +63,10 @@ func newAggregator(
 	}
 
 	return &Aggregator{
-		files:         spillstore.New[map[string]int](),
+		files:         spillstore.NewWithBaseDir[map[string]int](opts.SpillDir),
 		people:        people,
 		peopleCommits: make([]int, peopleNumber+1),
-		commitStats:   make(map[string]*CouplesCommitSummary),
+		commitStats:   make(map[string]*CommitSummary),
 		commitsByTick: make(map[int][]gitlib.Hash),
 		opts:          opts,
 		peopleNumber:  peopleNumber,
@@ -91,7 +95,7 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 
 	if !tc.CommitHash.IsZero() {
 		hashStr := tc.CommitHash.String()
-		a.commitStats[hashStr] = &CouplesCommitSummary{
+		a.commitStats[hashStr] = &CommitSummary{
 			FilesTouched: len(cd.CouplingFiles),
 			AuthorID:     author,
 		}
@@ -204,7 +208,7 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 
 // DiscardState clears all in-memory cumulative state without serialization.
 func (a *Aggregator) DiscardState() {
-	a.files = spillstore.New[map[string]int]()
+	a.files = spillstore.NewWithBaseDir[map[string]int](a.opts.SpillDir)
 
 	a.people = make([]map[string]int, a.peopleNumber+1)
 	for i := range a.people {
@@ -243,6 +247,197 @@ func (a *Aggregator) Collect() error {
 	}
 
 	return nil
+}
+
+// Memory bounds for filtered coupling collection.
+const (
+	// pruneInterval controls how often weak entries are pruned during merge.
+	pruneInterval = 10
+
+	// maxEntriesPerFile caps coupling entries per file during collection.
+	// The store writer only uses top-K pairs globally (default 100), so keeping
+	// 500 entries per file is sufficient for accurate top-K output while bounding
+	// memory to 25K files × 500 entries × ~100 bytes ≈ 1.25 GB.
+	maxEntriesPerFile = 500
+)
+
+// collectFilteredFiles merges spill files, keeping only entries for files in
+// currentFiles. Inner coupling entries are also filtered through matcher.
+// Bounds memory by periodically pruning weak entries AND capping per-file entries.
+// This avoids materializing the full O(F²) coupling map for historical files
+// that no longer exist, which can consume 50+ GB on large repos like kubernetes.
+func (a *Aggregator) collectFilteredFiles(
+	currentFiles map[string]bool,
+	matcher fileMatchFunc,
+	minWeight int,
+) (map[string]map[string]int, error) {
+	result := make(map[string]map[string]int, len(currentFiles))
+	processed := 0
+
+	mergeFn := func(chunk map[string]map[string]int) error {
+		mergeChunkIntoResult(result, chunk, currentFiles, matcher)
+
+		processed++
+
+		if processed%pruneInterval == 0 {
+			pruneAndCapEntries(result, minWeight, maxEntriesPerFile)
+		}
+
+		return nil
+	}
+
+	spillErr := a.files.ForEachSpill(mergeFn)
+	if spillErr != nil {
+		return nil, spillErr
+	}
+
+	// Also merge current in-memory buffer.
+	mergeErr := mergeFn(a.files.Current())
+	if mergeErr != nil {
+		return nil, mergeErr
+	}
+
+	a.files.Cleanup()
+
+	// Final prune + cap after all chunks merged.
+	pruneAndCapEntries(result, minWeight, maxEntriesPerFile)
+
+	return result, nil
+}
+
+// mergeChunkIntoResult merges a single spill chunk into the accumulated result,
+// filtering to only current files and matched inner entries.
+func mergeChunkIntoResult(
+	result, chunk map[string]map[string]int,
+	currentFiles map[string]bool,
+	matcher fileMatchFunc,
+) {
+	for file1, inner := range chunk {
+		if !currentFiles[file1] {
+			continue
+		}
+
+		lane := result[file1]
+		if lane == nil {
+			lane = make(map[string]int)
+			result[file1] = lane
+		}
+
+		for file2, count := range inner {
+			if matcher(file2) {
+				lane[file2] += count
+			}
+		}
+	}
+}
+
+// pruneAndCapEntries removes weak coupling entries and caps per-file entries.
+// First removes entries below minWeight, then caps each file's lane to maxEntries
+// by evicting the lowest-count entries.
+func pruneAndCapEntries(files map[string]map[string]int, minWeight, maxEntries int) {
+	for file1, lane := range files {
+		originalLen := len(lane)
+
+		pruneWeakEntries(lane, file1, minWeight)
+
+		// Cap per-file entries to maxEntries.
+		if maxEntries > 0 && len(lane) > maxEntries {
+			capLaneEntries(lane, file1, maxEntries)
+		}
+
+		// Remove files with only a self-reference (or empty).
+		if len(lane) <= 1 {
+			delete(files, file1)
+
+			continue
+		}
+
+		compactLaneIfNeeded(files, file1, lane, originalLen)
+	}
+}
+
+// pruneWeakEntries removes coupling entries below minWeight, preserving self-references.
+func pruneWeakEntries(lane map[string]int, self string, minWeight int) {
+	if minWeight <= 1 {
+		return
+	}
+
+	for file2, count := range lane {
+		if self != file2 && count < minWeight {
+			delete(lane, file2)
+		}
+	}
+}
+
+// compactLaneIfNeeded replaces a lane map with a smaller copy if a significant
+// portion of its entries were deleted. Go maps never shrink their underlying
+// bucket arrays, so this prevents memory bloat during massive merges.
+func compactLaneIfNeeded(files map[string]map[string]int, file1 string, lane map[string]int, originalLen int) {
+	if len(lane)*2 < originalLen {
+		compacted := make(map[string]int, len(lane))
+		maps.Copy(compacted, lane)
+
+		files[file1] = compacted
+	}
+}
+
+// capLaneEntries reduces a coupling lane to at most maxEntries by evicting
+// entries with the lowest counts. Preserves the self-entry (file1 -> file1).
+func capLaneEntries(lane map[string]int, self string, maxEntries int) {
+	if len(lane) <= maxEntries {
+		return
+	}
+
+	threshold, ok := computeEvictionThreshold(lane, self, maxEntries)
+	if !ok {
+		return
+	}
+
+	// Delete entries below threshold.
+	for k, c := range lane {
+		if k != self && c < threshold {
+			delete(lane, k)
+		}
+	}
+
+	// If still over due to ties at threshold, delete some at threshold.
+	evictTiedEntries(lane, self, threshold, maxEntries)
+}
+
+// computeEvictionThreshold determines the count threshold below which entries
+// should be evicted to cap the lane at maxEntries. Returns false if no eviction needed.
+func computeEvictionThreshold(lane map[string]int, self string, maxEntries int) (int, bool) {
+	counts := make([]int, 0, len(lane))
+
+	for k, c := range lane {
+		if k != self {
+			counts = append(counts, c)
+		}
+	}
+
+	sort.Sort(sort.Reverse(sort.IntSlice(counts)))
+
+	// Subtract 1 for the self-entry.
+	keepN := maxEntries - 1
+	if keepN >= len(counts) {
+		return 0, false
+	}
+
+	return counts[keepN], true
+}
+
+// evictTiedEntries removes entries at the threshold count one at a time
+// until the lane is within the maxEntries limit.
+func evictTiedEntries(lane map[string]int, self string, threshold, maxEntries int) {
+	for len(lane) > maxEntries {
+		for k, c := range lane {
+			if k != self && c == threshold {
+				delete(lane, k)
+
+				break
+			}
+		}
+	}
 }
 
 // EstimatedStateSize returns the current in-memory footprint in bytes.
@@ -289,7 +484,7 @@ func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[in
 	}
 
 	cbt := a.commitsByTick
-	a.commitStats = make(map[string]*CouplesCommitSummary)
+	a.commitStats = make(map[string]*CommitSummary)
 	a.commitsByTick = make(map[int][]gitlib.Hash)
 
 	return result, cbt
@@ -336,7 +531,7 @@ func ticksToReport(
 
 	var mergedRenames []RenamePair
 
-	mergedCommitStats := make(map[string]*CouplesCommitSummary)
+	mergedCommitStats := make(map[string]*CommitSummary)
 	commitsByTick := make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
@@ -431,6 +626,39 @@ func buildReport(
 	}
 }
 
+// collectCurrentFilesFromTree builds the set of currently-existing files from the
+// git tree at lastCommit, without requiring the raw coupling data.
+// Returns nil if lastCommit is nil or the tree can't be read (caller should fall back).
+func collectCurrentFilesFromTree(ctx context.Context, lastCommit analyze.CommitLike) map[string]bool {
+	if lastCommit == nil {
+		return nil
+	}
+
+	tree, err := lastCommit.Tree()
+	if err != nil {
+		return nil
+	}
+
+	files := map[string]bool{}
+	processed := 0
+
+	err = tree.FilesContext(ctx).ForEach(func(fobj *gitlib.File) error {
+		files[fobj.Name] = true
+
+		processed++
+		if processed%1000 == 0 {
+			gitlib.ReleaseNativeMemory()
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+
+	return files
+}
+
 // collectCurrentFiles builds the set of currently-existing files.
 func collectCurrentFiles(ctx context.Context, rawFiles map[string]map[string]int, lastCommit analyze.CommitLike) map[string]bool {
 	files := map[string]bool{}
@@ -452,8 +680,15 @@ func collectCurrentFiles(ctx context.Context, rawFiles map[string]map[string]int
 		return files
 	}
 
+	processed := 0
+
 	err = tree.FilesContext(ctx).ForEach(func(fobj *gitlib.File) error {
 		files[fobj.Name] = true
+
+		processed++
+		if processed%1000 == 0 {
+			gitlib.ReleaseNativeMemory()
+		}
 
 		return nil
 	})
@@ -561,6 +796,13 @@ func computeFilesLinesFromCommit(ctx context.Context, filesSequence []string, la
 
 	for i, name := range filesSequence {
 		filesLines[i] = countFileLinesAt(ctx, name, lastCommit)
+
+		// Bounding memory explicitly because `countFileLinesAt` loads
+		// blob from libgit2, which may keep memory inside glibc arenas
+		// leading to a spike.
+		if i%100 == 0 && i > 0 {
+			gitlib.ReleaseNativeMemory()
+		}
 	}
 
 	return filesLines

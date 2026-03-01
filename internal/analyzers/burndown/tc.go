@@ -30,8 +30,8 @@ type CommitResult struct {
 	LinesRemoved int64
 }
 
-// BurndownCommitSummary holds per-commit summary data for timeseries output.
-type BurndownCommitSummary struct { //nolint:revive // used across packages.
+// CommitSummary holds per-commit summary data for timeseries output.
+type CommitSummary struct {
 	LinesAdded   int64 `json:"lines_added"`
 	LinesRemoved int64 `json:"lines_removed"`
 }
@@ -44,7 +44,7 @@ type TickResult struct {
 	Matrix          []map[int]int64
 	FileHistories   map[PathID]sparseHistory
 	FileOwnership   map[PathID]map[int]int
-	CommitStats     map[string]*BurndownCommitSummary
+	CommitStats     map[string]*CommitSummary
 }
 
 // deltaBuffer holds per-commit delta accumulation for a single shard.

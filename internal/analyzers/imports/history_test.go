@@ -52,7 +52,7 @@ func TestExtractCommitTimeSeries(t *testing.T) {
 
 	hashStr := "aabbccdd00112233445566778899aabbccddeeff"
 	report := analyze.Report{
-		"commit_stats": map[string]*ImportsCommitSummary{
+		"commit_stats": map[string]*CommitSummary{
 			hashStr: {
 				ImportCount: 5,
 				Languages:   map[string]int{"go": 3, "python": 2},
@@ -83,7 +83,7 @@ func TestExtractCommitTimeSeries_Empty(t *testing.T) {
 	assert.Nil(t, result)
 
 	result = h.ExtractCommitTimeSeries(analyze.Report{
-		"commit_stats": map[string]*ImportsCommitSummary{},
+		"commit_stats": map[string]*CommitSummary{},
 	})
 	assert.Nil(t, result)
 }

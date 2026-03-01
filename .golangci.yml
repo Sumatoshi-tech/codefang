@@ -217,6 +217,8 @@ linters:
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.PlumbingSnapshot
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ResultAggregator
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.Aggregator
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportWriter
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportReader
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.AnalysisVisitor
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportSection
         - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.StaticAnalyzer
@@ -514,9 +516,9 @@ linters:
       - path: pkg/uast/pkg/node/querydsl\.go
         linters: [iface]
 
-      # Parallelizable is used via type assertions in runner.go, not as a parameter/return type.
+      # Parallelizable, StoreWriter, DirectStoreWriter are used via type assertions in runner.go, not as parameter/return types.
       - path: internal/analyzers/analyze/history\.go
-        text: "Parallelizable"
+        text: "Parallelizable|StoreWriter|DirectStoreWriter"
         linters: [iface]
 
       # color.NoColor is the library-provided way to control colored output.

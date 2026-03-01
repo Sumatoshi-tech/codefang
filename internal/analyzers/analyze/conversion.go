@@ -35,17 +35,6 @@ type UnifiedModel struct {
 	Analyzers []AnalyzerResult `json:"analyzers" yaml:"analyzers"`
 }
 
-// NewUnifiedModel builds a canonical model from analyzer results.
-func NewUnifiedModel(results []AnalyzerResult) UnifiedModel {
-	copied := make([]AnalyzerResult, len(results))
-	copy(copied, results)
-
-	return UnifiedModel{
-		Version:   UnifiedModelVersion,
-		Analyzers: copied,
-	}
-}
-
 // Validate ensures canonical model constraints are satisfied.
 func (m UnifiedModel) Validate() error {
 	if m.Version != UnifiedModelVersion {
@@ -98,10 +87,8 @@ var (
 	ErrInvalidHistoryFormat = errors.New("invalid history format")
 	// ErrInvalidInputFormat indicates an unrecognized input format.
 	ErrInvalidInputFormat = errors.New("invalid input format")
-	// ErrLegacyInputAmbiguous indicates legacy input requires exactly one analyzer.
-	ErrLegacyInputAmbiguous = errors.New("legacy input requires exactly one analyzer id")
-	// ErrLegacyBinaryCount indicates a binary envelope count mismatch.
-	ErrLegacyBinaryCount = errors.New("legacy binary envelope count mismatch")
+	// ErrBinaryEnvelopeCount indicates an unexpected number of binary envelopes.
+	ErrBinaryEnvelopeCount = errors.New("unexpected binary envelope count")
 )
 
 // ResolveFormats determines the output formats for static and history phases based on
@@ -171,127 +158,75 @@ func ResolveInputFormat(inputPath, inputFormat string) (string, error) {
 	}
 }
 
-// OrderedRunIDs splits the provided analyzer IDs by mode via the registry and returns
-// them in static-first, history-second order.
-func OrderedRunIDs(registry *Registry, ids []string) ([]string, error) {
-	staticIDs, historyIDs, err := registry.Split(ids)
-	if err != nil {
-		return nil, err
-	}
-
-	ordered := make([]string, 0, len(staticIDs)+len(historyIDs))
-	ordered = append(ordered, staticIDs...)
-	ordered = append(ordered, historyIDs...)
-
-	return ordered, nil
-}
-
 // DecodeInputModel dispatches input decoding based on the inputFormat.
 func DecodeInputModel(
 	input []byte,
 	inputFormat string,
-	orderedIDs []string,
-	registry *Registry,
 ) (UnifiedModel, error) {
 	switch inputFormat {
 	case FormatJSON:
-		return decodeJSONInputModel(input, orderedIDs, registry)
+		return decodeJSONInputModel(input)
 	case FormatBinary:
-		return DecodeBinaryInputModel(input, orderedIDs, registry)
+		return DecodeBinaryInputModel(input)
 	default:
 		return UnifiedModel{}, fmt.Errorf("%w: %s", ErrInvalidInputFormat, inputFormat)
 	}
 }
 
-// decodeJSONInputModel attempts to parse canonical unified JSON first, falling back to
-// single-analyzer legacy JSON when the canonical parse fails.
-func decodeJSONInputModel(
-	input []byte,
-	orderedIDs []string,
-	registry *Registry,
-) (UnifiedModel, error) {
-	model, err := ParseUnifiedModelJSON(input)
-	if err == nil {
-		return model, nil
-	}
-
-	if len(orderedIDs) != 1 {
-		return UnifiedModel{}, ErrLegacyInputAmbiguous
-	}
-
-	report := Report{}
-
-	unmarshalErr := json.Unmarshal(input, &report)
-	if unmarshalErr != nil {
-		return UnifiedModel{}, fmt.Errorf("decode legacy json input: %w", unmarshalErr)
-	}
-
-	descriptor, ok := registry.Descriptor(orderedIDs[0])
-	if !ok {
-		return UnifiedModel{}, fmt.Errorf("%w: %s", ErrUnknownAnalyzerID, orderedIDs[0])
-	}
-
-	return NewUnifiedModel([]AnalyzerResult{
-		{
-			ID:     descriptor.ID,
-			Mode:   descriptor.Mode,
-			Report: report,
-		},
-	}), nil
+// decodeJSONInputModel parses canonical unified JSON input.
+func decodeJSONInputModel(input []byte) (UnifiedModel, error) {
+	return ParseUnifiedModelJSON(input)
 }
 
-// DecodeBinaryInputModel decodes concatenated binary envelopes into a unified model.
-// It first tries to interpret a single envelope as canonical unified JSON and falls back
-// to per-analyzer legacy decoding when that fails.
-func DecodeBinaryInputModel(
-	input []byte,
-	orderedIDs []string,
-	registry *Registry,
-) (UnifiedModel, error) {
+// DecodeBinaryInputModel decodes a single binary envelope containing canonical unified JSON.
+func DecodeBinaryInputModel(input []byte) (UnifiedModel, error) {
 	payloads, err := reportutil.DecodeBinaryEnvelopes(input)
 	if err != nil {
 		return UnifiedModel{}, fmt.Errorf("decode binary envelopes: %w", err)
 	}
 
-	if len(payloads) == 1 {
-		model, parseErr := ParseUnifiedModelJSON(payloads[0])
-		if parseErr == nil {
-			return model, nil
-		}
+	if len(payloads) != 1 {
+		return UnifiedModel{}, fmt.Errorf("%w: expected 1, got %d", ErrBinaryEnvelopeCount, len(payloads))
 	}
 
-	if len(payloads) != len(orderedIDs) {
-		return UnifiedModel{}, fmt.Errorf(
-			"%w: payloads=%d analyzers=%d",
-			ErrLegacyBinaryCount,
-			len(payloads),
-			len(orderedIDs),
-		)
+	return ParseUnifiedModelJSON(payloads[0])
+}
+
+// DecodeCombinedBinaryReports decodes multiple binary envelopes, each containing
+// a raw Report JSON, and pairs them positionally with the provided analyzer IDs
+// and modes to build a UnifiedModel. This is used by the combined static+history
+// rendering path where each phase serializes its Reports as separate envelopes.
+func DecodeCombinedBinaryReports(input []byte, ids []string, modes []AnalyzerMode) (UnifiedModel, error) {
+	payloads, err := reportutil.DecodeBinaryEnvelopes(input)
+	if err != nil {
+		return UnifiedModel{}, fmt.Errorf("decode binary envelopes: %w", err)
 	}
 
-	results := make([]AnalyzerResult, 0, len(payloads))
+	if len(payloads) != len(ids) {
+		return UnifiedModel{}, fmt.Errorf("%w: expected %d, got %d", ErrBinaryEnvelopeCount, len(ids), len(payloads))
+	}
+
+	results := make([]AnalyzerResult, len(payloads))
 
 	for i, payload := range payloads {
-		report := Report{}
+		var report Report
 
-		unmarshalErr := json.Unmarshal(payload, &report)
-		if unmarshalErr != nil {
-			return UnifiedModel{}, fmt.Errorf("decode binary payload %d: %w", i, unmarshalErr)
+		jsonErr := json.Unmarshal(payload, &report)
+		if jsonErr != nil {
+			return UnifiedModel{}, fmt.Errorf("unmarshal report %d: %w", i, jsonErr)
 		}
 
-		descriptor, ok := registry.Descriptor(orderedIDs[i])
-		if !ok {
-			return UnifiedModel{}, fmt.Errorf("%w: %s", ErrUnknownAnalyzerID, orderedIDs[i])
-		}
-
-		results = append(results, AnalyzerResult{
-			ID:     descriptor.ID,
-			Mode:   descriptor.Mode,
+		results[i] = AnalyzerResult{
+			ID:     ids[i],
+			Mode:   modes[i],
 			Report: report,
-		})
+		}
 	}
 
-	return NewUnifiedModel(results), nil
+	return UnifiedModel{
+		Version:   UnifiedModelVersion,
+		Analyzers: results,
+	}, nil
 }
 
 // PlotRenderer is a function that renders a UnifiedModel as a plot to the given writer.
@@ -330,6 +265,33 @@ func PlotSectionsFor(analyzerID string) SectionRendererFunc {
 	defer plotSectionRenderersMu.RUnlock()
 
 	return plotSectionRenderers[analyzerID]
+}
+
+// StoreSectionRendererFunc renders plot sections from a ReportReader.
+// Used by analyzers that implement DirectStoreWriter and emit structured kinds
+// instead of a monolithic "report" gob record.
+type StoreSectionRendererFunc func(reader ReportReader) ([]plotpage.Section, error)
+
+// storeSectionRenderers maps analyzer IDs to their store-aware section generators.
+var (
+	storeSectionRenderersMu sync.RWMutex
+	storeSectionRenderers   = make(map[string]StoreSectionRendererFunc)
+)
+
+// RegisterStorePlotSections registers a store-aware plot section renderer for the given analyzer ID.
+func RegisterStorePlotSections(analyzerID string, fn StoreSectionRendererFunc) {
+	storeSectionRenderersMu.Lock()
+	defer storeSectionRenderersMu.Unlock()
+
+	storeSectionRenderers[analyzerID] = fn
+}
+
+// StorePlotSectionsFor returns the registered store section renderer for an analyzer ID, or nil.
+func StorePlotSectionsFor(analyzerID string) StoreSectionRendererFunc {
+	storeSectionRenderersMu.RLock()
+	defer storeSectionRenderersMu.RUnlock()
+
+	return storeSectionRenderers[analyzerID]
 }
 
 // WriteConvertedOutput encodes the unified model into the requested output format

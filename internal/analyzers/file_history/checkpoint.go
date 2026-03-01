@@ -127,8 +127,10 @@ func (h *HistoryAnalyzer) CheckpointSize() int64 {
 	}
 
 	// Merge tracker Bloom filter (fixed size).
-	mergesData, _ := h.merges.MarshalBinary() //nolint:errcheck // best-effort size estimation.
-	size += int64(len(mergesData))
+	mergesData, err := h.merges.MarshalBinary()
+	if err == nil {
+		size += int64(len(mergesData))
+	}
 
 	return size
 }

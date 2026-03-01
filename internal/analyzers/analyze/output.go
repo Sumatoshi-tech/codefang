@@ -5,11 +5,7 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strings"
 
-	"github.com/go-echarts/go-echarts/v2/components"
-
-	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
@@ -17,16 +13,6 @@ import (
 // ReportKeyCommitMeta is the Report key that carries per-commit metadata
 // (timestamp, author) for timeseries output enrichment.
 const ReportKeyCommitMeta = "commit_meta"
-
-// PlotGenerator interface for analyzers that can generate plots.
-type PlotGenerator interface {
-	GenerateChart(report Report) (components.Charter, error)
-}
-
-// SectionGenerator interface for analyzers that can generate page sections.
-type SectionGenerator interface {
-	GenerateSections(report Report) ([]plotpage.Section, error)
-}
 
 // OutputHistoryResults outputs the results for all selected history leaves.
 func OutputHistoryResults(
@@ -48,13 +34,9 @@ func OutputHistoryResults(
 		return outputMergedTimeSeries(leaves, results, format, writer)
 	}
 
-	rawOutput := format == FormatJSON || format == FormatPlot || format == FormatBinary
+	rawOutput := format == FormatJSON || format == FormatBinary
 	if !rawOutput {
 		PrintHeader(writer)
-	}
-
-	if format == FormatPlot && len(leaves) > 1 {
-		return outputCombinedPlot(leaves, results, writer)
 	}
 
 	for _, leaf := range leaves {
@@ -230,85 +212,6 @@ func assembleOrderedCommitMeta(
 	}
 
 	return meta
-}
-
-func outputCombinedPlot(
-	leaves []HistoryAnalyzer,
-	results map[HistoryAnalyzer]Report,
-	writer io.Writer,
-) error {
-	page := buildCombinedPage(leaves)
-
-	for _, leaf := range leaves {
-		res := results[leaf]
-		if res == nil {
-			continue
-		}
-
-		err := addLeafToPage(page, leaf, res)
-		if err != nil {
-			return err
-		}
-	}
-
-	err := page.Render(writer)
-	if err != nil {
-		return fmt.Errorf("render page: %w", err)
-	}
-
-	return nil
-}
-
-func buildCombinedPage(leaves []HistoryAnalyzer) *plotpage.Page {
-	names := make([]string, 0, len(leaves))
-	for _, leaf := range leaves {
-		names = append(names, leaf.Name())
-	}
-
-	return plotpage.NewPage(
-		"Combined Analysis Report",
-		fmt.Sprintf("Analysis results for: %s", strings.Join(names, ", ")),
-	)
-}
-
-func addLeafToPage(page *plotpage.Page, leaf HistoryAnalyzer, res Report) error {
-	if sectionGen, ok := leaf.(SectionGenerator); ok {
-		return addSectionsToPage(page, sectionGen, leaf.Name(), res)
-	}
-
-	if plotter, ok := leaf.(PlotGenerator); ok {
-		return addChartToPage(page, plotter, leaf.Name(), res)
-	}
-
-	return nil
-}
-
-func addSectionsToPage(page *plotpage.Page, gen SectionGenerator, name string, res Report) error {
-	sections, err := gen.GenerateSections(res)
-	if err != nil {
-		return fmt.Errorf("failed to generate sections for %s: %w", name, err)
-	}
-
-	page.Add(sections...)
-
-	return nil
-}
-
-func addChartToPage(page *plotpage.Page, plotter PlotGenerator, name string, res Report) error {
-	chart, err := plotter.GenerateChart(res)
-	if err != nil {
-		return fmt.Errorf("failed to generate chart for %s: %w", name, err)
-	}
-
-	if renderable, ok := chart.(plotpage.Renderable); ok {
-		page.Add(plotpage.Section{
-			Title:    name,
-			Subtitle: fmt.Sprintf("Results from %s analyzer", name),
-			Chart:    plotpage.WrapChart(renderable),
-		})
-	}
-
-	return nil
 }
 
 // PrintHeader prints the codefang version header.

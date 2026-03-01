@@ -64,17 +64,6 @@ type CommitStatsDrainer interface {
 	DrainCommitStats() (commitData map[string]any, commitsByTick map[int][]gitlib.Hash)
 }
 
-// StateDiscarder is an optional interface for aggregators that can discard
-// their in-memory cumulative state without serialization. Used in streaming
-// timeseries NDJSON mode where per-commit data is drained each chunk and
-// cumulative state (coupling matrices, burndown histories) is never needed
-// for a final report.
-type StateDiscarder interface { //nolint:iface // consumed by framework package via type assertion.
-	// DiscardState clears all in-memory cumulative state, freeing memory.
-	// Unlike Spill(), this does not write to disk — the state is permanently lost.
-	DiscardState()
-}
-
 // AggregatorSpillInfo describes the on-disk spill state of an Aggregator.
 // Used by the checkpoint system to save and restore spill directories.
 type AggregatorSpillInfo struct {
@@ -84,6 +73,11 @@ type AggregatorSpillInfo struct {
 	// Count is the number of spill files written.
 	Count int `json:"count,omitempty"`
 }
+
+// ConfigTmpDir is the facts key for the global temporary directory override.
+// When set, analyzers should use this directory for spill and hibernation files
+// instead of [os.TempDir].
+const ConfigTmpDir = "TmpDir"
 
 // AggregatorOptions configures an Aggregator instance.
 // A zero-value AggregatorOptions is valid and means:

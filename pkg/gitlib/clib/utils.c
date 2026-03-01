@@ -14,8 +14,43 @@
 #endif
 
 /*
+ * C constructor: runs before main() and before the Go runtime creates threads.
+ * This is the ONLY reliable way to limit glibc malloc arenas — mallopt() after
+ * threads exist cannot destroy already-created arenas.
+ *
+ * Without this, 24-core machines create 69 threads × 128 MiB arenas = 8+ GiB
+ * of retained-but-freed native memory that RSS never reclaims.
+ */
+#ifdef __GLIBC__
+__attribute__((constructor))
+static void cf_early_malloc_config(void) {
+    /* Limit to 2 arenas. With Go's M:N scheduling model, dozens of OS threads
+     * are created for CGO calls. Each thread that calls malloc for the first
+     * time creates a new arena (up to 8*cores = 192 on 24-core). Capping at 2
+     * forces all threads to share 2 arenas, preventing RSS explosion.
+     * Contention on arena locks is acceptable because the hot CGO paths
+     * (tree-sitter, libgit2) do bulk work per call. */
+    mallopt(M_ARENA_MAX, 2);
+
+    /* Force allocations >= 32 KiB to use mmap instead of sbrk/arena.
+     * Tree-sitter parse trees are typically 100 KiB - 10 MiB; using mmap
+     * ensures they are returned to the OS immediately on free(). */
+    mallopt(M_MMAP_THRESHOLD, 32 * 1024);
+
+    /* Lower trim threshold so malloc_trim releases small gaps sooner. */
+    mallopt(M_TRIM_THRESHOLD, 16 * 1024);
+}
+#endif
+
+/*
  * Initialize global settings.
- * Should be called once at startup.
+ * Should be called once at startup, before any libgit2/tree-sitter work.
+ *
+ * NOTE: mallopt calls are NOT made here — they are too late. By the time Go's
+ * init() calls cf_init(), the Go runtime has already created ~69 OS threads,
+ * each of which may have initialized a malloc arena. glibc malloc tunables
+ * must be set via environment variables (MALLOC_ARENA_MAX, MALLOC_MMAP_THRESHOLD_,
+ * etc.) BEFORE the process starts. See ensureMallocTunables() in main.go.
  */
 void cf_init() {
 #ifdef _OPENMP
@@ -38,6 +73,7 @@ void cf_init() {
  */
 int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int malloc_arena_max) {
     int err = 0;
+    (void)malloc_arena_max; /* mallopt is handled via env vars before process start. */
     if (mwindow_mapped_limit > 0) {
         err = git_libgit2_opts(GIT_OPT_SET_MWINDOW_MAPPED_LIMIT, mwindow_mapped_limit);
         if (err != 0) return err;
@@ -46,16 +82,6 @@ int cf_configure_memory(size_t mwindow_mapped_limit, size_t cache_max_size, int 
         err = git_libgit2_opts(GIT_OPT_SET_CACHE_MAX_SIZE, (ssize_t)cache_max_size);
         if (err != 0) return err;
     }
-    /* Limit glibc malloc arenas to prevent RSS explosion.
-     * Default is 8*num_cores which creates ~192 arenas on 24-core machines.
-     * Each arena retains freed memory, causing RSS to be 3-4x higher than
-     * actual usage. A moderate limit (e.g. 4-8) dramatically reduces peak
-     * RSS with minimal performance impact. */
-#ifdef __GLIBC__
-    if (malloc_arena_max > 0) {
-        mallopt(M_ARENA_MAX, malloc_arena_max);
-    }
-#endif
     return 0;
 }
 

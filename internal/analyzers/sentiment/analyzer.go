@@ -228,7 +228,7 @@ func (s *Analyzer) Consume(ctx context.Context, ac *analyze.Context) (analyze.TC
 
 	var commentNodes []*node.Node
 
-	for _, change := range changes {
+	for change := range changes {
 		if change.After != nil {
 			extractComments(change.After, &commentNodes)
 		}

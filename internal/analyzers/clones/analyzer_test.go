@@ -763,8 +763,11 @@ func TestAggregator_CrossFileClones(t *testing.T) {
 	require.True(t, pOK)
 	require.Len(t, pairs, 1)
 
-	funcA, _ := pairs[0]["func_a"].(string) //nolint:errcheck // test assertion follows.
-	funcB, _ := pairs[0]["func_b"].(string) //nolint:errcheck // test assertion follows.
+	funcA, okA := pairs[0]["func_a"].(string)
+	require.True(t, okA, "func_a should be a string")
+
+	funcB, okB := pairs[0]["func_b"].(string)
+	require.True(t, okB, "func_b should be a string")
 
 	assert.Contains(t, funcA, "::")
 	assert.Contains(t, funcB, "::")

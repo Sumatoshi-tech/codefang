@@ -15,8 +15,8 @@ const (
 	hashEntryBytes        = 24
 )
 
-// FileHistoryCommitSummary holds per-commit summary data for timeseries output.
-type FileHistoryCommitSummary struct { //nolint:revive // used across packages.
+// CommitSummary holds per-commit summary data for timeseries output.
+type CommitSummary struct {
 	FilesTouched int `json:"files_touched"`
 	LinesAdded   int `json:"lines_added"`
 	LinesRemoved int `json:"lines_removed"`
@@ -31,7 +31,7 @@ type FileHistoryCommitSummary struct { //nolint:revive // used across packages.
 type Aggregator struct {
 	files          *spillstore.SpillStore[FileHistory]
 	lastCommitHash gitlib.Hash
-	commitStats    map[string]*FileHistoryCommitSummary
+	commitStats    map[string]*CommitSummary
 	commitsByTick  map[int][]gitlib.Hash
 	opts           analyze.AggregatorOptions
 	closed         bool
@@ -40,8 +40,8 @@ type Aggregator struct {
 // NewAggregator creates a new aggregator for the file history analyzer.
 func NewAggregator(opts analyze.AggregatorOptions) *Aggregator {
 	return &Aggregator{
-		files:         spillstore.New[FileHistory](),
-		commitStats:   make(map[string]*FileHistoryCommitSummary),
+		files:         spillstore.NewWithBaseDir[FileHistory](opts.SpillDir),
+		commitStats:   make(map[string]*CommitSummary),
 		commitsByTick: make(map[int][]gitlib.Hash),
 		opts:          opts,
 	}
@@ -76,7 +76,7 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 }
 
 func (a *Aggregator) trackCommitStats(tc analyze.TC, cd *CommitData) {
-	summary := &FileHistoryCommitSummary{
+	summary := &CommitSummary{
 		FilesTouched: len(cd.PathActions),
 	}
 
@@ -241,7 +241,7 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 
 // DiscardState clears all in-memory cumulative state without serialization.
 func (a *Aggregator) DiscardState() {
-	a.files = spillstore.New[FileHistory]()
+	a.files = spillstore.NewWithBaseDir[FileHistory](a.opts.SpillDir)
 }
 
 // Spill writes accumulated state to disk to free memory.
@@ -344,7 +344,7 @@ func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[in
 	}
 
 	cbt := a.commitsByTick
-	a.commitStats = make(map[string]*FileHistoryCommitSummary)
+	a.commitStats = make(map[string]*CommitSummary)
 	a.commitsByTick = make(map[int][]gitlib.Hash)
 
 	return result, cbt
@@ -366,7 +366,7 @@ func (a *Aggregator) Close() error {
 type TickData struct {
 	Files          map[string]FileHistory
 	LastCommitHash gitlib.Hash
-	CommitStats    map[string]*FileHistoryCommitSummary
+	CommitStats    map[string]*CommitSummary
 	CommitsByTick  map[int][]gitlib.Hash
 }
 
@@ -394,8 +394,8 @@ func TicksToReport(ctx context.Context, ticks []analyze.TICK, repo *gitlib.Repos
 	return report
 }
 
-func mergeTickCommitData(ticks []analyze.TICK) (commitStats map[string]*FileHistoryCommitSummary, commitsByTick map[int][]gitlib.Hash) {
-	commitStats = make(map[string]*FileHistoryCommitSummary)
+func mergeTickCommitData(ticks []analyze.TICK) (commitStats map[string]*CommitSummary, commitsByTick map[int][]gitlib.Hash) {
+	commitStats = make(map[string]*CommitSummary)
 	commitsByTick = make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
@@ -466,10 +466,16 @@ func filterFilesByLastCommit(
 	}
 
 	filtered := make(map[string]FileHistory)
+	processed := 0
 
 	err = fileIter.ForEach(func(file *gitlib.File) error {
 		if fh, ok := files[file.Name]; ok {
 			filtered[file.Name] = fh
+		}
+
+		processed++
+		if processed%1000 == 0 {
+			gitlib.ReleaseNativeMemory()
 		}
 
 		return nil

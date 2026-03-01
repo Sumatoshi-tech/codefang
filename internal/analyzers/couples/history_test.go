@@ -539,7 +539,7 @@ func TestExtractCommitTimeSeries(t *testing.T) {
 	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	report := analyze.Report{
-		"commit_stats": map[string]*CouplesCommitSummary{
+		"commit_stats": map[string]*CommitSummary{
 			hashA: {FilesTouched: 5, AuthorID: 0},
 			hashB: {FilesTouched: 3, AuthorID: 1},
 		},
@@ -568,6 +568,6 @@ func TestExtractCommitTimeSeries_Empty(t *testing.T) {
 
 	assert.Nil(t, c.ExtractCommitTimeSeries(analyze.Report{}))
 	assert.Nil(t, c.ExtractCommitTimeSeries(analyze.Report{
-		"commit_stats": map[string]*CouplesCommitSummary{},
+		"commit_stats": map[string]*CommitSummary{},
 	}))
 }

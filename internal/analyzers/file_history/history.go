@@ -99,7 +99,7 @@ func (h *HistoryAnalyzer) Initialize(repo *gitlib.Repository) error {
 }
 
 // shouldConsumeCommit checks whether a commit should be processed.
-// It returns false for duplicate merge commits and non-merge context merges.
+// It returns false only for duplicate merge commits (already seen via another parent).
 func (h *HistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 	commit := ctx.Commit
 
@@ -109,11 +109,11 @@ func (h *HistoryAnalyzer) shouldConsumeCommit(ctx *analyze.Context) bool {
 		}
 	}
 
-	return !ctx.IsMerge
+	return true
 }
 
 // buildCommitData produces the TC payload from plumbing state without mutating h.files.
-func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze.CommitLike, author int) *CommitData {
+func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze.CommitLike, author int) (*CommitData, error) {
 	data := &CommitData{}
 
 	router := &plumbing.ChangeRouter{
@@ -156,7 +156,9 @@ func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze
 		},
 	}
 
-	_ = router.Route(changes) //nolint:errcheck // errors are always nil from our handlers.
+	if err := router.Route(changes); err != nil {
+		return nil, err
+	}
 
 	for changeEntry, stats := range h.LineStats.LineStats {
 		data.LineStatUpdates = append(data.LineStatUpdates, LineStatUpdate{
@@ -166,11 +168,11 @@ func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze
 		})
 	}
 
-	return data
+	return data, nil
 }
 
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
-func (h *HistoryAnalyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) {
+func (h *HistoryAnalyzer) processFileChanges(changes gitlib.Changes, commit analyze.CommitLike) error {
 	router := &plumbing.ChangeRouter{
 		OnInsert: func(change *gitlib.Change) error {
 			h.processAction(change, commit)
@@ -201,7 +203,7 @@ func (h *HistoryAnalyzer) processFileChanges(changes gitlib.Changes, commit anal
 		},
 	}
 
-	_ = router.Route(changes) //nolint:errcheck // errors are always nil from our handlers.
+	return router.Route(changes)
 }
 
 // processAction handles Insert, Delete, and simple Modify actions.
@@ -258,6 +260,8 @@ func (h *HistoryAnalyzer) aggregateLineStats(lineStats map[gitlib.ChangeEntry]pk
 // Consume processes a single commit with the provided dependency results.
 // Emits a TC with CommitData for the aggregator. Also maintains local state
 // for Fork/Merge parallel path (workers merge state; main uses aggregator).
+// For merge commits, file changes are tracked but line stats are skipped to
+// avoid double-counting lines that appear in both parent branches.
 func (h *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	if !h.shouldConsumeCommit(ac) {
 		return analyze.TC{}, nil
@@ -267,10 +271,24 @@ func (h *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 		h.lastCommitHash = ac.Commit.Hash()
 	}
 
-	h.processFileChanges(h.TreeDiff.Changes, ac.Commit)
-	h.aggregateLineStats(h.LineStats.LineStats, h.Identity.AuthorID)
+	if err := h.processFileChanges(h.TreeDiff.Changes, ac.Commit); err != nil {
+		return analyze.TC{}, err
+	}
 
-	data := h.buildCommitData(h.TreeDiff.Changes, ac.Commit, h.Identity.AuthorID)
+	if !ac.IsMerge {
+		h.aggregateLineStats(h.LineStats.LineStats, h.Identity.AuthorID)
+	}
+
+	data, err := h.buildCommitData(h.TreeDiff.Changes, ac.Commit, h.Identity.AuthorID)
+	if err != nil {
+		return analyze.TC{}, err
+	}
+
+	// For merge commits, clear line stat updates from TC data to avoid
+	// double-counting in the aggregator.
+	if ac.IsMerge {
+		data.LineStatUpdates = nil
+	}
 
 	return analyze.TC{
 		CommitHash: ac.Commit.Hash(),
@@ -431,7 +449,7 @@ func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.T
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It extracts per-commit file change summary data for the unified timeseries output.
 func (h *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitStats, ok := report["commit_stats"].(map[string]*FileHistoryCommitSummary)
+	commitStats, ok := report["commit_stats"].(map[string]*CommitSummary)
 	if !ok || len(commitStats) == 0 {
 		return nil
 	}

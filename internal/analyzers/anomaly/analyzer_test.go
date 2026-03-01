@@ -71,7 +71,7 @@ func TestAnalyzer_Initialize(t *testing.T) {
 func TestAnalyzer_Consume_ReturnsTCWithCommitData(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	ha.TreeDiff.Changes = gitlib.Changes{
 		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "main.go"}},
@@ -103,7 +103,7 @@ func TestAnalyzer_Consume_ReturnsTCWithCommitData(t *testing.T) {
 func TestAnalyzer_Consume_EmptyCommit(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	ha.TreeDiff.Changes = nil
 	ha.Ticks.Tick = 0
@@ -126,7 +126,7 @@ func TestAnalyzer_Consume_EmptyCommit(t *testing.T) {
 func TestAnalyzer_Consume_NilContext(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	tc, err := ha.Consume(context.Background(), nil)
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestAnalyzer_Consume_NilContext(t *testing.T) {
 func TestAnalyzer_Consume_NoAccumulation(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	hash1 := gitlib.NewHash(testHashA)
 	hash2 := gitlib.NewHash(testHashB)
@@ -182,7 +182,7 @@ func TestAnalyzer_Consume_NoAccumulation(t *testing.T) {
 func TestAnalyzer_Consume_LanguageAndAuthor(t *testing.T) {
 	t.Parallel()
 
-	ha := newTestAnalyzer()
+	ha := newTestAnalyzer(t)
 
 	blobHash1 := gitlib.Hash{0x01}
 	blobHash2 := gitlib.Hash{0x02}
@@ -406,7 +406,9 @@ func TestComputeAllMetrics_FromCommitData(t *testing.T) {
 
 // --- Helpers ---.
 
-func newTestAnalyzer() *Analyzer {
+func newTestAnalyzer(t testing.TB) *Analyzer {
+	t.Helper()
+
 	treeDiff := &plumbing.TreeDiffAnalyzer{}
 	blobCache := &plumbing.BlobCacheAnalyzer{TreeDiff: treeDiff}
 
@@ -418,8 +420,7 @@ func newTestAnalyzer() *Analyzer {
 		Identity:  &plumbing.IdentityDetector{},
 	}
 
-	//nolint:errcheck // test helper; Initialize never errors.
-	ha.Initialize(nil)
+	require.NoError(t, ha.Initialize(nil))
 
 	return ha
 }

@@ -132,6 +132,6 @@ func TestRegisterPlotSections(t *testing.T) {
 
 	RegisterPlotSections()
 
-	renderer := analyze.PlotSectionsFor("history/sentiment")
+	renderer := analyze.StorePlotSectionsFor("sentiment")
 	assert.NotNil(t, renderer)
 }

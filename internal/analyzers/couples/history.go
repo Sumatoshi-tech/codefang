@@ -45,6 +45,13 @@ type HistoryAnalyzer struct {
 	reversedPeopleDict []string
 	PeopleNumber       int
 	seenFiles          *bloom.Filter
+
+	// TopKPerFile limits the number of file coupling pairs emitted by WriteToStoreFromAggregator.
+	// Zero uses DefaultTopKPerFile.
+	TopKPerFile int
+	// MinEdgeWeight is the minimum co-change count for an edge to be emitted.
+	// Zero uses DefaultMinEdgeWeight.
+	MinEdgeWeight int64
 }
 
 // NewHistoryAnalyzer creates a new HistoryAnalyzer.
@@ -67,19 +74,32 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			return ComputeAllMetrics(report)
 		},
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
-			return newAggregator(opts, a.PeopleNumber, a.reversedPeopleDict, a.lastCommit)
+			return newAggregator(opts, a.PeopleNumber, a.getReversedPeopleDict(), a.lastCommit)
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, ticks, a.reversedPeopleDict, a.PeopleNumber, a.lastCommit)
+			return ticksToReport(ctx, ticks, a.getReversedPeopleDict(), a.PeopleNumber, a.lastCommit)
 		},
 	}
 
 	return a
 }
 
+func (c *HistoryAnalyzer) getReversedPeopleDict() []string {
+	if c.Identity != nil && len(c.Identity.ReversedPeopleDict) > 0 {
+		return c.Identity.ReversedPeopleDict
+	}
+
+	return c.reversedPeopleDict
+}
+
 const (
-	// CouplesMaximumMeaningfulContextSize is the maximum number of files in a commit to consider for coupling analysis.
-	CouplesMaximumMeaningfulContextSize = 1000
+	// CouplesMaximumMeaningfulContextSize is the maximum number of files in a commit
+	// to consider for coupling analysis. Commits exceeding this threshold are skipped
+	// because they are typically bulk operations (vendor updates, mass renames,
+	// formatting) that produce noise rather than meaningful coupling signal.
+	// Memory impact: N files → N² coupling entries × ~200 bytes.
+	// At 200 files: 40K entries ≈ 8 MB. At 1000 files: 1M entries ≈ 200 MB.
+	CouplesMaximumMeaningfulContextSize = 200
 )
 
 // Name returns the name of the analyzer.
@@ -426,7 +446,7 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			Identity:           &plumbing.IdentityDetector{},
 			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
 			PeopleNumber:       c.PeopleNumber,
-			reversedPeopleDict: c.reversedPeopleDict,
+			reversedPeopleDict: c.getReversedPeopleDict(),
 			seenFiles:          newSeenFilesFilter(),
 		}
 		if c.BaseHistoryAnalyzer != nil {
@@ -481,13 +501,13 @@ func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer
 
 // NewAggregator creates a new aggregator for this analyzer.
 func (c *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return newAggregator(opts, c.PeopleNumber, c.reversedPeopleDict, c.lastCommit)
+	return newAggregator(opts, c.PeopleNumber, c.getReversedPeopleDict(), c.lastCommit)
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It extracts per-commit coupling summary data for the unified timeseries output.
 func (c *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitStats, ok := report["commit_stats"].(map[string]*CouplesCommitSummary)
+	commitStats, ok := report["commit_stats"].(map[string]*CommitSummary)
 	if !ok || len(commitStats) == 0 {
 		return nil
 	}

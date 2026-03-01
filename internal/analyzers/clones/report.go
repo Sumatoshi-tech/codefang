@@ -1,7 +1,5 @@
 package clones
 
-import "fmt"
-
 // Clone type constants.
 const (
 	// CloneType1 represents an exact clone (identical AST structure and tokens).
@@ -67,14 +65,20 @@ func classifyCloneType(similarity float64) string {
 	return CloneType3
 }
 
+// PairKey is a canonical key for a clone pair to avoid duplicates.
+type PairKey struct {
+	FuncA string
+	FuncB string
+}
+
 // clonePairKey returns a canonical key for a clone pair to avoid duplicates.
 // The key is ordered alphabetically so (A,B) and (B,A) produce the same key.
-func clonePairKey(funcA, funcB string) string {
+func clonePairKey(funcA, funcB string) PairKey {
 	if funcA > funcB {
 		funcA, funcB = funcB, funcA
 	}
 
-	return fmt.Sprintf("%s::%s", funcA, funcB)
+	return PairKey{FuncA: funcA, FuncB: funcB}
 }
 
 // computeMetricsFromReport extracts ComputedMetrics from a report map.

@@ -240,34 +240,28 @@ func TestExtractCouplesData_DirectExtraction(t *testing.T) {
 	assert.Equal(t, []string{"alice", "bob"}, names)
 }
 
-func TestExtractCouplesData_FromCouplingList(t *testing.T) {
+func TestExtractCouplesData_MissingMatrix(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
-		"developer_coupling": []any{
-			map[string]any{
-				"developer1":          "alice",
-				"developer2":          "bob",
-				"shared_file_changes": float64(10),
-			},
-		},
+		"ReversedPeopleDict": []string{"alice", "bob"},
 	}
 
 	matrix, names, err := extractCouplesData(report)
-	require.NoError(t, err)
-	require.Len(t, names, 2)
-	require.Len(t, matrix, 2)
+	require.Error(t, err)
+	assert.Nil(t, matrix)
+	assert.Nil(t, names)
 }
 
-func TestExtractCouplesData_Empty(t *testing.T) {
+func TestExtractCouplesData_MissingNames(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
-		"developer_coupling": []any{},
+		"PeopleMatrix": []map[int]int64{{0: 5}},
 	}
 
 	matrix, names, err := extractCouplesData(report)
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.Nil(t, matrix)
 	assert.Nil(t, names)
 }

@@ -91,21 +91,34 @@ func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 const checkpointBaseOverhead = 100
 
 // Checkpoint size estimation constants.
-const bytesPerPerson = 50
+const (
+	bytesPerPerson = 50
+
+	// bloomHeaderBytes is the fixed header size of a serialized Bloom filter.
+	bloomHeaderBytes = 24
+
+	// bloomWordBytes is the size of a single uint64 word in a Bloom filter.
+	bloomWordBytes = 8
+
+	// bloomWordBits is the number of bits per uint64 word.
+	bloomWordBits = 64
+)
 
 // CheckpointSize returns an estimated size of the checkpoint in bytes.
 func (c *HistoryAnalyzer) CheckpointSize() int64 {
 	size := int64(checkpointBaseOverhead)
 
-	// Bloom filters: 24-byte header + 8 bytes per uint64 word each.
+	// Bloom filters: fixed header + bytes per uint64 word each.
 	if c.seenFiles != nil {
-		size += 24 + int64(c.seenFiles.BitCount()/64+1)*8 //nolint:mnd // bloom filter binary layout constants.
+		size += bloomHeaderBytes + int64(c.seenFiles.BitCount()/bloomWordBits+1)*bloomWordBytes
 	}
 
 	// Merge tracker Bloom filter (fixed size based on mergeTrackerExpected).
 	if c.merges != nil {
-		mergesData, _ := c.merges.MarshalBinary() //nolint:errcheck // best-effort size estimation.
-		size += int64(len(mergesData))
+		mergesData, err := c.merges.MarshalBinary()
+		if err == nil {
+			size += int64(len(mergesData))
+		}
 	}
 
 	size += int64(len(c.reversedPeopleDict)) * bytesPerPerson

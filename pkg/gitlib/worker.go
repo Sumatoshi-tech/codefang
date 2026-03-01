@@ -9,14 +9,29 @@ import (
 // WorkerRequest is the interface for requests handled by the Gitlib Worker.
 type WorkerRequest interface {
 	isWorkerRequest()
+	// requestContext returns the context associated with this request.
+	// The default implementations return context.Background().
+	requestContext() context.Context
 }
+
+// WithContext wraps a WorkerRequest with an explicit context.
+func WithContext(ctx context.Context, req WorkerRequest) WorkerRequest {
+	return contextualRequest{ctx: ctx, WorkerRequest: req}
+}
+
+// contextualRequest wraps a WorkerRequest with an explicit context.
+type contextualRequest struct {
+	ctx context.Context
+	WorkerRequest
+}
+
+func (c contextualRequest) requestContext() context.Context { return c.ctx }
 
 // TreeDiffRequest asks for a tree diff for a specific commit hash.
 type TreeDiffRequest struct {
-	Ctx                context.Context //nolint:containedctx // Channel-transported request; context must travel with the request.
-	PreviousTree       *Tree           // Optimization: Use existing tree if on same worker/repo.
-	PreviousCommitHash Hash            // Fallback: Lookup previous tree by hash (safe for pool workers).
-	CommitHash         Hash            // Hash of the commit to process.
+	PreviousTree       *Tree // Optimization: Use existing tree if on same worker/repo.
+	PreviousCommitHash Hash  // Fallback: Lookup previous tree by hash (safe for pool workers).
+	CommitHash         Hash  // Hash of the commit to process.
 	Response           chan<- TreeDiffResponse
 }
 
@@ -29,7 +44,6 @@ type TreeDiffResponse struct {
 
 // BlobBatchRequest asks to load a batch of blobs.
 type BlobBatchRequest struct {
-	Ctx      context.Context //nolint:containedctx // Channel-transported request; context must travel with the request.
 	Hashes   []Hash
 	Response chan<- BlobBatchResponse
 	Arena    []byte
@@ -43,7 +57,6 @@ type BlobBatchResponse struct {
 
 // DiffBatchRequest asks to compute diffs for a batch of pairs.
 type DiffBatchRequest struct {
-	Ctx      context.Context //nolint:containedctx // Channel-transported request; context must travel with the request.
 	Requests []DiffRequest
 	Response chan<- DiffBatchResponse
 }
@@ -53,9 +66,12 @@ type DiffBatchResponse struct {
 	Results []DiffResult
 }
 
-func (TreeDiffRequest) isWorkerRequest()  {}
-func (BlobBatchRequest) isWorkerRequest() {}
-func (DiffBatchRequest) isWorkerRequest() {}
+func (TreeDiffRequest) isWorkerRequest()                      {}
+func (BlobBatchRequest) isWorkerRequest()                     {}
+func (DiffBatchRequest) isWorkerRequest()                     {}
+func (TreeDiffRequest) requestContext() context.Context       { return context.Background() }
+func (BlobBatchRequest) requestContext() context.Context      { return context.Background() }
+func (DiffBatchRequest) requestContext() context.Context      { return context.Background() }
 
 // Worker manages exclusive, sequential access to the libgit2 Repository.
 // It ensures all CGO calls happen on a single OS thread.
@@ -98,9 +114,16 @@ func (w *Worker) Stop() {
 }
 
 func (w *Worker) handle(req WorkerRequest) {
+	ctx := req.requestContext()
+
+	// Unwrap contextual wrapper to get the underlying request type.
+	if cr, ok := req.(contextualRequest); ok {
+		req = cr.WorkerRequest
+	}
+
 	switch typedReq := req.(type) {
 	case TreeDiffRequest:
-		commit, err := w.repo.LookupCommit(typedReq.Ctx, typedReq.CommitHash)
+		commit, err := w.repo.LookupCommit(ctx, typedReq.CommitHash)
 		if err != nil {
 			typedReq.Response <- TreeDiffResponse{Error: err}
 
@@ -135,13 +158,13 @@ func (w *Worker) handle(req WorkerRequest) {
 
 		switch {
 		case typedReq.PreviousTree != nil:
-			changes, err = TreeDiff(typedReq.Ctx, w.repo, typedReq.PreviousTree, commitTree)
+			changes, err = TreeDiff(ctx, w.repo, typedReq.PreviousTree, commitTree)
 		case !typedReq.PreviousCommitHash.IsZero():
 			// Fast path: Use CGO bridge to get diff directly from ODB.
 			prevHash := typedReq.PreviousCommitHash
 			currHash := typedReq.CommitHash
 
-			currCommit, lookupErr := w.repo.LookupCommit(typedReq.Ctx, currHash)
+			currCommit, lookupErr := w.repo.LookupCommit(ctx, currHash)
 			if lookupErr != nil {
 				typedReq.Response <- TreeDiffResponse{Error: lookupErr}
 
@@ -151,7 +174,7 @@ func (w *Worker) handle(req WorkerRequest) {
 			currTreeHash := currCommit.TreeHash()
 			currCommit.Free()
 
-			prevCommit, lookupErr := w.repo.LookupCommit(typedReq.Ctx, prevHash)
+			prevCommit, lookupErr := w.repo.LookupCommit(ctx, prevHash)
 			if lookupErr != nil {
 				typedReq.Response <- TreeDiffResponse{Error: lookupErr}
 
@@ -163,7 +186,7 @@ func (w *Worker) handle(req WorkerRequest) {
 
 			changes, err = w.bridge.TreeDiff(prevTreeHash, currTreeHash)
 		default:
-			changes, err = InitialTreeChanges(typedReq.Ctx, w.repo, commitTree)
+			changes, err = InitialTreeChanges(ctx, w.repo, commitTree)
 		}
 
 		// We return commitTree so the caller can use it as PreviousTree next time.

@@ -125,7 +125,7 @@ func (a *Analyzer) GenerateDashboardForAnalyzer(report analyze.Report, writer io
 
 // RegisterDevPlotSections registers the plot section renderer for the devs analyzer.
 func RegisterDevPlotSections() {
-	analyze.RegisterPlotSections("history/devs", GenerateSections)
+	analyze.RegisterStorePlotSections("devs", GenerateStoreSections)
 }
 
 func createEmptyBar() *charts.Bar {

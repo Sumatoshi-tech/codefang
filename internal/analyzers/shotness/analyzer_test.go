@@ -982,7 +982,7 @@ func TestExtractCommitTimeSeries(t *testing.T) {
 	hashB := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	report := analyze.Report{
-		"commit_stats": map[string]*ShotnessCommitSummary{
+		"commit_stats": map[string]*CommitSummary{
 			hashA: {NodesTouched: 5, CouplingPairs: 10},
 			hashB: {NodesTouched: 2, CouplingPairs: 1},
 		},

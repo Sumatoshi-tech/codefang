@@ -38,9 +38,7 @@ var ErrInvalidCounters = errors.New("invalid shotness report: expected []map[int
 
 // RegisterPlotSections registers the shotness plot section renderer with the analyze package.
 func RegisterPlotSections() {
-	analyze.RegisterPlotSections("history/shotness", func(report analyze.Report) ([]plotpage.Section, error) {
-		return (&Analyzer{}).GenerateSections(report)
-	})
+	analyze.RegisterStorePlotSections("shotness", GenerateStoreSections)
 }
 
 func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {

@@ -10,7 +10,12 @@ func (h *HistoryAnalyzer) Hibernate() error {
 	// within a chunk. Between chunks, we won't see same commits.
 	h.merges.Reset()
 
-	// lastCommit is no longer a pointer reference so no need to clear it.
+	// Clear file history map to prevent unbounded growth across chunks.
+	// The aggregator (SpillStore[FileHistory]) independently tracks file
+	// history from TCs, so h.files is redundant between chunks.
+	// Within the next chunk, processFileChanges re-populates h.files.
+	h.files = make(map[string]*FileHistory)
+
 	return nil
 }
 
@@ -27,7 +32,7 @@ func (h *HistoryAnalyzer) Boot() error {
 
 // workingStateSize is the estimated bytes of working state per commit
 // for the file-history analyzer (per-file history with developer stats).
-const workingStateSize = 40 * 1024
+const workingStateSize = 2 * 1024
 
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the file-history analyzer.

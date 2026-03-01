@@ -29,8 +29,8 @@ type ImportEntry struct {
 	Import string
 }
 
-// ImportsCommitSummary holds per-commit summary data for timeseries output.
-type ImportsCommitSummary struct { //nolint:revive // used across packages.
+// CommitSummary holds per-commit summary data for timeseries output.
+type CommitSummary struct {
 	ImportCount int            `json:"import_count"`
 	Languages   map[string]int `json:"languages"`
 }
@@ -39,13 +39,13 @@ type ImportsCommitSummary struct { //nolint:revive // used across packages.
 // It holds the accumulated 4-level imports map for the tick.
 type TickData struct {
 	Imports     Map
-	CommitStats map[string]*ImportsCommitSummary
+	CommitStats map[string]*CommitSummary
 }
 
 // tickAccumulator holds the in-memory state during aggregation for a single tick.
 type tickAccumulator struct {
 	imports     Map
-	commitStats map[string]*ImportsCommitSummary
+	commitStats map[string]*CommitSummary
 }
 
 // HistoryAnalyzer tracks import usage across commit history.
@@ -94,11 +94,19 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			return agg
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, ticks, a.reversedPeopleDict, a.TickSize)
+			return ticksToReport(ctx, ticks, a.getReversedPeopleDict(), a.TickSize)
 		},
 	}
 
 	return a
+}
+
+func (h *HistoryAnalyzer) getReversedPeopleDict() []string {
+	if h.Identity != nil && len(h.Identity.ReversedPeopleDict) > 0 {
+		return h.Identity.ReversedPeopleDict
+	}
+
+	return h.reversedPeopleDict
 }
 
 // Name returns the name of the analyzer.
@@ -148,7 +156,7 @@ func (h *HistoryAnalyzer) Consume(ctx context.Context, ac *analyze.Context) (ana
 
 	var entries []ImportEntry
 
-	for _, change := range changesList {
+	for change := range changesList {
 		// Only extract imports from the "after" version (Insert or Modify).
 		if change.After == nil {
 			continue
@@ -211,7 +219,7 @@ func (h *HistoryAnalyzer) extractTC(tc analyze.TC, byTick map[int]*tickAccumulat
 	if !exists {
 		acc = &tickAccumulator{
 			imports:     make(Map),
-			commitStats: make(map[string]*ImportsCommitSummary),
+			commitStats: make(map[string]*CommitSummary),
 		}
 		byTick[tc.Tick] = acc
 	}
@@ -224,7 +232,7 @@ func (h *HistoryAnalyzer) extractTC(tc analyze.TC, byTick map[int]*tickAccumulat
 			languages[e.Lang]++
 		}
 
-		acc.commitStats[tc.CommitHash.String()] = &ImportsCommitSummary{
+		acc.commitStats[tc.CommitHash.String()] = &CommitSummary{
 			ImportCount: len(entries),
 			Languages:   languages,
 		}
@@ -237,7 +245,7 @@ func (h *HistoryAnalyzer) mergeState(dst, src *tickAccumulator) *tickAccumulator
 	mergeImportMaps(dst.imports, src.imports)
 
 	if dst.commitStats == nil {
-		dst.commitStats = make(map[string]*ImportsCommitSummary)
+		dst.commitStats = make(map[string]*CommitSummary)
 	}
 
 	maps.Copy(dst.commitStats, src.commitStats)
@@ -276,13 +284,13 @@ func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 
 // ReportFromTICKs converts aggregated TICKs into a Report.
 func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return ticksToReport(ctx, ticks, h.reversedPeopleDict, h.TickSize), nil
+	return ticksToReport(ctx, ticks, h.getReversedPeopleDict(), h.TickSize), nil
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It extracts per-commit import usage data for the unified timeseries output.
 func (h *HistoryAnalyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
-	commitStats, ok := report["commit_stats"].(map[string]*ImportsCommitSummary)
+	commitStats, ok := report["commit_stats"].(map[string]*CommitSummary)
 	if !ok || len(commitStats) == 0 {
 		return nil
 	}
@@ -312,7 +320,7 @@ func drainImportsCommitData(state *tickAccumulator) (stats map[string]any, tickH
 		}
 	}
 
-	state.commitStats = make(map[string]*ImportsCommitSummary)
+	state.commitStats = make(map[string]*CommitSummary)
 
 	return result, nil
 }
@@ -389,7 +397,7 @@ func ticksToReport(
 	tickSize time.Duration,
 ) analyze.Report {
 	merged := Map{}
-	commitStats := make(map[string]*ImportsCommitSummary)
+	commitStats := make(map[string]*CommitSummary)
 	commitsByTick := make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
@@ -461,7 +469,7 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			UAST:                &plumbing.UASTChangesAnalyzer{},
 			Identity:            &plumbing.IdentityDetector{},
 			Ticks:               &plumbing.TicksSinceStart{},
-			reversedPeopleDict:  h.reversedPeopleDict,
+			reversedPeopleDict:  h.getReversedPeopleDict(),
 			TickSize:            h.TickSize,
 		}
 

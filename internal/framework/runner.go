@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -21,6 +23,25 @@ import (
 
 // ErrNotParallelizable is returned when a leaf analyzer does not implement [analyze.Parallelizable].
 var ErrNotParallelizable = errors.New("leaf does not implement Parallelizable")
+
+// stateDiscarder is an optional interface for aggregators and analyzers that
+// can discard their in-memory cumulative state without serialization. Used in
+// streaming timeseries NDJSON mode where per-commit data is drained each chunk
+// and cumulative state (coupling matrices, burndown histories) is never needed
+// for a final report.
+type stateDiscarder interface {
+	// DiscardState clears all in-memory cumulative state, freeing memory.
+	// Unlike Spill(), this does not write to disk — the state is permanently lost.
+	DiscardState()
+}
+
+// ErrNotStoreWriter is returned when an analyzer does not implement [analyze.StoreWriter].
+var ErrNotStoreWriter = errors.New("analyzer does not implement StoreWriter")
+
+// nativeTrimInterval controls how often malloc_trim(0) is called within a chunk
+// to release native (C malloc) memory back to the OS. This prevents tree-sitter
+// and libgit2 malloc fragmentation from accumulating across commits.
+const nativeTrimInterval = 10
 
 // Runner orchestrates multiple HistoryAnalyzers over a commit sequence.
 // It always uses the Coordinator pipeline (batch blob load + batch diff in C).
@@ -66,6 +87,10 @@ type Runner struct {
 	// before spilling to disk. Computed by ComputeSchedule from the memory budget.
 	// Zero means no limit (unlimited budget or budget too small to decompose).
 	AggSpillBudget int64
+
+	// TmpDir is the parent directory for temporary spill files.
+	// Empty means os.TempDir() (system default).
+	TmpDir string
 
 	// tcBytesAccumulated tracks total TC payload bytes consumed since last reset.
 	// Used by three-metric adaptive feedback to measure TC size per commit.
@@ -147,6 +172,14 @@ func (runner *Runner) initAggregators() {
 	runner.aggregators = make([]analyze.Aggregator, len(runner.Analyzers))
 	runner.commitMeta = make(map[string]analyze.CommitMeta)
 
+	// Count leaf analyzers to divide the spill budget fairly.
+	leafCount := len(runner.Analyzers) - runner.CoreCount
+
+	perAggBudget := runner.AggSpillBudget
+	if leafCount > 0 && perAggBudget > 0 {
+		perAggBudget = runner.AggSpillBudget / int64(leafCount)
+	}
+
 	for i, a := range runner.Analyzers {
 		if i < runner.CoreCount {
 			// Discover plumbing providers from core analyzers.
@@ -168,7 +201,8 @@ func (runner *Runner) initAggregators() {
 		}
 
 		agg := a.NewAggregator(analyze.AggregatorOptions{
-			SpillBudget: runner.AggSpillBudget,
+			SpillBudget: perAggBudget,
+			SpillDir:    runner.TmpDir,
 		})
 		runner.aggregators[i] = agg // nil for analyzers without aggregators.
 	}
@@ -254,19 +288,19 @@ func (runner *Runner) DiscardAggregatorState() {
 			continue
 		}
 
-		if d, ok := agg.(analyze.StateDiscarder); ok {
+		if d, ok := agg.(stateDiscarder); ok {
 			d.DiscardState()
 		}
 	}
 }
 
 // DiscardLeafAnalyzerState clears cumulative state from leaf history analyzers
-// that implement analyze.StateDiscarder. This complements DiscardAggregatorState
+// that implement stateDiscarder. This complements DiscardAggregatorState
 // by freeing state held directly in analyzers (e.g. shotness node coupling maps)
 // rather than in aggregators.
 func (runner *Runner) DiscardLeafAnalyzerState() {
 	for _, leaf := range runner.LeafAnalyzers() {
-		if d, ok := leaf.(analyze.StateDiscarder); ok {
+		if d, ok := leaf.(stateDiscarder); ok {
 			d.DiscardState()
 		}
 	}
@@ -585,6 +619,109 @@ func (runner *Runner) FinalizeWithAggregators(ctx context.Context) (map[analyze.
 	return reports, nil
 }
 
+// FinalizeToStore writes analyzer results to a ReportStore one analyzer at a time.
+// Analyzers implementing DirectStoreWriter skip FlushAllTicks; all others must
+// implement StoreWriter. Releases each aggregator before moving to the next.
+func (runner *Runner) FinalizeToStore(ctx context.Context, store analyze.ReportStore) error {
+	defer runner.closeAggregators()
+
+	if runner.idProvider != nil {
+		runner.idProvider.FinalizeDict()
+	}
+
+	for i, a := range runner.Analyzers {
+		if i < runner.CoreCount {
+			continue
+		}
+
+		agg := runner.aggregators[i]
+		if agg == nil {
+			continue
+		}
+
+		finalizeErr := runner.finalizeAnalyzerToStore(ctx, a, agg, store)
+		if finalizeErr != nil {
+			return finalizeErr
+		}
+
+		// Release memory before processing next analyzer.
+		runner.aggregators[i] = nil
+
+		runtime.GC()
+		debug.FreeOSMemory()
+		gitlib.ReleaseNativeMemory()
+	}
+
+	return nil
+}
+
+// finalizeAnalyzerToStore processes one analyzer and writes to store.
+// For DirectStoreWriter: passes aggregator directly — the writer handles
+// Collect() internally for optimal memory (e.g. filtered collection).
+// For StoreWriter: Collect → FlushAllTicks → WriteToStore.
+func (runner *Runner) finalizeAnalyzerToStore(
+	ctx context.Context,
+	a analyze.HistoryAnalyzer,
+	agg analyze.Aggregator,
+	store analyze.ReportStore,
+) error {
+	meta := analyze.ReportMeta{
+		AnalyzerID: a.Flag(),
+	}
+
+	w, beginErr := store.Begin(a.Flag(), meta)
+	if beginErr != nil {
+		return fmt.Errorf("store begin %s: %w", a.Name(), beginErr)
+	}
+
+	var writeErr error
+
+	if dsw, ok := a.(analyze.DirectStoreWriter); ok {
+		// Direct path: writer handles Collect() internally.
+		// This allows filtered collection (e.g. couples only loads current files).
+		writeErr = dsw.WriteToStoreFromAggregator(ctx, agg, w)
+	} else {
+		collectErr := agg.Collect()
+		if collectErr != nil {
+			return fmt.Errorf("collect %s: %w", a.Name(), collectErr)
+		}
+
+		writeErr = runner.flushAndWriteToStore(ctx, a, agg, w)
+	}
+
+	if writeErr != nil {
+		return writeErr
+	}
+
+	closeErr := w.Close()
+	if closeErr != nil {
+		return fmt.Errorf("store close %s: %w", a.Name(), closeErr)
+	}
+
+	return nil
+}
+
+// flushAndWriteToStore handles the FlushAllTicks → StoreWriter path.
+// All leaf analyzers must implement StoreWriter or DirectStoreWriter.
+func (runner *Runner) flushAndWriteToStore(
+	ctx context.Context,
+	a analyze.HistoryAnalyzer,
+	agg analyze.Aggregator,
+	w analyze.ReportWriter,
+) error {
+	ticks, flushErr := agg.FlushAllTicks()
+	if flushErr != nil {
+		return fmt.Errorf("flush %s: %w", a.Name(), flushErr)
+	}
+
+	sw, ok := a.(analyze.StoreWriter)
+	if !ok {
+		return fmt.Errorf("%s: %w", a.Name(), ErrNotStoreWriter)
+	}
+
+	return sw.WriteToStore(ctx, ticks, w)
+}
+
 // injectCommitMeta adds the accumulated commit metadata into each Report
 // that contains a "commits_by_tick" key. This enables the timeseries output
 // path to populate CommitMeta.Timestamp and CommitMeta.Author.
@@ -722,6 +859,8 @@ func (runner *Runner) processCommitsSerial(
 
 	analyzerDurations := make([]time.Duration, len(runner.Analyzers))
 
+	var commitIdx int
+
 	for data := range dataChan {
 		if data.Error != nil {
 			observability.RecordSpanError(span, data.Error, observability.ErrTypeDependencyUnavailable, observability.ErrSourceDependency)
@@ -738,6 +877,14 @@ func (runner *Runner) processCommitsSerial(
 			span.End()
 
 			return PipelineStats{}, consumeErr
+		}
+
+		commitIdx++
+
+		// Periodically release native (C malloc) memory back to the OS to prevent
+		// tree-sitter/libgit2 fragmentation from accumulating within a chunk.
+		if commitIdx%nativeTrimInterval == 0 {
+			gitlib.ReleaseNativeMemory()
 		}
 	}
 
@@ -996,14 +1143,15 @@ func (runner *Runner) buildAnalyzeContext(data CommitData, indexOffset int) *ana
 	}
 
 	return &analyze.Context{
-		Commit:      commit,
-		Index:       data.Index + indexOffset,
-		Time:        commit.Committer().When,
-		IsMerge:     isMerge,
-		Changes:     data.Changes,
-		BlobCache:   data.BlobCache,
-		FileDiffs:   data.FileDiffs,
-		UASTChanges: data.UASTChanges,
+		Commit:        commit,
+		Index:         data.Index + indexOffset,
+		Time:          commit.Committer().When,
+		IsMerge:       isMerge,
+		Changes:       data.Changes,
+		BlobCache:     data.BlobCache,
+		FileDiffs:     data.FileDiffs,
+		UASTChanges:   data.UASTChanges,
+		UASTSpillPath: data.UASTSpillPath,
 	}
 }
 
@@ -1151,6 +1299,12 @@ func (runner *Runner) hybridCommitLoop(
 		}
 
 		commitIdx++
+
+		// Periodically release native (C malloc) memory back to the OS to prevent
+		// tree-sitter/libgit2 fragmentation from accumulating within a chunk.
+		if commitIdx%nativeTrimInterval == 0 {
+			gitlib.ReleaseNativeMemory()
+		}
 	}
 
 	// Close all work channels to signal workers to finish.

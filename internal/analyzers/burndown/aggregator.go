@@ -45,7 +45,7 @@ type Aggregator struct {
 	endTime  time.Time
 
 	// Per-commit tracking for timeseries output.
-	commitStats   map[string]*BurndownCommitSummary
+	commitStats   map[string]*CommitSummary
 	commitsByTick map[int][]gitlib.Hash
 
 	// Spill state.
@@ -66,7 +66,7 @@ func newAggregator(
 		globalHistory:      sparseHistory{},
 		peopleHistories:    map[int]sparseHistory{},
 		fileHistories:      map[PathID]sparseHistory{},
-		commitStats:        make(map[string]*BurndownCommitSummary),
+		commitStats:        make(map[string]*CommitSummary),
 		commitsByTick:      make(map[int][]gitlib.Hash),
 		opts:               opts,
 		granularity:        granularity,
@@ -100,7 +100,7 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 
 	if !tc.CommitHash.IsZero() {
 		hashStr := tc.CommitHash.String()
-		a.commitStats[hashStr] = &BurndownCommitSummary{
+		a.commitStats[hashStr] = &CommitSummary{
 			LinesAdded:   cr.LinesAdded,
 			LinesRemoved: cr.LinesRemoved,
 		}
@@ -472,7 +472,7 @@ func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[in
 	}
 
 	cbt := a.commitsByTick
-	a.commitStats = make(map[string]*BurndownCommitSummary)
+	a.commitStats = make(map[string]*CommitSummary)
 	a.commitsByTick = make(map[int][]gitlib.Hash)
 
 	return result, cbt
@@ -601,8 +601,8 @@ func mergeTickFileOwnership(merged *TickResult, src map[PathID]map[int]int) {
 }
 
 // mergeTickCommitStats collects per-commit stats from all ticks.
-func mergeTickCommitStats(ticks []analyze.TICK) (mergedStats map[string]*BurndownCommitSummary, commitsByTick map[int][]gitlib.Hash) {
-	mergedStats = make(map[string]*BurndownCommitSummary)
+func mergeTickCommitStats(ticks []analyze.TICK) (mergedStats map[string]*CommitSummary, commitsByTick map[int][]gitlib.Hash) {
+	mergedStats = make(map[string]*CommitSummary)
 	commitsByTick = make(map[int][]gitlib.Hash)
 
 	for _, tick := range ticks {
@@ -697,8 +697,8 @@ func buildDenseMatrix(sparse []map[int]int64, peopleNumber int) DenseHistory {
 		return nil
 	}
 
-	// Determine column count: 2 + peopleNumber (self column + padding + one per author).
-	cols := peopleNumber + 2 //nolint:mnd // self + padding + authors.
+	// Determine column count: modifierIndexOffset + peopleNumber (self column + padding + one per author).
+	cols := peopleNumber + modifierIndexOffset
 
 	dense := make(DenseHistory, len(sparse))
 

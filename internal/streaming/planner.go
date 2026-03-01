@@ -181,6 +181,10 @@ func TakeHeapSnapshot() HeapSnapshot {
 	}
 }
 
+// statmMinFields is the minimum number of fields required from /proc/self/statm
+// to extract the RSS (resident set size) value (fields: vsize, rss).
+const statmMinFields = 2
+
 // readRSSBytes reads the process RSS from /proc/self/statm.
 // Returns 0 on non-Linux platforms or on error.
 func readRSSBytes() int64 {
@@ -190,7 +194,7 @@ func readRSSBytes() int64 {
 	}
 
 	fields := strings.Fields(string(data))
-	if len(fields) < 2 { //nolint:mnd // statm fields: [0]=size, [1]=resident.
+	if len(fields) < statmMinFields {
 		return 0
 	}
 

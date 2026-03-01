@@ -14,6 +14,10 @@ const (
 	fileContribHLLPrecision = 10 // 1024 registers, ~3% error — sufficient for contributor counts.
 )
 
+// pairCount is the divisor used when computing the average of two revision counts
+// for coupling strength (code-maat formula: co_changes / avg(revs1, revs2)).
+const pairCount = 2.0
+
 // --- Input Data Types ---.
 
 // ReportData is the parsed input data for couples metrics computation.
@@ -140,9 +144,9 @@ func (m *FileCouplingMetric) Compute(input *ReportData) []FileCouplingData {
 			// Calculate coupling strength using code-maat formula:
 			// degree = co_changes / average(revisions_file1, revisions_file2)
 			// where revisions = diagonal element (self-change count).
-			selfI := row[i]                       // file1 self-changes.
-			selfJ := input.FilesMatrix[j][j]      // file2 self-changes.
-			avgRevs := float64(selfI+selfJ) / 2.0 //nolint:mnd // average of two values.
+			selfI := row[i]                  // file1 self-changes.
+			selfJ := input.FilesMatrix[j][j] // file2 self-changes.
+			avgRevs := float64(selfI+selfJ) / pairCount
 
 			var strength float64
 
@@ -228,7 +232,7 @@ func buildCouplingData(dev1 string, dev2Idx int, sharedChanges, selfDev1, selfDe
 
 	// Coupling strength using code-maat formula:
 	// degree = shared_changes / average(self_dev1, self_dev2), capped at 1.0.
-	avgRevs := float64(selfDev1+selfDev2) / 2.0 //nolint:mnd // average of two values.
+	avgRevs := float64(selfDev1+selfDev2) / pairCount
 
 	var strength float64
 	if avgRevs > 0 {
@@ -359,7 +363,7 @@ func (a *aggregateAccum) addPair(coChanges, selfI, selfJ int64) {
 		a.highlyCoupled++
 	}
 
-	avgRevs := float64(selfI+selfJ) / 2.0 //nolint:mnd // average of two values.
+	avgRevs := float64(selfI+selfJ) / pairCount
 	if avgRevs > 0 {
 		a.totalStrength += min(float64(coChanges)/avgRevs, 1.0)
 	}

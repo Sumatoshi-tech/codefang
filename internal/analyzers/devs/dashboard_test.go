@@ -37,7 +37,7 @@ func GenerateIdentityAudit(report analyze.Report) []IdentityAuditEntry {
 	return entries
 }
 
-// ticksToCanonicalReport converts legacy Ticks format to canonical CommitDevData+CommitsByTick.
+// ticksToCanonicalReport converts the Ticks format to canonical CommitDevData+CommitsByTick.
 func ticksToCanonicalReport(ticks map[int]map[int]*DevTick, names []string) analyze.Report {
 	commitDevData := make(map[string]*CommitDevData)
 	commitsByTick := make(map[int][]gitlib.Hash)

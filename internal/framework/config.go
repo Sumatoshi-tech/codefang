@@ -51,9 +51,11 @@ const defaultMemoryBudgetRatio = 50
 // percentDenominator is the divisor for converting a percentage ratio to a fraction.
 const percentDenominator = 100
 
-// defaultMemoryBudgetCap is the maximum auto-detected memory budget (4 GiB).
-// This forces chunking on large repos, which bounds peak memory usage.
-const defaultMemoryBudgetCap = int64(4 * 1024 * 1024 * 1024)
+// defaultMemoryBudgetCap is the maximum auto-detected memory budget (2 GiB).
+// This forces smaller chunks on large repos, keeping peak RSS bounded.
+// Native C memory (libgit2 mwindow, object cache, glibc arenas) adds ~1.5 GiB
+// on top of the Go heap budget, so a 2 GiB budget targets ~3.5 GiB total RSS.
+const defaultMemoryBudgetCap = int64(2 * 1024 * 1024 * 1024)
 
 // DefaultMemoryBudget returns a sensible memory budget based on available system memory.
 // Returns min(50% of total RAM, 4 GiB), or 0 if detection fails.
