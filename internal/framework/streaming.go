@@ -726,7 +726,7 @@ func processChunksWithCheckpoint(
 		aggSizeBefore := runner.AggregatorStateSize()
 		runner.ResetTCCount()
 
-		before := streaming.TakeHeapSnapshot()
+		before := observability.TakeHeapSnapshot()
 
 		chunkCommits := commits[chunk.Start:chunk.End]
 
@@ -740,7 +740,7 @@ func processChunksWithCheckpoint(
 		stats.record(time.Since(start), i, chunk)
 		stats.pipeline.Add(pStats)
 
-		after := streaming.TakeHeapSnapshot()
+		after := observability.TakeHeapSnapshot()
 		obs := buildReplanObservation(i, chunk, before, after, aggSizeBefore, runner, chunks)
 		newChunks := ap.Replan(obs)
 		replanned := len(newChunks) != len(chunks)
@@ -817,7 +817,7 @@ func processChunksFromIterator(
 		aggSizeBefore := runner.AggregatorStateSize()
 		runner.ResetTCCount()
 
-		before := streaming.TakeHeapSnapshot()
+		before := observability.TakeHeapSnapshot()
 
 		start := time.Now()
 
@@ -831,7 +831,7 @@ func processChunksFromIterator(
 		stats.record(time.Since(start), i, chunk)
 		stats.pipeline.Add(pStats)
 
-		after := streaming.TakeHeapSnapshot()
+		after := observability.TakeHeapSnapshot()
 
 		var postErr error
 
@@ -861,7 +861,7 @@ func postProcessIteratorChunk(
 	chunk streaming.ChunkBounds,
 	chunks []streaming.ChunkBounds,
 	chunkIdx int,
-	before, after streaming.HeapSnapshot,
+	before, after observability.HeapSnapshot,
 	aggSizeBefore int64,
 	repoPath string,
 	analyzerNames []string,
@@ -1050,7 +1050,7 @@ func processChunksDoubleBuffered(
 		aggSizeBefore := st.runner.AggregatorStateSize()
 		st.runner.ResetTCCount()
 
-		before := streaming.TakeHeapSnapshot()
+		before := observability.TakeHeapSnapshot()
 
 		dur, pStats, err := st.processCurrentChunk(ctx, idx, startChunk)
 		if err != nil {
@@ -1064,7 +1064,7 @@ func processChunksDoubleBuffered(
 
 		flushAnalyzers(st.runner.Analyzers)
 
-		after := streaming.TakeHeapSnapshot()
+		after := observability.TakeHeapSnapshot()
 		prefetch = st.replanAndDrainStale(ctx, idx, before, after, aggSizeBefore, prefetchedNext, prefetch)
 
 		handleMemoryPressure(ctx, logger, after, st.memBudget)
@@ -1137,7 +1137,7 @@ func (st *doubleBufferState) consumeAndRecordPrefetch(
 // (possibly nil) prefetch channel to use for consumption.
 func (st *doubleBufferState) replanAndDrainStale(
 	ctx context.Context, idx int,
-	before, after streaming.HeapSnapshot,
+	before, after observability.HeapSnapshot,
 	aggSizeBefore int64,
 	prefetchedNext streaming.ChunkBounds,
 	prefetch <-chan prefetchedChunk,
@@ -1419,7 +1419,7 @@ func hitPercent(hits, misses int64) float64 {
 // from pre/post chunk heap snapshots, aggregator state delta, and TC count.
 func buildReplanObservation(
 	chunkIndex int, chunk streaming.ChunkBounds,
-	before, after streaming.HeapSnapshot,
+	before, after observability.HeapSnapshot,
 	aggSizeBefore int64, runner *Runner,
 	currentChunks []streaming.ChunkBounds,
 ) streaming.ReplanObservation {
@@ -1469,7 +1469,7 @@ func buildReplanObservation(
 func logChunkMemory(
 	ctx context.Context, logger *slog.Logger,
 	ap *streaming.AdaptivePlanner, chunk streaming.ChunkBounds,
-	before, after streaming.HeapSnapshot,
+	before, after observability.HeapSnapshot,
 	chunkIndex int, memBudget int64, replanned bool,
 ) {
 	commitsInChunk := int64(chunk.End - chunk.Start)
@@ -1510,7 +1510,7 @@ const percentScale = 100.0
 // memory before the next chunk starts.
 func handleMemoryPressure(
 	ctx context.Context, logger *slog.Logger,
-	snapshot streaming.HeapSnapshot, memBudget int64,
+	snapshot observability.HeapSnapshot, memBudget int64,
 ) {
 	// Use max(HeapInuse, RSS) for pressure detection — RSS captures native C
 	// memory (libgit2, tree-sitter) that HeapInuse misses.

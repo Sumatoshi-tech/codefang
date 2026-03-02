@@ -13,6 +13,14 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
+// serializedMetrics mirrors the JSON/YAML output structure for deserialization in tests.
+type serializedMetrics struct {
+	TypoList  []TypoData        `json:"typo_list"  yaml:"typo_list"`
+	Patterns  []TypoPatternData `json:"patterns"   yaml:"patterns"`
+	FileTypos []FileTypoData    `json:"file_typos" yaml:"file_typos"`
+	Aggregate AggregateData     `json:"aggregate"  yaml:"aggregate"`
+}
+
 func TestAnalyzer_Name(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +156,7 @@ func TestAnalyzer_SerializeTICKs_JSON(t *testing.T) {
 	err := h.SerializeTICKs(ticks, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
-	var result ComputedMetrics
+	var result serializedMetrics
 
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
@@ -198,7 +206,7 @@ func TestAnalyzer_Serialize_JSON(t *testing.T) {
 	err := h.Serialize(report, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
-	var result ComputedMetrics
+	var result serializedMetrics
 
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
@@ -216,7 +224,7 @@ func TestAnalyzer_Serialize_JSON_Empty(t *testing.T) {
 	err := h.Serialize(analyze.Report{}, analyze.FormatJSON, &buf)
 	require.NoError(t, err)
 
-	var result ComputedMetrics
+	var result serializedMetrics
 
 	err = json.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)
@@ -237,7 +245,7 @@ func TestAnalyzer_Serialize_YAML(t *testing.T) {
 	err := h.Serialize(report, analyze.FormatYAML, &buf)
 	require.NoError(t, err)
 
-	var result ComputedMetrics
+	var result serializedMetrics
 
 	err = yaml.Unmarshal(buf.Bytes(), &result)
 	require.NoError(t, err)

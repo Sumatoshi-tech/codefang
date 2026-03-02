@@ -38,6 +38,16 @@ type Schema struct {
 	Definitions map[string]*Schema `json:"definitions,omitempty"`
 }
 
+// typosSchemaType represents the typos analyzer output format for schema generation.
+// The typos analyzer was migrated to use common.MetricSet (map-based serialization),
+// so this struct preserves the schema by referencing the exported data types.
+type typosSchemaType struct {
+	TypoList  []typos.TypoData        `json:"typo_list"`
+	Patterns  []typos.TypoPatternData `json:"patterns"`
+	FileTypos []typos.FileTypoData    `json:"file_typos"`
+	Aggregate typos.AggregateData     `json:"aggregate"`
+}
+
 var outputDir string
 
 func main() {
@@ -61,7 +71,7 @@ func main() {
 		"halstead":     &halstead.ComputedMetrics{},
 		"comments":     &comments.ComputedMetrics{},
 		"imports":      &imports.ComputedMetrics{},
-		"typos":        &typos.ComputedMetrics{},
+		"typos":        &typosSchemaType{},
 	}
 
 	for name, metrics := range analyzers {

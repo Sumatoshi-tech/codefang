@@ -1511,9 +1511,9 @@ func configureLibgit2MemoryLimits(budgetStr string) {
 	}
 
 	slog.Default().Info("native memory limits configured",
-		"budget_mib", budgetBytes/budget.MiB,
-		"mwindow_limit_mib", limits.MwindowMappedLimit/budget.MiB,
-		"cache_limit_mib", limits.CacheMaxSize/budget.MiB,
+		"budget_mib", budgetBytes/units.MiB,
+		"mwindow_limit_mib", limits.MwindowMappedLimit/units.MiB,
+		"cache_limit_mib", limits.CacheMaxSize/units.MiB,
 		"malloc_arena_max", limits.MallocArenaMax)
 }
 

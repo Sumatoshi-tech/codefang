@@ -3,18 +3,22 @@ package checkpoint
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/persist"
 )
 
 // MetadataVersion is the current checkpoint metadata format version.
 // Bumped from 1 to 2 when aggregator spill state was added.
 const MetadataVersion = 2
+
+// metadataBasename is the file basename for checkpoint metadata (without extension).
+const metadataBasename = "checkpoint"
 
 // Sentinel errors for checkpoint validation.
 var (
@@ -74,7 +78,7 @@ func (m *Manager) CheckpointDir() string {
 
 // MetadataPath returns the path to the metadata file.
 func (m *Manager) MetadataPath() string {
-	return filepath.Join(m.CheckpointDir(), "checkpoint.json")
+	return filepath.Join(m.CheckpointDir(), metadataBasename+".json")
 }
 
 // Exists returns true if a valid checkpoint exists.
@@ -132,7 +136,6 @@ func (m *Manager) Save(
 		}
 	}
 
-	// Create metadata.
 	meta := Metadata{
 		Version:        MetadataVersion,
 		RepoPath:       repoPath,
@@ -143,15 +146,9 @@ func (m *Manager) Save(
 		Checksums:      checksums,
 	}
 
-	// Write metadata.
-	metaData, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-
-	writeErr := os.WriteFile(m.MetadataPath(), metaData, 0o600)
-	if writeErr != nil {
-		return fmt.Errorf("write metadata: %w", writeErr)
+	saveErr := persist.SaveState(m.CheckpointDir(), metadataBasename, persist.NewJSONCodec(), &meta)
+	if saveErr != nil {
+		return fmt.Errorf("save metadata: %w", saveErr)
 	}
 
 	return nil
@@ -159,16 +156,11 @@ func (m *Manager) Save(
 
 // LoadMetadata loads the checkpoint metadata.
 func (m *Manager) LoadMetadata() (*Metadata, error) {
-	data, err := os.ReadFile(m.MetadataPath())
-	if err != nil {
-		return nil, fmt.Errorf("read metadata: %w", err)
-	}
-
 	var meta Metadata
 
-	unmarshalErr := json.Unmarshal(data, &meta)
-	if unmarshalErr != nil {
-		return nil, fmt.Errorf("unmarshal metadata: %w", unmarshalErr)
+	err := persist.LoadState(m.CheckpointDir(), metadataBasename, persist.NewJSONCodec(), &meta)
+	if err != nil {
+		return nil, fmt.Errorf("load metadata: %w", err)
 	}
 
 	return &meta, nil

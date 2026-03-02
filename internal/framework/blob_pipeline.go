@@ -3,10 +3,10 @@ package framework
 import (
 	"context"
 	"maps"
-	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
 // DefaultBlobBatchArenaSize is the default size of the memory arena for blob loading (4MB).
@@ -57,34 +57,29 @@ func NewBlobPipelineWithCache(
 	}
 }
 
-type batchBlobState struct {
-	respChans []chan gitlib.BlobBatchResponse // Slice of response channels for sharded requests.
-	results   map[gitlib.Hash]*gitlib.CachedBlob
-	once      sync.Once
-}
-
 type blobJob struct {
 	data       BlobData
 	neededHash []gitlib.Hash                      // Hashes this job specifically needs.
 	cacheHits  map[gitlib.Hash]*gitlib.CachedBlob // Blobs already found in global cache.
-	batchState *batchBlobState                    // Shared state for the batch request.
+
+	// Shared state for the batch request.
+	batchState *SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob]
 }
 
 // Process receives commit batches and outputs blob data.
 func (p *BlobPipeline) Process(ctx context.Context, commits <-chan CommitBatch) <-chan BlobData {
-	out := make(chan BlobData)
-	jobs := make(chan blobJob, p.BufferSize)
+	pc := pipeline.RunPC[<-chan CommitBatch, BlobData, blobJob]{
+		Buffer:  p.BufferSize,
+		Produce: p.runProducer,
+		Consume: p.runConsumer,
+	}
 
-	go p.runProducer(ctx, commits, jobs)
-	go p.runConsumer(ctx, jobs, out)
-
-	return out
+	return pc.Run(ctx, commits)
 }
 
 // runProducer processes commit batches and creates blob load jobs.
+// Channel lifecycle is managed by RunPC; this function must not close jobs.
 func (p *BlobPipeline) runProducer(ctx context.Context, commits <-chan CommitBatch, jobs chan<- blobJob) {
-	defer close(jobs)
-
 	var previousCommitHash gitlib.Hash
 
 	for batch := range commits {
@@ -203,46 +198,10 @@ func (p *BlobPipeline) processBatch(
 		globalCacheHits = make(map[gitlib.Hash]*gitlib.CachedBlob)
 	}
 
-	// Prepare shared batch state.
-	batchState := &batchBlobState{
-		results: make(map[gitlib.Hash]*gitlib.CachedBlob),
-	}
-
-	// Determine sharding.
-	var chunkCount = 1
-	if p.WorkerCount > 1 && len(missingHashes) > p.WorkerCount*2 { // Shard if enough items.
-		chunkCount = p.WorkerCount
-	}
-
-	chunks := make([][]gitlib.Hash, chunkCount)
-	for i, h := range missingHashes {
-		idx := i % chunkCount
-		chunks[idx] = append(chunks[idx], h)
-	}
-
-	// Fire batch requests.
-	for _, chunk := range chunks {
-		if len(chunk) == 0 {
-			continue
-		}
-
-		// Allocate arena for this batch
-		// We allocate one arena per request. It will be passed to CGO to fill.
-		arena := make([]byte, p.ArenaSize)
-
-		req := gitlib.BlobBatchRequest{
-			Hashes: chunk,
-			Arena:  arena,
-		}
-		respChan := make(chan gitlib.BlobBatchResponse, 1)
-		req.Response = respChan
-		batchState.respChans = append(batchState.respChans, respChan)
-
-		select {
-		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
-		case <-ctx.Done():
-			return lastCommitHash
-		}
+	// Fire sharded blob requests and create shared response.
+	batchState, earlyReturn := p.fireBlobBatchRequests(ctx, missingHashes)
+	if earlyReturn {
+		return lastCommitHash
 	}
 
 	// Second pass: Dispatch jobs.
@@ -270,9 +229,8 @@ func (p *BlobPipeline) processBatch(
 }
 
 // runConsumer waits for blob responses and outputs blob data.
+// Channel lifecycle is managed by RunPC; this function must not close out.
 func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out chan<- BlobData) {
-	defer close(out)
-
 	for job := range jobs {
 		select {
 		case <-ctx.Done():
@@ -298,6 +256,87 @@ func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out
 	}
 }
 
+// fireBlobBatchRequests shards missing hashes across workers and returns a
+// SharedResponse that merges all sharded blob responses. Returns (nil, false)
+// when there are no missing hashes. The bool indicates early return due to
+// context cancellation.
+func (p *BlobPipeline) fireBlobBatchRequests(
+	ctx context.Context, missingHashes []gitlib.Hash,
+) (*SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob], bool) {
+	if len(missingHashes) == 0 {
+		return nil, false
+	}
+
+	// Determine sharding.
+	chunkCount := 1
+	if p.WorkerCount > 1 && len(missingHashes) > p.WorkerCount*2 { // Shard if enough items.
+		chunkCount = p.WorkerCount
+	}
+
+	chunks := make([][]gitlib.Hash, chunkCount)
+	for i, h := range missingHashes {
+		idx := i % chunkCount
+		chunks[idx] = append(chunks[idx], h)
+	}
+
+	// Fire batch requests and collect response channels.
+	var respChans []chan gitlib.BlobBatchResponse
+
+	for _, chunk := range chunks {
+		if len(chunk) == 0 {
+			continue
+		}
+
+		// Allocate arena for this batch.
+		// We allocate one arena per request. It will be passed to CGO to fill.
+		arena := make([]byte, p.ArenaSize)
+
+		req := gitlib.BlobBatchRequest{
+			Hashes: chunk,
+			Arena:  arena,
+		}
+
+		respChan := make(chan gitlib.BlobBatchResponse, 1)
+		req.Response = respChan
+		respChans = append(respChans, respChan)
+
+		select {
+		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
+		case <-ctx.Done():
+			return nil, true
+		}
+	}
+
+	// Create a shared response that merges all sharded blob responses.
+	blobCache := p.BlobCache
+
+	return NewSharedResponse(func(ctx context.Context) (map[gitlib.Hash]*gitlib.CachedBlob, error) {
+		results := make(map[gitlib.Hash]*gitlib.CachedBlob)
+		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
+
+		for _, ch := range respChans {
+			select {
+			case resp := <-ch:
+				for _, blob := range resp.Blobs {
+					if blob != nil {
+						results[blob.Hash()] = blob
+						allNewBlobs[blob.Hash()] = blob
+					}
+				}
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// Store new blobs in global cache.
+		if blobCache != nil && len(allNewBlobs) > 0 {
+			blobCache.PutMulti(allNewBlobs)
+		}
+
+		return results, nil
+	}), false
+}
+
 // collectBlobResponse waits for and collects the blob response.
 func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bool {
 	// Initialize collected blobs with hits we already have.
@@ -305,45 +344,15 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	maps.Copy(blobs, job.cacheHits)
 
 	// If no batch request was needed, we are done.
-	if job.batchState == nil || len(job.batchState.respChans) == 0 {
+	if job.batchState == nil {
 		job.data.BlobCache = blobs
 
 		return true
 	}
 
 	// Ensure batch request is processed exactly once.
-	var success = true
-
-	job.batchState.once.Do(func() {
-		// New blobs to add to global cache.
-		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
-
-		for _, ch := range job.batchState.respChans {
-			select {
-			case resp := <-ch:
-				// So we can just use resp.Blobs.
-				for _, blob := range resp.Blobs {
-					if blob != nil {
-						// We need the hash. CachedBlob has Hash() method?
-						// Let's check CachedBlob definition.
-						job.batchState.results[blob.Hash()] = blob
-						allNewBlobs[blob.Hash()] = blob
-					}
-				}
-			case <-ctx.Done():
-				success = false
-
-				return
-			}
-		}
-
-		// Store new blobs in global cache.
-		if p.BlobCache != nil && len(allNewBlobs) > 0 {
-			p.BlobCache.PutMulti(allNewBlobs)
-		}
-	})
-
-	if !success {
+	results, err := job.batchState.Get(ctx)
+	if err != nil {
 		return false
 	}
 
@@ -351,7 +360,7 @@ func (p *BlobPipeline) collectBlobResponse(ctx context.Context, job *blobJob) bo
 	for _, h := range job.neededHash {
 		// If it wasn't in cacheHits, check shared results.
 		if _, ok := blobs[h]; !ok {
-			if blob, found := job.batchState.results[h]; found {
+			if blob, found := results[h]; found {
 				blobs[h] = blob
 			}
 		}

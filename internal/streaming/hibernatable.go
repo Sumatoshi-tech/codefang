@@ -3,10 +3,8 @@ package streaming
 
 import (
 	"log/slog"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/sigutil"
 )
 
 // SpillCleaner is an optional interface for analyzers that create spill
@@ -20,11 +18,9 @@ type SpillCleaner interface {
 // SpillCleanupGuard ensures that spill temp directories are removed when
 // the streaming pipeline exits, whether normally, on error, or via signal.
 // Create one via NewSpillCleanupGuard and defer its Close method.
+// It embeds sigutil.SignalCleanupGuard for reusable signal-driven cleanup.
 type SpillCleanupGuard struct {
-	cleaners []SpillCleaner
-	logger   *slog.Logger
-	sigCh    chan os.Signal
-	once     sync.Once
+	*sigutil.SignalCleanupGuard
 }
 
 // NewSpillCleanupGuard registers SIGTERM and SIGINT handlers that invoke
@@ -32,41 +28,15 @@ type SpillCleanupGuard struct {
 // to ensure cleanup runs on normal/error exit and the signal handler is
 // deregistered.
 func NewSpillCleanupGuard(cleaners []SpillCleaner, logger *slog.Logger) *SpillCleanupGuard {
-	g := &SpillCleanupGuard{
-		cleaners: cleaners,
-		logger:   logger,
-		sigCh:    make(chan os.Signal, 1),
-	}
-
-	signal.Notify(g.sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig, ok := <-g.sigCh
-		if !ok {
-			return
-		}
-
-		g.logger.Warn("streaming: received signal, cleaning up spill files", "signal", sig.String())
-		g.cleanup()
-	}()
-
-	return g
-}
-
-// Close performs spill cleanup (if not already done) and deregisters
-// the signal handler.
-func (g *SpillCleanupGuard) Close() {
-	g.cleanup()
-	signal.Stop(g.sigCh)
-	close(g.sigCh)
-}
-
-func (g *SpillCleanupGuard) cleanup() {
-	g.once.Do(func() {
-		for _, c := range g.cleaners {
+	cleanup := func() {
+		for _, c := range cleaners {
 			c.CleanupSpills()
 		}
-	})
+	}
+
+	return &SpillCleanupGuard{
+		SignalCleanupGuard: sigutil.NewSignalCleanupGuard(cleanup, logger),
+	}
 }
 
 // Hibernatable is an optional interface for analyzers that support hibernation.

@@ -31,19 +31,27 @@ type SchedulerMetrics struct {
 // NewSchedulerMetrics creates OTel instruments backed by Go 1.26 runtime/metrics.
 // The meter's periodic reader invokes the callback automatically; no manual polling is needed.
 func NewSchedulerMetrics(mt metric.Meter) (*SchedulerMetrics, error) {
-	b := newMetricBuilder(mt)
-
-	sm := &SchedulerMetrics{
-		goroutines:        b.gauge(metricGoroutines, "Current number of live goroutines", "{goroutine}"),
-		threads:           b.gauge(metricThreads, "Current number of OS threads created by the Go runtime", "{thread}"),
-		goroutinesCreated: b.observableCounter(metricGoroutinesCreated, "Total goroutines created since process start", "{goroutine}"),
+	sm, err := buildMetrics(mt, func(b *metricBuilder) *SchedulerMetrics {
+		return &SchedulerMetrics{
+			goroutines: createMetric(b, metricGoroutines, func() (metric.Int64ObservableGauge, error) {
+				return b.meter.Int64ObservableGauge(metricGoroutines,
+					metric.WithDescription("Current number of live goroutines"), metric.WithUnit("{goroutine}"))
+			}),
+			threads: createMetric(b, metricThreads, func() (metric.Int64ObservableGauge, error) {
+				return b.meter.Int64ObservableGauge(metricThreads,
+					metric.WithDescription("Current number of OS threads created by the Go runtime"), metric.WithUnit("{thread}"))
+			}),
+			goroutinesCreated: createMetric(b, metricGoroutinesCreated, func() (metric.Int64ObservableCounter, error) {
+				return b.meter.Int64ObservableCounter(metricGoroutinesCreated,
+					metric.WithDescription("Total goroutines created since process start"), metric.WithUnit("{goroutine}"))
+			}),
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	if b.err != nil {
-		return nil, b.err
-	}
-
-	_, err := mt.RegisterCallback(sm.observe, sm.goroutines, sm.threads, sm.goroutinesCreated)
+	_, err = mt.RegisterCallback(sm.observe, sm.goroutines, sm.threads, sm.goroutinesCreated)
 	if err != nil {
 		return nil, fmt.Errorf("register scheduler metrics callback: %w", err)
 	}

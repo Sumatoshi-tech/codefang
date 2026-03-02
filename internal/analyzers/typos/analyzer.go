@@ -45,7 +45,7 @@ const typosAvgTCSize = 200
 
 // Analyzer detects typo-fix identifier pairs across commit history.
 type Analyzer struct {
-	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	*analyze.BaseHistoryAnalyzer[*common.MetricSet]
 	common.NoStateHibernation
 
 	UAST                   *plumbing.UASTChangesAnalyzer
@@ -58,7 +58,7 @@ type Analyzer struct {
 // NewAnalyzer creates a new typos analyzer.
 func NewAnalyzer() *Analyzer {
 	a := &Analyzer{}
-	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
+	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*common.MetricSet]{
 		Desc: analyze.Descriptor{
 			ID:          "history/typos",
 			Description: "Extracts typo-fix identifier pairs from source code in commit diffs.",
@@ -75,7 +75,7 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultMaximumAllowedTypoDistance,
 			},
 		},
-		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &common.MetricSet{}),
 		AggregatorFn:     newAggregator,
 	}
 

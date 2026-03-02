@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
@@ -454,7 +455,7 @@ func TestSumIntMaxInt(t *testing.T) {
 	assert.Equal(t, 0, stats.Max([]int(nil)))
 }
 
-func TestExtractInt(t *testing.T) {
+func TestReportutilGetInt(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
@@ -463,13 +464,13 @@ func TestExtractInt(t *testing.T) {
 		"str_val":   "hello",
 	}
 
-	assert.Equal(t, 5, extractInt(report, "int_val"))
-	assert.Equal(t, 3, extractInt(report, "float_val"))
-	assert.Equal(t, 0, extractInt(report, "str_val"))
-	assert.Equal(t, 0, extractInt(report, "missing"))
+	assert.Equal(t, 5, reportutil.GetInt(report, "int_val"))
+	assert.Equal(t, 3, reportutil.GetInt(report, "float_val"))
+	assert.Equal(t, 0, reportutil.GetInt(report, "str_val"))
+	assert.Equal(t, 0, reportutil.GetInt(report, "missing"))
 }
 
-func TestExtractFloat(t *testing.T) {
+func TestReportutilGetFloat64(t *testing.T) {
 	t.Parallel()
 
 	report := analyze.Report{
@@ -478,10 +479,10 @@ func TestExtractFloat(t *testing.T) {
 		"str_val":   "hello",
 	}
 
-	assert.InDelta(t, 3.14, extractFloat(report, "float_val"), 0.001)
-	assert.InDelta(t, 7.0, extractFloat(report, "int_val"), 0.001)
-	assert.InDelta(t, 0.0, extractFloat(report, "str_val"), 0.001)
-	assert.InDelta(t, 0.0, extractFloat(report, "missing"), 0.001)
+	assert.InDelta(t, 3.14, reportutil.GetFloat64(report, "float_val"), 0.001)
+	assert.InDelta(t, 7.0, reportutil.GetFloat64(report, "int_val"), 0.001)
+	assert.InDelta(t, 0.0, reportutil.GetFloat64(report, "str_val"), 0.001)
+	assert.InDelta(t, 0.0, reportutil.GetFloat64(report, "missing"), 0.001)
 }
 
 // --- Helpers ---.

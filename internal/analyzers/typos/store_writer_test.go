@@ -147,6 +147,15 @@ func TestWriteToStore_EquivalenceReference(t *testing.T) {
 	refMetrics, metricsErr := ComputeAllMetrics(refReport)
 	require.NoError(t, metricsErr)
 
+	refJSON, jsonOK := refMetrics.ToJSON().(map[string]any)
+	require.True(t, jsonOK)
+
+	refFileTypos, ftOK := refJSON[metricNameFileTypos].([]FileTypoData)
+	require.True(t, ftOK)
+
+	refAggregate, aggOK := refJSON[metricNameAggregate].(AggregateData)
+	require.True(t, aggOK)
+
 	// Store path.
 	storeDir := t.TempDir()
 	store := analyze.NewFileReportStore(storeDir)
@@ -175,10 +184,9 @@ func TestWriteToStore_EquivalenceReference(t *testing.T) {
 	storeFileTypos, readErr := readFileTyposIfPresent(reader, reader.Kinds())
 	require.NoError(t, readErr)
 
-	require.Len(t, storeFileTypos, len(refMetrics.FileTypos))
+	require.Len(t, storeFileTypos, len(refFileTypos))
 
 	// Sort both by file name for deterministic comparison.
-	refFileTypos := refMetrics.FileTypos
 	sort.Slice(refFileTypos, func(i, j int) bool {
 		return refFileTypos[i].File < refFileTypos[j].File
 	})
@@ -200,9 +208,9 @@ func TestWriteToStore_EquivalenceReference(t *testing.T) {
 	})
 	require.NoError(t, aggErr)
 
-	assert.Equal(t, refMetrics.Aggregate.TotalTypos, storeAgg.TotalTypos)
-	assert.Equal(t, refMetrics.Aggregate.AffectedFiles, storeAgg.AffectedFiles)
-	assert.Equal(t, refMetrics.Aggregate.UniquePatterns, storeAgg.UniquePatterns)
+	assert.Equal(t, refAggregate.TotalTypos, storeAgg.TotalTypos)
+	assert.Equal(t, refAggregate.AffectedFiles, storeAgg.AffectedFiles)
+	assert.Equal(t, refAggregate.UniquePatterns, storeAgg.UniquePatterns)
 }
 
 func TestGenerateStoreSections_RoundTrip(t *testing.T) {

@@ -32,25 +32,8 @@ type LRUBlobCache struct {
 	cache *lru.Cache[gitlib.Hash, *gitlib.CachedBlob]
 }
 
-// LRUStats holds cache performance metrics.
-type LRUStats struct {
-	Hits          int64
-	Misses        int64
-	BloomFiltered int64 // Lookups short-circuited by the Bloom pre-filter.
-	Entries       int
-	CurrentSize   int64
-	MaxSize       int64
-}
-
-// HitRate returns the cache hit rate (0.0 to 1.0).
-func (s LRUStats) HitRate() float64 {
-	total := s.Hits + s.Misses
-	if total == 0 {
-		return 0.0
-	}
-
-	return float64(s.Hits) / float64(total)
-}
+// LRUStats is an alias for [lru.Stats].
+type LRUStats = lru.Stats
 
 // hashToBytes converts a gitlib.Hash to a byte slice for Bloom filter operations.
 func hashToBytes(h gitlib.Hash) []byte {
@@ -137,16 +120,7 @@ func (c *LRUBlobCache) PutMulti(blobs map[gitlib.Hash]*gitlib.CachedBlob) {
 
 // Stats returns cache statistics.
 func (c *LRUBlobCache) Stats() LRUStats {
-	s := c.cache.Stats()
-
-	return LRUStats{
-		Hits:          s.Hits,
-		Misses:        s.Misses,
-		BloomFiltered: s.BloomFiltered,
-		Entries:       s.Entries,
-		CurrentSize:   s.CurrentSize,
-		MaxSize:       s.MaxSize,
-	}
+	return c.cache.Stats()
 }
 
 // CacheHits returns the total cache hit count (atomic, lock-free).

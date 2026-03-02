@@ -1,12 +1,7 @@
 package streaming
 
 import (
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
-
+	"github.com/Sumatoshi-tech/codefang/pkg/alg"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
@@ -60,10 +55,9 @@ type Planner struct {
 }
 
 // ChunkBounds represents a chunk of commits to process.
-type ChunkBounds struct {
-	Start int // Inclusive index.
-	End   int // Exclusive index.
-}
+// It is an alias for alg.Range to allow pkg/alg consumers and streaming consumers
+// to exchange values without conversion.
+type ChunkBounds = alg.Range
 
 // Plan returns chunk boundaries as [start, end) index pairs.
 func (p *Planner) Plan() []ChunkBounds {
@@ -71,22 +65,7 @@ func (p *Planner) Plan() []ChunkBounds {
 		return nil
 	}
 
-	chunkSize := p.calculateChunkSize()
-
-	// Single chunk if all commits fit.
-	if p.TotalCommits <= chunkSize {
-		return []ChunkBounds{{Start: 0, End: p.TotalCommits}}
-	}
-
-	// Split into multiple chunks.
-	var chunks []ChunkBounds
-
-	for start := 0; start < p.TotalCommits; start += chunkSize {
-		end := min(start+chunkSize, p.TotalCommits)
-		chunks = append(chunks, ChunkBounds{Start: start, End: end})
-	}
-
-	return chunks
+	return alg.Chunk(p.TotalCommits, p.calculateChunkSize())
 }
 
 // calculateChunkSize determines the optimal chunk size based on budget and
@@ -145,57 +124,6 @@ func (p *Planner) PlanFrom(startCommit int) []ChunkBounds {
 	}
 
 	return subChunks
-}
-
-// HeapSnapshot captures Go runtime memory stats at a point in time.
-type HeapSnapshot struct {
-	HeapInuse int64
-	HeapAlloc int64
-	Sys       int64 // Total bytes obtained from the OS (Go runtime).
-	RSS       int64 // Resident set size (Go + native C memory).
-	NumGC     uint32
-	TakenAtNS int64
-}
-
-// TakeHeapSnapshot reads [runtime.MemStats] and returns a HeapSnapshot.
-func TakeHeapSnapshot() HeapSnapshot {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	return HeapSnapshot{
-		HeapInuse: int64(m.HeapInuse),
-		HeapAlloc: int64(m.HeapAlloc),
-		Sys:       int64(m.Sys),
-		RSS:       readRSSBytes(),
-		NumGC:     m.NumGC,
-		TakenAtNS: time.Now().UnixNano(),
-	}
-}
-
-// statmMinFields is the minimum number of fields required from /proc/self/statm
-// to extract the RSS (resident set size) value (fields: vsize, rss).
-const statmMinFields = 2
-
-// readRSSBytes reads the process RSS from /proc/self/statm.
-// Returns 0 on non-Linux platforms or on error.
-func readRSSBytes() int64 {
-	data, err := os.ReadFile("/proc/self/statm")
-	if err != nil {
-		return 0
-	}
-
-	fields := strings.Fields(string(data))
-	if len(fields) < statmMinFields {
-		return 0
-	}
-
-	// Field 1 is resident pages.
-	pages, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	return pages * int64(os.Getpagesize())
 }
 
 // Adaptive planner constants.
@@ -521,7 +449,7 @@ func ComputeSchedule(cfg SchedulerConfig) Schedule {
 
 	remaining := usable - overhead
 	if remaining <= 0 {
-		chunks := buildChunks(cfg.TotalCommits, MinChunkSize)
+		chunks := alg.Chunk(cfg.TotalCommits, MinChunkSize)
 
 		return Schedule{
 			Chunks:          chunks,
@@ -558,7 +486,7 @@ func ComputeSchedule(cfg SchedulerConfig) Schedule {
 		}
 	}
 
-	chunks := buildChunks(cfg.TotalCommits, chosenChunkSize)
+	chunks := alg.Chunk(cfg.TotalCommits, chosenChunkSize)
 
 	return Schedule{
 		Chunks:          chunks,
@@ -566,20 +494,4 @@ func ComputeSchedule(cfg SchedulerConfig) Schedule {
 		BufferingFactor: chosenFactor,
 		AggSpillBudget:  aggState,
 	}
-}
-
-// buildChunks splits totalCommits into chunks of the given size.
-func buildChunks(totalCommits, chunkSize int) []ChunkBounds {
-	if totalCommits <= 0 || chunkSize <= 0 {
-		return nil
-	}
-
-	var chunks []ChunkBounds
-
-	for start := 0; start < totalCommits; start += chunkSize {
-		end := min(start+chunkSize, totalCommits)
-		chunks = append(chunks, ChunkBounds{Start: start, End: end})
-	}
-
-	return chunks
 }

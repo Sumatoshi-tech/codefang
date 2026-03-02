@@ -156,6 +156,27 @@ type shutdownFunc func(ctx context.Context) error
 
 func noopShutdown(_ context.Context) error { return nil }
 
+// buildOTLPOptions constructs gRPC exporter options from cfg using the provided
+// option constructors. This eliminates duplication between trace and metric providers.
+func buildOTLPOptions[T any](
+	cfg Config,
+	withEndpoint func(string) T,
+	withInsecure func() T,
+	withHeaders func(map[string]string) T,
+) []T {
+	opts := []T{withEndpoint(cfg.OTLPEndpoint)}
+
+	if cfg.OTLPInsecure {
+		opts = append(opts, withInsecure())
+	}
+
+	if len(cfg.OTLPHeaders) > 0 {
+		opts = append(opts, withHeaders(cfg.OTLPHeaders))
+	}
+
+	return opts
+}
+
 func buildTracerProvider(
 	ctx context.Context, cfg Config, res *resource.Resource,
 ) (trace.TracerProvider, shutdownFunc, error) {
@@ -163,17 +184,7 @@ func buildTracerProvider(
 		return nooptrace.NewTracerProvider(), noopShutdown, nil
 	}
 
-	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint),
-	}
-
-	if cfg.OTLPInsecure {
-		opts = append(opts, otlptracegrpc.WithInsecure())
-	}
-
-	if len(cfg.OTLPHeaders) > 0 {
-		opts = append(opts, otlptracegrpc.WithHeaders(cfg.OTLPHeaders))
-	}
+	opts := buildOTLPOptions(cfg, otlptracegrpc.WithEndpoint, otlptracegrpc.WithInsecure, otlptracegrpc.WithHeaders)
 
 	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
@@ -255,17 +266,7 @@ func buildMeterProvider(
 		return noopmetric.NewMeterProvider(), noopShutdown, nil
 	}
 
-	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithEndpoint(cfg.OTLPEndpoint),
-	}
-
-	if cfg.OTLPInsecure {
-		opts = append(opts, otlpmetricgrpc.WithInsecure())
-	}
-
-	if len(cfg.OTLPHeaders) > 0 {
-		opts = append(opts, otlpmetricgrpc.WithHeaders(cfg.OTLPHeaders))
-	}
+	opts := buildOTLPOptions(cfg, otlpmetricgrpc.WithEndpoint, otlpmetricgrpc.WithInsecure, otlpmetricgrpc.WithHeaders)
 
 	exporter, err := otlpmetricgrpc.New(ctx, opts...)
 	if err != nil {

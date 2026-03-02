@@ -1,6 +1,6 @@
 package observability
 
-// FRD: specs/frds/FRD-20260302-otel-metric-helper.md.
+// FRD: specs/frds/FRD-20260302-observability-dedup.md.
 
 import (
 	"errors"
@@ -28,67 +28,93 @@ func testMeter() metric.Meter {
 	return noopmetric.NewMeterProvider().Meter("test")
 }
 
-func TestMetricBuilder_Counter(t *testing.T) {
+func TestCreateMetric_Counter(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	c := b.counter(testMetricName, testMetricDesc, testMetricUnit)
+	c := createMetric(b, testMetricName, func() (metric.Int64Counter, error) {
+		return b.meter.Int64Counter(testMetricName,
+			metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, c)
 }
 
-func TestMetricBuilder_Histogram(t *testing.T) {
+func TestCreateMetric_Histogram(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	h := b.histogram(testMetricName, testMetricDesc, "s", durationBucketBoundaries...)
+	h := createMetric(b, testMetricName, func() (metric.Float64Histogram, error) {
+		return b.meter.Float64Histogram(testMetricName,
+			metric.WithDescription(testMetricDesc),
+			metric.WithUnit("s"),
+			metric.WithExplicitBucketBoundaries(durationBucketBoundaries...))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, h)
 }
 
-func TestMetricBuilder_Histogram_NoBounds(t *testing.T) {
+func TestCreateMetric_Histogram_NoBounds(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	h := b.histogram(testMetricName, testMetricDesc, testMetricUnit)
+	h := createMetric(b, testMetricName, func() (metric.Float64Histogram, error) {
+		return b.meter.Float64Histogram(testMetricName,
+			metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, h)
 }
 
-func TestMetricBuilder_UpDownCounter(t *testing.T) {
+func TestCreateMetric_UpDownCounter(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	c := b.upDownCounter(testMetricName, testMetricDesc, testMetricUnit)
+	c := createMetric(b, testMetricName, func() (metric.Int64UpDownCounter, error) {
+		return b.meter.Int64UpDownCounter(testMetricName,
+			metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, c)
 }
 
-func TestMetricBuilder_Gauge(t *testing.T) {
+func TestCreateMetric_Gauge(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	g := b.gauge(testMetricName, testMetricDesc, testMetricUnit)
+	g := createMetric(b, testMetricName, func() (metric.Int64ObservableGauge, error) {
+		return b.meter.Int64ObservableGauge(testMetricName,
+			metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, g)
 }
 
-func TestMetricBuilder_ObservableCounter(t *testing.T) {
+func TestCreateMetric_ObservableCounter(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	c := b.observableCounter(testMetricName, testMetricDesc, testMetricUnit)
+	c := createMetric(b, testMetricName, func() (metric.Int64ObservableCounter, error) {
+		return b.meter.Int64ObservableCounter(testMetricName,
+			metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+	})
+
 	require.NoError(t, b.err)
 	assert.NotNil(t, c)
 }
 
-func TestMetricBuilder_ErrorAccumulation_CapturesFirst(t *testing.T) {
+func TestCreateMetric_ErrorAccumulation_CapturesFirst(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
@@ -100,7 +126,7 @@ func TestMetricBuilder_ErrorAccumulation_CapturesFirst(t *testing.T) {
 	assert.Contains(t, b.err.Error(), "first.metric")
 }
 
-func TestMetricBuilder_ErrorAccumulation_IgnoresSubsequent(t *testing.T) {
+func TestCreateMetric_ErrorAccumulation_IgnoresSubsequent(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
@@ -113,7 +139,7 @@ func TestMetricBuilder_ErrorAccumulation_IgnoresSubsequent(t *testing.T) {
 	assert.NotErrorIs(t, b.err, errTestSecond)
 }
 
-func TestMetricBuilder_SetErr_NilError(t *testing.T) {
+func TestCreateMetric_SetErr_NilError(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
@@ -122,16 +148,31 @@ func TestMetricBuilder_SetErr_NilError(t *testing.T) {
 	assert.NoError(t, b.err)
 }
 
-func TestMetricBuilder_AllInstruments(t *testing.T) {
+func TestCreateMetric_AllInstruments(t *testing.T) {
 	t.Parallel()
 
 	b := newMetricBuilder(testMeter())
 
-	c := b.counter("test.counter", "counter desc", "{count}")
-	h := b.histogram("test.histogram", "histogram desc", "ms")
-	u := b.upDownCounter("test.updown", "updown desc", "{req}")
-	g := b.gauge("test.gauge", "gauge desc", "{goroutine}")
-	o := b.observableCounter("test.obs", "obs desc", "{goroutine}")
+	c := createMetric(b, "test.counter", func() (metric.Int64Counter, error) {
+		return b.meter.Int64Counter("test.counter",
+			metric.WithDescription("counter desc"), metric.WithUnit("{count}"))
+	})
+	h := createMetric(b, "test.histogram", func() (metric.Float64Histogram, error) {
+		return b.meter.Float64Histogram("test.histogram",
+			metric.WithDescription("histogram desc"), metric.WithUnit("ms"))
+	})
+	u := createMetric(b, "test.updown", func() (metric.Int64UpDownCounter, error) {
+		return b.meter.Int64UpDownCounter("test.updown",
+			metric.WithDescription("updown desc"), metric.WithUnit("{req}"))
+	})
+	g := createMetric(b, "test.gauge", func() (metric.Int64ObservableGauge, error) {
+		return b.meter.Int64ObservableGauge("test.gauge",
+			metric.WithDescription("gauge desc"), metric.WithUnit("{goroutine}"))
+	})
+	o := createMetric(b, "test.obs", func() (metric.Int64ObservableCounter, error) {
+		return b.meter.Int64ObservableCounter("test.obs",
+			metric.WithDescription("obs desc"), metric.WithUnit("{goroutine}"))
+	})
 
 	require.NoError(t, b.err)
 	assert.NotNil(t, c)
@@ -139,4 +180,41 @@ func TestMetricBuilder_AllInstruments(t *testing.T) {
 	assert.NotNil(t, u)
 	assert.NotNil(t, g)
 	assert.NotNil(t, o)
+}
+
+func TestBuildMetrics_Success(t *testing.T) {
+	t.Parallel()
+
+	type testMetrics struct {
+		counter metric.Int64Counter
+	}
+
+	result, err := buildMetrics(testMeter(), func(b *metricBuilder) *testMetrics {
+		return &testMetrics{
+			counter: createMetric(b, testMetricName, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(testMetricName,
+					metric.WithDescription(testMetricDesc), metric.WithUnit(testMetricUnit))
+			}),
+		}
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.NotNil(t, result.counter)
+}
+
+func TestBuildMetrics_PropagatesError(t *testing.T) {
+	t.Parallel()
+
+	type emptyMetrics struct{}
+
+	result, err := buildMetrics(testMeter(), func(b *metricBuilder) *emptyMetrics {
+		b.setErr("forced.failure", errTestCreation)
+
+		return &emptyMetrics{}
+	})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTestCreation)
+	assert.Nil(t, result)
 }

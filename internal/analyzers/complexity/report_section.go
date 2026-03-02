@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
 )
 
 // Section rendering constants.
@@ -79,9 +80,9 @@ func NewReportSection(report analyze.Report) *ReportSection {
 		report = analyze.Report{}
 	}
 
-	avg := getFloat64(report, KeyAvgComplexity)
+	avg := reportutil.GetFloat64(report, KeyAvgComplexity)
 
-	msg := getString(report, KeyMessage)
+	msg := reportutil.GetString(report, KeyMessage)
 	if msg == "" {
 		msg = DefaultStatusMessage
 	}
@@ -99,18 +100,18 @@ func NewReportSection(report analyze.Report) *ReportSection {
 // KeyMetrics returns the 6 key metrics for the complexity section.
 func (s *ReportSection) KeyMetrics() []analyze.Metric {
 	return []analyze.Metric{
-		{Label: MetricTotalFunctions, Value: formatInt(getInt(s.report, KeyTotalFunctions))},
-		{Label: MetricAvgComplexity, Value: formatFloat(getFloat64(s.report, KeyAvgComplexity))},
-		{Label: MetricMaxComplexity, Value: formatInt(getInt(s.report, KeyMaxComplexity))},
-		{Label: MetricTotalComplexity, Value: formatInt(getInt(s.report, KeyTotalComplexity))},
-		{Label: MetricCognitiveTotal, Value: formatInt(getInt(s.report, KeyCognitiveComplexity))},
-		{Label: MetricDecisionPoints, Value: formatInt(getInt(s.report, KeyDecisionPoints))},
+		{Label: MetricTotalFunctions, Value: formatInt(reportutil.GetInt(s.report, KeyTotalFunctions))},
+		{Label: MetricAvgComplexity, Value: formatFloat(reportutil.GetFloat64(s.report, KeyAvgComplexity))},
+		{Label: MetricMaxComplexity, Value: formatInt(reportutil.GetInt(s.report, KeyMaxComplexity))},
+		{Label: MetricTotalComplexity, Value: formatInt(reportutil.GetInt(s.report, KeyTotalComplexity))},
+		{Label: MetricCognitiveTotal, Value: formatInt(reportutil.GetInt(s.report, KeyCognitiveComplexity))},
+		{Label: MetricDecisionPoints, Value: formatInt(reportutil.GetInt(s.report, KeyDecisionPoints))},
 	}
 }
 
 // Distribution returns complexity distribution categories.
 func (s *ReportSection) Distribution() []analyze.DistributionItem {
-	functions := getFunctions(s.report)
+	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
 	}
@@ -138,7 +139,7 @@ func (s *ReportSection) AllIssues() []analyze.Issue {
 
 // buildSortedIssues extracts functions and sorts by complexity descending.
 func (s *ReportSection) buildSortedIssues() []analyze.Issue {
-	functions := getFunctions(s.report)
+	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
 	}
@@ -152,10 +153,10 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 
 	issues := make([]issueEnvelope, 0, len(functions))
 	for _, fn := range functions {
-		name := getStringFromMap(fn, KeyFuncName)
-		cc := getIntFromMap(fn, KeyFuncCyclomatic)
-		cognitive := getIntFromMap(fn, KeyFuncCognitive)
-		nesting := getIntFromMap(fn, KeyFuncNesting)
+		name := reportutil.MapString(fn, KeyFuncName)
+		cc := reportutil.GetInt(fn, KeyFuncCyclomatic)
+		cognitive := reportutil.GetInt(fn, KeyFuncCognitive)
+		nesting := reportutil.GetInt(fn, KeyFuncNesting)
 		issues = append(issues, issueEnvelope{
 			cyclomatic: cc,
 			cognitive:  cognitive,
@@ -224,7 +225,7 @@ func categorize(functions []map[string]any) distCounts {
 	var counts distCounts
 
 	for _, fn := range functions {
-		cc := getIntFromMap(fn, KeyFuncCyclomatic)
+		cc := reportutil.GetInt(fn, KeyFuncCyclomatic)
 		switch {
 		case cc <= DistSimpleMax:
 			counts.simple++
@@ -268,77 +269,6 @@ func severityForComplexity(cc int) string {
 	default:
 		return analyze.SeverityGood
 	}
-}
-
-// --- Type-safe report field accessors ---.
-
-func getFloat64(report analyze.Report, key string) float64 {
-	if v, ok := report[key]; ok {
-		switch val := v.(type) {
-		case float64:
-			return val
-		case int:
-			return float64(val)
-		}
-	}
-
-	return 0
-}
-
-func getInt(report analyze.Report, key string) int {
-	if v, ok := report[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case float64:
-			return int(val)
-		}
-	}
-
-	return 0
-}
-
-func getString(report analyze.Report, key string) string {
-	if v, ok := report[key]; ok {
-		if s, isStr := v.(string); isStr {
-			return s
-		}
-	}
-
-	return ""
-}
-
-func getFunctions(report analyze.Report) []map[string]any {
-	if v, ok := report[KeyFunctions]; ok {
-		if fns, isFns := v.([]map[string]any); isFns {
-			return fns
-		}
-	}
-
-	return nil
-}
-
-func getStringFromMap(m map[string]any, key string) string {
-	if v, ok := m[key]; ok {
-		if s, isStr := v.(string); isStr {
-			return s
-		}
-	}
-
-	return ""
-}
-
-func getIntFromMap(m map[string]any, key string) int {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case float64:
-			return int(val)
-		}
-	}
-
-	return 0
 }
 
 // --- Formatting helpers ---.

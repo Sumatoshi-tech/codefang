@@ -4,12 +4,12 @@ import (
 	"context"
 	"maps"
 	"strings"
-	"sync"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
@@ -53,36 +53,33 @@ type diffJob struct {
 
 	// Batching fields for cross-commit batching.
 	pendingRequests []gitlib.DiffRequest
-	batchResp       *sharedDiffResponse
+	batchResp       *SharedResponse[[]gitlib.DiffResult]
 	batchOffset     int
 	batchLen        int
 }
 
 // Process receives blob data and outputs commit data with computed diffs.
 func (p *DiffPipeline) Process(ctx context.Context, blobs <-chan BlobData) <-chan CommitData {
-	out := make(chan CommitData)
 	// diffJobBufferMultiplier scales the job buffer relative to pipeline buffer size.
 	// A larger buffer allows accumulating more diff jobs for cross-commit batching.
 	const diffJobBufferMultiplier = 10
 
-	// Larger buffer for jobs to accumulate batch.
-	jobs := make(chan diffJob, p.BufferSize*diffJobBufferMultiplier)
+	pc := pipeline.RunPC[<-chan BlobData, CommitData, diffJob]{
+		Buffer:  p.BufferSize * diffJobBufferMultiplier,
+		Produce: p.runDiffProducer,
+		Consume: p.runDiffConsumer,
+	}
 
-	go p.runDiffProducer(ctx, blobs, jobs)
-	go p.runDiffConsumer(ctx, jobs, out)
-
-	return out
+	return pc.Run(ctx, blobs)
 }
 
 // runDiffProducer processes blob data and creates diff jobs.
+// Channel lifecycle is managed by RunPC; this function must not close jobs.
 func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobData, jobs chan<- diffJob) {
-	defer close(jobs)
-
 	// We accumulate diff requests until we have a decent batch size (e.g. 200 diffs)
 	// or until input channel is dry.
 	// Since BlobPipeline emits BlobData which already contains multiple diffs per commit,
 	// we are effectively re-batching across commits.
-
 	const maxBatchSize = 1000
 
 	var (
@@ -95,7 +92,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 			return
 		}
 
-		var sharedResp *sharedDiffResponse
+		var sharedResp *SharedResponse[[]gitlib.DiffResult]
 
 		// Only fire CGO request if there are actual diff requests.
 		if len(currentBatchReqs) > 0 {
@@ -110,10 +107,15 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 				return
 			}
 
-			// Create a shared state for this batch.
-			sharedResp = &sharedDiffResponse{
-				respChan: respChan,
-			}
+			// Create a shared response for this batch.
+			sharedResp = NewSharedResponse(func(ctx context.Context) ([]gitlib.DiffResult, error) {
+				select {
+				case resp := <-respChan:
+					return resp.Results, nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			})
 		}
 
 		// Assign shared response to all jobs and dispatch.
@@ -168,24 +170,6 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 	flushBatch()
 }
 
-type sharedDiffResponse struct {
-	respChan chan gitlib.DiffBatchResponse
-	results  []gitlib.DiffResult
-	err      error
-	once     sync.Once
-}
-
-func (s *sharedDiffResponse) wait(ctx context.Context) {
-	s.once.Do(func() {
-		select {
-		case resp := <-s.respChan:
-			s.results = resp.Results
-		case <-ctx.Done():
-			s.err = ctx.Err()
-		}
-	})
-}
-
 // createDiffJobInternal prepares the job but doesn't fire requests.
 func (p *DiffPipeline) createDiffJobInternal(_ context.Context, blobData BlobData) (*diffJob, []gitlib.DiffRequest) {
 	commitData := CommitData{
@@ -211,9 +195,8 @@ func (p *DiffPipeline) createDiffJobInternal(_ context.Context, blobData BlobDat
 }
 
 // runDiffConsumer waits for diff responses and outputs commit data.
+// Channel lifecycle is managed by RunPC; this function must not close out.
 func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob, out chan<- CommitData) {
-	defer close(out)
-
 	for job := range jobs {
 		select {
 		case <-ctx.Done():
@@ -236,18 +219,14 @@ func (p *DiffPipeline) runDiffConsumer(ctx context.Context, jobs <-chan diffJob,
 
 		// Process batched diff response.
 		if job.batchResp != nil && job.batchLen > 0 {
-			job.batchResp.wait(ctx)
-
-			if job.batchResp.err != nil {
-				job.data.Error = job.batchResp.err
-			} else {
+			batchResults, err := job.batchResp.Get(ctx)
+			if err != nil {
+				job.data.Error = err
+			} else if job.batchOffset+job.batchLen <= len(batchResults) {
 				// Extract this job's portion of results.
-				batchResults := job.batchResp.results
-				if job.batchOffset+job.batchLen <= len(batchResults) {
-					jobResults := batchResults[job.batchOffset : job.batchOffset+job.batchLen]
-					resp := gitlib.DiffBatchResponse{Results: jobResults}
-					p.processDiffResponse(job.data, resp, job.paths, job.changes)
-				}
+				jobResults := batchResults[job.batchOffset : job.batchOffset+job.batchLen]
+				resp := gitlib.DiffBatchResponse{Results: jobResults}
+				p.processDiffResponse(job.data, resp, job.paths, job.changes)
 			}
 		}
 

@@ -301,8 +301,20 @@ type Analyzer interface {
 //     )
 // }
 //
-// For safe metrics computation, use the shared wrapper:
-// ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
+// For safe metrics computation, use the shared wrapper with common.MetricSet:
+// ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &common.MetricSet{}),
+//
+// Where ComputeAllMetrics uses the common orchestrator:
+// func ComputeAllMetrics(report analyze.Report) (*common.MetricSet, error) {
+//     input, err := ParseReportData(report)
+//     if err != nil { return nil, err }
+//     computers := []func(analyze.Report) common.MetricResult{
+//         func(_ analyze.Report) common.MetricResult {
+//             return common.MetricResult{Name: "metric_name", Value: computeMetric(input)}
+//         },
+//     }
+//     return common.ComputeAllMetrics("analyzer_name", computers, report), nil
+// }
 //
 // For shared pipeline facts in Configure(), use typed accessors from internal/plumbing:
 // if val, ok := pkgplumbing.GetTickSize(facts); ok { a.tickSize = val }
@@ -319,6 +331,21 @@ type Analyzer interface {
 // In Configure(): a.ReversedPeopleDict = val
 // In Fork struct literals: IdentityMixin: common.IdentityMixin{Identity: ..., ReversedPeopleDict: ...}
 // Used by: burndown, couples, imports, devs
+//
+// For checkpoint persistence, embed *common.CheckpointHelper[T] to promote
+// SaveCheckpoint/LoadCheckpoint via embedding (satisfies checkpoint.Checkpointable):
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     *common.CheckpointHelper[checkpointState]
+//     // ...
+// }
+// In NewAnalyzer():
+//     ha.CheckpointHelper = common.NewCheckpointHelper[checkpointState](
+//         checkpointBasename, persist.NewJSONCodec(), // or persist.NewGobCodec()
+//         ha.buildCheckpointState, ha.restoreFromCheckpoint,
+//     )
+// CheckpointSize() remains analyzer-specific (not part of the helper).
+// Used by: file_history (migrated), burndown and couples (candidates)
 //
 // For history analyzers with no working state between chunks, embed common.NoStateHibernation:
 // type MyAnalyzer struct {
@@ -390,6 +417,7 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/alg/cms` - Count-Min Sketch for bounded-overestimation frequency estimation
 - `pkg/alg/interval` - Generic augmented interval tree `Tree[K Integer, V comparable]` for O(log N + k) overlap/point queries
 - `pkg/alg/lru` - Generic LRU cache with optional Bloom pre-filter, cost-based eviction, and clone-on-insert
+- `pkg/alg` - Generic algorithms: `Range` (half-open interval), `Chunk` (range partitioning), `ForEachPair` (C(n,2) pairwise iteration)
 - `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `EMA` (exponential moving average)
 - `pkg/alg/mapx` - Generic map/slice operations: `Clone`, `CloneFunc`, `CloneNested`, `MergeAdditive`, `SortedKeys`, `CloneSlice`, `Unique`
 - `pkg/persist` - Codec-based file persistence: `Codec` interface, `JSONCodec`, `GobCodec`, `SaveState`, `LoadState`, `Persister[T]`
@@ -399,6 +427,7 @@ analyzer.Analyze(ctx, nodes)
 - `internal/cache` - LRU blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache
 
 **Shared Utilities:**
+- `pkg/sigutil` - Signal-handling utilities: `SignalCleanupGuard` (SIGINT/SIGTERM + `sync.Once` idempotent cleanup + goroutine listener + deregistration on `Close`)
 - `pkg/safeconv` - Safe type conversions: `Must*` (panic), `Safe*` (clamp), `To*` (extract from `any`)
 - `pkg/units` - Binary size unit multipliers (KiB, MiB, GiB)
 - `internal/analyzers/common/classify.go` - Generic threshold classifier: `Classifier[T cmp.Ordered]`, `Threshold[T]`, `NewClassifier[T]`. Used by clones, shotness, cohesion, halstead
@@ -406,9 +435,12 @@ analyzer.Analyze(ctx, nodes)
 - `internal/analyzers/common/filter.go` - Generic interface filter: `FilterByInterface[T, U](items []T, cast func(T) (U, bool)) []U`. Used by framework/streaming.go for collectHibernatables, collectSpillCleaners, collectCheckpointables
 - `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by anomaly, shotness, devs store_reader.go
 
+**Pipeline Building Blocks:**
+- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern)
+
 **Infrastructure:**
 - `pkg/gitlib` - Git history mining (libgit2-based)
-- `internal/framework` - Analysis pipeline orchestration
+- `internal/framework` - Analysis pipeline orchestration; `SharedResponse[T]` for once-evaluated shared results across goroutines; `BlobPipeline` and `DiffPipeline` delegate goroutine topology to `pipeline.RunPC`
 - `pkg/version` - Build version info
 
 ---

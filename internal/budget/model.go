@@ -3,37 +3,30 @@ package budget
 
 import "github.com/Sumatoshi-tech/codefang/pkg/units"
 
-// Size unit multipliers re-exported from pkg/units for backwards compatibility.
-const (
-	KiB = units.KiB
-	MiB = units.MiB
-	GiB = units.GiB
-)
-
 // Component memory sizes (empirically measured).
 const (
 	// BaseOverhead is the fixed Go runtime + libgit2 overhead.
 	// Includes shared mmap of pack files (~200 MB for large repos).
-	BaseOverhead = 250 * MiB
+	BaseOverhead = 250 * units.MiB
 
 	// RepoHandleSize is the Go-visible memory per worker for libgit2 repository handle.
-	RepoHandleSize = 10 * MiB
+	RepoHandleSize = 10 * units.MiB
 
 	// WorkerNativeOverhead is the per-worker C/mmap overhead from libgit2.
 	// Each worker opens the repo and mmaps pack index files; the OS faults in
 	// pack data pages during object lookups. Empirically ~50-100 MB per worker
 	// on large repos due to shared pack page cache pressure.
-	WorkerNativeOverhead = 50 * MiB
+	WorkerNativeOverhead = 50 * units.MiB
 
 	// AvgDiffSize is the average size of a cached diff entry.
-	AvgDiffSize = 2 * KiB
+	AvgDiffSize = 2 * units.KiB
 
 	// AvgCommitDataSize is the average size of in-flight commit data.
-	AvgCommitDataSize = 64 * KiB
+	AvgCommitDataSize = 64 * units.KiB
 
 	// MaxBlobCacheSize caps the blob cache to avoid dominating the budget.
 	// Beyond 256 MB the hit rate improvement is marginal for most repositories.
-	MaxBlobCacheSize = 256 * MiB
+	MaxBlobCacheSize = 256 * units.MiB
 
 	// MaxDiffCacheEntries caps the diff cache. Beyond 20K entries the benefit
 	// is marginal and memory cost grows linearly.
@@ -41,10 +34,10 @@ const (
 
 	// DefaultMwindowMappedLimit is libgit2's default mmap limit (8 GiB on 64-bit).
 	// This allows pack file windows to consume enormous RSS on large repos.
-	DefaultMwindowMappedLimit = 8 * GiB
+	DefaultMwindowMappedLimit = 8 * units.GiB
 
 	// DefaultLibgit2CacheSize is libgit2's default object cache (256 MiB).
-	DefaultLibgit2CacheSize = 256 * MiB
+	DefaultLibgit2CacheSize = 256 * units.MiB
 
 	// NativeMemoryPercent is the fraction of the budget reserved for libgit2
 	// native memory (mwindow + object cache + decompression buffers).

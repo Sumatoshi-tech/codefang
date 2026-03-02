@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -108,17 +109,17 @@ func computeCouplingPairs(acc *TickData, nodesTouched map[string]NodeDelta) int 
 
 	sort.Strings(keys)
 
-	for i, key1 := range keys {
-		for _, key2 := range keys[i+1:] {
-			if nd, exists := acc.Nodes[key1]; exists {
-				nd.Couples[key2]++
-			}
+	alg.ForEachPair(len(keys), func(i, j int) {
+		key1, key2 := keys[i], keys[j]
 
-			if nd, exists := acc.Nodes[key2]; exists {
-				nd.Couples[key1]++
-			}
+		if nd, exists := acc.Nodes[key1]; exists {
+			nd.Couples[key2]++
 		}
-	}
+
+		if nd, exists := acc.Nodes[key2]; exists {
+			nd.Couples[key1]++
+		}
+	})
 
 	return couplingPairs
 }

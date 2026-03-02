@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/burndown"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
@@ -21,6 +23,16 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/typos"
 )
+
+// mustEmptyTyposMetrics returns a MetricSet for the migrated typos analyzer.
+func mustEmptyTyposMetrics() *common.MetricSet {
+	ms, err := typos.ComputeAllMetrics(analyze.Report{})
+	if err != nil {
+		panic(err)
+	}
+
+	return ms
+}
 
 // --- Interface Compliance Tests ---
 // These tests verify that all analyzer ComputedMetrics types implement MetricsOutput.
@@ -72,7 +84,7 @@ func TestMetricsOutput_InterfaceCompliance_StaticAnalyzers(t *testing.T) {
 		_ renderer.MetricsOutput = (*cohesion.ComputedMetrics)(nil)
 		_ renderer.MetricsOutput = (*halstead.ComputedMetrics)(nil)
 		_ renderer.MetricsOutput = (*comments.ComputedMetrics)(nil)
-		_ renderer.MetricsOutput = (*typos.ComputedMetrics)(nil)
+		_ renderer.MetricsOutput = (*common.MetricSet)(nil)
 	)
 
 	// Runtime verification.
@@ -85,7 +97,7 @@ func TestMetricsOutput_InterfaceCompliance_StaticAnalyzers(t *testing.T) {
 		{"cohesion", &cohesion.ComputedMetrics{}, "cohesion"},
 		{"halstead", &halstead.ComputedMetrics{}, "halstead"},
 		{"comments", &comments.ComputedMetrics{}, "comments"},
-		{"typos", &typos.ComputedMetrics{}, "typos"},
+		{"typos", mustEmptyTyposMetrics(), "typos"},
 	}
 
 	for _, tt := range tests {
@@ -191,7 +203,7 @@ func TestJSONOutputStructure_StaticAnalyzers(t *testing.T) {
 		},
 		{
 			name:         "typos",
-			metrics:      &typos.ComputedMetrics{},
+			metrics:      mustEmptyTyposMetrics(),
 			expectedKeys: []string{"aggregate", "typo_list", "patterns", "file_typos"},
 		},
 	}
@@ -307,7 +319,7 @@ func TestYAMLOutputStructure_StaticAnalyzers(t *testing.T) {
 		},
 		{
 			name:         "typos",
-			metrics:      &typos.ComputedMetrics{},
+			metrics:      mustEmptyTyposMetrics(),
 			expectedKeys: []string{"aggregate", "typo_list", "patterns", "file_typos"},
 		},
 	}
@@ -348,7 +360,7 @@ func TestRenderMetricsJSON_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&typos.ComputedMetrics{},
+		mustEmptyTyposMetrics(),
 	}
 
 	for _, m := range analyzers {
@@ -382,7 +394,7 @@ func TestRenderMetricsYAML_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&typos.ComputedMetrics{},
+		mustEmptyTyposMetrics(),
 	}
 
 	for _, m := range analyzers {
@@ -419,7 +431,7 @@ func TestJSONYAMLConsistency_AllAnalyzers(t *testing.T) {
 		&cohesion.ComputedMetrics{},
 		&halstead.ComputedMetrics{},
 		&comments.ComputedMetrics{},
-		&typos.ComputedMetrics{},
+		mustEmptyTyposMetrics(),
 	}
 
 	for _, m := range analyzers {

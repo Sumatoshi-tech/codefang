@@ -280,86 +280,110 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 
 	report := analyze.Report{}
 
-	result, err := ComputeAllMetrics(report)
+	ms, err := ComputeAllMetrics(report)
 
 	require.NoError(t, err)
-	assert.Empty(t, result.TypoList)
-	assert.Empty(t, result.Patterns)
-	assert.Empty(t, result.FileTypos)
-	assert.Equal(t, 0, result.Aggregate.TotalTypos)
+
+	metrics := ms.Metrics()
+	require.Len(t, metrics, 4)
+
+	// All metric values should be empty/zero.
+	typoList, ok := metrics[0].Value.([]TypoData)
+	require.True(t, ok)
+	assert.Empty(t, typoList)
+
+	patterns, ok := metrics[1].Value.([]TypoPatternData)
+	require.True(t, ok)
+	assert.Empty(t, patterns)
+
+	fileTypos, ok := metrics[2].Value.([]FileTypoData)
+	require.True(t, ok)
+	assert.Empty(t, fileTypos)
+
+	agg, ok := metrics[3].Value.(AggregateData)
+	require.True(t, ok)
+	assert.Equal(t, 0, agg.TotalTypos)
 }
 
 func TestComputeAllMetrics_Full(t *testing.T) {
 	t.Parallel()
 
+	const testLine3 = 30
+
 	typos := []Typo{
 		{Wrong: testWrong1, Correct: testCorrect1, File: testFile1, Line: testLine1, Commit: testHash("abc")},
 		{Wrong: testWrong1, Correct: testCorrect1, File: testFile2, Line: testLine2, Commit: testHash("def")},
-		{Wrong: testWrong2, Correct: testCorrect2, File: testFile1, Line: 30, Commit: testHash("ghi")},
+		{Wrong: testWrong2, Correct: testCorrect2, File: testFile1, Line: testLine3, Commit: testHash("ghi")},
 	}
 
 	report := analyze.Report{
 		"typos": typos,
 	}
 
-	result, err := ComputeAllMetrics(report)
-
+	ms, err := ComputeAllMetrics(report)
 	require.NoError(t, err)
 
-	// TypoList.
-	require.Len(t, result.TypoList, 3)
+	// Access via ToJSON map for backward-compatible key check.
+	jsonMap, ok := ms.ToJSON().(map[string]any)
+	require.True(t, ok)
 
-	// Patterns - only testWrong1 has freq > 1.
-	require.Len(t, result.Patterns, 1)
-	assert.Equal(t, testWrong1, result.Patterns[0].Wrong)
-	assert.Equal(t, 2, result.Patterns[0].Frequency)
+	// TypoList.
+	typoList, ok := jsonMap[metricNameTypoList].([]TypoData)
+	require.True(t, ok)
+	require.Len(t, typoList, 3)
+
+	// Patterns — only testWrong1 has freq > 1.
+	patternList, ok := jsonMap[metricNamePatterns].([]TypoPatternData)
+	require.True(t, ok)
+	require.Len(t, patternList, 1)
+	assert.Equal(t, testWrong1, patternList[0].Wrong)
+	assert.Equal(t, 2, patternList[0].Frequency)
 
 	// FileTypos.
-	require.Len(t, result.FileTypos, 2)
+	fileTypoList, ok := jsonMap[metricNameFileTypos].([]FileTypoData)
+	require.True(t, ok)
+	require.Len(t, fileTypoList, 2)
 
 	// Aggregate.
-	assert.Equal(t, 3, result.Aggregate.TotalTypos)
-	assert.Equal(t, 2, result.Aggregate.UniquePatterns)
-	assert.Equal(t, 2, result.Aggregate.AffectedFiles)
-	assert.Equal(t, 3, result.Aggregate.AffectedCommits)
+	agg, ok := jsonMap[metricNameAggregate].(AggregateData)
+	require.True(t, ok)
+	assert.Equal(t, 3, agg.TotalTypos)
+	assert.Equal(t, 2, agg.UniquePatterns)
+	assert.Equal(t, 2, agg.AffectedFiles)
+	assert.Equal(t, 3, agg.AffectedCommits)
 }
 
-// --- MetricsOutput Interface Tests ---.
+// --- MetricSet Interface Tests ---.
 
-func TestComputedMetrics_AnalyzerName(t *testing.T) {
+func TestComputeAllMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()
 
-	m := &ComputedMetrics{}
+	ms, err := ComputeAllMetrics(analyze.Report{})
+	require.NoError(t, err)
 
-	assert.Equal(t, "typos", m.AnalyzerName())
+	assert.Equal(t, analyzerNameTypos, ms.AnalyzerName())
 }
 
-func TestComputedMetrics_ToJSON(t *testing.T) {
+func TestComputeAllMetrics_ToJSON_KeysMatchMetricNames(t *testing.T) {
 	t.Parallel()
 
-	m := &ComputedMetrics{
-		TypoList: []TypoData{
-			{Wrong: testWrong1, Correct: testCorrect1},
-		},
-		Aggregate: AggregateData{TotalTypos: 1},
-	}
+	ms, err := ComputeAllMetrics(analyze.Report{})
+	require.NoError(t, err)
 
-	result := m.ToJSON()
+	jsonMap, ok := ms.ToJSON().(map[string]any)
+	require.True(t, ok)
 
-	assert.Equal(t, m, result)
+	assert.Contains(t, jsonMap, metricNameTypoList)
+	assert.Contains(t, jsonMap, metricNamePatterns)
+	assert.Contains(t, jsonMap, metricNameFileTypos)
+	assert.Contains(t, jsonMap, metricNameAggregate)
 }
 
-func TestComputedMetrics_ToYAML(t *testing.T) {
+func TestComputeAllMetrics_ToYAML_MatchesToJSON(t *testing.T) {
 	t.Parallel()
 
-	m := &ComputedMetrics{
-		TypoList: []TypoData{
-			{Wrong: testWrong1, Correct: testCorrect1},
-		},
-		Aggregate: AggregateData{TotalTypos: 1},
-	}
+	ms, err := ComputeAllMetrics(analyze.Report{})
+	require.NoError(t, err)
 
-	result := m.ToYAML()
-
-	assert.Equal(t, m, result)
+	assert.Equal(t, ms.ToJSON(), ms.ToYAML())
 }

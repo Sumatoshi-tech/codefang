@@ -6,12 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 func TestSolveForBudget_MediumBudget(t *testing.T) {
 	t.Parallel()
 
-	const budgetOneGiB = 1 * GiB
+	const budgetOneGiB = 1 * units.GiB
 
 	cfg, err := SolveForBudget(budgetOneGiB)
 
@@ -36,20 +38,20 @@ func TestSolveForBudget_SmallBudget(t *testing.T) {
 func TestSolveForBudget_LargeBudget(t *testing.T) {
 	t.Parallel()
 
-	const budget4GiB = 4 * GiB
+	const budget4GiB = 4 * units.GiB
 
 	cfg, err := SolveForBudget(budget4GiB)
 
 	require.NoError(t, err)
 	// Larger budget should allow more resources.
 	assert.Positive(t, cfg.Workers)
-	assert.Greater(t, cfg.BlobCacheSize, int64(100*MiB), "large budget should have significant cache")
+	assert.Greater(t, cfg.BlobCacheSize, int64(100*units.MiB), "large budget should have significant cache")
 }
 
 func TestSolveForBudget_TooSmall(t *testing.T) {
 	t.Parallel()
 
-	const tinyBudget = 64 * MiB // Below MinimumBudget.
+	const tinyBudget = 64 * units.MiB // Below MinimumBudget.
 
 	_, err := SolveForBudget(tinyBudget)
 
@@ -71,9 +73,9 @@ func TestSolveForBudget_NeverExceedsBudget(t *testing.T) {
 
 	budgets := []int64{
 		MinimumBudget,
-		1 * GiB,
-		2 * GiB,
-		4 * GiB,
+		1 * units.GiB,
+		2 * units.GiB,
+		4 * units.GiB,
 	}
 
 	for _, budget := range budgets {
@@ -94,7 +96,7 @@ func TestSolveForBudget_MaintainsSlack(t *testing.T) {
 	const slackPercent = 5
 
 	// Test a range of budgets from minimum to 8 GiB in increments.
-	for budget := int64(MinimumBudget); budget <= 8*GiB; budget += 64 * MiB {
+	for budget := int64(MinimumBudget); budget <= 8*units.GiB; budget += 64 * units.MiB {
 		cfg, err := SolveForBudget(budget)
 		require.NoError(t, err, "budget %d should succeed", budget)
 
@@ -110,7 +112,7 @@ func TestSolveForBudget_MaintainsSlack(t *testing.T) {
 func TestSolveForBudget_Deterministic(t *testing.T) {
 	t.Parallel()
 
-	const budget = 1 * GiB
+	const budget = 1 * units.GiB
 
 	cfg1, err1 := SolveForBudget(budget)
 	cfg2, err2 := SolveForBudget(budget)
@@ -131,7 +133,7 @@ func TestSolveForBudget_LargerBudgetMoreResources(t *testing.T) {
 	smallCfg, err := SolveForBudget(MinimumBudget)
 	require.NoError(t, err)
 
-	largeCfg, err := SolveForBudget(2 * GiB)
+	largeCfg, err := SolveForBudget(2 * units.GiB)
 	require.NoError(t, err)
 
 	// Larger budget should provide more resources.
@@ -145,7 +147,7 @@ func TestSolveForBudget_WorkersCappedAtCPUCount(t *testing.T) {
 	t.Parallel()
 
 	// Very large budget that would allow more workers than CPUs.
-	const hugeBudget = 64 * GiB
+	const hugeBudget = 64 * units.GiB
 
 	cfg, err := SolveForBudget(hugeBudget)
 
@@ -184,7 +186,7 @@ func TestDeriveKnobs_TinyAllocations(t *testing.T) {
 	t.Parallel()
 
 	// Small allocations that trigger minimum enforcement.
-	cfg := deriveKnobs(1*KiB, 1*KiB, 1*KiB)
+	cfg := deriveKnobs(1*units.KiB, 1*units.KiB, 1*units.KiB)
 
 	assert.GreaterOrEqual(t, cfg.Workers, MinWorkers)
 	assert.GreaterOrEqual(t, cfg.BufferSize, MinBufferSize)
@@ -196,7 +198,7 @@ func TestDeriveKnobs_HugeWorkerAllocation(t *testing.T) {
 	t.Parallel()
 
 	// Huge worker allocation that would exceed CPU count.
-	cfg := deriveKnobs(100*MiB, 100*GiB, 10*MiB)
+	cfg := deriveKnobs(100*units.MiB, 100*units.GiB, 10*units.MiB)
 
 	assert.LessOrEqual(t, cfg.Workers, runtime.NumCPU(), "workers capped at CPU count")
 }

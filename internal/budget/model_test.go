@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Sumatoshi-tech/codefang/internal/framework"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 // EstimateMemoryUsage calculates the estimated memory usage for a given configuration.
@@ -36,9 +37,9 @@ func TestEstimateMemoryUsage_MinimalConfig(t *testing.T) {
 	minimalCfg := framework.CoordinatorConfig{
 		Workers:       1,
 		BufferSize:    1,
-		BlobCacheSize: 1 * MiB,
+		BlobCacheSize: 1 * units.MiB,
 		DiffCacheSize: 100,
-		BlobArenaSize: 1 * MiB,
+		BlobArenaSize: 1 * units.MiB,
 	}
 	defaultCfg := framework.DefaultCoordinatorConfig()
 
@@ -57,9 +58,9 @@ func TestEstimateMemoryUsage_Monotonic_Workers(t *testing.T) {
 	baseCfg := framework.CoordinatorConfig{
 		Workers:       2,
 		BufferSize:    4,
-		BlobCacheSize: 100 * MiB,
+		BlobCacheSize: 100 * units.MiB,
 		DiffCacheSize: 1000,
-		BlobArenaSize: 4 * MiB,
+		BlobArenaSize: 4 * units.MiB,
 	}
 	moreCfg := baseCfg
 	moreCfg.Workers = 4
@@ -76,12 +77,12 @@ func TestEstimateMemoryUsage_Monotonic_BlobCache(t *testing.T) {
 	baseCfg := framework.CoordinatorConfig{
 		Workers:       2,
 		BufferSize:    4,
-		BlobCacheSize: 100 * MiB,
+		BlobCacheSize: 100 * units.MiB,
 		DiffCacheSize: 1000,
-		BlobArenaSize: 4 * MiB,
+		BlobArenaSize: 4 * units.MiB,
 	}
 	moreCfg := baseCfg
-	moreCfg.BlobCacheSize = 500 * MiB
+	moreCfg.BlobCacheSize = 500 * units.MiB
 
 	baseEstimate := EstimateMemoryUsage(baseCfg)
 	moreEstimate := EstimateMemoryUsage(moreCfg)
@@ -95,9 +96,9 @@ func TestEstimateMemoryUsage_Monotonic_DiffCache(t *testing.T) {
 	baseCfg := framework.CoordinatorConfig{
 		Workers:       2,
 		BufferSize:    4,
-		BlobCacheSize: 100 * MiB,
+		BlobCacheSize: 100 * units.MiB,
 		DiffCacheSize: 1000,
-		BlobArenaSize: 4 * MiB,
+		BlobArenaSize: 4 * units.MiB,
 	}
 	moreCfg := baseCfg
 	moreCfg.DiffCacheSize = 10000

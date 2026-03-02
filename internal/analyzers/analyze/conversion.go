@@ -309,17 +309,7 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 
 		return nil
 	case FormatYAML:
-		data, err := yaml.Marshal(model)
-		if err != nil {
-			return fmt.Errorf("encode converted yaml: %w", err)
-		}
-
-		_, err = writer.Write(data)
-		if err != nil {
-			return fmt.Errorf("write converted yaml: %w", err)
-		}
-
-		return nil
+		return marshalAndWrite(model, yaml.Marshal, writer, "converted yaml")
 	case FormatBinary:
 		err := reportutil.EncodeBinaryEnvelope(model, writer)
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -58,47 +59,40 @@ type AggregateData struct {
 	AffectedCommits int `json:"affected_commits" yaml:"affected_commits"`
 }
 
-// --- Computed Metrics ---.
-
-// ComputedMetrics holds all computed metric results for the typos analyzer.
-type ComputedMetrics struct {
-	TypoList  []TypoData        `json:"typo_list"  yaml:"typo_list"`
-	Patterns  []TypoPatternData `json:"patterns"   yaml:"patterns"`
-	FileTypos []FileTypoData    `json:"file_typos" yaml:"file_typos"`
-	Aggregate AggregateData     `json:"aggregate"  yaml:"aggregate"`
-}
-
 // Analyzer name constant for MetricsOutput interface.
 const analyzerNameTypos = "typos"
 
-// AnalyzerName returns the name of the analyzer.
-func (m *ComputedMetrics) AnalyzerName() string {
-	return analyzerNameTypos
-}
-
-// ToJSON returns the metrics as a JSON-serializable object.
-func (m *ComputedMetrics) ToJSON() any {
-	return m
-}
-
-// ToYAML returns the metrics as a YAML-serializable object.
-func (m *ComputedMetrics) ToYAML() any {
-	return m
-}
+// Metric name constants.
+const (
+	metricNameTypoList  = "typo_list"
+	metricNamePatterns  = "patterns"
+	metricNameFileTypos = "file_typos"
+	metricNameAggregate = "aggregate"
+)
 
 // ComputeAllMetrics runs all typos metrics and returns the results.
-func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+func ComputeAllMetrics(report analyze.Report) (*common.MetricSet, error) {
 	input, err := ParseReportData(report)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ComputedMetrics{
-		TypoList:  computeTypoList(input),
-		Patterns:  computeTypoPatterns(input),
-		FileTypos: computeFileTypos(input),
-		Aggregate: computeAggregate(input),
-	}, nil
+	computers := []func(analyze.Report) common.MetricResult{
+		func(_ analyze.Report) common.MetricResult {
+			return common.MetricResult{Name: metricNameTypoList, Value: computeTypoList(input)}
+		},
+		func(_ analyze.Report) common.MetricResult {
+			return common.MetricResult{Name: metricNamePatterns, Value: computeTypoPatterns(input)}
+		},
+		func(_ analyze.Report) common.MetricResult {
+			return common.MetricResult{Name: metricNameFileTypos, Value: computeFileTypos(input)}
+		},
+		func(_ analyze.Report) common.MetricResult {
+			return common.MetricResult{Name: metricNameAggregate, Value: computeAggregate(input)}
+		},
+	}
+
+	return common.ComputeAllMetrics(analyzerNameTypos, computers, report), nil
 }
 
 // --- Metric Implementations ---.

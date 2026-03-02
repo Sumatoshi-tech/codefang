@@ -4,6 +4,8 @@ package reportutil
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 // Formatting constants.
@@ -11,32 +13,36 @@ const (
 	PercentMultiplier = 100
 )
 
-// GetFloat64 returns a float64 value from the report, handling int conversion.
+// GetFloat64 returns a float64 value from the report, handling type conversion.
+// Delegates to [safeconv.ToFloat64] for consistent type handling.
 func GetFloat64(report map[string]any, key string) float64 {
-	if v, ok := report[key]; ok {
-		switch val := v.(type) {
-		case float64:
-			return val
-		case int:
-			return float64(val)
-		}
+	v, exists := report[key]
+	if !exists {
+		return 0
 	}
 
-	return 0
+	f, valid := safeconv.ToFloat64(v)
+	if !valid {
+		return 0
+	}
+
+	return f
 }
 
-// GetInt returns an int value from the report, handling float64 conversion.
+// GetInt returns an int value from the report, handling type conversion.
+// Delegates to [safeconv.ToInt] for consistent type handling.
 func GetInt(report map[string]any, key string) int {
-	if v, ok := report[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case float64:
-			return int(val)
-		}
+	v, exists := report[key]
+	if !exists {
+		return 0
 	}
 
-	return 0
+	i, valid := safeconv.ToInt(v)
+	if !valid {
+		return 0
+	}
+
+	return i
 }
 
 // GetString returns a string value from the report.

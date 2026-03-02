@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/Sumatoshi-tech/codefang/internal/framework"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 // Allocation proportions for budget distribution.
@@ -35,15 +36,15 @@ const (
 const (
 	// MinimumBudget is the smallest budget the solver will accept.
 	// Must exceed BaseOverhead (250 MiB) plus room for at least 1 worker.
-	MinimumBudget = 512 * MiB
+	MinimumBudget = 512 * units.MiB
 
 	// DefaultArenaSize is the default blob arena size.
 	// 8 MiB reduces fallback to per-blob C malloc (which accumulates in
 	// glibc arenas as retained native RSS) by fitting ~97% of blob batches.
-	DefaultArenaSize = 8 * MiB
+	DefaultArenaSize = 8 * units.MiB
 
 	// MaxArenaSize is the maximum arena size allowed.
-	MaxArenaSize = 16 * MiB
+	MaxArenaSize = 16 * units.MiB
 
 	// DefaultCommitBatchSize is used for all budget-derived configs.
 	DefaultCommitBatchSize = 100
@@ -58,7 +59,7 @@ const (
 	MinDiffCacheSize = 100
 
 	// MinBlobCacheSize is the minimum blob cache size.
-	MinBlobCacheSize = 1 * MiB
+	MinBlobCacheSize = 1 * units.MiB
 
 	// OptimalWorkerRatio is the percentage of CPU cores to use for workers.
 	// Testing shows ~60% provides optimal performance due to contention overhead.

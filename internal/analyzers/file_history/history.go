@@ -6,15 +6,18 @@ import (
 	"io"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/persist"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
 // HistoryAnalyzer tracks file-level change history across commits.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	*common.CheckpointHelper[checkpointState]
 
 	// Dependencies.
 	Identity  *plumbing.IdentityDetector
@@ -53,6 +56,11 @@ func NewAnalyzer() *HistoryAnalyzer {
 			return ha.generatePlot(result, writer)
 		},
 	}
+
+	ha.CheckpointHelper = common.NewCheckpointHelper[checkpointState](
+		checkpointBasename, persist.NewJSONCodec(),
+		ha.buildCheckpointState, ha.restoreFromCheckpoint,
+	)
 
 	return ha
 }

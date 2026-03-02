@@ -4,6 +4,7 @@ package complexity
 import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 const (
@@ -127,22 +128,14 @@ func (ca *Aggregator) addDerivedMetrics(result analyze.Report) {
 }
 
 // extractIntFromReport safely extracts an int from a report value.
+// Delegates to [safeconv.ToInt] for consistent type handling.
 func extractIntFromReport(report analyze.Report, key string) (int, bool) {
 	val, ok := report[key]
 	if !ok {
 		return 0, false
 	}
 
-	switch v := val.(type) {
-	case int:
-		return v, true
-	case int64:
-		return int(v), true
-	case float64:
-		return int(v), true
-	default:
-		return 0, false
-	}
+	return safeconv.ToInt(val)
 }
 
 // getNumericKeys returns the numeric keys for complexity analysis

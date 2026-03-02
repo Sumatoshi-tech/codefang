@@ -2,7 +2,6 @@ package filehistory
 
 import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
@@ -20,24 +19,6 @@ type fileHistoryCheckpoint struct {
 type checkpointState struct {
 	Files       map[string]fileHistoryCheckpoint `json:"files"`
 	MergesBloom []byte                           `json:"merges_bloom"`
-}
-
-// newPersister creates a checkpoint persister for file history analyzer.
-func newPersister() *checkpoint.Persister[checkpointState] {
-	return checkpoint.NewPersister[checkpointState](
-		checkpointBasename,
-		checkpoint.NewJSONCodec(),
-	)
-}
-
-// SaveCheckpoint writes the analyzer state to the given directory.
-func (h *HistoryAnalyzer) SaveCheckpoint(dir string) error {
-	return newPersister().Save(dir, h.buildCheckpointState)
-}
-
-// LoadCheckpoint restores the analyzer state from the given directory.
-func (h *HistoryAnalyzer) LoadCheckpoint(dir string) error {
-	return newPersister().Load(dir, h.restoreFromCheckpoint)
 }
 
 // buildCheckpointState creates a serializable snapshot of the analyzer state.

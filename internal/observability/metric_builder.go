@@ -18,53 +18,27 @@ func newMetricBuilder(mt metric.Meter) *metricBuilder {
 	return &metricBuilder{meter: mt}
 }
 
-// counter creates an Int64Counter instrument.
-func (b *metricBuilder) counter(name, desc, unit string) metric.Int64Counter {
-	c, err := b.meter.Int64Counter(name, metric.WithDescription(desc), metric.WithUnit(unit))
+// createMetric creates an OTel instrument using fn and records any error in the builder.
+// This single generic function replaces the former counter, histogram, upDownCounter,
+// gauge, and observableCounter convenience methods.
+func createMetric[T any](b *metricBuilder, name string, fn func() (T, error)) T {
+	inst, err := fn()
 	b.setErr(name, err)
 
-	return c
+	return inst
 }
 
-// histogram creates a Float64Histogram instrument with optional explicit bucket boundaries.
-func (b *metricBuilder) histogram(name, desc, unit string, bounds ...float64) metric.Float64Histogram {
-	opts := []metric.Float64HistogramOption{
-		metric.WithDescription(desc),
-		metric.WithUnit(unit),
+// buildMetrics constructs a metrics struct by delegating instrument creation to fn.
+// It handles builder lifecycle (creation + error check) so callers avoid boilerplate.
+func buildMetrics[T any](mt metric.Meter, fn func(*metricBuilder) *T) (*T, error) {
+	b := newMetricBuilder(mt)
+
+	result := fn(b)
+	if b.err != nil {
+		return nil, b.err
 	}
 
-	if len(bounds) > 0 {
-		opts = append(opts, metric.WithExplicitBucketBoundaries(bounds...))
-	}
-
-	h, err := b.meter.Float64Histogram(name, opts...)
-	b.setErr(name, err)
-
-	return h
-}
-
-// upDownCounter creates an Int64UpDownCounter instrument.
-func (b *metricBuilder) upDownCounter(name, desc, unit string) metric.Int64UpDownCounter {
-	c, err := b.meter.Int64UpDownCounter(name, metric.WithDescription(desc), metric.WithUnit(unit))
-	b.setErr(name, err)
-
-	return c
-}
-
-// gauge creates an Int64ObservableGauge instrument.
-func (b *metricBuilder) gauge(name, desc, unit string) metric.Int64ObservableGauge {
-	g, err := b.meter.Int64ObservableGauge(name, metric.WithDescription(desc), metric.WithUnit(unit))
-	b.setErr(name, err)
-
-	return g
-}
-
-// observableCounter creates an Int64ObservableCounter instrument.
-func (b *metricBuilder) observableCounter(name, desc, unit string) metric.Int64ObservableCounter {
-	c, err := b.meter.Int64ObservableCounter(name, metric.WithDescription(desc), metric.WithUnit(unit))
-	b.setErr(name, err)
-
-	return c
+	return result, nil
 }
 
 // setErr records the first instrument creation error.

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 const (
@@ -126,19 +127,13 @@ func (r *Reporter) generateSummaryReport(report analyze.Report) string {
 }
 
 // extractKeyMetrics extracts key numeric metrics from a report.
+// When no MetricKeys are configured, delegates to [extractAllNumericMetrics].
 func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
-	metrics := make(map[string]float64)
-
 	if len(r.config.MetricKeys) == 0 {
-		// Extract all numeric values as metrics.
-		for key, value := range report {
-			if score, ok := ToFloat64(value); ok {
-				metrics[key] = score
-			}
-		}
-
-		return metrics
+		return extractAllNumericMetrics(report)
 	}
+
+	metrics := make(map[string]float64)
 
 	for _, key := range r.config.MetricKeys {
 		value, exists := report[key]
@@ -146,7 +141,7 @@ func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
 			continue
 		}
 
-		if score, ok := ToFloat64(value); ok {
+		if score, ok := safeconv.ToFloat64(value); ok {
 			metrics[key] = score
 		}
 	}
@@ -161,7 +156,7 @@ func (r *Reporter) extractCounts(report analyze.Report) map[string]int {
 	if len(r.config.CountKeys) == 0 {
 		// Extract all integer values as counts.
 		for key, value := range report {
-			if count, ok := ToInt(value); ok {
+			if count, ok := safeconv.ToInt(value); ok {
 				counts[key] = count
 			}
 		}
@@ -175,7 +170,7 @@ func (r *Reporter) extractCounts(report analyze.Report) map[string]int {
 			continue
 		}
 
-		if count, ok := ToInt(value); ok {
+		if count, ok := safeconv.ToInt(value); ok {
 			counts[key] = count
 		}
 	}
@@ -265,7 +260,7 @@ func (r *Reporter) resolveMetricKeys(reports map[string]analyze.Report) []string
 
 	for _, report := range reports {
 		for key, value := range report {
-			if _, ok := ToFloat64(value); ok {
+			if _, ok := safeconv.ToFloat64(value); ok {
 				keySet[key] = true
 			}
 		}
@@ -288,7 +283,7 @@ func (r *Reporter) collectMetricValues(metricKey string, reports map[string]anal
 
 	for name, report := range reports {
 		if value, exists := report[metricKey]; exists {
-			if score, ok := ToFloat64(value); ok {
+			if score, ok := safeconv.ToFloat64(value); ok {
 				values[name] = score
 				hasValues = true
 			}

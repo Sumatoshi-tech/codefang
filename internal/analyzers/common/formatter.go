@@ -8,6 +8,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 const (
@@ -134,7 +135,7 @@ func (f *Formatter) formatProgressBars(report analyze.Report) string {
 			continue
 		}
 
-		if score, ok := ToFloat64(value); ok && score >= 0 && score <= 1 {
+		if score, ok := safeconv.ToFloat64(value); ok && score >= 0 && score <= 1 {
 			bar := f.createProgressBar(key, score)
 			if bar != "" {
 				bars = append(bars, bar)
@@ -267,10 +268,16 @@ func (f *Formatter) createProgressBar(label string, score float64) string {
 
 // extractMetrics extracts numeric metrics from a report.
 func (f *Formatter) extractMetrics(report analyze.Report) map[string]float64 {
+	return extractAllNumericMetrics(report)
+}
+
+// extractAllNumericMetrics extracts all numeric values from a report as float64.
+// Shared by [Formatter.extractMetrics] and [Reporter.extractKeyMetrics].
+func extractAllNumericMetrics(report analyze.Report) map[string]float64 {
 	metrics := make(map[string]float64)
 
 	for key, value := range report {
-		if score, ok := ToFloat64(value); ok {
+		if score, ok := safeconv.ToFloat64(value); ok {
 			metrics[key] = score
 		}
 	}

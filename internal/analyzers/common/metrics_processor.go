@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 // MetricsProcessor handles extraction and calculation of metrics from reports.
@@ -36,14 +37,14 @@ func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 	// Process numeric metrics.
 	for key, value := range report {
 		if mp.isNumericMetric(key) {
-			if floatVal, ok := ToFloat64(value); ok {
+			if floatVal, ok := safeconv.ToFloat64(value); ok {
 				mp.metrics[key] += floatVal
 			}
 		}
 
 		// Process count metrics.
 		if mp.isCountMetric(key) {
-			if intVal, ok := ToInt(value); ok {
+			if intVal, ok := safeconv.ToInt(value); ok {
 				mp.counts[key] += intVal
 			}
 		}

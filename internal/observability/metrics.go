@@ -34,20 +34,28 @@ type REDMetrics struct {
 
 // NewREDMetrics creates RED metric instruments from the given meter.
 func NewREDMetrics(mt metric.Meter) (*REDMetrics, error) {
-	b := newMetricBuilder(mt)
-
-	rm := &REDMetrics{
-		requestsTotal:    b.counter(metricRequestsTotal, "Total number of requests", "{request}"),
-		requestDuration:  b.histogram(metricRequestDuration, "Request duration in seconds", "s", durationBucketBoundaries...),
-		errorsTotal:      b.counter(metricErrorsTotal, "Total number of errors", "{error}"),
-		inflightRequests: b.upDownCounter(metricInflightRequests, "Number of in-flight requests", "{request}"),
-	}
-
-	if b.err != nil {
-		return nil, b.err
-	}
-
-	return rm, nil
+	return buildMetrics(mt, func(b *metricBuilder) *REDMetrics {
+		return &REDMetrics{
+			requestsTotal: createMetric(b, metricRequestsTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricRequestsTotal,
+					metric.WithDescription("Total number of requests"), metric.WithUnit("{request}"))
+			}),
+			requestDuration: createMetric(b, metricRequestDuration, func() (metric.Float64Histogram, error) {
+				return b.meter.Float64Histogram(metricRequestDuration,
+					metric.WithDescription("Request duration in seconds"),
+					metric.WithUnit("s"),
+					metric.WithExplicitBucketBoundaries(durationBucketBoundaries...))
+			}),
+			errorsTotal: createMetric(b, metricErrorsTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricErrorsTotal,
+					metric.WithDescription("Total number of errors"), metric.WithUnit("{error}"))
+			}),
+			inflightRequests: createMetric(b, metricInflightRequests, func() (metric.Int64UpDownCounter, error) {
+				return b.meter.Int64UpDownCounter(metricInflightRequests,
+					metric.WithDescription("Number of in-flight requests"), metric.WithUnit("{request}"))
+			}),
+		}
+	})
 }
 
 // RecordRequest records a completed request with its operation, status, and duration.

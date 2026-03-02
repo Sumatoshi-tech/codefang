@@ -11,6 +11,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
@@ -187,10 +188,10 @@ func (a *Analyzer) analyzeComplexity(root *node.Node, tq *TickQuality) {
 		return
 	}
 
-	tq.Complexities = append(tq.Complexities, float64(extractInt(report, "total_complexity")))
-	tq.Cognitives = append(tq.Cognitives, float64(extractInt(report, "cognitive_complexity")))
-	tq.MaxComplexities = append(tq.MaxComplexities, extractInt(report, "max_complexity"))
-	tq.Functions = append(tq.Functions, extractInt(report, "total_functions"))
+	tq.Complexities = append(tq.Complexities, float64(reportutil.GetInt(report, "total_complexity")))
+	tq.Cognitives = append(tq.Cognitives, float64(reportutil.GetInt(report, "cognitive_complexity")))
+	tq.MaxComplexities = append(tq.MaxComplexities, reportutil.GetInt(report, "max_complexity"))
+	tq.Functions = append(tq.Functions, reportutil.GetInt(report, "total_functions"))
 }
 
 func (a *Analyzer) analyzeHalstead(root *node.Node, tq *TickQuality) {
@@ -199,9 +200,9 @@ func (a *Analyzer) analyzeHalstead(root *node.Node, tq *TickQuality) {
 		return
 	}
 
-	tq.HalsteadVolumes = append(tq.HalsteadVolumes, extractFloat(report, "volume"))
-	tq.HalsteadEfforts = append(tq.HalsteadEfforts, extractFloat(report, "effort"))
-	tq.DeliveredBugs = append(tq.DeliveredBugs, extractFloat(report, "delivered_bugs"))
+	tq.HalsteadVolumes = append(tq.HalsteadVolumes, reportutil.GetFloat64(report, "volume"))
+	tq.HalsteadEfforts = append(tq.HalsteadEfforts, reportutil.GetFloat64(report, "effort"))
+	tq.DeliveredBugs = append(tq.DeliveredBugs, reportutil.GetFloat64(report, "delivered_bugs"))
 }
 
 func (a *Analyzer) analyzeComments(root *node.Node, tq *TickQuality) {
@@ -210,8 +211,8 @@ func (a *Analyzer) analyzeComments(root *node.Node, tq *TickQuality) {
 		return
 	}
 
-	tq.CommentScores = append(tq.CommentScores, extractFloat(report, "overall_score"))
-	tq.DocCoverages = append(tq.DocCoverages, extractFloat(report, "documentation_coverage"))
+	tq.CommentScores = append(tq.CommentScores, reportutil.GetFloat64(report, "overall_score"))
+	tq.DocCoverages = append(tq.DocCoverages, reportutil.GetFloat64(report, "documentation_coverage"))
 }
 
 func (a *Analyzer) analyzeCohesion(root *node.Node, tq *TickQuality) {
@@ -220,7 +221,7 @@ func (a *Analyzer) analyzeCohesion(root *node.Node, tq *TickQuality) {
 		return
 	}
 
-	tq.CohesionScores = append(tq.CohesionScores, extractFloat(report, "cohesion_score"))
+	tq.CohesionScores = append(tq.CohesionScores, reportutil.GetFloat64(report, "cohesion_score"))
 }
 
 // Fork creates independent copies of the analyzer for parallel processing.
@@ -278,30 +279,6 @@ func (a *Analyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
 	}
 
 	plumbing.ReleaseSnapshotUAST(ss)
-}
-
-func extractInt(report map[string]any, key string) int {
-	if val, ok := report[key].(int); ok {
-		return val
-	}
-
-	if val, ok := report[key].(float64); ok {
-		return int(val)
-	}
-
-	return 0
-}
-
-func extractFloat(report map[string]any, key string) float64 {
-	if val, ok := report[key].(float64); ok {
-		return val
-	}
-
-	if val, ok := report[key].(int); ok {
-		return float64(val)
-	}
-
-	return 0.0
 }
 
 // --- Generic Aggregator Delegates ---.

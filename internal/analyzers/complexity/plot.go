@@ -10,6 +10,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
 )
 
 const (
@@ -154,26 +155,15 @@ func sortByComplexity(functions []map[string]any) []map[string]any {
 }
 
 func getCyclomaticValue(fn map[string]any) int {
-	return getIntValue(fn, "cyclomatic_complexity")
+	return reportutil.GetInt(fn, KeyFuncCyclomatic)
 }
 
 func getCognitiveValue(fn map[string]any) int {
-	return getIntValue(fn, "cognitive_complexity")
+	return reportutil.GetInt(fn, KeyFuncCognitive)
 }
 
 func getNestingValue(fn map[string]any) int {
-	return getIntValue(fn, "nesting_depth")
-}
-
-func getIntValue(fn map[string]any, key string) int {
-	switch val := fn[key].(type) {
-	case int:
-		return val
-	case float64:
-		return int(val)
-	default:
-		return 0
-	}
+	return reportutil.GetInt(fn, KeyFuncNesting)
 }
 
 func extractComplexityData(functions []map[string]any) (labels []string, cyclomatic, cognitive []int, colors []string) {

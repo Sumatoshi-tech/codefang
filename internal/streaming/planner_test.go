@@ -459,15 +459,6 @@ func TestAdaptivePlanner_Stats(t *testing.T) {
 	assert.InDelta(t, float64(500*units.KiB), as.FinalGrowthRate, 1.0) // No EMA yet, uses declared.
 }
 
-func TestHeapSnapshot_ReturnsPositiveValues(t *testing.T) {
-	t.Parallel()
-
-	snap := TakeHeapSnapshot()
-	assert.Positive(t, snap.HeapInuse)
-	assert.Positive(t, snap.HeapAlloc)
-	assert.Positive(t, snap.TakenAtNS)
-}
-
 func TestEMA_AlphaOne_TracksLatest(t *testing.T) {
 	t.Parallel()
 

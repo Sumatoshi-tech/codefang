@@ -1,5 +1,7 @@
 package reportutil
 
+// FRD: specs/frds/FRD-20260302-safeconv-wiring.md.
+
 import (
 	"testing"
 )

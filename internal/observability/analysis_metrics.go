@@ -41,21 +41,32 @@ type AnalysisStats struct {
 
 // NewAnalysisMetrics creates analysis metric instruments from the given meter.
 func NewAnalysisMetrics(mt metric.Meter) (*AnalysisMetrics, error) {
-	b := newMetricBuilder(mt)
-
-	am := &AnalysisMetrics{
-		commitsTotal:  b.counter(metricCommitsTotal, "Total commits analyzed", "{commit}"),
-		chunksTotal:   b.counter(metricChunksTotal, "Total chunks processed", "{chunk}"),
-		chunkDuration: b.histogram(metricChunkDuration, "Per-chunk processing duration in seconds", "s", durationBucketBoundaries...),
-		cacheHits:     b.counter(metricCacheHitsTotal, "Cache hits by type", "{hit}"),
-		cacheMisses:   b.counter(metricCacheMissesTotal, "Cache misses by type", "{miss}"),
-	}
-
-	if b.err != nil {
-		return nil, b.err
-	}
-
-	return am, nil
+	return buildMetrics(mt, func(b *metricBuilder) *AnalysisMetrics {
+		return &AnalysisMetrics{
+			commitsTotal: createMetric(b, metricCommitsTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricCommitsTotal,
+					metric.WithDescription("Total commits analyzed"), metric.WithUnit("{commit}"))
+			}),
+			chunksTotal: createMetric(b, metricChunksTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricChunksTotal,
+					metric.WithDescription("Total chunks processed"), metric.WithUnit("{chunk}"))
+			}),
+			chunkDuration: createMetric(b, metricChunkDuration, func() (metric.Float64Histogram, error) {
+				return b.meter.Float64Histogram(metricChunkDuration,
+					metric.WithDescription("Per-chunk processing duration in seconds"),
+					metric.WithUnit("s"),
+					metric.WithExplicitBucketBoundaries(durationBucketBoundaries...))
+			}),
+			cacheHits: createMetric(b, metricCacheHitsTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricCacheHitsTotal,
+					metric.WithDescription("Cache hits by type"), metric.WithUnit("{hit}"))
+			}),
+			cacheMisses: createMetric(b, metricCacheMissesTotal, func() (metric.Int64Counter, error) {
+				return b.meter.Int64Counter(metricCacheMissesTotal,
+					metric.WithDescription("Cache misses by type"), metric.WithUnit("{miss}"))
+			}),
+		}
+	})
 }
 
 // RecordRun records analysis statistics for a completed streaming run.
