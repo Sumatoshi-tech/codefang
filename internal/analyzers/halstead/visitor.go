@@ -17,25 +17,25 @@ type Visitor struct {
 	metrics         *MetricsCalculator
 	detector        *OperatorOperandDetector
 	functionMetrics map[string]*FunctionHalsteadMetrics
-	contexts        []*halsteadContext
-	nodeStack       []*node.Node
+	contexts        *common.ContextStack[*halsteadContext]
+	nodeStack       *common.ContextStack[*node.Node]
 }
 
 // NewVisitor creates a new Visitor.
 func NewVisitor() *Visitor {
 	return &Visitor{
-		contexts:        make([]*halsteadContext, 0),
+		contexts:        common.NewContextStack[*halsteadContext](),
 		metrics:         NewMetricsCalculator(),
 		detector:        NewOperatorOperandDetector(),
 		functionMetrics: make(map[string]*FunctionHalsteadMetrics),
-		nodeStack:       make([]*node.Node, 0),
+		nodeStack:       common.NewContextStack[*node.Node](),
 	}
 }
 
 // OnEnter is called when entering a node during AST traversal.
 func (v *Visitor) OnEnter(n *node.Node, _ int) {
 	parent := v.currentNode()
-	v.nodeStack = append(v.nodeStack, n)
+	v.nodeStack.Push(n)
 
 	if v.isFunction(n) {
 		v.pushContext(n)
@@ -52,9 +52,7 @@ func (v *Visitor) OnExit(n *node.Node, _ int) {
 		v.popContext()
 	}
 
-	if len(v.nodeStack) > 0 {
-		v.nodeStack = v.nodeStack[:len(v.nodeStack)-1]
-	}
+	v.nodeStack.Pop()
 }
 
 // GetReport returns the collected analysis report.
@@ -79,7 +77,7 @@ func (v *Visitor) isFunction(n *node.Node) bool {
 }
 
 func (v *Visitor) pushContext(funcNode *node.Node) {
-	name, _ := common.ExtractFunctionName(funcNode)
+	name, _ := common.ExtractEntityName(funcNode)
 	if name == "" {
 		name = "anonymous"
 	}
@@ -105,16 +103,14 @@ func (v *Visitor) pushContext(funcNode *node.Node) {
 		functionNode: funcNode,
 		metrics:      metrics,
 	}
-	v.contexts = append(v.contexts, ctx)
+	v.contexts.Push(ctx)
 }
 
 func (v *Visitor) popContext() {
-	if len(v.contexts) == 0 {
+	ctx, ok := v.contexts.Pop()
+	if !ok {
 		return
 	}
-
-	ctx := v.contexts[len(v.contexts)-1]
-	v.contexts = v.contexts[:len(v.contexts)-1]
 
 	// Populate distinct counts from maps (always exact).
 	ctx.metrics.DistinctOperators = len(ctx.metrics.Operators)
@@ -141,19 +137,21 @@ func (v *Visitor) popContext() {
 }
 
 func (v *Visitor) currentContext() *halsteadContext {
-	if len(v.contexts) == 0 {
+	ctx, ok := v.contexts.Current()
+	if !ok {
 		return nil
 	}
 
-	return v.contexts[len(v.contexts)-1]
+	return ctx
 }
 
 func (v *Visitor) currentNode() *node.Node {
-	if len(v.nodeStack) == 0 {
+	n, ok := v.nodeStack.Current()
+	if !ok {
 		return nil
 	}
 
-	return v.nodeStack[len(v.nodeStack)-1]
+	return n
 }
 
 func (v *Visitor) sumMap(m map[string]int) int {

@@ -28,7 +28,7 @@ func TestAnalyzer_Configure(t *testing.T) {
 	err := d.Configure(facts)
 	require.NoError(t, err)
 	assert.True(t, d.ConsiderEmptyCommits)
-	assert.Len(t, d.reversedPeopleDict, 1)
+	assert.Len(t, d.ReversedPeopleDict, 1)
 	assert.Equal(t, 12*time.Hour, d.tickSize)
 }
 
@@ -507,7 +507,8 @@ func TestTicksToReport_Anonymize(t *testing.T) {
 func TestComputeMetricsSafe_EmptyReport(t *testing.T) {
 	t.Parallel()
 
-	m, err := computeMetricsSafe(analyze.Report{})
+	safe := analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{})
+	m, err := safe(analyze.Report{})
 	require.NoError(t, err)
 	assert.NotNil(t, m)
 }

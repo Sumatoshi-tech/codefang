@@ -42,8 +42,8 @@ func NewAnalyzer() *Analyzer {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
-			"function_name": common.ExtractFunctionName,
-			"variable_name": common.ExtractVariableName,
+			"function_name": common.ExtractEntityName,
+			"variable_name": common.ExtractEntityName,
 		},
 	}
 

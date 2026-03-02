@@ -1,7 +1,6 @@
 package shotness
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -22,45 +21,6 @@ const (
 	percentFactor     = 100
 	summaryLabelWidth = 22
 )
-
-// Serialize dispatches to text, plot, or base format serialization.
-func (s *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
-		return s.generatePlot(result, writer)
-	}
-
-	if format == analyze.FormatText {
-		return s.generateText(result, writer)
-	}
-
-	if s.BaseHistoryAnalyzer != nil {
-		return s.BaseHistoryAnalyzer.Serialize(result, format, writer)
-	}
-
-	return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
-}
-
-// SerializeTICKs converts TICKs to report and serializes.
-func (s *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot || format == analyze.FormatText {
-		report, err := s.ReportFromTICKs(context.Background(), ticks)
-		if err != nil {
-			return err
-		}
-
-		if format == analyze.FormatPlot {
-			return s.generatePlot(report, writer)
-		}
-
-		return s.generateText(report, writer)
-	}
-
-	if s.BaseHistoryAnalyzer != nil {
-		return s.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
-	}
-
-	return fmt.Errorf("%w: %s", analyze.ErrUnsupportedFormat, format)
-}
 
 // generateText writes a human-readable shotness summary to the writer.
 func (s *Analyzer) generateText(report analyze.Report, writer io.Writer) error {

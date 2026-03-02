@@ -6,18 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-// Size constants.
-const (
-	kib = 1024
-	mib = 1024 * kib
-
-	// KiB is the exported kibibyte constant for use in log formatting.
-	KiB = kib
-
-	// MiB is the exported mebibyte constant for use in log formatting.
-	MiB = mib
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 // Planner constraints.
@@ -30,7 +21,7 @@ const (
 	MaxChunkSize = 3000
 
 	// BaseOverhead is the fixed memory overhead for Go runtime + libgit2 + caches.
-	BaseOverhead = 400 * mib
+	BaseOverhead = 400 * units.MiB
 
 	// safetyMarginPercent is added to the aggregate growth rate to account for
 	// transient pipeline allocations (tree diffs, blobs in flight, GC headroom)
@@ -43,13 +34,13 @@ const (
 	// DefaultStateGrowthPerCommit is the conservative fallback when
 	// AggregateGrowthPerCommit is zero (e.g. in tests or when no analyzers
 	// are selected). Equal to DefaultWorkingStateSize + DefaultAvgTCSize.
-	DefaultStateGrowthPerCommit = 500 * kib
+	DefaultStateGrowthPerCommit = 500 * units.KiB
 
 	// DefaultWorkingStateSize is the fallback per-commit working state estimate.
-	DefaultWorkingStateSize = 400 * kib
+	DefaultWorkingStateSize = 400 * units.KiB
 
 	// DefaultAvgTCSize is the fallback per-commit TC payload estimate.
-	DefaultAvgTCSize = 100 * kib
+	DefaultAvgTCSize = 100 * units.KiB
 )
 
 // Planner calculates chunk boundaries for streaming execution.
@@ -207,28 +198,6 @@ func readRSSBytes() int64 {
 	return pages * int64(os.Getpagesize())
 }
 
-// emaGrowthRate holds an exponentially-weighted moving average of the
-// observed per-commit state growth.
-type emaGrowthRate struct {
-	value       float64
-	initialized bool
-}
-
-// Update incorporates a new observation and returns the updated EMA.
-// Alpha controls responsiveness: 1.0 = trust only latest, 0.3 = ~3-chunk half-life.
-func (e *emaGrowthRate) Update(observed, alpha float64) float64 {
-	if !e.initialized {
-		e.value = observed
-		e.initialized = true
-
-		return e.value
-	}
-
-	e.value = alpha*observed + (1-alpha)*e.value
-
-	return e.value
-}
-
 // Adaptive planner constants.
 const (
 	// DefaultReplanThreshold triggers re-planning when observed growth diverges
@@ -240,7 +209,7 @@ const (
 
 	// minObservedGrowth is the floor for observed per-commit growth (1 KiB).
 	// Prevents zero/negative chunk sizes when hibernation frees more than allocated.
-	minObservedGrowth = 1 * kib
+	minObservedGrowth = 1 * units.KiB
 )
 
 // AdaptivePlanner wraps the static Planner with feedback-driven re-planning.
@@ -253,10 +222,9 @@ type AdaptivePlanner struct {
 	pipelineOverhead int64
 	declaredGrowth   int64
 	currentGrowth    int64 // Growth rate used for the most recent plan.
-	workEMA          emaGrowthRate
-	tcEMA            emaGrowthRate
-	aggEMA           emaGrowthRate
-	alpha            float64
+	workEMA          *stats.EMA
+	tcEMA            *stats.EMA
+	aggEMA           *stats.EMA
 	replanThreshold  float64
 	replanCount      int
 }
@@ -301,7 +269,9 @@ func NewAdaptivePlanner(totalCommits int, memBudget, declaredGrowth, pipelineOve
 		pipelineOverhead: pipelineOverhead,
 		declaredGrowth:   declaredGrowth,
 		currentGrowth:    declaredGrowth,
-		alpha:            DefaultEMAAlpha,
+		workEMA:          stats.NewEMA(DefaultEMAAlpha),
+		tcEMA:            stats.NewEMA(DefaultEMAAlpha),
+		aggEMA:           stats.NewEMA(DefaultEMAAlpha),
 		replanThreshold:  DefaultReplanThreshold,
 	}
 }
@@ -320,9 +290,9 @@ func (ap *AdaptivePlanner) Replan(obs ReplanObservation) []ChunkBounds {
 	}
 
 	// Update all three EMAs with clamped observations.
-	workVal := ap.workEMA.Update(float64(max(obs.WorkGrowthPerCommit, minObservedGrowth)), ap.alpha)
-	tcVal := ap.tcEMA.Update(float64(max(obs.TCPayloadPerCommit, minObservedGrowth)), ap.alpha)
-	aggVal := ap.aggEMA.Update(float64(max(obs.AggGrowthPerCommit, minObservedGrowth)), ap.alpha)
+	workVal := ap.workEMA.Update(float64(max(obs.WorkGrowthPerCommit, minObservedGrowth)))
+	tcVal := ap.tcEMA.Update(float64(max(obs.TCPayloadPerCommit, minObservedGrowth)))
+	aggVal := ap.aggEMA.Update(float64(max(obs.AggGrowthPerCommit, minObservedGrowth)))
 
 	// Predicted effective growth rate (with safety margin).
 	rawGrowth := float64(ap.currentGrowth)
@@ -381,17 +351,17 @@ func exceedsThreshold(observed, predicted, threshold float64) bool {
 // Stats returns adaptive planner telemetry.
 func (ap *AdaptivePlanner) Stats() AdaptiveStats {
 	finalRate := float64(ap.declaredGrowth)
-	if ap.workEMA.initialized {
-		finalRate = ap.workEMA.value
+	if ap.workEMA.Initialized() {
+		finalRate = ap.workEMA.Value()
 	}
 
 	return AdaptiveStats{
 		ReplanCount:       ap.replanCount,
 		FinalGrowthRate:   finalRate,
 		InitialGrowthRate: float64(ap.declaredGrowth),
-		FinalWorkGrowth:   ap.workEMA.value,
-		FinalTCSize:       ap.tcEMA.value,
-		FinalAggGrowth:    ap.aggEMA.value,
+		FinalWorkGrowth:   ap.workEMA.Value(),
+		FinalTCSize:       ap.tcEMA.Value(),
+		FinalAggGrowth:    ap.aggEMA.Value(),
 	}
 }
 

@@ -599,7 +599,7 @@ func (c *Analyzer) isNestingNode(target *node.Node) bool {
 
 // extractFunctionName extracts the name of a function.
 func (c *Analyzer) extractFunctionName(fn *node.Node) string {
-	if name, ok := common.ExtractFunctionName(fn); ok && name != "" {
+	if name, ok := common.ExtractEntityName(fn); ok && name != "" {
 		return name
 	}
 
@@ -665,7 +665,7 @@ func (c *Analyzer) extractClassName(fn *node.Node) string {
 
 	classNodes := c.traverser.FindNodesByType(fn, []string{node.UASTClass})
 	if len(classNodes) > 0 {
-		if name, ok := common.ExtractFunctionName(classNodes[0]); ok && name != "" {
+		if name, ok := common.ExtractEntityName(classNodes[0]); ok && name != "" {
 			return name
 		}
 	}
@@ -687,7 +687,7 @@ func (c *Analyzer) findClassNameInAncestors(fn *node.Node) string {
 
 // extractMethodName extracts the method name.
 func (c *Analyzer) extractMethodName(fn *node.Node) string {
-	if name, ok := common.ExtractFunctionName(fn); ok && name != "" {
+	if name, ok := common.ExtractEntityName(fn); ok && name != "" {
 		return name
 	}
 

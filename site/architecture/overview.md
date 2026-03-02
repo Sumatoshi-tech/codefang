@@ -51,12 +51,16 @@ uast parse main.go | codefang run -a static/* --format json
 | `pkg/uast/` | UAST parser engine. Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. |
 | `internal/analyzers/` | All analysis logic -- static analyzers and history analyzers. |
 | `internal/framework/` | Pipeline orchestration: runner, coordinator, streaming, blob/diff/UAST pipelines, profiling, watchdog. |
+| `pkg/alg/stats/` | Core statistics: Mean, MeanStdDev, Percentile, Median, Clamp, Min, Max, Sum, EMA. Used by quality, anomaly, cohesion, streaming. |
+| `pkg/alg/mapx/` | Generic map/slice operations: Clone, CloneFunc, CloneNested, MergeAdditive, SortedKeys, CloneSlice, Unique. Used by burndown, couples, anomaly, quality, cohesion. |
+| `pkg/persist/` | Codec-based file persistence: Codec interface, JSONCodec, GobCodec, SaveState, LoadState, Persister[T]. Used by internal/checkpoint for crash recovery. |
+| `pkg/textutil/` | Byte-level text utilities: IsBinary, CountLines, BytesReader. Used by pkg/gitlib for binary detection and line counting. |
 | `pkg/gitlib/` | Git operations via libgit2 (git2go): repository, commit, tree, changes, worker pool, batch processing. |
 | `internal/config/` | Configuration system: types with mapstructure tags, Viper-based loader, compiled defaults, validation. |
 | `internal/mcp/` | Model Context Protocol server: tools for `codefang_analyze`, `uast_parse`, `codefang_history`. |
 | `internal/observability/` | OpenTelemetry integration: tracing, RED metrics, structured logging, HTTP middleware, attribute filter. |
 | `internal/streaming/` | Streaming pipeline planner: chunk sizing, memory budgets, double-buffered pipelining. |
-| `internal/cache/` | Generic LRU cache used by blob and diff caches. |
+| `internal/cache/` | Blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache. |
 | `internal/checkpoint/` | Checkpoint manager for crash recovery across streaming chunks. |
 | `internal/budget/` | Memory budget solver for auto-tuning pipeline parameters. |
 

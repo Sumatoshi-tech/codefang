@@ -16,7 +16,7 @@ const (
 // BenchmarkInsert benchmarks inserting intervals.
 func BenchmarkInsert(b *testing.B) {
 	for range b.N {
-		tree := New()
+		tree := New[uint32, uint32]()
 
 		for i := range benchIntervalCount {
 			low := uint32(i * benchSpacing)
@@ -29,7 +29,7 @@ func BenchmarkInsert(b *testing.B) {
 
 // BenchmarkQueryOverlap benchmarks overlap queries.
 func BenchmarkQueryOverlap(b *testing.B) {
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	for i := range benchIntervalCount {
 		low := uint32(i * benchSpacing)
@@ -47,7 +47,7 @@ func BenchmarkQueryOverlap(b *testing.B) {
 
 // BenchmarkQueryPoint benchmarks point queries.
 func BenchmarkQueryPoint(b *testing.B) {
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	for i := range benchIntervalCount {
 		low := uint32(i * benchSpacing)
@@ -83,7 +83,7 @@ func BenchmarkDelete(b *testing.B) {
 	for range b.N {
 		b.StopTimer()
 
-		tree := New()
+		tree := New[uint32, uint32]()
 		for _, iv := range intervals {
 			tree.Insert(iv.low, iv.high, iv.value)
 		}

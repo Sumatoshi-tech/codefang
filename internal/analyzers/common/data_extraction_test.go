@@ -8,6 +8,11 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const (
+	testValueDefault = "default"
+	testValueCustom  = "custom"
+)
+
 func TestNewDataExtractor(t *testing.T) {
 	t.Parallel()
 
@@ -412,25 +417,25 @@ func TestDataExtractor_ExtractChildCount(t *testing.T) {
 
 // Test standalone extraction functions.
 
-func TestExtractFunctionName(t *testing.T) {
+func TestExtractEntityName(t *testing.T) {
 	t.Parallel()
 
 	// Test from props.
 	testNode := &node.Node{
-		Props: map[string]string{"name": "myFunction"},
+		Props: map[string]string{"name": "myEntity"},
 	}
 
-	name, ok := ExtractFunctionName(testNode)
-	if !ok || name != "myFunction" {
-		t.Errorf("expected 'myFunction', got '%s', ok=%v", name, ok)
+	name, ok := ExtractEntityName(testNode)
+	if !ok || name != "myEntity" {
+		t.Errorf("expected 'myEntity', got '%s', ok=%v", name, ok)
 	}
 
 	// Test from token.
-	testNode2 := &node.Node{Token: "funcToken"}
+	testNode2 := &node.Node{Token: "entityToken"}
 
-	name, ok = ExtractFunctionName(testNode2)
-	if !ok || name != "funcToken" {
-		t.Errorf("expected 'funcToken', got '%s', ok=%v", name, ok)
+	name, ok = ExtractEntityName(testNode2)
+	if !ok || name != "entityToken" {
+		t.Errorf("expected 'entityToken', got '%s', ok=%v", name, ok)
 	}
 
 	// Test from children.
@@ -438,41 +443,13 @@ func TestExtractFunctionName(t *testing.T) {
 		Children: []*node.Node{{Token: "childName"}},
 	}
 
-	name, ok = ExtractFunctionName(testNode3)
+	name, ok = ExtractEntityName(testNode3)
 	if !ok || name != "childName" {
 		t.Errorf("expected 'childName', got '%s', ok=%v", name, ok)
 	}
 
 	// Test nil node.
-	name, ok = ExtractFunctionName(nil)
-	if ok || name != "" {
-		t.Error("expected empty result for nil node")
-	}
-}
-
-func TestExtractVariableName(t *testing.T) {
-	t.Parallel()
-
-	// Test from props.
-	testNode := &node.Node{
-		Props: map[string]string{"name": "myVar"},
-	}
-
-	name, ok := ExtractVariableName(testNode)
-	if !ok || name != "myVar" {
-		t.Errorf("expected 'myVar', got '%s', ok=%v", name, ok)
-	}
-
-	// Test from token.
-	testNode2 := &node.Node{Token: "varToken"}
-
-	name, ok = ExtractVariableName(testNode2)
-	if !ok || name != "varToken" {
-		t.Errorf("expected 'varToken', got '%s', ok=%v", name, ok)
-	}
-
-	// Test nil node.
-	name, ok = ExtractVariableName(nil)
+	name, ok = ExtractEntityName(nil)
 	if ok || name != "" {
 		t.Error("expected empty result for nil node")
 	}
@@ -582,17 +559,18 @@ func TestStandaloneExtractNameFromChildren(t *testing.T) {
 	}
 }
 
-func TestMergeNameExtractors(t *testing.T) {
+func TestMergeExtractors(t *testing.T) {
 	t.Parallel()
 
+	// Test with NameExtractor type.
 	defaults := map[string]NameExtractor{
-		"default1": func(_ *node.Node) (string, bool) { return "default", true },
+		"default1": func(_ *node.Node) (string, bool) { return testValueDefault, true },
 	}
 	custom := map[string]NameExtractor{
-		"custom1": func(_ *node.Node) (string, bool) { return "custom", true },
+		"custom1": func(_ *node.Node) (string, bool) { return testValueCustom, true },
 	}
 
-	result := mergeNameExtractors(custom, defaults)
+	result := mergeExtractors(custom, defaults)
 	if len(result) != 2 {
 		t.Errorf("expected 2 extractors, got %d", len(result))
 	}
@@ -605,32 +583,47 @@ func TestMergeNameExtractors(t *testing.T) {
 		t.Error("expected custom1 extractor")
 	}
 
-	// Test with nil custom.
-	result = mergeNameExtractors(nil, defaults)
+	// Test with nil custom returns defaults.
+	result = mergeExtractors[NameExtractor](nil, defaults)
 	if len(result) != 1 {
 		t.Errorf("expected 1 extractor from defaults, got %d", len(result))
 	}
-}
 
-func TestMergeValueExtractors(t *testing.T) {
-	t.Parallel()
-
-	defaults := map[string]ValueExtractor{
-		"default1": func(_ *node.Node) (any, bool) { return "default", true },
+	// Test custom overrides default with same key.
+	overrideDefaults := map[string]NameExtractor{
+		"key": func(_ *node.Node) (string, bool) { return testValueDefault, true },
 	}
-	custom := map[string]ValueExtractor{
-		"custom1": func(_ *node.Node) (any, bool) { return "custom", true },
+	overrideCustom := map[string]NameExtractor{
+		"key": func(_ *node.Node) (string, bool) { return testValueCustom, true },
 	}
 
-	result := mergeValueExtractors(custom, defaults)
-	if len(result) != 2 {
-		t.Errorf("expected 2 extractors, got %d", len(result))
+	overrideResult := mergeExtractors(overrideCustom, overrideDefaults)
+	if len(overrideResult) != 1 {
+		t.Errorf("expected 1 extractor, got %d", len(overrideResult))
 	}
 
-	// Test with nil custom.
-	result = mergeValueExtractors(nil, defaults)
-	if len(result) != 1 {
-		t.Errorf("expected 1 extractor from defaults, got %d", len(result))
+	name, _ := overrideResult["key"](nil)
+	if name != testValueCustom {
+		t.Errorf("expected custom override, got '%s'", name)
+	}
+
+	// Test with ValueExtractor type to verify generic works across types.
+	valDefaults := map[string]ValueExtractor{
+		"default1": func(_ *node.Node) (any, bool) { return testValueDefault, true },
+	}
+	valCustom := map[string]ValueExtractor{
+		"custom1": func(_ *node.Node) (any, bool) { return testValueCustom, true },
+	}
+
+	valResult := mergeExtractors(valCustom, valDefaults)
+	if len(valResult) != 2 {
+		t.Errorf("expected 2 extractors, got %d", len(valResult))
+	}
+
+	// Test nil custom with ValueExtractor.
+	valResult = mergeExtractors[ValueExtractor](nil, valDefaults)
+	if len(valResult) != 1 {
+		t.Errorf("expected 1 extractor from defaults, got %d", len(valResult))
 	}
 }
 

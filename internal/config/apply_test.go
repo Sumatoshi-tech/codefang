@@ -1,3 +1,4 @@
+// FRD: specs/frds/FRD-20260302-config-loader-facts.md.
 package config_test
 
 import (
@@ -27,6 +28,8 @@ const (
 	factShotnessDSLStruct            = "Shotness.DSLStruct"
 	factShotnessDSLName              = "Shotness.DSLName"
 	factTyposMaxDistance             = "TyposDatasetBuilder.MaximumAllowedDistance"
+	factAnomalyThreshold             = "TemporalAnomaly.Threshold"
+	factAnomalyWindowSize            = "TemporalAnomaly.WindowSize"
 )
 
 func TestApplyToFacts_Burndown(t *testing.T) {
@@ -165,6 +168,27 @@ func TestApplyToFacts_Typos(t *testing.T) {
 	expectedMaxDistance := 6
 
 	assert.Equal(t, expectedMaxDistance, facts[factTyposMaxDistance])
+}
+
+func TestApplyToFacts_Anomaly(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		History: config.HistoryConfig{
+			Anomaly: config.AnomalyConfig{
+				Threshold:  3.5,
+				WindowSize: 30,
+			},
+		},
+	}
+
+	facts := make(map[string]any)
+	cfg.ApplyToFacts(facts)
+
+	expectedWindowSize := 30
+
+	assert.InDelta(t, float32(3.5), facts[factAnomalyThreshold], 0.001)
+	assert.Equal(t, expectedWindowSize, facts[factAnomalyWindowSize])
 }
 
 func TestApplyToFacts_ZeroValues_SkipsNumericOverrides(t *testing.T) {

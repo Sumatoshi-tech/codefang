@@ -1,11 +1,13 @@
 // Package budget provides memory budget calculation and auto-tuning for codefang history analysis.
 package budget
 
-// Size unit multipliers (binary, 1024-based).
+import "github.com/Sumatoshi-tech/codefang/pkg/units"
+
+// Size unit multipliers re-exported from pkg/units for backwards compatibility.
 const (
-	KiB = 1024
-	MiB = 1024 * KiB
-	GiB = 1024 * MiB
+	KiB = units.KiB
+	MiB = units.MiB
+	GiB = units.GiB
 )
 
 // Component memory sizes (empirically measured).

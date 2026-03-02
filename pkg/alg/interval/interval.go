@@ -8,25 +8,31 @@
 // overlap queries.
 package interval
 
+// Integer constrains interval endpoints to integer types.
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
+
 // Interval represents a closed range [Low, High] with an associated Value.
-type Interval struct {
-	Low   uint32
-	High  uint32
-	Value uint32
+type Interval[K Integer, V comparable] struct {
+	Low   K
+	High  K
+	Value V
 }
 
 // Tree is an augmented interval tree supporting overlap queries.
-type Tree struct {
-	root *node
+type Tree[K Integer, V comparable] struct {
+	root *node[K, V]
 	size int
 }
 
 // node is an internal red-black tree node augmented with maxHigh.
-type node struct {
-	interval    Interval
-	maxHigh     uint32
-	left, right *node
-	parent      *node
+type node[K Integer, V comparable] struct {
+	interval    Interval[K, V]
+	maxHigh     K
+	left, right *node[K, V]
+	parent      *node[K, V]
 	color       color
 }
 
@@ -40,25 +46,25 @@ const (
 )
 
 // New creates an empty interval tree.
-func New() *Tree {
-	return &Tree{}
+func New[K Integer, V comparable]() *Tree[K, V] {
+	return &Tree[K, V]{}
 }
 
 // Len returns the number of intervals in the tree.
-func (t *Tree) Len() int {
+func (t *Tree[K, V]) Len() int {
 	return t.size
 }
 
 // Clear removes all intervals from the tree.
-func (t *Tree) Clear() {
+func (t *Tree[K, V]) Clear() {
 	t.root = nil
 	t.size = 0
 }
 
 // Insert adds an interval [low, high] with the given value to the tree.
-func (t *Tree) Insert(low, high, value uint32) {
-	n := &node{
-		interval: Interval{Low: low, High: high, Value: value},
+func (t *Tree[K, V]) Insert(low, high K, value V) {
+	n := &node[K, V]{
+		interval: Interval[K, V]{Low: low, High: high, Value: value},
 		maxHigh:  high,
 		color:    red,
 	}
@@ -70,7 +76,7 @@ func (t *Tree) Insert(low, high, value uint32) {
 
 // Delete removes one interval matching [low, high, value] from the tree.
 // Returns true if the interval was found and removed, false otherwise.
-func (t *Tree) Delete(low, high, value uint32) bool {
+func (t *Tree[K, V]) Delete(low, high K, value V) bool {
 	n := t.findNode(low, high, value)
 	if n == nil {
 		return false
@@ -84,12 +90,12 @@ func (t *Tree) Delete(low, high, value uint32) bool {
 
 // QueryOverlap returns all intervals that overlap with the query range [low, high].
 // An interval [a, b] overlaps [low, high] when a <= high AND b >= low.
-func (t *Tree) QueryOverlap(low, high uint32) []Interval {
+func (t *Tree[K, V]) QueryOverlap(low, high K) []Interval[K, V] {
 	if t.root == nil {
 		return nil
 	}
 
-	var results []Interval
+	var results []Interval[K, V]
 
 	t.collectOverlap(t.root, low, high, &results)
 
@@ -98,12 +104,12 @@ func (t *Tree) QueryOverlap(low, high uint32) []Interval {
 
 // QueryPoint returns all intervals containing the given point.
 // Equivalent to QueryOverlap(point, point).
-func (t *Tree) QueryPoint(point uint32) []Interval {
+func (t *Tree[K, V]) QueryPoint(point K) []Interval[K, V] {
 	return t.QueryOverlap(point, point)
 }
 
 // bstInsert performs standard BST insertion by Low (then High for ties).
-func (t *Tree) bstInsert(n *node) {
+func (t *Tree[K, V]) bstInsert(n *node[K, V]) {
 	if t.root == nil {
 		t.root = n
 
@@ -138,14 +144,14 @@ func (t *Tree) bstInsert(n *node) {
 }
 
 // findNode locates the node matching the exact interval and value.
-func (t *Tree) findNode(low, high, value uint32) *node {
-	target := Interval{Low: low, High: high, Value: value}
+func (t *Tree[K, V]) findNode(low, high K, value V) *node[K, V] {
+	target := Interval[K, V]{Low: low, High: high, Value: value}
 
 	return t.findExact(t.root, target)
 }
 
 // findExact searches for an exact interval match in the subtree.
-func (t *Tree) findExact(n *node, target Interval) *node {
+func (t *Tree[K, V]) findExact(n *node[K, V], target Interval[K, V]) *node[K, V] {
 	if n == nil {
 		return nil
 	}
@@ -172,7 +178,7 @@ func (t *Tree) findExact(n *node, target Interval) *node {
 }
 
 // deleteNode removes a node from the tree using standard RB-tree deletion.
-func (t *Tree) deleteNode(n *node) {
+func (t *Tree[K, V]) deleteNode(n *node[K, V]) {
 	// If node has two children, swap with in-order successor.
 	if n.left != nil && n.right != nil {
 		succ := minimum(n.right)
@@ -208,7 +214,7 @@ func (t *Tree) deleteNode(n *node) {
 }
 
 // transplant replaces node u with node v in the tree.
-func (t *Tree) transplant(u, v *node) {
+func (t *Tree[K, V]) transplant(u, v *node[K, V]) {
 	switch {
 	case u.parent == nil:
 		t.root = v
@@ -224,7 +230,7 @@ func (t *Tree) transplant(u, v *node) {
 }
 
 // detachFromParent removes any remaining reference to n from its parent.
-func detachFromParent(n *node, t *Tree) {
+func detachFromParent[K Integer, V comparable](n *node[K, V], t *Tree[K, V]) {
 	if n.parent == nil {
 		return
 	}
@@ -240,7 +246,7 @@ func detachFromParent(n *node, t *Tree) {
 }
 
 // insertFixup restores red-black properties after insertion.
-func (t *Tree) insertFixup(n *node) {
+func (t *Tree[K, V]) insertFixup(n *node[K, V]) {
 	for n != t.root && nodeColor(n.parent) == red {
 		parent := n.parent
 
@@ -258,15 +264,15 @@ func (t *Tree) insertFixup(n *node) {
 
 // insertFixupCase handles one side of the insert fixup.
 // When leftCase is true, parent is grandparent.left; otherwise parent is grandparent.right.
-func (t *Tree) insertFixupCase(n, parent, grandparent *node, leftCase bool) *node {
-	uncle := childOf(grandparent, !leftCase)
+func (t *Tree[K, V]) insertFixupCase(n, parent, gp *node[K, V], leftCase bool) *node[K, V] {
+	uncle := childOf(gp, !leftCase)
 
 	if nodeColor(uncle) == red {
 		parent.color = black
 		uncle.color = black
-		grandparent.color = red
+		gp.color = red
 
-		return grandparent
+		return gp
 	}
 
 	// Check if n is the "inner" child.
@@ -276,14 +282,14 @@ func (t *Tree) insertFixupCase(n, parent, grandparent *node, leftCase bool) *nod
 	}
 
 	parent.color = black
-	grandparent.color = red
-	t.rotate(grandparent, !leftCase)
+	gp.color = red
+	t.rotate(gp, !leftCase)
 
 	return n
 }
 
 // deleteFixup restores red-black properties after deletion (non-nil child case).
-func (t *Tree) deleteFixup(x *node) {
+func (t *Tree[K, V]) deleteFixup(x *node[K, V]) {
 	for x != t.root && nodeColor(x) == black {
 		if x.parent == nil {
 			break
@@ -299,7 +305,7 @@ func (t *Tree) deleteFixup(x *node) {
 }
 
 // deleteFixupLeaf restores red-black properties when a black leaf was deleted.
-func (t *Tree) deleteFixupLeaf(parent *node, wasLeft bool) {
+func (t *Tree[K, V]) deleteFixupLeaf(parent *node[K, V], wasLeft bool) {
 	for parent != nil {
 		result := t.deleteFixupCaseLeaf(parent, wasLeft)
 		if result.done {
@@ -321,7 +327,7 @@ type fixupResult struct {
 }
 
 // deleteFixupCaseLeaf handles one iteration of delete fixup for a nil leaf.
-func (t *Tree) deleteFixupCaseLeaf(parent *node, isLeft bool) fixupResult {
+func (t *Tree[K, V]) deleteFixupCaseLeaf(parent *node[K, V], isLeft bool) fixupResult {
 	sibling := childOf(parent, !isLeft)
 	if sibling == nil {
 		return fixupResult{done: false}
@@ -343,7 +349,7 @@ func (t *Tree) deleteFixupCaseLeaf(parent *node, isLeft bool) fixupResult {
 }
 
 // fixupRecolor handles the recolor/rotation sub-cases of delete fixup.
-func (t *Tree) fixupRecolor(parent, sibling *node, isLeft bool) fixupResult {
+func (t *Tree[K, V]) fixupRecolor(parent, sibling *node[K, V], isLeft bool) fixupResult {
 	outerChild := childOf(sibling, !isLeft)
 	innerChild := childOf(sibling, isLeft)
 
@@ -363,7 +369,7 @@ func (t *Tree) fixupRecolor(parent, sibling *node, isLeft bool) fixupResult {
 }
 
 // fixupRotate performs the final rotation case of delete fixup.
-func (t *Tree) fixupRotate(parent, sibling *node, isLeft bool) fixupResult {
+func (t *Tree[K, V]) fixupRotate(parent, sibling *node[K, V], isLeft bool) fixupResult {
 	outerChild := childOf(sibling, !isLeft)
 
 	if nodeColor(outerChild) == black {
@@ -388,7 +394,7 @@ func (t *Tree) fixupRotate(parent, sibling *node, isLeft bool) fixupResult {
 }
 
 // deleteFixupCase handles one iteration of delete fixup for a real child node.
-func (t *Tree) deleteFixupCase(parent *node, isLeft bool) *node {
+func (t *Tree[K, V]) deleteFixupCase(parent *node[K, V], isLeft bool) *node[K, V] {
 	sibling := childOf(parent, !isLeft)
 	if sibling == nil {
 		return parent
@@ -438,8 +444,8 @@ func (t *Tree) deleteFixupCase(parent *node, isLeft bool) *node {
 
 // rotate performs a rotation at node n. When left is true, rotates left;
 // otherwise rotates right. Maintains maxHigh augmentation.
-func (t *Tree) rotate(n *node, left bool) {
-	var pivot *node
+func (t *Tree[K, V]) rotate(n *node[K, V], left bool) {
+	var pivot *node[K, V]
 
 	if left {
 		pivot = n.right
@@ -480,7 +486,7 @@ func (t *Tree) rotate(n *node, left bool) {
 }
 
 // collectOverlap recursively collects intervals overlapping [low, high].
-func (t *Tree) collectOverlap(n *node, low, high uint32, results *[]Interval) {
+func (t *Tree[K, V]) collectOverlap(n *node[K, V], low, high K, results *[]Interval[K, V]) {
 	if n == nil {
 		return
 	}
@@ -509,7 +515,7 @@ func (t *Tree) collectOverlap(n *node, low, high uint32, results *[]Interval) {
 
 // compareIntervals compares two intervals for BST ordering.
 // Primary sort by Low, secondary by High.
-func compareIntervals(a, b Interval) int {
+func compareIntervals[K Integer, V comparable](a, b Interval[K, V]) int {
 	if a.Low != b.Low {
 		if a.Low < b.Low {
 			return -1
@@ -530,7 +536,7 @@ func compareIntervals(a, b Interval) int {
 }
 
 // nodeColor returns the color of a node, treating nil as black.
-func nodeColor(n *node) color {
+func nodeColor[K Integer, V comparable](n *node[K, V]) color {
 	if n == nil {
 		return black
 	}
@@ -539,7 +545,7 @@ func nodeColor(n *node) color {
 }
 
 // setBlack sets a node's color to black if it is non-nil.
-func setBlack(n *node) {
+func setBlack[K Integer, V comparable](n *node[K, V]) {
 	if n != nil {
 		n.color = black
 	}
@@ -547,7 +553,7 @@ func setBlack(n *node) {
 
 // childOf returns the left or right child of a node.
 // When left is true, returns n.left; otherwise n.right.
-func childOf(n *node, left bool) *node {
+func childOf[K Integer, V comparable](n *node[K, V], left bool) *node[K, V] {
 	if n == nil {
 		return nil
 	}
@@ -560,7 +566,7 @@ func childOf(n *node, left bool) *node {
 }
 
 // recalcMaxHigh recalculates a node's maxHigh from its interval and children.
-func recalcMaxHigh(n *node) {
+func recalcMaxHigh[K Integer, V comparable](n *node[K, V]) {
 	if n == nil {
 		return
 	}
@@ -579,14 +585,14 @@ func recalcMaxHigh(n *node) {
 }
 
 // updateMaxHigh updates a node's maxHigh if the given value is larger.
-func updateMaxHigh(n *node, high uint32) {
+func updateMaxHigh[K Integer, V comparable](n *node[K, V], high K) {
 	if high > n.maxHigh {
 		n.maxHigh = high
 	}
 }
 
 // propagateMaxHigh recalculates maxHigh from the given node up to the root.
-func (t *Tree) propagateMaxHigh(n *node) {
+func (t *Tree[K, V]) propagateMaxHigh(n *node[K, V]) {
 	for n != nil {
 		recalcMaxHigh(n)
 		n = n.parent
@@ -594,7 +600,7 @@ func (t *Tree) propagateMaxHigh(n *node) {
 }
 
 // minimum returns the leftmost node in the subtree rooted at n.
-func minimum(n *node) *node {
+func minimum[K Integer, V comparable](n *node[K, V]) *node[K, V] {
 	for n.left != nil {
 		n = n.left
 	}

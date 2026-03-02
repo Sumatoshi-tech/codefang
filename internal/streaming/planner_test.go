@@ -5,6 +5,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 func (ap *AdaptivePlanner) InitialPlan() []ChunkBounds {
@@ -25,7 +28,7 @@ func TestPlanner_SmallRepo_SingleChunk(t *testing.T) {
 	// 100 commits fits in a single chunk.
 	p := Planner{
 		TotalCommits: 100,
-		MemoryBudget: 2000 * mib,
+		MemoryBudget: 2000 * units.MiB,
 	}
 	chunks := p.Plan()
 	require.Len(t, chunks, 1)
@@ -42,7 +45,7 @@ func TestPlanner_LargeRepo_MultipleChunks(t *testing.T) {
 	// Can fit 2250 commits → 100k/2250 = 45 chunks.
 	p := Planner{
 		TotalCommits: 100000,
-		MemoryBudget: 2048 * mib,
+		MemoryBudget: 2048 * units.MiB,
 	}
 	chunks := p.Plan()
 	require.Greater(t, len(chunks), 1)
@@ -62,7 +65,7 @@ func TestPlanner_ZeroCommits_Empty(t *testing.T) {
 
 	p := Planner{
 		TotalCommits: 0,
-		MemoryBudget: 512 * mib,
+		MemoryBudget: 512 * units.MiB,
 	}
 	chunks := p.Plan()
 	assert.Empty(t, chunks)
@@ -76,7 +79,7 @@ func TestPlanner_ChunkSizeRespectsBounds(t *testing.T) {
 	// Effective growth = 500 KiB * 1.5 = 750 KiB → 13 commits → clamped to MinChunkSize=50.
 	p := Planner{
 		TotalCommits: 100000,
-		MemoryBudget: 410 * mib,
+		MemoryBudget: 410 * units.MiB,
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
@@ -117,8 +120,8 @@ func TestPlanner_AggregateGrowthPerCommit(t *testing.T) {
 	// At 1.5 MiB/commit → 1098 commits per chunk.
 	p := Planner{
 		TotalCommits:             100000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 1 * mib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 1 * units.MiB,
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
@@ -137,8 +140,8 @@ func TestPlanner_HighGrowthRate_SmallChunks(t *testing.T) {
 	// Effective growth = 10 MiB * 1.5 = 15 MiB/commit → 109 commits per chunk.
 	p := Planner{
 		TotalCommits:             100000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 10 * mib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 10 * units.MiB,
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
@@ -154,8 +157,8 @@ func TestPlanner_LowGrowthRate_HitsMaxCap(t *testing.T) {
 	// Available = 1648 MiB. Effective = 75 KiB → 22489 commits → capped to MaxChunkSize=3000.
 	p := Planner{
 		TotalCommits:             100000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 50 * kib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 50 * units.KiB,
 	}
 	chunks := p.Plan()
 	require.NotEmpty(t, chunks)
@@ -167,36 +170,36 @@ func TestPlanner_LowGrowthRate_HitsMaxCap(t *testing.T) {
 func TestEMA_InitialValue(t *testing.T) {
 	t.Parallel()
 
-	var ema emaGrowthRate
+	ema := stats.NewEMA(DefaultEMAAlpha)
 
-	got := ema.Update(500.0, 0.3)
+	got := ema.Update(500.0)
 	assert.InDelta(t, 500.0, got, 0.01)
 }
 
 func TestEMA_ConvergesToStableInput(t *testing.T) {
 	t.Parallel()
 
-	var ema emaGrowthRate
+	ema := stats.NewEMA(DefaultEMAAlpha)
 
 	for range 20 {
-		ema.Update(1000.0, 0.3)
+		ema.Update(1000.0)
 	}
 
-	assert.InDelta(t, 1000.0, ema.value, 1.0)
+	assert.InDelta(t, 1000.0, ema.Value(), 1.0)
 }
 
 func TestEMA_RespondsToSpike(t *testing.T) {
 	t.Parallel()
 
-	var ema emaGrowthRate
+	ema := stats.NewEMA(DefaultEMAAlpha)
 
 	// Establish a baseline at 100.
 	for range 10 {
-		ema.Update(100.0, 0.3)
+		ema.Update(100.0)
 	}
 
 	// Single spike at 1000.
-	spiked := ema.Update(1000.0, 0.3)
+	spiked := ema.Update(1000.0)
 
 	// EMA should move towards the spike but not match it.
 	assert.Greater(t, spiked, 100.0)
@@ -210,8 +213,8 @@ func TestPlanFrom_CorrectOffsets(t *testing.T) {
 
 	p := Planner{
 		TotalCommits:             10000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 1 * mib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 1 * units.MiB,
 	}
 
 	chunks := p.PlanFrom(5000)
@@ -234,8 +237,8 @@ func TestPlanFrom_AtEnd_ReturnsNil(t *testing.T) {
 
 	p := Planner{
 		TotalCommits:             1000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 1 * mib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 1 * units.MiB,
 	}
 
 	assert.Nil(t, p.PlanFrom(1000))
@@ -247,8 +250,8 @@ func TestPlanFrom_ContiguityWithOriginal(t *testing.T) {
 
 	p := Planner{
 		TotalCommits:             100000,
-		MemoryBudget:             2048 * mib,
-		AggregateGrowthPerCommit: 1 * mib,
+		MemoryBudget:             2048 * units.MiB,
+		AggregateGrowthPerCommit: 1 * units.MiB,
 	}
 
 	fullChunks := p.Plan()
@@ -266,7 +269,7 @@ func TestPlanFrom_ContiguityWithOriginal(t *testing.T) {
 func TestAdaptivePlanner_NoReplan_WhenGrowthMatchesPrediction(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(10000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(10000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 1)
 
@@ -275,7 +278,7 @@ func TestAdaptivePlanner_NoReplan_WhenGrowthMatchesPrediction(t *testing.T) {
 	// Simulate observed growth matching predicted (500 KiB * 1.5 safety = 750 KiB effective).
 	// All three metrics match predicted — no replan expected.
 	chunk := chunks[0]
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -293,7 +296,7 @@ func TestAdaptivePlanner_NoReplan_WhenGrowthMatchesPrediction(t *testing.T) {
 func TestAdaptivePlanner_Replan_WhenGrowthExceedsPrediction(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 1)
 
@@ -301,7 +304,7 @@ func TestAdaptivePlanner_Replan_WhenGrowthExceedsPrediction(t *testing.T) {
 
 	// Simulate work growth 3x predicted — well above 25% threshold.
 	chunk := chunks[0]
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -321,7 +324,7 @@ func TestAdaptivePlanner_Replan_WhenGrowthBelowPrediction(t *testing.T) {
 	t.Parallel()
 
 	// Use high declared growth so there's room to make chunks bigger.
-	ap := NewAdaptivePlanner(100000, 2048*mib, 2*mib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 2*units.MiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 2)
 
@@ -330,12 +333,12 @@ func TestAdaptivePlanner_Replan_WhenGrowthBelowPrediction(t *testing.T) {
 	// Simulate observed growth much lower than declared.
 	// Predicted effective = 2 MiB * 1.5 = 3 MiB. Observed: 200 KiB.
 	chunk := chunks[0]
-	predicted := int64(3 * mib)
+	predicted := int64(3 * units.MiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
 		Chunk:               chunk,
-		WorkGrowthPerCommit: 200 * kib,
+		WorkGrowthPerCommit: 200 * units.KiB,
 		TCPayloadPerCommit:  predicted,
 		AggGrowthPerCommit:  predicted,
 		CurrentChunks:       chunks,
@@ -349,11 +352,11 @@ func TestAdaptivePlanner_Replan_WhenGrowthBelowPrediction(t *testing.T) {
 func TestAdaptivePlanner_PreservesProcessedChunks(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 5)
 
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	// Process chunks 0-1 with matching growth (no replan).
 	for i := range 2 {
@@ -391,9 +394,9 @@ func TestAdaptivePlanner_CoversAllCommits(t *testing.T) {
 
 	const totalCommits = 50000
 
-	ap := NewAdaptivePlanner(totalCommits, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(totalCommits, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	// Force a replan with 3x work growth.
 	chunk := chunks[0]
@@ -420,7 +423,7 @@ func TestAdaptivePlanner_CoversAllCommits(t *testing.T) {
 func TestAdaptivePlanner_NegativeGrowthClamped(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(10000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(10000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 1)
 
@@ -431,9 +434,9 @@ func TestAdaptivePlanner_NegativeGrowthClamped(t *testing.T) {
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
 		Chunk:               chunk,
-		WorkGrowthPerCommit: -400 * kib,
-		TCPayloadPerCommit:  -100 * kib,
-		AggGrowthPerCommit:  -200 * kib,
+		WorkGrowthPerCommit: -400 * units.KiB,
+		TCPayloadPerCommit:  -100 * units.KiB,
+		AggGrowthPerCommit:  -200 * units.KiB,
 		CurrentChunks:       chunks,
 	})
 
@@ -441,19 +444,19 @@ func TestAdaptivePlanner_NegativeGrowthClamped(t *testing.T) {
 	assert.NotEmpty(t, newChunks)
 
 	// EMA should be positive (clamped to minObservedGrowth).
-	stats := ap.Stats()
-	assert.Greater(t, stats.FinalGrowthRate, 0.0)
+	as := ap.Stats()
+	assert.Greater(t, as.FinalGrowthRate, 0.0)
 }
 
 func TestAdaptivePlanner_Stats(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(10000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(10000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 
-	stats := ap.Stats()
-	assert.Equal(t, 0, stats.ReplanCount)
-	assert.InDelta(t, float64(500*kib), stats.InitialGrowthRate, 1.0)
-	assert.InDelta(t, float64(500*kib), stats.FinalGrowthRate, 1.0) // No EMA yet, uses declared.
+	as := ap.Stats()
+	assert.Equal(t, 0, as.ReplanCount)
+	assert.InDelta(t, float64(500*units.KiB), as.InitialGrowthRate, 1.0)
+	assert.InDelta(t, float64(500*units.KiB), as.FinalGrowthRate, 1.0) // No EMA yet, uses declared.
 }
 
 func TestHeapSnapshot_ReturnsPositiveValues(t *testing.T) {
@@ -468,9 +471,9 @@ func TestHeapSnapshot_ReturnsPositiveValues(t *testing.T) {
 func TestEMA_AlphaOne_TracksLatest(t *testing.T) {
 	t.Parallel()
 
-	var ema emaGrowthRate
-	ema.Update(100.0, 1.0)
-	got := ema.Update(500.0, 1.0)
+	ema := stats.NewEMA(1.0)
+	ema.Update(100.0)
+	got := ema.Update(500.0)
 
 	assert.InDelta(t, 500.0, got, 0.01)
 }
@@ -478,9 +481,9 @@ func TestEMA_AlphaOne_TracksLatest(t *testing.T) {
 func TestEMA_AlphaZero_KeepsInitial(t *testing.T) {
 	t.Parallel()
 
-	var ema emaGrowthRate
-	ema.Update(100.0, 0.0)
-	got := ema.Update(500.0, 0.0)
+	ema := stats.NewEMA(0.0)
+	ema.Update(100.0)
+	got := ema.Update(500.0)
 
 	// Alpha=0 means "trust only history": new = 0*500 + 1*100 = 100.
 	assert.InDelta(t, 100.0, got, 0.01)
@@ -489,32 +492,32 @@ func TestEMA_AlphaZero_KeepsInitial(t *testing.T) {
 func TestAdaptivePlanner_Accessors(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(75000, 4096*mib, 1*mib, 500*mib)
+	ap := NewAdaptivePlanner(75000, 4096*units.MiB, 1*units.MiB, 500*units.MiB)
 	assert.Equal(t, 75000, ap.TotalCommits())
-	assert.Equal(t, int64(1*mib), ap.DeclaredGrowth())
+	assert.Equal(t, int64(1*units.MiB), ap.DeclaredGrowth())
 }
 
 func TestAdaptivePlanner_InitialPlanMatchesStaticPlanner(t *testing.T) {
 	t.Parallel()
 
 	const (
-		commits  = 100000
-		budget   = int64(2048 * mib)
-		growth   = int64(500 * kib)
-		overhead = int64(400 * mib)
+		commits   = 100000
+		memBudget = int64(2048 * units.MiB)
+		growth    = int64(500 * units.KiB)
+		overhead  = int64(400 * units.MiB)
 	)
 
 	// Static planner.
 	staticPlanner := Planner{
 		TotalCommits:             commits,
-		MemoryBudget:             budget,
+		MemoryBudget:             memBudget,
 		AggregateGrowthPerCommit: growth,
 		PipelineOverhead:         overhead,
 	}
 	staticChunks := staticPlanner.Plan()
 
 	// Adaptive planner initial plan.
-	ap := NewAdaptivePlanner(commits, budget, growth, overhead)
+	ap := NewAdaptivePlanner(commits, memBudget, growth, overhead)
 	adaptiveChunks := ap.InitialPlan()
 
 	assert.Equal(t, staticChunks, adaptiveChunks)
@@ -524,12 +527,12 @@ func TestAdaptivePlanner_InitialPlanMatchesStaticPlanner(t *testing.T) {
 func TestAdaptivePlanner_EMASmoothing_NoFalseReplan(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 
 	// Process 5 chunks with growth within 20% of effective growth (750 KiB).
 	// All within the 25% threshold — no replan expected.
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 	variations := []float64{0.9, 1.1, 0.95, 1.05, 0.88}
 
 	for i := 0; i < len(variations) && i < len(chunks); i++ {
@@ -549,49 +552,49 @@ func TestAdaptivePlanner_EMASmoothing_NoFalseReplan(t *testing.T) {
 	assert.Equal(t, 0, ap.Stats().ReplanCount)
 
 	// EMA should be close to effective growth (750 KiB).
-	assert.InDelta(t, 750.0*float64(kib), ap.Stats().FinalGrowthRate, 100.0*float64(kib))
+	assert.InDelta(t, 750.0*float64(units.KiB), ap.Stats().FinalGrowthRate, 100.0*float64(units.KiB))
 }
 
 func TestCheckMemoryPressure_None(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureNone, CheckMemoryPressure(500*mib, 1000*mib))
+	assert.Equal(t, PressureNone, CheckMemoryPressure(500*units.MiB, 1000*units.MiB))
 }
 
 func TestCheckMemoryPressure_Warning(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureWarning, CheckMemoryPressure(850*mib, 1000*mib))
+	assert.Equal(t, PressureWarning, CheckMemoryPressure(850*units.MiB, 1000*units.MiB))
 }
 
 func TestCheckMemoryPressure_Critical(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureCritical, CheckMemoryPressure(950*mib, 1000*mib))
+	assert.Equal(t, PressureCritical, CheckMemoryPressure(950*units.MiB, 1000*units.MiB))
 }
 
 func TestCheckMemoryPressure_ExactWarningBoundary(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureWarning, CheckMemoryPressure(800*mib, 1000*mib))
+	assert.Equal(t, PressureWarning, CheckMemoryPressure(800*units.MiB, 1000*units.MiB))
 }
 
 func TestCheckMemoryPressure_ExactCriticalBoundary(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureCritical, CheckMemoryPressure(900*mib, 1000*mib))
+	assert.Equal(t, PressureCritical, CheckMemoryPressure(900*units.MiB, 1000*units.MiB))
 }
 
 func TestCheckMemoryPressure_ZeroBudget(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureNone, CheckMemoryPressure(999*mib, 0))
+	assert.Equal(t, PressureNone, CheckMemoryPressure(999*units.MiB, 0))
 }
 
 func TestCheckMemoryPressure_NegativeBudget(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, PressureNone, CheckMemoryPressure(999*mib, -1))
+	assert.Equal(t, PressureNone, CheckMemoryPressure(999*units.MiB, -1))
 }
 
 // ComputeSchedule tests.
@@ -616,7 +619,7 @@ func TestComputeSchedule_ZeroCommits_Empty(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits: 0,
-		MemoryBudget: 2048 * mib,
+		MemoryBudget: 2048 * units.MiB,
 	})
 
 	assert.Empty(t, s.Chunks)
@@ -628,9 +631,9 @@ func TestComputeSchedule_512MiB(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       512 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       512 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// usable = 512 * 0.95 = 486 MiB
@@ -653,21 +656,21 @@ func TestComputeSchedule_2GiB(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
-	// usable = 2048*mib * 95/100 = 2040109465
-	// remaining = 2040109465 - 400*mib = 1620679065
+	// usable = 2048*units.MiB * 95/100 = 2040109465
+	// remaining = 2040109465 - 400*units.MiB = 1620679065
 	// workState = 1620679065 * 60/100 = 972407439
 	// aggState = 1620679065 * 30/100 = 486203719
-	// effectiveGrowth = 500*kib * 1.5 = 768000
+	// effectiveGrowth = 500*units.KiB * 1.5 = 768000
 	// chunkSize = 972407439 / 768000 = 1266.
 	assert.Equal(t, 1266, s.ChunkSize)
 
-	usable := int64(2048*mib) * UsablePercent / percentDivisor
-	remaining := usable - 400*mib
+	usable := int64(2048*units.MiB) * UsablePercent / percentDivisor
+	remaining := usable - 400*units.MiB
 	expectedAgg := remaining * AggStatePercent / percentDivisor
 	assert.Equal(t, expectedAgg, s.AggSpillBudget)
 	assert.Equal(t, 1, s.BufferingFactor)
@@ -680,9 +683,9 @@ func TestComputeSchedule_4GiB(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       4096 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       4096 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// usable = 4096 * 0.95 = 3891 MiB
@@ -701,9 +704,9 @@ func TestComputeSchedule_8GiB(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       8192 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       8192 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// usable = 8192 * 0.95 = 7782 MiB
@@ -722,9 +725,9 @@ func TestComputeSchedule_BudgetBelowOverhead(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       10000,
-		MemoryBudget:       300 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       300 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// usable = 300 * 0.95 = 285 MiB < 400 MiB overhead → remaining <= 0.
@@ -740,8 +743,8 @@ func TestComputeSchedule_ZeroWorkStatePerCommit_UsesFallback(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
 		WorkStatePerCommit: 0, // Should use DefaultWorkingStateSize (400 KiB).
 	})
 
@@ -757,9 +760,9 @@ func TestComputeSchedule_ZeroPipelineOverhead_UsesFallback(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
+		MemoryBudget:       2048 * units.MiB,
 		PipelineOverhead:   0, // Should use BaseOverhead (400 MiB).
-		WorkStatePerCommit: 500 * kib,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// Same result as the 2 GiB test (1266).
@@ -771,15 +774,15 @@ func TestComputeSchedule_AggSpillBudgetProportional(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// remaining = usable - overhead = 1945 - 400 = 1545 MiB.
 	// aggState = remaining * 30%.
-	usable := int64(2048*mib) * UsablePercent / percentDivisor
-	remaining := usable - 400*mib
+	usable := int64(2048*units.MiB) * UsablePercent / percentDivisor
+	remaining := usable - 400*units.MiB
 	expectedAgg := remaining * AggStatePercent / percentDivisor
 
 	assert.Equal(t, expectedAgg, s.AggSpillBudget)
@@ -790,9 +793,9 @@ func TestComputeSchedule_SingleChunk_SmallRepo(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	})
 
 	// 100 commits < chunkSize of 1265 → single chunk.
@@ -804,7 +807,7 @@ func TestComputeSchedule_SingleChunk_SmallRepo(t *testing.T) {
 func TestComputeSchedule_BufferingFactorAlwaysOne(t *testing.T) {
 	t.Parallel()
 
-	budgets := []int64{0, 512 * mib, 2048 * mib, 8192 * mib}
+	budgets := []int64{0, 512 * units.MiB, 2048 * units.MiB, 8192 * units.MiB}
 	for _, b := range budgets {
 		s := ComputeSchedule(SchedulerConfig{
 			TotalCommits: 10000,
@@ -833,9 +836,9 @@ func TestComputeSchedule_8GiB_MaxBuf3_DoubleOrTriple(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       8192 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       8192 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       3,
 	})
 
@@ -853,9 +856,9 @@ func TestComputeSchedule_512MiB_MaxBuf3_SingleBuffer(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       512 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       512 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       3,
 	})
 
@@ -871,9 +874,9 @@ func TestComputeSchedule_4GiB_MaxBuf3_DoubleOrTriple(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       4096 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       4096 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       3,
 	})
 
@@ -889,9 +892,9 @@ func TestComputeSchedule_2GiB_MaxBuf2_RespectsMaxCap(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       2,
 	})
 
@@ -922,9 +925,9 @@ func TestComputeSchedule_MaxBufZero_TreatedAsOne(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       0,
 	})
 
@@ -936,9 +939,9 @@ func TestComputeSchedule_MaxBufNegative_TreatedAsOne(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       -5,
 	})
 
@@ -950,9 +953,9 @@ func TestComputeSchedule_MaxBuf1_AlwaysSingleBuffer(t *testing.T) {
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       8192 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       8192 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       1,
 	})
 
@@ -966,9 +969,9 @@ func TestComputeSchedule_AggSpillBudgetInvariant(t *testing.T) {
 	// AggSpillBudget should be the same regardless of MaxBuffering.
 	cfg := SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       4096 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       4096 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 	}
 
 	cfg.MaxBuffering = 1
@@ -993,23 +996,23 @@ func TestComputeSchedule_BarelyDoubleBuf(t *testing.T) {
 	// With WorkState=500 KiB, effectiveGrowth = 750 KiB = 768000.
 	// workState needed = 2 * 50 * 768000 = 76800000 bytes.
 	// workState = remaining * 60/100 → remaining = 76800000 * 100/60 = 128000000.
-	// remaining = usable - overhead → usable = 128000000 + 400*mib.
+	// remaining = usable - overhead → usable = 128000000 + 400*units.MiB.
 	// usable = budget * 95/100 → budget = usable * 100/95.
-	overhead := int64(400 * mib)
-	effectiveGrowth := int64(500*kib) + int64(500*kib)*safetyMarginPercent/percentDivisor
+	overhead := int64(400 * units.MiB)
+	effectiveGrowth := int64(500*units.KiB) + int64(500*units.KiB)*safetyMarginPercent/percentDivisor
 	neededWorkState := int64(2) * int64(MinChunkSize) * effectiveGrowth
 	remaining := neededWorkState * percentDivisor / WorkStatePercent
 	usable := remaining + overhead
-	budget := usable * percentDivisor / UsablePercent
+	memBudget := usable * percentDivisor / UsablePercent
 
 	// Add a small margin to ensure we're above the threshold.
-	budget += 1 * mib
+	memBudget += 1 * units.MiB
 
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       budget,
+		MemoryBudget:       memBudget,
 		PipelineOverhead:   overhead,
-		WorkStatePerCommit: 500 * kib,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       3,
 	})
 
@@ -1026,9 +1029,9 @@ func TestComputeSchedule_ExistingTests_BackwardsCompatible(t *testing.T) {
 	// chunk sizes should be identical.
 	s := ComputeSchedule(SchedulerConfig{
 		TotalCommits:       100000,
-		MemoryBudget:       2048 * mib,
-		PipelineOverhead:   400 * mib,
-		WorkStatePerCommit: 500 * kib,
+		MemoryBudget:       2048 * units.MiB,
+		PipelineOverhead:   400 * units.MiB,
+		WorkStatePerCommit: 500 * units.KiB,
 		MaxBuffering:       0,
 	})
 
@@ -1043,11 +1046,11 @@ func TestComputeSchedule_ExistingTests_BackwardsCompatible(t *testing.T) {
 func TestThreeMetric_AllMatch_NoReplan(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 1)
 
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 	chunk := chunks[0]
 
 	newChunks := ap.Replan(ReplanObservation{
@@ -1067,10 +1070,10 @@ func TestThreeMetric_AllMatch_NoReplan(t *testing.T) {
 func TestThreeMetric_WorkGrowthHigh_SmallerChunks(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	originalLen := len(chunks)
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -1089,10 +1092,10 @@ func TestThreeMetric_WorkGrowthHigh_SmallerChunks(t *testing.T) {
 func TestThreeMetric_TCDiverges_ReplanTriggered(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	originalLen := len(chunks)
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -1117,9 +1120,9 @@ func TestThreeMetric_TCDiverges_ReplanTriggered(t *testing.T) {
 func TestThreeMetric_AggDiverges_ReplanTriggered(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -1138,15 +1141,15 @@ func TestThreeMetric_AggDiverges_ReplanTriggered(t *testing.T) {
 func TestThreeMetric_WorkGrowthLow_LargerChunks(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 2*mib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 2*units.MiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	originalLen := len(chunks)
-	predicted := int64(3 * mib) // 2 MiB * 1.5 effective.
+	predicted := int64(3 * units.MiB) // 2 MiB * 1.5 effective.
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
 		Chunk:               chunks[0],
-		WorkGrowthPerCommit: 200 * kib,
+		WorkGrowthPerCommit: 200 * units.KiB,
 		TCPayloadPerCommit:  predicted,
 		AggGrowthPerCommit:  predicted,
 		CurrentChunks:       chunks,
@@ -1160,9 +1163,9 @@ func TestThreeMetric_WorkGrowthLow_LargerChunks(t *testing.T) {
 func TestThreeMetric_MixedDivergence_ReplanTriggered(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
-	predicted := int64(750 * kib)
+	predicted := int64(750 * units.KiB)
 
 	newChunks := ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
@@ -1181,7 +1184,7 @@ func TestThreeMetric_MixedDivergence_ReplanTriggered(t *testing.T) {
 func TestThreeMetric_AllZero_Clamped(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(10000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(10000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 	require.Greater(t, len(chunks), 1)
 
@@ -1196,36 +1199,36 @@ func TestThreeMetric_AllZero_Clamped(t *testing.T) {
 
 	assert.NotEmpty(t, newChunks)
 
-	stats := ap.Stats()
+	as := ap.Stats()
 	// All EMAs should be clamped to minObservedGrowth (1 KiB).
-	assert.InDelta(t, float64(minObservedGrowth), stats.FinalWorkGrowth, 1.0)
-	assert.InDelta(t, float64(minObservedGrowth), stats.FinalTCSize, 1.0)
-	assert.InDelta(t, float64(minObservedGrowth), stats.FinalAggGrowth, 1.0)
+	assert.InDelta(t, float64(minObservedGrowth), as.FinalWorkGrowth, 1.0)
+	assert.InDelta(t, float64(minObservedGrowth), as.FinalTCSize, 1.0)
+	assert.InDelta(t, float64(minObservedGrowth), as.FinalAggGrowth, 1.0)
 }
 
 // T-8: Stats include per-metric final rates.
 func TestThreeMetric_Stats_PerMetricRates(t *testing.T) {
 	t.Parallel()
 
-	ap := NewAdaptivePlanner(100000, 2048*mib, 500*kib, 400*mib)
+	ap := NewAdaptivePlanner(100000, 2048*units.MiB, 500*units.KiB, 400*units.MiB)
 	chunks := ap.InitialPlan()
 
 	// Feed specific values.
 	ap.Replan(ReplanObservation{
 		ChunkIndex:          0,
 		Chunk:               chunks[0],
-		WorkGrowthPerCommit: 800 * kib,
-		TCPayloadPerCommit:  200 * kib,
-		AggGrowthPerCommit:  400 * kib,
+		WorkGrowthPerCommit: 800 * units.KiB,
+		TCPayloadPerCommit:  200 * units.KiB,
+		AggGrowthPerCommit:  400 * units.KiB,
 		CurrentChunks:       chunks,
 	})
 
-	stats := ap.Stats()
+	as := ap.Stats()
 	// First observation initializes EMAs directly.
-	assert.InDelta(t, float64(800*kib), stats.FinalWorkGrowth, 1.0)
-	assert.InDelta(t, float64(200*kib), stats.FinalTCSize, 1.0)
-	assert.InDelta(t, float64(400*kib), stats.FinalAggGrowth, 1.0)
-	assert.InDelta(t, float64(800*kib), stats.FinalGrowthRate, 1.0)
+	assert.InDelta(t, float64(800*units.KiB), as.FinalWorkGrowth, 1.0)
+	assert.InDelta(t, float64(200*units.KiB), as.FinalTCSize, 1.0)
+	assert.InDelta(t, float64(400*units.KiB), as.FinalAggGrowth, 1.0)
+	assert.InDelta(t, float64(800*units.KiB), as.FinalGrowthRate, 1.0)
 }
 
 // T-9: Existing tests adapted — covered by the updated tests above.

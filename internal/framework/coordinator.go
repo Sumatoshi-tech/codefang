@@ -13,6 +13,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
@@ -325,7 +326,7 @@ const systemRAMLimitRatio = 90
 // when the budget exceeds available memory.
 func applyMemoryLimitFromBudget(budget int64) {
 	limit := resolveMemoryLimitFromBudget(budget, detectTotalMemoryBytes())
-	debug.SetMemoryLimit(SafeInt64(limit))
+	debug.SetMemoryLimit(safeconv.SafeInt64(limit))
 }
 
 func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64) uint64 {
@@ -346,7 +347,7 @@ func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64) uint64 
 // frequently regardless of GOGC. This prevents OOM on large analysis workloads.
 func applyMemoryLimit() {
 	limit := resolveMemoryLimit(detectTotalMemoryBytes())
-	debug.SetMemoryLimit(SafeInt64(limit))
+	debug.SetMemoryLimit(safeconv.SafeInt64(limit))
 }
 
 func resolveMemoryLimit(totalMemoryBytes uint64) uint64 {

@@ -134,7 +134,7 @@ func (f *Formatter) formatProgressBars(report analyze.Report) string {
 			continue
 		}
 
-		if score, ok := f.toFloat(value); ok && score >= 0 && score <= 1 {
+		if score, ok := ToFloat64(value); ok && score >= 0 && score <= 1 {
 			bar := f.createProgressBar(key, score)
 			if bar != "" {
 				bars = append(bars, bar)
@@ -270,28 +270,12 @@ func (f *Formatter) extractMetrics(report analyze.Report) map[string]float64 {
 	metrics := make(map[string]float64)
 
 	for key, value := range report {
-		if score, ok := f.toFloat(value); ok {
+		if score, ok := ToFloat64(value); ok {
 			metrics[key] = score
 		}
 	}
 
 	return metrics
-}
-
-// toFloat safely converts a value to float64.
-func (f *Formatter) toFloat(value any) (float64, bool) {
-	switch typedVal := value.(type) {
-	case float64:
-		return typedVal, true
-	case int:
-		return float64(typedVal), true
-	case int32:
-		return float64(typedVal), true
-	case int64:
-		return float64(typedVal), true
-	default:
-		return 0, false
-	}
 }
 
 // getCollectionKeys gets all unique keys from a collection.

@@ -10,10 +10,12 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -73,10 +75,14 @@ type tickAccumulator struct {
 	commitQuality map[string]*TickQuality
 }
 
+// qualityAvgTCSize is the estimated bytes of TC payload per commit (quality metrics).
+const qualityAvgTCSize = 2 * 1024
+
 // Analyzer tracks code quality metrics across commit history by running
 // static analyzers on UAST-parsed changed files per commit.
 type Analyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.NoStateHibernation
 
 	UAST  *plumbing.UASTChangesAnalyzer
 	Ticks *plumbing.TicksSinceStart
@@ -105,14 +111,9 @@ func NewAnalyzer() *Analyzer {
 			Description: "Tracks complexity, Halstead, comment quality, and cohesion metrics over commit history.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
-		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
-			if len(report) == 0 {
-				return &ComputedMetrics{}, nil
-			}
-
-			return ComputeAllMetrics(report)
-		},
+		Sequential:       false,
+		EstimatedTCSize:  qualityAvgTCSize,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
 			agg := analyze.NewGenericAggregator[*tickAccumulator, *TickData](opts, extractTC, mergeState, sizeState, buildTick)
 			agg.DrainCommitDataFn = drainQualityCommitData
@@ -135,7 +136,7 @@ func (a *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (a
 
 // Configure applies configuration from the provided facts map.
 func (a *Analyzer) Configure(facts map[string]any) error {
-	if val, ok := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); ok {
+	if val, ok := pkgplumbing.GetCommitsByTick(facts); ok {
 		a.commitsByTick = val
 	}
 
@@ -220,11 +221,6 @@ func (a *Analyzer) analyzeCohesion(root *node.Node, tq *TickQuality) {
 	}
 
 	tq.CohesionScores = append(tq.CohesionScores, extractFloat(report, "cohesion_score"))
-}
-
-// NewAggregator creates a quality Aggregator configured with the given options.
-func (a *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return a.AggregatorFn(opts)
 }
 
 // Fork creates independent copies of the analyzer for parallel processing.
@@ -399,7 +395,14 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK, commitsByTick map[in
 	ct := commitsByTick
 
 	if ct == nil {
-		ct = buildCommitsByTickFromTicks(ticks)
+		ct = analyze.BuildCommitsByTick(ticks, func(data any) (map[string]*TickQuality, bool) {
+			td, ok := data.(*TickData)
+			if !ok || td == nil {
+				return nil, false
+			}
+
+			return td.CommitQuality, td.CommitQuality != nil
+		})
 	}
 
 	return analyze.Report{
@@ -423,27 +426,6 @@ func buildCommitQualityFromTicks(ticks []analyze.TICK) map[string]*TickQuality {
 	return commitQuality
 }
 
-func buildCommitsByTickFromTicks(ticks []analyze.TICK) map[int][]gitlib.Hash {
-	ct := make(map[int][]gitlib.Hash)
-
-	for _, tick := range ticks {
-		td, ok := tick.Data.(*TickData)
-		if !ok || td == nil || td.CommitQuality == nil {
-			continue
-		}
-
-		hashes := make([]gitlib.Hash, 0, len(td.CommitQuality))
-
-		for h := range td.CommitQuality {
-			hashes = append(hashes, gitlib.NewHash(h))
-		}
-
-		ct[tick.Tick] = append(ct[tick.Tick], hashes...)
-	}
-
-	return ct
-}
-
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
 // It converts per-commit TickQuality data into summary statistics for the
 // unified timeseries output, covering complexity, halstead, comments, and cohesion.
@@ -456,45 +438,45 @@ func (a *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any
 	result := make(map[string]any, len(commitQuality))
 
 	for hash, tq := range commitQuality {
-		stats := computeTickStats(tq)
+		ts := computeTickStats(tq)
 		result[hash] = map[string]any{
-			"complexity_median":      stats.ComplexityMedian,
-			"cognitive_median":       medianFloat(tq.Cognitives),
-			"max_complexity":         stats.MaxComplexity,
-			"functions":              stats.TotalFunctions,
-			"halstead_vol_median":    stats.HalsteadVolMedian,
-			"halstead_effort_median": medianFloat(tq.HalsteadEfforts),
-			"delivered_bugs_sum":     stats.DeliveredBugsSum,
-			"comment_score_min":      stats.CommentScoreMin,
-			"doc_coverage_mean":      stats.DocCoverageMean,
-			"cohesion_min":           stats.CohesionMin,
-			"files_analyzed":         stats.FilesAnalyzed,
+			"complexity_median":      ts.ComplexityMedian,
+			"cognitive_median":       stats.Median(tq.Cognitives),
+			"max_complexity":         ts.MaxComplexity,
+			"functions":              ts.TotalFunctions,
+			"halstead_vol_median":    ts.HalsteadVolMedian,
+			"halstead_effort_median": stats.Median(tq.HalsteadEfforts),
+			"delivered_bugs_sum":     ts.DeliveredBugsSum,
+			"comment_score_min":      ts.CommentScoreMin,
+			"doc_coverage_mean":      ts.DocCoverageMean,
+			"cohesion_min":           ts.CohesionMin,
+			"files_analyzed":         ts.FilesAnalyzed,
 		}
 	}
 
 	return result
 }
 
-func drainQualityCommitData(state *tickAccumulator) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
+func drainQualityCommitData(state *tickAccumulator) (result map[string]any, tickHashes map[int][]gitlib.Hash) {
 	if state == nil || len(state.commitQuality) == 0 {
 		return nil, nil
 	}
 
-	result := make(map[string]any, len(state.commitQuality))
+	result = make(map[string]any, len(state.commitQuality))
 	for hash, tq := range state.commitQuality {
-		stats := computeTickStats(tq)
+		ts := computeTickStats(tq)
 		result[hash] = map[string]any{
-			"complexity_median":      stats.ComplexityMedian,
-			"cognitive_median":       medianFloat(tq.Cognitives),
-			"max_complexity":         stats.MaxComplexity,
-			"functions":              stats.TotalFunctions,
-			"halstead_vol_median":    stats.HalsteadVolMedian,
-			"halstead_effort_median": medianFloat(tq.HalsteadEfforts),
-			"delivered_bugs_sum":     stats.DeliveredBugsSum,
-			"comment_score_min":      stats.CommentScoreMin,
-			"doc_coverage_mean":      stats.DocCoverageMean,
-			"cohesion_min":           stats.CohesionMin,
-			"files_analyzed":         stats.FilesAnalyzed,
+			"complexity_median":      ts.ComplexityMedian,
+			"cognitive_median":       stats.Median(tq.Cognitives),
+			"max_complexity":         ts.MaxComplexity,
+			"functions":              ts.TotalFunctions,
+			"halstead_vol_median":    ts.HalsteadVolMedian,
+			"halstead_effort_median": stats.Median(tq.HalsteadEfforts),
+			"delivered_bugs_sum":     ts.DeliveredBugsSum,
+			"comment_score_min":      ts.CommentScoreMin,
+			"doc_coverage_mean":      ts.DocCoverageMean,
+			"cohesion_min":           ts.CohesionMin,
+			"files_analyzed":         ts.FilesAnalyzed,
 		}
 	}
 

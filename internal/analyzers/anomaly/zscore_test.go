@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 func DetectAnomalies(scores []float64, threshold float64) []int {
@@ -116,7 +118,7 @@ func TestComputeZScores_SentinelOnZeroStdDevWithDiff(t *testing.T) {
 
 	require.Len(t, scores, 2)
 	assert.InDelta(t, 0, scores[0], 1e-9, "empty window => Z=0")
-	assert.InDelta(t, zScoreMaxSentinel, scores[1], 1e-9, "diff from mean with zero stddev => sentinel")
+	assert.InDelta(t, stats.ZScoreMaxSentinel, scores[1], 1e-9, "diff from mean with zero stddev => sentinel")
 }
 
 func TestComputeZScores_KnownValues(t *testing.T) {

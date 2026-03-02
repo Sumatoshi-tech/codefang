@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 
@@ -182,12 +183,25 @@ func collectUniqueHashes(changes gitlib.Changes) []gitlib.Hash {
 	return hashes
 }
 
+// unwrapDiffBatch extracts a DiffBatchRequest from a WorkerRequest,
+// unwrapping ContextualRequest if present.
+func unwrapDiffBatch(req gitlib.WorkerRequest) (gitlib.DiffBatchRequest, bool) {
+	inner := req
+	if cr, ok := req.(gitlib.ContextualRequest); ok {
+		inner = cr.WorkerRequest
+	}
+
+	batch, ok := inner.(gitlib.DiffBatchRequest)
+
+	return batch, ok
+}
+
 func startMockDiffWorker() chan gitlib.WorkerRequest {
 	mockCh := make(chan gitlib.WorkerRequest, 2)
 
 	go func() {
 		for req := range mockCh {
-			if r, ok := req.(gitlib.DiffBatchRequest); ok {
+			if r, ok := unwrapDiffBatch(req); ok {
 				results := make([]gitlib.DiffResult, len(r.Requests))
 				for i := range results {
 					results[i].Error = errInjectedDiff
@@ -224,7 +238,10 @@ func runDiffPipeline(
 	close(blobs)
 
 	p := framework.NewDiffPipeline(mockCh, 1)
-	ctx := context.Background()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	out := p.Process(ctx, blobs)
 
 	results := make([]framework.CommitData, 0, 16)

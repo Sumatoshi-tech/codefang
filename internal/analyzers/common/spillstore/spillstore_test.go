@@ -12,7 +12,7 @@ import (
 func TestSpillStore_NoSpill(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[int]()
+	s := spillstore.New[int]("")
 	s.Put("a", 1)
 	s.Put("b", 2)
 
@@ -30,7 +30,7 @@ func TestSpillStore_NoSpill(t *testing.T) {
 func TestSpillStore_SingleSpill(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[string]()
+	s := spillstore.New[string]("")
 	s.Put("k1", "v1")
 	s.Put("k2", "v2")
 
@@ -49,7 +49,7 @@ func TestSpillStore_SingleSpill(t *testing.T) {
 func TestSpillStore_MultipleSpills(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[int]()
+	s := spillstore.New[int]("")
 
 	// Chunk 1.
 	s.Put("a", 1)
@@ -72,7 +72,7 @@ func TestSpillStore_MultipleSpills(t *testing.T) {
 func TestSpillStore_SpillEmpty(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[int]()
+	s := spillstore.New[int]("")
 
 	require.NoError(t, s.Spill()) // No-op.
 	assert.Equal(t, 0, s.SpillCount())
@@ -82,7 +82,7 @@ func TestSpillStore_SpillEmpty(t *testing.T) {
 func TestSpillStore_CollectWith(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[map[string]int]()
+	s := spillstore.New[map[string]int]("")
 
 	// Chunk 1: file "a.go" couples with "b.go".
 	s.Put("a.go", map[string]int{"b.go": 3})
@@ -107,7 +107,7 @@ func TestSpillStore_CollectWith(t *testing.T) {
 func TestSpillStore_Cleanup(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[int]()
+	s := spillstore.New[int]("")
 	s.Put("x", 42)
 	require.NoError(t, s.Spill())
 
@@ -125,7 +125,7 @@ func TestSpillStore_RestoreFromDir(t *testing.T) {
 	t.Parallel()
 
 	// Write spill files via one store.
-	s1 := spillstore.New[int]()
+	s1 := spillstore.New[int]("")
 	s1.Put("a", 1)
 	require.NoError(t, s1.Spill())
 	s1.Put("b", 2)
@@ -135,7 +135,7 @@ func TestSpillStore_RestoreFromDir(t *testing.T) {
 	count := s1.SpillCount()
 
 	// Restore into a new store.
-	s2 := spillstore.New[int]()
+	s2 := spillstore.New[int]("")
 	s2.RestoreFromDir(dir, count)
 	s2.Put("c", 3)
 
@@ -152,7 +152,7 @@ type testStruct struct {
 func TestSpillStore_StructValues(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[testStruct]()
+	s := spillstore.New[testStruct]("")
 	s.Put("x", testStruct{Name: "hello", Value: 42})
 	require.NoError(t, s.Spill())
 
@@ -167,7 +167,7 @@ func TestSpillStore_StructValues(t *testing.T) {
 func TestSpillStore_PointerValues(t *testing.T) {
 	t.Parallel()
 
-	s := spillstore.New[*testStruct]()
+	s := spillstore.New[*testStruct]("")
 	s.Put("x", &testStruct{Name: "hello", Value: 42})
 	require.NoError(t, s.Spill())
 

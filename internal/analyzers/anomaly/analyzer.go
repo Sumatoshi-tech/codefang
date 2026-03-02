@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
@@ -52,12 +54,16 @@ type CommitAnomalyData struct {
 	AuthorID     int            `json:"author_id"`
 }
 
+// anomalyAvgTCSize is the estimated bytes of TC payload per commit.
+const anomalyAvgTCSize = 200
+
 // Analyzer detects temporal anomalies in commit history using Z-score
 // analysis over a sliding window of per-tick metrics.
 // Per-commit results are emitted as TCs; accumulated state lives in
 // the Aggregator, not in the analyzer.
 type Analyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.NoStateHibernation
 
 	TreeDiff  *plumbing.TreeDiffAnalyzer
 	Ticks     *plumbing.TicksSinceStart
@@ -81,7 +87,8 @@ func NewAnalyzer() *Analyzer {
 			Description: "Detects sudden quality degradation in commit history using Z-score anomaly detection.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:      false,
+		EstimatedTCSize: anomalyAvgTCSize,
 		ConfigOptions: []pipeline.ConfigurationOption{
 			{
 				Name:        ConfigAnomalyThreshold,
@@ -98,7 +105,7 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultAnomalyWindowSize,
 			},
 		},
-		ComputeMetricsFn: computeMetricsSafe,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
 			return newAggregator(opts, a.Threshold, a.WindowSize)
 		},
@@ -120,14 +127,6 @@ func (h *Analyzer) Name() string {
 // expensive UAST processing per commit.
 func (h *Analyzer) CPUHeavy() bool { return false }
 
-func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
-	if len(report) == 0 {
-		return &ComputedMetrics{}, nil
-	}
-
-	return ComputeAllMetrics(report)
-}
-
 // Configure applies configuration from the provided facts map.
 func (h *Analyzer) Configure(facts map[string]any) error {
 	if val, ok := facts[ConfigAnomalyThreshold].(float32); ok {
@@ -138,7 +137,7 @@ func (h *Analyzer) Configure(facts map[string]any) error {
 		h.WindowSize = val
 	}
 
-	if val, ok := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); ok {
+	if val, ok := pkgplumbing.GetCommitsByTick(facts); ok {
 		h.commitsByTick = val
 	}
 
@@ -325,16 +324,6 @@ func (h *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any
 	return result
 }
 
-// NewAggregator creates an anomaly Aggregator configured with the given options.
-func (h *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return h.AggregatorFn(opts)
-}
-
-// ReportFromTICKs converts aggregated TICKs into a Report.
-func (h *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return h.TicksToReportFn(ctx, ticks), nil
-}
-
 // --- Generic Aggregator Delegates ---.
 
 type tickAccumulator struct {
@@ -495,7 +484,14 @@ func ticksToReport(
 	ct := commitsByTick
 
 	if ct == nil {
-		ct = buildCommitsByTickFromTicks(ticks)
+		ct = analyze.BuildCommitsByTick(ticks, func(data any) (map[string]*CommitAnomalyData, bool) {
+			td, ok := data.(*TickData)
+			if !ok || td == nil {
+				return nil, false
+			}
+
+			return td.CommitMetrics, td.CommitMetrics != nil
+		})
 	}
 
 	tickMetrics := AggregateCommitsToTicks(commitMetrics, ct)
@@ -525,33 +521,12 @@ func buildCommitMetricsFromTicks(ticks []analyze.TICK) map[string]*CommitAnomaly
 	return commitMetrics
 }
 
-func buildCommitsByTickFromTicks(ticks []analyze.TICK) map[int][]gitlib.Hash {
-	ct := make(map[int][]gitlib.Hash)
-
-	for _, tick := range ticks {
-		td, ok := tick.Data.(*TickData)
-		if !ok || td == nil || td.CommitMetrics == nil {
-			continue
-		}
-
-		hashes := make([]gitlib.Hash, 0, len(td.CommitMetrics))
-
-		for h := range td.CommitMetrics {
-			hashes = append(hashes, gitlib.NewHash(h))
-		}
-
-		ct[tick.Tick] = append(ct[tick.Tick], hashes...)
-	}
-
-	return ct
-}
-
 func detectAnomaliesFromTicks(
 	tickMetrics map[int]*TickMetrics,
 	threshold float32,
 	window int,
 ) []Record {
-	ticks := sortedTickKeys(tickMetrics)
+	ticks := mapx.SortedKeys(tickMetrics)
 
 	if len(ticks) == 0 {
 		return []Record{}

@@ -94,20 +94,6 @@ func MapString(m map[string]any, key string) string {
 	return ""
 }
 
-// MapFloat64 returns a float64 from a map[string]any, handling int conversion.
-func MapFloat64(m map[string]any, key string) float64 {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case float64:
-			return val
-		case int:
-			return float64(val)
-		}
-	}
-
-	return 0
-}
-
 // FormatInt formats an int as a string.
 func FormatInt(v int) string {
 	return strconv.Itoa(v)

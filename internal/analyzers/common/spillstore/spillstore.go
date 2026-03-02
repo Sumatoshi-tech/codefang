@@ -25,15 +25,9 @@ type SpillStore[V any] struct {
 }
 
 // New creates a SpillStore with an empty in-memory buffer.
-func New[V any]() *SpillStore[V] {
-	return &SpillStore[V]{
-		current: make(map[string]V),
-	}
-}
-
-// NewWithBaseDir creates a SpillStore that creates temp dirs under baseDir
-// instead of the system default. Empty baseDir behaves like New().
-func NewWithBaseDir[V any](baseDir string) *SpillStore[V] {
+// When baseDir is non-empty, temp dirs for spill files are created under it;
+// otherwise the system default (os.TempDir) is used.
+func New[V any](baseDir string) *SpillStore[V] {
 	return &SpillStore[V]{
 		current: make(map[string]V),
 		baseDir: baseDir,

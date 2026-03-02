@@ -346,36 +346,6 @@ func TestFormatter_extractMetrics(t *testing.T) {
 	}
 }
 
-func TestFormatter_toFloat(t *testing.T) {
-	t.Parallel()
-
-	formatter := NewFormatter(FormatConfig{})
-
-	tests := []struct {
-		value    any
-		name     string
-		expected float64
-		ok       bool
-	}{
-		{3.14, "float64", 3.14, true},
-		{42, "int", 42.0, true},
-		{int32(10), "int32", 10.0, true},
-		{int64(100), "int64", 100.0, true},
-		{"invalid", "string", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result, ok := formatter.toFloat(tt.value)
-			if ok != tt.ok || (ok && result != tt.expected) {
-				t.Errorf("toFloat(%v) = (%f, %v), want (%f, %v)", tt.value, result, ok, tt.expected, tt.ok)
-			}
-		})
-	}
-}
-
 func TestFormatter_getCollectionKeys(t *testing.T) {
 	t.Parallel()
 

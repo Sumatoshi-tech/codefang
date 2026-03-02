@@ -3,8 +3,6 @@ package shotness
 
 import (
 	"context"
-	"maps"
-	"sort"
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -52,6 +50,15 @@ type CommitData struct {
 type CommitSummary struct {
 	NodesTouched  int `json:"nodes_touched"`
 	CouplingPairs int `json:"coupling_pairs"`
+}
+
+// toMap returns a JSON-friendly representation of the commit summary.
+// This is the single source of truth for serializing CommitSummary to map[string]any.
+func (cs *CommitSummary) toMap() map[string]any {
+	return map[string]any{
+		"nodes_touched":  cs.NodesTouched,
+		"coupling_pairs": cs.CouplingPairs,
+	}
 }
 
 // TickData is the per-tick aggregated payload stored in analyze.TICK.Data.
@@ -121,7 +128,10 @@ func NewAnalyzer() *Analyzer {
 			Description: "Structural hotness - a fine-grained alternative to --couples.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:         false,
+		CPUHeavyFlag:       true,
+		EstimatedStateSize: workingStateSize,
+		EstimatedTCSize:    avgTCSize,
 		ConfigOptions: []pipeline.ConfigurationOption{
 			{
 				Name:        ConfigShotnessDSLStruct,
@@ -138,11 +148,13 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultShotnessDSLName,
 			},
 		},
-		ComputeMetricsFn: computeMetricsSafe,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn:     newAggregator,
 	}
 
 	a.TicksToReportFn = ticksToReport
+	a.SerializeTextFn = a.generateText
+	a.SerializePlotFn = a.generatePlot
 
 	return a
 }
@@ -150,29 +162,6 @@ func NewAnalyzer() *Analyzer {
 // Name returns the analyzer name.
 func (s *Analyzer) Name() string {
 	return "Shotness"
-}
-
-// CPUHeavy indicates this analyzer does heavy computation.
-func (s *Analyzer) CPUHeavy() bool {
-	return true
-}
-
-func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
-	if len(report) == 0 {
-		return &ComputedMetrics{}, nil
-	}
-
-	return ComputeAllMetrics(report)
-}
-
-// NewAggregator creates an aggregator for this analyzer.
-func (s *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return s.AggregatorFn(opts)
-}
-
-// ReportFromTICKs converts aggregated TICKs into a Report.
-func (s *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return s.TicksToReportFn(ctx, ticks), nil
 }
 
 // Configure sets up the analyzer with the provided facts.
@@ -543,9 +532,6 @@ func (s *Analyzer) DiscardState() {
 	s.files = map[string]map[string]*nodeShotness{}
 }
 
-// SequentialOnly returns false because shotness analysis can be parallelized.
-func (s *Analyzer) SequentialOnly() bool { return false }
-
 // NeedsUAST returns true to enable the UAST pipeline.
 func (s *Analyzer) NeedsUAST() bool { return true }
 
@@ -593,290 +579,6 @@ func (s *Analyzer) rebuildFilesMap() {
 
 		s.files[fileName][key] = ns
 	}
-}
-
-func newAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	agg := analyze.NewGenericAggregator[*TickData, *TickData](
-		opts,
-		extractTC,
-		mergeState,
-		sizeState,
-		buildTick,
-	)
-	agg.DrainCommitDataFn = drainShotnessCommitData
-
-	return agg
-}
-
-func drainShotnessCommitData(state *TickData) (stats map[string]any, tickHashes map[int][]gitlib.Hash) {
-	if state == nil || len(state.CommitStats) == 0 {
-		return nil, nil
-	}
-
-	result := make(map[string]any, len(state.CommitStats))
-	for hash, cs := range state.CommitStats {
-		result[hash] = map[string]any{
-			"nodes_touched":  cs.NodesTouched,
-			"coupling_pairs": cs.CouplingPairs,
-		}
-	}
-
-	state.CommitStats = make(map[string]*CommitSummary)
-
-	return result, nil
-}
-
-func extractTC(tc analyze.TC, byTick map[int]*TickData) error {
-	cd, ok := tc.Data.(*CommitData)
-	if !ok || cd == nil {
-		return nil
-	}
-
-	acc := getOrCreateTickData(byTick, tc.Tick)
-	accumulateNodes(acc, cd.NodesTouched)
-	couplingPairs := computeCouplingPairs(acc, cd.NodesTouched)
-
-	if !tc.CommitHash.IsZero() {
-		acc.CommitStats[tc.CommitHash.String()] = &CommitSummary{
-			NodesTouched:  len(cd.NodesTouched),
-			CouplingPairs: couplingPairs,
-		}
-	}
-
-	return nil
-}
-
-// getOrCreateTickData returns the TickData for the given tick, creating it if needed.
-func getOrCreateTickData(byTick map[int]*TickData, tick int) *TickData {
-	acc, ok := byTick[tick]
-	if !ok {
-		acc = &TickData{
-			Nodes:       make(map[string]*nodeShotnessData),
-			CommitStats: make(map[string]*CommitSummary),
-		}
-		byTick[tick] = acc
-	}
-
-	return acc
-}
-
-// accumulateNodes merges per-commit node deltas into the tick accumulator.
-func accumulateNodes(acc *TickData, nodesTouched map[string]NodeDelta) {
-	for key, delta := range nodesTouched {
-		nd, exists := acc.Nodes[key]
-		if !exists {
-			nd = &nodeShotnessData{
-				Summary: delta.Summary,
-				Couples: make(map[string]int),
-			}
-			acc.Nodes[key] = nd
-		}
-
-		nd.Count += delta.CountDelta
-	}
-}
-
-// computeCouplingPairs computes coupling pairs from the touched nodes and
-// updates the accumulator's coupling maps. Skips the O(N^2) map updates
-// when too many nodes are touched (mass refactor -- coupling signal is noise).
-func computeCouplingPairs(acc *TickData, nodesTouched map[string]NodeDelta) int {
-	n := len(nodesTouched)
-	if n < minCouplingNodes {
-		return 0
-	}
-
-	couplingPairs := n * (n - 1) / combinatorialPairDivisor
-
-	if n > maxCouplingNodes {
-		return couplingPairs
-	}
-
-	keys := make([]string, 0, n)
-	for key := range nodesTouched {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	for i, key1 := range keys {
-		for _, key2 := range keys[i+1:] {
-			if nd, exists := acc.Nodes[key1]; exists {
-				nd.Couples[key2]++
-			}
-
-			if nd, exists := acc.Nodes[key2]; exists {
-				nd.Couples[key1]++
-			}
-		}
-	}
-
-	return couplingPairs
-}
-
-func mergeState(existing, incoming *TickData) *TickData {
-	if existing == nil {
-		return incoming
-	}
-
-	if incoming == nil {
-		return existing
-	}
-
-	if existing.Nodes == nil {
-		existing.Nodes = make(map[string]*nodeShotnessData)
-	}
-
-	if existing.CommitStats == nil {
-		existing.CommitStats = make(map[string]*CommitSummary)
-	}
-
-	maps.Copy(existing.CommitStats, incoming.CommitStats)
-
-	for key, incNode := range incoming.Nodes {
-		exNode, found := existing.Nodes[key]
-		if found {
-			exNode.Count += incNode.Count
-			for ck, cv := range incNode.Couples {
-				exNode.Couples[ck] += cv
-			}
-		} else {
-			existing.Nodes[key] = &nodeShotnessData{
-				Summary: incNode.Summary,
-				Count:   incNode.Count,
-				Couples: copyIntMap(incNode.Couples),
-			}
-		}
-	}
-
-	return existing
-}
-
-func sizeState(state *TickData) int64 {
-	if state == nil {
-		return 0
-	}
-
-	const (
-		overheadPerNode   int64 = 150
-		overheadPerCouple int64 = 50
-	)
-
-	var size int64
-	for _, nd := range state.Nodes {
-		size += overheadPerNode
-		size += int64(len(nd.Couples)) * overheadPerCouple
-	}
-
-	return size
-}
-
-func buildTick(tick int, state *TickData) (analyze.TICK, error) {
-	if state == nil {
-		return analyze.TICK{Tick: tick}, nil
-	}
-
-	return analyze.TICK{
-		Tick: tick,
-		Data: state, // TickData already has a copy internally? Or we can just pass it directly.
-	}, nil
-}
-
-func ticksToReport(_ context.Context, ticks []analyze.TICK) analyze.Report {
-	merged := make(map[string]*nodeShotnessData)
-	commitStats := make(map[string]*CommitSummary)
-	commitsByTick := make(map[int][]gitlib.Hash)
-
-	for _, tick := range ticks {
-		td, ok := tick.Data.(*TickData)
-		if !ok || td == nil {
-			continue
-		}
-
-		mergeNodesInto(merged, td.Nodes)
-
-		for hash, cs := range td.CommitStats {
-			commitStats[hash] = cs
-			commitsByTick[tick.Tick] = append(commitsByTick[tick.Tick], gitlib.NewHash(hash))
-		}
-	}
-
-	report := buildReportFromMerged(merged)
-
-	if len(commitStats) > 0 {
-		report["commit_stats"] = commitStats
-		report["commits_by_tick"] = commitsByTick
-	}
-
-	return report
-}
-
-// mergeNodesInto merges source node data into the destination map,
-// accumulating counts and coupling pairs.
-func mergeNodesInto(dst map[string]*nodeShotnessData, src map[string]*nodeShotnessData) {
-	for key, nd := range src {
-		existing, found := dst[key]
-		if !found {
-			dst[key] = &nodeShotnessData{
-				Summary: nd.Summary,
-				Count:   nd.Count,
-				Couples: copyIntMap(nd.Couples),
-			}
-
-			continue
-		}
-
-		existing.Count += nd.Count
-
-		for ck, cv := range nd.Couples {
-			existing.Couples[ck] += cv
-		}
-	}
-}
-
-// buildReportFromMerged builds the Nodes/Counters report from merged node data.
-func buildReportFromMerged(merged map[string]*nodeShotnessData) analyze.Report {
-	nodes := make([]NodeSummary, len(merged))
-	counters := make([]map[int]int, len(merged))
-
-	keys := make([]string, 0, len(merged))
-	for key := range merged {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	reverseKeys := make(map[string]int, len(keys))
-	for i, key := range keys {
-		reverseKeys[key] = i
-	}
-
-	for i, key := range keys {
-		nd := merged[key]
-		nodes[i] = nd.Summary
-		counter := map[int]int{}
-		counters[i] = counter
-
-		counter[i] = nd.Count
-
-		for ck, val := range nd.Couples {
-			if idx, ok := reverseKeys[ck]; ok {
-				counter[idx] = val
-			}
-		}
-	}
-
-	return analyze.Report{
-		"Nodes":    nodes,
-		"Counters": counters,
-	}
-}
-
-// copyIntMap creates a copy of a map[string]int.
-func copyIntMap(src map[string]int) map[string]int {
-	dst := make(map[string]int, len(src))
-	maps.Copy(dst, src)
-
-	return dst
 }
 
 // extractNodes selects structural nodes (e.g., functions) from a UAST and maps them by extracted name.
@@ -931,10 +633,7 @@ func (s *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any
 	result := make(map[string]any, len(commitStats))
 
 	for hash, cs := range commitStats {
-		result[hash] = map[string]any{
-			"nodes_touched":  cs.NodesTouched,
-			"coupling_pairs": cs.CouplingPairs,
-		}
+		result[hash] = cs.toMap()
 	}
 
 	return result

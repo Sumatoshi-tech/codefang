@@ -1,5 +1,7 @@
 package interval
 
+// FRD: specs/frds/FRD-20260302-generic-interval-tree.md.
+
 import (
 	"testing"
 
@@ -32,7 +34,7 @@ const (
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	assert.NotNil(t, tree)
 	assert.Equal(t, 0, tree.Len())
 }
@@ -41,7 +43,7 @@ func TestNew(t *testing.T) {
 func TestInsert_Len(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	assert.Equal(t, 1, tree.Len())
 
@@ -53,7 +55,7 @@ func TestInsert_Len(t *testing.T) {
 func TestInsert_QueryOverlap_Basic(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	results := tree.QueryOverlap(testLow15, testHigh25)
@@ -67,7 +69,7 @@ func TestInsert_QueryOverlap_Basic(t *testing.T) {
 func TestQueryOverlap_NoMatch(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	results := tree.QueryOverlap(testLow30, testHigh40)
@@ -78,7 +80,7 @@ func TestQueryOverlap_NoMatch(t *testing.T) {
 func TestQueryOverlap_EmptyTree(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	results := tree.QueryOverlap(testLow10, testHigh20)
 	assert.Nil(t, results)
@@ -88,7 +90,7 @@ func TestQueryOverlap_EmptyTree(t *testing.T) {
 func TestQueryOverlap_MultipleResults(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow15, testHigh25, testValue2)
 	tree.Insert(testLow30, testHigh40, testValue3)
@@ -102,7 +104,7 @@ func TestQueryOverlap_MultipleResults(t *testing.T) {
 func TestQueryPoint_Basic(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow30, testHigh40, testValue2)
 
@@ -115,7 +117,7 @@ func TestQueryPoint_Basic(t *testing.T) {
 func TestQueryPoint_Boundary(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	// Point at Low boundary.
@@ -131,7 +133,7 @@ func TestQueryPoint_Boundary(t *testing.T) {
 func TestQueryPoint_NoMatch(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	results := tree.QueryPoint(testPoint50)
@@ -142,7 +144,7 @@ func TestQueryPoint_NoMatch(t *testing.T) {
 func TestDelete_Basic(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	deleted := tree.Delete(testLow10, testHigh20, testValue1)
@@ -157,7 +159,7 @@ func TestDelete_Basic(t *testing.T) {
 func TestDelete_NonExistent(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 
 	deleted := tree.Delete(testLow30, testHigh40, testValue2)
@@ -169,7 +171,7 @@ func TestDelete_NonExistent(t *testing.T) {
 func TestDelete_EmptyTree(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	deleted := tree.Delete(testLow10, testHigh20, testValue1)
 	assert.False(t, deleted)
@@ -179,7 +181,7 @@ func TestDelete_EmptyTree(t *testing.T) {
 func TestDelete_PreservesOthers(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow30, testHigh40, testValue2)
 
@@ -194,7 +196,7 @@ func TestDelete_PreservesOthers(t *testing.T) {
 func TestClear(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow30, testHigh40, testValue2)
 	assert.Equal(t, 2, tree.Len())
@@ -210,7 +212,7 @@ func TestClear(t *testing.T) {
 func TestAdjacentNonOverlapping(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(21, testHigh40, testValue2)
 
@@ -230,7 +232,7 @@ func TestAdjacentNonOverlapping(t *testing.T) {
 func TestZeroWidthInterval(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow15, testLow15, testValue1)
 
 	results := tree.QueryPoint(testLow15)
@@ -244,7 +246,7 @@ func TestZeroWidthInterval(t *testing.T) {
 func TestLargeScale(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	// Insert 10K intervals: [i*10, i*10+5] for i in [0, 10000).
 	const (
@@ -278,7 +280,7 @@ func TestLargeScale(t *testing.T) {
 func TestDeleteMultiple(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 
 	const count = 20
 
@@ -301,7 +303,7 @@ func TestDeleteMultiple(t *testing.T) {
 func TestInsertDuplicateIntervals(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow10, testHigh20, testValue1)
 	assert.Equal(t, 2, tree.Len())
@@ -321,15 +323,15 @@ func TestInsertDuplicateIntervals(t *testing.T) {
 func TestCompareIntervals(t *testing.T) {
 	t.Parallel()
 
-	a := Interval{Low: testLow10, High: testHigh20}
-	b := Interval{Low: testLow15, High: testHigh25}
+	a := Interval[uint32, uint32]{Low: testLow10, High: testHigh20}
+	b := Interval[uint32, uint32]{Low: testLow15, High: testHigh25}
 
 	assert.Negative(t, compareIntervals(a, b))
 	assert.Positive(t, compareIntervals(b, a))
 	assert.Equal(t, 0, compareIntervals(a, a))
 
 	// Same Low, different High.
-	c := Interval{Low: testLow10, High: testHigh25}
+	c := Interval[uint32, uint32]{Low: testLow10, High: testHigh25}
 	assert.Negative(t, compareIntervals(a, c))
 	assert.Positive(t, compareIntervals(c, a))
 }
@@ -338,9 +340,9 @@ func TestCompareIntervals(t *testing.T) {
 func TestNodeColor(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, black, nodeColor(nil))
+	assert.Equal(t, black, nodeColor[uint32, uint32](nil))
 
-	n := &node{color: red}
+	n := &node[uint32, uint32]{color: red}
 	assert.Equal(t, red, nodeColor(n))
 
 	n.color = black
@@ -351,7 +353,7 @@ func TestNodeColor(t *testing.T) {
 func TestWideOverlap(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Insert(testLow15, testHigh25, testValue2)
 	tree.Insert(testLow30, testHigh40, testValue3)
@@ -366,7 +368,7 @@ func TestWideOverlap(t *testing.T) {
 func TestDeleteAndReinsert(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh20, testValue1)
 	tree.Delete(testLow10, testHigh20, testValue1)
 	assert.Equal(t, 0, tree.Len())
@@ -383,7 +385,7 @@ func TestDeleteAndReinsert(t *testing.T) {
 func TestMaxHighMaintenance(t *testing.T) {
 	t.Parallel()
 
-	tree := New()
+	tree := New[uint32, uint32]()
 	tree.Insert(testLow10, testHigh60, testValue1)
 	tree.Insert(testLow30, testHigh40, testValue2)
 
@@ -395,4 +397,93 @@ func TestMaxHighMaintenance(t *testing.T) {
 	tree.Delete(testLow10, testHigh60, testValue1)
 	require.NotNil(t, tree.root)
 	assert.Equal(t, uint32(testHigh40), tree.root.maxHigh)
+}
+
+// Int key test constants.
+const (
+	testIntLow100   = 100
+	testIntHigh200  = 200
+	testIntLow150   = 150
+	testIntHigh250  = 250
+	testIntLow300   = 300
+	testIntHigh400  = 400
+	testIntValueA   = "alpha"
+	testIntValueB   = "beta"
+	testIntValueC   = "gamma"
+	testIntPoint175 = 175
+)
+
+// TestGeneric_IntKeys verifies the tree works with int keys and string values.
+func TestGeneric_IntKeys(t *testing.T) {
+	t.Parallel()
+
+	tree := New[int, string]()
+	tree.Insert(testIntLow100, testIntHigh200, testIntValueA)
+	tree.Insert(testIntLow150, testIntHigh250, testIntValueB)
+	tree.Insert(testIntLow300, testIntHigh400, testIntValueC)
+	assert.Equal(t, 3, tree.Len())
+
+	// Point query at 175 should find both [100,200] and [150,250].
+	results := tree.QueryPoint(testIntPoint175)
+	assert.Len(t, results, 2)
+
+	// Query [300,400] should find only gamma.
+	results = tree.QueryOverlap(testIntLow300, testIntHigh400)
+	require.Len(t, results, 1)
+	assert.Equal(t, testIntValueC, results[0].Value)
+
+	// Delete alpha, verify it's gone.
+	ok := tree.Delete(testIntLow100, testIntHigh200, testIntValueA)
+	assert.True(t, ok)
+	assert.Equal(t, 2, tree.Len())
+
+	results = tree.QueryPoint(testIntPoint175)
+	require.Len(t, results, 1)
+	assert.Equal(t, testIntValueB, results[0].Value)
+}
+
+// Int64 key test constants.
+const (
+	testInt64Low1B   int64 = 1_000_000_000
+	testInt64High2B  int64 = 2_000_000_000
+	testInt64Low15B  int64 = 1_500_000_000
+	testInt64High25B int64 = 2_500_000_000
+	testInt64Low3B   int64 = 3_000_000_000
+	testInt64High4B  int64 = 4_000_000_000
+	testInt64Value1  int64 = 1
+	testInt64Value2  int64 = 2
+	testInt64Value3  int64 = 3
+	testInt64Point   int64 = 1_750_000_000
+)
+
+// TestGeneric_Int64Keys verifies the tree works with int64 keys.
+func TestGeneric_Int64Keys(t *testing.T) {
+	t.Parallel()
+
+	tree := New[int64, int64]()
+	tree.Insert(testInt64Low1B, testInt64High2B, testInt64Value1)
+	tree.Insert(testInt64Low15B, testInt64High25B, testInt64Value2)
+	tree.Insert(testInt64Low3B, testInt64High4B, testInt64Value3)
+	assert.Equal(t, 3, tree.Len())
+
+	// Point query at 1.75B should find [1B,2B] and [1.5B,2.5B].
+	results := tree.QueryPoint(testInt64Point)
+	assert.Len(t, results, 2)
+
+	// Non-overlapping query should return empty.
+	results = tree.QueryOverlap(testInt64High4B+1, testInt64High4B+testInt64Low1B)
+	assert.Empty(t, results)
+
+	// Delete and verify.
+	ok := tree.Delete(testInt64Low15B, testInt64High25B, testInt64Value2)
+	assert.True(t, ok)
+	assert.Equal(t, 2, tree.Len())
+
+	results = tree.QueryPoint(testInt64Point)
+	require.Len(t, results, 1)
+	assert.Equal(t, testInt64Value1, results[0].Value)
+
+	// Clear and verify.
+	tree.Clear()
+	assert.Equal(t, 0, tree.Len())
 }

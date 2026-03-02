@@ -36,14 +36,14 @@ func (mp *MetricsProcessor) ProcessReport(report analyze.Report) {
 	// Process numeric metrics.
 	for key, value := range report {
 		if mp.isNumericMetric(key) {
-			if floatVal, ok := mp.extractFloat(value); ok {
+			if floatVal, ok := ToFloat64(value); ok {
 				mp.metrics[key] += floatVal
 			}
 		}
 
 		// Process count metrics.
 		if mp.isCountMetric(key) {
-			if intVal, ok := mp.extractInt(value); ok {
+			if intVal, ok := ToInt(value); ok {
 				mp.counts[key] += intVal
 			}
 		}
@@ -91,36 +91,4 @@ func (mp *MetricsProcessor) isNumericMetric(key string) bool {
 // isCountMetric checks if a key represents a count metric.
 func (mp *MetricsProcessor) isCountMetric(key string) bool {
 	return slices.Contains(mp.countKeys, key)
-}
-
-// extractFloat safely extracts a float value.
-func (mp *MetricsProcessor) extractFloat(value any) (float64, bool) {
-	switch typedVal := value.(type) {
-	case float64:
-		return typedVal, true
-	case int:
-		return float64(typedVal), true
-	case int32:
-		return float64(typedVal), true
-	case int64:
-		return float64(typedVal), true
-	default:
-		return 0, false
-	}
-}
-
-// extractInt safely extracts an int value.
-func (mp *MetricsProcessor) extractInt(value any) (int, bool) {
-	switch typedVal := value.(type) {
-	case int:
-		return typedVal, true
-	case int32:
-		return int(typedVal), true
-	case int64:
-		return int(typedVal), true
-	case float64:
-		return int(typedVal), true
-	default:
-		return 0, false
-	}
 }

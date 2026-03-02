@@ -27,8 +27,8 @@ type DataExtractor struct {
 // NewDataExtractor creates a new DataExtractor with configurable extraction settings.
 func NewDataExtractor(config ExtractionConfig) *DataExtractor {
 	if config.DefaultExtractors {
-		config.NameExtractors = mergeNameExtractors(config.NameExtractors, getDefaultNameExtractors())
-		config.ValueExtractors = mergeValueExtractors(config.ValueExtractors, getDefaultValueExtractors())
+		config.NameExtractors = mergeExtractors(config.NameExtractors, getDefaultNameExtractors())
+		config.ValueExtractors = mergeExtractors(config.ValueExtractors, getDefaultValueExtractors())
 	}
 
 	return &DataExtractor{
@@ -56,46 +56,17 @@ func (de *DataExtractor) ExtractValue(n *node.Node, extractorKey string) (any, b
 
 // ExtractNameFromProps extracts a name from node properties.
 func (de *DataExtractor) ExtractNameFromProps(n *node.Node, propKey string) (string, bool) {
-	if n == nil || n.Props == nil {
-		return "", false
-	}
-
-	if value, exists := n.Props[propKey]; exists {
-		return value, true
-	}
-
-	return "", false
+	return ExtractNameFromProps(n, propKey)
 }
 
 // ExtractNameFromToken extracts a name from node token.
 func (de *DataExtractor) ExtractNameFromToken(n *node.Node) (string, bool) {
-	if n == nil || n.Token == "" {
-		return "", false
-	}
-
-	return n.Token, true
+	return ExtractNameFromToken(n)
 }
 
 // ExtractNameFromChildren extracts a name from node children.
 func (de *DataExtractor) ExtractNameFromChildren(n *node.Node, childIndex int) (string, bool) {
-	if n == nil || len(n.Children) <= childIndex {
-		return "", false
-	}
-
-	child := n.Children[childIndex]
-	if child == nil {
-		return "", false
-	}
-	// Try to extract from child's token first.
-	if name, ok := de.ExtractNameFromToken(child); ok {
-		return name, true
-	}
-	// Try to extract from child's properties.
-	if name, ok := de.ExtractNameFromProps(child, "name"); ok {
-		return name, true
-	}
-
-	return "", false
+	return ExtractNameFromChildren(n, childIndex)
 }
 
 // ExtractNodeType extracts the node type.
@@ -160,44 +131,25 @@ func (de *DataExtractor) ExtractChildCount(n *node.Node) (int, bool) {
 
 // Generic extraction functions that can be used by any analyzer.
 
-// ExtractFunctionName extracts a function name from a node.
-func ExtractFunctionName(funcNode *node.Node) (string, bool) {
-	if funcNode == nil {
+// ExtractEntityName extracts a name from a node (function, variable, class, etc.).
+// It tries properties["name"], then token, then the first child's token/properties.
+func ExtractEntityName(n *node.Node) (string, bool) {
+	if n == nil {
 		return "", false
 	}
 
 	// Try to extract from properties first.
-	if name, ok := ExtractNameFromProps(funcNode, "name"); ok {
+	if name, ok := ExtractNameFromProps(n, "name"); ok {
 		return name, true
 	}
 
 	// Try to extract from token.
-	if name, ok := ExtractNameFromToken(funcNode); ok {
+	if name, ok := ExtractNameFromToken(n); ok {
 		return name, true
 	}
 
 	// Try to extract from children.
-	return ExtractNameFromChildren(funcNode, 0)
-}
-
-// ExtractVariableName extracts a variable name from a node.
-func ExtractVariableName(varNode *node.Node) (string, bool) {
-	if varNode == nil {
-		return "", false
-	}
-
-	// Try to extract from properties first.
-	if name, ok := ExtractNameFromProps(varNode, "name"); ok {
-		return name, true
-	}
-
-	// Try to extract from token.
-	if name, ok := ExtractNameFromToken(varNode); ok {
-		return name, true
-	}
-
-	// Try to extract from children.
-	return ExtractNameFromChildren(varNode, 0)
+	return ExtractNameFromChildren(n, 0)
 }
 
 // ExtractNameFromProps extracts a name from node properties.
@@ -246,29 +198,14 @@ func ExtractNameFromChildren(n *node.Node, childIndex int) (string, bool) {
 	return "", false
 }
 
-// mergeNameExtractors merges custom extractors with defaults.
-func mergeNameExtractors(custom, defaults map[string]NameExtractor) map[string]NameExtractor {
+// mergeExtractors merges custom extractors with defaults. Custom entries override defaults.
+func mergeExtractors[V any](custom, defaults map[string]V) map[string]V {
 	if custom == nil {
 		return defaults
 	}
 
-	result := make(map[string]NameExtractor)
+	result := make(map[string]V)
 	maps.Copy(result, defaults)
-
-	maps.Copy(result, custom)
-
-	return result
-}
-
-// mergeValueExtractors merges custom extractors with defaults.
-func mergeValueExtractors(custom, defaults map[string]ValueExtractor) map[string]ValueExtractor {
-	if custom == nil {
-		return defaults
-	}
-
-	result := make(map[string]ValueExtractor)
-	maps.Copy(result, defaults)
-
 	maps.Copy(result, custom)
 
 	return result

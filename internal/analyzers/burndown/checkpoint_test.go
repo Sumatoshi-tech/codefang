@@ -15,7 +15,7 @@ func TestHistoryAnalyzer_CheckpointRoundTrip(t *testing.T) {
 	// Create analyzer with some state.
 	original := NewHistoryAnalyzer()
 	original.pathInterner = NewPathInterner()
-	original.reversedPeopleDict = []string{"alice", "bob"}
+	original.ReversedPeopleDict = []string{"alice", "bob"}
 	original.tick = 42
 	original.previousTick = 41
 	original.renames = map[string]string{"old.go": "new.go"}
@@ -65,7 +65,7 @@ func TestHistoryAnalyzer_CheckpointRoundTrip(t *testing.T) {
 	assert.NotEqual(t, id2, id3)
 
 	// Verify reversed people dict.
-	assert.Equal(t, original.reversedPeopleDict, restored.reversedPeopleDict)
+	assert.Equal(t, original.ReversedPeopleDict, restored.ReversedPeopleDict)
 
 	// Verify tick state.
 	assert.Equal(t, original.tick, restored.tick)

@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 )
 
 // --- Input Data Types ---.
@@ -195,15 +196,14 @@ const (
 	RiskLevelLow    = "LOW"
 )
 
+// changeRiskClassifier classifies change counts into risk levels.
+var changeRiskClassifier = common.NewClassifier([]common.Threshold[int]{
+	{Limit: HotspotThresholdHigh, Label: RiskLevelHigh},
+	{Limit: HotspotThresholdMedium, Label: RiskLevelMedium},
+}, RiskLevelLow)
+
 func classifyChangeRisk(changeCount int) string {
-	switch {
-	case changeCount >= HotspotThresholdHigh:
-		return RiskLevelHigh
-	case changeCount >= HotspotThresholdMedium:
-		return RiskLevelMedium
-	default:
-		return RiskLevelLow
-	}
+	return changeRiskClassifier.Classify(changeCount)
 }
 
 // computeHotspotNodes identifies hotspot nodes (MEDIUM and HIGH risk only).

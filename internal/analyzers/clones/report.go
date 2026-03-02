@@ -1,5 +1,7 @@
 package clones
 
+import "github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
+
 // Clone type constants.
 const (
 	// CloneType1 represents an exact clone (identical AST structure and tokens).
@@ -52,17 +54,15 @@ type ComputedMetrics struct {
 	Message         string      `json:"message"           yaml:"message"`
 }
 
+// cloneTypeClassifier classifies clone similarity into clone types.
+var cloneTypeClassifier = common.NewClassifier([]common.Threshold[float64]{
+	{Limit: similarityExact, Label: CloneType1},
+	{Limit: similarityType2, Label: CloneType2},
+}, CloneType3)
+
 // classifyCloneType determines the clone type based on similarity score.
 func classifyCloneType(similarity float64) string {
-	if similarity >= similarityExact {
-		return CloneType1
-	}
-
-	if similarity >= similarityType2 {
-		return CloneType2
-	}
-
-	return CloneType3
+	return cloneTypeClassifier.Classify(similarity)
 }
 
 // PairKey is a canonical key for a clone pair to avoid duplicates.

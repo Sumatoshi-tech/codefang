@@ -551,6 +551,12 @@ linters:
       - path: tools/
         linters: [funlen]
 
+      # Worker.Start() spawns a goroutine where context flows through channel messages,
+      # not as a direct parameter. contextcheck cannot trace this pattern.
+      - path: internal/framework/coordinator\.go
+        text: "should pass the context parameter"
+        linters: [contextcheck]
+
       # Cross-function span lifecycle pattern; spancheck false positive.
       - path: internal/observability/tracer_filter\.go
         linters: [spancheck]

@@ -16,26 +16,8 @@ import (
 	"hash/fnv"
 	"math"
 	"sync"
-)
 
-const (
-	// baseSeed is the starting seed for deterministic seed generation.
-	baseSeed = 0x517cc1b727220a95
-
-	// mixShift1 is the first shift in the splitmix64 finalizer.
-	mixShift1 = 30
-
-	// mixMul1 is the first multiplier in the splitmix64 finalizer.
-	mixMul1 = 0xbf58476d1ce4e5b9
-
-	// mixShift2 is the second shift in the splitmix64 finalizer.
-	mixShift2 = 27
-
-	// mixMul2 is the second multiplier in the splitmix64 finalizer.
-	mixMul2 = 0x94d049bb133111eb
-
-	// mixShift3 is the third shift in the splitmix64 finalizer.
-	mixShift3 = 31
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/internal/hashutil"
 )
 
 var (
@@ -70,7 +52,7 @@ func New(epsilon, delta float64) (*Sketch, error) {
 
 	width := uint(math.Ceil(math.E / epsilon))
 	depth := uint(math.Ceil(math.Log(1 / delta)))
-	seeds := generateSeeds(depth)
+	seeds := hashutil.GenerateSeeds(int(depth), hashutil.Mix64)
 
 	return &Sketch{
 		counters: make([]int64, width*depth),
@@ -162,28 +144,4 @@ func (s *Sketch) hashKey(row uint, key []byte) uint {
 	_, _ = h.Write(key)
 
 	return uint(h.Sum64()) % s.width
-}
-
-// generateSeeds creates depth deterministic seeds using splitmix64.
-func generateSeeds(depth uint) []uint64 {
-	seeds := make([]uint64, depth)
-	state := uint64(baseSeed)
-
-	for i := range depth {
-		state = mix64(state)
-		seeds[i] = state
-	}
-
-	return seeds
-}
-
-// mix64 applies a splitmix64-style finalizer for full-avalanche mixing.
-func mix64(v uint64) uint64 {
-	v ^= v >> mixShift1
-	v *= mixMul1
-	v ^= v >> mixShift2
-	v *= mixMul2
-	v ^= v >> mixShift3
-
-	return v
 }

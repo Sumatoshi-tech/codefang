@@ -72,7 +72,12 @@ func TestDiffPipeline_CrossCommitBatching(t *testing.T) {
 		for {
 			select {
 			case req := <-poolCh:
-				diffReq, ok := req.(gitlib.DiffBatchRequest)
+				inner := req
+				if cr, ok := req.(gitlib.ContextualRequest); ok {
+					inner = cr.WorkerRequest
+				}
+
+				diffReq, ok := inner.(gitlib.DiffBatchRequest)
 				if !ok {
 					continue
 				}

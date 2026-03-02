@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -157,7 +158,7 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 	}
 
 	td := &TickResult{
-		GlobalHistory:   cloneSparseHistory(a.globalHistory),
+		GlobalHistory:   mapx.CloneNested(a.globalHistory),
 		PeopleHistories: a.clonePeopleHistories(),
 		Matrix:          a.cloneMatrix(),
 		FileHistories:   a.cloneFileHistories(),
@@ -204,7 +205,7 @@ func (a *Aggregator) clonePeopleHistories() []sparseHistory {
 	result := make([]sparseHistory, maxAuthor+1)
 
 	for author, history := range a.peopleHistories {
-		result[author] = cloneSparseHistory(history)
+		result[author] = mapx.CloneNested(history)
 	}
 
 	return result
@@ -236,16 +237,7 @@ func (a *Aggregator) cloneFileOwnership() map[PathID]map[int]int {
 		return nil
 	}
 
-	result := make(map[PathID]map[int]int, len(a.fileOwnership))
-
-	for pathID, authors := range a.fileOwnership {
-		clone := make(map[int]int, len(authors))
-		maps.Copy(clone, authors)
-
-		result[pathID] = clone
-	}
-
-	return result
+	return mapx.CloneNested(a.fileOwnership)
 }
 
 func (a *Aggregator) cloneFileHistories() map[PathID]sparseHistory {
@@ -253,13 +245,7 @@ func (a *Aggregator) cloneFileHistories() map[PathID]sparseHistory {
 		return nil
 	}
 
-	result := make(map[PathID]sparseHistory, len(a.fileHistories))
-
-	for pathID, history := range a.fileHistories {
-		result[pathID] = cloneSparseHistory(history)
-	}
-
-	return result
+	return mapx.CloneFunc(a.fileHistories, mapx.CloneNested)
 }
 
 // spillSnapshot holds all aggregator state for disk spilling.

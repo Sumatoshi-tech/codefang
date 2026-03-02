@@ -393,7 +393,7 @@ func (c *Analyzer) extractFunction(n *node.Node) Function {
 func (c *Analyzer) extractFunctionName(n *node.Node) string {
 	name, _ := c.extractor.ExtractName(n, "function_name")
 	if name == "" {
-		name, _ = common.ExtractFunctionName(n)
+		name, _ = common.ExtractEntityName(n)
 	}
 
 	return name
@@ -444,7 +444,7 @@ func (c *Analyzer) isVariableIdentifier(n *node.Node) bool {
 func (c *Analyzer) addVariableIfValid(n *node.Node, variables *[]string) {
 	if name, ok := c.extractor.ExtractName(n, "variable_name"); ok && name != "" {
 		*variables = append(*variables, name)
-	} else if varName, varOK := common.ExtractVariableName(n); varOK && varName != "" {
+	} else if varName, varOK := common.ExtractEntityName(n); varOK && varName != "" {
 		*variables = append(*variables, varName)
 	}
 }

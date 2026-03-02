@@ -658,7 +658,7 @@ func TestConfigure_WithPeopleTracking(t *testing.T) {
 	assert.Equal(t, 10, b.Sampling)
 	assert.True(t, b.TrackFiles)
 	assert.Equal(t, 3, b.PeopleNumber)
-	assert.Equal(t, []string{"Alice", "Bob", "Charlie"}, b.reversedPeopleDict)
+	assert.Equal(t, []string{"Alice", "Bob", "Charlie"}, b.ReversedPeopleDict)
 	assert.Equal(t, 500, b.HibernationThreshold)
 	assert.True(t, b.HibernationToDisk)
 	assert.True(t, b.Debug)

@@ -2,7 +2,6 @@ package observability
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -35,45 +34,20 @@ type REDMetrics struct {
 
 // NewREDMetrics creates RED metric instruments from the given meter.
 func NewREDMetrics(mt metric.Meter) (*REDMetrics, error) {
-	reqTotal, err := mt.Int64Counter(metricRequestsTotal,
-		metric.WithDescription("Total number of requests"),
-		metric.WithUnit("{request}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create %s: %w", metricRequestsTotal, err)
+	b := newMetricBuilder(mt)
+
+	rm := &REDMetrics{
+		requestsTotal:    b.counter(metricRequestsTotal, "Total number of requests", "{request}"),
+		requestDuration:  b.histogram(metricRequestDuration, "Request duration in seconds", "s", durationBucketBoundaries...),
+		errorsTotal:      b.counter(metricErrorsTotal, "Total number of errors", "{error}"),
+		inflightRequests: b.upDownCounter(metricInflightRequests, "Number of in-flight requests", "{request}"),
 	}
 
-	reqDuration, err := mt.Float64Histogram(metricRequestDuration,
-		metric.WithDescription("Request duration in seconds"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(durationBucketBoundaries...),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create %s: %w", metricRequestDuration, err)
+	if b.err != nil {
+		return nil, b.err
 	}
 
-	errTotal, err := mt.Int64Counter(metricErrorsTotal,
-		metric.WithDescription("Total number of errors"),
-		metric.WithUnit("{error}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create %s: %w", metricErrorsTotal, err)
-	}
-
-	inflight, err := mt.Int64UpDownCounter(metricInflightRequests,
-		metric.WithDescription("Number of in-flight requests"),
-		metric.WithUnit("{request}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create %s: %w", metricInflightRequests, err)
-	}
-
-	return &REDMetrics{
-		requestsTotal:    reqTotal,
-		requestDuration:  reqDuration,
-		errorsTotal:      errTotal,
-		inflightRequests: inflight,
-	}, nil
+	return rm, nil
 }
 
 // RecordRequest records a completed request with its operation, status, and duration.

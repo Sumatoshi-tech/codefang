@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
@@ -74,9 +75,9 @@ func buildTestDevTicks() (ticks []analyze.TICK, commitsByTick map[int][]gitlib.H
 
 func newTestAnalyzer(commitsByTick map[int][]gitlib.Hash) *Analyzer {
 	return &Analyzer{
-		reversedPeopleDict: []string{"Alice", "Bob"},
-		tickSize:           defaultHoursPerDay * time.Hour,
-		commitsByTick:      commitsByTick,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"Alice", "Bob"}},
+		tickSize:      defaultHoursPerDay * time.Hour,
+		commitsByTick: commitsByTick,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -66,13 +67,6 @@ func ParseTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
 }
 
-// ReverseCommits reverses the order of commits (to oldest first).
-func ReverseCommits(commits []*Commit) {
-	for i, j := 0, len(commits)-1; i < j; i, j = i+1, j-1 {
-		commits[i], commits[j] = commits[j], commits[i]
-	}
-}
-
 // LoadCommits loads commits from a repository with the given options.
 func LoadCommits(ctx context.Context, repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
 	if opts.HeadOnly {
@@ -118,7 +112,7 @@ func loadHistoryCommits(ctx context.Context, repository *Repository, opts Commit
 	defer iter.Close()
 
 	commits := collectCommits(iter, opts.Limit)
-	ReverseCommits(commits)
+	slices.Reverse(commits)
 
 	return commits, nil
 }

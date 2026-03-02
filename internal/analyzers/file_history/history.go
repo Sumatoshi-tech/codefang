@@ -49,6 +49,9 @@ func NewAnalyzer() *HistoryAnalyzer {
 		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
 			return TicksToReport(ctx, t, ha.repo)
 		},
+		SerializePlotFn: func(result analyze.Report, writer io.Writer) error {
+			return ha.generatePlot(result, writer)
+		},
 	}
 
 	return ha
@@ -156,8 +159,9 @@ func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze
 		},
 	}
 
-	if err := router.Route(changes); err != nil {
-		return nil, err
+	routeErr := router.Route(changes)
+	if routeErr != nil {
+		return nil, routeErr
 	}
 
 	for changeEntry, stats := range h.LineStats.LineStats {
@@ -271,8 +275,9 @@ func (h *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analy
 		h.lastCommitHash = ac.Commit.Hash()
 	}
 
-	if err := h.processFileChanges(h.TreeDiff.Changes, ac.Commit); err != nil {
-		return analyze.TC{}, err
+	processErr := h.processFileChanges(h.TreeDiff.Changes, ac.Commit)
+	if processErr != nil {
+		return analyze.TC{}, processErr
 	}
 
 	if !ac.IsMerge {
@@ -386,49 +391,6 @@ func (h *HistoryAnalyzer) mergeFiles(other map[string]*FileHistory) {
 		// Append hashes.
 		fh.Hashes = append(fh.Hashes, otherFH.Hashes...)
 	}
-}
-
-// Serialize writes the analysis result to the given writer.
-func (h *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
-		return h.generatePlot(result, writer)
-	}
-
-	if h.BaseHistoryAnalyzer != nil {
-		return h.BaseHistoryAnalyzer.Serialize(result, format, writer)
-	}
-
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: ComputeAllMetrics,
-	}).Serialize(result, format, writer)
-}
-
-// SerializeTICKs delegates to BaseHistoryAnalyzer for JSON/YAML/binary; FormatPlot uses ReportFromTICKs and generatePlot.
-func (h *HistoryAnalyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
-		report, err := h.ReportFromTICKs(context.Background(), ticks)
-		if err != nil {
-			return err
-		}
-
-		return h.generatePlot(report, writer)
-	}
-
-	if h.BaseHistoryAnalyzer != nil {
-		return h.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
-	}
-
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: ComputeAllMetrics,
-		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
-			report, err := h.ReportFromTICKs(ctx, t)
-			if err != nil {
-				return nil
-			}
-
-			return report
-		},
-	}).SerializeTICKs(ticks, format, writer)
 }
 
 // FormatReport writes the formatted analysis report to the given writer.

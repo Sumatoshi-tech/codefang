@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Sumatoshi-tech/codefang/internal/streaming"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 func TestLogChunkMemory_EmitsStructuredFields(t *testing.T) {
@@ -20,11 +21,11 @@ func TestLogChunkMemory_EmitsStructuredFields(t *testing.T) {
 
 	streaming.LogChunkMemory(context.Background(), logger, streaming.ChunkMemoryLog{
 		ChunkIndex:      2,
-		HeapBefore:      500 * streaming.KiB * 1024,
-		HeapAfter:       900 * streaming.KiB * 1024,
+		HeapBefore:      500 * units.KiB * 1024,
+		HeapAfter:       900 * units.KiB * 1024,
 		BudgetUsedPct:   43.5,
-		GrowthPerCommit: 478 * streaming.KiB,
-		EMAGrowthRate:   502 * float64(streaming.KiB),
+		GrowthPerCommit: 478 * units.KiB,
+		EMAGrowthRate:   502 * float64(units.KiB),
 		Replanned:       false,
 	})
 
@@ -44,10 +45,10 @@ func TestLogChunkMemory_ReplanTrue(t *testing.T) {
 	streaming.LogChunkMemory(context.Background(), logger, streaming.ChunkMemoryLog{
 		ChunkIndex:      0,
 		HeapBefore:      0,
-		HeapAfter:       100 * streaming.KiB * 1024,
+		HeapAfter:       100 * units.KiB * 1024,
 		BudgetUsedPct:   10.0,
-		GrowthPerCommit: 100 * streaming.KiB,
-		EMAGrowthRate:   100 * float64(streaming.KiB),
+		GrowthPerCommit: 100 * units.KiB,
+		EMAGrowthRate:   100 * float64(units.KiB),
 		Replanned:       true,
 	})
 

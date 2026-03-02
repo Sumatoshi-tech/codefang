@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -54,8 +55,8 @@ func TestCheckpointSize_ReturnsPositiveValue(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber:       5,
-		reversedPeopleDict: []string{"a", "b", "c", "d", "e"},
+		PeopleNumber:  5,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"a", "b", "c", "d", "e"}},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -72,8 +73,8 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	dir := t.TempDir()
 
 	original := &HistoryAnalyzer{
-		PeopleNumber:       3,
-		reversedPeopleDict: []string{"alice", "bob", "carol"},
+		PeopleNumber:  3,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"alice", "bob", "carol"}},
 	}
 	require.NoError(t, original.Initialize(nil))
 
@@ -92,7 +93,7 @@ func TestCheckpointRoundTrip_PreservesAllState(t *testing.T) {
 	require.NoError(t, restored.LoadCheckpoint(dir))
 
 	assert.Equal(t, original.PeopleNumber, restored.PeopleNumber)
-	assert.Equal(t, original.reversedPeopleDict, restored.reversedPeopleDict)
+	assert.Equal(t, original.ReversedPeopleDict, restored.ReversedPeopleDict)
 	assert.True(t, restored.seenFiles.Test([]byte("main.go")))
 	assert.True(t, restored.seenFiles.Test([]byte("util.go")))
 	assert.False(t, restored.seenFiles.Test([]byte("nonexistent.go")))

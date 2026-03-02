@@ -2,11 +2,11 @@ package quality
 
 import (
 	"math"
-	"slices"
-	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/anomaly"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -55,13 +55,13 @@ func makeDimensionSlices(n int) map[string][]float64 {
 	}
 }
 
-func fillDimensionsFromStats(dimensions map[string][]float64, i int, stats TickStats) {
-	dimensions[DimComplexityMedian][i] = stats.ComplexityMedian
-	dimensions[DimComplexityP95][i] = stats.ComplexityP95
-	dimensions[DimHalsteadVolMedian][i] = stats.HalsteadVolMedian
-	dimensions[DimDeliveredBugsSum][i] = stats.DeliveredBugsSum
-	dimensions[DimCommentScoreMin][i] = stats.CommentScoreMin
-	dimensions[DimCohesionMin][i] = stats.CohesionMin
+func fillDimensionsFromStats(dimensions map[string][]float64, i int, ts TickStats) {
+	dimensions[DimComplexityMedian][i] = ts.ComplexityMedian
+	dimensions[DimComplexityP95][i] = ts.ComplexityP95
+	dimensions[DimHalsteadVolMedian][i] = ts.HalsteadVolMedian
+	dimensions[DimDeliveredBugsSum][i] = ts.DeliveredBugsSum
+	dimensions[DimCommentScoreMin][i] = ts.CommentScoreMin
+	dimensions[DimCohesionMin][i] = ts.CohesionMin
 }
 
 // AggregateCommitsToTicks groups per-commit TickQuality data into per-tick
@@ -150,33 +150,33 @@ func computeTickStats(tq *TickQuality) TickStats {
 
 	return TickStats{
 		// Complexity.
-		ComplexityMean:   meanFloat(tq.Complexities),
-		ComplexityMedian: medianFloat(tq.Complexities),
-		ComplexityP95:    p95Float(tq.Complexities),
-		ComplexityMax:    maxFloat(tq.Complexities),
+		ComplexityMean:   stats.Mean(tq.Complexities),
+		ComplexityMedian: stats.Median(tq.Complexities),
+		ComplexityP95:    stats.Percentile(tq.Complexities, stats.PercentileP95),
+		ComplexityMax:    stats.Max(tq.Complexities),
 
 		// Halstead.
-		HalsteadVolMean:   meanFloat(tq.HalsteadVolumes),
-		HalsteadVolMedian: medianFloat(tq.HalsteadVolumes),
-		HalsteadVolP95:    p95Float(tq.HalsteadVolumes),
-		HalsteadVolSum:    sumFloat(tq.HalsteadVolumes),
+		HalsteadVolMean:   stats.Mean(tq.HalsteadVolumes),
+		HalsteadVolMedian: stats.Median(tq.HalsteadVolumes),
+		HalsteadVolP95:    stats.Percentile(tq.HalsteadVolumes, stats.PercentileP95),
+		HalsteadVolSum:    stats.Sum(tq.HalsteadVolumes),
 
 		// Delivered Bugs.
-		DeliveredBugsSum: sumFloat(tq.DeliveredBugs),
+		DeliveredBugsSum: stats.Sum(tq.DeliveredBugs),
 
 		// Comments.
-		CommentScoreMean: meanFloat(tq.CommentScores),
-		CommentScoreMin:  minFloat(tq.CommentScores),
-		DocCoverageMean:  meanFloat(tq.DocCoverages),
+		CommentScoreMean: stats.Mean(tq.CommentScores),
+		CommentScoreMin:  stats.Min(tq.CommentScores),
+		DocCoverageMean:  stats.Mean(tq.DocCoverages),
 
 		// Cohesion.
-		CohesionMean: meanFloat(tq.CohesionScores),
-		CohesionMin:  minFloat(tq.CohesionScores),
+		CohesionMean: stats.Mean(tq.CohesionScores),
+		CohesionMin:  stats.Min(tq.CohesionScores),
 
 		// Bookkeeping.
 		FilesAnalyzed:  n,
-		TotalFunctions: sumInt(tq.Functions),
-		MaxComplexity:  maxInt(tq.MaxComplexities),
+		TotalFunctions: stats.Sum(tq.Functions),
+		MaxComplexity:  stats.Max(tq.MaxComplexities),
 	}
 }
 
@@ -241,7 +241,7 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	ticks := sortedTickKeys(input.TickQuality)
+	ticks := mapx.SortedKeys(input.TickQuality)
 	timeSeries := make([]TimeSeriesEntry, len(ticks))
 
 	// Collect per-tick stats for aggregate computation.
@@ -259,24 +259,24 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	globalMinCohesion := math.Inf(1)
 
 	for i, tick := range ticks {
-		stats := computeTickStats(input.TickQuality[tick])
-		timeSeries[i] = TimeSeriesEntry{Tick: tick, Stats: stats}
+		ts := computeTickStats(input.TickQuality[tick])
+		timeSeries[i] = TimeSeriesEntry{Tick: tick, Stats: ts}
 
-		complexityMedians[i] = stats.ComplexityMedian
-		complexityP95s[i] = stats.ComplexityP95
-		halsteadMedians[i] = stats.HalsteadVolMedian
-		commentMeans[i] = stats.CommentScoreMean
-		cohesionMeans[i] = stats.CohesionMean
+		complexityMedians[i] = ts.ComplexityMedian
+		complexityP95s[i] = ts.ComplexityP95
+		halsteadMedians[i] = ts.HalsteadVolMedian
+		commentMeans[i] = ts.CommentScoreMean
+		cohesionMeans[i] = ts.CohesionMean
 
-		totalFiles += stats.FilesAnalyzed
-		totalBugs += stats.DeliveredBugsSum
+		totalFiles += ts.FilesAnalyzed
+		totalBugs += ts.DeliveredBugsSum
 
-		if stats.CommentScoreMin < globalMinComment && stats.FilesAnalyzed > 0 {
-			globalMinComment = stats.CommentScoreMin
+		if ts.CommentScoreMin < globalMinComment && ts.FilesAnalyzed > 0 {
+			globalMinComment = ts.CommentScoreMin
 		}
 
-		if stats.CohesionMin < globalMinCohesion && stats.FilesAnalyzed > 0 {
-			globalMinCohesion = stats.CohesionMin
+		if ts.CohesionMin < globalMinCohesion && ts.FilesAnalyzed > 0 {
+			globalMinCohesion = ts.CohesionMin
 		}
 	}
 
@@ -288,11 +288,11 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		globalMinCohesion = 0
 	}
 
-	complexityMedianMean, _ := meanStdDev(complexityMedians)
-	complexityP95Mean, _ := meanStdDev(complexityP95s)
-	halsteadMedianMean, _ := meanStdDev(halsteadMedians)
-	commentMeanMean, _ := meanStdDev(commentMeans)
-	cohesionMeanMean, _ := meanStdDev(cohesionMeans)
+	complexityMedianMean := stats.Mean(complexityMedians)
+	complexityP95Mean := stats.Mean(complexityP95s)
+	halsteadMedianMean := stats.Mean(halsteadMedians)
+	commentMeanMean := stats.Mean(commentMeans)
+	cohesionMeanMean := stats.Mean(cohesionMeans)
 
 	return &ComputedMetrics{
 		TimeSeries: timeSeries,
@@ -309,163 +309,4 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 			MinCohesion:           globalMinCohesion,
 		},
 	}, nil
-}
-
-// --- Statistical Helpers ---.
-
-func meanStdDev(values []float64) (mean, stddev float64) {
-	n := len(values)
-	if n == 0 {
-		return 0, 0
-	}
-
-	var sum float64
-
-	for _, v := range values {
-		sum += v
-	}
-
-	mean = sum / float64(n)
-
-	var variance float64
-
-	for _, v := range values {
-		d := v - mean
-		variance += d * d
-	}
-
-	stddev = math.Sqrt(variance / float64(n))
-
-	return mean, stddev
-}
-
-func meanFloat(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-
-	var sum float64
-
-	for _, v := range values {
-		sum += v
-	}
-
-	return sum / float64(len(values))
-}
-
-// Percentile thresholds.
-const (
-	percentileMedian = 0.5
-	percentileP95    = 0.95
-)
-
-func medianFloat(values []float64) float64 {
-	return percentileFloat(values, percentileMedian)
-}
-
-func p95Float(values []float64) float64 {
-	return percentileFloat(values, percentileP95)
-}
-
-func percentileFloat(values []float64, p float64) float64 {
-	n := len(values)
-	if n == 0 {
-		return 0
-	}
-
-	sorted := make([]float64, n)
-	copy(sorted, values)
-	slices.Sort(sorted)
-
-	idx := p * float64(n-1)
-	lower := int(math.Floor(idx))
-	upper := int(math.Ceil(idx))
-
-	if lower == upper || upper >= n {
-		return sorted[lower]
-	}
-
-	frac := idx - float64(lower)
-
-	return sorted[lower]*(1-frac) + sorted[upper]*frac
-}
-
-func maxFloat(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-
-	m := values[0]
-
-	for _, v := range values[1:] {
-		if v > m {
-			m = v
-		}
-	}
-
-	return m
-}
-
-func minFloat(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-
-	m := values[0]
-
-	for _, v := range values[1:] {
-		if v < m {
-			m = v
-		}
-	}
-
-	return m
-}
-
-func sumFloat(values []float64) float64 {
-	var s float64
-
-	for _, v := range values {
-		s += v
-	}
-
-	return s
-}
-
-func maxInt(values []int) int {
-	if len(values) == 0 {
-		return 0
-	}
-
-	m := values[0]
-
-	for _, v := range values[1:] {
-		if v > m {
-			m = v
-		}
-	}
-
-	return m
-}
-
-func sumInt(values []int) int {
-	var s int
-
-	for _, v := range values {
-		s += v
-	}
-
-	return s
-}
-
-// sortedTickKeys returns a sorted slice of tick keys from the given map.
-func sortedTickKeys(tickQuality map[int]*TickQuality) []int {
-	keys := make([]int, 0, len(tickQuality))
-	for k := range tickQuality {
-		keys = append(keys, k)
-	}
-
-	sort.Ints(keys)
-
-	return keys
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
+
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 )
@@ -541,20 +543,20 @@ func TestBoxStats(t *testing.T) {
 	t.Parallel()
 
 	sorted := []float64{0.1, 0.2, 0.3, 0.5, 0.9}
-	stats := boxStats(sorted)
+	bs := boxStats(sorted)
 
-	assert.InDelta(t, 0.1, stats[0], 0.001) // Min.
-	assert.InDelta(t, 0.2, stats[1], 0.001) // Q1.
-	assert.InDelta(t, 0.3, stats[2], 0.001) // Median.
-	assert.InDelta(t, 0.5, stats[3], 0.001) // Q3.
-	assert.InDelta(t, 0.9, stats[4], 0.001) // Max.
+	assert.InDelta(t, 0.1, bs[0], 0.001) // Min.
+	assert.InDelta(t, 0.2, bs[1], 0.001) // Q1.
+	assert.InDelta(t, 0.3, bs[2], 0.001) // Median.
+	assert.InDelta(t, 0.5, bs[3], 0.001) // Q3.
+	assert.InDelta(t, 0.9, bs[4], 0.001) // Max.
 }
 
 func TestBoxStats_Empty(t *testing.T) {
 	t.Parallel()
 
-	stats := boxStats([]float64{})
-	assert.Equal(t, [5]float64{}, stats)
+	bs := boxStats([]float64{})
+	assert.Equal(t, [5]float64{}, bs)
 }
 
 func TestPercentile(t *testing.T) {
@@ -579,7 +581,7 @@ func TestPercentile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := percentile(tt.sorted, tt.p)
+			result := stats.Percentile(tt.sorted, tt.p)
 			assert.InDelta(t, tt.expected, result, 0.001)
 		})
 	}

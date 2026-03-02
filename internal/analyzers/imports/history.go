@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -16,6 +16,9 @@ import (
 const (
 	defaultTickHours    = 24
 	estimatedImportSize = 24
+
+	// importsAvgTCSize is the estimated bytes of TC payload per commit.
+	importsAvgTCSize = 1024
 )
 
 // Map maps file paths to their import lists.
@@ -53,12 +56,12 @@ type tickAccumulator struct {
 // rather than maintaining its own tree-sitter parser.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.IdentityMixin
+	common.NoStateHibernation
 
-	UAST               *plumbing.UASTChangesAnalyzer
-	Identity           *plumbing.IdentityDetector
-	Ticks              *plumbing.TicksSinceStart
-	reversedPeopleDict []string
-	TickSize           time.Duration
+	UAST     *plumbing.UASTChangesAnalyzer
+	Ticks    *plumbing.TicksSinceStart
+	TickSize time.Duration
 }
 
 // NewHistoryAnalyzer creates a new HistoryAnalyzer.
@@ -73,7 +76,8 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			Description: "Extracts imports from changed files and tracks usage per author.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:      false,
+		EstimatedTCSize: importsAvgTCSize,
 		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
 			if len(report) == 0 {
 				return &ComputedMetrics{}, nil
@@ -94,19 +98,11 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			return agg
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, ticks, a.getReversedPeopleDict(), a.TickSize)
+			return ticksToReport(ctx, ticks, a.GetReversedPeopleDict(), a.TickSize)
 		},
 	}
 
 	return a
-}
-
-func (h *HistoryAnalyzer) getReversedPeopleDict() []string {
-	if h.Identity != nil && len(h.Identity.ReversedPeopleDict) > 0 {
-		return h.Identity.ReversedPeopleDict
-	}
-
-	return h.reversedPeopleDict
 }
 
 // Name returns the name of the analyzer.
@@ -126,11 +122,11 @@ func (h *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 
 // Configure sets up the analyzer with the provided facts.
 func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
-	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
-		h.reversedPeopleDict = val
+	if val, ok := pkgplumbing.GetReversedPeopleDict(facts); ok {
+		h.ReversedPeopleDict = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactTickSize].(time.Duration); exists {
+	if val, ok := pkgplumbing.GetTickSize(facts); ok {
 		h.TickSize = val
 	}
 
@@ -277,14 +273,9 @@ func (h *HistoryAnalyzer) buildTick(tick int, acc *tickAccumulator) (analyze.TIC
 	}, nil
 }
 
-// NewAggregator creates an imports Aggregator that collects per-commit entries.
-func (h *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return h.AggregatorFn(opts)
-}
-
 // ReportFromTICKs converts aggregated TICKs into a Report.
 func (h *HistoryAnalyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return ticksToReport(ctx, ticks, h.getReversedPeopleDict(), h.TickSize), nil
+	return ticksToReport(ctx, ticks, h.GetReversedPeopleDict(), h.TickSize), nil
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.
@@ -466,11 +457,13 @@ func (h *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	for i := range n {
 		clone := &HistoryAnalyzer{
 			BaseHistoryAnalyzer: h.BaseHistoryAnalyzer,
-			UAST:                &plumbing.UASTChangesAnalyzer{},
-			Identity:            &plumbing.IdentityDetector{},
-			Ticks:               &plumbing.TicksSinceStart{},
-			reversedPeopleDict:  h.getReversedPeopleDict(),
-			TickSize:            h.TickSize,
+			IdentityMixin: common.IdentityMixin{
+				Identity:           &plumbing.IdentityDetector{},
+				ReversedPeopleDict: h.GetReversedPeopleDict(),
+			},
+			UAST:     &plumbing.UASTChangesAnalyzer{},
+			Ticks:    &plumbing.TicksSinceStart{},
+			TickSize: h.TickSize,
 		}
 
 		forks[i] = clone

@@ -14,7 +14,7 @@ type cohesionContext struct {
 // Visitor implements NodeVisitor for cohesion analysis.
 type Visitor struct {
 	extractor *common.DataExtractor
-	contexts  []*cohesionContext
+	contexts  *common.ContextStack[*cohesionContext]
 	functions []Function
 }
 
@@ -23,13 +23,13 @@ func NewVisitor() *Visitor {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
-			"function_name": common.ExtractFunctionName,
-			"variable_name": common.ExtractVariableName,
+			"function_name": common.ExtractEntityName,
+			"variable_name": common.ExtractEntityName,
 		},
 	}
 
 	return &Visitor{
-		contexts:  make([]*cohesionContext, 0),
+		contexts:  common.NewContextStack[*cohesionContext](),
 		functions: make([]Function, 0),
 		extractor: common.NewDataExtractor(extractionConfig),
 	}
@@ -98,27 +98,26 @@ func (v *Visitor) pushContext(funcNode *node.Node) {
 		functionNode: funcNode,
 		function:     function,
 	}
-	v.contexts = append(v.contexts, ctx)
+	v.contexts.Push(ctx)
 }
 
 func (v *Visitor) popContext() {
-	if len(v.contexts) == 0 {
+	ctx, ok := v.contexts.Pop()
+	if !ok {
 		return
 	}
-
-	ctx := v.contexts[len(v.contexts)-1]
-	v.contexts = v.contexts[:len(v.contexts)-1]
 
 	// Store collected function.
 	v.functions = append(v.functions, ctx.function)
 }
 
 func (v *Visitor) currentContext() *cohesionContext {
-	if len(v.contexts) == 0 {
+	ctx, ok := v.contexts.Current()
+	if !ok {
 		return nil
 	}
 
-	return v.contexts[len(v.contexts)-1]
+	return ctx
 }
 
 func (v *Visitor) processNode(ctx *cohesionContext, current *node.Node) {

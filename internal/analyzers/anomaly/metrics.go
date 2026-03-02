@@ -2,9 +2,9 @@ package anomaly
 
 import (
 	"math"
-	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -120,7 +120,7 @@ func computeAggregate(input *ReportData) AggregateData {
 		anomalyRate = float64(totalAnomalies) / float64(totalTicks) * percentMultiplier
 	}
 
-	ticks := sortedTickKeys(input.TickMetrics)
+	ticks := mapx.SortedKeys(input.TickMetrics)
 
 	churnValues := make([]float64, len(ticks))
 	filesValues := make([]float64, len(ticks))
@@ -159,7 +159,7 @@ func computeAggregate(input *ReportData) AggregateData {
 
 // computeTimeSeries builds the annotated time series.
 func computeTimeSeries(input *ReportData) []TimeSeriesEntry {
-	ticks := sortedTickKeys(input.TickMetrics)
+	ticks := mapx.SortedKeys(input.TickMetrics)
 
 	// Build anomaly set for O(1) lookup.
 	anomalySet := make(map[int]float64, len(input.Anomalies))
@@ -264,9 +264,7 @@ func aggregateTickFromCommits(hashes []gitlib.Hash, commitMetrics map[string]*Co
 		tm.LinesRemoved += cm.LinesRemoved
 		tm.Files = append(tm.Files, cm.Files...)
 
-		for lang, count := range cm.Languages {
-			tm.Languages[lang] += count
-		}
+		mapx.MergeAdditive(tm.Languages, cm.Languages)
 
 		tm.AuthorIDs[cm.AuthorID] = struct{}{}
 	}
@@ -356,18 +354,4 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		ExternalAnomalies: input.ExternalAnomalies,
 		ExternalSummaries: input.ExternalSummaries,
 	}, nil
-}
-
-// --- Helpers ---.
-
-func sortedTickKeys(tickMetrics map[int]*TickMetrics) []int {
-	ticks := make([]int, 0, len(tickMetrics))
-
-	for tick := range tickMetrics {
-		ticks = append(ticks, tick)
-	}
-
-	sort.Ints(ticks)
-
-	return ticks
 }

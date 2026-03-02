@@ -153,15 +153,15 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 
 	// Sort functions by effort descending before building issues.
 	sort.Slice(functions, func(i, j int) bool {
-		return reportutil.MapFloat64(functions[i], KeyFuncEffort) > reportutil.MapFloat64(functions[j], KeyFuncEffort)
+		return reportutil.GetFloat64(functions[i], KeyFuncEffort) > reportutil.GetFloat64(functions[j], KeyFuncEffort)
 	})
 
 	issues := make([]analyze.Issue, 0, len(functions))
 	for _, fn := range functions {
 		name := reportutil.MapString(fn, KeyFuncName)
-		effort := reportutil.MapFloat64(fn, KeyFuncEffort)
-		volume := reportutil.MapFloat64(fn, KeyFuncVolume)
-		bugs := reportutil.MapFloat64(fn, KeyFuncBugs)
+		effort := reportutil.GetFloat64(fn, KeyFuncEffort)
+		volume := reportutil.GetFloat64(fn, KeyFuncVolume)
+		bugs := reportutil.GetFloat64(fn, KeyFuncBugs)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
 			Value:    formatIssueValue(effort, volume, bugs),
@@ -200,7 +200,7 @@ func categorizeVolume(functions []map[string]any) volumeDistCounts {
 	var counts volumeDistCounts
 
 	for _, fn := range functions {
-		vol := reportutil.MapFloat64(fn, KeyFuncVolume)
+		vol := reportutil.GetFloat64(fn, KeyFuncVolume)
 		switch {
 		case vol <= DistLowMax:
 			counts.low++

@@ -503,7 +503,7 @@ func (c *Analyzer) extractTargetName(target *node.Node) string {
 		return name
 	}
 
-	if name, ok := common.ExtractFunctionName(target); ok && name != "" {
+	if name, ok := common.ExtractEntityName(target); ok && name != "" {
 		return name
 	}
 

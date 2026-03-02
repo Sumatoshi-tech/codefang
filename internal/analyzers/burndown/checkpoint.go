@@ -1,9 +1,8 @@
 package burndown
 
 import (
-	"maps"
-
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Checkpoint size estimation constants.
@@ -84,11 +83,11 @@ func (b *HistoryAnalyzer) CheckpointSize() int64 {
 // buildCheckpointState creates a serializable snapshot of the analyzer state.
 func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 	state := &checkpointState{
-		ReversedPeopleDict: append([]string{}, b.reversedPeopleDict...),
+		ReversedPeopleDict: append([]string{}, b.ReversedPeopleDict...),
 		Tick:               b.tick,
 		PreviousTick:       b.previousTick,
-		Renames:            cloneStringMap(b.renames),
-		RenamesReverse:     cloneRenamesReverse(b.renamesReverse),
+		Renames:            mapx.Clone(b.renames),
+		RenamesReverse:     mapx.CloneNested(b.renamesReverse),
 	}
 
 	// Save path interner state.
@@ -107,10 +106,10 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 	for i, shard := range b.shards {
 		shard.mu.Lock()
 		state.Shards[i] = shardState{
-			FileHistoriesByID: clonePeopleHistories(shard.fileHistoriesByID),
+			FileHistoriesByID: cloneSparseHistorySlice(shard.fileHistoriesByID),
 			ActiveIDs:         append([]PathID{}, shard.activeIDs...),
-			MergedByID:        clonePathIDMap(shard.mergedByID),
-			DeletionsByID:     clonePathIDMap(shard.deletionsByID),
+			MergedByID:        mapx.Clone(shard.mergedByID),
+			DeletionsByID:     mapx.Clone(shard.deletionsByID),
 		}
 		shard.mu.Unlock()
 	}
@@ -120,7 +119,7 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 
 // restoreFromCheckpoint restores analyzer state from a checkpoint.
 func (b *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
-	b.reversedPeopleDict = state.ReversedPeopleDict
+	b.ReversedPeopleDict = state.ReversedPeopleDict
 	b.tick = state.Tick
 	b.previousTick = state.PreviousTick
 	b.renames = state.Renames
@@ -154,24 +153,8 @@ func (b *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 	}
 }
 
-// Helper functions for deep cloning.
-
-func cloneSparseHistory(history sparseHistory) sparseHistory {
-	if history == nil {
-		return nil
-	}
-
-	clone := make(sparseHistory, len(history))
-
-	for tick, inner := range history {
-		clone[tick] = make(map[int]int64, len(inner))
-		maps.Copy(clone[tick], inner)
-	}
-
-	return clone
-}
-
-func clonePeopleHistories(histories []sparseHistory) []sparseHistory {
+// cloneSparseHistorySlice deep-clones a slice of sparseHistory using [mapx.CloneNested].
+func cloneSparseHistorySlice(histories []sparseHistory) []sparseHistory {
 	if histories == nil {
 		return nil
 	}
@@ -179,46 +162,8 @@ func clonePeopleHistories(histories []sparseHistory) []sparseHistory {
 	clone := make([]sparseHistory, len(histories))
 
 	for i, hist := range histories {
-		clone[i] = cloneSparseHistory(hist)
+		clone[i] = mapx.CloneNested(hist)
 	}
-
-	return clone
-}
-
-func cloneStringMap(strMap map[string]string) map[string]string {
-	if strMap == nil {
-		return nil
-	}
-
-	clone := make(map[string]string, len(strMap))
-	maps.Copy(clone, strMap)
-
-	return clone
-}
-
-func cloneRenamesReverse(renamesRev map[string]map[string]bool) map[string]map[string]bool {
-	if renamesRev == nil {
-		return nil
-	}
-
-	clone := make(map[string]map[string]bool, len(renamesRev))
-
-	for k, v := range renamesRev {
-		inner := make(map[string]bool, len(v))
-		maps.Copy(inner, v)
-		clone[k] = inner
-	}
-
-	return clone
-}
-
-func clonePathIDMap(pathIDMap map[PathID]bool) map[PathID]bool {
-	if pathIDMap == nil {
-		return nil
-	}
-
-	clone := make(map[PathID]bool, len(pathIDMap))
-	maps.Copy(clone, pathIDMap)
 
 	return clone
 }

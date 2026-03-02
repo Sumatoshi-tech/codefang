@@ -16,10 +16,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/internal/streaming"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 // errMissingInterfaces is returned when leaf analyzers lack required streaming interfaces.
@@ -105,7 +107,8 @@ func clearCheckpointOnCompletion(ctx context.Context, logger *slog.Logger, cpMan
 		return
 	}
 
-	if clearErr := cpManager.Clear(); clearErr != nil {
+	clearErr := cpManager.Clear()
+	if clearErr != nil {
 		logger.WarnContext(ctx, "failed to clear checkpoint after completion", "error", clearErr)
 	}
 }
@@ -634,39 +637,27 @@ func validateStreamingInterfaces(analyzers []analyze.HistoryAnalyzer, coreCount 
 }
 
 func collectHibernatables(analyzers []analyze.HistoryAnalyzer) []streaming.Hibernatable {
-	var hibernatables []streaming.Hibernatable
+	return common.FilterByInterface(analyzers, func(a analyze.HistoryAnalyzer) (streaming.Hibernatable, bool) {
+		h, ok := a.(streaming.Hibernatable)
 
-	for _, a := range analyzers {
-		if h, ok := a.(streaming.Hibernatable); ok {
-			hibernatables = append(hibernatables, h)
-		}
-	}
-
-	return hibernatables
+		return h, ok
+	})
 }
 
 func collectSpillCleaners(analyzers []analyze.HistoryAnalyzer) []streaming.SpillCleaner {
-	var cleaners []streaming.SpillCleaner
+	return common.FilterByInterface(analyzers, func(a analyze.HistoryAnalyzer) (streaming.SpillCleaner, bool) {
+		sc, ok := a.(streaming.SpillCleaner)
 
-	for _, a := range analyzers {
-		if sc, ok := a.(streaming.SpillCleaner); ok {
-			cleaners = append(cleaners, sc)
-		}
-	}
-
-	return cleaners
+		return sc, ok
+	})
 }
 
 func collectCheckpointables(analyzers []analyze.HistoryAnalyzer) []checkpoint.Checkpointable {
-	var checkpointables []checkpoint.Checkpointable
+	return common.FilterByInterface(analyzers, func(a analyze.HistoryAnalyzer) (checkpoint.Checkpointable, bool) {
+		c, ok := a.(checkpoint.Checkpointable)
 
-	for _, a := range analyzers {
-		if c, ok := a.(checkpoint.Checkpointable); ok {
-			checkpointables = append(checkpointables, c)
-		}
-	}
-
-	return checkpointables
+		return c, ok
+	})
 }
 
 // FlushableAnalyzer is optionally implemented by HistoryAnalyzers that hold
@@ -759,7 +750,7 @@ func processChunksWithCheckpoint(
 		if replanned {
 			logger.InfoContext(ctx, "streaming: adaptive replan",
 				"old_chunks", len(chunks), "new_chunks", len(newChunks),
-				"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/streaming.KiB)
+				"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/units.KiB)
 		}
 
 		chunks = newChunks
@@ -886,7 +877,7 @@ func postProcessIteratorChunk(
 	if replanned {
 		logger.InfoContext(ctx, "streaming[iter]: adaptive replan",
 			"old_chunks", len(chunks), "new_chunks", len(newChunks),
-			"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/streaming.KiB)
+			"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/units.KiB)
 	}
 
 	saveIteratorCheckpoint(
@@ -902,7 +893,8 @@ func postProcessIteratorChunk(
 	handleMemoryPressure(ctx, logger, after, memBudget)
 
 	if onChunkComplete != nil {
-		if cbErr := onChunkComplete(runner); cbErr != nil {
+		cbErr := onChunkComplete(runner)
+		if cbErr != nil {
 			return newChunks, fmt.Errorf("chunk %d: onChunkComplete: %w", chunkIdx+1, cbErr)
 		}
 	}
@@ -1077,7 +1069,8 @@ func processChunksDoubleBuffered(
 
 		handleMemoryPressure(ctx, logger, after, st.memBudget)
 
-		if cbErr := st.invokeOnChunkComplete(idx + 1); cbErr != nil {
+		cbErr := st.invokeOnChunkComplete(idx + 1)
+		if cbErr != nil {
 			drainPrefetch(prefetch)
 
 			return stats, cbErr
@@ -1103,7 +1096,8 @@ func (st *doubleBufferState) invokeOnChunkComplete(chunkDisplayNum int) error {
 		return nil
 	}
 
-	if cbErr := st.onChunkComplete(st.runner); cbErr != nil {
+	cbErr := st.onChunkComplete(st.runner)
+	if cbErr != nil {
 		return fmt.Errorf("chunk %d: onChunkComplete: %w", chunkDisplayNum, cbErr)
 	}
 
@@ -1130,7 +1124,8 @@ func (st *doubleBufferState) consumeAndRecordPrefetch(
 
 	flushAnalyzers(st.runner.Analyzers)
 
-	if cbErr := st.invokeOnChunkComplete(idx + prefetchChunkDisplayOffset); cbErr != nil {
+	cbErr := st.invokeOnChunkComplete(idx + prefetchChunkDisplayOffset)
+	if cbErr != nil {
 		return false, cbErr
 	}
 
@@ -1156,7 +1151,7 @@ func (st *doubleBufferState) replanAndDrainStale(
 	if replanned {
 		st.logger.InfoContext(ctx, "streaming[db]: adaptive replan",
 			"old_chunks", len(st.chunks), "new_chunks", len(newChunks),
-			"ema_growth_kib", int64(st.ap.Stats().FinalGrowthRate)/streaming.KiB)
+			"ema_growth_kib", int64(st.ap.Stats().FinalGrowthRate)/units.KiB)
 
 		// If next chunk boundaries changed, drain stale prefetch.
 		newNext := safeChunkAt(newChunks, idx+1)
@@ -1526,9 +1521,9 @@ func handleMemoryPressure(
 	switch pressure {
 	case streaming.PressureCritical:
 		logger.WarnContext(ctx, "streaming: memory pressure critical, forcing GC",
-			"heap_mib", snapshot.HeapInuse/streaming.MiB,
-			"rss_mib", snapshot.RSS/streaming.MiB,
-			"budget_mib", memBudget/streaming.MiB,
+			"heap_mib", snapshot.HeapInuse/units.MiB,
+			"rss_mib", snapshot.RSS/units.MiB,
+			"budget_mib", memBudget/units.MiB,
 			"usage_pct", float64(effectiveUsage)*percentScale/float64(memBudget))
 
 		runtime.GC()
@@ -1537,9 +1532,9 @@ func handleMemoryPressure(
 
 	case streaming.PressureWarning:
 		logger.WarnContext(ctx, "streaming: memory pressure warning",
-			"heap_mib", snapshot.HeapInuse/streaming.MiB,
-			"rss_mib", snapshot.RSS/streaming.MiB,
-			"budget_mib", memBudget/streaming.MiB,
+			"heap_mib", snapshot.HeapInuse/units.MiB,
+			"rss_mib", snapshot.RSS/units.MiB,
+			"budget_mib", memBudget/units.MiB,
 			"usage_pct", float64(effectiveUsage)*percentScale/float64(memBudget))
 
 	case streaming.PressureNone:

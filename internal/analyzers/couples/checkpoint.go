@@ -51,7 +51,7 @@ func (c *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		SeenFilesBloom:     seenData,
 		MergesBloom:        mergesData,
 		PeopleNumber:       c.PeopleNumber,
-		ReversedPeopleDict: c.reversedPeopleDict,
+		ReversedPeopleDict: c.ReversedPeopleDict,
 	}
 }
 
@@ -84,7 +84,7 @@ func (c *HistoryAnalyzer) restoreFromCheckpoint(state *checkpointState) {
 	}
 
 	c.PeopleNumber = state.PeopleNumber
-	c.reversedPeopleDict = state.ReversedPeopleDict
+	c.ReversedPeopleDict = state.ReversedPeopleDict
 }
 
 // checkpointBaseOverhead is the minimum checkpoint size in bytes.
@@ -121,7 +121,7 @@ func (c *HistoryAnalyzer) CheckpointSize() int64 {
 		}
 	}
 
-	size += int64(len(c.reversedPeopleDict)) * bytesPerPerson
+	size += int64(len(c.ReversedPeopleDict)) * bytesPerPerson
 
 	return size
 }

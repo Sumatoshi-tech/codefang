@@ -18,6 +18,7 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/internal/burndown"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
@@ -75,6 +76,7 @@ type DenseHistory = [][]int64
 // HistoryAnalyzer tracks line survival rates across commit history.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.IdentityMixin
 
 	BlobCache            *plumbing.BlobCacheAnalyzer
 	pathInterner         *PathInterner
@@ -82,14 +84,12 @@ type HistoryAnalyzer struct {
 	renamesReverse       map[string]map[string]bool // to → set of from (avoids range renames in handleDeletion).
 	repository           *gitlib.Repository
 	Ticks                *plumbing.TicksSinceStart
-	Identity             *plumbing.IdentityDetector
 	FileDiff             *plumbing.FileDiffAnalyzer
 	TreeDiff             *plumbing.TreeDiffAnalyzer
 	HibernationDirectory string
 	shards               []*Shard
 	shardSpills          []shardSpillState // per-shard spill tracking for file treaps.
 	spillDir             string            // parent temp dir for shard file spills.
-	reversedPeopleDict   []string
 	mergedAuthor         int
 	HibernationThreshold int
 	Granularity          int
@@ -159,8 +159,14 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 				ctx, ticks,
 				ha.Granularity, ha.Sampling, ha.PeopleNumber,
 				ha.TrackFiles, ha.TickSize,
-				ha.getReversedPeopleDict(), ha.pathInterner,
+				ha.GetReversedPeopleDict(), ha.pathInterner,
 			)
+		},
+		SerializeTextFn: func(result analyze.Report, writer io.Writer) error {
+			return ha.generateText(result, writer)
+		},
+		SerializePlotFn: func(result analyze.Report, writer io.Writer) error {
+			return ha.generatePlot(result, writer)
 		},
 	}
 
@@ -279,7 +285,7 @@ func (b *HistoryAnalyzer) Configure(facts map[string]any) error {
 		b.Goroutines = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactTickSize].(time.Duration); exists {
+	if val, ok := pkgplumbing.GetTickSize(facts); ok {
 		b.TickSize = val
 	}
 
@@ -293,7 +299,7 @@ func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 		return nil
 	}
 
-	val, peopleCountExists := facts[identity.FactIdentityDetectorPeopleCount].(int)
+	val, peopleCountExists := pkgplumbing.GetPeopleCount(facts)
 	if !peopleCountExists {
 		return nil
 	}
@@ -304,12 +310,12 @@ func (b *HistoryAnalyzer) configurePeopleTracking(facts map[string]any) error {
 
 	b.PeopleNumber = val
 
-	rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
+	rpd, ok := pkgplumbing.GetReversedPeopleDict(facts)
 	if !ok {
 		return errReversedPeopleDictType
 	}
 
-	b.reversedPeopleDict = rpd
+	b.ReversedPeopleDict = rpd
 
 	return nil
 }
@@ -629,7 +635,10 @@ func (b *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			repository:   b.repository,
 
 			// Independent plumbing state (not shared with parent).
-			Identity:  &plumbing.IdentityDetector{},
+			IdentityMixin: common.IdentityMixin{
+				Identity:           &plumbing.IdentityDetector{},
+				ReversedPeopleDict: b.GetReversedPeopleDict(),
+			},
 			TreeDiff:  &plumbing.TreeDiffAnalyzer{},
 			Ticks:     &plumbing.TicksSinceStart{},
 			BlobCache: &plumbing.BlobCacheAnalyzer{},
@@ -646,7 +655,6 @@ func (b *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 			Debug:                b.Debug,
 			TrackFiles:           b.TrackFiles,
 			HibernationToDisk:    b.HibernationToDisk,
-			reversedPeopleDict:   b.getReversedPeopleDict(),
 		}
 
 		// Create fresh shards for this fork.
@@ -924,67 +932,6 @@ func (b *HistoryAnalyzer) CleanupSpills() {
 	}
 }
 
-// Serialize writes the analysis result to the given writer.
-func (b *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot {
-		return b.generatePlot(result, writer)
-	}
-
-	if format == analyze.FormatText {
-		return b.generateText(result, writer)
-	}
-
-	if b.BaseHistoryAnalyzer != nil {
-		return b.BaseHistoryAnalyzer.Serialize(result, format, writer)
-	}
-
-	// Create temporary embedded to handle other formats properly when only called from tests without properly
-	// initialized analyzer structure.
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: ComputeAllMetrics,
-	}).Serialize(result, format, writer)
-}
-
-// SerializeTICKs converts aggregated TICKs into the final report and serializes it.
-func (b *HistoryAnalyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatPlot || format == analyze.FormatText {
-		report, err := b.ReportFromTICKs(context.Background(), ticks)
-		if err != nil {
-			return err
-		}
-
-		if format == analyze.FormatPlot {
-			return b.generatePlot(report, writer)
-		}
-
-		return b.generateText(report, writer)
-	}
-
-	if b.BaseHistoryAnalyzer != nil {
-		return b.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
-	}
-
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: ComputeAllMetrics,
-		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
-			report, err := b.ReportFromTICKs(ctx, t)
-			if err != nil {
-				return nil
-			}
-
-			return report
-		},
-	}).SerializeTICKs(ticks, format, writer)
-}
-
-func (b *HistoryAnalyzer) getReversedPeopleDict() []string {
-	if b.Identity != nil && len(b.Identity.ReversedPeopleDict) > 0 {
-		return b.Identity.ReversedPeopleDict
-	}
-
-	return b.reversedPeopleDict
-}
-
 // NewAggregator creates a burndown aggregator that accumulates sparse history
 // deltas from the TC stream and produces dense history matrices for the report.
 func (b *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
@@ -992,7 +939,7 @@ func (b *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.
 		opts,
 		b.Granularity, b.Sampling, b.PeopleNumber,
 		b.TrackFiles, b.TickSize,
-		b.getReversedPeopleDict(), b.pathInterner,
+		b.GetReversedPeopleDict(), b.pathInterner,
 	)
 }
 

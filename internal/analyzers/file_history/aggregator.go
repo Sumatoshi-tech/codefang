@@ -40,7 +40,7 @@ type Aggregator struct {
 // NewAggregator creates a new aggregator for the file history analyzer.
 func NewAggregator(opts analyze.AggregatorOptions) *Aggregator {
 	return &Aggregator{
-		files:         spillstore.NewWithBaseDir[FileHistory](opts.SpillDir),
+		files:         spillstore.New[FileHistory](opts.SpillDir),
 		commitStats:   make(map[string]*CommitSummary),
 		commitsByTick: make(map[int][]gitlib.Hash),
 		opts:          opts,
@@ -241,7 +241,7 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 
 // DiscardState clears all in-memory cumulative state without serialization.
 func (a *Aggregator) DiscardState() {
-	a.files = spillstore.NewWithBaseDir[FileHistory](a.opts.SpillDir)
+	a.files = spillstore.New[FileHistory](a.opts.SpillDir)
 }
 
 // Spill writes accumulated state to disk to free memory.

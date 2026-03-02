@@ -18,7 +18,7 @@ func NewVisitor() *Visitor {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
-			"function_name": common.ExtractFunctionName,
+			"function_name": common.ExtractEntityName,
 		},
 	}
 

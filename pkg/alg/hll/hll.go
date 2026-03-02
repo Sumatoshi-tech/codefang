@@ -12,10 +12,11 @@ package hll
 
 import (
 	"errors"
-	"hash/fnv"
 	"math"
 	"math/bits"
 	"sync"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/internal/hashutil"
 )
 
 const (
@@ -58,13 +59,6 @@ const (
 	betaC5 = 0.03738027
 	betaC6 = -0.005384159
 	betaC7 = 0.00042419
-
-	// mix64 constants from splitmix64 finalizer by Vigna (2014).
-	mixShift1 = 30
-	mixMul1   = 0xbf58476d1ce4e5b9
-	mixShift2 = 27
-	mixMul2   = 0x94d049bb133111eb
-	mixShift3 = 31
 )
 
 var (
@@ -217,19 +211,5 @@ func betaCorrection(zeroCount float64) float64 {
 // both high bits (register index) and low bits (leading zeros) must be
 // well-distributed.
 func hash64(data []byte) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write(data)
-
-	return mix64(h.Sum64())
-}
-
-// mix64 applies a splitmix64-style finalizer for full-avalanche mixing.
-func mix64(v uint64) uint64 {
-	v ^= v >> mixShift1
-	v *= mixMul1
-	v ^= v >> mixShift2
-	v *= mixMul2
-	v ^= v >> mixShift3
-
-	return v
+	return hashutil.Mix64(hashutil.FNV64a(data))
 }

@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
@@ -160,17 +161,15 @@ func (m *FunctionCohesionMetric) Compute(input *ReportData) []FunctionCohesionDa
 	return result
 }
 
+// cohesionQualityClassifier classifies cohesion scores into quality levels.
+var cohesionQualityClassifier = common.NewClassifier([]common.Threshold[float64]{
+	{Limit: CohesionThresholdExcellent, Label: "Excellent"},
+	{Limit: CohesionThresholdGood, Label: "Good"},
+	{Limit: CohesionThresholdFair, Label: "Fair"},
+}, "Poor")
+
 func classifyCohesionQuality(cohesion float64) string {
-	switch {
-	case cohesion >= CohesionThresholdExcellent:
-		return "Excellent"
-	case cohesion >= CohesionThresholdGood:
-		return "Good"
-	case cohesion >= CohesionThresholdFair:
-		return "Fair"
-	default:
-		return "Poor"
-	}
+	return cohesionQualityClassifier.Classify(cohesion)
 }
 
 // DistributionMetric computes cohesion distribution.

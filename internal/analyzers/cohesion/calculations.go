@@ -1,9 +1,9 @@
 package cohesion
 
 import (
-	"math"
-
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 // Bloom filter configuration for per-function variable sets.
@@ -38,7 +38,7 @@ func (c *Analyzer) calculateLCOM(functions []Function) float64 {
 
 	sumMA := countVariableAccesses(allVars, functions)
 
-	return clamp01(1.0 - (sumMA / (m * a)))
+	return stats.Clamp(1.0-(sumMA/(m*a)), 0.0, 1.0)
 }
 
 // collectUniqueVariables gathers all distinct variable names across all functions.
@@ -111,7 +111,7 @@ func (c *Analyzer) calculateCohesionScore(lcom float64, functionCount int) float
 		return 1.0
 	}
 
-	return clamp01(1.0 - lcom)
+	return stats.Clamp(1.0-lcom, 0.0, 1.0)
 }
 
 // calculateFunctionCohesion calculates average function-level cohesion.
@@ -146,7 +146,7 @@ func (c *Analyzer) calculateFunctionCohesion(functions []Function) float64 {
 // found in the filter is shared unless it is unique to this function alone. The
 // false-positive rate is bounded by bloomFPRate.
 func (c *Analyzer) calculateFunctionLevelCohesion(fn Function, globalFilter *bloom.Filter) float64 {
-	uniqueVars := uniqueStrings(fn.Variables)
+	uniqueVars := mapx.Unique(fn.Variables)
 	if len(uniqueVars) == 0 {
 		return 1.0
 	}
@@ -213,24 +213,4 @@ func buildGlobalVariableFilter(functions []Function) *bloom.Filter {
 	}
 
 	return f
-}
-
-// uniqueStrings returns a deduplicated copy of a string slice.
-func uniqueStrings(ss []string) []string {
-	seen := make(map[string]struct{}, len(ss))
-	result := make([]string, 0, len(ss))
-
-	for _, s := range ss {
-		if _, exists := seen[s]; !exists {
-			seen[s] = struct{}{}
-			result = append(result, s)
-		}
-	}
-
-	return result
-}
-
-// clamp01 clamps a value to [0, 1].
-func clamp01(v float64) float64 {
-	return math.Max(0.0, math.Min(1.0, v))
 }

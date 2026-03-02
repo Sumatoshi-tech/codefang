@@ -150,7 +150,7 @@ func (c *CognitiveComplexityCalculator) extractFunctionName(fn *node.Node) strin
 		return ""
 	}
 
-	if name, ok := common.ExtractFunctionName(fn); ok && name != "" {
+	if name, ok := common.ExtractEntityName(fn); ok && name != "" {
 		return name
 	}
 

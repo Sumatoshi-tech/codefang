@@ -14,18 +14,19 @@ type WorkerRequest interface {
 	requestContext() context.Context
 }
 
-// WithContext wraps a WorkerRequest with an explicit context.
-func WithContext(ctx context.Context, req WorkerRequest) WorkerRequest {
-	return contextualRequest{ctx: ctx, WorkerRequest: req}
-}
-
-// contextualRequest wraps a WorkerRequest with an explicit context.
-type contextualRequest struct {
-	ctx context.Context
+// ContextualRequest wraps a WorkerRequest with an explicit context provider.
+type ContextualRequest struct {
 	WorkerRequest
+
+	getCtx func() context.Context
 }
 
-func (c contextualRequest) requestContext() context.Context { return c.ctx }
+func (c ContextualRequest) requestContext() context.Context { return c.getCtx() }
+
+// WithContext wraps a WorkerRequest with an explicit context.
+func WithContext(ctx context.Context, req WorkerRequest) ContextualRequest {
+	return ContextualRequest{WorkerRequest: req, getCtx: func() context.Context { return ctx }}
+}
 
 // TreeDiffRequest asks for a tree diff for a specific commit hash.
 type TreeDiffRequest struct {
@@ -66,12 +67,12 @@ type DiffBatchResponse struct {
 	Results []DiffResult
 }
 
-func (TreeDiffRequest) isWorkerRequest()                      {}
-func (BlobBatchRequest) isWorkerRequest()                     {}
-func (DiffBatchRequest) isWorkerRequest()                     {}
-func (TreeDiffRequest) requestContext() context.Context       { return context.Background() }
-func (BlobBatchRequest) requestContext() context.Context      { return context.Background() }
-func (DiffBatchRequest) requestContext() context.Context      { return context.Background() }
+func (TreeDiffRequest) isWorkerRequest()                 {}
+func (BlobBatchRequest) isWorkerRequest()                {}
+func (DiffBatchRequest) isWorkerRequest()                {}
+func (TreeDiffRequest) requestContext() context.Context  { return context.Background() }
+func (BlobBatchRequest) requestContext() context.Context { return context.Background() }
+func (DiffBatchRequest) requestContext() context.Context { return context.Background() }
 
 // Worker manages exclusive, sequential access to the libgit2 Repository.
 // It ensures all CGO calls happen on a single OS thread.
@@ -117,7 +118,7 @@ func (w *Worker) handle(req WorkerRequest) {
 	ctx := req.requestContext()
 
 	// Unwrap contextual wrapper to get the underlying request type.
-	if cr, ok := req.(contextualRequest); ok {
+	if cr, ok := req.(ContextualRequest); ok {
 		req = cr.WorkerRequest
 	}
 

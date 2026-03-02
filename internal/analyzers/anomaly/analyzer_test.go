@@ -406,8 +406,8 @@ func TestComputeAllMetrics_FromCommitData(t *testing.T) {
 
 // --- Helpers ---.
 
-func newTestAnalyzer(t testing.TB) *Analyzer {
-	t.Helper()
+func newTestAnalyzer(tb testing.TB) *Analyzer {
+	tb.Helper()
 
 	treeDiff := &plumbing.TreeDiffAnalyzer{}
 	blobCache := &plumbing.BlobCacheAnalyzer{TreeDiff: treeDiff}
@@ -420,7 +420,7 @@ func newTestAnalyzer(t testing.TB) *Analyzer {
 		Identity:  &plumbing.IdentityDetector{},
 	}
 
-	require.NoError(t, ha.Initialize(nil))
+	require.NoError(tb, ha.Initialize(nil))
 
 	return ha
 }

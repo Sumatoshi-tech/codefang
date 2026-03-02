@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/internal/hashutil"
 )
 
 func (s *Signature) Merge(other *Signature) error {
@@ -63,7 +65,7 @@ func FromBytes(data []byte) (*Signature, error) {
 
 	return &Signature{
 		mins:  mins,
-		seeds: generateSeeds(numHashes),
+		seeds: hashutil.GenerateSeeds(numHashes, hashutil.Splitmix64),
 	}, nil
 }
 

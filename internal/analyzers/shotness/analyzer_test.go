@@ -853,7 +853,8 @@ func TestCopyIntMap(t *testing.T) {
 func TestComputeMetricsSafe_EmptyReport(t *testing.T) {
 	t.Parallel()
 
-	result, err := computeMetricsSafe(analyze.Report{})
+	safe := analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{})
+	result, err := safe(analyze.Report{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -870,7 +871,8 @@ func TestComputeMetricsSafe_WithData(t *testing.T) {
 		},
 	}
 
-	result, err := computeMetricsSafe(report)
+	safe := analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{})
+	result, err := safe(report)
 	require.NoError(t, err)
 	assert.Len(t, result.NodeHotness, 1)
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
@@ -211,24 +212,9 @@ func (m *Manager) Validate(repoPath string, analyzerNames []string) error {
 		return fmt.Errorf("%w: checkpoint has %q, got %q", ErrRepoPathMismatch, meta.RepoPath, repoPath)
 	}
 
-	if !stringSlicesEqual(meta.Analyzers, analyzerNames) {
+	if !slices.Equal(meta.Analyzers, analyzerNames) {
 		return fmt.Errorf("%w: checkpoint has %v, got %v", ErrAnalyzerMismatch, meta.Analyzers, analyzerNames)
 	}
 
 	return nil
-}
-
-// stringSlicesEqual compares two string slices for equality.
-func stringSlicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }

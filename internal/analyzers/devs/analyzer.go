@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -51,15 +51,14 @@ const (
 // Analyzer calculates per-developer line statistics across commit history.
 type Analyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.IdentityMixin
 
-	Identity             *plumbing.IdentityDetector
 	TreeDiff             *plumbing.TreeDiffAnalyzer
 	Ticks                *plumbing.TicksSinceStart
 	Languages            *plumbing.LanguagesDetectionAnalyzer
 	LineStats            *plumbing.LinesStatsCalculator
 	commitsByTick        map[int][]gitlib.Hash
 	merges               *analyze.MergeTracker
-	reversedPeopleDict   []string
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
 	Anonymize            bool
@@ -91,31 +90,20 @@ func NewAnalyzer() *Analyzer {
 				Default:     false,
 			},
 		},
-		ComputeMetricsFn: computeMetricsSafe,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn:     newAggregator,
 	}
 
 	a.TicksToReportFn = func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-		return ticksToReport(ctx, ticks, a.commitsByTick, a.getReversedPeopleDict(), a.tickSize, a.Anonymize)
+		return ticksToReport(ctx, ticks, a.commitsByTick, a.GetReversedPeopleDict(), a.tickSize, a.Anonymize)
 	}
+
+	a.SerializeTextFn = func(result analyze.Report, writer io.Writer) error {
+		return a.generateText(result, writer)
+	}
+	a.SerializePlotFn = GenerateDashboard
 
 	return a
-}
-
-func (a *Analyzer) getReversedPeopleDict() []string {
-	if a.Identity != nil && len(a.Identity.ReversedPeopleDict) > 0 {
-		return a.Identity.ReversedPeopleDict
-	}
-
-	return a.reversedPeopleDict
-}
-
-func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
-	if len(report) == 0 {
-		return &ComputedMetrics{}, nil
-	}
-
-	return ComputeAllMetrics(report)
 }
 
 // Configure configures the analyzer with the given facts.
@@ -128,15 +116,15 @@ func (a *Analyzer) Configure(facts map[string]any) error {
 		a.Anonymize = val
 	}
 
-	if val, exists := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string); exists {
-		a.reversedPeopleDict = val
+	if val, ok := pkgplumbing.GetReversedPeopleDict(facts); ok {
+		a.ReversedPeopleDict = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactTickSize].(time.Duration); exists {
+	if val, ok := pkgplumbing.GetTickSize(facts); ok {
 		a.tickSize = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); exists {
+	if val, ok := pkgplumbing.GetCommitsByTick(facts); ok {
 		a.commitsByTick = val
 	}
 
@@ -225,11 +213,6 @@ func (a *Analyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	return res
 }
 
-// NewAggregator creates an aggregator for this analyzer.
-func (a *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return a.AggregatorFn(opts)
-}
-
 // Merge is a no-op.
 func (a *Analyzer) Merge(_ []analyze.HistoryAnalyzer) {}
 
@@ -260,57 +243,6 @@ func (a *Analyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 
 // ReleaseSnapshot is a no-op for devs.
 func (a *Analyzer) ReleaseSnapshot(_ analyze.PlumbingSnapshot) {}
-
-// Serialize writes the analysis result to the given writer.
-func (a *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatText {
-		return a.generateText(result, writer)
-	}
-
-	if format == analyze.FormatPlot {
-		return GenerateDashboard(result, writer)
-	}
-
-	if a.BaseHistoryAnalyzer != nil {
-		return a.BaseHistoryAnalyzer.Serialize(result, format, writer)
-	}
-
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: computeMetricsSafe,
-	}).Serialize(result, format, writer)
-}
-
-// SerializeTICKs converts aggregated TICKs into the final report and serializes it.
-func (a *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatText || format == analyze.FormatPlot {
-		report, err := a.ReportFromTICKs(context.Background(), ticks)
-		if err != nil {
-			return err
-		}
-
-		if format == analyze.FormatPlot {
-			return GenerateDashboard(report, writer)
-		}
-
-		return a.generateText(report, writer)
-	}
-
-	if a.BaseHistoryAnalyzer != nil {
-		return a.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
-	}
-
-	return (&analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: computeMetricsSafe,
-		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, t, a.commitsByTick, a.getReversedPeopleDict(), a.tickSize, a.Anonymize)
-		},
-	}).SerializeTICKs(ticks, format, writer)
-}
-
-// ReportFromTICKs converts aggregated TICKs into a Report.
-func (a *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return a.TicksToReportFn(ctx, ticks), nil
-}
 
 // ExtractCommitTimeSeries extracts per-commit dev stats from a finalized report.
 func (a *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {

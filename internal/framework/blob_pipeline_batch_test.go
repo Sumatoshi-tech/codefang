@@ -57,7 +57,12 @@ func TestBlobPipeline_CrossCommitBatching(t *testing.T) {
 		for {
 			select {
 			case req := <-poolCh:
-				if treeReq, ok := req.(gitlib.TreeDiffRequest); ok {
+				inner := req
+				if cr, ok := req.(gitlib.ContextualRequest); ok {
+					inner = cr.WorkerRequest
+				}
+
+				if treeReq, ok := inner.(gitlib.TreeDiffRequest); ok {
 					// Tree diff mock: determine changes based on commit.
 					var changes gitlib.Changes
 
@@ -85,7 +90,7 @@ func TestBlobPipeline_CrossCommitBatching(t *testing.T) {
 				}
 
 				// Blob batch request.
-				batchReq, ok := req.(gitlib.BlobBatchRequest)
+				batchReq, ok := inner.(gitlib.BlobBatchRequest)
 				if !ok {
 					continue
 				}

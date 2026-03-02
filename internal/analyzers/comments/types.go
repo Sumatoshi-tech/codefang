@@ -118,7 +118,7 @@ func createExtractionConfig() common.ExtractionConfig {
 
 // createFunctionNameExtractor creates a function name extractor.
 func createFunctionNameExtractor() common.NameExtractor {
-	return common.ExtractFunctionName
+	return common.ExtractEntityName
 }
 
 // createCommentTextExtractor creates a comment text extractor.

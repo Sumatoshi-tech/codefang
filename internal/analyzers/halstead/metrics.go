@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
@@ -319,17 +320,15 @@ func (m *FunctionHalsteadMetric) Compute(input *ReportData) []FunctionHalsteadDa
 	return result
 }
 
+// volumeLevelClassifier classifies Halstead volume into complexity levels.
+var volumeLevelClassifier = common.NewClassifier([]common.Threshold[float64]{
+	{Limit: VolumeThresholdHigh, Label: "Very High"},
+	{Limit: VolumeThresholdMedium, Label: "High"},
+	{Limit: VolumeThresholdLow, Label: "Medium"},
+}, "Low")
+
 func classifyVolumeLevel(volume float64) string {
-	switch {
-	case volume >= VolumeThresholdHigh:
-		return "Very High"
-	case volume >= VolumeThresholdMedium:
-		return "High"
-	case volume >= VolumeThresholdLow:
-		return "Medium"
-	default:
-		return "Low"
-	}
+	return volumeLevelClassifier.Classify(volume)
 }
 
 // EffortDistributionMetric computes effort distribution.

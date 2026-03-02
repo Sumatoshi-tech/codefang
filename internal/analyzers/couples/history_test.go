@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -35,8 +36,8 @@ func TestHistoryAnalyzer_Configure(t *testing.T) {
 		t.Errorf("expected PeopleNumber 10, got %d", c.PeopleNumber)
 	}
 
-	if len(c.reversedPeopleDict) != 1 {
-		t.Errorf("expected reversedPeopleDict len 1, got %d", len(c.reversedPeopleDict))
+	if len(c.ReversedPeopleDict) != 1 {
+		t.Errorf("expected ReversedPeopleDict len 1, got %d", len(c.ReversedPeopleDict))
 	}
 }
 
@@ -44,8 +45,8 @@ func TestHistoryAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber:       1,
-		reversedPeopleDict: []string{"dev"},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"dev"}},
 	}
 
 	err := c.Initialize(nil)
@@ -61,9 +62,9 @@ func TestHistoryAnalyzer_Consume_ReturnsTC(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -100,9 +101,9 @@ func TestHistoryAnalyzer_Consume_Delete(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -135,9 +136,9 @@ func TestHistoryAnalyzer_Consume_Rename(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -172,9 +173,9 @@ func TestHistoryAnalyzer_Consume_MergeDedup(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -212,9 +213,9 @@ func TestHistoryAnalyzer_Consume_MergeMode(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -250,10 +251,10 @@ func TestHistoryAnalyzer_Fork_WorkingStateOnly(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber:       2,
-		reversedPeopleDict: []string{"alice", "bob"},
-		seenFiles:          newSeenFilesFilter(),
-		merges:             analyze.NewMergeTracker(),
+		PeopleNumber:  2,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"alice", "bob"}},
+		seenFiles:     newSeenFilesFilter(),
+		merges:        analyze.NewMergeTracker(),
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -266,7 +267,7 @@ func TestHistoryAnalyzer_Fork_WorkingStateOnly(t *testing.T) {
 		assert.NotNil(t, cc.seenFiles)
 		assert.NotNil(t, cc.merges)
 		assert.Equal(t, 2, cc.PeopleNumber)
-		assert.Equal(t, []string{"alice", "bob"}, cc.reversedPeopleDict)
+		assert.Equal(t, []string{"alice", "bob"}, cc.ReversedPeopleDict)
 	}
 }
 
@@ -395,9 +396,9 @@ func TestHistoryAnalyzer_Consume_OversizedChangeset(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -436,9 +437,9 @@ func TestHistoryAnalyzer_Consume_ExactMaxChangeset(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber: 1,
-		Identity:     &plumbing.IdentityDetector{},
-		TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+		PeopleNumber:  1,
+		IdentityMixin: common.IdentityMixin{Identity: &plumbing.IdentityDetector{}},
+		TreeDiff:      &plumbing.TreeDiffAnalyzer{},
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -489,10 +490,10 @@ func TestHistoryAnalyzer_NewAggregator(t *testing.T) {
 	t.Parallel()
 
 	c := &HistoryAnalyzer{
-		PeopleNumber:       2,
-		reversedPeopleDict: []string{"alice", "bob"},
-		seenFiles:          newSeenFilesFilter(),
-		merges:             analyze.NewMergeTracker(),
+		PeopleNumber:  2,
+		IdentityMixin: common.IdentityMixin{ReversedPeopleDict: []string{"alice", "bob"}},
+		seenFiles:     newSeenFilesFilter(),
+		merges:        analyze.NewMergeTracker(),
 	}
 	require.NoError(t, c.Initialize(nil))
 
@@ -520,7 +521,7 @@ func TestHistoryAnalyzer_SerializeTICKs(t *testing.T) {
 
 	c := NewHistoryAnalyzer()
 	c.PeopleNumber = 1
-	c.reversedPeopleDict = []string{"dev"}
+	c.ReversedPeopleDict = []string{"dev"}
 
 	var buf bytes.Buffer
 

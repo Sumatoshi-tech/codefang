@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
@@ -65,9 +66,13 @@ var (
 	licenseRE           = regexp.MustCompile(`(?i)(licen[cs]e|copyright|©)`)
 )
 
+// sentimentAvgTCSize is the estimated bytes of TC payload per commit (comment list).
+const sentimentAvgTCSize = 500
+
 // Analyzer tracks comment sentiment across commit history.
 type Analyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.NoStateHibernation
 
 	UAST             *plumbing.UASTChangesAnalyzer
 	Ticks            *plumbing.TicksSinceStart
@@ -85,7 +90,8 @@ func NewAnalyzer() *Analyzer {
 			Description: "Classifies each new or changed comment per commit as containing positive or negative emotions.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:      false,
+		EstimatedTCSize: sentimentAvgTCSize,
 		ConfigOptions: []pipeline.ConfigurationOption{
 			{
 				Name:        ConfigCommentSentimentMinLength,
@@ -102,12 +108,19 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultCommentSentimentGap,
 			},
 		},
-		ComputeMetricsFn: computeMetricsSafe,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn:     newAggregator,
 	}
 
 	a.TicksToReportFn = func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
 		return ticksToReport(ctx, ticks, a.commitsByTick)
+	}
+
+	a.SerializeTextFn = func(result analyze.Report, writer io.Writer) error {
+		return a.generateText(result, writer)
+	}
+	a.SerializePlotFn = func(result analyze.Report, writer io.Writer) error {
+		return a.generatePlot(result, writer)
 	}
 
 	return a
@@ -116,39 +129,6 @@ func NewAnalyzer() *Analyzer {
 // CPUHeavy indicates this analyzer does heavy computation.
 func (s *Analyzer) CPUHeavy() bool {
 	return true
-}
-
-// Serialize writes the analysis result to the given writer.
-// Overrides base to add text and plot format support.
-func (s *Analyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatText {
-		return s.generateText(result, writer)
-	}
-
-	if format == analyze.FormatPlot {
-		return s.generatePlot(result, writer)
-	}
-
-	return s.BaseHistoryAnalyzer.Serialize(result, format, writer)
-}
-
-// SerializeTICKs converts aggregated TICKs into the final report and serializes it.
-// Overrides base to add text and plot format support.
-func (s *Analyzer) SerializeTICKs(ticks []analyze.TICK, format string, writer io.Writer) error {
-	if format == analyze.FormatText || format == analyze.FormatPlot {
-		report, err := s.ReportFromTICKs(context.Background(), ticks)
-		if err != nil {
-			return err
-		}
-
-		if format == analyze.FormatText {
-			return s.generateText(report, writer)
-		}
-
-		return s.generatePlot(report, writer)
-	}
-
-	return s.BaseHistoryAnalyzer.SerializeTICKs(ticks, format, writer)
 }
 
 func (s *Analyzer) generateText(report analyze.Report, writer io.Writer) error {
@@ -177,14 +157,6 @@ func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 	return page.Render(writer)
 }
 
-func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
-	if len(report) == 0 {
-		return &ComputedMetrics{}, nil
-	}
-
-	return ComputeAllMetrics(report)
-}
-
 // Configure sets up the analyzer with the provided facts.
 func (s *Analyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigCommentSentimentGap].(float32); exists {
@@ -195,7 +167,7 @@ func (s *Analyzer) Configure(facts map[string]any) error {
 		s.MinCommentLength = val
 	}
 
-	if val, exists := facts[pkgplumbing.FactCommitsByTick].(map[int][]gitlib.Hash); exists {
+	if val, ok := pkgplumbing.GetCommitsByTick(facts); ok {
 		s.commitsByTick = val
 	}
 
@@ -449,16 +421,6 @@ func (s *Analyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
 	}
 }
 
-// NewAggregator creates an aggregator for this analyzer.
-func (s *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return s.AggregatorFn(opts)
-}
-
-// ReportFromTICKs converts aggregated TICKs into a Report.
-func (s *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return s.TicksToReportFn(ctx, ticks), nil
-}
-
 // ExtractCommitTimeSeries extracts per-commit sentiment data from a finalized report.
 func (s *Analyzer) ExtractCommitTimeSeries(report analyze.Report) map[string]any {
 	commentsByCommit, ok := report["comments_by_commit"].(map[string][]string)
@@ -627,7 +589,14 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK, commitsByTick map[in
 	ct := commitsByTick
 
 	if ct == nil {
-		ct = buildCommitsByTickFromTicks(ticks)
+		ct = analyze.BuildCommitsByTick(ticks, func(data any) (map[string][]string, bool) {
+			td, ok := data.(*TickData)
+			if !ok || td == nil {
+				return nil, false
+			}
+
+			return td.CommentsByCommit, td.CommentsByCommit != nil
+		})
 	}
 
 	return analyze.Report{
@@ -649,25 +618,4 @@ func buildCommentsByCommitFromTicks(ticks []analyze.TICK) map[string][]string {
 	}
 
 	return commentsByCommit
-}
-
-func buildCommitsByTickFromTicks(ticks []analyze.TICK) map[int][]gitlib.Hash {
-	ct := make(map[int][]gitlib.Hash)
-
-	for _, tick := range ticks {
-		td, ok := tick.Data.(*TickData)
-		if !ok || td == nil || td.CommentsByCommit == nil {
-			continue
-		}
-
-		hashes := make([]gitlib.Hash, 0, len(td.CommentsByCommit))
-
-		for h := range td.CommentsByCommit {
-			hashes = append(hashes, gitlib.NewHash(h))
-		}
-
-		ct[tick.Tick] = append(ct[tick.Tick], hashes...)
-	}
-
-	return ct
 }

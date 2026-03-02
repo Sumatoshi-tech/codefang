@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 const (
@@ -401,7 +401,7 @@ func groupByDirectory(functions []map[string]any) []directoryGroup {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return median(result[i].Scores) < median(result[j].Scores)
+		return stats.Median(result[i].Scores) < stats.Median(result[j].Scores)
 	})
 
 	if len(result) > maxDirectories {
@@ -438,38 +438,11 @@ func boxStats(sorted []float64) [5]float64 {
 
 	return [5]float64{
 		sorted[0],
-		percentile(sorted, pQ1),
-		percentile(sorted, pMedian),
-		percentile(sorted, pQ3),
+		stats.Percentile(sorted, pQ1),
+		stats.Percentile(sorted, pMedian),
+		stats.Percentile(sorted, pQ3),
 		sorted[len(sorted)-1],
 	}
-}
-
-// percentile computes the p-th percentile of a sorted slice using linear interpolation.
-func percentile(sorted []float64, p float64) float64 {
-	if len(sorted) == 0 {
-		return 0
-	}
-
-	if len(sorted) == 1 {
-		return sorted[0]
-	}
-
-	idx := p * float64(len(sorted)-1)
-	lower := int(math.Floor(idx))
-	upper := int(math.Ceil(idx))
-
-	if lower == upper {
-		return sorted[lower]
-	}
-
-	frac := idx - float64(lower)
-
-	return sorted[lower]*(1-frac) + sorted[upper]*frac
-}
-
-func median(sorted []float64) float64 {
-	return percentile(sorted, pMedian)
 }
 
 func buildBoxPlotChart(groups []directoryGroup) *charts.BoxPlot {
@@ -481,10 +454,10 @@ func buildBoxPlotChart(groups []directoryGroup) *charts.BoxPlot {
 
 	for i, g := range groups {
 		labels[i] = g.Label
-		stats := boxStats(g.Scores)
+		bs := boxStats(g.Scores)
 		data[i] = opts.BoxPlotData{
 			Name:  g.Label,
-			Value: stats[:],
+			Value: bs[:],
 		}
 	}
 

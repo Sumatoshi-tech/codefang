@@ -3,6 +3,8 @@ package streaming
 import (
 	"context"
 	"log/slog"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
 // ChunkMemoryLog holds memory measurements for a single chunk.
@@ -22,13 +24,13 @@ type ChunkMemoryLog struct {
 func LogChunkMemory(ctx context.Context, logger *slog.Logger, entry ChunkMemoryLog) {
 	logger.InfoContext(ctx, "streaming: chunk memory",
 		"chunk", entry.ChunkIndex+1,
-		"heap_before_mib", entry.HeapBefore/int64(mib),
-		"heap_after_mib", entry.HeapAfter/int64(mib),
-		"sys_mib", entry.SysAfter/int64(mib),
-		"rss_mib", entry.RSSAfter/int64(mib),
+		"heap_before_mib", entry.HeapBefore/units.MiB,
+		"heap_after_mib", entry.HeapAfter/units.MiB,
+		"sys_mib", entry.SysAfter/units.MiB,
+		"rss_mib", entry.RSSAfter/units.MiB,
 		"budget_used_pct", entry.BudgetUsedPct,
-		"growth_per_commit_kib", entry.GrowthPerCommit/int64(kib),
-		"ema_growth_kib", int64(entry.EMAGrowthRate)/int64(kib),
+		"growth_per_commit_kib", entry.GrowthPerCommit/units.KiB,
+		"ema_growth_kib", int64(entry.EMAGrowthRate)/units.KiB,
 		"replanned", entry.Replanned,
 	)
 }

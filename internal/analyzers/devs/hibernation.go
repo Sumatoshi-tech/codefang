@@ -29,7 +29,7 @@ func (a *Analyzer) Boot() error {
 }
 
 // workingStateSize is the estimated bytes of working state per commit
-// for the devs analyzer (merge tracker, reversedPeopleDict).
+// for the devs analyzer (merge tracker, ReversedPeopleDict).
 const workingStateSize = 4 * 1024
 
 // avgTCSize is the estimated bytes of TC payload per commit

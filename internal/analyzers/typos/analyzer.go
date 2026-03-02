@@ -9,6 +9,7 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/levenshtein"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -39,9 +40,13 @@ const (
 	ConfigTyposDatasetMaximumAllowedDistance = "TyposDatasetBuilder.MaximumAllowedDistance"
 )
 
+// typosAvgTCSize is the estimated bytes of TC payload per commit.
+const typosAvgTCSize = 200
+
 // Analyzer detects typo-fix identifier pairs across commit history.
 type Analyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.NoStateHibernation
 
 	UAST                   *plumbing.UASTChangesAnalyzer
 	FileDiff               *plumbing.FileDiffAnalyzer
@@ -59,7 +64,8 @@ func NewAnalyzer() *Analyzer {
 			Description: "Extracts typo-fix identifier pairs from source code in commit diffs.",
 			Mode:        analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:      false,
+		EstimatedTCSize: typosAvgTCSize,
 		ConfigOptions: []pipeline.ConfigurationOption{
 			{
 				Name:        ConfigTyposDatasetMaximumAllowedDistance,
@@ -69,21 +75,13 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultMaximumAllowedTypoDistance,
 			},
 		},
-		ComputeMetricsFn: computeMetricsSafe,
+		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
 		AggregatorFn:     newAggregator,
 	}
 
 	a.TicksToReportFn = ticksToReport
 
 	return a
-}
-
-func computeMetricsSafe(report analyze.Report) (*ComputedMetrics, error) {
-	if len(report) == 0 {
-		return &ComputedMetrics{}, nil
-	}
-
-	return ComputeAllMetrics(report)
 }
 
 // Configure sets up the analyzer with the provided facts.
@@ -369,16 +367,6 @@ func (t *Analyzer) ReleaseSnapshot(snap analyze.PlumbingSnapshot) {
 		node.ReleaseTree(ch.Before)
 		node.ReleaseTree(ch.After)
 	}
-}
-
-// NewAggregator creates an aggregator for this analyzer.
-func (t *Analyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return t.AggregatorFn(opts)
-}
-
-// ReportFromTICKs converts aggregated TICKs into a Report.
-func (t *Analyzer) ReportFromTICKs(ctx context.Context, ticks []analyze.TICK) (analyze.Report, error) {
-	return t.TicksToReportFn(ctx, ticks), nil
 }
 
 // Extract properties for GenericAggregator.

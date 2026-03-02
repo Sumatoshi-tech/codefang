@@ -11,7 +11,7 @@ type OwnershipSegment struct {
 
 // rangeIndex holds the lazy interval tree index for range queries.
 type rangeIndex struct {
-	tree  *interval.Tree
+	tree  *interval.Tree[uint32, uint32]
 	dirty bool
 }
 
@@ -50,7 +50,7 @@ func (file *File) InvalidateIndex() {
 // ensureIndex rebuilds the interval tree index if it is dirty or uninitialized.
 func (file *File) ensureIndex() {
 	if file.index == nil {
-		file.index = &rangeIndex{tree: interval.New(), dirty: true}
+		file.index = &rangeIndex{tree: interval.New[uint32, uint32](), dirty: true}
 	}
 
 	if !file.index.dirty {

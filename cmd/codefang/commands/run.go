@@ -47,6 +47,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
@@ -300,7 +302,7 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 				attribute.Bool("error", runResult != nil),
 				attribute.String("codefang.duration_class", durationClass(time.Since(start))),
 				attribute.String("codefang.format", rc.format),
-				attribute.Int64("codefang.memory_sys_mb", int64(m.Sys/bytesPerMiB)),
+				attribute.Int64("codefang.memory_sys_mb", int64(m.Sys/units.MiB)),
 			)
 			rootSpan.End()
 		}()
@@ -389,9 +391,6 @@ func (rc *RunCommand) initObservability() (observability.Providers, error) {
 
 	return rc.observabilityInit(cfg)
 }
-
-// bytesPerMiB is used to convert bytes to mebibytes.
-const bytesPerMiB = 1024 * 1024
 
 // Duration class thresholds for tail-sampling support.
 const (
@@ -1490,7 +1489,7 @@ func configureLibgit2MemoryLimits(budgetStr string) {
 	if budgetStr != "" {
 		parsed, err := humanize.ParseBytes(budgetStr)
 		if err == nil {
-			budgetBytes = framework.SafeInt64(parsed)
+			budgetBytes = safeconv.SafeInt64(parsed)
 		}
 	}
 

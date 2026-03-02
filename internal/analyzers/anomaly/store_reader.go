@@ -2,11 +2,11 @@ package anomaly
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // GenerateStoreSections reads pre-computed anomaly data from a ReportReader
@@ -49,113 +49,27 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // ReadTimeSeriesIfPresent reads all time_series records, returning nil if absent.
 func ReadTimeSeriesIfPresent(reader analyze.ReportReader, kinds []string) ([]TimeSeriesEntry, error) {
-	if !slices.Contains(kinds, KindTimeSeries) {
-		return nil, nil
-	}
-
-	var result []TimeSeriesEntry
-
-	iterErr := reader.Iter(KindTimeSeries, func(raw []byte) error {
-		var entry TimeSeriesEntry
-
-		decErr := analyze.GobDecode(raw, &entry)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, entry)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[TimeSeriesEntry](reader, kinds, KindTimeSeries)
 }
 
 // ReadAnomaliesIfPresent reads all anomaly_record records, returning nil if absent.
 func ReadAnomaliesIfPresent(reader analyze.ReportReader, kinds []string) ([]Record, error) {
-	if !slices.Contains(kinds, KindAnomalyRecord) {
-		return nil, nil
-	}
-
-	var result []Record
-
-	iterErr := reader.Iter(KindAnomalyRecord, func(raw []byte) error {
-		var rec Record
-
-		decErr := analyze.GobDecode(raw, &rec)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, rec)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[Record](reader, kinds, KindAnomalyRecord)
 }
 
 // ReadAggregateIfPresent reads the single aggregate record, returning zero value if absent.
 func ReadAggregateIfPresent(reader analyze.ReportReader, kinds []string) (AggregateData, error) {
-	if !slices.Contains(kinds, KindAggregate) {
-		return AggregateData{}, nil
-	}
-
-	var agg AggregateData
-
-	iterErr := reader.Iter(KindAggregate, func(raw []byte) error {
-		return analyze.GobDecode(raw, &agg)
-	})
-
-	return agg, iterErr
+	return analyze.ReadRecordIfPresent[AggregateData](reader, kinds, KindAggregate)
 }
 
 // ReadExternalAnomaliesIfPresent reads all external_anomaly records.
 func ReadExternalAnomaliesIfPresent(reader analyze.ReportReader, kinds []string) ([]ExternalAnomaly, error) {
-	if !slices.Contains(kinds, KindExternalAnomaly) {
-		return nil, nil
-	}
-
-	var result []ExternalAnomaly
-
-	iterErr := reader.Iter(KindExternalAnomaly, func(raw []byte) error {
-		var ea ExternalAnomaly
-
-		decErr := analyze.GobDecode(raw, &ea)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, ea)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[ExternalAnomaly](reader, kinds, KindExternalAnomaly)
 }
 
 // ReadExternalSummariesIfPresent reads all external_summary records.
 func ReadExternalSummariesIfPresent(reader analyze.ReportReader, kinds []string) ([]ExternalSummary, error) {
-	if !slices.Contains(kinds, KindExternalSummary) {
-		return nil, nil
-	}
-
-	var result []ExternalSummary
-
-	iterErr := reader.Iter(KindExternalSummary, func(raw []byte) error {
-		var es ExternalSummary
-
-		decErr := analyze.GobDecode(raw, &es)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, es)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[ExternalSummary](reader, kinds, KindExternalSummary)
 }
 
 // buildStoreSections constructs anomaly plot sections from pre-computed data.
@@ -178,7 +92,7 @@ func buildStoreSections(
 		ExternalSummaries: externalSummaries,
 	}
 
-	ticks := sortedTickKeys(tickMetrics)
+	ticks := mapx.SortedKeys(tickMetrics)
 	if len(ticks) == 0 {
 		return nil, nil
 	}

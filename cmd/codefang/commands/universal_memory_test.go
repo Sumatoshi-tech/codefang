@@ -17,6 +17,8 @@ import (
 
 // TestUniversalAnalyzers_MemoryLeak checks all default analyzers for memory leaks
 // during a simulated long-running stream of commits.
+//
+//nolint:paralleltest,tparallel // memory baseline tests must run sequentially
 func TestUniversalAnalyzers_MemoryLeak(t *testing.T) {
 	t.Parallel()
 
@@ -56,8 +58,6 @@ func TestUniversalAnalyzers_MemoryLeak(t *testing.T) {
 	leaves := defaultHistoryLeaves()
 	for _, leaf := range leaves {
 		t.Run(leaf.Name(), func(t *testing.T) {
-			t.Parallel()
-
 			// Create a fresh iterator for each run.
 			iter, iterErr := libRepo.Log(&gitlib.LogOptions{})
 			require.NoError(t, iterErr)

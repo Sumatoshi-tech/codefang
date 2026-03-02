@@ -69,7 +69,7 @@ func NewAnalyzer() *Analyzer {
 	extractionConfig := common.ExtractionConfig{
 		DefaultExtractors: true,
 		NameExtractors: map[string]common.NameExtractor{
-			"function_name": common.ExtractFunctionName,
+			"function_name": common.ExtractEntityName,
 			"operator_name": extractOperatorName,
 			"operand_name":  extractOperandName,
 		},
@@ -502,7 +502,7 @@ func (h *Analyzer) extractFunctionName(n *node.Node) string {
 		return name
 	}
 
-	if name, ok := common.ExtractFunctionName(n); ok && name != "" {
+	if name, ok := common.ExtractEntityName(n); ok && name != "" {
 		return name
 	}
 

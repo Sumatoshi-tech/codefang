@@ -42,6 +42,12 @@ type BaseHistoryAnalyzer[M any] struct {
 	ComputeMetricsFn MetricComputer[M]
 	TicksToReportFn  func(ctx context.Context, ticks []TICK) Report
 	AggregatorFn     func(opts AggregatorOptions) Aggregator
+
+	// Custom format hooks — set these to handle FormatText and FormatPlot
+	// without overriding Serialize/SerializeTICKs. When set, the base
+	// dispatch checks them before falling through to JSON/YAML/Binary.
+	SerializeTextFn func(result Report, writer io.Writer) error
+	SerializePlotFn func(result Report, writer io.Writer) error
 }
 
 // Name returns the analyzer name (derived from the descriptor ID).
@@ -99,6 +105,18 @@ func (b *BaseHistoryAnalyzer[M]) Configure(_ map[string]any) error {
 	return nil
 }
 
+// NewAggregator creates an aggregator using the configured AggregatorFn hook.
+// Returns nil when no AggregatorFn is set (e.g., plumbing analyzers).
+// Concrete analyzers that need runtime state at aggregator creation time
+// (e.g., couples, burndown) should override this method.
+func (b *BaseHistoryAnalyzer[M]) NewAggregator(opts AggregatorOptions) Aggregator {
+	if b.AggregatorFn != nil {
+		return b.AggregatorFn(opts)
+	}
+
+	return nil
+}
+
 // resolveSerializeTarget returns the format-appropriate representation of metrics.
 // If metrics implements metricsSerializer, the format-specific method is called.
 func resolveSerializeTarget(metrics any, toFn func(metricsSerializer) any) any {
@@ -110,7 +128,18 @@ func resolveSerializeTarget(metrics any, toFn func(metricsSerializer) any) any {
 }
 
 // Serialize dynamically uses ComputeMetricsFn and standard encodings.
+// Custom format hooks (SerializeTextFn, SerializePlotFn) are checked first,
+// allowing analyzers to support text/plot output without overriding this method.
 func (b *BaseHistoryAnalyzer[M]) Serialize(result Report, format string, writer io.Writer) error {
+	// Custom format hooks take priority.
+	if format == FormatText && b.SerializeTextFn != nil {
+		return b.SerializeTextFn(result, writer)
+	}
+
+	if format == FormatPlot && b.SerializePlotFn != nil {
+		return b.SerializePlotFn(result, writer)
+	}
+
 	if b.ComputeMetricsFn == nil {
 		return ErrMissingComputeMetrics
 	}
@@ -120,35 +149,20 @@ func (b *BaseHistoryAnalyzer[M]) Serialize(result Report, format string, writer 
 		return err
 	}
 
+	return writeMetricsToFormat(metrics, format, writer)
+}
+
+// writeMetricsToFormat encodes metrics in the requested format and writes to writer.
+func writeMetricsToFormat(metrics any, format string, writer io.Writer) error {
 	switch format {
 	case FormatJSON:
 		target := resolveSerializeTarget(metrics, metricsSerializer.ToJSON)
 
-		data, errJSON := json.Marshal(target)
-		if errJSON != nil {
-			return fmt.Errorf("json encode: %w", errJSON)
-		}
-
-		_, errWrite := writer.Write(data)
-		if errWrite != nil {
-			return fmt.Errorf("json write: %w", errWrite)
-		}
-
-		return nil
+		return marshalAndWrite(target, json.Marshal, writer, "json")
 	case FormatYAML:
 		target := resolveSerializeTarget(metrics, metricsSerializer.ToYAML)
 
-		data, errYAML := yaml.Marshal(target)
-		if errYAML != nil {
-			return fmt.Errorf("yaml marshal: %w", errYAML)
-		}
-
-		_, errWrite := writer.Write(data)
-		if errWrite != nil {
-			return fmt.Errorf("yaml write: %w", errWrite)
-		}
-
-		return nil
+		return marshalAndWrite(target, yaml.Marshal, writer, "yaml")
 	case FormatBinary:
 		errBinary := reportutil.EncodeBinaryEnvelope(metrics, writer)
 		if errBinary != nil {
@@ -159,6 +173,21 @@ func (b *BaseHistoryAnalyzer[M]) Serialize(result Report, format string, writer 
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)
 	}
+}
+
+// marshalAndWrite marshals data and writes the result to writer.
+func marshalAndWrite(data any, marshal func(any) ([]byte, error), writer io.Writer, label string) error {
+	encoded, err := marshal(data)
+	if err != nil {
+		return fmt.Errorf("%s encode: %w", label, err)
+	}
+
+	_, writeErr := writer.Write(encoded)
+	if writeErr != nil {
+		return fmt.Errorf("%s write: %w", label, writeErr)
+	}
+
+	return nil
 }
 
 // SerializeTICKs uses TicksToReportFn and delegates to Serialize.

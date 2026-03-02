@@ -8,8 +8,10 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
+	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -37,14 +39,13 @@ var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeo
 // HistoryAnalyzer identifies co-change coupling between files and developers.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
+	common.IdentityMixin
 
-	TreeDiff           *plumbing.TreeDiffAnalyzer
-	Identity           *plumbing.IdentityDetector
-	lastCommit         analyze.CommitLike
-	merges             *analyze.MergeTracker
-	reversedPeopleDict []string
-	PeopleNumber       int
-	seenFiles          *bloom.Filter
+	TreeDiff     *plumbing.TreeDiffAnalyzer
+	lastCommit   analyze.CommitLike
+	merges       *analyze.MergeTracker
+	PeopleNumber int
+	seenFiles    *bloom.Filter
 
 	// TopKPerFile limits the number of file coupling pairs emitted by WriteToStoreFromAggregator.
 	// Zero uses DefaultTopKPerFile.
@@ -74,22 +75,20 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 			return ComputeAllMetrics(report)
 		},
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
-			return newAggregator(opts, a.PeopleNumber, a.getReversedPeopleDict(), a.lastCommit)
+			return newAggregator(opts, a.PeopleNumber, a.GetReversedPeopleDict(), a.lastCommit)
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
-			return ticksToReport(ctx, ticks, a.getReversedPeopleDict(), a.PeopleNumber, a.lastCommit)
+			return ticksToReport(ctx, ticks, a.GetReversedPeopleDict(), a.PeopleNumber, a.lastCommit)
+		},
+		SerializeTextFn: func(result analyze.Report, writer io.Writer) error {
+			return a.generateText(result, writer)
+		},
+		SerializePlotFn: func(result analyze.Report, writer io.Writer) error {
+			return a.generatePlot(result, writer)
 		},
 	}
 
 	return a
-}
-
-func (c *HistoryAnalyzer) getReversedPeopleDict() []string {
-	if c.Identity != nil && len(c.Identity.ReversedPeopleDict) > 0 {
-		return c.Identity.ReversedPeopleDict
-	}
-
-	return c.reversedPeopleDict
 }
 
 const (
@@ -134,15 +133,15 @@ func (c *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 
 // Configure sets up the analyzer with the provided facts.
 func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
-	if val, exists := facts[identity.FactIdentityDetectorPeopleCount].(int); exists {
+	if val, ok := pkgplumbing.GetPeopleCount(facts); ok {
 		c.PeopleNumber = val
 
-		rpd, ok := facts[identity.FactIdentityDetectorReversedPeopleDict].([]string)
-		if !ok {
+		rpd, rpdOK := pkgplumbing.GetReversedPeopleDict(facts)
+		if !rpdOK {
 			return ErrInvalidReversedPeopleDict
 		}
 
-		c.reversedPeopleDict = rpd
+		c.ReversedPeopleDict = rpd
 	}
 
 	return nil
@@ -443,11 +442,13 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 	res := make([]analyze.HistoryAnalyzer, n)
 	for i := range n {
 		clone := &HistoryAnalyzer{
-			Identity:           &plumbing.IdentityDetector{},
-			TreeDiff:           &plumbing.TreeDiffAnalyzer{},
-			PeopleNumber:       c.PeopleNumber,
-			reversedPeopleDict: c.getReversedPeopleDict(),
-			seenFiles:          newSeenFilesFilter(),
+			IdentityMixin: common.IdentityMixin{
+				Identity:           &plumbing.IdentityDetector{},
+				ReversedPeopleDict: c.GetReversedPeopleDict(),
+			},
+			TreeDiff:     &plumbing.TreeDiffAnalyzer{},
+			PeopleNumber: c.PeopleNumber,
+			seenFiles:    newSeenFilesFilter(),
 		}
 		if c.BaseHistoryAnalyzer != nil {
 			clone.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
@@ -456,6 +457,8 @@ func (c *HistoryAnalyzer) Fork(n int) []analyze.HistoryAnalyzer {
 				ComputeMetricsFn: c.ComputeMetricsFn,
 				AggregatorFn:     c.AggregatorFn,
 				TicksToReportFn:  c.TicksToReportFn,
+				SerializeTextFn:  c.SerializeTextFn,
+				SerializePlotFn:  c.SerializePlotFn,
 			}
 		}
 		// Initialize independent state for each fork.
@@ -485,23 +488,9 @@ func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 	}
 }
 
-// Serialize writes the analysis result to the given writer.
-// Text and plot formats are handled here; JSON/YAML/Binary delegate to the base.
-func (c *HistoryAnalyzer) Serialize(result analyze.Report, format string, writer io.Writer) error {
-	if format == analyze.FormatText {
-		return c.generateText(result, writer)
-	}
-
-	if format == analyze.FormatPlot {
-		return c.generatePlot(result, writer)
-	}
-
-	return c.BaseHistoryAnalyzer.Serialize(result, format, writer)
-}
-
 // NewAggregator creates a new aggregator for this analyzer.
 func (c *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return newAggregator(opts, c.PeopleNumber, c.getReversedPeopleDict(), c.lastCommit)
+	return newAggregator(opts, c.PeopleNumber, c.GetReversedPeopleDict(), c.lastCommit)
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.

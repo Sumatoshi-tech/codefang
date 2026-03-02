@@ -170,33 +170,6 @@ func TestMapString_Missing(t *testing.T) {
 	}
 }
 
-func TestMapFloat64_Float(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{"val": 0.75}
-	if got := MapFloat64(m, "val"); got != 0.75 {
-		t.Errorf("MapFloat64() = %v, want 0.75", got)
-	}
-}
-
-func TestMapFloat64_Int(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{"val": 5}
-	if got := MapFloat64(m, "val"); got != 5.0 {
-		t.Errorf("MapFloat64() = %v, want 5.0", got)
-	}
-}
-
-func TestMapFloat64_Missing(t *testing.T) {
-	t.Parallel()
-
-	m := map[string]any{}
-	if got := MapFloat64(m, "val"); got != 0 {
-		t.Errorf("MapFloat64() = %v, want 0", got)
-	}
-}
-
 func TestFormatInt(t *testing.T) {
 	t.Parallel()
 

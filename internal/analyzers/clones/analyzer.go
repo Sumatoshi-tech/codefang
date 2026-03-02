@@ -255,7 +255,7 @@ func (a *Analyzer) buildSignatures(functions []*node.Node) []funcEntry {
 
 // extractFuncName extracts the function name from a node.
 func extractFuncName(fn *node.Node) string {
-	if name, ok := common.ExtractFunctionName(fn); ok && name != "" {
+	if name, ok := common.ExtractEntityName(fn); ok && name != "" {
 		return name
 	}
 

@@ -27,7 +27,7 @@ const (
 //   - "churn": per-tick ChurnData records (sorted by tick).
 //   - "aggregate": single AggregateData record.
 func (a *Analyzer) WriteToStore(ctx context.Context, ticks []analyze.TICK, w analyze.ReportWriter) error {
-	report := ticksToReport(ctx, ticks, a.commitsByTick, a.getReversedPeopleDict(), a.tickSize, a.Anonymize)
+	report := ticksToReport(ctx, ticks, a.commitsByTick, a.GetReversedPeopleDict(), a.tickSize, a.Anonymize)
 
 	metrics, metricsErr := ComputeAllMetrics(report)
 	if metricsErr != nil {

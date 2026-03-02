@@ -6,18 +6,14 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
 // Sentinel errors for configuration.
 var (
 	ErrInvalidSizeFormat = errors.New("invalid size format")
 	ErrInvalidGCPercent  = errors.New("invalid GC percent")
-)
-
-// Maximum integer values for safe conversion from uint64.
-const (
-	maxInt   = int(^uint(0) >> 1)
-	maxInt64 = int64(^uint64(0) >> 1)
 )
 
 // ConfigParams holds raw CLI parameter values for building a CoordinatorConfig.
@@ -65,7 +61,7 @@ func DefaultMemoryBudget() int64 {
 		return 0
 	}
 
-	budget := SafeInt64(total * defaultMemoryBudgetRatio / percentDenominator)
+	budget := safeconv.SafeInt64(total * defaultMemoryBudgetRatio / percentDenominator)
 
 	return min(budget, defaultMemoryBudgetCap)
 }
@@ -91,7 +87,7 @@ func BuildConfigFromParams(params ConfigParams, budgetSolver BudgetSolver) (Coor
 			return CoordinatorConfig{}, 0, fmt.Errorf("failed to parse budget: %w", parseErr)
 		}
 
-		return cfg, SafeInt64(budgetBytes), nil
+		return cfg, safeconv.SafeInt64(budgetBytes), nil
 	}
 
 	config := DefaultCoordinatorConfig()
@@ -120,7 +116,7 @@ func buildConfigFromBudget(budgetStr string, solver BudgetSolver) (CoordinatorCo
 		return CoordinatorConfig{}, fmt.Errorf("%w for memory-budget: %s", ErrInvalidSizeFormat, budgetStr)
 	}
 
-	cfg, err := solver(SafeInt64(budgetBytes))
+	cfg, err := solver(safeconv.SafeInt64(budgetBytes))
 	if err != nil {
 		return CoordinatorConfig{}, fmt.Errorf("memory budget error: %w", err)
 	}
@@ -153,7 +149,7 @@ func applySizeParams(config *CoordinatorConfig, params ConfigParams) error {
 			return fmt.Errorf("%w for blob-cache-size: %s", ErrInvalidSizeFormat, params.BlobCacheSize)
 		}
 
-		config.BlobCacheSize = SafeInt64(size)
+		config.BlobCacheSize = safeconv.SafeInt64(size)
 	}
 
 	if params.BlobArenaSize != "" {
@@ -162,7 +158,7 @@ func applySizeParams(config *CoordinatorConfig, params ConfigParams) error {
 			return fmt.Errorf("%w for blob-arena-size: %s", ErrInvalidSizeFormat, params.BlobArenaSize)
 		}
 
-		config.BlobArenaSize = SafeInt(size)
+		config.BlobArenaSize = safeconv.SafeInt(size)
 	}
 
 	return nil
@@ -197,23 +193,5 @@ func ParseOptionalSize(sizeValue string) (int64, error) {
 		return 0, fmt.Errorf("%w for ballast-size: %s", ErrInvalidSizeFormat, sizeValue)
 	}
 
-	return SafeInt64(parsed), nil
-}
-
-// SafeInt64 converts uint64 to int64, clamping to maxInt64 to prevent overflow.
-func SafeInt64(v uint64) int64 {
-	if v > uint64(maxInt64) {
-		return maxInt64
-	}
-
-	return int64(v)
-}
-
-// SafeInt converts uint64 to int, clamping to maxInt to prevent overflow.
-func SafeInt(v uint64) int {
-	if v > uint64(maxInt) {
-		return maxInt
-	}
-
-	return int(v)
+	return safeconv.SafeInt64(parsed), nil
 }

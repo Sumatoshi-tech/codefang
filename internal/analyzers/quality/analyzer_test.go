@@ -10,6 +10,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -353,34 +354,34 @@ func TestComputeTickStats(t *testing.T) {
 		CohesionScores:  []float64{0.8, 0.85, 0.9, 0.95, 1.0},
 	}
 
-	stats := computeTickStats(tq)
+	ts := computeTickStats(tq)
 
-	assert.Equal(t, 5, stats.FilesAnalyzed)
-	assert.InDelta(t, 6.0, stats.ComplexityMean, 0.01)   // (2+4+6+8+10)/5.
-	assert.InDelta(t, 6.0, stats.ComplexityMedian, 0.01) // middle of sorted.
-	assert.InDelta(t, 9.2, stats.ComplexityP95, 0.5)     // near top.
-	assert.InDelta(t, 10.0, stats.ComplexityMax, 0.01)
-	assert.InDelta(t, 300.0, stats.HalsteadVolMean, 0.01)
-	assert.InDelta(t, 300.0, stats.HalsteadVolMedian, 0.01)
-	assert.InDelta(t, 1500.0, stats.HalsteadVolSum, 0.01)
-	assert.InDelta(t, 1.5, stats.DeliveredBugsSum, 0.01)
-	assert.InDelta(t, 0.64, stats.CommentScoreMean, 0.01)
-	assert.InDelta(t, 0.3, stats.CommentScoreMin, 0.01)
-	assert.InDelta(t, 0.9, stats.CohesionMean, 0.01)
-	assert.InDelta(t, 0.8, stats.CohesionMin, 0.01)
-	assert.Equal(t, 20, stats.TotalFunctions) // 2+3+4+5+6.
-	assert.Equal(t, 10, stats.MaxComplexity)  // max(3,5,7,8,10).
+	assert.Equal(t, 5, ts.FilesAnalyzed)
+	assert.InDelta(t, 6.0, ts.ComplexityMean, 0.01)   // (2+4+6+8+10)/5.
+	assert.InDelta(t, 6.0, ts.ComplexityMedian, 0.01) // middle of sorted.
+	assert.InDelta(t, 9.2, ts.ComplexityP95, 0.5)     // near top.
+	assert.InDelta(t, 10.0, ts.ComplexityMax, 0.01)
+	assert.InDelta(t, 300.0, ts.HalsteadVolMean, 0.01)
+	assert.InDelta(t, 300.0, ts.HalsteadVolMedian, 0.01)
+	assert.InDelta(t, 1500.0, ts.HalsteadVolSum, 0.01)
+	assert.InDelta(t, 1.5, ts.DeliveredBugsSum, 0.01)
+	assert.InDelta(t, 0.64, ts.CommentScoreMean, 0.01)
+	assert.InDelta(t, 0.3, ts.CommentScoreMin, 0.01)
+	assert.InDelta(t, 0.9, ts.CohesionMean, 0.01)
+	assert.InDelta(t, 0.8, ts.CohesionMin, 0.01)
+	assert.Equal(t, 20, ts.TotalFunctions) // 2+3+4+5+6.
+	assert.Equal(t, 10, ts.MaxComplexity)  // max(3,5,7,8,10).
 }
 
 func TestComputeTickStats_ZeroFiles(t *testing.T) {
 	t.Parallel()
 
 	tq := &TickQuality{}
-	stats := computeTickStats(tq)
+	ts := computeTickStats(tq)
 
-	assert.Equal(t, 0, stats.FilesAnalyzed)
-	assert.InDelta(t, 0.0, stats.ComplexityMean, 0.01)
-	assert.InDelta(t, 0.0, stats.ComplexityMedian, 0.01)
+	assert.Equal(t, 0, ts.FilesAnalyzed)
+	assert.InDelta(t, 0.0, ts.ComplexityMean, 0.01)
+	assert.InDelta(t, 0.0, ts.ComplexityMedian, 0.01)
 }
 
 func TestTickQuality_Merge(t *testing.T) {
@@ -413,24 +414,24 @@ func TestPercentileFloat(t *testing.T) {
 
 	values := []float64{1, 2, 3, 4, 5}
 
-	assert.InDelta(t, 3.0, medianFloat(values), 0.01)
-	assert.InDelta(t, 4.8, p95Float(values), 0.1)
+	assert.InDelta(t, 3.0, stats.Median(values), 0.01)
+	assert.InDelta(t, 4.8, stats.Percentile(values, stats.PercentileP95), 0.1)
 
 	// Single value.
-	assert.InDelta(t, 42.0, medianFloat([]float64{42}), 0.01)
+	assert.InDelta(t, 42.0, stats.Median([]float64{42}), 0.01)
 
 	// Empty.
-	assert.InDelta(t, 0.0, medianFloat(nil), 0.01)
+	assert.InDelta(t, 0.0, stats.Median(nil), 0.01)
 }
 
 func TestMeanStdDev(t *testing.T) {
 	t.Parallel()
 
-	mean, stddev := meanStdDev([]float64{2, 4, 4, 4, 5, 5, 7, 9})
+	mean, stddev := stats.MeanStdDev([]float64{2, 4, 4, 4, 5, 5, 7, 9})
 	assert.InDelta(t, 5.0, mean, 0.01)
 	assert.InDelta(t, 2.0, stddev, 0.01)
 
-	mean, stddev = meanStdDev(nil)
+	mean, stddev = stats.MeanStdDev(nil)
 	assert.InDelta(t, 0.0, mean, 0.01)
 	assert.InDelta(t, 0.0, stddev, 0.01)
 }
@@ -438,19 +439,19 @@ func TestMeanStdDev(t *testing.T) {
 func TestMinMaxFloat(t *testing.T) {
 	t.Parallel()
 
-	assert.InDelta(t, 1.0, minFloat([]float64{3, 1, 4, 1, 5}), 0.01)
-	assert.InDelta(t, 5.0, maxFloat([]float64{3, 1, 4, 1, 5}), 0.01)
-	assert.InDelta(t, 0.0, minFloat(nil), 0.01)
-	assert.InDelta(t, 0.0, maxFloat(nil), 0.01)
+	assert.InDelta(t, 1.0, stats.Min([]float64{3, 1, 4, 1, 5}), 0.01)
+	assert.InDelta(t, 5.0, stats.Max([]float64{3, 1, 4, 1, 5}), 0.01)
+	assert.InDelta(t, 0.0, stats.Min([]float64(nil)), 0.01)
+	assert.InDelta(t, 0.0, stats.Max([]float64(nil)), 0.01)
 }
 
 func TestSumIntMaxInt(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, 15, sumInt([]int{1, 2, 3, 4, 5}))
-	assert.Equal(t, 5, maxInt([]int{1, 5, 3, 2, 4}))
-	assert.Equal(t, 0, sumInt(nil))
-	assert.Equal(t, 0, maxInt(nil))
+	assert.Equal(t, 15, stats.Sum([]int{1, 2, 3, 4, 5}))
+	assert.Equal(t, 5, stats.Max([]int{1, 5, 3, 2, 4}))
+	assert.Equal(t, 0, stats.Sum([]int(nil)))
+	assert.Equal(t, 0, stats.Max([]int(nil)))
 }
 
 func TestExtractInt(t *testing.T) {
@@ -485,14 +486,14 @@ func TestExtractFloat(t *testing.T) {
 
 // --- Helpers ---.
 
-func newTestAnalyzer(t testing.TB) *Analyzer {
-	t.Helper()
+func newTestAnalyzer(tb testing.TB) *Analyzer {
+	tb.Helper()
 
 	ha := NewAnalyzer()
 	ha.UAST = &plumbing.UASTChangesAnalyzer{}
 	ha.Ticks = &plumbing.TicksSinceStart{}
 
-	require.NoError(t, ha.Initialize(nil))
+	require.NoError(tb, ha.Initialize(nil))
 
 	return ha
 }

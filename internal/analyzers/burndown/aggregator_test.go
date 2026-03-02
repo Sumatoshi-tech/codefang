@@ -808,7 +808,7 @@ func TestHistoryAnalyzer_NewAggregator_CreatesWorkingAggregator(t *testing.T) {
 	b.Sampling = DefaultBurndownSampling
 	b.PeopleNumber = 2
 	b.TickSize = 24 * time.Hour
-	b.reversedPeopleDict = []string{"Alice", "Bob"}
+	b.ReversedPeopleDict = []string{"Alice", "Bob"}
 	b.pathInterner = NewPathInterner()
 
 	opts := analyze.AggregatorOptions{
@@ -845,7 +845,7 @@ func TestHistoryAnalyzer_SerializeTICKs_ProducesJSON(t *testing.T) {
 	b.Sampling = DefaultBurndownSampling
 	b.PeopleNumber = 2
 	b.TickSize = 24 * time.Hour
-	b.reversedPeopleDict = []string{"Alice", "Bob"}
+	b.ReversedPeopleDict = []string{"Alice", "Bob"}
 	b.pathInterner = NewPathInterner()
 
 	ticks := []analyze.TICK{

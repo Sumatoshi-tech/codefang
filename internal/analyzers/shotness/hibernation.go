@@ -41,9 +41,3 @@ const workingStateSize = 2 * 1024
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the shotness analyzer (NodeDelta map + coupling pairs).
 const avgTCSize = 2 * 1024
-
-// WorkingStateSize returns the estimated bytes of working state per commit.
-func (s *Analyzer) WorkingStateSize() int64 { return workingStateSize }
-
-// AvgTCSize returns the estimated bytes of TC payload per commit.
-func (s *Analyzer) AvgTCSize() int64 { return avgTCSize }

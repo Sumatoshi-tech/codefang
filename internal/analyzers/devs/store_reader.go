@@ -2,7 +2,6 @@ package devs
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
@@ -85,135 +84,30 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // readDevelopersIfPresent reads all developer records, returning nil if absent.
 func readDevelopersIfPresent(reader analyze.ReportReader, kinds []string) ([]DeveloperData, error) {
-	if !slices.Contains(kinds, KindDeveloper) {
-		return nil, nil
-	}
-
-	var result []DeveloperData
-
-	iterErr := reader.Iter(KindDeveloper, func(raw []byte) error {
-		var record DeveloperData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[DeveloperData](reader, kinds, KindDeveloper)
 }
 
 // readLanguagesIfPresent reads all language records, returning nil if absent.
 func readLanguagesIfPresent(reader analyze.ReportReader, kinds []string) ([]LanguageData, error) {
-	if !slices.Contains(kinds, KindLanguage) {
-		return nil, nil
-	}
-
-	var result []LanguageData
-
-	iterErr := reader.Iter(KindLanguage, func(raw []byte) error {
-		var record LanguageData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[LanguageData](reader, kinds, KindLanguage)
 }
 
 // readBusFactorIfPresent reads all bus factor records, returning nil if absent.
 func readBusFactorIfPresent(reader analyze.ReportReader, kinds []string) ([]BusFactorData, error) {
-	if !slices.Contains(kinds, KindBusFactor) {
-		return nil, nil
-	}
-
-	var result []BusFactorData
-
-	iterErr := reader.Iter(KindBusFactor, func(raw []byte) error {
-		var record BusFactorData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[BusFactorData](reader, kinds, KindBusFactor)
 }
 
 // readActivityIfPresent reads all activity records, returning nil if absent.
 func readActivityIfPresent(reader analyze.ReportReader, kinds []string) ([]ActivityData, error) {
-	if !slices.Contains(kinds, KindActivity) {
-		return nil, nil
-	}
-
-	var result []ActivityData
-
-	iterErr := reader.Iter(KindActivity, func(raw []byte) error {
-		var record ActivityData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[ActivityData](reader, kinds, KindActivity)
 }
 
 // readChurnIfPresent reads all churn records, returning nil if absent.
 func readChurnIfPresent(reader analyze.ReportReader, kinds []string) ([]ChurnData, error) {
-	if !slices.Contains(kinds, KindChurn) {
-		return nil, nil
-	}
-
-	var result []ChurnData
-
-	iterErr := reader.Iter(KindChurn, func(raw []byte) error {
-		var record ChurnData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[ChurnData](reader, kinds, KindChurn)
 }
 
 // readAggregateIfPresent reads the single aggregate record, returning zero value if absent.
 func readAggregateIfPresent(reader analyze.ReportReader, kinds []string) (AggregateData, error) {
-	if !slices.Contains(kinds, KindAggregate) {
-		return AggregateData{}, nil
-	}
-
-	var agg AggregateData
-
-	iterErr := reader.Iter(KindAggregate, func(raw []byte) error {
-		return analyze.GobDecode(raw, &agg)
-	})
-
-	return agg, iterErr
+	return analyze.ReadRecordIfPresent[AggregateData](reader, kinds, KindAggregate)
 }

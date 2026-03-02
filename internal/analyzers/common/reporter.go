@@ -132,7 +132,7 @@ func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
 	if len(r.config.MetricKeys) == 0 {
 		// Extract all numeric values as metrics.
 		for key, value := range report {
-			if score, ok := r.toFloat(value); ok {
+			if score, ok := ToFloat64(value); ok {
 				metrics[key] = score
 			}
 		}
@@ -146,7 +146,7 @@ func (r *Reporter) extractKeyMetrics(report analyze.Report) map[string]float64 {
 			continue
 		}
 
-		if score, ok := r.toFloat(value); ok {
+		if score, ok := ToFloat64(value); ok {
 			metrics[key] = score
 		}
 	}
@@ -161,7 +161,7 @@ func (r *Reporter) extractCounts(report analyze.Report) map[string]int {
 	if len(r.config.CountKeys) == 0 {
 		// Extract all integer values as counts.
 		for key, value := range report {
-			if count, ok := r.toInt(value); ok {
+			if count, ok := ToInt(value); ok {
 				counts[key] = count
 			}
 		}
@@ -175,44 +175,12 @@ func (r *Reporter) extractCounts(report analyze.Report) map[string]int {
 			continue
 		}
 
-		if count, ok := r.toInt(value); ok {
+		if count, ok := ToInt(value); ok {
 			counts[key] = count
 		}
 	}
 
 	return counts
-}
-
-// toFloat safely converts a value to float64.
-func (r *Reporter) toFloat(value any) (float64, bool) {
-	switch typedVal := value.(type) {
-	case float64:
-		return typedVal, true
-	case int:
-		return float64(typedVal), true
-	case int32:
-		return float64(typedVal), true
-	case int64:
-		return float64(typedVal), true
-	default:
-		return 0, false
-	}
-}
-
-// toInt safely converts a value to int.
-func (r *Reporter) toInt(value any) (int, bool) {
-	switch typedVal := value.(type) {
-	case int:
-		return typedVal, true
-	case int32:
-		return int(typedVal), true
-	case int64:
-		return int(typedVal), true
-	case float64:
-		return int(typedVal), true
-	default:
-		return 0, false
-	}
 }
 
 // GenerateComparisonReport generates a comparison report between multiple reports.
@@ -297,7 +265,7 @@ func (r *Reporter) resolveMetricKeys(reports map[string]analyze.Report) []string
 
 	for _, report := range reports {
 		for key, value := range report {
-			if _, ok := r.toFloat(value); ok {
+			if _, ok := ToFloat64(value); ok {
 				keySet[key] = true
 			}
 		}
@@ -320,7 +288,7 @@ func (r *Reporter) collectMetricValues(metricKey string, reports map[string]anal
 
 	for name, report := range reports {
 		if value, exists := report[metricKey]; exists {
-			if score, ok := r.toFloat(value); ok {
+			if score, ok := ToFloat64(value); ok {
 				values[name] = score
 				hasValues = true
 			}

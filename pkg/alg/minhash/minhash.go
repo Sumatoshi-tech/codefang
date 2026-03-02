@@ -13,30 +13,13 @@ package minhash
 import (
 	"encoding/binary"
 	"errors"
-	"hash/fnv"
 	"math"
 	"sync"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/internal/hashutil"
 )
 
 const (
-	// baseSeed is the starting seed for deterministic per-hash seed generation.
-	baseSeed = 0x517cc1b727220a95
-
-	// mixShift1 is the first shift in the splitmix64 finalizer.
-	mixShift1 = 30
-
-	// mixMul1 is the first multiplier in the splitmix64 finalizer.
-	mixMul1 = 0xbf58476d1ce4e5b9
-
-	// mixShift2 is the second shift in the splitmix64 finalizer.
-	mixShift2 = 27
-
-	// mixMul2 is the second multiplier in the splitmix64 finalizer.
-	mixMul2 = 0x94d049bb133111eb
-
-	// mixShift3 is the third shift in the splitmix64 finalizer.
-	mixShift3 = 31
-
 	// HeaderSize is the number of bytes for the numHashes uint32 in serialization.
 	HeaderSize = 4
 
@@ -80,19 +63,19 @@ func New(numHashes int) (*Signature, error) {
 
 	return &Signature{
 		mins:  mins,
-		seeds: generateSeeds(numHashes),
+		seeds: hashutil.GenerateSeeds(numHashes, hashutil.Splitmix64),
 	}, nil
 }
 
 // Add updates all hash function minimums with the given token.
 func (s *Signature) Add(token []byte) {
-	baseHash := fnvHash(token)
+	baseHash := hashutil.FNV64a(token)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i, seed := range s.seeds {
-		h := mixHash(baseHash, seed)
+		h := hashutil.MixHash(baseHash, seed)
 		if h < s.mins[i] {
 			s.mins[i] = h
 		}
@@ -153,48 +136,4 @@ func (s *Signature) Bytes() []byte {
 // Len returns the number of hash functions in the signature.
 func (s *Signature) Len() int {
 	return len(s.mins)
-}
-
-// fnvHash computes a 64-bit FNV-1a hash of the given data.
-func fnvHash(data []byte) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write(data)
-
-	return h.Sum64()
-}
-
-// mixHash combines a base hash with a seed using XOR and the splitmix64 finalizer.
-func mixHash(base, seed uint64) uint64 {
-	x := base ^ seed
-	x = (x ^ (x >> mixShift1)) * mixMul1
-	x = (x ^ (x >> mixShift2)) * mixMul2
-	x ^= x >> mixShift3
-
-	return x
-}
-
-// generateSeeds creates deterministic per-hash-function seeds using the
-// splitmix64 sequence.
-func generateSeeds(n int) []uint64 {
-	seeds := make([]uint64, n)
-
-	var state uint64 = baseSeed
-
-	for i := range n {
-		state = splitmix64(state)
-		seeds[i] = state
-	}
-
-	return seeds
-}
-
-// splitmix64 advances the state and returns the next value in the sequence.
-func splitmix64(state uint64) uint64 {
-	state += 0x9e3779b97f4a7c15
-	z := state
-	z = (z ^ (z >> mixShift1)) * mixMul1
-	z = (z ^ (z >> mixShift2)) * mixMul2
-	z ^= z >> mixShift3
-
-	return z
 }

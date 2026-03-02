@@ -8,6 +8,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/spillstore"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/bloom"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -63,7 +64,7 @@ func newAggregator(
 	}
 
 	return &Aggregator{
-		files:         spillstore.NewWithBaseDir[map[string]int](opts.SpillDir),
+		files:         spillstore.New[map[string]int](opts.SpillDir),
 		people:        people,
 		peopleCommits: make([]int, peopleNumber+1),
 		commitStats:   make(map[string]*CommitSummary),
@@ -178,9 +179,9 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 	}
 
 	td := &TickData{
-		Files:         copyFilesMap(a.files.Current()),
-		People:        copyPeopleSlice(a.people),
-		PeopleCommits: copyIntSlice(a.peopleCommits),
+		Files:         mapx.CloneNested(a.files.Current()),
+		People:        clonePeopleSlice(a.people),
+		PeopleCommits: mapx.CloneSlice(a.peopleCommits),
 		Renames:       a.renames,
 		CommitStats:   a.commitStats,
 	}
@@ -208,7 +209,7 @@ func (a *Aggregator) FlushAllTicks() ([]analyze.TICK, error) {
 
 // DiscardState clears all in-memory cumulative state without serialization.
 func (a *Aggregator) DiscardState() {
-	a.files = spillstore.NewWithBaseDir[map[string]int](a.opts.SpillDir)
+	a.files = spillstore.New[map[string]int](a.opts.SpillDir)
 
 	a.people = make([]map[string]int, a.peopleNumber+1)
 	for i := range a.people {
@@ -838,36 +839,13 @@ func countFileLinesAt(ctx context.Context, name string, commit analyze.CommitLik
 	return count
 }
 
-// copyFilesMap creates a deep copy of the file coupling map.
-func copyFilesMap(src map[string]map[string]int) map[string]map[string]int {
-	dst := make(map[string]map[string]int, len(src))
-
-	for file, lane := range src {
-		dstLane := make(map[string]int, len(lane))
-		maps.Copy(dstLane, lane)
-		dst[file] = dstLane
-	}
-
-	return dst
-}
-
-// copyPeopleSlice creates a deep copy of the people slice.
-func copyPeopleSlice(src []map[string]int) []map[string]int {
+// clonePeopleSlice deep-clones a slice of per-person file-touch maps using [mapx.Clone].
+func clonePeopleSlice(src []map[string]int) []map[string]int {
 	dst := make([]map[string]int, len(src))
 
 	for i, m := range src {
-		dstMap := make(map[string]int, len(m))
-		maps.Copy(dstMap, m)
-		dst[i] = dstMap
+		dst[i] = mapx.Clone(m)
 	}
-
-	return dst
-}
-
-// copyIntSlice creates a copy of an int slice.
-func copyIntSlice(src []int) []int {
-	dst := make([]int, len(src))
-	copy(dst, src)
 
 	return dst
 }

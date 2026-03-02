@@ -128,7 +128,7 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 	issues := make([]analyze.Issue, 0, len(functions))
 	for _, fn := range functions {
 		name := reportutil.MapString(fn, KeyFuncName)
-		coh := reportutil.MapFloat64(fn, KeyFuncCohesion)
+		coh := reportutil.GetFloat64(fn, KeyFuncCohesion)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
 			Value:    reportutil.FormatFloat(coh),
@@ -157,7 +157,7 @@ func categorizeCohesion(functions []map[string]any) cohesionDistCounts {
 	var counts cohesionDistCounts
 
 	for _, fn := range functions {
-		coh := reportutil.MapFloat64(fn, KeyFuncCohesion)
+		coh := reportutil.GetFloat64(fn, KeyFuncCohesion)
 		switch {
 		case coh >= DistExcellentMin:
 			counts.excellent++
