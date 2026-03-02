@@ -47,8 +47,8 @@ codefang run -a static/complexity --format text -v .
 
     File                          Functions   Avg Complexity   Max Complexity
     ----------------------------  ----------  ---------------  --------------
-    pkg/framework/runner.go       12          4.2              11
-    pkg/analyzers/burndown/...    8           3.8              9
+    internal/framework/runner.go       12          4.2              11
+    internal/analyzers/burndown/...    8           3.8              9
     pkg/gitlib/repository.go      15          3.1              7
     cmd/codefang/commands/run.go  22          2.9              8
 
@@ -57,7 +57,7 @@ codefang run -a static/complexity --format text -v .
     Total files:       47
     Total functions:   312
     Average:           2.6
-    Maximum:           11 (pkg/framework/runner.go:RunStreaming)
+    Maximum:           11 (internal/framework/runner.go:RunStreaming)
     ```
 
 !!! tip "When to Use"
@@ -87,7 +87,7 @@ codefang run -a static/complexity --format json .
       "complexity": {
         "files": [
           {
-            "path": "pkg/framework/runner.go",
+            "path": "internal/framework/runner.go",
             "functions": [
               {
                 "name": "RunStreaming",
@@ -146,7 +146,7 @@ codefang run -a static/complexity --format yaml .
     ```yaml
     complexity:
       files:
-        - path: pkg/framework/runner.go
+        - path: internal/framework/runner.go
           functions:
             - name: RunStreaming
               complexity: 11

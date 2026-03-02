@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/observability"
+	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )

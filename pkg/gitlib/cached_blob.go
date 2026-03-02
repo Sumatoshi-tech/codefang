@@ -1,19 +1,17 @@
 package gitlib
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 )
 
 // ErrBinary is raised in CachedBlob.CountLines() if the file is binary.
 var ErrBinary = errors.New("binary")
-
-// binarySniffLength is the number of bytes to scan for null bytes when detecting binary content.
-const binarySniffLength = 8000
 
 // lineCountBinary is the sentinel value indicating the blob is binary.
 const lineCountBinary = -1
@@ -77,7 +75,7 @@ func (b *CachedBlob) Size() int64 {
 
 // Reader returns a reader for the blob data.
 func (b *CachedBlob) Reader() io.ReadCloser {
-	return io.NopCloser(bytes.NewReader(b.Data))
+	return textutil.BytesReader(b.Data)
 }
 
 // Clone creates a deep copy of the CachedBlob, detaching the Data slice.
@@ -90,13 +88,7 @@ func (b *CachedBlob) Clone() *CachedBlob {
 		hash:      b.hash,
 		size:      b.size,
 		Data:      dataCopy,
-		lineCount: b.lineCount, // Preserve cached line count.
-		// lineCountOnce is zero value (fresh), but if lineCount is set, we might want to ensure it's not recomputed.
-		// But sync.Once cannot be easily copied in "done" state.
-		// If lineCount is non-zero (or -1), we can set a completed Once?
-		// No, better to just let it re-run once if needed, or check lineCount != 0.
-		// Actually, if we set lineCount, computeLineCount won't be called if we modify CountLines to check lineCount first?
-		// But CountLines uses Once.Do.
+		lineCount: b.lineCount,
 	}
 }
 
@@ -116,38 +108,14 @@ func (b *CachedBlob) CountLines() (int, error) {
 
 // computeLineCount calculates the line count or returns lineCountBinary for binary files.
 func (b *CachedBlob) computeLineCount() int {
-	if len(b.Data) == 0 {
-		return 0
-	}
-
-	sniff := b.Data
-	if len(sniff) > binarySniffLength {
-		sniff = sniff[:binarySniffLength]
-	}
-
-	if bytes.IndexByte(sniff, 0) >= 0 {
+	if textutil.IsBinary(b.Data) {
 		return lineCountBinary
 	}
 
-	lines := bytes.Count(b.Data, []byte{'\n'})
-
-	if b.Data[len(b.Data)-1] != '\n' {
-		lines++
-	}
-
-	return lines
+	return textutil.CountLines(b.Data)
 }
 
 // IsBinary returns true if the blob appears to be binary.
 func (b *CachedBlob) IsBinary() bool {
-	if len(b.Data) == 0 {
-		return false
-	}
-
-	sniff := b.Data
-	if len(sniff) > binarySniffLength {
-		sniff = sniff[:binarySniffLength]
-	}
-
-	return bytes.IndexByte(sniff, 0) >= 0
+	return textutil.IsBinary(b.Data)
 }

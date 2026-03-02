@@ -6,6 +6,8 @@ import (
 	"io"
 
 	git2go "github.com/libgit2/git2go/v34"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 )
 
 // ChangeAction represents the type of change in a diff.
@@ -209,7 +211,7 @@ func (f *File) Reader() (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	return io.NopCloser(&blobReader{data: contents}), nil
+	return textutil.BytesReader(contents), nil
 }
 
 // BlobContext returns the blob object for this file, accepting a context for tracing.

@@ -1,13 +1,13 @@
 import os
 import re
 
-history_go_path = "pkg/analyzers/imports/history.go"
-metrics_go_path = "pkg/analyzers/imports/metrics.go"
-plot_go_path = "pkg/analyzers/imports/plot.go"
-tc_go_path = "pkg/analyzers/imports/tc.go"
-aggregator_go_path = "pkg/analyzers/imports/aggregator.go"
-analyzer_test_go_path = "pkg/analyzers/imports/analyzer_test.go"
-history_test_go_path = "pkg/analyzers/imports/history_test.go"
+history_go_path = "internal/analyzers/imports/history.go"
+metrics_go_path = "internal/analyzers/imports/metrics.go"
+plot_go_path = "internal/analyzers/imports/plot.go"
+tc_go_path = "internal/analyzers/imports/tc.go"
+aggregator_go_path = "internal/analyzers/imports/aggregator.go"
+analyzer_test_go_path = "internal/analyzers/imports/analyzer_test.go"
+history_test_go_path = "internal/analyzers/imports/history_test.go"
 
 # 1. Update history.go to use BaseHistoryAnalyzer
 history_code = """package imports
@@ -16,12 +16,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/identity"
+	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
-	pkgplumbing "github.com/Sumatoshi-tech/codefang/pkg/plumbing"
+	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
@@ -479,11 +479,11 @@ with open(plot_go_path, "w") as f:
 for file_path in [
     tc_go_path,
     aggregator_go_path,
-    "pkg/analyzers/imports/aggregator_test.go",
-    "pkg/analyzers/imports/checkpoint.go",
-    "pkg/analyzers/imports/checkpoint_test.go",
-    "pkg/analyzers/imports/hibernation.go",
-    "pkg/analyzers/imports/hibernation_test.go"
+    "internal/analyzers/imports/aggregator_test.go",
+    "internal/analyzers/imports/checkpoint.go",
+    "internal/analyzers/imports/checkpoint_test.go",
+    "internal/analyzers/imports/hibernation.go",
+    "internal/analyzers/imports/hibernation_test.go"
 ]:
     if os.path.exists(file_path):
         os.remove(file_path)

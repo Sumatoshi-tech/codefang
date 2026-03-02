@@ -121,10 +121,10 @@ linters:
         - ^github\.com/tliron/glsp
         - ^github\.com/sergi/go-diff
         # Project-internal: analyzers and plumbing (zero values are intentional by design)
-        - ^github\.com/Sumatoshi-tech/codefang/pkg/analyzers/
+        - ^github\.com/Sumatoshi-tech/codefang/internal/analyzers/
         - ^github\.com/Sumatoshi-tech/codefang/pkg/uast/
-        - ^github\.com/Sumatoshi-tech/codefang/pkg/importmodel\.
-        - ^github\.com/Sumatoshi-tech/codefang/pkg/plumbing\.
+        - ^github\.com/Sumatoshi-tech/codefang/internal/importmodel\.
+        - ^github\.com/Sumatoshi-tech/codefang/internal/plumbing\.
         - ^github\.com/Sumatoshi-tech/codefang/cmd/
       allow-empty-returns: true
 
@@ -214,12 +214,14 @@ linters:
         - stdlib
         - generic
         - github\.com/go-echarts/go-echarts/v2/components\.Charter
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.PlumbingSnapshot
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ResultAggregator
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.Aggregator
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.AnalysisVisitor
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.ReportSection
-        - github\.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze\.StaticAnalyzer
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.PlumbingSnapshot
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ResultAggregator
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.Aggregator
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportWriter
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportReader
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.AnalysisVisitor
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.ReportSection
+        - github\.com/Sumatoshi-tech/codefang/internal/analyzers/analyze\.StaticAnalyzer
         - github\.com/Sumatoshi-tech/codefang/pkg/uast\.LanguageParser
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.DSLNode
         - github\.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node\.FieldProcessor
@@ -451,7 +453,7 @@ linters:
       - 'pkg/uast/embedded_mappings\.gen\.go$'
     rules:
       # Pipeline processing involves inherently complex batch/retry/error logic.
-      - path: pkg/framework/(blob|diff)_pipeline\.go
+      - path: internal/framework/(blob|diff)_pipeline\.go
         linters: [funlen, gocognit, gocyclo, cyclop, nestif]
 
       # CGO bridge functions are long due to C interop boilerplate and result conversion.
@@ -463,11 +465,11 @@ linters:
         linters: [funlen, gocognit, gocyclo, cyclop, nestif]
 
       # Burndown history analysis has inherently complex change-tracking logic.
-      - path: pkg/analyzers/burndown/history\.go
+      - path: internal/analyzers/burndown/history\.go
         linters: [funlen, gocognit]
 
       # RB-tree insertion with rebalancing is inherently complex.
-      - path: pkg/rbtree/rbtree\.go
+      - path: internal/rbtree/rbtree\.go
         linters: [gocognit]
 
       # CGO files: C code comments in import "C" blocks can't end in periods;
@@ -477,6 +479,8 @@ linters:
       - path: pkg/uast/cgo_end_positions\.go
         linters: [godot]
       - path: pkg/uast/cgo_named_children_batch\.go
+        linters: [godot]
+      - path: pkg/uast/malloc_linux\.go
         linters: [godot]
 
       # CGO file: gocritic false positives on CGO-generated code (dupImport, dupSubExpr, underef).
@@ -512,9 +516,9 @@ linters:
       - path: pkg/uast/pkg/node/querydsl\.go
         linters: [iface]
 
-      # Parallelizable is used via type assertions in runner.go, not as a parameter/return type.
-      - path: pkg/analyzers/analyze/history\.go
-        text: "Parallelizable"
+      # Parallelizable, StoreWriter, DirectStoreWriter are used via type assertions in runner.go, not as parameter/return types.
+      - path: internal/analyzers/analyze/history\.go
+        text: "Parallelizable|StoreWriter|DirectStoreWriter"
         linters: [iface]
 
       # color.NoColor is the library-provided way to control colored output.
@@ -526,17 +530,17 @@ linters:
         linters: [dupl, funlen, gocognit, gocyclo, cyclop, nestif]
 
       # Test intentionally creates a blocked directory with restrictive then restored permissions.
-      - path: pkg/analyzers/analyze/static_test\.go
+      - path: internal/analyzers/analyze/static_test\.go
         text: "G302"
         linters: [gosec]
 
       # findFunctions error return is always nil but needed for consistent internal API.
-      - path: pkg/analyzers/cohesion/cohesion\.go
+      - path: internal/analyzers/cohesion/cohesion\.go
         text: findFunctions
         linters: [unparam]
 
       # Binary files silently skipped when CountLines fails; nil error return is intentional.
-      - path: pkg/analyzers/burndown/history\.go
+      - path: internal/analyzers/burndown/history\.go
         linters: [nilerr]
 
       # Example functions are long due to inline UAST mapping definitions.
@@ -547,23 +551,29 @@ linters:
       - path: tools/
         linters: [funlen]
 
+      # Worker.Start() spawns a goroutine where context flows through channel messages,
+      # not as a direct parameter. contextcheck cannot trace this pattern.
+      - path: internal/framework/coordinator\.go
+        text: "should pass the context parameter"
+        linters: [contextcheck]
+
       # Cross-function span lifecycle pattern; spancheck false positive.
-      - path: pkg/observability/tracer_filter\.go
+      - path: internal/observability/tracer_filter\.go
         linters: [spancheck]
 
       # Timeline is a core interface that legitimately needs 11 methods (Replace, Iterate, Len, Nodes,
       # Validate, CloneShallow, CloneDeep, Erase, Flatten, Reconstruct, MergeAdjacentSameValue).
-      - path: pkg/burndown/timeline\.go
+      - path: internal/burndown/timeline\.go
         linters: [interfacebloat]
 
       # HistoryAnalyzer is a core contract with 11 methods (Initialize, Consume,
       # WorkingStateSize, AvgTCSize, NewAggregator, SerializeTICKs, Finalize, Fork, Merge, Serialize + Analyzer).
-      - path: pkg/analyzers/analyze/history\.go
+      - path: internal/analyzers/analyze/history\.go
         linters: [interfacebloat]
 
       # NewTreapTimeline returns concrete *treapTimeline to satisfy ireturn/iface;
       # revive unexported-return conflicts with these linters.
-      - path: pkg/burndown/timeline_treap\.go
+      - path: internal/burndown/timeline_treap\.go
         text: "unexported-return"
         linters: [revive]
 
@@ -576,11 +586,11 @@ linters:
         linters: [revive]
 
       # Aggregator embedding is an intentional design pattern for method promotion.
-      - path: pkg/analyzers/(comments|complexity|halstead)/aggregator\.go
+      - path: internal/analyzers/(comments|complexity|halstead)/aggregator\.go
         linters: [embeddedstructfieldcheck]
 
       # BaseReportSection embedding is standard Go pattern for partial interface implementation in tests.
-      - path: pkg/analyzers/common/renderer/(json_test|renderer_test)\.go
+      - path: internal/analyzers/common/renderer/(json_test|renderer_test)\.go
         linters: [embeddedstructfieldcheck]
 
       # CGO init() is required to call C.cf_init() for library initialization.
@@ -597,7 +607,7 @@ linters:
         linters: [gochecknoinits]
 
       # Package name "common" is an established convention in this codebase for shared analyzer utilities.
-      - path: pkg/analyzers/common/
+      - path: internal/analyzers/common/
         text: "var-naming"
         linters: [revive]
 
@@ -606,6 +616,6 @@ linters:
         linters: [exhaustive]
 
       # findGE/FindGE is an intentional private/public pair for RB-tree search.
-      - path: pkg/rbtree/rbtree\.go
+      - path: internal/rbtree/rbtree\.go
         text: "confusing-naming.*findGE"
         linters: [revive]

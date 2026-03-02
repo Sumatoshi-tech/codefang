@@ -331,7 +331,7 @@ Without an OTLP endpoint, the server uses no-op providers with zero overhead.
 flowchart LR
     AGENT["AI Agent<br/>(Claude, etc.)"]
     STDIO["stdio<br/>(JSON-RPC)"]
-    MCP_SERVER["MCP Server<br/><em>pkg/mcp</em>"]
+    MCP_SERVER["MCP Server<br/><em>internal/mcp</em>"]
     ANALYZE["codefang_analyze"]
     UAST_PARSE["uast_parse"]
     HISTORY["codefang_history"]

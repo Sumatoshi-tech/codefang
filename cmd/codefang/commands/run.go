@@ -22,29 +22,33 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/anomaly"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/cohesion"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/comments"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/complexity"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
-	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/halstead"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/quality"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
-	"github.com/Sumatoshi-tech/codefang/pkg/budget"
-	"github.com/Sumatoshi-tech/codefang/pkg/checkpoint"
-	"github.com/Sumatoshi-tech/codefang/pkg/framework"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/anomaly"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/burndown"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/clones"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/devs"
+	filehistory "github.com/Sumatoshi-tech/codefang/internal/analyzers/file_history"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/imports"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/quality"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/sentiment"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/shotness"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/typos"
+	"github.com/Sumatoshi-tech/codefang/internal/budget"
+	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
+	cfgpkg "github.com/Sumatoshi-tech/codefang/internal/config"
+	"github.com/Sumatoshi-tech/codefang/internal/framework"
+	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
+	"github.com/Sumatoshi-tech/codefang/pkg/units"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 
@@ -93,6 +97,15 @@ type HistoryRunOptions struct {
 	ClearCheckpoint bool
 
 	DebugTrace bool
+	NDJSON     bool
+
+	ConfigFile string
+
+	PlotOutput string
+	KeepStore  bool
+	TmpDir     string
+
+	AnalyzerFlags map[string]any
 }
 
 var (
@@ -105,6 +118,8 @@ var (
 	ErrUnknownAnalyzer = errors.New("unknown analyzer")
 	// ErrRepositoryLoad indicates a failure to open or load the git repository.
 	ErrRepositoryLoad = errors.New("failed to load repository")
+	// ErrPlotOutputRequired is returned when --format plot is used without --output.
+	ErrPlotOutputRequired = errors.New("--output flag is required when --format plot")
 )
 
 // RunCommand holds configuration and dependencies for the unified run command.
@@ -141,6 +156,16 @@ type RunCommand struct {
 	checkpointDir   string
 	clearCheckpoint bool
 
+	ndjson bool
+
+	configFile      string
+	listAnalyzers   bool
+	diagnosticsAddr string
+
+	plotOutput string
+	keepStore  bool
+	tmpDir     string
+
 	staticExec        staticExecutor
 	historyExec       historyExecutor
 	registryFn        registryProvider
@@ -151,6 +176,7 @@ type RunCommand struct {
 func NewRunCommand() *cobra.Command {
 	anomaly.RegisterPlotSections()
 	burndown.RegisterPlotSections()
+	clones.RegisterPlotSections()
 	cohesion.RegisterPlotSections()
 	comments.RegisterPlotSections()
 	complexity.RegisterPlotSections()
@@ -163,8 +189,8 @@ func NewRunCommand() *cobra.Command {
 	shotness.RegisterPlotSections()
 	typos.RegisterPlotSections()
 
-	quality.RegisterTimeSeriesExtractor()
-	sentiment.RegisterTimeSeriesExtractor()
+	quality.RegisterStoreTimeSeriesExtractor()
+	sentiment.RegisterStoreTimeSeriesExtractor()
 	renderer.RegisterPlotRenderer()
 
 	return newRunCommandWithDeps(runStaticAnalyzers, runHistoryAnalyzers, defaultRegistry, observability.Init)
@@ -196,6 +222,7 @@ func newRunCommandWithDeps(
 		"Analyzer IDs or glob patterns (example: static/complexity,history/*,*)")
 	cmd.Flags().StringVar(&rc.format, "format", analyze.FormatJSON,
 		"Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact")
+	cmd.Flags().BoolVar(&rc.ndjson, "ndjson", false, "With --format timeseries: emit one JSON line per commit (NDJSON)")
 	cmd.Flags().StringVar(&rc.inputPath, "input", "", "Input report path for cross-format conversion")
 	cmd.Flags().StringVar(&rc.inputFormat, "input-format", analyze.InputFormatAuto, "Input format: auto, json, bin")
 	cmd.Flags().IntVar(&rc.gogc, "gogc", 0, "GC percent for history pipeline (0 = auto, >0 = exact)")
@@ -227,6 +254,17 @@ func newRunCommandWithDeps(
 	cmd.Flags().StringVar(&rc.checkpointDir, "checkpoint-dir", "", "Checkpoint directory (default: ~/.codefang/checkpoints)")
 	cmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
 	cmd.Flags().BoolVar(&rc.clearCheckpoint, "clear-checkpoint", false, "Clear existing checkpoint before run")
+
+	cmd.Flags().StringVar(&rc.configFile, "config", "", "Configuration file path (default: .codefang.yaml in CWD or $HOME)")
+	cmd.Flags().BoolVar(&rc.listAnalyzers, "list-analyzers", false, "List all available analyzer IDs and exit")
+	cmd.Flags().StringVar(
+		&rc.diagnosticsAddr, "diagnostics-addr", "",
+		"Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)",
+	)
+
+	cmd.Flags().StringVarP(&rc.plotOutput, "output", "o", "", "Output directory for plot HTML files (required with --format plot)")
+	cmd.Flags().BoolVar(&rc.keepStore, "keep-store", false, "Keep temp ReportStore directory after rendering (with --format plot)")
+	cmd.Flags().StringVar(&rc.tmpDir, "tmp-dir", "", "Directory for temporary spill files (default: system temp)")
 
 	registerAnalyzerFlags(cmd)
 
@@ -264,7 +302,7 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 				attribute.Bool("error", runResult != nil),
 				attribute.String("codefang.duration_class", durationClass(time.Since(start))),
 				attribute.String("codefang.format", rc.format),
-				attribute.Int64("codefang.memory_sys_mb", int64(m.Sys/bytesPerMiB)),
+				attribute.Int64("codefang.memory_sys_mb", int64(m.Sys/units.MiB)),
 			)
 			rootSpan.End()
 		}()
@@ -274,6 +312,13 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 	silent := rc.isSilent(cmd)
 	progressWriter := cmd.ErrOrStderr()
 
+	cleanup, diagErr := rc.startDiagnosticsServer(providers, silent, progressWriter)
+	if diagErr != nil {
+		return diagErr
+	}
+
+	defer cleanup()
+
 	rc.progressf(silent, progressWriter, "starting run path=%s", path)
 
 	registry, err := rc.registryFn()
@@ -281,37 +326,58 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 		return err
 	}
 
+	if rc.listAnalyzers {
+		rc.printAnalyzerList(cmd.OutOrStdout(), registry)
+
+		return nil
+	}
+
 	ids, err := registry.SelectedIDs(rc.analyzerIDs)
 	if err != nil {
 		return err
 	}
 
-	// Enrich root span with run parameters after resolution.
-	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		span.SetAttributes(
-			attribute.String("codefang.path", path),
-			attribute.Int("codefang.analyzers", len(ids)),
-			attribute.Int("codefang.limit", rc.limit),
-		)
-	}
+	enrichSpanWithRunParams(ctx, path, len(ids), rc.limit)
 
 	rc.progressf(silent, progressWriter, "selected analyzers: total=%d", len(ids))
 
-	var runErr error
-
 	if rc.inputPath != "" {
-		runErr = rc.runInputConversion(cmd.OutOrStdout(), registry, ids, silent, progressWriter)
-	} else {
-		runErr = rc.runDirect(ctx, path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
+		return rc.runInputConversion(cmd.OutOrStdout(), silent, progressWriter)
 	}
 
-	if runErr != nil {
-		return runErr
+	return rc.runDirect(ctx, path, ids, registry, silent, progressWriter, cmd.OutOrStdout(), cmd)
+}
+
+// startDiagnosticsServer starts the diagnostics HTTP server if configured.
+// Returns a cleanup function (always non-nil) and an error.
+func (rc *RunCommand) startDiagnosticsServer(
+	providers observability.Providers,
+	silent bool,
+	progressWriter io.Writer,
+) (func(), error) {
+	if rc.diagnosticsAddr == "" {
+		return func() {}, nil
 	}
 
-	rc.progressf(silent, progressWriter, "run completed")
+	diagServer, err := observability.NewDiagnosticsServer(rc.diagnosticsAddr, providers.Meter)
+	if err != nil {
+		return func() {}, fmt.Errorf("start diagnostics server: %w", err)
+	}
 
-	return nil
+	rc.progressf(silent, progressWriter, "diagnostics server listening on %s", diagServer.Addr())
+
+	return func() { diagServer.Close() }, nil
+}
+
+// enrichSpanWithRunParams adds run parameters to the active trace span.
+func enrichSpanWithRunParams(ctx context.Context, path string, analyzerCount, limit int) {
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("codefang.path", path),
+			attribute.Int("codefang.analyzers", analyzerCount),
+			attribute.Int("codefang.limit", limit),
+		)
+	}
 }
 
 func (rc *RunCommand) initObservability() (observability.Providers, error) {
@@ -325,9 +391,6 @@ func (rc *RunCommand) initObservability() (observability.Providers, error) {
 
 	return rc.observabilityInit(cfg)
 }
-
-// bytesPerMiB is used to convert bytes to mebibytes.
-const bytesPerMiB = 1024 * 1024
 
 // Duration class thresholds for tail-sampling support.
 const (
@@ -364,8 +427,6 @@ func (rc *RunCommand) resolvePath(args []string) string {
 
 func (rc *RunCommand) runInputConversion(
 	writer io.Writer,
-	registry *analyze.Registry,
-	ids []string,
 	silent bool,
 	progressWriter io.Writer,
 ) error {
@@ -387,12 +448,7 @@ func (rc *RunCommand) runInputConversion(
 		return fmt.Errorf("read input %s: %w", rc.inputPath, err)
 	}
 
-	orderedIDs, err := analyze.OrderedRunIDs(registry, ids)
-	if err != nil {
-		return err
-	}
-
-	model, err := analyze.DecodeInputModel(inputBytes, inputFormat, orderedIDs, registry)
+	model, err := analyze.DecodeInputModel(inputBytes, inputFormat)
 	if err != nil {
 		return err
 	}
@@ -431,7 +487,7 @@ func (rc *RunCommand) runDirect(
 	if len(staticIDs) > 0 && len(historyIDs) > 0 {
 		rc.progressf(silent, progressWriter, "mixed run detected: rendering combined output")
 
-		return rc.renderCombinedDirect(ctx, path, staticIDs, historyIDs, registry, staticFormat, silent, progressWriter, writer, cmd)
+		return rc.renderCombinedDirect(ctx, path, staticIDs, historyIDs, staticFormat, silent, progressWriter, writer, cmd)
 	}
 
 	err = rc.runStaticPhase(path, staticIDs, staticFormat, silent, progressWriter, writer)
@@ -482,6 +538,11 @@ func (rc *RunCommand) runHistoryPhase(
 		return nil
 	}
 
+	plotErr := validatePlotFlags(historyFormat, rc.plotOutput)
+	if plotErr != nil {
+		return plotErr
+	}
+
 	startedAt := time.Now()
 
 	rc.progressf(silent, progressWriter, "history phase started (%d analyzers)", len(historyIDs))
@@ -503,7 +564,6 @@ func (rc *RunCommand) renderCombinedDirect(
 	path string,
 	staticIDs []string,
 	historyIDs []string,
-	registry *analyze.Registry,
 	outputFormat string,
 	silent bool,
 	progressWriter io.Writer,
@@ -536,11 +596,20 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	rc.progressf(silent, progressWriter, "combined history phase finished in %s", time.Since(startedAt).Round(time.Millisecond))
 
-	orderedIDs := make([]string, 0, len(staticIDs)+len(historyIDs))
-	orderedIDs = append(orderedIDs, staticIDs...)
-	orderedIDs = append(orderedIDs, historyIDs...)
+	ids := make([]string, 0, len(staticIDs)+len(historyIDs))
+	modes := make([]analyze.AnalyzerMode, 0, len(staticIDs)+len(historyIDs))
 
-	model, err := analyze.DecodeBinaryInputModel(raw.Bytes(), orderedIDs, registry)
+	for _, id := range staticIDs {
+		ids = append(ids, id)
+		modes = append(modes, analyze.ModeStatic)
+	}
+
+	for _, id := range historyIDs {
+		ids = append(ids, id)
+		modes = append(modes, analyze.ModeHistory)
+	}
+
+	model, err := analyze.DecodeCombinedBinaryReports(raw.Bytes(), ids, modes)
 	if err != nil {
 		return fmt.Errorf("decode combined payload: %w", err)
 	}
@@ -549,9 +618,15 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	startedAt = time.Now()
 
+	// Apply --ndjson modifier to timeseries format.
+	renderFormat := outputFormat
+	if rc.ndjson && renderFormat == analyze.FormatTimeSeries {
+		renderFormat = analyze.FormatTimeSeriesNDJSON
+	}
+
 	rc.progressf(silent, progressWriter, "combined output rendering started")
 
-	err = analyze.WriteConvertedOutput(model, outputFormat, writer)
+	err = analyze.WriteConvertedOutput(model, renderFormat, writer)
 	if err != nil {
 		return fmt.Errorf("render combined output: %w", err)
 	}
@@ -581,27 +656,109 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 		CheckpointDir:   rc.checkpointDir,
 		ClearCheckpoint: rc.clearCheckpoint,
 		DebugTrace:      rc.debugTrace,
+		NDJSON:          rc.ndjson,
+		ConfigFile:      rc.configFile,
+		PlotOutput:      rc.plotOutput,
+		KeepStore:       rc.keepStore,
+		TmpDir:          rc.tmpDir,
 	}
 
-	if cmd.Flags().Changed("checkpoint") {
-		v, err := cmd.Flags().GetBool("checkpoint")
-		if err != nil {
-			return opts // flag is registered; GetBool should not fail.
-		}
-
-		opts.Checkpoint = &v
-	}
-
-	if cmd.Flags().Changed("resume") {
-		v, err := cmd.Flags().GetBool("resume")
-		if err != nil {
-			return opts // flag is registered; GetBool should not fail.
-		}
-
-		opts.Resume = &v
-	}
+	opts.Checkpoint = parseBoolFlag(cmd, "checkpoint")
+	opts.Resume = parseBoolFlag(cmd, "resume")
+	opts.AnalyzerFlags = collectAnalyzerFlags(cmd)
 
 	return opts
+}
+
+// parseBoolFlag returns a pointer to the flag value if it was explicitly set, nil otherwise.
+func parseBoolFlag(cmd *cobra.Command, name string) *bool {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+
+	v, err := cmd.Flags().GetBool(name)
+	if err != nil {
+		return nil
+	}
+
+	return &v
+}
+
+// collectAnalyzerFlags reads CLI flag overrides for all registered analyzer configuration options.
+func collectAnalyzerFlags(cmd *cobra.Command) map[string]any {
+	flags := make(map[string]any)
+	dummyPipeline := buildPipeline(nil)
+
+	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(dummyPipeline.Core)+len(dummyPipeline.Leaves))
+	allAnalyzers = append(allAnalyzers, dummyPipeline.Core...)
+
+	for _, leaf := range dummyPipeline.Leaves {
+		allAnalyzers = append(allAnalyzers, leaf)
+	}
+
+	for _, a := range allAnalyzers {
+		for _, opt := range a.ListConfigurationOptions() {
+			if !cmd.Flags().Changed(opt.Flag) {
+				continue
+			}
+
+			readFlagValue(cmd, opt, flags)
+		}
+	}
+
+	return flags
+}
+
+// readFlagValue reads a single typed flag value into the flags map.
+func readFlagValue(cmd *cobra.Command, opt pipeline.ConfigurationOption, flags map[string]any) {
+	switch opt.Type {
+	case pipeline.BoolConfigurationOption:
+		v, err := cmd.Flags().GetBool(opt.Flag)
+		if err == nil {
+			flags[opt.Name] = v
+		}
+	case pipeline.IntConfigurationOption:
+		v, err := cmd.Flags().GetInt(opt.Flag)
+		if err == nil {
+			flags[opt.Name] = v
+		}
+	case pipeline.StringConfigurationOption, pipeline.PathConfigurationOption:
+		v, err := cmd.Flags().GetString(opt.Flag)
+		if err == nil {
+			flags[opt.Name] = v
+		}
+	case pipeline.StringsConfigurationOption:
+		v, err := cmd.Flags().GetStringSlice(opt.Flag)
+		if err == nil {
+			flags[opt.Name] = v
+		}
+	case pipeline.FloatConfigurationOption:
+		v, err := cmd.Flags().GetFloat64(opt.Flag)
+		if err == nil {
+			flags[opt.Name] = v
+		}
+	}
+}
+
+func (rc *RunCommand) printAnalyzerList(writer io.Writer, registry *analyze.Registry) {
+	staticIDs := registry.IDsByMode(analyze.ModeStatic)
+	historyIDs := registry.IDsByMode(analyze.ModeHistory)
+
+	fmt.Fprintf(writer, "Static analyzers (%d):\n", len(staticIDs))
+
+	for _, id := range staticIDs {
+		desc, _ := registry.Descriptor(id)
+		fmt.Fprintf(writer, "  %-30s %s\n", id, desc.Description)
+	}
+
+	fmt.Fprintf(writer, "\nHistory analyzers (%d):\n", len(historyIDs))
+
+	for _, id := range historyIDs {
+		desc, _ := registry.Descriptor(id)
+		fmt.Fprintf(writer, "  %-30s %s\n", id, desc.Description)
+	}
+
+	fmt.Fprintf(writer, "\nTotal: %d analyzers\n", len(registry.All()))
 }
 
 func defaultRegistry() (*analyze.Registry, error) {
@@ -649,10 +806,16 @@ func runHistoryAnalyzers(
 		defer result.commitIter.Close()
 	}
 
+	// Apply --ndjson modifier: timeseries → timeseries+ndjson.
+	pipelineFormat := result.format
+	if opts.NDJSON && pipelineFormat == analyze.FormatTimeSeries {
+		pipelineFormat = analyze.FormatTimeSeriesNDJSON
+	}
+
 	return executeHistoryPipeline(
 		ctx, result.pipeline, path, result.selectedLeaves,
 		result.commits, result.commitIter, result.commitCount,
-		result.analyzerKeys, result.format, opts, result.repository, writer,
+		result.analyzerKeys, pipelineFormat, result.opts, result.repository, writer,
 	)
 }
 
@@ -666,6 +829,7 @@ type initResult struct {
 	selectedLeaves []analyze.HistoryAnalyzer
 	analyzerKeys   []string
 	format         string
+	opts           HistoryRunOptions
 }
 
 // initHistoryPipeline performs the initialization phase: builds the pipeline,
@@ -707,7 +871,7 @@ func initHistoryPipeline(
 
 	// HeadOnly mode: load a single commit, no iterator needed.
 	if opts.Head {
-		return initHeadOnly(ctx, repository, pl, analyzerKeys, normalizedFormat, initSpan)
+		return initHeadOnly(ctx, repository, pl, analyzerKeys, normalizedFormat, opts, initSpan)
 	}
 
 	// Streaming mode: count commits and create a reverse iterator.
@@ -721,6 +885,7 @@ func initHeadOnly(
 	pl *historyPipeline,
 	analyzerKeys []string,
 	normalizedFormat string,
+	opts HistoryRunOptions,
 	initSpan trace.Span,
 ) (initResult, error) {
 	commits, loadErr := gitlib.LoadCommits(ctx, repository, gitlib.CommitLoadOptions{
@@ -732,7 +897,7 @@ func initHeadOnly(
 		return initResult{}, loadErr
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, opts)
 	if configErr != nil {
 		repository.Free()
 
@@ -751,6 +916,7 @@ func initHeadOnly(
 		selectedLeaves: selectedLeaves,
 		analyzerKeys:   analyzerKeys,
 		format:         normalizedFormat,
+		opts:           opts,
 	}, nil
 }
 
@@ -800,7 +966,7 @@ func initStreamingIterator(
 		return initResult{}, fmt.Errorf("failed to create commit iterator: %w", err)
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys)
+	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, opts)
 	if configErr != nil {
 		iter.Close()
 		repository.Free()
@@ -822,12 +988,27 @@ func initStreamingIterator(
 		selectedLeaves: selectedLeaves,
 		analyzerKeys:   analyzerKeys,
 		format:         normalizedFormat,
+		opts:           opts,
 	}, nil
 }
 
 // configureAndSelect configures core analyzers with facts and selects leaf analyzers.
-func configureAndSelect(pl *historyPipeline, analyzerKeys []string) ([]analyze.HistoryAnalyzer, error) {
-	facts := buildFacts(pl)
+// When configFile is non-empty, it loads analyzer settings from the given config file
+// and applies them to facts before configuring analyzers.
+func configureAndSelect(pl *historyPipeline, analyzerKeys []string, opts HistoryRunOptions) ([]analyze.HistoryAnalyzer, error) {
+	facts := buildFacts(pl, opts)
+
+	if opts.TmpDir != "" {
+		facts[analyze.ConfigTmpDir] = opts.TmpDir
+	}
+
+	// Apply file-based configuration if provided.
+	cfg, cfgErr := cfgpkg.LoadConfig(opts.ConfigFile)
+	if cfgErr != nil {
+		return nil, fmt.Errorf("load config: %w", cfgErr)
+	}
+
+	cfg.ApplyToFacts(facts)
 
 	// Configure core (plumbing) analyzers first so they can publish facts
 	// (e.g. TicksSinceStart publishes FactCommitsByTick) that leaves depend on.
@@ -896,7 +1077,12 @@ func executeHistoryPipeline(
 	done := red.TrackInflight(ctx, "cli.run")
 	runStart := time.Now()
 
-	streamConfig := buildStreamingConfig(path, analyzerKeys, memBudget, opts, analysisMetrics, normalizedFormat, writer)
+	streamConfig := buildStreamingConfig(path, analyzerKeys, memBudget, opts, analysisMetrics, normalizedFormat, writer, selectedLeaves)
+
+	// Plot format: create temp store, wire into streamConfig, render after analysis.
+	if normalizedFormat == analyze.FormatPlot {
+		return executePlotPipeline(ctx, runner, commitIter, commitCount, commits, allAnalyzers, streamConfig, red, done, runStart, opts)
+	}
 
 	var results map[analyze.HistoryAnalyzer]analyze.Report
 
@@ -912,21 +1098,84 @@ func executeHistoryPipeline(
 		return fmt.Errorf("pipeline execution failed: %w", err)
 	}
 
-	// In NDJSON mode, output was already written by the sink.
-	if normalizedFormat == analyze.FormatNDJSON {
+	// In NDJSON and streaming timeseries NDJSON modes, output was already written.
+	if normalizedFormat == analyze.FormatNDJSON || normalizedFormat == analyze.FormatTimeSeriesNDJSON {
 		return nil
 	}
-
-	enrichAnomalyReport(selectedLeaves, results)
 
 	return renderReport(ctx, selectedLeaves, results, normalizedFormat, writer)
 }
 
-// buildStreamingConfig creates a StreamingConfig, wiring a TCSink when NDJSON format is requested.
+// executePlotPipeline runs the analysis pipeline with a temp ReportStore, then renders
+// multi-page HTML from the store. The store is cleaned up unless --keep-store is set.
+func executePlotPipeline(
+	ctx context.Context,
+	runner *framework.Runner,
+	commitIter *gitlib.CommitIter,
+	commitCount int,
+	commits []*gitlib.Commit,
+	allAnalyzers []analyze.HistoryAnalyzer,
+	streamConfig framework.StreamingConfig,
+	red *observability.REDMetrics,
+	done func(),
+	runStart time.Time,
+	opts HistoryRunOptions,
+) error {
+	storeDir, mkErr := os.MkdirTemp(opts.TmpDir, storeDirPrefix)
+	if mkErr != nil {
+		return fmt.Errorf("create temp store dir: %w", mkErr)
+	}
+
+	if !opts.KeepStore {
+		defer os.RemoveAll(storeDir)
+	}
+
+	store := analyze.NewFileReportStore(storeDir)
+	streamConfig.ReportStore = store
+
+	var err error
+
+	if commitIter != nil {
+		_, err = framework.RunStreamingFromIterator(ctx, runner, commitIter, commitCount, allAnalyzers, streamConfig)
+	} else {
+		_, err = framework.RunStreaming(ctx, runner, commits, allAnalyzers, streamConfig)
+	}
+
+	recordRunCompletion(ctx, red, done, runStart, err)
+
+	if err != nil {
+		return fmt.Errorf("pipeline execution failed: %w", err)
+	}
+
+	enrichErr := enrichAnomalyFromStore(store, allAnalyzers)
+	if enrichErr != nil {
+		return fmt.Errorf("enrich anomaly from store: %w", enrichErr)
+	}
+
+	closeErr := store.Close()
+	if closeErr != nil {
+		return fmt.Errorf("close store: %w", closeErr)
+	}
+
+	renderErr := renderFromStore(storeDir, opts.PlotOutput)
+	if renderErr != nil {
+		return fmt.Errorf("render from store: %w", renderErr)
+	}
+
+	if opts.KeepStore {
+		slog.Default().InfoContext(ctx, "store preserved", "path", storeDir)
+	}
+
+	return nil
+}
+
+// buildStreamingConfig creates a StreamingConfig, wiring a TCSink when NDJSON format is requested,
+// or a TimeSeriesChunkFlusher when streaming timeseries NDJSON is requested.
 func buildStreamingConfig(
 	path string, analyzerKeys []string, memBudget int64,
 	opts HistoryRunOptions, analysisMetrics *observability.AnalysisMetrics,
 	normalizedFormat string, writer io.Writer,
+	selectedLeaves []analyze.HistoryAnalyzer,
 ) framework.StreamingConfig {
 	cfg := framework.StreamingConfig{
 		MemBudget:       memBudget,
@@ -936,12 +1185,41 @@ func buildStreamingConfig(
 		AnalyzerNames:   analyzerKeys,
 		DebugTrace:      opts.DebugTrace,
 		AnalysisMetrics: analysisMetrics,
+		TmpDir:          opts.TmpDir,
 	}
 
 	// NDJSON mode: write one JSON line per TC directly to writer, bypass aggregators.
 	if normalizedFormat == analyze.FormatNDJSON {
 		sink := analyze.NewStreamingSink(writer)
 		cfg.TCSink = sink.WriteTC
+	}
+
+	// Streaming timeseries NDJSON: drain per-commit data after each chunk,
+	// write NDJSON lines, spill cumulative aggregator state to disk, and
+	// skip final report generation. Spilling frees O(files²) coupling
+	// matrices and O(files×ticks) burndown histories that would otherwise
+	// grow unbounded across chunks.
+	if normalizedFormat == analyze.FormatTimeSeriesNDJSON {
+		flusher := analyze.NewTimeSeriesChunkFlusher(writer, selectedLeaves)
+		cfg.OnChunkComplete = func(runner *framework.Runner) error {
+			meta := runner.DrainCommitMeta()
+			aggs := runner.LeafAggregators()
+
+			_, err := flusher.Flush(aggs, meta)
+			if err != nil {
+				return err
+			}
+
+			// Discard cumulative state from both aggregators and leaf analyzers.
+			// Since SkipFinalize is true, no final report will be generated.
+			// Aggregator state: coupling matrices, burndown histories, etc.
+			// Leaf analyzer state: shotness node coupling maps (O(N²)), etc.
+			runner.DiscardAggregatorState()
+			runner.DiscardLeafAnalyzerState()
+
+			return nil
+		}
+		cfg.SkipFinalize = true
 	}
 
 	return cfg
@@ -1001,50 +1279,29 @@ func recordRunCompletion(ctx context.Context, red *observability.REDMetrics, don
 	red.RecordRequest(ctx, "cli.run", status, duration)
 }
 
-// enrichAnomalyReport runs cross-analyzer anomaly detection on time series
-// from other analyzers and injects results into the anomaly report.
-func enrichAnomalyReport(
-	leaves []analyze.HistoryAnalyzer,
-	results map[analyze.HistoryAnalyzer]analyze.Report,
-) {
+// enrichAnomalyFromStore reads the anomaly report from the store, enriches it
+// with cross-analyzer anomaly data from other analyzers in the store, and writes
+// the enriched report back. Returns nil if the anomaly analyzer is not enabled.
+func enrichAnomalyFromStore(store *analyze.FileReportStore, allAnalyzers []analyze.HistoryAnalyzer) error {
 	var anomalyAnalyzer *anomaly.Analyzer
 
-	var anomalyReport analyze.Report
-
-	for _, leaf := range leaves {
-		if a, ok := leaf.(*anomaly.Analyzer); ok {
-			anomalyAnalyzer = a
-			anomalyReport = results[leaf]
+	for _, a := range allAnalyzers {
+		if aa, ok := a.(*anomaly.Analyzer); ok {
+			anomalyAnalyzer = aa
 
 			break
 		}
 	}
 
-	if anomalyAnalyzer == nil || anomalyReport == nil {
-		return
+	if anomalyAnalyzer == nil {
+		return nil
 	}
 
-	otherReports := make(map[string]analyze.Report)
+	analyzerID := anomalyAnalyzer.Flag()
 
-	for _, leaf := range leaves {
-		if leaf == anomalyAnalyzer {
-			continue
-		}
-
-		if rep := results[leaf]; rep != nil {
-			otherReports[leaf.Flag()] = rep
-		}
-	}
-
-	if len(otherReports) == 0 {
-		return
-	}
-
-	anomaly.EnrichFromReports(
-		anomalyReport,
-		otherReports,
-		anomalyAnalyzer.WindowSize,
-		float64(anomalyAnalyzer.Threshold),
+	return anomaly.EnrichAndRewrite(
+		store, analyzerID,
+		anomalyAnalyzer.WindowSize, float64(anomalyAnalyzer.Threshold),
 	)
 }
 
@@ -1075,7 +1332,7 @@ func selectLeaves(
 	return selected, nil
 }
 
-func buildFacts(pl *historyPipeline) map[string]any {
+func buildFacts(pl *historyPipeline, opts HistoryRunOptions) map[string]any {
 	facts := map[string]any{}
 
 	allAnalyzers := make([]analyze.HistoryAnalyzer, 0, len(pl.Core)+len(pl.Leaves))
@@ -1089,6 +1346,11 @@ func buildFacts(pl *historyPipeline) map[string]any {
 		for _, opt := range a.ListConfigurationOptions() {
 			if opt.Default != nil {
 				facts[opt.Name] = opt.Default
+			}
+
+			// Override with command line flags if provided.
+			if val, exists := opts.AnalyzerFlags[opt.Name]; exists {
+				facts[opt.Name] = val
 			}
 		}
 	}
@@ -1227,7 +1489,7 @@ func configureLibgit2MemoryLimits(budgetStr string) {
 	if budgetStr != "" {
 		parsed, err := humanize.ParseBytes(budgetStr)
 		if err == nil {
-			budgetBytes = framework.SafeInt64(parsed)
+			budgetBytes = safeconv.SafeInt64(parsed)
 		}
 	}
 
@@ -1340,8 +1602,7 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline { //nolint:fu
 			}(),
 			"imports": func() *imports.HistoryAnalyzer {
 				a := imports.NewHistoryAnalyzer()
-				a.TreeDiff = treeDiff
-				a.BlobCache = blobCache
+				a.UAST = uastChanges
 				a.Identity = identity
 				a.Ticks = ticks
 
@@ -1383,26 +1644,40 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline { //nolint:fu
 func defaultHistoryLeaves() []analyze.HistoryAnalyzer {
 	leaves := buildPipeline(nil).Leaves
 
-	return []analyze.HistoryAnalyzer{
-		leaves["anomaly"],
-		leaves["burndown"],
-		leaves["couples"],
-		leaves["devs"],
-		leaves["file-history"],
-		leaves["imports"],
-		leaves["quality"],
-		leaves["sentiment"],
-		leaves["shotness"],
-		leaves["typos"],
+	result := make([]analyze.HistoryAnalyzer, 0, len(leaves))
+
+	for _, analyzer := range leaves {
+		result = append(result, analyzer)
 	}
+
+	return result
 }
 
 func defaultStaticAnalyzers() []analyze.StaticAnalyzer {
 	return []analyze.StaticAnalyzer{
+		clones.NewAnalyzer(),
 		complexity.NewAnalyzer(),
 		comments.NewAnalyzer(),
 		halstead.NewAnalyzer(),
 		cohesion.NewAnalyzer(),
 		imports.NewAnalyzer(),
 	}
+}
+
+// validatePlotFlags checks that required flags are present when --format plot is used.
+func validatePlotFlags(format, plotOutput string) error {
+	if format == analyze.FormatPlot && plotOutput == "" {
+		return ErrPlotOutputRequired
+	}
+
+	return nil
+}
+
+// storeDirPrefix is the prefix for temporary ReportStore directories.
+const storeDirPrefix = "codefang-store-"
+
+// renderFromStore reads a FileReportStore and produces multi-page HTML output.
+// This reuses the same rendering logic as the standalone `codefang render` command.
+func renderFromStore(storeDir, outputDir string) error {
+	return runRender(storeDir, outputDir)
 }

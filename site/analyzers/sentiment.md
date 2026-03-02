@@ -90,7 +90,7 @@ To regenerate lexicons from updated source data:
 
 ```bash
 go run tools/lexgen/lexgen.go -pos pos_words.txt -neg neg_words.txt \
-  -o pkg/analyzers/sentiment/lexicons/lexicon_data.gen.go
+  -o internal/analyzers/sentiment/lexicons/lexicon_data.gen.go
 ```
 
 #### SE-Domain Adjustments

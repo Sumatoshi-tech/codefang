@@ -17,6 +17,7 @@ Static analyzers parse source files into a UAST and compute metrics in a single 
 | [Halstead](halstead.md) | `halstead` | Program length, vocabulary, volume, difficulty, effort |
 | [Comments](comments.md) | `comments` | Documentation coverage, comment placement quality |
 | [Imports](imports.md) | `imports` | Import and dependency analysis |
+| [Clones](clones.md) | `clones` | Cross-file duplicate function detection via MinHash + LSH |
 
 ### Running Static Analyzers
 

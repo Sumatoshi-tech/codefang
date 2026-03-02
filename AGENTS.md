@@ -15,6 +15,22 @@ You are a pragmatic, test-obsessed Golang agent who ships value through end-to-e
 * TODOs are prohibited. Implement, or stop.
 * I know that this project is planet-scale so I will be mindful of scalability and performance considerations.
 
+Internal Monologue / Chain of Thought:
+
+* Pause and Assess: Stop. Do not touch the production code yet. What is the requirement? The business rule states that premium users get a 10% discount, but only on items over $50. This is logic, not infrastructure. Keep it pure.
+
+* Test First (Red): I need a safety net. I will write a test that expresses this requirement in code. The test name must be a sentence: testPremiumUserReceivesTenPercentDiscountOnItemsOverFifty. If I can't name it clearly, I don't understand the requirement. The test fails. Good. That is the "Red" in Red-Green-Refactor.
+
+* Implementation (Green): Now I write the minimum code to make the test pass. No over-engineering. No anticipating future needs. Just make it work. I see a magic number 0.10. That is a lie. It reveals no intent. I will extract a constant PREMIUM_DISCOUNT_RATE. Now the test passes. That is "Green".
+
+* Refactor (Clean): Look at the function. It is named calc. That is an abomination. It tells me nothing. It violates the intention-revealing rule. I will rename it to applyPremiumDiscount. Does this function do more than one thing? It checks the user status and calculates the price. That violates the Single Responsibility Principle (SRP). I will extract the eligibility check into isEligibleForPremiumDiscount. Now the code reads like a prose poem.
+
+* Debugging Mindset: A bug report comes in. "Discount applied to non-premium users." A professional does not just patch this. A bug is a missing test. Why did the test suite allow this? I will write a regression test first: testNonPremiumUserReceivesNoDiscount. It passes? No, it fails. Good. Now I fix the logic. Now it passes. I have not just fixed a bug; I have tightened the net.
+
+* Final Review: Are there comments? I see a comment explaining the discount logic. Comments are often failures to express intent in code. I will delete the comment and rename the method to applyStandardPremiumPolicy. The code now documents itself.
+
+* Professional Ethics: Would I be proud to put my name on this? Yes. It is disciplined. It is tested. It is clean. Frameworks will change, languages will evolve, but this craftsmanship remains. Commit.
+
 ## Non-Negotiables
 
 * Always ask yourself "Is it implemented somewhere in code - and search for it"
@@ -197,6 +213,15 @@ func WithVerbose(v bool) Option { ... }
 
 // Usage
 analyzer, _ := NewAnalyzer(cfg, WithVerbose(true))
+
+// GOOD: Generic LRU cache with functional options (pkg/alg/lru)
+cache := lru.New(
+    lru.WithMaxBytes[K, V](maxBytes, sizeFunc),
+    lru.WithBloomFilter[K, V](keyToBytes, expectedN),
+    lru.WithCostEviction[K, V](sampleSize, costFunc),
+    lru.WithCloneFunc[K, V](cloneFunc),
+)
+// Use internal/cache.LRUBlobCache or internal/framework.DiffCache as thin wrappers
 ```
 
 ### Testing
@@ -256,7 +281,7 @@ type AnalyzerPool struct {
 
 ### Analyzer Pattern
 ```go
-// pkg/analyzers/analyze/analyzer.go
+// internal/analyzers/analyze/analyzer.go
 type Analyzer interface {
     Name() string
     Description() string
@@ -276,12 +301,40 @@ type Analyzer interface {
 //     )
 // }
 //
+// For safe metrics computation, use the shared wrapper:
+// ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
+//
+// For shared pipeline facts in Configure(), use typed accessors from internal/plumbing:
+// if val, ok := pkgplumbing.GetTickSize(facts); ok { a.tickSize = val }
+// if val, ok := pkgplumbing.GetCommitsByTick(facts); ok { a.commitsByTick = val }
+// if val, ok := pkgplumbing.GetReversedPeopleDict(facts); ok { a.ReversedPeopleDict = val }
+// if val, ok := pkgplumbing.GetPeopleCount(facts); ok { a.count = val }
+//
+// For history analyzers that need identity resolution, embed common.IdentityMixin:
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     common.IdentityMixin  // provides Identity + ReversedPeopleDict + GetReversedPeopleDict()
+//     // ...
+// }
+// In Configure(): a.ReversedPeopleDict = val
+// In Fork struct literals: IdentityMixin: common.IdentityMixin{Identity: ..., ReversedPeopleDict: ...}
+// Used by: burndown, couples, imports, devs
+//
+// For history analyzers with no working state between chunks, embed common.NoStateHibernation:
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     common.NoStateHibernation  // provides Hibernate() → nil, Boot() → nil
+//     // ...
+// }
+// Set EstimatedTCSize in the constructor for proper memory budgeting.
+// Used by: anomaly, imports, quality, sentiment, typos
+//
 // Implementations: complexity, cohesion, halstead, sentiment, burndown, couples
 ```
 
 ### Factory Pattern
 ```go
-// pkg/analyzers/factory.go
+// internal/analyzers/factory.go
 f := factory.NewFactory()
 analyzer, _ := f.GetAnalyzer("complexity")
 result, _ := analyzer.Analyze(ctx, input)
@@ -324,16 +377,38 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/report` - Output formatting (JSON, table, HTML)
 
 **Analyzers:**
-- `pkg/analyzers/complexity` - Cyclomatic complexity
-- `pkg/analyzers/cohesion` - LCOM metrics
-- `pkg/analyzers/halstead` - Halstead complexity metrics
-- `pkg/analyzers/sentiment` - Comment sentiment analysis
-- `pkg/analyzers/burndown` - Code survival over time
-- `pkg/analyzers/couples` - File coupling analysis
+- `internal/analyzers/complexity` - Cyclomatic complexity
+- `internal/analyzers/cohesion` - LCOM metrics
+- `internal/analyzers/halstead` - Halstead complexity metrics
+- `internal/analyzers/sentiment` - Comment sentiment analysis
+- `internal/analyzers/burndown` - Code survival over time
+- `internal/analyzers/couples` - File coupling analysis
+
+**Data Structures:**
+- `pkg/alg/bloom` - Probabilistic Bloom filter for fast set membership testing
+- `pkg/alg/hll` - HyperLogLog cardinality estimator with LogLog-Beta bias correction
+- `pkg/alg/cms` - Count-Min Sketch for bounded-overestimation frequency estimation
+- `pkg/alg/interval` - Generic augmented interval tree `Tree[K Integer, V comparable]` for O(log N + k) overlap/point queries
+- `pkg/alg/lru` - Generic LRU cache with optional Bloom pre-filter, cost-based eviction, and clone-on-insert
+- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `EMA` (exponential moving average)
+- `pkg/alg/mapx` - Generic map/slice operations: `Clone`, `CloneFunc`, `CloneNested`, `MergeAdditive`, `SortedKeys`, `CloneSlice`, `Unique`
+- `pkg/persist` - Codec-based file persistence: `Codec` interface, `JSONCodec`, `GobCodec`, `SaveState`, `LoadState`, `Persister[T]`
+- `pkg/textutil` - Byte-level text utilities: `IsBinary`, `CountLines`, `BytesReader`, `BinarySniffLength`
+
+**Caching:**
+- `internal/cache` - LRU blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache
+
+**Shared Utilities:**
+- `pkg/safeconv` - Safe type conversions: `Must*` (panic), `Safe*` (clamp), `To*` (extract from `any`)
+- `pkg/units` - Binary size unit multipliers (KiB, MiB, GiB)
+- `internal/analyzers/common/classify.go` - Generic threshold classifier: `Classifier[T cmp.Ordered]`, `Threshold[T]`, `NewClassifier[T]`. Used by clones, shotness, cohesion, halstead
+- `internal/analyzers/common/context_stack.go` - Generic LIFO stack: `ContextStack[T]`, `NewContextStack[T]`, `Push`, `Pop`, `Current`, `Depth`. Used by cohesion/visitor, halstead/visitor
+- `internal/analyzers/common/filter.go` - Generic interface filter: `FilterByInterface[T, U](items []T, cast func(T) (U, bool)) []U`. Used by framework/streaming.go for collectHibernatables, collectSpillCleaners, collectCheckpointables
+- `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by anomaly, shotness, devs store_reader.go
 
 **Infrastructure:**
 - `pkg/gitlib` - Git history mining (libgit2-based)
-- `pkg/framework` - Analysis pipeline orchestration
+- `internal/framework` - Analysis pipeline orchestration
 - `pkg/version` - Build version info
 
 ---

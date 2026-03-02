@@ -277,16 +277,6 @@ func parseFileWithParser(parser *uast.Parser, file, lang, output, format string,
 	return outputNode(parsedNode, output, format, writer)
 }
 
-// ParseFile parses a single source file into UAST format.
-func ParseFile(file, lang, output, format string, writer io.Writer) error {
-	parser, err := uast.NewParser()
-	if err != nil {
-		return fmt.Errorf("failed to initialize parser: %w", err)
-	}
-
-	return parseFileWithParser(parser, file, lang, output, format, writer)
-}
-
 func outputNode(parsedNode *node.Node, output, format string, writer io.Writer) error {
 	if output != "" {
 		outputFile, err := os.Create(output)
