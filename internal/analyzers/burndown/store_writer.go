@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
@@ -21,6 +22,7 @@ type ChartData struct {
 	Granularity   int
 	TickSize      int64 // nanoseconds, gob-safe.
 	EndTime       int64 // unix nanoseconds, gob-safe.
+	ProjectName   string
 }
 
 // ErrUnexpectedAggregator indicates a type assertion failure for the aggregator.
@@ -70,13 +72,41 @@ func (b *HistoryAnalyzer) WriteToStoreFromAggregator(
 func (b *HistoryAnalyzer) buildChartData(agg *Aggregator) ChartData {
 	globalDense := b.groupSparseHistory(agg.globalHistory, agg.lastTick)
 
+	// Clamp negative values to zero to replicate the behavior of the old
+	// JSON serialization (band_breakdown), which ignored negative cumulative
+	// sums caused by missing additions in sub-histories or diff mismatches.
+	// Without this, go-echarts stacked area charts will draw negative values downwards
+	// and corrupt the visualization of all layers above it.
+	for i := range globalDense {
+		for j := range globalDense[i] {
+			if globalDense[i][j] < 0 {
+				globalDense[i][j] = 0
+			}
+		}
+	}
+
 	return ChartData{
 		GlobalHistory: globalDense,
 		Sampling:      agg.sampling,
 		Granularity:   agg.granularity,
 		TickSize:      int64(agg.tickSize),
 		EndTime:       agg.endTime.UnixNano(),
+		ProjectName:   b.repoName(),
 	}
+}
+
+// repoName returns the repository base name, or empty string if unavailable.
+func (b *HistoryAnalyzer) repoName() string {
+	if b.repository == nil {
+		return ""
+	}
+
+	p := b.repository.Path()
+	if p == "" || p == "." {
+		return ""
+	}
+
+	return filepath.Base(p)
 }
 
 // computeMetricsFromAggregator pre-computes all metrics directly from aggregator

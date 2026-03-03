@@ -430,7 +430,7 @@ func (b *HistoryAnalyzer) removeActiveID(shard *Shard, id PathID) {
 func (b *HistoryAnalyzer) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	author := b.Identity.AuthorID
 	tick := b.Ticks.Tick
-	isMerge := ac.IsMerge
+	isMerge := ac.Commit.NumParents() > 1
 	b.isMerge = isMerge
 
 	b.resetDeltaBuffers()
@@ -499,7 +499,7 @@ func computeCommitLineStats(cr *CommitResult, curTick int) {
 func (b *HistoryAnalyzer) ConsumePrepared(prepared *analyze.PreparedCommit) error {
 	author := prepared.AuthorID
 	tick := prepared.Tick
-	isMerge := prepared.Ctx.IsMerge
+	isMerge := prepared.Ctx.Commit.NumParents() > 1
 	b.isMerge = isMerge
 
 	b.resetDeltaBuffers()

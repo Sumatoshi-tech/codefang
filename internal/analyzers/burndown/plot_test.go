@@ -390,8 +390,8 @@ func TestBuildXLabels(t *testing.T) {
 	}
 
 	labels := buildXLabels(params)
-	// n=3, points = (3-1)*5 + 1 = 11.
-	require.Len(t, labels, 11)
+	// n=3, points = (3-1)*1 + 1 = 3.
+	require.Len(t, labels, 3)
 	assert.Equal(t, "0d", labels[0], "first label should be 0d")
 	assert.Equal(t, "60d", labels[len(labels)-1], "last label should be 60d")
 }
@@ -410,22 +410,17 @@ func TestInterpolateFull(t *testing.T) {
 
 	values := []float64{0.0, 100.0, 200.0}
 	out := interpolateFull(values)
-	// points = (3-1)*5 + 1 = 11.
-	require.Len(t, out, 11)
+	// points = (3-1)*1 + 1 = 3.
+	require.Len(t, out, 3)
 	assert.Equal(t, int64(0), out[0].Value, "first point should be 0")
-	assert.Equal(t, int64(200), out[10].Value, "last point should be 200")
+	assert.Equal(t, int64(200), out[2].Value, "last point should be 200")
 }
 
 func TestInterpolatePoint_Negative(t *testing.T) {
 	t.Parallel()
 
-	// Construct values where linear interpolation produces a negative number.
-	// Between index 0 (value=10) and index 1 (value=-50), at frac ~0.5 the
-	// interpolation would be 10*0.5 + (-50)*0.5 = -20, which should clamp to 0.
-	values := []float64{10.0, -50.0}
-	// idx=3 => subIdx=3/5=0.6, lo=0, frac=0.6
-	// val = 10*(1-0.6) + (-50)*0.6 = 4 - 30 = -26 => clamped to 0.
-	result := interpolatePoint(values, 3, 2)
+	values := []float64{-50.0, -50.0}
+	result := interpolatePoint(values, 0, 2)
 	assert.InDelta(t, 0.0, result, 0.001, "negative interpolated values should be clamped to 0")
 }
 

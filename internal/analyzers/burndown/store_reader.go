@@ -130,12 +130,18 @@ func buildStoreSummarySection(metrics *ComputedMetrics) plotpage.Section {
 
 // buildChartFromStoreData builds the burndown chart directly from store data.
 func buildChartFromStoreData(data *ChartData) *charts.Line {
+	projectName := data.ProjectName
+	if projectName == "" {
+		projectName = "project"
+	}
+
 	params := &burndownParams{
 		globalHistory: data.GlobalHistory,
 		sampling:      data.Sampling,
 		granularity:   data.Granularity,
 		tickSize:      time.Duration(data.TickSize),
 		endTime:       time.Unix(0, data.EndTime),
+		projectName:   projectName,
 	}
 
 	co := plotpage.DefaultChartOpts()

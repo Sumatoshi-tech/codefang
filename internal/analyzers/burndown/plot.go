@@ -21,7 +21,7 @@ const (
 	daysPerMonth           = 30
 	monthsPerYear          = 12
 	minYearsForAggregation = 2
-	interpolationFactor    = 5
+	interpolationFactor    = 1
 	chartHeight            = "600px"
 	areaOpacity            = 0.5
 	roundingOffset         = 0.5
@@ -315,7 +315,7 @@ func addYearSeries(line *charts.Line, agg *yearAgg) {
 	for i, year := range agg.years {
 		data := interpolate(agg.data[i])
 		line.AddSeries(strconv.Itoa(year), data,
-			charts.WithLineChartOpts(opts.LineChart{Stack: "total"}),
+			charts.WithLineChartOpts(opts.LineChart{Stack: "total", Smooth: opts.Bool(true), ShowSymbol: opts.Bool(false)}),
 			charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacity)}),
 		)
 	}
@@ -328,7 +328,7 @@ func addBandSeries(line *charts.Line, params *burndownParams) {
 		data := interpolate(raw)
 		label := bandLabel(rev, params)
 		line.AddSeries(label, data,
-			charts.WithLineChartOpts(opts.LineChart{Stack: "total"}),
+			charts.WithLineChartOpts(opts.LineChart{Stack: "total", Smooth: opts.Bool(true), ShowSymbol: opts.Bool(false)}),
 			charts.WithAreaStyleOpts(opts.AreaStyle{Opacity: opts.Float(areaOpacity)}),
 		)
 	}
