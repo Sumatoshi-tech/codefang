@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 type busfactorContent struct {
@@ -47,13 +48,13 @@ func (bf *busfactorContent) renderSummary(w io.Writer) error {
 func (bf *busfactorContent) countByRiskLevel() (critical, high, medium, low int) {
 	for _, bfd := range bf.data.Metrics.BusFactor {
 		switch bfd.RiskLevel {
-		case RiskCritical:
+		case string(metrics.RiskCritical):
 			critical++
-		case RiskHigh:
+		case string(metrics.RiskHigh):
 			high++
-		case RiskMedium:
+		case string(metrics.RiskMedium):
 			medium++
-		case RiskLow:
+		case string(metrics.RiskLow):
 			low++
 		}
 	}
@@ -105,11 +106,11 @@ func riskBadgeHTML(level string) string {
 	badge := plotpage.NewBadge(level)
 
 	switch level {
-	case RiskCritical:
+	case string(metrics.RiskCritical):
 		badge.WithColor(plotpage.BadgeError)
-	case RiskHigh:
+	case string(metrics.RiskHigh):
 		badge.WithColor(plotpage.BadgeWarning)
-	case RiskMedium:
+	case string(metrics.RiskMedium):
 		badge.WithColor(plotpage.BadgeInfo)
 	default:
 		badge.WithColor(plotpage.BadgeSuccess)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -106,9 +107,6 @@ func computeList(input *ReportData) []Record {
 	return input.Anomalies
 }
 
-// percentMultiplier converts fractions to percentages.
-const percentMultiplier = 100
-
 // computeAggregate calculates aggregate statistics.
 func computeAggregate(input *ReportData) AggregateData {
 	totalTicks := len(input.TickMetrics)
@@ -117,7 +115,7 @@ func computeAggregate(input *ReportData) AggregateData {
 	var anomalyRate float64
 
 	if totalTicks > 0 {
-		anomalyRate = float64(totalAnomalies) / float64(totalTicks) * percentMultiplier
+		anomalyRate = stats.ToPercent(float64(totalAnomalies) / float64(totalTicks))
 	}
 
 	ticks := mapx.SortedKeys(input.TickMetrics)
@@ -135,10 +133,10 @@ func computeAggregate(input *ReportData) AggregateData {
 		authorCountValues[i] = float64(len(tm.AuthorIDs))
 	}
 
-	churnMean, churnStdDev := MeanStdDev(churnValues)
-	filesMean, filesStdDev := MeanStdDev(filesValues)
-	langDivMean, langDivStdDev := MeanStdDev(langDiversityValues)
-	authorMean, authorStdDev := MeanStdDev(authorCountValues)
+	churnMean, churnStdDev := stats.MeanStdDev(churnValues)
+	filesMean, filesStdDev := stats.MeanStdDev(filesValues)
+	langDivMean, langDivStdDev := stats.MeanStdDev(langDiversityValues)
+	authorMean, authorStdDev := stats.MeanStdDev(authorCountValues)
 
 	return AggregateData{
 		TotalTicks:          totalTicks,

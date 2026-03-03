@@ -20,8 +20,8 @@ func TestNewAggregator(t *testing.T) {
 		t.Error("Expected embedded Aggregator to be non-nil")
 	}
 
-	if aggregator.detailedFunctions == nil {
-		t.Error("Expected detailedFunctions slice to be initialized")
+	if aggregator.detailed == nil {
+		t.Error("Expected detailed collector to be initialized")
 	}
 }
 
@@ -314,95 +314,5 @@ func TestBuildEmptyHalsteadResult(t *testing.T) {
 
 	if result["message"] != "No functions found" {
 		t.Errorf("Expected message='No functions found', got %v", result["message"])
-	}
-}
-
-func TestAggregator_ExtractFunctionsFromReport(t *testing.T) {
-	t.Parallel()
-
-	aggregator := NewAggregator()
-
-	// Test with valid functions.
-	report := analyze.Report{
-		"functions": []map[string]any{
-			{"name": "func1"},
-			{"name": "func2"},
-		},
-	}
-
-	aggregator.extractFunctionsFromReport(report)
-
-	if len(aggregator.detailedFunctions) != 2 {
-		t.Errorf("Expected 2 functions extracted, got %d", len(aggregator.detailedFunctions))
-	}
-
-	// Test with no functions key.
-	aggregator2 := NewAggregator()
-	reportNoFunctions := analyze.Report{
-		"total_functions": 0,
-	}
-
-	aggregator2.extractFunctionsFromReport(reportNoFunctions)
-
-	if len(aggregator2.detailedFunctions) != 0 {
-		t.Errorf("Expected 0 functions extracted, got %d", len(aggregator2.detailedFunctions))
-	}
-}
-
-func TestAggregator_CollectDetailedFunctions(t *testing.T) {
-	t.Parallel()
-
-	aggregator := NewAggregator()
-
-	results := map[string]analyze.Report{
-		"file1": {
-			"functions": []map[string]any{
-				{"name": "file1_func1"},
-			},
-		},
-		"file2": {
-			"functions": []map[string]any{
-				{"name": "file2_func1"},
-				{"name": "file2_func2"},
-			},
-		},
-		"file3": nil, // Nil report should be skipped.
-	}
-
-	aggregator.collectDetailedFunctions(results)
-
-	if len(aggregator.detailedFunctions) != 3 {
-		t.Errorf("Expected 3 functions collected, got %d", len(aggregator.detailedFunctions))
-	}
-}
-
-func TestAggregator_AddDetailedFunctionsToResult(t *testing.T) {
-	t.Parallel()
-
-	aggregator := NewAggregator()
-	aggregator.detailedFunctions = []map[string]any{
-		{"name": "func1"},
-		{"name": "func2"},
-	}
-
-	result := analyze.Report{}
-	aggregator.addDetailedFunctionsToResult(result)
-
-	functions, fnOK := result["functions"].([]map[string]any)
-	if !fnOK {
-		t.Fatal("Expected functions to be added to result")
-	}
-
-	if len(functions) != 2 {
-		t.Errorf("Expected 2 functions in result, got %d", len(functions))
-	}
-
-	// Test with empty detailed functions.
-	aggregator2 := NewAggregator()
-	result2 := analyze.Report{}
-	aggregator2.addDetailedFunctionsToResult(result2)
-
-	if _, hasFunc := result2["functions"]; hasFunc {
-		t.Error("Expected no functions key when detailedFunctions is empty")
 	}
 }

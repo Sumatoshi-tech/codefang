@@ -418,8 +418,8 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/alg/interval` - Generic augmented interval tree `Tree[K Integer, V comparable]` for O(log N + k) overlap/point queries
 - `pkg/alg/lru` - Generic LRU cache with optional Bloom pre-filter, cost-based eviction, and clone-on-insert
 - `pkg/alg` - Generic algorithms: `Range` (half-open interval), `Chunk` (range partitioning), `ForEachPair` (C(n,2) pairwise iteration)
-- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `EMA` (exponential moving average)
-- `pkg/alg/mapx` - Generic map/slice operations: `Clone`, `CloneFunc`, `CloneNested`, `MergeAdditive`, `SortedKeys`, `CloneSlice`, `Unique`
+- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `ToPercent`, `PercentMultiplier`, `Distribution[T]` (classify-and-count), `EMA` (exponential moving average)
+- `pkg/alg/mapx` - Generic map/slice operations: `Clone`, `CloneFunc`, `CloneNested`, `MergeAdditive`, `SortedKeys`, `CloneSlice`, `Unique`, `SortAndLimit`, `BuildLookupSet` (slice → `map[T]struct{}` set)
 - `pkg/persist` - Codec-based file persistence: `Codec` interface, `JSONCodec`, `GobCodec`, `SaveState`, `LoadState`, `Persister[T]`
 - `pkg/textutil` - Byte-level text utilities: `IsBinary`, `CountLines`, `BytesReader`, `BinarySniffLength`
 
@@ -430,17 +430,23 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/sigutil` - Signal-handling utilities: `SignalCleanupGuard` (SIGINT/SIGTERM + `sync.Once` idempotent cleanup + goroutine listener + deregistration on `Close`)
 - `pkg/safeconv` - Safe type conversions: `Must*` (panic), `Safe*` (clamp), `To*` (extract from `any`)
 - `pkg/units` - Binary size unit multipliers (KiB, MiB, GiB)
+- `pkg/metrics` - Shared metric types: `RiskLevel` constants (`RiskCritical`, `RiskHigh`, `RiskMedium`, `RiskLow`), `RiskPriority(level RiskLevel) int` for sortable risk ordering, `MetricMeta` struct, `RiskResult` struct. Used by devs, file_history, complexity, comments analyzers
 - `internal/analyzers/common/classify.go` - Generic threshold classifier: `Classifier[T cmp.Ordered]`, `Threshold[T]`, `NewClassifier[T]`. Used by clones, shotness, cohesion, halstead
 - `internal/analyzers/common/context_stack.go` - Generic LIFO stack: `ContextStack[T]`, `NewContextStack[T]`, `Push`, `Pop`, `Current`, `Depth`. Used by cohesion/visitor, halstead/visitor
 - `internal/analyzers/common/filter.go` - Generic interface filter: `FilterByInterface[T, U](items []T, cast func(T) (U, bool)) []U`. Used by framework/streaming.go for collectHibernatables, collectSpillCleaners, collectCheckpointables
-- `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by anomaly, shotness, devs store_reader.go
+- `internal/analyzers/common/detailed_data_collector.go` - Multi-key detailed data collector: `DetailedDataCollector`, `NewDetailedDataCollector(keys ...string)`, `CollectFromReports`, `AddToResult`. Used by complexity, halstead, comments aggregators
+- `internal/analyzers/common/plotpage/plotpage.go` - Plot page rendering: `NewPage`, `RenderAnalyzerPage(w, title, desc, sections...)`. `RenderAnalyzerPage` is the preferred one-liner for all analyzer plot rendering
+- `internal/analyzers/common/plotpage/builders.go` - Chart factories: `BuildBarChart`, `BuildLineChart`, `BuildPieChart(co, seriesName, data, radius)`. `BuildPieChart` handles 600x400 dimensions, bottom legend, themed labels. Used by cohesion, complexity, comments, halstead, couples
+- `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by all 10 analyzer store_reader.go files
+- `internal/analyzers/analyze/record_writer.go` - Generic store writer: `WriteSliceKind[T](w, kind, records)`. Used by devs, anomaly, quality, sentiment, typos, file_history, couples store_writer.go
+- `internal/analyzers/analyze/analyzer.go` - Report helpers: `ReportFunctionList(report, key)` for single-key extraction, `ReportFunctionListWithFallback(report, primaryKey, fallbackKey)` for two-key fallback extraction. Used by complexity, halstead, cohesion, comments plot.go
 
 **Pipeline Building Blocks:**
-- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern)
+- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern), `SharedResponse[T]` (sync.Once memoization with context for once-evaluated shared results across goroutines)
 
 **Infrastructure:**
 - `pkg/gitlib` - Git history mining (libgit2-based)
-- `internal/framework` - Analysis pipeline orchestration; `SharedResponse[T]` for once-evaluated shared results across goroutines; `BlobPipeline` and `DiffPipeline` delegate goroutine topology to `pipeline.RunPC`
+- `internal/framework` - Analysis pipeline orchestration; `BlobPipeline` and `DiffPipeline` delegate goroutine topology to `pipeline.RunPC`
 - `pkg/version` - Build version info
 
 ---

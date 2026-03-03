@@ -23,12 +23,14 @@ type HistoryAnalyzer struct {
 	Identity  *plumbing.IdentityDetector
 	TreeDiff  *plumbing.TreeDiffAnalyzer
 	LineStats *plumbing.LinesStatsCalculator
+	BlobCache *plumbing.BlobCacheAnalyzer
 
 	// State.
 	files          map[string]*FileHistory
 	lastCommitHash gitlib.Hash
 	repo           *gitlib.Repository
 	merges         *analyze.MergeTracker
+	classifier     *Classifier
 }
 
 // FileHistory holds the change history for a single file.
@@ -48,9 +50,14 @@ func NewAnalyzer() *HistoryAnalyzer {
 	}
 
 	ha.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
-		ComputeMetricsFn: ComputeAllMetrics,
+		EstimatedStateSize: workingStateSize,
+		EstimatedTCSize:    avgTCSize,
+		ComputeMetricsFn:   ComputeAllMetrics,
 		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
 			return TicksToReport(ctx, t, ha.repo)
+		},
+		SerializeTextFn: func(result analyze.Report, writer io.Writer) error {
+			return generateText(result, writer)
 		},
 		SerializePlotFn: func(result analyze.Report, writer io.Writer) error {
 			return ha.generatePlot(result, writer)
@@ -105,6 +112,7 @@ func (h *HistoryAnalyzer) Initialize(repo *gitlib.Repository) error {
 	h.files = map[string]*FileHistory{}
 	h.merges = analyze.NewMergeTracker()
 	h.repo = repo
+	h.classifier = NewClassifier()
 
 	return nil
 }
@@ -180,7 +188,56 @@ func (h *HistoryAnalyzer) buildCommitData(changes gitlib.Changes, commit analyze
 		})
 	}
 
+	// Classify each changed file by category.
+	if h.classifier != nil {
+		h.classifyChanges(changes, &data.Composition)
+	}
+
 	return data, nil
+}
+
+// classifyChanges classifies each change and increments the appropriate category count.
+func (h *HistoryAnalyzer) classifyChanges(changes gitlib.Changes, counts *CategoryCounts) {
+	cache := h.blobCache()
+
+	for _, change := range changes {
+		var name string
+
+		var hash gitlib.Hash
+
+		switch change.Action {
+		case gitlib.Insert:
+			name = change.To.Name
+			hash = change.To.Hash
+		case gitlib.Delete:
+			name = change.From.Name
+			hash = change.From.Hash
+		case gitlib.Modify:
+			name = change.To.Name
+			hash = change.To.Hash
+		default:
+			continue
+		}
+
+		var content []byte
+		if cache != nil {
+			if blob, ok := cache[hash]; ok && blob != nil {
+				content = blob.Data
+			}
+		}
+
+		cat := h.classifier.Classify(name, content)
+		counts.Increment(cat)
+	}
+}
+
+// blobCache returns the blob cache map, or nil if BlobCache is not wired.
+func (h *HistoryAnalyzer) blobCache() map[gitlib.Hash]*gitlib.CachedBlob {
+	if h.BlobCache == nil {
+		return nil
+	}
+
+	return h.BlobCache.Cache
 }
 
 // processFileChanges updates file histories based on the tree diff changes for the given commit.
@@ -319,6 +376,7 @@ func (h *HistoryAnalyzer) CPUHeavy() bool { return false }
 func (h *HistoryAnalyzer) SnapshotPlumbing() analyze.PlumbingSnapshot {
 	return plumbing.Snapshot{
 		Changes:   h.TreeDiff.Changes,
+		BlobCache: h.blobCache(),
 		LineStats: h.LineStats.LineStats,
 		AuthorID:  h.Identity.AuthorID,
 	}
@@ -334,6 +392,10 @@ func (h *HistoryAnalyzer) ApplySnapshot(snap analyze.PlumbingSnapshot) {
 	h.TreeDiff.Changes = snapshot.Changes
 	h.LineStats.LineStats = snapshot.LineStats
 	h.Identity.AuthorID = snapshot.AuthorID
+
+	if h.BlobCache != nil {
+		h.BlobCache.Cache = snapshot.BlobCache
+	}
 }
 
 // ReleaseSnapshot releases any resources owned by the snapshot.

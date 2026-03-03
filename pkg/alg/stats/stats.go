@@ -44,6 +44,14 @@ func MeanStdDev(values []float64) (mean, stddev float64) {
 	return mean, math.Sqrt(sumSq / float64(count))
 }
 
+// PercentMultiplier is the standard multiplier for converting ratios to percentages.
+const PercentMultiplier = 100
+
+// ToPercent converts a ratio (0.0–1.0) to a percentage (0–100).
+func ToPercent(ratio float64) float64 {
+	return ratio * PercentMultiplier
+}
+
 // Well-known percentile thresholds.
 const (
 	PercentileMedian = 0.5
@@ -128,6 +136,22 @@ func Max[T cmp.Ordered](values []T) T {
 	}
 
 	return result
+}
+
+// Distribution counts items per label as determined by classify.
+// Returns nil for a nil slice. Returns an empty map for an empty slice.
+func Distribution[T any](items []T, classify func(T) string) map[string]int {
+	if items == nil {
+		return nil
+	}
+
+	counts := make(map[string]int, len(items))
+
+	for i := range items {
+		counts[classify(items[i])]++
+	}
+
+	return counts
 }
 
 // Sum returns the sum of all elements in values.

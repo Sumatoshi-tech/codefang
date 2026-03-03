@@ -2,7 +2,6 @@ package typos
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 
@@ -26,26 +25,7 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // readFileTyposIfPresent reads all file_typos records, returning nil if absent.
 func readFileTyposIfPresent(reader analyze.ReportReader, kinds []string) ([]FileTypoData, error) {
-	if !slices.Contains(kinds, KindFileTypos) {
-		return nil, nil
-	}
-
-	var result []FileTypoData
-
-	iterErr := reader.Iter(KindFileTypos, func(raw []byte) error {
-		var record FileTypoData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[FileTypoData](reader, kinds, KindFileTypos)
 }
 
 // buildStoreSections constructs the typos plot sections from pre-computed data.

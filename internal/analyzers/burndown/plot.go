@@ -14,6 +14,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 const (
@@ -46,10 +47,7 @@ func (b *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		desc = fmt.Sprintf("Granularity %d, sampling %d", params.granularity, params.sampling)
 	}
 
-	page := plotpage.NewPage(title, desc)
-	page.Add(sections...)
-
-	return page.Render(writer)
+	return plotpage.RenderAnalyzerPage(writer, title, desc, sections...)
 }
 
 // GenerateSections returns the sections for combined reports.
@@ -95,10 +93,10 @@ func buildSummarySection(report analyze.Report) plotpage.Section {
 	}
 
 	agg := metrics.Aggregate
-	survivalPct := fmt.Sprintf("%.1f%%", agg.OverallSurvivalRate*percentMultiplier)
+	survivalPct := fmt.Sprintf("%.1f%%", stats.ToPercent(agg.OverallSurvivalRate))
 	survivalColor := survivalBadgeColor(agg.OverallSurvivalRate)
 
-	stats := []plotpage.Renderable{
+	statCards := []plotpage.Renderable{
 		plotpage.NewStat("Current Lines", formatInt64(agg.TotalCurrentLines)),
 		plotpage.NewStat("Peak Lines", formatInt64(agg.TotalPeakLines)),
 		plotpage.NewStat("Survival Rate", survivalPct).WithTrend(survivalPct, survivalColor),
@@ -106,17 +104,17 @@ func buildSummarySection(report analyze.Report) plotpage.Section {
 	}
 
 	if agg.TrackedDevelopers > 0 {
-		stats = append(stats, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
+		statCards = append(statCards, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
 	}
 
 	if agg.TrackedFiles > 0 {
-		stats = append(stats, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
+		statCards = append(statCards, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
 	}
 
 	return plotpage.Section{
 		Title:    "Burndown Summary",
 		Subtitle: "Aggregate statistics from code burndown analysis.",
-		Chart:    plotpage.NewGrid(plotMaxStatsColumns, stats...),
+		Chart:    plotpage.NewGrid(plotMaxStatsColumns, statCards...),
 	}
 }
 

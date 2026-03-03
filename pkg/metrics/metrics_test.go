@@ -186,6 +186,39 @@ func TestTimeSeriesPoint_Fields(t *testing.T) {
 	assert.InDelta(t, float64(testInputValue), point.Value, 0.001)
 }
 
+// FRD: specs/frds/FRD-20260303-risk-priority.md.
+
+func TestRiskPriority_AllLevels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		level    RiskLevel
+		wantPri  int
+		wantLess RiskLevel // must sort before the next level.
+	}{
+		{RiskCritical, priorityCritical, RiskHigh},
+		{RiskHigh, priorityHigh, RiskMedium},
+		{RiskMedium, priorityMedium, RiskLow},
+		{RiskLow, priorityDefault, ""},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.wantPri, RiskPriority(tt.level), "level=%s", tt.level)
+
+		if tt.wantLess != "" {
+			assert.Less(t, RiskPriority(tt.level), RiskPriority(tt.wantLess),
+				"%s should sort before %s", tt.level, tt.wantLess)
+		}
+	}
+}
+
+func TestRiskPriority_UnknownLevel(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, priorityDefault, RiskPriority("UNKNOWN"))
+	assert.Equal(t, priorityDefault, RiskPriority(""))
+}
+
 func TestRiskResult_Fields(t *testing.T) {
 	t.Parallel()
 

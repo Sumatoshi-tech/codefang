@@ -3,9 +3,9 @@ package shotness
 import (
 	"context"
 	"maps"
-	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -66,12 +66,7 @@ func buildReportFromMerged(merged map[string]*nodeShotnessData) analyze.Report {
 	nodes := make([]NodeSummary, len(merged))
 	counters := make([]map[int]int, len(merged))
 
-	keys := make([]string, 0, len(merged))
-	for key := range merged {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
+	keys := mapx.SortedKeys(merged)
 
 	reverseKeys := make(map[string]int, len(keys))
 	for i, key := range keys {

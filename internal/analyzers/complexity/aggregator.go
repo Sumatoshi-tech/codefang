@@ -17,8 +17,8 @@ const msgGoodComplexity = "Good complexity - functions have reasonable complexit
 // Aggregator aggregates results from multiple complexity analyses.
 type Aggregator struct {
 	*common.Aggregator
-	detailedFunctions []map[string]any
-	maxComplexity     int
+	detailed      *common.DetailedDataCollector
+	maxComplexity int
 }
 
 // NewAggregator creates a new Aggregator.
@@ -38,14 +38,14 @@ func NewAggregator() *Aggregator {
 			messageBuilder,
 			emptyResultBuilder,
 		),
-		detailedFunctions: make([]map[string]any, 0),
+		detailed: common.NewDetailedDataCollector("functions"),
 	}
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed functions
 // and track the true maximum complexity across all files.
 func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
-	ca.collectDetailedFunctions(results)
+	ca.detailed.CollectFromReports(results)
 	ca.trackMaxComplexity(results)
 	ca.Aggregator.Aggregate(results)
 }
@@ -54,7 +54,7 @@ func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
 // and compute derived metrics (average_complexity, max_complexity, message).
 func (ca *Aggregator) GetResult() analyze.Report {
 	result := ca.Aggregator.GetResult()
-	ca.addDetailedFunctionsToResult(result)
+	ca.detailed.AddToResult(result)
 	// Only add derived metrics when we actually aggregated reports;
 	// otherwise the empty result builder already set correct defaults.
 	if ca.GetMetricsProcessor().GetReportCount() > 0 {
@@ -62,31 +62,6 @@ func (ca *Aggregator) GetResult() analyze.Report {
 	}
 
 	return result
-}
-
-// collectDetailedFunctions extracts detailed functions from all reports.
-func (ca *Aggregator) collectDetailedFunctions(results map[string]analyze.Report) {
-	for _, report := range results {
-		if report == nil {
-			continue
-		}
-
-		ca.extractFunctionsFromReport(report)
-	}
-}
-
-// extractFunctionsFromReport extracts functions from a single report.
-func (ca *Aggregator) extractFunctionsFromReport(report analyze.Report) {
-	if functions, ok := report["functions"].([]map[string]any); ok {
-		ca.detailedFunctions = append(ca.detailedFunctions, functions...)
-	}
-}
-
-// addDetailedFunctionsToResult adds detailed functions to the result.
-func (ca *Aggregator) addDetailedFunctionsToResult(result analyze.Report) {
-	if len(ca.detailedFunctions) > 0 {
-		result["functions"] = ca.detailedFunctions
-	}
 }
 
 // trackMaxComplexity tracks the true maximum complexity across all files.

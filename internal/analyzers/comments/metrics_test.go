@@ -418,32 +418,6 @@ func TestUndocumentedFunctionMetric_SortedByRisk(t *testing.T) {
 	assert.Equal(t, "HIGH", result[0].RiskLevel)
 }
 
-// --- riskPriority Tests ---.
-
-func TestRiskPriority(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		level    string
-		expected int
-	}{
-		{"HIGH", 0},
-		{"MEDIUM", 1},
-		{"LOW", 2},
-		{"UNKNOWN", 2},
-		{"", 2},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.level, func(t *testing.T) {
-			t.Parallel()
-
-			result := riskPriority(tt.level)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 // --- CommentsAggregateMetric Tests ---.
 
 func TestNewAggregateMetric_Metadata(t *testing.T) {

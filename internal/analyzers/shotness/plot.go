@@ -47,10 +47,7 @@ func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 		return fmt.Errorf("generate sections: %w", err)
 	}
 
-	page := plotpage.NewPage("Shotness Analysis", "Function-level change frequency and coupling")
-	page.Add(sections...)
-
-	return page.Render(writer)
+	return plotpage.RenderAnalyzerPage(writer, "Shotness Analysis", "Function-level change frequency and coupling", sections...)
 }
 
 // GenerateSections returns the sections for combined reports.

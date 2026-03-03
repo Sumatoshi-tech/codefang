@@ -3,13 +3,13 @@ package comments
 import (
 	"errors"
 	"io"
-	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 const (
@@ -36,14 +36,11 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Code Comments Analysis",
 		"Documentation coverage and comment quality metrics",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(w)
 }
 
 func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
@@ -117,11 +114,7 @@ func reportValue(report analyze.Report, key string) (any, bool) {
 }
 
 func (c *Analyzer) generateFunctionCoverageChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_documentation")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_documentation")
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -130,29 +123,14 @@ func (c *Analyzer) generateFunctionCoverageChart(report analyze.Report) (*charts
 		return createEmptyCommentsChart(), nil
 	}
 
-	sorted := sortByLines(functions)
-	if len(sorted) > topFunctionsLimit {
-		sorted = sorted[:topFunctionsLimit]
-	}
+	sorted := mapx.SortAndLimit(functions, func(a, b map[string]any) bool {
+		return getLinesValue(a) > getLinesValue(b)
+	}, topFunctionsLimit)
 
 	labels, lines, colors := extractFunctionData(sorted)
 	co := plotpage.DefaultChartOpts()
 
 	return createFunctionCoverageBarChart(labels, lines, colors, co), nil
-}
-
-func sortByLines(functions []map[string]any) []map[string]any {
-	sorted := make([]map[string]any, len(functions))
-	copy(sorted, functions)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		li := getLinesValue(sorted[i])
-		lj := getLinesValue(sorted[j])
-
-		return li > lj
-	})
-
-	return sorted
 }
 
 func getLinesValue(fn map[string]any) int {
@@ -285,38 +263,14 @@ func (c *Analyzer) generateDocumentationPieChart(report analyze.Report) *charts.
 }
 
 func createDocumentationPieChart(documented, undocumented int) *charts.Pie {
-	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
-	pie := charts.NewPie()
-
-	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("600px", "400px")),
-		charts.WithLegendOpts(opts.Legend{
-			Show:      opts.Bool(true),
-			Top:       "bottom",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
-		}),
-	)
 
 	pieData := []opts.PieData{
 		{Name: "Documented", Value: documented, ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
 		{Name: "Undocumented", Value: undocumented, ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
-	pie.AddSeries("Documentation", pieData).
-		SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}: {c} ({d}%)",
-				Color:     co.TextMutedColor(),
-			}),
-			charts.WithPieChartOpts(opts.PieChart{
-				Radius: pieRadius,
-			}),
-		)
-
-	return pie
+	return plotpage.BuildPieChart(nil, "Documentation", pieData, pieRadius)
 }
 
 func (c *Analyzer) generateOverallScoreGauge(report analyze.Report) *charts.Liquid {

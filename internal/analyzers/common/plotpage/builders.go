@@ -26,6 +26,52 @@ type LineSeries struct {
 	AreaOpacity float32 // Optional, area opacity for area charts.
 }
 
+const (
+	pieDefaultWidth  = "600px"
+	pieDefaultHeight = "400px"
+	pieDefaultRadius = "60%"
+	pieDefaultLabel  = "{b}: {c} ({d}%)"
+)
+
+// BuildPieChart constructs a fully configured go-echarts Pie chart using ChartOpts.
+// Uses standard defaults: 600x400 dimensions, bottom legend, 60% radius,
+// "{b}: {c} ({d}%)" label formatter. If cOpts is nil, DefaultChartOpts() is used.
+// If radius is empty, "60%" is used.
+func BuildPieChart(cOpts *ChartOpts, seriesName string, data []opts.PieData, radius string) *charts.Pie {
+	if cOpts == nil {
+		cOpts = DefaultChartOpts()
+	}
+
+	if radius == "" {
+		radius = pieDefaultRadius
+	}
+
+	pie := charts.NewPie()
+	pie.SetGlobalOptions(
+		charts.WithTooltipOpts(cOpts.Tooltip("item")),
+		charts.WithInitializationOpts(cOpts.Init(pieDefaultWidth, pieDefaultHeight)),
+		charts.WithLegendOpts(opts.Legend{
+			Show:      opts.Bool(true),
+			Top:       "bottom",
+			TextStyle: &opts.TextStyle{Color: cOpts.TextMutedColor()},
+		}),
+	)
+
+	pie.AddSeries(seriesName, data).
+		SetSeriesOptions(
+			charts.WithLabelOpts(opts.Label{
+				Show:      opts.Bool(true),
+				Formatter: pieDefaultLabel,
+				Color:     cOpts.TextMutedColor(),
+			}),
+			charts.WithPieChartOpts(opts.PieChart{
+				Radius: radius,
+			}),
+		)
+
+	return pie
+}
+
 // BuildBarChart constructs a fully configured go-echarts Bar chart using ChartOpts.
 // If cOpts is nil, DefaultChartOpts() is used.
 func BuildBarChart(cOpts *ChartOpts, labels []string, series []BarSeries, yAxisLabel string) *charts.Bar {

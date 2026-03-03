@@ -7,6 +7,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/terminal"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 const (
@@ -19,14 +20,14 @@ const (
 
 // generateText writes a human-readable developer summary to the writer.
 func (a *Analyzer) generateText(report analyze.Report, writer io.Writer) error {
-	metrics, err := ComputeAllMetrics(report)
+	computed, err := ComputeAllMetrics(report)
 	if err != nil {
 		return fmt.Errorf("compute metrics: %w", err)
 	}
 
 	cfg := terminal.NewConfig()
 	width := cfg.Width
-	agg := metrics.Aggregate
+	agg := computed.Aggregate
 
 	// Header.
 	header := terminal.DrawHeader(
@@ -41,21 +42,21 @@ func (a *Analyzer) generateText(report analyze.Report, writer io.Writer) error {
 	writeSummarySection(writer, cfg, agg)
 
 	// Top contributors.
-	if len(metrics.Developers) > 0 {
+	if len(computed.Developers) > 0 {
 		fmt.Fprintln(writer)
-		writeContributors(writer, cfg, metrics.Developers)
+		writeContributors(writer, cfg, computed.Developers)
 	}
 
 	// Bus factor risk.
-	if len(metrics.BusFactor) > 0 {
+	if len(computed.BusFactor) > 0 {
 		fmt.Fprintln(writer)
-		writeBusFactorRisk(writer, cfg, metrics.BusFactor)
+		writeBusFactorRisk(writer, cfg, computed.BusFactor)
 	}
 
 	// Churn summary.
-	if len(metrics.Churn) > 0 {
+	if len(computed.Churn) > 0 {
 		fmt.Fprintln(writer)
-		writeChurnSummary(writer, cfg, metrics.Churn)
+		writeChurnSummary(writer, cfg, computed.Churn)
 	}
 
 	fmt.Fprintln(writer)
@@ -161,11 +162,11 @@ func writeChurnSummary(writer io.Writer, cfg terminal.Config, churn []ChurnData)
 
 func riskToColor(level string) terminal.Color {
 	switch level {
-	case RiskCritical:
+	case string(metrics.RiskCritical):
 		return terminal.ColorRed
-	case RiskHigh:
+	case string(metrics.RiskHigh):
 		return terminal.ColorRed
-	case RiskMedium:
+	case string(metrics.RiskMedium):
 		return terminal.ColorYellow
 	default:
 		return terminal.ColorGreen

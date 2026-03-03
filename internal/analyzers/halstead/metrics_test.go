@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Test constants to avoid magic strings/numbers.
@@ -422,7 +423,7 @@ func TestHighEffortFunctionMetric_MediumRisk(t *testing.T) {
 	assert.InDelta(t, testEffort, result[0].Effort, floatDelta)
 	assert.InDelta(t, testTimeToProgram, result[0].TimeToProgram, floatDelta)
 	assert.InDelta(t, testDeliveredBugs, result[0].DeliveredBugs, floatDelta)
-	assert.Equal(t, "MEDIUM", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskMedium), result[0].RiskLevel)
 }
 
 func TestHighEffortFunctionMetric_HighRisk(t *testing.T) {
@@ -438,7 +439,7 @@ func TestHighEffortFunctionMetric_HighRisk(t *testing.T) {
 	result := m.Compute(input)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, "HIGH", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskHigh), result[0].RiskLevel)
 }
 
 func TestHighEffortFunctionMetric_RiskLevelThreshold(t *testing.T) {
@@ -449,10 +450,10 @@ func TestHighEffortFunctionMetric_RiskLevelThreshold(t *testing.T) {
 		volume   float64
 		expected string
 	}{
-		{"high_risk", 5000.0, "HIGH"},
-		{"high_risk_above", 6000.0, "HIGH"},
-		{"medium_risk", 4999.0, "MEDIUM"},
-		{"medium_risk_boundary", 1000.0, "MEDIUM"},
+		{"high_risk", 5000.0, string(metrics.RiskHigh)},
+		{"high_risk_above", 6000.0, string(metrics.RiskHigh)},
+		{"medium_risk", 4999.0, string(metrics.RiskMedium)},
+		{"medium_risk_boundary", 1000.0, string(metrics.RiskMedium)},
 	}
 
 	for _, tt := range tests {
@@ -669,9 +670,9 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 	// HighEffortFunctions - only High and VeryHigh volume functions.
 	require.Len(t, result.HighEffortFunctions, 2)
 	assert.Equal(t, "veryHighFunc", result.HighEffortFunctions[0].Name)
-	assert.Equal(t, "HIGH", result.HighEffortFunctions[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskHigh), result.HighEffortFunctions[0].RiskLevel)
 	assert.Equal(t, "highFunc", result.HighEffortFunctions[1].Name)
-	assert.Equal(t, "MEDIUM", result.HighEffortFunctions[1].RiskLevel)
+	assert.Equal(t, string(metrics.RiskMedium), result.HighEffortFunctions[1].RiskLevel)
 
 	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalFunctions)

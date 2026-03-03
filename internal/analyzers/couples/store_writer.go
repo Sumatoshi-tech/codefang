@@ -195,14 +195,7 @@ func writeFileCoupling(
 
 	limit := min(len(pairs), topK)
 
-	for i := range limit {
-		writeErr := w.Write(KindFileCoupling, pairs[i])
-		if writeErr != nil {
-			return writeErr
-		}
-	}
-
-	return nil
+	return analyze.WriteSliceKind(w, KindFileCoupling, pairs[:limit])
 }
 
 // computeSparseCoupling extracts file coupling pairs from the sparse coupling map

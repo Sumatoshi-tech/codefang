@@ -3,10 +3,10 @@ package analyze
 import (
 	"fmt"
 	"maps"
-	"sort"
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/spillstore"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -86,12 +86,7 @@ func (a *GenericAggregator[S, T]) FlushAllTicks() ([]TICK, error) {
 		return nil, nil
 	}
 
-	ticks := make([]int, 0, len(a.ByTick))
-	for tick := range a.ByTick {
-		ticks = append(ticks, tick)
-	}
-
-	sort.Ints(ticks)
+	ticks := mapx.SortedKeys(a.ByTick)
 
 	var result []TICK
 

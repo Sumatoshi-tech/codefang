@@ -45,14 +45,11 @@ func GenerateDashboard(report analyze.Report, writer io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(writer,
 		"Developer Analytics Dashboard",
 		"Comprehensive analysis of developer contributions, expertise, and team health",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(writer)
 }
 
 // GenerateSections returns the dashboard sections without rendering.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pathfilter"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
@@ -24,6 +25,7 @@ type TreeDiffAnalyzer struct {
 	previousTree   *gitlib.Tree
 	Repository     *gitlib.Repository
 	SkipFiles      []string
+	pathFilter     *pathfilter.Filter
 	Changes        gitlib.Changes
 	previousCommit gitlib.Hash
 }
@@ -77,8 +79,8 @@ func (t *TreeDiffAnalyzer) Descriptor() analyze.Descriptor {
 func (t *TreeDiffAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 	return []pipeline.ConfigurationOption{{
 		Name: ConfigTreeDiffEnableBlacklist,
-		Description: "Skip blacklisted directories and vendored files (according to " +
-			"src-d/enry.IsVendor).",
+		Description: "Skip blacklisted directories, vendored files (enry.IsVendor), " +
+			"and generated files (e.g., .pb.go, zz_generated*).",
 		Flag:    "skip-blacklist",
 		Type:    pipeline.BoolConfigurationOption,
 		Default: false}, {
@@ -118,6 +120,7 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 		}
 
 		t.SkipFiles = skipFiles
+		t.pathFilter = pathfilter.New()
 	}
 
 	if val, exists := facts[ConfigTreeDiffLanguages].([]string); exists {
@@ -248,7 +251,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitl
 		hash = change.To.Hash
 	}
 
-	// Check blacklist: path prefix match only (e.g. "vendor/").
+	// Check blacklist: user-specified prefixes + vendor/generated detection.
 	if len(t.SkipFiles) > 0 {
 		for _, prefix := range t.SkipFiles {
 			if strings.HasPrefix(name, prefix) {
@@ -256,7 +259,7 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitl
 			}
 		}
 
-		if enry.IsVendor(name) {
+		if t.pathFilter != nil && t.pathFilter.IsExcluded(name) {
 			return false
 		}
 	}

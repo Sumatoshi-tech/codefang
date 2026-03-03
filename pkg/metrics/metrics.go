@@ -48,6 +48,31 @@ const (
 	RiskLow      RiskLevel = "LOW"
 )
 
+// Risk priority values for sorting (lower = higher priority).
+const (
+	priorityCritical = 0
+	priorityHigh     = 1
+	priorityMedium   = 2
+	priorityDefault  = 3
+)
+
+// RiskPriority returns a sortable integer for a risk level.
+// Lower values indicate higher priority: CRITICAL < HIGH < MEDIUM < LOW/unknown.
+func RiskPriority(level RiskLevel) int {
+	switch level {
+	case RiskCritical:
+		return priorityCritical
+	case RiskHigh:
+		return priorityHigh
+	case RiskMedium:
+		return priorityMedium
+	case RiskLow:
+		return priorityDefault
+	default:
+		return priorityDefault
+	}
+}
+
 // RiskResult is the output of a risk metric.
 type RiskResult struct {
 	Value     any       `json:"value"`

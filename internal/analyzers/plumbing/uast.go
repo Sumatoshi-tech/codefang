@@ -12,6 +12,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pathfilter"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -24,6 +25,7 @@ type UASTChangesAnalyzer struct {
 	BlobCache  *BlobCacheAnalyzer
 	Goroutines int
 	parser     *uast.Parser
+	pathFilter *pathfilter.Filter
 	changes    []uast.Change
 	parsed     bool   // tracks whether parsing was done for current commit.
 	spillPath  string // path to spill file from current commit (for cleanup on next Consume).
@@ -94,6 +96,7 @@ func (c *UASTChangesAnalyzer) Initialize(_ *gitlib.Repository) error {
 	}
 
 	c.parser = parser
+	c.pathFilter = pathfilter.New()
 
 	if c.Goroutines <= 0 {
 		c.Goroutines = max(runtime.NumCPU()/defaultGoroutineDivisor, 1)
@@ -292,6 +295,11 @@ func (c *UASTChangesAnalyzer) parseBlob(
 	filename string,
 	cache map[gitlib.Hash]*gitlib.CachedBlob,
 ) *node.Node {
+	// Skip vendor/generated files before any blob access or parsing.
+	if c.pathFilter != nil && c.pathFilter.IsExcluded(filename) {
+		return nil
+	}
+
 	blob, ok := cache[hash]
 	if !ok {
 		return nil
@@ -302,6 +310,11 @@ func (c *UASTChangesAnalyzer) parseBlob(
 	}
 
 	if len(blob.Data) > maxUASTBlobSize {
+		return nil
+	}
+
+	// Content-aware generated file detection (e.g., "DO NOT EDIT" headers).
+	if c.pathFilter != nil && c.pathFilter.IsExcludedWithContent(filename, blob.Data) {
 		return nil
 	}
 

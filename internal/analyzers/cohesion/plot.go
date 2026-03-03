@@ -25,6 +25,12 @@ const (
 	maxDirectories     = 15
 	maxPathComponents  = 3
 	boxPlotLabelRotate = 30
+
+	// Plot display labels for cohesion distribution.
+	plotLabelExcellent = "Excellent"
+	plotLabelGood      = "Good"
+	plotLabelFair      = "Fair"
+	plotLabelPoor      = "Poor"
 	pQ1                = 0.25
 	pMedian            = 0.50
 	pQ3                = 0.75
@@ -47,14 +53,11 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Code Cohesion Analysis",
 		"Function cohesion metrics and distribution",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(w)
 }
 
 func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
@@ -116,11 +119,7 @@ func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, 
 }
 
 func (c *Analyzer) generateHistogram(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_cohesion")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_cohesion")
 	if !ok {
 		return nil, ErrInvalidFunctions
 	}
@@ -249,81 +248,43 @@ func createHistogramChart(bins []histogramBin, co *plotpage.ChartOpts) *charts.B
 }
 
 func (c *Analyzer) generatePieChart(report analyze.Report) *charts.Pie {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_cohesion")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_cohesion")
 	if !ok || len(functions) == 0 {
 		return createEmptyPieChart()
 	}
 
-	distribution := countCohesionDistribution(functions)
+	distribution := stats.Distribution(functions, classifyCohesionForPlot)
 
 	return createCohesionPieChart(distribution)
 }
 
-func countCohesionDistribution(functions []map[string]any) map[string]int {
-	distribution := map[string]int{
-		"Excellent": 0,
-		"Good":      0,
-		"Fair":      0,
-		"Poor":      0,
+// classifyCohesionForPlot assigns a display label to a function map entry.
+func classifyCohesionForPlot(fn map[string]any) string {
+	cohesion := getCohesionValue(fn)
+
+	switch {
+	case cohesion >= DistExcellentMin:
+		return plotLabelExcellent
+	case cohesion >= DistGoodMin:
+		return plotLabelGood
+	case cohesion >= DistFairMin:
+		return plotLabelFair
+	default:
+		return plotLabelPoor
 	}
-
-	for _, fn := range functions {
-		cohesion := getCohesionValue(fn)
-
-		switch {
-		case cohesion >= DistExcellentMin:
-			distribution["Excellent"]++
-		case cohesion >= DistGoodMin:
-			distribution["Good"]++
-		case cohesion >= DistFairMin:
-			distribution["Fair"]++
-		default:
-			distribution["Poor"]++
-		}
-	}
-
-	return distribution
 }
 
 func createCohesionPieChart(distribution map[string]int) *charts.Pie {
-	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
-	pie := charts.NewPie()
-
-	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("600px", "400px")),
-		charts.WithLegendOpts(opts.Legend{
-			Show:      opts.Bool(true),
-			Top:       "bottom",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
-		}),
-	)
 
 	pieData := []opts.PieData{
-		{Name: "Excellent", Value: distribution["Excellent"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
-		{Name: "Good", Value: distribution["Good"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
-		{Name: "Fair", Value: distribution["Fair"], ItemStyle: &opts.ItemStyle{Color: "#fd8c73"}},
-		{Name: "Poor", Value: distribution["Poor"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
+		{Name: plotLabelExcellent, Value: distribution[plotLabelExcellent], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: plotLabelGood, Value: distribution[plotLabelGood], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
+		{Name: plotLabelFair, Value: distribution[plotLabelFair], ItemStyle: &opts.ItemStyle{Color: "#fd8c73"}},
+		{Name: plotLabelPoor, Value: distribution[plotLabelPoor], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
-	pie.AddSeries("Cohesion", pieData).
-		SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}: {c} ({d}%)",
-				Color:     co.TextMutedColor(),
-			}),
-			charts.WithPieChartOpts(opts.PieChart{
-				Radius: pieRadius,
-			}),
-		)
-
-	return pie
+	return plotpage.BuildPieChart(nil, "Cohesion", pieData, pieRadius)
 }
 
 func createEmptyCohesionChart() *charts.Bar {
@@ -357,11 +318,7 @@ type directoryGroup struct {
 }
 
 func (c *Analyzer) generateBoxPlot(report analyze.Report) *charts.BoxPlot {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_cohesion")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_cohesion")
 	if !ok || len(functions) == 0 {
 		return createEmptyBoxPlot()
 	}

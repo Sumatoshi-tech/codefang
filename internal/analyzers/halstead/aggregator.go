@@ -15,7 +15,7 @@ const (
 // Aggregator aggregates Halstead analysis results.
 type Aggregator struct {
 	*common.Aggregator
-	detailedFunctions []map[string]any
+	detailed *common.DetailedDataCollector
 }
 
 // NewAggregator creates a new Halstead aggregator.
@@ -35,47 +35,22 @@ func NewAggregator() *Aggregator {
 			messageBuilder,
 			emptyResultBuilder,
 		),
-		detailedFunctions: make([]map[string]any, 0),
+		detailed: common.NewDetailedDataCollector("functions"),
 	}
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed functions.
 func (ha *Aggregator) Aggregate(results map[string]analyze.Report) {
-	ha.collectDetailedFunctions(results)
+	ha.detailed.CollectFromReports(results)
 	ha.Aggregator.Aggregate(results)
 }
 
 // GetResult overrides the base GetResult method to include detailed functions.
 func (ha *Aggregator) GetResult() analyze.Report {
 	result := ha.Aggregator.GetResult()
-	ha.addDetailedFunctionsToResult(result)
+	ha.detailed.AddToResult(result)
 
 	return result
-}
-
-// collectDetailedFunctions extracts detailed functions from all reports.
-func (ha *Aggregator) collectDetailedFunctions(results map[string]analyze.Report) {
-	for _, report := range results {
-		if report == nil {
-			continue
-		}
-
-		ha.extractFunctionsFromReport(report)
-	}
-}
-
-// extractFunctionsFromReport extracts functions from a single report.
-func (ha *Aggregator) extractFunctionsFromReport(report analyze.Report) {
-	if functions, ok := report["functions"].([]map[string]any); ok {
-		ha.detailedFunctions = append(ha.detailedFunctions, functions...)
-	}
-}
-
-// addDetailedFunctionsToResult adds detailed functions to the result.
-func (ha *Aggregator) addDetailedFunctionsToResult(result analyze.Report) {
-	if len(ha.detailedFunctions) > 0 {
-		result["functions"] = ha.detailedFunctions
-	}
 }
 
 // getNumericKeys returns the numeric keys for Halstead aggregation.

@@ -28,11 +28,9 @@ func (s *Analyzer) WriteToStore(ctx context.Context, ticks []analyze.TICK, w ana
 		return fmt.Errorf("compute metrics: %w", metricsErr)
 	}
 
-	for i := range metrics.TimeSeries {
-		writeErr := w.Write(KindTimeSeries, metrics.TimeSeries[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindTimeSeries, writeErr)
-		}
+	tsErr := analyze.WriteSliceKind(w, KindTimeSeries, metrics.TimeSeries)
+	if tsErr != nil {
+		return tsErr
 	}
 
 	trendErr := w.Write(KindTrend, metrics.Trend)

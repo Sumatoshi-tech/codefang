@@ -8,6 +8,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/terminal"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 const (
@@ -77,7 +78,7 @@ func writeSummary(writer io.Writer, cfg terminal.Config, agg AggregateData) {
 	fmt.Fprintf(writer, "%s%-18s %s\n", textIndent, "Peak Lines", formatInt64(agg.TotalPeakLines))
 	fmt.Fprintf(writer, "%s%-18s [%s] %s\n", textIndent, "Survival Rate",
 		bar,
-		cfg.Colorize(fmt.Sprintf("%.1f%%", survivalPct*percentMultiplier), survivalColor))
+		cfg.Colorize(fmt.Sprintf("%.1f%%", stats.ToPercent(survivalPct)), survivalColor))
 }
 
 func writeAgeDistribution(writer io.Writer, cfg terminal.Config, metrics *ComputedMetrics, agg AggregateData) {
@@ -196,7 +197,7 @@ func writeTopDevelopers(writer io.Writer, cfg terminal.Config, metrics *Computed
 			textDevNameWidth, name,
 			textDevLinesWidth, dev.CurrentLines,
 			bar,
-			cfg.Colorize(fmt.Sprintf("%.1f%%", dev.SurvivalRate*percentMultiplier), survivalColor))
+			cfg.Colorize(fmt.Sprintf("%.1f%%", stats.ToPercent(dev.SurvivalRate)), survivalColor))
 	}
 
 	if len(devs) > textMaxDevs {

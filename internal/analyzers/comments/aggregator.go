@@ -15,8 +15,7 @@ const (
 // Aggregator aggregates results from multiple comment analyses.
 type Aggregator struct {
 	*common.Aggregator
-	detailedComments  []map[string]any
-	detailedFunctions []map[string]any
+	detailed *common.DetailedDataCollector
 }
 
 // NewAggregator creates a new Aggregator.
@@ -40,60 +39,22 @@ func NewAggregator() *Aggregator {
 			messageBuilder,
 			emptyResultBuilder,
 		),
-		detailedComments:  make([]map[string]any, 0),
-		detailedFunctions: make([]map[string]any, 0),
+		detailed: common.NewDetailedDataCollector("comments", "functions"),
 	}
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed comments and functions.
 func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
-	ca.collectDetailedData(results)
+	ca.detailed.CollectFromReports(results)
 	ca.Aggregator.Aggregate(results)
 }
 
 // GetResult overrides the base GetResult method to include detailed comments and functions.
 func (ca *Aggregator) GetResult() analyze.Report {
 	result := ca.Aggregator.GetResult()
-	ca.addDetailedDataToResult(result)
+	ca.detailed.AddToResult(result)
 
 	return result
-}
-
-// collectDetailedData extracts detailed comments and functions from all reports.
-func (ca *Aggregator) collectDetailedData(results map[string]analyze.Report) {
-	for _, report := range results {
-		if report == nil {
-			continue
-		}
-
-		ca.extractCommentsFromReport(report)
-		ca.extractFunctionsFromReport(report)
-	}
-}
-
-// extractCommentsFromReport extracts comments from a single report.
-func (ca *Aggregator) extractCommentsFromReport(report analyze.Report) {
-	if comments, ok := report["comments"].([]map[string]any); ok {
-		ca.detailedComments = append(ca.detailedComments, comments...)
-	}
-}
-
-// extractFunctionsFromReport extracts functions from a single report.
-func (ca *Aggregator) extractFunctionsFromReport(report analyze.Report) {
-	if functions, ok := report["functions"].([]map[string]any); ok {
-		ca.detailedFunctions = append(ca.detailedFunctions, functions...)
-	}
-}
-
-// addDetailedDataToResult adds detailed comments and functions to the result.
-func (ca *Aggregator) addDetailedDataToResult(result analyze.Report) {
-	if len(ca.detailedComments) > 0 {
-		result["comments"] = ca.detailedComments
-	}
-
-	if len(ca.detailedFunctions) > 0 {
-		result["functions"] = ca.detailedFunctions
-	}
 }
 
 // buildMessage creates a message based on the overall score.

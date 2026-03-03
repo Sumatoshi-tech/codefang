@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // MergedCommitData holds merged analyzer data for a single commit.
@@ -113,13 +115,15 @@ func assembleCommits(active []AnalyzerData, commitMeta []CommitMeta) []MergedCom
 		metaByHash[m.Hash] = m
 	}
 
-	commitSet := make(map[string]struct{})
+	var commitHashes []string
 
 	for _, a := range active {
 		for hash := range a.Data {
-			commitSet[hash] = struct{}{}
+			commitHashes = append(commitHashes, hash)
 		}
 	}
+
+	commitSet := mapx.BuildLookupSet(commitHashes)
 
 	ordered := orderCommitsByMeta(commitMeta, commitSet)
 	commits := make([]MergedCommitData, len(ordered))

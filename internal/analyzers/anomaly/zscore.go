@@ -55,8 +55,3 @@ func ComputeZScores(values []float64, window int) []float64 {
 
 	return scores
 }
-
-// MeanStdDev delegates to [stats.MeanStdDev].
-func MeanStdDev(values []float64) (mean, stddev float64) {
-	return stats.MeanStdDev(values)
-}

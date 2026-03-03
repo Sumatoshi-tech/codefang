@@ -27,14 +27,11 @@ func RegisterPlotSections() {
 
 // FormatReportPlot renders static imports analysis using the same plot framework as other analyzers.
 func (a *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Static Import Analysis",
 		"Import usage, categories, and dependency risks in the scanned source tree",
+		a.generateStaticSections(report)...,
 	)
-
-	page.Add(a.generateStaticSections(report)...)
-
-	return page.Render(w)
 }
 
 func (a *Analyzer) generateStaticSections(report analyze.Report) []plotpage.Section {

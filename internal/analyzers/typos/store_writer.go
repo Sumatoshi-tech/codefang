@@ -28,11 +28,9 @@ func (t *Analyzer) WriteToStore(ctx context.Context, ticks []analyze.TICK, w ana
 
 	fileTypos := computeFileTypos(input)
 
-	for i := range fileTypos {
-		writeErr := w.Write(KindFileTypos, fileTypos[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindFileTypos, writeErr)
-		}
+	ftErr := analyze.WriteSliceKind(w, KindFileTypos, fileTypos)
+	if ftErr != nil {
+		return ftErr
 	}
 
 	agg := computeAggregate(input)

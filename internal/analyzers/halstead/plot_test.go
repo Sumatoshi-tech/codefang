@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 func TestGenerateEffortBarChart_InvalidData(t *testing.T) {
@@ -101,7 +102,9 @@ func TestSortByEffortDescending(t *testing.T) {
 		{"name": "c", "effort": 200.0},
 	}
 
-	got := sortByEffort(input)
+	got := mapx.SortAndLimit(input, func(a, b map[string]any) bool {
+		return getEffortValue(a) > getEffortValue(b)
+	}, len(input))
 	require.Len(t, got, 3)
 	assert.Equal(t, "b", got[0]["name"])
 	assert.Equal(t, "c", got[1]["name"])

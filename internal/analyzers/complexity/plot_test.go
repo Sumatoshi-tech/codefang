@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 func testPlotFunctions() []map[string]any {
@@ -106,7 +108,9 @@ func TestPlotHelpers_SortingAndColorAndDistribution(t *testing.T) {
 		{"name": "Mid", "cyclomatic_complexity": 6, "cognitive_complexity": 5, "nesting_depth": 2},
 	}
 
-	sorted := sortByComplexity(functions)
+	sorted := mapx.SortAndLimit(functions, func(a, b map[string]any) bool {
+		return getCyclomaticValue(a) > getCyclomaticValue(b)
+	}, len(functions))
 	require.Len(t, sorted, 3)
 	assert.Equal(t, "High", sorted[0]["name"])
 	assert.Equal(t, "Mid", sorted[1]["name"])
@@ -120,10 +124,10 @@ func TestPlotHelpers_SortingAndColorAndDistribution(t *testing.T) {
 	assert.Equal(t, "#fac858", colors[1])
 	assert.Equal(t, "#91cc75", colors[2])
 
-	distribution := countComplexityDistribution(functions)
-	assert.Equal(t, 1, distribution["Simple"])
-	assert.Equal(t, 1, distribution["Moderate"])
-	assert.Equal(t, 1, distribution["Complex"])
+	distribution := stats.Distribution(functions, classifyComplexityForPlot)
+	assert.Equal(t, 1, distribution[plotLabelSimple])
+	assert.Equal(t, 1, distribution[plotLabelModerate])
+	assert.Equal(t, 1, distribution[plotLabelComplex])
 
 	assert.Equal(t, "#91cc75", getComplexityColor(5))
 	assert.Equal(t, "#fac858", getComplexityColor(8))

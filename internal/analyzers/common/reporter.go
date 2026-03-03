@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
@@ -266,14 +267,7 @@ func (r *Reporter) resolveMetricKeys(reports map[string]analyze.Report) []string
 		}
 	}
 
-	keys := make([]string, 0, len(keySet))
-	for key := range keySet {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	return keys
+	return mapx.SortedKeys(keySet)
 }
 
 // collectMetricValues collects float values for a metric key across named reports.

@@ -9,6 +9,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Test constants to avoid magic strings/numbers.
@@ -262,12 +263,12 @@ func TestHotspotMetric_RiskLevels(t *testing.T) {
 		commitCount int
 		expected    string
 	}{
-		{"critical", 55, RiskCritical},
-		{"critical_boundary", 50, RiskCritical},
-		{"high", 35, RiskHigh},
-		{"high_boundary", 30, RiskHigh},
-		{"medium", 20, RiskMedium},
-		{"medium_boundary", 15, RiskMedium},
+		{"critical", 55, string(metrics.RiskCritical)},
+		{"critical_boundary", 50, string(metrics.RiskCritical)},
+		{"high", 35, string(metrics.RiskHigh)},
+		{"high_boundary", 30, string(metrics.RiskHigh)},
+		{"medium", 20, string(metrics.RiskMedium)},
+		{"medium_boundary", 15, string(metrics.RiskMedium)},
 	}
 
 	for _, tt := range tests {
@@ -316,36 +317,9 @@ func TestHotspotMetric_SortedByRiskThenCommitCount(t *testing.T) {
 
 	require.Len(t, result, 3)
 	// Sorted by risk first (critical > high > medium).
-	assert.Equal(t, RiskCritical, result[0].RiskLevel)
-	assert.Equal(t, RiskHigh, result[1].RiskLevel)
-	assert.Equal(t, RiskMedium, result[2].RiskLevel)
-}
-
-// --- riskPriority Tests ---.
-
-func TestRiskPriority(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		level    string
-		expected int
-	}{
-		{RiskCritical, 0},
-		{RiskHigh, 1},
-		{RiskMedium, 2},
-		{RiskLow, 3},
-		{"UNKNOWN", 3},
-		{"", 3},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.level, func(t *testing.T) {
-			t.Parallel()
-
-			result := riskPriority(tt.level)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	assert.Equal(t, string(metrics.RiskCritical), result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskHigh), result[1].RiskLevel)
+	assert.Equal(t, string(metrics.RiskMedium), result[2].RiskLevel)
 }
 
 // --- FileHistoryAggregateMetric Tests ---.
@@ -491,7 +465,7 @@ func TestComputeAllMetrics_Full(t *testing.T) {
 	// Hotspots - only file1 has >= 15 commits.
 	require.Len(t, result.Hotspots, 1)
 	assert.Equal(t, testFile1, result.Hotspots[0].Path)
-	assert.Equal(t, RiskHigh, result.Hotspots[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskHigh), result.Hotspots[0].RiskLevel)
 
 	// Aggregate.
 	assert.Equal(t, 2, result.Aggregate.TotalFiles)

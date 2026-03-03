@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Test constants to avoid magic strings/numbers.
@@ -147,42 +148,42 @@ func TestClassifyFunctionRisk(t *testing.T) {
 			cyclomatic: CyclomaticThresholdModerate - 1,
 			cognitive:  CognitiveThresholdModerate - 1,
 			nesting:    NestingThresholdModerate - 1,
-			want:       "LOW",
+			want:       string(metrics.RiskLow),
 		},
 		{
 			name:       "MEDIUM - one at moderate",
 			cyclomatic: CyclomaticThresholdModerate,
 			cognitive:  0,
 			nesting:    0,
-			want:       "MEDIUM",
+			want:       string(metrics.RiskMedium),
 		},
 		{
 			name:       "MEDIUM - one at high (score=2)",
 			cyclomatic: CyclomaticThresholdHigh,
 			cognitive:  0,
 			nesting:    0,
-			want:       "MEDIUM",
+			want:       string(metrics.RiskMedium),
 		},
 		{
 			name:       "HIGH - multiple moderate",
 			cyclomatic: CyclomaticThresholdModerate,
 			cognitive:  CognitiveThresholdModerate,
 			nesting:    NestingThresholdModerate,
-			want:       "HIGH",
+			want:       string(metrics.RiskHigh),
 		},
 		{
 			name:       "CRITICAL - all high",
 			cyclomatic: CyclomaticThresholdHigh,
 			cognitive:  CognitiveThresholdHigh,
 			nesting:    NestingThresholdHigh,
-			want:       "CRITICAL",
+			want:       string(metrics.RiskCritical),
 		},
 		{
 			name:       "CRITICAL - mixed high scores",
 			cyclomatic: CyclomaticThresholdHigh,
 			cognitive:  CognitiveThresholdHigh,
 			nesting:    NestingThresholdModerate,
-			want:       "CRITICAL",
+			want:       string(metrics.RiskCritical),
 		},
 	}
 
@@ -278,9 +279,7 @@ func TestComplexityDistributionMetric_Empty(t *testing.T) {
 
 	result := metric.Compute(input)
 
-	assert.Equal(t, 0, result.Simple)
-	assert.Equal(t, 0, result.Moderate)
-	assert.Equal(t, 0, result.Complex)
+	assert.Empty(t, result)
 }
 
 func TestComplexityDistributionMetric_Compute(t *testing.T) {
@@ -299,9 +298,9 @@ func TestComplexityDistributionMetric_Compute(t *testing.T) {
 
 	result := metric.Compute(input)
 
-	assert.Equal(t, 2, result.Simple)
-	assert.Equal(t, 2, result.Moderate)
-	assert.Equal(t, 2, result.Complex)
+	assert.Equal(t, 2, result[MetricDistSimple])
+	assert.Equal(t, 2, result[MetricDistModerate])
+	assert.Equal(t, 2, result[MetricDistComplex])
 }
 
 // --- HighRiskFunctionMetric Tests ---.
@@ -391,7 +390,7 @@ func TestHighRiskFunctionMetric_MultipleIssues(t *testing.T) {
 	assert.Contains(t, result[0].Issues, "High cyclomatic complexity")
 	assert.Contains(t, result[0].Issues, "High cognitive complexity")
 	assert.Contains(t, result[0].Issues, "Deep nesting")
-	assert.Equal(t, "CRITICAL", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskCritical), result[0].RiskLevel)
 }
 
 func TestHighRiskFunctionMetric_SortedByRisk(t *testing.T) {
@@ -419,7 +418,7 @@ func TestHighRiskFunctionMetric_SortedByRisk(t *testing.T) {
 	require.Len(t, result, 2)
 	// Critical should come first.
 	assert.Equal(t, "critical_risk", result[0].Name)
-	assert.Equal(t, "CRITICAL", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskCritical), result[0].RiskLevel)
 	assert.Equal(t, "medium_risk", result[1].Name)
 }
 
@@ -527,33 +526,6 @@ func TestComplexityAggregateMetric_HealthScore(t *testing.T) {
 	}
 }
 
-// --- riskPriority Tests ---.
-
-func TestRiskPriority(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		level    string
-		priority int
-	}{
-		{"CRITICAL", 0},
-		{"HIGH", 1},
-		{"MEDIUM", 2},
-		{"LOW", 3},
-		{"UNKNOWN", 3}, // default case.
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.level, func(t *testing.T) {
-			t.Parallel()
-
-			got := riskPriority(tt.level)
-
-			assert.Equal(t, tt.priority, got)
-		})
-	}
-}
-
 // --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_Empty(t *testing.T) {
@@ -567,9 +539,7 @@ func TestComputeAllMetrics_Empty(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Empty(t, result.FunctionComplexity)
 	assert.Empty(t, result.HighRiskFunctions)
-	assert.Equal(t, 0, result.Distribution.Simple)
-	assert.Equal(t, 0, result.Distribution.Moderate)
-	assert.Equal(t, 0, result.Distribution.Complex)
+	assert.Empty(t, result.Distribution)
 }
 
 func TestComputeAllMetrics_FullReport(t *testing.T) {
@@ -621,14 +591,14 @@ func TestComputeAllMetrics_FullReport(t *testing.T) {
 	assert.Equal(t, "simple_func", result.FunctionComplexity[2].Name)
 
 	// Distribution.
-	assert.Equal(t, 1, result.Distribution.Simple)   // simple_func (3).
-	assert.Equal(t, 1, result.Distribution.Moderate) // moderate_func (8).
-	assert.Equal(t, 1, result.Distribution.Complex)  // complex_func (15).
+	assert.Equal(t, 1, result.Distribution[MetricDistSimple])   // simple_func (3).
+	assert.Equal(t, 1, result.Distribution[MetricDistModerate]) // moderate_func (8).
+	assert.Equal(t, 1, result.Distribution[MetricDistComplex])  // complex_func (15).
 
 	// HighRiskFunctions - only complex_func exceeds thresholds.
 	require.Len(t, result.HighRiskFunctions, 1)
 	assert.Equal(t, "complex_func", result.HighRiskFunctions[0].Name)
-	assert.Equal(t, "CRITICAL", result.HighRiskFunctions[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskCritical), result.HighRiskFunctions[0].RiskLevel)
 
 	// Aggregate.
 	assert.Equal(t, 3, result.Aggregate.TotalFunctions)
@@ -641,9 +611,9 @@ func TestComputeAllMetrics_FullReport(t *testing.T) {
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{}
+	cm := &ComputedMetrics{}
 
-	name := metrics.AnalyzerName()
+	name := cm.AnalyzerName()
 
 	assert.Equal(t, "complexity", name)
 }
@@ -651,29 +621,29 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 func TestComputedMetrics_ToJSON(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalFunctions:    testTotalFunctions,
 			AverageComplexity: testAverageComplexity,
 		},
 	}
 
-	result := metrics.ToJSON()
+	result := cm.ToJSON()
 
-	assert.Equal(t, metrics, result)
+	assert.Equal(t, cm, result)
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalFunctions:    testTotalFunctions,
 			AverageComplexity: testAverageComplexity,
 		},
 	}
 
-	result := metrics.ToYAML()
+	result := cm.ToYAML()
 
-	assert.Equal(t, metrics, result)
+	assert.Equal(t, cm, result)
 }

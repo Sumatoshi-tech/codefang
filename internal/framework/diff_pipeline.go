@@ -103,7 +103,7 @@ type diffJob struct {
 
 	// Batching fields for cross-commit batching.
 	pendingRequests []gitlib.DiffRequest
-	batchResp       *SharedResponse[[]gitlib.DiffResult]
+	batchResp       *pipeline.SharedResponse[[]gitlib.DiffResult]
 	batchOffset     int
 	batchLen        int
 }
@@ -146,7 +146,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 			return
 		}
 
-		var sharedResp *SharedResponse[[]gitlib.DiffResult]
+		var sharedResp *pipeline.SharedResponse[[]gitlib.DiffResult]
 
 		// Drain accumulated requests from the batcher.
 		if batchReqs, ok := batcher.Flush(); ok {
@@ -161,7 +161,7 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 			}
 
 			// Create a shared response for this batch.
-			sharedResp = NewSharedResponse(func(ctx context.Context) ([]gitlib.DiffResult, error) {
+			sharedResp = pipeline.NewSharedResponse(func(ctx context.Context) ([]gitlib.DiffResult, error) {
 				select {
 				case resp := <-respChan:
 					return resp.Results, nil

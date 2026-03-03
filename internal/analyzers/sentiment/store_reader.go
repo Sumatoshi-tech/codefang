@@ -2,7 +2,6 @@ package sentiment
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
@@ -40,56 +39,17 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // readTimeSeriesIfPresent reads all time_series records, returning nil if absent.
 func readTimeSeriesIfPresent(reader analyze.ReportReader, kinds []string) ([]TimeSeriesData, error) {
-	if !slices.Contains(kinds, KindTimeSeries) {
-		return nil, nil
-	}
-
-	var result []TimeSeriesData
-
-	iterErr := reader.Iter(KindTimeSeries, func(raw []byte) error {
-		var record TimeSeriesData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[TimeSeriesData](reader, kinds, KindTimeSeries)
 }
 
 // readTrendIfPresent reads the trend record, returning zero value if absent.
 func readTrendIfPresent(reader analyze.ReportReader, kinds []string) (TrendData, error) {
-	if !slices.Contains(kinds, KindTrend) {
-		return TrendData{}, nil
-	}
-
-	var trend TrendData
-
-	iterErr := reader.Iter(KindTrend, func(raw []byte) error {
-		return analyze.GobDecode(raw, &trend)
-	})
-
-	return trend, iterErr
+	return analyze.ReadRecordIfPresent[TrendData](reader, kinds, KindTrend)
 }
 
 // readAggregateIfPresent reads the aggregate record, returning zero value if absent.
 func readAggregateIfPresent(reader analyze.ReportReader, kinds []string) (AggregateData, error) {
-	if !slices.Contains(kinds, KindAggregate) {
-		return AggregateData{}, nil
-	}
-
-	var agg AggregateData
-
-	iterErr := reader.Iter(KindAggregate, func(raw []byte) error {
-		return analyze.GobDecode(raw, &agg)
-	})
-
-	return agg, iterErr
+	return analyze.ReadRecordIfPresent[AggregateData](reader, kinds, KindAggregate)
 }
 
 // buildStoreSections constructs the sentiment plot sections from pre-computed data.

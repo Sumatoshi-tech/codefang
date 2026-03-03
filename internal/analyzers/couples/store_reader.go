@@ -2,7 +2,6 @@ package couples
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
@@ -32,96 +31,25 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 	return buildStoreSections(fileCoupling, devMatrix, ownership)
 }
 
-// hasKind checks whether a kind exists in the reader's available kinds.
-func hasKind(kinds []string, kind string) bool {
-	return slices.Contains(kinds, kind)
-}
-
 // readFileCouplingIfPresent reads all "file_coupling" records, returning nil if the kind is absent.
 func readFileCouplingIfPresent(reader analyze.ReportReader, kinds []string) ([]FileCouplingData, error) {
-	if !hasKind(kinds, KindFileCoupling) {
-		return nil, nil
-	}
-
-	return readFileCoupling(reader)
+	return analyze.ReadRecordsIfPresent[FileCouplingData](reader, kinds, KindFileCoupling)
 }
 
-// readFileCoupling reads all "file_coupling" records from the store.
-func readFileCoupling(reader analyze.ReportReader) ([]FileCouplingData, error) {
-	var result []FileCouplingData
-
-	iterErr := reader.Iter(KindFileCoupling, func(raw []byte) error {
-		var record FileCouplingData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
-}
-
-// readDevMatrixIfPresent reads the "dev_matrix" record, returning an empty matrix if the kind is absent.
-func readDevMatrixIfPresent(reader analyze.ReportReader, kinds []string) (*StoreDevMatrix, error) {
-	if !hasKind(kinds, KindDevMatrix) {
-		return &StoreDevMatrix{}, nil
-	}
-
-	return readDevMatrix(reader)
-}
-
-// readDevMatrix reads the single "dev_matrix" record from the store.
-func readDevMatrix(reader analyze.ReportReader) (*StoreDevMatrix, error) {
-	var matrix StoreDevMatrix
-
-	iterErr := reader.Iter(KindDevMatrix, func(raw []byte) error {
-		return analyze.GobDecode(raw, &matrix)
-	})
-	if iterErr != nil {
-		return &StoreDevMatrix{}, iterErr
-	}
-
-	return &matrix, nil
+// readDevMatrixIfPresent reads the "dev_matrix" record, returning zero value if the kind is absent.
+func readDevMatrixIfPresent(reader analyze.ReportReader, kinds []string) (StoreDevMatrix, error) {
+	return analyze.ReadRecordIfPresent[StoreDevMatrix](reader, kinds, KindDevMatrix)
 }
 
 // readOwnershipIfPresent reads all "ownership" records, returning nil if the kind is absent.
 func readOwnershipIfPresent(reader analyze.ReportReader, kinds []string) ([]FileOwnershipData, error) {
-	if !hasKind(kinds, KindOwnership) {
-		return nil, nil
-	}
-
-	return readOwnership(reader)
-}
-
-// readOwnership reads all "ownership" records from the store.
-func readOwnership(reader analyze.ReportReader) ([]FileOwnershipData, error) {
-	var result []FileOwnershipData
-
-	iterErr := reader.Iter(KindOwnership, func(raw []byte) error {
-		var record FileOwnershipData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[FileOwnershipData](reader, kinds, KindOwnership)
 }
 
 // buildStoreSections constructs the three couples plot sections from pre-computed data.
 func buildStoreSections(
 	fileCoupling []FileCouplingData,
-	devMatrix *StoreDevMatrix,
+	devMatrix StoreDevMatrix,
 	ownership []FileOwnershipData,
 ) ([]plotpage.Section, error) {
 	var result []plotpage.Section
@@ -146,7 +74,7 @@ func buildStoreSections(
 	}
 
 	// Section 2: Developer coupling heatmap.
-	if devMatrix != nil && len(devMatrix.Names) > 0 {
+	if len(devMatrix.Names) > 0 {
 		heatmap := buildHeatmapFromMatrix(devMatrix.Matrix, devMatrix.Names)
 
 		result = append(result, plotpage.Section{

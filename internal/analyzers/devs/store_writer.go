@@ -39,27 +39,27 @@ func (a *Analyzer) WriteToStore(ctx context.Context, ticks []analyze.TICK, w ana
 
 // writeMetrics streams all computed metric records to the report writer.
 func writeMetrics(w analyze.ReportWriter, metrics *ComputedMetrics) error {
-	devErr := writeSliceKind(w, KindDeveloper, metrics.Developers)
+	devErr := analyze.WriteSliceKind(w, KindDeveloper, metrics.Developers)
 	if devErr != nil {
 		return devErr
 	}
 
-	langErr := writeSliceKind(w, KindLanguage, metrics.Languages)
+	langErr := analyze.WriteSliceKind(w, KindLanguage, metrics.Languages)
 	if langErr != nil {
 		return langErr
 	}
 
-	busErr := writeSliceKind(w, KindBusFactor, metrics.BusFactor)
+	busErr := analyze.WriteSliceKind(w, KindBusFactor, metrics.BusFactor)
 	if busErr != nil {
 		return busErr
 	}
 
-	actErr := writeSliceKind(w, KindActivity, metrics.Activity)
+	actErr := analyze.WriteSliceKind(w, KindActivity, metrics.Activity)
 	if actErr != nil {
 		return actErr
 	}
 
-	churnErr := writeSliceKind(w, KindChurn, metrics.Churn)
+	churnErr := analyze.WriteSliceKind(w, KindChurn, metrics.Churn)
 	if churnErr != nil {
 		return churnErr
 	}
@@ -67,18 +67,6 @@ func writeMetrics(w analyze.ReportWriter, metrics *ComputedMetrics) error {
 	aggErr := w.Write(KindAggregate, metrics.Aggregate)
 	if aggErr != nil {
 		return fmt.Errorf("write %s: %w", KindAggregate, aggErr)
-	}
-
-	return nil
-}
-
-// writeSliceKind writes each element of a typed slice as a separate record.
-func writeSliceKind[T any](w analyze.ReportWriter, kind string, records []T) error {
-	for i := range records {
-		writeErr := w.Write(kind, records[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", kind, writeErr)
-		}
 	}
 
 	return nil

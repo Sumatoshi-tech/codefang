@@ -2,7 +2,6 @@ package burndown
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 // GenerateStoreSections reads pre-computed burndown data from a ReportReader
@@ -31,54 +31,26 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 	return buildStoreSections(chartData, metrics), nil
 }
 
-// readChartDataIfPresent reads the chart_data record, returning an empty value if absent.
-func readChartDataIfPresent(reader analyze.ReportReader, kinds []string) (*ChartData, error) {
-	if !slices.Contains(kinds, KindChartData) {
-		return &ChartData{}, nil
-	}
-
-	var data ChartData
-
-	iterErr := reader.Iter(KindChartData, func(raw []byte) error {
-		return analyze.GobDecode(raw, &data)
-	})
-	if iterErr != nil {
-		return nil, iterErr
-	}
-
-	return &data, nil
+// readChartDataIfPresent reads the chart_data record, returning zero value if absent.
+func readChartDataIfPresent(reader analyze.ReportReader, kinds []string) (ChartData, error) {
+	return analyze.ReadRecordIfPresent[ChartData](reader, kinds, KindChartData)
 }
 
-// readMetricsIfPresent reads the metrics record, returning an empty value if absent.
-func readMetricsIfPresent(reader analyze.ReportReader, kinds []string) (*ComputedMetrics, error) {
-	if !slices.Contains(kinds, KindMetrics) {
-		return &ComputedMetrics{}, nil
-	}
-
-	var metrics ComputedMetrics
-
-	iterErr := reader.Iter(KindMetrics, func(raw []byte) error {
-		return analyze.GobDecode(raw, &metrics)
-	})
-	if iterErr != nil {
-		return nil, iterErr
-	}
-
-	return &metrics, nil
+// readMetricsIfPresent reads the metrics record, returning zero value if absent.
+func readMetricsIfPresent(reader analyze.ReportReader, kinds []string) (ComputedMetrics, error) {
+	return analyze.ReadRecordIfPresent[ComputedMetrics](reader, kinds, KindMetrics)
 }
 
 // buildStoreSections constructs the burndown plot sections from pre-computed data.
-func buildStoreSections(chartData *ChartData, metrics *ComputedMetrics) []plotpage.Section {
+func buildStoreSections(chartData ChartData, metrics ComputedMetrics) []plotpage.Section {
 	var result []plotpage.Section
 
 	// Section 1: Summary stats from pre-computed metrics.
-	if metrics != nil {
-		result = append(result, buildStoreSummarySection(metrics))
-	}
+	result = append(result, buildStoreSummarySection(&metrics))
 
 	// Section 2: Burndown chart from pre-computed dense history.
-	if chartData != nil && len(chartData.GlobalHistory) > 0 {
-		chart := buildChartFromStoreData(chartData)
+	if len(chartData.GlobalHistory) > 0 {
+		chart := buildChartFromStoreData(&chartData)
 
 		result = append(result, plotpage.Section{
 			Title:    "Code Burndown Chart",
@@ -103,10 +75,10 @@ func buildStoreSections(chartData *ChartData, metrics *ComputedMetrics) []plotpa
 // buildStoreSummarySection builds the summary section from pre-computed metrics.
 func buildStoreSummarySection(metrics *ComputedMetrics) plotpage.Section {
 	agg := metrics.Aggregate
-	survivalPct := fmt.Sprintf("%.1f%%", agg.OverallSurvivalRate*percentMultiplier)
+	survivalPct := fmt.Sprintf("%.1f%%", stats.ToPercent(agg.OverallSurvivalRate))
 	survivalColor := survivalBadgeColor(agg.OverallSurvivalRate)
 
-	stats := []plotpage.Renderable{
+	statCards := []plotpage.Renderable{
 		plotpage.NewStat("Current Lines", formatInt64(agg.TotalCurrentLines)),
 		plotpage.NewStat("Peak Lines", formatInt64(agg.TotalPeakLines)),
 		plotpage.NewStat("Survival Rate", survivalPct).WithTrend(survivalPct, survivalColor),
@@ -114,17 +86,17 @@ func buildStoreSummarySection(metrics *ComputedMetrics) plotpage.Section {
 	}
 
 	if agg.TrackedDevelopers > 0 {
-		stats = append(stats, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
+		statCards = append(statCards, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
 	}
 
 	if agg.TrackedFiles > 0 {
-		stats = append(stats, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
+		statCards = append(statCards, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
 	}
 
 	return plotpage.Section{
 		Title:    "Burndown Summary",
 		Subtitle: "Aggregate statistics from code burndown analysis.",
-		Chart:    plotpage.NewGrid(plotMaxStatsColumns, stats...),
+		Chart:    plotpage.NewGrid(plotMaxStatsColumns, statCards...),
 	}
 }
 

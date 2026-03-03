@@ -1597,6 +1597,7 @@ func buildPipeline(repository *gitlib.Repository) *historyPipeline { //nolint:fu
 				a.Identity = identity
 				a.TreeDiff = treeDiff
 				a.LineStats = lineStats
+				a.BlobCache = blobCache
 
 				return a
 			}(),

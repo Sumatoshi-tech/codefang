@@ -30,18 +30,14 @@ func (h *Analyzer) WriteToStore(ctx context.Context, ticks []analyze.TICK, w ana
 		return fmt.Errorf("compute metrics: %w", metricsErr)
 	}
 
-	for i := range metrics.TimeSeries {
-		writeErr := w.Write(KindTimeSeries, metrics.TimeSeries[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindTimeSeries, writeErr)
-		}
+	tsErr := analyze.WriteSliceKind(w, KindTimeSeries, metrics.TimeSeries)
+	if tsErr != nil {
+		return tsErr
 	}
 
-	for i := range metrics.Anomalies {
-		writeErr := w.Write(KindAnomalyRecord, metrics.Anomalies[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindAnomalyRecord, writeErr)
-		}
+	anomErr := analyze.WriteSliceKind(w, KindAnomalyRecord, metrics.Anomalies)
+	if anomErr != nil {
+		return anomErr
 	}
 
 	aggErr := w.Write(KindAggregate, metrics.Aggregate)
@@ -59,19 +55,10 @@ func WriteEnrichmentToStore(
 	externalAnomalies []ExternalAnomaly,
 	externalSummaries []ExternalSummary,
 ) error {
-	for i := range externalAnomalies {
-		writeErr := w.Write(KindExternalAnomaly, externalAnomalies[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindExternalAnomaly, writeErr)
-		}
+	extAnomErr := analyze.WriteSliceKind(w, KindExternalAnomaly, externalAnomalies)
+	if extAnomErr != nil {
+		return extAnomErr
 	}
 
-	for i := range externalSummaries {
-		writeErr := w.Write(KindExternalSummary, externalSummaries[i])
-		if writeErr != nil {
-			return fmt.Errorf("write %s: %w", KindExternalSummary, writeErr)
-		}
-	}
-
-	return nil
+	return analyze.WriteSliceKind(w, KindExternalSummary, externalSummaries)
 }

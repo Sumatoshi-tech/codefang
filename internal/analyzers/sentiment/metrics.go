@@ -5,6 +5,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/anomaly"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -196,9 +197,6 @@ const (
 
 	// Risk thresholds.
 	lowSentimentRiskThreshold = 0.2
-
-	// Percent multiplier for calculations.
-	percentMultiplier = 100
 )
 
 func classifyTrendDirection(startSentiment, endSentiment float32) string {
@@ -281,7 +279,7 @@ func computeTrend(input *ReportData) TrendData {
 	changePercent := 0.0
 
 	if regressionStart > 0 {
-		changePercent = float64(regressionEnd-regressionStart) / float64(regressionStart) * percentMultiplier
+		changePercent = stats.ToPercent(float64(regressionEnd-regressionStart) / float64(regressionStart))
 	}
 
 	direction := classifyTrendDirection(regressionStart, regressionEnd)

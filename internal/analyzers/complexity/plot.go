@@ -3,7 +3,6 @@ package complexity
 import (
 	"errors"
 	"io"
-	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -11,6 +10,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 const (
@@ -25,6 +26,11 @@ const (
 	cognitiveYellowLine  = 7
 	cognitiveRedLine     = 15
 	unknownName          = "unknown"
+
+	// Plot display labels for complexity distribution.
+	plotLabelSimple   = "Simple"
+	plotLabelModerate = "Moderate"
+	plotLabelComplex  = "Complex"
 )
 
 // ErrInvalidFunctionsData indicates the report doesn't contain expected functions data.
@@ -44,14 +50,11 @@ func (c *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Code Complexity Analysis",
 		"Cyclomatic and cognitive complexity metrics",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(w)
 }
 
 func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
@@ -115,11 +118,7 @@ func (c *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, 
 }
 
 func (c *Analyzer) generateComplexityBarChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_complexity")
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -128,30 +127,15 @@ func (c *Analyzer) generateComplexityBarChart(report analyze.Report) (*charts.Ba
 		return createEmptyComplexityChart(), nil
 	}
 
-	sorted := sortByComplexity(functions)
-	if len(sorted) > topFunctionsLimit {
-		sorted = sorted[:topFunctionsLimit]
-	}
+	sorted := mapx.SortAndLimit(functions, func(a, b map[string]any) bool {
+		return getCyclomaticValue(a) > getCyclomaticValue(b)
+	}, topFunctionsLimit)
 
 	labels, cyclomatic, cognitive, colors := extractComplexityData(sorted)
 	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
 
 	return createComplexityBarChart(labels, cyclomatic, cognitive, colors, co, palette), nil
-}
-
-func sortByComplexity(functions []map[string]any) []map[string]any {
-	sorted := make([]map[string]any, len(functions))
-	copy(sorted, functions)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		ci := getCyclomaticValue(sorted[i])
-		cj := getCyclomaticValue(sorted[j])
-
-		return ci > cj
-	})
-
-	return sorted
 }
 
 func getCyclomaticValue(fn map[string]any) int {
@@ -251,11 +235,7 @@ func createComplexityBarChart(
 }
 
 func (c *Analyzer) generateComplexityScatterChart(report analyze.Report) (*charts.Scatter, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_complexity")
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -327,77 +307,40 @@ func createComplexityScatterChart(functions []map[string]any, co *plotpage.Chart
 }
 
 func (c *Analyzer) generateComplexityPieChart(report analyze.Report) *charts.Pie {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_complexity")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_complexity")
 	if !ok || len(functions) == 0 {
 		return createEmptyComplexityPie()
 	}
 
-	distribution := countComplexityDistribution(functions)
+	distribution := stats.Distribution(functions, classifyComplexityForPlot)
 
 	return createComplexityDistributionPie(distribution)
 }
 
-func countComplexityDistribution(functions []map[string]any) map[string]int {
-	distribution := map[string]int{
-		"Simple":   0,
-		"Moderate": 0,
-		"Complex":  0,
+// classifyComplexityForPlot assigns a display label to a function map entry.
+func classifyComplexityForPlot(fn map[string]any) string {
+	complexity := getCyclomaticValue(fn)
+
+	switch {
+	case complexity <= cyclomaticYellowLine:
+		return plotLabelSimple
+	case complexity <= cyclomaticRedLine:
+		return plotLabelModerate
+	default:
+		return plotLabelComplex
 	}
-
-	for _, fn := range functions {
-		complexity := getCyclomaticValue(fn)
-
-		switch {
-		case complexity <= cyclomaticYellowLine:
-			distribution["Simple"]++
-		case complexity <= cyclomaticRedLine:
-			distribution["Moderate"]++
-		default:
-			distribution["Complex"]++
-		}
-	}
-
-	return distribution
 }
 
 func createComplexityDistributionPie(distribution map[string]int) *charts.Pie {
-	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
-	pie := charts.NewPie()
-
-	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("600px", "400px")),
-		charts.WithLegendOpts(opts.Legend{
-			Show:      opts.Bool(true),
-			Top:       "bottom",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
-		}),
-	)
 
 	pieData := []opts.PieData{
-		{Name: "Simple (1-5)", Value: distribution["Simple"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
-		{Name: "Moderate (6-10)", Value: distribution["Moderate"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
-		{Name: "Complex (>10)", Value: distribution["Complex"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
+		{Name: "Simple (1-5)", Value: distribution[plotLabelSimple], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
+		{Name: "Moderate (6-10)", Value: distribution[plotLabelModerate], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Warning}},
+		{Name: "Complex (>10)", Value: distribution[plotLabelComplex], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
-	pie.AddSeries("Complexity", pieData).
-		SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}: {c} ({d}%)",
-				Color:     co.TextMutedColor(),
-			}),
-			charts.WithPieChartOpts(opts.PieChart{
-				Radius: pieRadius,
-			}),
-		)
-
-	return pie
+	return plotpage.BuildPieChart(nil, "Complexity", pieData, pieRadius)
 }
 
 func createEmptyComplexityChart() *charts.Bar {

@@ -20,6 +20,37 @@ func (b *Badge) WithVariant(v BadgeVariant) *Badge {
 	return b
 }
 
+func TestRenderAnalyzerPage(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	err := RenderAnalyzerPage(&buf, "Analyzer Title", "Analyzer desc",
+		Section{Title: "S1", Subtitle: "Sub1"},
+		Section{Title: "S2", Subtitle: "Sub2"},
+	)
+	if err != nil {
+		t.Fatalf("RenderAnalyzerPage failed: %v", err)
+	}
+
+	html := buf.String()
+	if !strings.Contains(html, "Analyzer Title") {
+		t.Error("Expected page title")
+	}
+
+	if !strings.Contains(html, "Analyzer desc") {
+		t.Error("Expected page description")
+	}
+
+	if !strings.Contains(html, "S1") {
+		t.Error("Expected first section")
+	}
+
+	if !strings.Contains(html, "S2") {
+		t.Error("Expected second section")
+	}
+}
+
 func TestPageRenderDarkDefault(t *testing.T) {
 	t.Parallel()
 

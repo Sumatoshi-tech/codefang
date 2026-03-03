@@ -19,8 +19,6 @@ const (
 	innerLabelSize   = 9
 	emptyChartHeight = "400px"
 	barChartHeight   = "500px"
-	pieChartWidth    = "600px"
-	pieChartHeight   = "400px"
 	pieRadius        = "65%"
 	maxFileCouples   = 20
 	maxHeatmapDevs   = 20
@@ -43,13 +41,11 @@ func (c *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(writer,
 		"Couples Analysis",
 		"File coupling, developer coupling, and ownership patterns from commit history",
+		sections...,
 	)
-	page.Add(sections...)
-
-	return page.Render(writer)
 }
 
 // GenerateSections returns the sections for combined reports.
@@ -394,20 +390,7 @@ func buildOwnershipPieChartFromData(ownership []FileOwnershipData) *charts.Pie {
 	}
 
 	buckets := BucketOwnership(ownership)
-
-	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
-
-	pie := charts.NewPie()
-	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init(pieChartWidth, pieChartHeight)),
-		charts.WithLegendOpts(opts.Legend{
-			Show:      opts.Bool(true),
-			Top:       "bottom",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
-		}),
-	)
 
 	bucketColors := []string{
 		palette.Semantic.Bad,
@@ -425,17 +408,5 @@ func buildOwnershipPieChartFromData(ownership []FileOwnershipData) *charts.Pie {
 		}
 	}
 
-	pie.AddSeries("Ownership", pieData).
-		SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}: {c} ({d}%)",
-				Color:     co.TextMutedColor(),
-			}),
-			charts.WithPieChartOpts(opts.PieChart{
-				Radius: pieRadius,
-			}),
-		)
-
-	return pie
+	return plotpage.BuildPieChart(nil, "Ownership", pieData, pieRadius)
 }

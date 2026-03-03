@@ -29,21 +29,23 @@ type CommitSummary struct {
 // Aggregator implements analyze.Aggregator for the file history analyzer.
 // It accumulates file histories and line stats from the TC stream.
 type Aggregator struct {
-	files          *spillstore.SpillStore[FileHistory]
-	lastCommitHash gitlib.Hash
-	commitStats    map[string]*CommitSummary
-	commitsByTick  map[int][]gitlib.Hash
-	opts           analyze.AggregatorOptions
-	closed         bool
+	files           *spillstore.SpillStore[FileHistory]
+	lastCommitHash  gitlib.Hash
+	commitStats     map[string]*CommitSummary
+	commitsByTick   map[int][]gitlib.Hash
+	tickComposition map[int]*CategoryCounts
+	opts            analyze.AggregatorOptions
+	closed          bool
 }
 
 // NewAggregator creates a new aggregator for the file history analyzer.
 func NewAggregator(opts analyze.AggregatorOptions) *Aggregator {
 	return &Aggregator{
-		files:         spillstore.New[FileHistory](opts.SpillDir),
-		commitStats:   make(map[string]*CommitSummary),
-		commitsByTick: make(map[int][]gitlib.Hash),
-		opts:          opts,
+		files:           spillstore.New[FileHistory](opts.SpillDir),
+		commitStats:     make(map[string]*CommitSummary),
+		commitsByTick:   make(map[int][]gitlib.Hash),
+		tickComposition: make(map[int]*CategoryCounts),
+		opts:            opts,
 	}
 }
 
@@ -102,6 +104,17 @@ func (a *Aggregator) trackCommitStats(tc analyze.TC, cd *CommitData) {
 	hashStr := tc.CommitHash.String()
 	a.commitStats[hashStr] = summary
 	a.commitsByTick[tc.Tick] = append(a.commitsByTick[tc.Tick], tc.CommitHash)
+
+	// Accumulate file composition per tick.
+	if cd.Composition.Total() > 0 {
+		tickComp := a.tickComposition[tc.Tick]
+		if tickComp == nil {
+			tickComp = &CategoryCounts{}
+			a.tickComposition[tc.Tick] = tickComp
+		}
+
+		tickComp.Add(&cd.Composition)
+	}
 }
 
 func (a *Aggregator) applyPathActions(actions []PathAction) {
@@ -217,10 +230,11 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 	return analyze.TICK{
 		Tick: tick,
 		Data: &TickData{
-			Files:          files,
-			LastCommitHash: a.lastCommitHash,
-			CommitStats:    a.commitStats,
-			CommitsByTick:  a.commitsByTick,
+			Files:           files,
+			LastCommitHash:  a.lastCommitHash,
+			CommitStats:     a.commitStats,
+			CommitsByTick:   a.commitsByTick,
+			TickComposition: a.tickComposition,
 		},
 	}, nil
 }
@@ -346,6 +360,7 @@ func (a *Aggregator) DrainCommitStats() (stats map[string]any, tickHashes map[in
 	cbt := a.commitsByTick
 	a.commitStats = make(map[string]*CommitSummary)
 	a.commitsByTick = make(map[int][]gitlib.Hash)
+	a.tickComposition = make(map[int]*CategoryCounts)
 
 	return result, cbt
 }
@@ -364,10 +379,11 @@ func (a *Aggregator) Close() error {
 
 // TickData is the aggregated payload stored in analyze.TICK.Data for file history.
 type TickData struct {
-	Files          map[string]FileHistory
-	LastCommitHash gitlib.Hash
-	CommitStats    map[string]*CommitSummary
-	CommitsByTick  map[int][]gitlib.Hash
+	Files           map[string]FileHistory
+	LastCommitHash  gitlib.Hash
+	CommitStats     map[string]*CommitSummary
+	CommitsByTick   map[int][]gitlib.Hash
+	TickComposition map[int]*CategoryCounts
 }
 
 // TicksToReport builds the analyze.Report from TICKs.
@@ -375,6 +391,7 @@ type TickData struct {
 func TicksToReport(ctx context.Context, ticks []analyze.TICK, repo *gitlib.Repository) analyze.Report {
 	files := mergeTicksIntoFiles(ticks)
 	commitStats, commitsByTick := mergeTickCommitData(ticks)
+	tickComposition := mergeTickComposition(ticks)
 
 	lastCommitHash := extractLastCommitHash(ticks)
 
@@ -389,6 +406,10 @@ func TicksToReport(ctx context.Context, ticks []analyze.TICK, repo *gitlib.Repos
 	if len(commitStats) > 0 {
 		report["commit_stats"] = commitStats
 		report["commits_by_tick"] = commitsByTick
+	}
+
+	if len(tickComposition) > 0 {
+		report["tick_composition"] = tickComposition
 	}
 
 	return report
@@ -412,6 +433,29 @@ func mergeTickCommitData(ticks []analyze.TICK) (commitStats map[string]*CommitSu
 	}
 
 	return commitStats, commitsByTick
+}
+
+func mergeTickComposition(ticks []analyze.TICK) map[int]*CategoryCounts {
+	result := make(map[int]*CategoryCounts)
+
+	for _, tick := range ticks {
+		td, ok := tick.Data.(*TickData)
+		if !ok || td == nil {
+			continue
+		}
+
+		for t, counts := range td.TickComposition {
+			existing := result[t]
+			if existing == nil {
+				existing = &CategoryCounts{}
+				result[t] = existing
+			}
+
+			existing.Add(counts)
+		}
+	}
+
+	return result
 }
 
 func mergeTicksIntoFiles(ticks []analyze.TICK) map[string]FileHistory {

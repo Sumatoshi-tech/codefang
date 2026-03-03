@@ -11,6 +11,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/terminal"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 func TestGenerateText_ValidReport(t *testing.T) {
@@ -223,10 +224,10 @@ func TestRiskToColor(t *testing.T) {
 		level string
 		want  terminal.Color
 	}{
-		{RiskCritical, terminal.ColorRed},
-		{RiskHigh, terminal.ColorRed},
-		{RiskMedium, terminal.ColorYellow},
-		{RiskLow, terminal.ColorGreen},
+		{string(metrics.RiskCritical), terminal.ColorRed},
+		{string(metrics.RiskHigh), terminal.ColorRed},
+		{string(metrics.RiskMedium), terminal.ColorYellow},
+		{string(metrics.RiskLow), terminal.ColorGreen},
 	}
 
 	for _, tt := range tests {

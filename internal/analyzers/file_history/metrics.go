@@ -5,6 +5,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // --- Input Data Types ---.
@@ -70,46 +71,33 @@ const (
 	HotspotThresholdMedium   = 15
 )
 
-// Risk level constants.
-const (
-	RiskCritical = "CRITICAL"
-	RiskHigh     = "HIGH"
-	RiskMedium   = "MEDIUM"
-	RiskLow      = "LOW"
-)
-
 // Churn score divisor for normalization.
 const churnScoreDivisor = 100.0
 
-// Risk priority values for sorting.
-const (
-	riskPriorityCritical = 0
-	riskPriorityHigh     = 1
-	riskPriorityMedium   = 2
-	riskPriorityDefault  = 3
-)
+// --- Composition Data Types ---.
 
-func riskPriority(level string) int {
-	switch level {
-	case RiskCritical:
-		return riskPriorityCritical
-	case RiskHigh:
-		return riskPriorityHigh
-	case RiskMedium:
-		return riskPriorityMedium
-	default:
-		return riskPriorityDefault
-	}
+// CompositionData holds aggregate file composition breakdown.
+type CompositionData struct {
+	Breakdown   map[string]int     `json:"breakdown"   yaml:"breakdown"`
+	Percentages map[string]float64 `json:"percentages" yaml:"percentages"`
+}
+
+// CompositionTimeSeriesEntry holds file composition for a single tick.
+type CompositionTimeSeriesEntry struct {
+	Tick      int            `json:"tick"      yaml:"tick"`
+	Breakdown map[string]int `json:"breakdown" yaml:"breakdown"`
 }
 
 // --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the file history analyzer.
 type ComputedMetrics struct {
-	FileChurn        []FileChurnData       `json:"file_churn"        yaml:"file_churn"`
-	FileContributors []FileContributorData `json:"file_contributors" yaml:"file_contributors"`
-	Hotspots         []HotspotData         `json:"hotspots"          yaml:"hotspots"`
-	Aggregate        AggregateData         `json:"aggregate"         yaml:"aggregate"`
+	FileChurn        []FileChurnData              `json:"file_churn"        yaml:"file_churn"`
+	FileContributors []FileContributorData        `json:"file_contributors" yaml:"file_contributors"`
+	Hotspots         []HotspotData                `json:"hotspots"          yaml:"hotspots"`
+	Aggregate        AggregateData                `json:"aggregate"         yaml:"aggregate"`
+	Composition      CompositionData              `json:"composition"       yaml:"composition"`
+	CompositionTS    []CompositionTimeSeriesEntry `json:"composition_ts"    yaml:"composition_ts"`
 }
 
 const analyzerNameFileHistory = "file_history"
@@ -136,11 +124,16 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
+	tickComp, _ := report["tick_composition"].(map[int]*CategoryCounts)
+	composition, compositionTS := computeComposition(tickComp)
+
 	return &ComputedMetrics{
 		FileChurn:        computeFileChurn(input),
 		FileContributors: computeFileContributors(input),
 		Hotspots:         computeHotspots(input),
 		Aggregate:        computeAggregate(input),
+		Composition:      composition,
+		CompositionTS:    compositionTS,
 	}, nil
 }
 
@@ -224,11 +217,11 @@ func computeHotspots(input *ReportData) []HotspotData {
 
 		switch {
 		case commitCount >= HotspotThresholdCritical:
-			riskLevel = RiskCritical
+			riskLevel = string(metrics.RiskCritical)
 		case commitCount >= HotspotThresholdHigh:
-			riskLevel = RiskHigh
+			riskLevel = string(metrics.RiskHigh)
 		case commitCount >= HotspotThresholdMedium:
-			riskLevel = RiskMedium
+			riskLevel = string(metrics.RiskMedium)
 		default:
 			continue // Skip low-risk files.
 		}
@@ -244,7 +237,10 @@ func computeHotspots(input *ReportData) []HotspotData {
 	// Sort by risk (critical first) then by commit count.
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].RiskLevel != result[j].RiskLevel {
-			return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
+			iP := metrics.RiskPriority(metrics.RiskLevel(result[i].RiskLevel))
+			jP := metrics.RiskPriority(metrics.RiskLevel(result[j].RiskLevel))
+
+			return iP < jP
 		}
 
 		return result[i].CommitCount > result[j].CommitCount
@@ -252,6 +248,64 @@ func computeHotspots(input *ReportData) []HotspotData {
 
 	return result
 }
+
+func computeComposition(tickComp map[int]*CategoryCounts) (CompositionData, []CompositionTimeSeriesEntry) {
+	comp := CompositionData{
+		Breakdown:   make(map[string]int),
+		Percentages: make(map[string]float64),
+	}
+
+	if len(tickComp) == 0 {
+		return comp, nil
+	}
+
+	// Build time series sorted by tick and accumulate totals.
+	ticks := make([]int, 0, len(tickComp))
+	for t := range tickComp {
+		ticks = append(ticks, t)
+	}
+
+	sort.Ints(ticks)
+
+	ts := make([]CompositionTimeSeriesEntry, 0, len(ticks))
+	total := &CategoryCounts{}
+
+	for _, t := range ticks {
+		counts := tickComp[t]
+		total.Add(counts)
+
+		breakdown := make(map[string]int)
+		for _, cat := range AllCategories {
+			v := counts.Get(cat)
+			if v > 0 {
+				breakdown[string(cat)] = v
+			}
+		}
+
+		ts = append(ts, CompositionTimeSeriesEntry{
+			Tick:      t,
+			Breakdown: breakdown,
+		})
+	}
+
+	// Aggregate breakdown and percentages.
+	grandTotal := total.Total()
+
+	for _, cat := range AllCategories {
+		v := total.Get(cat)
+		if v > 0 {
+			comp.Breakdown[string(cat)] = v
+		}
+
+		if grandTotal > 0 {
+			comp.Percentages[string(cat)] = float64(v) / float64(grandTotal) * percentMultiplier
+		}
+	}
+
+	return comp, ts
+}
+
+const percentMultiplier = 100.0
 
 func computeAggregate(input *ReportData) AggregateData {
 	agg := AggregateData{

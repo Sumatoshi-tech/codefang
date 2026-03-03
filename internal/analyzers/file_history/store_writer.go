@@ -11,8 +11,9 @@ import (
 
 // Store record kind constants.
 const (
-	KindFileChurn = "file_churn"
-	KindSummary   = "summary"
+	KindFileChurn    = "file_churn"
+	KindSummary      = "summary"
+	KindComposition  = "composition"
 )
 
 // ErrUnexpectedAggregator indicates a type assertion failure for the aggregator.
@@ -48,9 +49,9 @@ func (h *HistoryAnalyzer) WriteToStoreFromAggregator(
 
 	churnData := computeFileChurnFromFiles(files)
 
-	churnErr := writeFileChurn(w, churnData)
+	churnErr := analyze.WriteSliceKind(w, KindFileChurn, churnData)
 	if churnErr != nil {
-		return fmt.Errorf("write %s: %w", KindFileChurn, churnErr)
+		return churnErr
 	}
 
 	aggregate := computeAggregateFromFiles(files)
@@ -58,6 +59,16 @@ func (h *HistoryAnalyzer) WriteToStoreFromAggregator(
 	summaryErr := w.Write(KindSummary, aggregate)
 	if summaryErr != nil {
 		return fmt.Errorf("write %s: %w", KindSummary, summaryErr)
+	}
+
+	// Write composition time series if available.
+	if len(fa.tickComposition) > 0 {
+		_, compositionTS := computeComposition(fa.tickComposition)
+
+		compErr := analyze.WriteSliceKind(w, KindComposition, compositionTS)
+		if compErr != nil {
+			return compErr
+		}
 	}
 
 	return nil
@@ -129,16 +140,4 @@ func computeAggregateFromFiles(files map[string]FileHistory) AggregateData {
 	}
 
 	return agg
-}
-
-// writeFileChurn writes FileChurnData records to the store.
-func writeFileChurn(w analyze.ReportWriter, churn []FileChurnData) error {
-	for i := range churn {
-		writeErr := w.Write(KindFileChurn, churn[i])
-		if writeErr != nil {
-			return writeErr
-		}
-	}
-
-	return nil
 }

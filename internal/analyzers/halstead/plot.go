@@ -3,13 +3,13 @@ package halstead
 import (
 	"errors"
 	"io"
-	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 const (
@@ -47,14 +47,11 @@ func (h *Analyzer) FormatReportPlot(report analyze.Report, w io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Halstead Complexity Analysis",
 		"Program volume, difficulty, and effort metrics",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(w)
 }
 
 func (h *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, error) {
@@ -114,11 +111,7 @@ func (h *Analyzer) generateSections(report analyze.Report) ([]plotpage.Section, 
 }
 
 func (h *Analyzer) generateEffortBarChart(report analyze.Report) (*charts.Bar, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_halstead")
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -127,29 +120,14 @@ func (h *Analyzer) generateEffortBarChart(report analyze.Report) (*charts.Bar, e
 		return createEmptyHalsteadChart(), nil
 	}
 
-	sorted := sortByEffort(functions)
-	if len(sorted) > topFunctionsLimit {
-		sorted = sorted[:topFunctionsLimit]
-	}
+	sorted := mapx.SortAndLimit(functions, func(a, b map[string]any) bool {
+		return getEffortValue(a) > getEffortValue(b)
+	}, topFunctionsLimit)
 
 	labels, efforts, colors := extractEffortData(sorted)
 	co := plotpage.DefaultChartOpts()
 
 	return createEffortBarChart(labels, efforts, colors, co), nil
-}
-
-func sortByEffort(functions []map[string]any) []map[string]any {
-	sorted := make([]map[string]any, len(functions))
-	copy(sorted, functions)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		ei := getEffortValue(sorted[i])
-		ej := getEffortValue(sorted[j])
-
-		return ei > ej
-	})
-
-	return sorted
 }
 
 func getEffortValue(fn map[string]any) float64 {
@@ -252,11 +230,7 @@ func createEffortBarChart(labels []string, efforts []float64, colors []string, c
 }
 
 func (h *Analyzer) generateVolumeVsDifficultyChart(report analyze.Report) (*charts.Scatter, error) {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_halstead")
 	if !ok {
 		return nil, ErrInvalidFunctionsData
 	}
@@ -363,11 +337,7 @@ func classifyScatterRisk(volume, difficulty, bugs float64) scatterRisk {
 }
 
 func (h *Analyzer) generateVolumePieChart(report analyze.Report) *charts.Pie {
-	functions, ok := analyze.ReportFunctionList(report, "functions")
-	if !ok {
-		functions, ok = analyze.ReportFunctionList(report, "function_halstead")
-	}
-
+	functions, ok := analyze.ReportFunctionListWithFallback(report, "functions", "function_halstead")
 	if !ok || len(functions) == 0 {
 		return createEmptyHalsteadPie()
 	}
@@ -404,19 +374,7 @@ func countVolumeDistribution(functions []map[string]any) map[string]int {
 }
 
 func createVolumeDistributionPie(distribution map[string]int) *charts.Pie {
-	co := plotpage.DefaultChartOpts()
 	palette := plotpage.GetChartPalette(plotpage.ThemeDark)
-	pie := charts.NewPie()
-
-	pie.SetGlobalOptions(
-		charts.WithTooltipOpts(co.Tooltip("item")),
-		charts.WithInitializationOpts(co.Init("600px", "400px")),
-		charts.WithLegendOpts(opts.Legend{
-			Show:      opts.Bool(true),
-			Top:       "bottom",
-			TextStyle: &opts.TextStyle{Color: co.TextMutedColor()},
-		}),
-	)
 
 	pieData := []opts.PieData{
 		{Name: "Low (≤100)", Value: distribution["Low"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Good}},
@@ -425,19 +383,7 @@ func createVolumeDistributionPie(distribution map[string]int) *charts.Pie {
 		{Name: "Very High (>5000)", Value: distribution["Very High"], ItemStyle: &opts.ItemStyle{Color: palette.Semantic.Bad}},
 	}
 
-	pie.AddSeries("Volume", pieData).
-		SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:      opts.Bool(true),
-				Formatter: "{b}: {c} ({d}%)",
-				Color:     co.TextMutedColor(),
-			}),
-			charts.WithPieChartOpts(opts.PieChart{
-				Radius: pieRadius,
-			}),
-		)
-
-	return pie
+	return plotpage.BuildPieChart(nil, "Volume", pieData, pieRadius)
 }
 
 func createEmptyHalsteadChart() *charts.Bar {

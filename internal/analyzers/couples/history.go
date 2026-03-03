@@ -66,7 +66,9 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 				"the pair of files appeared in the same commit or pair of developers committed to the same file.",
 			Mode: analyze.ModeHistory,
 		},
-		Sequential: false,
+		Sequential:         false,
+		EstimatedStateSize: workingStateSize,
+		EstimatedTCSize:    avgTCSize,
 		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
 			if len(report) == 0 {
 				return &ComputedMetrics{}, nil

@@ -151,10 +151,7 @@ func (s *Analyzer) generatePlot(report analyze.Report, writer io.Writer) error {
 		return err
 	}
 
-	page := plotpage.NewPage(chartSectionTitle, chartSectionSubtitle)
-	page.Add(sections...)
-
-	return page.Render(writer)
+	return plotpage.RenderAnalyzerPage(writer, chartSectionTitle, chartSectionSubtitle, sections...)
 }
 
 // Configure sets up the analyzer with the provided facts.

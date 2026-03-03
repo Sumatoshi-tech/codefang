@@ -11,6 +11,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Test constants to avoid magic strings/numbers.
@@ -453,7 +454,7 @@ func TestBusFactorMetric_SingleContributor_Critical(t *testing.T) {
 	assert.Equal(t, 0, result[0].PrimaryDevID)
 	assert.Equal(t, testDevName1, result[0].PrimaryDevName)
 	assert.InDelta(t, 100.0, result[0].PrimaryPct, 0.01)
-	assert.Equal(t, RiskCritical, result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskCritical), result[0].RiskLevel)
 	assert.Equal(t, 1, result[0].BusFactor)
 	assert.Equal(t, 1, result[0].TotalContributors)
 }
@@ -466,14 +467,14 @@ func TestBusFactorMetric_RiskLevels(t *testing.T) {
 		primaryPct int
 		wantRisk   string
 	}{
-		{"CRITICAL - 95%", 95, RiskCritical},
-		{"CRITICAL - 90%", 90, RiskCritical},
-		{"HIGH - 85%", 85, RiskHigh},
-		{"HIGH - 80%", 80, RiskHigh},
-		{"MEDIUM - 70%", 70, RiskMedium},
-		{"MEDIUM - 60%", 60, RiskMedium},
-		{"LOW - 55%", 55, RiskLow},
-		{"LOW - 50%", 50, RiskLow},
+		{"CRITICAL - 95%", 95, string(metrics.RiskCritical)},
+		{"CRITICAL - 90%", 90, string(metrics.RiskCritical)},
+		{"HIGH - 85%", 85, string(metrics.RiskHigh)},
+		{"HIGH - 80%", 80, string(metrics.RiskHigh)},
+		{"MEDIUM - 70%", 70, string(metrics.RiskMedium)},
+		{"MEDIUM - 60%", 60, string(metrics.RiskMedium)},
+		{"LOW - 55%", 55, string(metrics.RiskLow)},
+		{"LOW - 50%", 50, string(metrics.RiskLow)},
 	}
 
 	for _, tt := range tests {
@@ -520,9 +521,9 @@ func TestBusFactorMetric_SortedByRiskPriority(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 3)
-	assert.Equal(t, RiskCritical, result[0].RiskLevel)
-	assert.Equal(t, RiskMedium, result[1].RiskLevel)
-	assert.Equal(t, RiskLow, result[2].RiskLevel)
+	assert.Equal(t, string(metrics.RiskCritical), result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskMedium), result[1].RiskLevel)
+	assert.Equal(t, string(metrics.RiskLow), result[2].RiskLevel)
 }
 
 func TestBusFactorMetric_CHAASSBusFactorNumber(t *testing.T) {
@@ -547,7 +548,7 @@ func TestBusFactorMetric_CHAASSBusFactorNumber(t *testing.T) {
 	// Dev0(30) + Dev1(25) = 55 >= 50, so bus factor = 2.
 	assert.Equal(t, 2, result[0].BusFactor)
 	assert.Equal(t, 5, result[0].TotalContributors)
-	assert.Equal(t, RiskLow, result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskLow), result[0].RiskLevel)
 }
 
 // --- ActivityMetric Tests ---.
@@ -773,33 +774,6 @@ func TestAggregateMetric_ActiveDevelopers_RatioFallback(t *testing.T) {
 	assert.Equal(t, 2, result.ActiveDevelopers)
 }
 
-// --- riskPriority Tests ---.
-
-func TestRiskPriority(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		level    string
-		priority int
-	}{
-		{RiskCritical, 0},
-		{RiskHigh, 1},
-		{RiskMedium, 2},
-		{RiskLow, 3},
-		{"UNKNOWN", 3},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.level, func(t *testing.T) {
-			t.Parallel()
-
-			got := riskPriority(tt.level)
-
-			assert.Equal(t, tt.priority, got)
-		})
-	}
-}
-
 // --- ComputeAllMetrics Tests ---.
 
 func TestComputeAllMetrics_InvalidReport(t *testing.T) {
@@ -853,9 +827,9 @@ const expectedAnalyzerName = "devs"
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{}
+	cm := &ComputedMetrics{}
 
-	got := metrics.AnalyzerName()
+	got := cm.AnalyzerName()
 
 	assert.Equal(t, expectedAnalyzerName, got)
 }
@@ -863,11 +837,11 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 func TestComputedMetrics_ToJSON(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{TotalCommits: testCommits},
 	}
 
-	result := metrics.ToJSON()
+	result := cm.ToJSON()
 
 	// Should return the metrics struct itself.
 	got, ok := result.(*ComputedMetrics)
@@ -878,11 +852,11 @@ func TestComputedMetrics_ToJSON(t *testing.T) {
 func TestComputedMetrics_ToYAML(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{TotalCommits: testCommits},
 	}
 
-	result := metrics.ToYAML()
+	result := cm.ToYAML()
 
 	// Should return the metrics struct itself.
 	got, ok := result.(*ComputedMetrics)
@@ -893,10 +867,10 @@ func TestComputedMetrics_ToYAML(t *testing.T) {
 func TestComputedMetrics_ImplementsMetricsOutput(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{}
+	cm := &ComputedMetrics{}
 
 	// Compile-time interface compliance check.
-	var _ renderer.MetricsOutput = metrics
+	var _ renderer.MetricsOutput = cm
 }
 
 func TestIntVal(t *testing.T) {

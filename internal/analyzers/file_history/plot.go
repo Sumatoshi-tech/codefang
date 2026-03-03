@@ -2,6 +2,7 @@ package filehistory
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 
@@ -13,10 +14,23 @@ import (
 )
 
 const (
-	topFilesLimit    = 20
-	xAxisRotate      = 60
-	emptyChartHeight = "400px"
+	topFilesLimit        = 20
+	xAxisRotate          = 60
+	emptyChartHeight     = "400px"
+	compositionAreaAlpha = 0.5
 )
+
+// categoryColors maps each category to a chart color.
+var categoryColors = map[Category]string{
+	CategorySource:        "#4CAF50",
+	CategoryDocumentation: "#2196F3",
+	CategoryConfiguration: "#FF9800",
+	CategoryVendor:        "#9C27B0",
+	CategoryGenerated:     "#607D8B",
+	CategoryDotFile:       "#795548",
+	CategoryImage:         "#E91E63",
+	CategoryBinary:        "#F44336",
+}
 
 // ErrInvalidFiles indicates the report doesn't contain expected files data.
 var ErrInvalidFiles = errors.New("invalid file_history report: expected map[string]FileHistory for Files")
@@ -27,13 +41,11 @@ func (h *HistoryAnalyzer) generatePlot(report analyze.Report, writer io.Writer) 
 		return err
 	}
 
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(writer,
 		"File History Analysis",
 		"Identifying the most actively modified files in the repository",
+		sections...,
 	)
-	page.Add(sections...)
-
-	return page.Render(writer)
 }
 
 // GenerateSections returns the sections for combined reports.
@@ -43,7 +55,7 @@ func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 		return nil, err
 	}
 
-	return []plotpage.Section{
+	sections := []plotpage.Section{
 		{
 			Title:    "Most Modified Files",
 			Subtitle: "Files ranked by total number of commits touching them.",
@@ -59,7 +71,30 @@ func (h *HistoryAnalyzer) GenerateSections(report analyze.Report) ([]plotpage.Se
 				},
 			},
 		},
-	}, nil
+	}
+
+	if compChart := buildCompositionChart(report); compChart != nil {
+		sections = append(sections, plotpage.Section{
+			Title:    "File Composition Over Time",
+			Subtitle: "Distribution of changed files by category across analysis ticks.",
+			Chart:    plotpage.WrapChart(compChart),
+			Hint: plotpage.Hint{
+				Title: "Categories:",
+				Items: []string{
+					"Source = project code (first-party)",
+					"Documentation = docs, README, LICENSE, examples",
+					"Configuration = YAML, JSON, TOML, XML, Makefile",
+					"Vendor = third-party dependencies (node_modules, vendor/)",
+					"Generated = protobuf, code generators, minified bundles",
+					"DotFile = .gitignore, .editorconfig, etc.",
+					"Image = PNG, JPG, GIF",
+					"Binary = files with binary content",
+				},
+			},
+		})
+	}
+
+	return sections, nil
 }
 
 // buildChart creates a bar chart showing the most modified files.
@@ -149,6 +184,112 @@ func extractFileHistoryData(report analyze.Report) (labels []string, data []int,
 // RegisterPlotSections registers the file-history plot section renderer with the analyze package.
 func RegisterPlotSections() {
 	analyze.RegisterStorePlotSections("file-history", GenerateStoreSections)
+}
+
+// buildCompositionChart builds a stacked area chart from tick_composition data.
+func buildCompositionChart(report analyze.Report) *charts.Line {
+	tickComp, ok := report["tick_composition"].(map[int]*CategoryCounts)
+	if !ok || len(tickComp) == 0 {
+		return nil
+	}
+
+	// Sort ticks.
+	ticks := make([]int, 0, len(tickComp))
+	for t := range tickComp {
+		ticks = append(ticks, t)
+	}
+
+	sort.Ints(ticks)
+
+	// Build labels and per-category data.
+	labels := make([]string, len(ticks))
+	for i, t := range ticks {
+		labels[i] = fmt.Sprintf("Tick %d", t)
+	}
+
+	var series []plotpage.LineSeries
+
+	for _, cat := range AllCategories {
+		data := make([]plotpage.SeriesData, len(ticks))
+		hasData := false
+
+		for i, t := range ticks {
+			v := tickComp[t].Get(cat)
+			data[i] = v
+
+			if v > 0 {
+				hasData = true
+			}
+		}
+
+		if !hasData {
+			continue
+		}
+
+		series = append(series, plotpage.LineSeries{
+			Name:        string(cat),
+			Data:        data,
+			Color:       categoryColors[cat],
+			Stack:       "total",
+			AreaOpacity: compositionAreaAlpha,
+		})
+	}
+
+	if len(series) == 0 {
+		return nil
+	}
+
+	cOpts := plotpage.DefaultChartOpts()
+
+	return plotpage.BuildLineChart(cOpts, labels, series, "Files")
+}
+
+// buildCompositionChartFromTS builds a stacked area chart from pre-computed time series.
+func buildCompositionChartFromTS(ts []CompositionTimeSeriesEntry) *charts.Line {
+	if len(ts) == 0 {
+		return nil
+	}
+
+	labels := make([]string, len(ts))
+	for i, entry := range ts {
+		labels[i] = fmt.Sprintf("Tick %d", entry.Tick)
+	}
+
+	var series []plotpage.LineSeries
+
+	for _, cat := range AllCategories {
+		data := make([]plotpage.SeriesData, len(ts))
+		hasData := false
+
+		for i, entry := range ts {
+			v := entry.Breakdown[string(cat)]
+			data[i] = v
+
+			if v > 0 {
+				hasData = true
+			}
+		}
+
+		if !hasData {
+			continue
+		}
+
+		series = append(series, plotpage.LineSeries{
+			Name:        string(cat),
+			Data:        data,
+			Color:       categoryColors[cat],
+			Stack:       "total",
+			AreaOpacity: compositionAreaAlpha,
+		})
+	}
+
+	if len(series) == 0 {
+		return nil
+	}
+
+	cOpts := plotpage.DefaultChartOpts()
+
+	return plotpage.BuildLineChart(cOpts, labels, series, "Files")
 }
 
 func createEmptyFileChart() *charts.Bar {

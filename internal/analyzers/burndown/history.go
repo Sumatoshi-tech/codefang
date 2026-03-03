@@ -904,22 +904,6 @@ func (b *HistoryAnalyzer) Boot() error {
 	return nil
 }
 
-// workingStateSize is the estimated bytes of working state per commit
-// for the burndown analyzer (per-line ownership maps, file timelines, history matrices).
-// Burndown is the heaviest analyzer — state grows proportional to the number of
-// active files and ownership map entries, not linearly at multi-MiB per commit.
-const workingStateSize = 950 * 1024
-
-// avgTCSize is the estimated bytes of TC payload per commit
-// for the burndown analyzer.
-const avgTCSize = 74 * 1024
-
-// WorkingStateSize returns the estimated bytes of working state per commit.
-func (b *HistoryAnalyzer) WorkingStateSize() int64 { return workingStateSize }
-
-// AvgTCSize returns the estimated bytes of TC payload per commit.
-func (b *HistoryAnalyzer) AvgTCSize() int64 { return avgTCSize }
-
 // CleanupSpills removes all shard spill temp files. Safe to call multiple times.
 func (b *HistoryAnalyzer) CleanupSpills() {
 	for i := range b.shardSpills {

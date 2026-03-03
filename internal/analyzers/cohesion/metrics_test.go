@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 // Test constants.
@@ -174,10 +175,7 @@ func TestCohesionDistributionMetric_Empty(t *testing.T) {
 
 	result := metric.Compute(input)
 
-	assert.Equal(t, 0, result.Excellent)
-	assert.Equal(t, 0, result.Good)
-	assert.Equal(t, 0, result.Fair)
-	assert.Equal(t, 0, result.Poor)
+	assert.Empty(t, result)
 }
 
 func TestCohesionDistributionMetric_Compute(t *testing.T) {
@@ -197,10 +195,10 @@ func TestCohesionDistributionMetric_Compute(t *testing.T) {
 
 	result := metric.Compute(input)
 
-	assert.Equal(t, 2, result.Excellent)
-	assert.Equal(t, 2, result.Good)
-	assert.Equal(t, 1, result.Fair)
-	assert.Equal(t, 1, result.Poor)
+	assert.Equal(t, 2, result[MetricDistExcellent])
+	assert.Equal(t, 2, result[MetricDistGood])
+	assert.Equal(t, 1, result[MetricDistFair])
+	assert.Equal(t, 1, result[MetricDistPoor])
 }
 
 // --- LowCohesionFunctionMetric Tests ---.
@@ -255,7 +253,7 @@ func TestLowCohesionFunctionMetric_MediumRisk(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, "MEDIUM", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskMedium), result[0].RiskLevel)
 	assert.NotEmpty(t, result[0].Recommendation)
 }
 
@@ -272,7 +270,7 @@ func TestLowCohesionFunctionMetric_HighRisk(t *testing.T) {
 	result := metric.Compute(input)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, "HIGH", result[0].RiskLevel)
+	assert.Equal(t, string(metrics.RiskHigh), result[0].RiskLevel)
 	assert.Contains(t, result[0].Recommendation, "splitting")
 }
 
@@ -364,8 +362,8 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Len(t, result.FunctionCohesion, 2)
 	assert.Len(t, result.LowCohesionFunctions, 1) // 0.2 is below Good (0.4).
-	assert.Equal(t, 1, result.Distribution.Excellent)
-	assert.Equal(t, 1, result.Distribution.Poor)
+	assert.Equal(t, 1, result.Distribution[MetricDistExcellent])
+	assert.Equal(t, 1, result.Distribution[MetricDistPoor])
 }
 
 // --- MetricsOutput Interface Tests ---.
@@ -373,9 +371,9 @@ func TestComputeAllMetrics_Valid(t *testing.T) {
 func TestComputedMetrics_AnalyzerName(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{}
+	cm := &ComputedMetrics{}
 
-	name := metrics.AnalyzerName()
+	name := cm.AnalyzerName()
 
 	assert.Equal(t, "cohesion", name)
 }
@@ -383,29 +381,29 @@ func TestComputedMetrics_AnalyzerName(t *testing.T) {
 func TestComputedMetrics_ToJSON(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalFunctions: testTotalFunctions,
 			CohesionScore:  testCohesionScore,
 		},
 	}
 
-	result := metrics.ToJSON()
+	result := cm.ToJSON()
 
-	assert.Equal(t, metrics, result)
+	assert.Equal(t, cm, result)
 }
 
 func TestComputedMetrics_ToYAML(t *testing.T) {
 	t.Parallel()
 
-	metrics := &ComputedMetrics{
+	cm := &ComputedMetrics{
 		Aggregate: AggregateData{
 			TotalFunctions: testTotalFunctions,
 			CohesionScore:  testCohesionScore,
 		},
 	}
 
-	result := metrics.ToYAML()
+	result := cm.ToYAML()
 
-	assert.Equal(t, metrics, result)
+	assert.Equal(t, cm, result)
 }

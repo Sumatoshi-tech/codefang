@@ -2,7 +2,6 @@ package quality
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
@@ -38,41 +37,12 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // readTimeSeriesIfPresent reads all time_series records, returning nil if absent.
 func readTimeSeriesIfPresent(reader analyze.ReportReader, kinds []string) ([]TimeSeriesEntry, error) {
-	if !slices.Contains(kinds, KindTimeSeries) {
-		return nil, nil
-	}
-
-	var result []TimeSeriesEntry
-
-	iterErr := reader.Iter(KindTimeSeries, func(raw []byte) error {
-		var entry TimeSeriesEntry
-
-		decErr := analyze.GobDecode(raw, &entry)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, entry)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[TimeSeriesEntry](reader, kinds, KindTimeSeries)
 }
 
 // readAggregateIfPresent reads the single aggregate record, returning zero value if absent.
 func readAggregateIfPresent(reader analyze.ReportReader, kinds []string) (AggregateData, error) {
-	if !slices.Contains(kinds, KindAggregate) {
-		return AggregateData{}, nil
-	}
-
-	var agg AggregateData
-
-	iterErr := reader.Iter(KindAggregate, func(raw []byte) error {
-		return analyze.GobDecode(raw, &agg)
-	})
-
-	return agg, iterErr
+	return analyze.ReadRecordIfPresent[AggregateData](reader, kinds, KindAggregate)
 }
 
 // buildStoreSections constructs all quality plot sections from pre-computed metrics.

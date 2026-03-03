@@ -4,15 +4,13 @@ import (
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 // Constants for burndown metrics calculations.
 const (
 	// Default tick size is 24 hours.
 	defaultTickSizeHours = 24
-
-	// Percent multiplier for calculations.
-	percentMultiplier = 100
 
 	// Modifier index offset for interaction calculations.
 	modifierIndexOffset = 2
@@ -259,7 +257,7 @@ func computeFileSurvival(input FileSurvivalInput) []FileSurvivalData {
 
 		var topOwnerPct float64
 		if currentLines > 0 {
-			topOwnerPct = float64(topOwnerLines) / float64(currentLines) * percentMultiplier
+			topOwnerPct = stats.ToPercent(float64(topOwnerLines) / float64(currentLines))
 		}
 
 		topOwnerName := ""

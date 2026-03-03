@@ -75,6 +75,14 @@ func NewPage(title, description string) *Page {
 	}
 }
 
+// RenderAnalyzerPage creates a page with default settings and renders it.
+func RenderAnalyzerPage(w io.Writer, title, desc string, sections ...Section) error {
+	page := NewPage(title, desc)
+	page.Add(sections...)
+
+	return page.Render(w)
+}
+
 // Add appends sections to the page.
 func (p *Page) Add(sections ...Section) {
 	p.Sections = append(p.Sections, sections...)

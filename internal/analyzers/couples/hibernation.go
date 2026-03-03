@@ -37,9 +37,3 @@ const workingStateSize = 80 * 1024
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the couples analyzer.
 const avgTCSize = 20 * 1024
-
-// WorkingStateSize returns the estimated bytes of working state per commit.
-func (c *HistoryAnalyzer) WorkingStateSize() int64 { return workingStateSize }
-
-// AvgTCSize returns the estimated bytes of TC payload per commit.
-func (c *HistoryAnalyzer) AvgTCSize() int64 { return avgTCSize }

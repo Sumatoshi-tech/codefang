@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
 const statsGridCols = 4
@@ -114,9 +115,9 @@ func (o *overviewContent) renderRiskAlert(w io.Writer) error {
 func (o *overviewContent) countHighRisks() (critical, high int) {
 	for _, bf := range o.data.Metrics.BusFactor {
 		switch bf.RiskLevel {
-		case RiskCritical:
+		case string(metrics.RiskCritical):
 			critical++
-		case RiskHigh:
+		case string(metrics.RiskHigh):
 			high++
 		}
 	}

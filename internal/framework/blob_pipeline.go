@@ -105,7 +105,7 @@ type blobJob struct {
 	cacheHits  map[gitlib.Hash]*gitlib.CachedBlob // Blobs already found in global cache.
 
 	// Shared state for the batch request.
-	batchState *SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob]
+	batchState *pipeline.SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob]
 }
 
 // Process receives commit batches and outputs blob data.
@@ -296,12 +296,12 @@ func (p *BlobPipeline) runConsumer(ctx context.Context, jobs <-chan blobJob, out
 }
 
 // fireBlobBatchRequests shards missing hashes across workers and returns a
-// SharedResponse that merges all sharded blob responses. Returns (nil, false)
+// [pipeline.SharedResponse] that merges all sharded blob responses. Returns (nil, false)
 // when there are no missing hashes. The bool indicates early return due to
 // context cancellation.
 func (p *BlobPipeline) fireBlobBatchRequests(
 	ctx context.Context, missingHashes []gitlib.Hash,
-) (*SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob], bool) {
+) (*pipeline.SharedResponse[map[gitlib.Hash]*gitlib.CachedBlob], bool) {
 	if len(missingHashes) == 0 {
 		return nil, false
 	}
@@ -348,7 +348,7 @@ func (p *BlobPipeline) fireBlobBatchRequests(
 	// Create a shared response that merges all sharded blob responses.
 	blobCache := p.BlobCache
 
-	return NewSharedResponse(func(ctx context.Context) (map[gitlib.Hash]*gitlib.CachedBlob, error) {
+	return pipeline.NewSharedResponse(func(ctx context.Context) (map[gitlib.Hash]*gitlib.CachedBlob, error) {
 		results := make(map[gitlib.Hash]*gitlib.CachedBlob)
 		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
 

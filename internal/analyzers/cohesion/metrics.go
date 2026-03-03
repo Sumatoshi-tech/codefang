@@ -5,6 +5,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
@@ -81,13 +82,13 @@ type FunctionCohesionData struct {
 	QualityLevel string  `json:"quality_level" yaml:"quality_level"`
 }
 
-// DistributionData contains cohesion distribution counts.
-type DistributionData struct {
-	Excellent int `json:"excellent" yaml:"excellent"`
-	Good      int `json:"good"      yaml:"good"`
-	Fair      int `json:"fair"      yaml:"fair"`
-	Poor      int `json:"poor"      yaml:"poor"`
-}
+// MetricDist* constants are JSON-compatible distribution keys for metrics output.
+const (
+	MetricDistExcellent = "excellent"
+	MetricDistGood      = "good"
+	MetricDistFair      = "fair"
+	MetricDistPoor      = "poor"
+)
 
 // LowCohesionFunctionData identifies functions with poor cohesion.
 type LowCohesionFunctionData struct {
@@ -191,23 +192,22 @@ func NewDistributionMetric() *DistributionMetric {
 }
 
 // Compute calculates cohesion distribution.
-func (m *DistributionMetric) Compute(input *ReportData) DistributionData {
-	dist := DistributionData{}
+func (m *DistributionMetric) Compute(input *ReportData) map[string]int {
+	return stats.Distribution(input.Functions, classifyCohesionLevel)
+}
 
-	for _, fn := range input.Functions {
-		switch {
-		case fn.Cohesion >= CohesionThresholdExcellent:
-			dist.Excellent++
-		case fn.Cohesion >= CohesionThresholdGood:
-			dist.Good++
-		case fn.Cohesion >= CohesionThresholdFair:
-			dist.Fair++
-		default:
-			dist.Poor++
-		}
+// classifyCohesionLevel assigns a distribution label to a function by cohesion score.
+func classifyCohesionLevel(fn FunctionData) string {
+	switch {
+	case fn.Cohesion >= CohesionThresholdExcellent:
+		return MetricDistExcellent
+	case fn.Cohesion >= CohesionThresholdGood:
+		return MetricDistGood
+	case fn.Cohesion >= CohesionThresholdFair:
+		return MetricDistFair
+	default:
+		return MetricDistPoor
 	}
-
-	return dist
 }
 
 // LowCohesionFunctionMetric identifies functions needing attention.
@@ -240,10 +240,10 @@ func (m *LowCohesionFunctionMetric) Compute(input *ReportData) []LowCohesionFunc
 		var riskLevel, recommendation string
 
 		if fn.Cohesion < CohesionThresholdFair {
-			riskLevel = "HIGH"
+			riskLevel = string(metrics.RiskHigh)
 			recommendation = "Consider splitting into multiple focused functions"
 		} else {
-			riskLevel = "MEDIUM"
+			riskLevel = string(metrics.RiskMedium)
 			recommendation = "Review function responsibilities for possible separation"
 		}
 
@@ -303,7 +303,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 // ComputedMetrics holds all computed metric results for the cohesion analyzer.
 type ComputedMetrics struct {
 	FunctionCohesion     []FunctionCohesionData    `json:"function_cohesion"      yaml:"function_cohesion"`
-	Distribution         DistributionData          `json:"distribution"           yaml:"distribution"`
+	Distribution         map[string]int            `json:"distribution"           yaml:"distribution"`
 	LowCohesionFunctions []LowCohesionFunctionData `json:"low_cohesion_functions" yaml:"low_cohesion_functions"`
 	Aggregate            AggregateData             `json:"aggregate"              yaml:"aggregate"`
 }

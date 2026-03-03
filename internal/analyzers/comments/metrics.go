@@ -290,11 +290,6 @@ const (
 	DocScoreThresholdGood = 0.6
 	DocScoreThresholdFair = 0.3
 
-	// Risk priority values for sorting.
-	riskPriorityHigh    = 0
-	riskPriorityMedium  = 1
-	riskPriorityDefault = 2
-
 	// Health score multiplier (converts 0-1 score to 0-100).
 	healthScoreMultiplier = 100
 )
@@ -376,21 +371,13 @@ func (m *UndocumentedFunctionMetric) Compute(input *ReportData) []UndocumentedFu
 
 	// Sort by risk level.
 	sort.Slice(result, func(i, j int) bool {
-		return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
+		iP := metrics.RiskPriority(metrics.RiskLevel(result[i].RiskLevel))
+		jP := metrics.RiskPriority(metrics.RiskLevel(result[j].RiskLevel))
+
+		return iP < jP
 	})
 
 	return result
-}
-
-func riskPriority(level string) int {
-	switch level {
-	case "HIGH":
-		return riskPriorityHigh
-	case "MEDIUM":
-		return riskPriorityMedium
-	default:
-		return riskPriorityDefault
-	}
 }
 
 // AggregateMetric computes summary statistics.

@@ -2,7 +2,6 @@ package imports
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -27,26 +26,7 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 
 // readImportUsageIfPresent reads all import_usage records, returning nil if absent.
 func readImportUsageIfPresent(reader analyze.ReportReader, kinds []string) ([]ImportUsageRecord, error) {
-	if !slices.Contains(kinds, KindImportUsage) {
-		return nil, nil
-	}
-
-	var result []ImportUsageRecord
-
-	iterErr := reader.Iter(KindImportUsage, func(raw []byte) error {
-		var record ImportUsageRecord
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+	return analyze.ReadRecordsIfPresent[ImportUsageRecord](reader, kinds, KindImportUsage)
 }
 
 // buildImportsStoreSections constructs the imports plot sections from pre-computed data.

@@ -74,12 +74,9 @@ func (a *Analyzer) generateCloneTypePieChart(report analyze.Report) *charts.Pie 
 
 // renderPlotSections renders plot sections to an HTML page.
 func renderPlotSections(sections []plotpage.Section, w io.Writer) error {
-	page := plotpage.NewPage(
+	return plotpage.RenderAnalyzerPage(w,
 		"Clone Detection Analysis",
 		"Code clone detection using MinHash and LSH",
+		sections...,
 	)
-
-	page.Add(sections...)
-
-	return page.Render(w)
 }

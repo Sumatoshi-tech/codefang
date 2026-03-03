@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
@@ -143,12 +144,12 @@ type FunctionComplexityData struct {
 	RiskLevel            string  `json:"risk_level"            yaml:"risk_level"`
 }
 
-// DistributionData contains complexity distribution counts.
-type DistributionData struct {
-	Simple   int `json:"simple"   yaml:"simple"`
-	Moderate int `json:"moderate" yaml:"moderate"`
-	Complex  int `json:"complex"  yaml:"complex"`
-}
+// MetricDist* constants are JSON-compatible distribution keys for metrics output.
+const (
+	MetricDistSimple   = "simple"
+	MetricDistModerate = "moderate"
+	MetricDistComplex  = "complex"
+)
 
 // HighRiskFunctionData identifies functions needing refactoring attention.
 type HighRiskFunctionData struct {
@@ -204,12 +205,6 @@ const (
 	// Risk score thresholds for classification.
 	riskScoreCritical = 5
 	riskScoreHigh     = 3
-
-	// Risk priority values for sorting.
-	riskPriorityCritical = 0
-	riskPriorityHigh     = 1
-	riskPriorityMedium   = 2
-	riskPriorityDefault  = 3
 )
 
 // Compute calculates function complexity data.
@@ -266,13 +261,13 @@ func classifyFunctionRisk(cyclomatic, cognitive, nesting int) string {
 
 	switch {
 	case score >= riskScoreCritical:
-		return "CRITICAL"
+		return string(metrics.RiskCritical)
 	case score >= riskScoreHigh:
-		return "HIGH"
+		return string(metrics.RiskHigh)
 	case score >= 1:
-		return "MEDIUM"
+		return string(metrics.RiskMedium)
 	default:
-		return "LOW"
+		return string(metrics.RiskLow)
 	}
 }
 
@@ -295,21 +290,20 @@ func NewDistributionMetric() *DistributionMetric {
 }
 
 // Compute calculates complexity distribution.
-func (m *DistributionMetric) Compute(input *ReportData) DistributionData {
-	dist := DistributionData{}
+func (m *DistributionMetric) Compute(input *ReportData) map[string]int {
+	return stats.Distribution(input.Functions, classifyComplexityLevel)
+}
 
-	for _, fn := range input.Functions {
-		switch {
-		case fn.CyclomaticComplexity <= CyclomaticThresholdModerate:
-			dist.Simple++
-		case fn.CyclomaticComplexity <= CyclomaticThresholdHigh:
-			dist.Moderate++
-		default:
-			dist.Complex++
-		}
+// classifyComplexityLevel assigns a complexity distribution label to a function.
+func classifyComplexityLevel(fn FunctionData) string {
+	switch {
+	case fn.CyclomaticComplexity <= CyclomaticThresholdModerate:
+		return MetricDistSimple
+	case fn.CyclomaticComplexity <= CyclomaticThresholdHigh:
+		return MetricDistModerate
+	default:
+		return MetricDistComplex
 	}
-
-	return dist
 }
 
 // HighRiskFunctionMetric identifies functions needing attention.
@@ -366,23 +360,13 @@ func (m *HighRiskFunctionMetric) Compute(input *ReportData) []HighRiskFunctionDa
 
 	// Sort by risk level.
 	sort.Slice(result, func(i, j int) bool {
-		return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
+		iP := metrics.RiskPriority(metrics.RiskLevel(result[i].RiskLevel))
+		jP := metrics.RiskPriority(metrics.RiskLevel(result[j].RiskLevel))
+
+		return iP < jP
 	})
 
 	return result
-}
-
-func riskPriority(level string) int {
-	switch level {
-	case "CRITICAL":
-		return riskPriorityCritical
-	case "HIGH":
-		return riskPriorityHigh
-	case "MEDIUM":
-		return riskPriorityMedium
-	default:
-		return riskPriorityDefault
-	}
 }
 
 // AggregateMetric computes summary statistics.
@@ -450,7 +434,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 // ComputedMetrics holds all computed metric results for the complexity analyzer.
 type ComputedMetrics struct {
 	FunctionComplexity []FunctionComplexityData `json:"function_complexity" yaml:"function_complexity"`
-	Distribution       DistributionData         `json:"distribution"        yaml:"distribution"`
+	Distribution       map[string]int           `json:"distribution"        yaml:"distribution"`
 	HighRiskFunctions  []HighRiskFunctionData   `json:"high_risk_functions" yaml:"high_risk_functions"`
 	Aggregate          AggregateData            `json:"aggregate"           yaml:"aggregate"`
 }

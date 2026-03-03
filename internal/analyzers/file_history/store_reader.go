@@ -2,7 +2,6 @@ package filehistory
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -23,43 +22,35 @@ func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, err
 		return nil, fmt.Errorf("read %s: %w", KindFileChurn, churnErr)
 	}
 
-	return buildStoreSections(churnData)
+	compositionTS, compErr := readCompositionIfPresent(reader, kinds)
+	if compErr != nil {
+		return nil, fmt.Errorf("read %s: %w", KindComposition, compErr)
+	}
+
+	return buildStoreSections(churnData, compositionTS)
 }
 
 // readFileChurnIfPresent reads all file_churn records, returning nil if absent.
 func readFileChurnIfPresent(reader analyze.ReportReader, kinds []string) ([]FileChurnData, error) {
-	if !slices.Contains(kinds, KindFileChurn) {
-		return nil, nil
-	}
+	return analyze.ReadRecordsIfPresent[FileChurnData](reader, kinds, KindFileChurn)
+}
 
-	var result []FileChurnData
-
-	iterErr := reader.Iter(KindFileChurn, func(raw []byte) error {
-		var record FileChurnData
-
-		decErr := analyze.GobDecode(raw, &record)
-		if decErr != nil {
-			return decErr
-		}
-
-		result = append(result, record)
-
-		return nil
-	})
-
-	return result, iterErr
+// readCompositionIfPresent reads all composition records, returning nil if absent.
+func readCompositionIfPresent(reader analyze.ReportReader, kinds []string) ([]CompositionTimeSeriesEntry, error) {
+	return analyze.ReadRecordsIfPresent[CompositionTimeSeriesEntry](reader, kinds, KindComposition)
 }
 
 // buildStoreSections constructs the file history plot sections from pre-computed data.
-func buildStoreSections(churnData []FileChurnData) ([]plotpage.Section, error) {
-	if len(churnData) == 0 {
+func buildStoreSections(churnData []FileChurnData, compositionTS []CompositionTimeSeriesEntry) ([]plotpage.Section, error) {
+	if len(churnData) == 0 && len(compositionTS) == 0 {
 		return nil, nil
 	}
 
-	chart := buildBarChartFromChurnData(churnData)
+	var sections []plotpage.Section
 
-	return []plotpage.Section{
-		{
+	if len(churnData) > 0 {
+		chart := buildBarChartFromChurnData(churnData)
+		sections = append(sections, plotpage.Section{
 			Title:    "Most Modified Files",
 			Subtitle: "Files ranked by total number of commits touching them.",
 			Chart:    plotpage.WrapChart(chart),
@@ -73,8 +64,31 @@ func buildStoreSections(churnData []FileChurnData) ([]plotpage.Section, error) {
 					"Action: High-churn files benefit from better test coverage",
 				},
 			},
-		},
-	}, nil
+		})
+	}
+
+	if compChart := buildCompositionChartFromTS(compositionTS); compChart != nil {
+		sections = append(sections, plotpage.Section{
+			Title:    "File Composition Over Time",
+			Subtitle: "Distribution of changed files by category across analysis ticks.",
+			Chart:    plotpage.WrapChart(compChart),
+			Hint: plotpage.Hint{
+				Title: "Categories:",
+				Items: []string{
+					"Source = project code (first-party)",
+					"Documentation = docs, README, LICENSE, examples",
+					"Configuration = YAML, JSON, TOML, XML, Makefile",
+					"Vendor = third-party dependencies (node_modules, vendor/)",
+					"Generated = protobuf, code generators, minified bundles",
+					"DotFile = .gitignore, .editorconfig, etc.",
+					"Image = PNG, JPG, GIF",
+					"Binary = files with binary content",
+				},
+			},
+		})
+	}
+
+	return sections, nil
 }
 
 // buildBarChartFromChurnData builds a bar chart from pre-sorted FileChurnData.

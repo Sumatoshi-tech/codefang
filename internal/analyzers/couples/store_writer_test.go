@@ -96,19 +96,20 @@ func TestWriteToStoreFromAggregator_RoundTrip(t *testing.T) {
 
 	defer reader.Close()
 
+	kinds := reader.Kinds()
+
 	// Verify file_coupling records exist.
-	fileCoupling, fcErr := readFileCoupling(reader)
+	fileCoupling, fcErr := readFileCouplingIfPresent(reader, kinds)
 	require.NoError(t, fcErr)
 	assert.NotEmpty(t, fileCoupling, "expected file coupling records")
 
 	// Verify dev_matrix record exists.
-	devMatrix, dmErr := readDevMatrix(reader)
+	devMatrix, dmErr := readDevMatrixIfPresent(reader, kinds)
 	require.NoError(t, dmErr)
-	assert.NotNil(t, devMatrix)
 	assert.NotEmpty(t, devMatrix.Names)
 
 	// Verify ownership records exist.
-	ownership, owErr := readOwnership(reader)
+	ownership, owErr := readOwnershipIfPresent(reader, kinds)
 	require.NoError(t, owErr)
 	assert.NotEmpty(t, ownership, "expected ownership records")
 
@@ -153,7 +154,7 @@ func TestWriteToStoreFromAggregator_FileCouplingTopK(t *testing.T) {
 
 	defer reader.Close()
 
-	fileCoupling, fcErr := readFileCoupling(reader)
+	fileCoupling, fcErr := readFileCouplingIfPresent(reader, reader.Kinds())
 	require.NoError(t, fcErr)
 	assert.Len(t, fileCoupling, 1, "TopK=1 should emit exactly 1 pair")
 }
@@ -286,7 +287,7 @@ func TestWriteToStoreFromAggregator_EquivalenceReferencePath(t *testing.T) {
 
 	defer reader.Close()
 
-	storeFileCoupling, fcErr := readFileCoupling(reader)
+	storeFileCoupling, fcErr := readFileCouplingIfPresent(reader, reader.Kinds())
 	require.NoError(t, fcErr)
 
 	// Compare top file coupling pairs. Sort both by File1+File2 for deterministic comparison.

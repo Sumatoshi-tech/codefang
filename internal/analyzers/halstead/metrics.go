@@ -398,9 +398,9 @@ func (m *HighEffortFunctionMetric) Compute(input *ReportData) []HighEffortFuncti
 
 		var riskLevel string
 		if fn.Volume >= VolumeThresholdHigh {
-			riskLevel = "HIGH"
+			riskLevel = string(metrics.RiskHigh)
 		} else {
-			riskLevel = "MEDIUM"
+			riskLevel = string(metrics.RiskMedium)
 		}
 
 		result = append(result, HighEffortFunctionData{

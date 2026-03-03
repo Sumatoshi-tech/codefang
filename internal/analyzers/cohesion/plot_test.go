@@ -292,12 +292,12 @@ func TestCountCohesionDistribution(t *testing.T) {
 		{"name": "fn6", "cohesion": 0.1},  // Poor.
 	}
 
-	dist := countCohesionDistribution(functions)
+	dist := stats.Distribution(functions, classifyCohesionForPlot)
 
-	assert.Equal(t, 2, dist["Excellent"])
-	assert.Equal(t, 2, dist["Good"])
-	assert.Equal(t, 1, dist["Fair"])
-	assert.Equal(t, 1, dist["Poor"])
+	assert.Equal(t, 2, dist[plotLabelExcellent])
+	assert.Equal(t, 2, dist[plotLabelGood])
+	assert.Equal(t, 1, dist[plotLabelFair])
+	assert.Equal(t, 1, dist[plotLabelPoor])
 }
 
 func TestCreateEmptyCohesionChart(t *testing.T) {

@@ -54,6 +54,17 @@ func ReportFunctionList(report Report, key string) ([]map[string]any, bool) {
 	return result, len(result) > 0
 }
 
+// ReportFunctionListWithFallback extracts a function list from a report,
+// trying the primary key first, then the fallback key.
+func ReportFunctionListWithFallback(report Report, primaryKey, fallbackKey string) ([]map[string]any, bool) {
+	functions, ok := ReportFunctionList(report, primaryKey)
+	if ok {
+		return functions, true
+	}
+
+	return ReportFunctionList(report, fallbackKey)
+}
+
 // Thresholds represents color-coded thresholds for multiple metrics
 // Structure: {"metric_name": {"red": value, "yellow": value, "green": value}}.
 type Thresholds = map[string]map[string]any

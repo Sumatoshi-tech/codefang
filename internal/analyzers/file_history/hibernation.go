@@ -37,9 +37,3 @@ const workingStateSize = 2 * 1024
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the file-history analyzer.
 const avgTCSize = 10 * 1024
-
-// WorkingStateSize returns the estimated bytes of working state per commit.
-func (h *HistoryAnalyzer) WorkingStateSize() int64 { return workingStateSize }
-
-// AvgTCSize returns the estimated bytes of TC payload per commit.
-func (h *HistoryAnalyzer) AvgTCSize() int64 { return avgTCSize }

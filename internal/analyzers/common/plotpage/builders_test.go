@@ -3,6 +3,7 @@ package plotpage_test
 import (
 	"testing"
 
+	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
@@ -11,7 +12,7 @@ import (
 func TestBuildBarChart(t *testing.T) {
 	t.Parallel()
 
-	opts := plotpage.DefaultChartOpts()
+	co := plotpage.DefaultChartOpts()
 	labels := []string{"Q1", "Q2", "Q3", "Q4"}
 	series := []plotpage.BarSeries{
 		{
@@ -25,7 +26,7 @@ func TestBuildBarChart(t *testing.T) {
 		},
 	}
 
-	chart := plotpage.BuildBarChart(opts, labels, series, "USD")
+	chart := plotpage.BuildBarChart(co, labels, series, "USD")
 	require.NotNil(t, chart)
 	require.NotEmpty(t, chart.MultiSeries)
 	require.Len(t, chart.MultiSeries, 2)
@@ -49,7 +50,7 @@ func TestBuildBarChart_NilOpts(t *testing.T) {
 func TestBuildLineChart(t *testing.T) {
 	t.Parallel()
 
-	opts := plotpage.DefaultChartOpts()
+	co := plotpage.DefaultChartOpts()
 	labels := []string{"Mon", "Tue", "Wed"}
 	series := []plotpage.LineSeries{
 		{
@@ -59,7 +60,7 @@ func TestBuildLineChart(t *testing.T) {
 		},
 	}
 
-	chart := plotpage.BuildLineChart(opts, labels, series, "Users (k)")
+	chart := plotpage.BuildLineChart(co, labels, series, "Users (k)")
 	require.NotNil(t, chart)
 	require.NotEmpty(t, chart.MultiSeries)
 	require.Len(t, chart.MultiSeries, 1)
@@ -75,6 +76,42 @@ func TestBuildLineChart_NilOpts(t *testing.T) {
 	}
 
 	chart := plotpage.BuildLineChart(nil, labels, series, "Count")
+	require.NotNil(t, chart)
+	require.Len(t, chart.MultiSeries, 1)
+}
+
+func TestBuildPieChart(t *testing.T) {
+	t.Parallel()
+
+	co := plotpage.DefaultChartOpts()
+	data := []opts.PieData{
+		{Name: "A", Value: 10},
+		{Name: "B", Value: 20},
+	}
+
+	chart := plotpage.BuildPieChart(co, "Test", data, "")
+	require.NotNil(t, chart)
+	require.NotEmpty(t, chart.MultiSeries)
+	require.Len(t, chart.MultiSeries, 1)
+	require.Equal(t, "Test", chart.MultiSeries[0].Name)
+}
+
+func TestBuildPieChart_NilOpts(t *testing.T) {
+	t.Parallel()
+
+	data := []opts.PieData{{Name: "A", Value: 10}}
+
+	chart := plotpage.BuildPieChart(nil, "Series", data, "")
+	require.NotNil(t, chart)
+	require.Len(t, chart.MultiSeries, 1)
+}
+
+func TestBuildPieChart_CustomRadius(t *testing.T) {
+	t.Parallel()
+
+	data := []opts.PieData{{Name: "A", Value: 10}}
+
+	chart := plotpage.BuildPieChart(nil, "Custom", data, "65%")
 	require.NotNil(t, chart)
 	require.Len(t, chart.MultiSeries, 1)
 }

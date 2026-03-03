@@ -11,6 +11,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pathfilter"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -22,6 +23,7 @@ type UASTPipeline struct {
 	Parser     *uast.Parser
 	Workers    int
 	BufferSize int
+	PathFilter *pathfilter.Filter
 }
 
 // NewUASTPipeline creates a new UAST pipeline stage.
@@ -38,6 +40,7 @@ func NewUASTPipeline(parser *uast.Parser, workers, bufferSize int) *UASTPipeline
 		Parser:     parser,
 		Workers:    workers,
 		BufferSize: bufferSize,
+		PathFilter: pathfilter.New(),
 	}
 }
 
@@ -380,6 +383,11 @@ func (p *UASTPipeline) parseBlob(
 		return nil
 	}
 
+	// Skip vendor/generated files before any blob access or parsing.
+	if p.PathFilter != nil && p.PathFilter.IsExcluded(filename) {
+		return nil
+	}
+
 	blob, ok := cache[hash]
 	if !ok {
 		return nil
@@ -390,6 +398,11 @@ func (p *UASTPipeline) parseBlob(
 	}
 
 	if len(blob.Data) > maxUASTBlobSize {
+		return nil
+	}
+
+	// Content-aware generated file detection (e.g., "DO NOT EDIT" headers).
+	if p.PathFilter != nil && p.PathFilter.IsExcludedWithContent(filename, blob.Data) {
 		return nil
 	}
 

@@ -73,7 +73,9 @@ func NewAnalyzer() *Analyzer {
 			Mode:        analyze.ModeHistory,
 			Description: "Calculates the number of commits, added, removed and changed lines per developer through time.",
 		},
-		Sequential: true,
+		Sequential:         true,
+		EstimatedStateSize: workingStateSize,
+		EstimatedTCSize:    avgTCSize,
 		ConfigOptions: []pipeline.ConfigurationOption{
 			{
 				Name:        ConfigDevsConsiderEmptyCommits,

@@ -181,31 +181,3 @@ func TestDetectAnomalies_EmptyInput(t *testing.T) {
 	anomalies := DetectAnomalies(nil, 2.0)
 	assert.Empty(t, anomalies)
 }
-
-func TestMeanStdDev_Basic(t *testing.T) {
-	t.Parallel()
-
-	mean, stddev := MeanStdDev([]float64{10, 20, 30})
-
-	assert.InDelta(t, 20.0, mean, 1e-9)
-	// Population stddev of [10,20,30] = sqrt(((10-20)^2 + (20-20)^2 + (30-20)^2)/3) = sqrt(200/3) ~ 8.165.
-	assert.InDelta(t, math.Sqrt(200.0/3.0), stddev, 1e-9)
-}
-
-func TestMeanStdDev_SingleValue(t *testing.T) {
-	t.Parallel()
-
-	mean, stddev := MeanStdDev([]float64{42})
-
-	assert.InDelta(t, 42.0, mean, 1e-9)
-	assert.InDelta(t, 0.0, stddev, 1e-9)
-}
-
-func TestMeanStdDev_Empty(t *testing.T) {
-	t.Parallel()
-
-	mean, stddev := MeanStdDev(nil)
-
-	assert.InDelta(t, 0.0, mean, 1e-9)
-	assert.InDelta(t, 0.0, stddev, 1e-9)
-}

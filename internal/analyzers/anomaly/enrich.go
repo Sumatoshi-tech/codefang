@@ -3,6 +3,8 @@ package anomaly
 import (
 	"math"
 	"sort"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 )
 
 func detectExternalAnomalies(
@@ -32,7 +34,7 @@ func detectExternalAnomalies(
 		}
 
 		scores := ComputeZScores(values, windowSize)
-		mean, stddev := MeanStdDev(values)
+		mean, stddev := stats.MeanStdDev(values)
 
 		var highestZ float64
 

@@ -193,6 +193,39 @@ func TestMeanStdDev(t *testing.T) {
 	}
 }
 
+// FRD: specs/frds/FRD-20260303-to-percent.md.
+
+func TestToPercent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ratio    float64
+		expected float64
+	}{
+		{name: "positive_ratio", ratio: 0.75, expected: 75.0},
+		{name: "zero", ratio: 0, expected: 0},
+		{name: "negative_ratio", ratio: -0.25, expected: -25.0},
+		{name: "full_ratio", ratio: 1.0, expected: PercentMultiplier},
+		{name: "above_one", ratio: 1.5, expected: 150.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := ToPercent(tt.ratio)
+			assert.InDelta(t, tt.expected, got, 0.0001)
+		})
+	}
+}
+
+func TestPercentMultiplierConstant(t *testing.T) {
+	t.Parallel()
+
+	assert.InDelta(t, 100.0, float64(PercentMultiplier), 0.0001)
+}
+
 func TestMean(t *testing.T) {
 	t.Parallel()
 
@@ -216,4 +249,76 @@ func TestMean(t *testing.T) {
 			assert.InDelta(t, tt.expected, got, 0.0001)
 		})
 	}
+}
+
+// FRD: specs/frds/FRD-20260303-distribution.md.
+
+func TestDistribution(t *testing.T) {
+	t.Parallel()
+
+	classifySign := func(n int) string {
+		switch {
+		case n > 0:
+			return "positive"
+		case n < 0:
+			return "negative"
+		default:
+			return "zero"
+		}
+	}
+
+	t.Run("nil_returns_nil", func(t *testing.T) {
+		t.Parallel()
+
+		got := Distribution[int](nil, classifySign)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty_returns_empty_map", func(t *testing.T) {
+		t.Parallel()
+
+		got := Distribution([]int{}, classifySign)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
+
+	t.Run("single_item", func(t *testing.T) {
+		t.Parallel()
+
+		got := Distribution([]int{5}, classifySign)
+		assert.Equal(t, map[string]int{"positive": 1}, got)
+	})
+
+	t.Run("multiple_buckets", func(t *testing.T) {
+		t.Parallel()
+
+		got := Distribution([]int{-3, 0, 5, -1, 7}, classifySign)
+		assert.Equal(t, map[string]int{
+			"negative": 2,
+			"zero":     1,
+			"positive": 2,
+		}, got)
+	})
+
+	t.Run("all_same_bucket", func(t *testing.T) {
+		t.Parallel()
+
+		got := Distribution([]int{1, 2, 3}, classifySign)
+		assert.Equal(t, map[string]int{"positive": 3}, got)
+	})
+
+	t.Run("string_items", func(t *testing.T) {
+		t.Parallel()
+
+		classifyLen := func(s string) string {
+			if len(s) <= 3 {
+				return "short"
+			}
+
+			return "long"
+		}
+
+		got := Distribution([]string{"ab", "hello", "cd", "world"}, classifyLen)
+		assert.Equal(t, map[string]int{"short": 2, "long": 2}, got)
+	})
 }

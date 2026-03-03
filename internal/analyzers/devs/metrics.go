@@ -11,6 +11,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/hll"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
@@ -85,12 +87,12 @@ func aggregateDevTickFromCommits(hashes []gitlib.Hash, commitDevData map[string]
 		dt.Removed += cdd.Removed
 		dt.Changed += cdd.Changed
 
-		for lang, stats := range cdd.Languages {
+		for lang, langSt := range cdd.Languages {
 			ls := dt.Languages[lang]
 			dt.Languages[lang] = pkgplumbing.LineStats{
-				Added:   ls.Added + stats.Added,
-				Removed: ls.Removed + stats.Removed,
-				Changed: ls.Changed + stats.Changed,
+				Added:   ls.Added + langSt.Added,
+				Removed: ls.Removed + langSt.Removed,
+				Changed: ls.Changed + langSt.Changed,
 			}
 		}
 	}
@@ -451,12 +453,12 @@ func updateDevStats(dev *DeveloperData, dt *DevTick, tick int) {
 }
 
 func mergeLanguageStats(target, source map[string]pkgplumbing.LineStats) {
-	for lang, stats := range source {
+	for lang, langSt := range source {
 		ls := target[lang]
 		target[lang] = pkgplumbing.LineStats{
-			Added:   ls.Added + stats.Added,
-			Removed: ls.Removed + stats.Removed,
-			Changed: ls.Changed + stats.Changed,
+			Added:   ls.Added + langSt.Added,
+			Removed: ls.Removed + langSt.Removed,
+			Changed: ls.Changed + langSt.Changed,
 		}
 	}
 }
@@ -495,7 +497,7 @@ func (m *LanguagesMetric) Compute(developers []DeveloperData) []LanguageData {
 	langMap := make(map[string]*LanguageData)
 
 	for _, dev := range developers {
-		for lang, stats := range dev.Languages {
+		for lang, langSt := range dev.Languages {
 			if lang == "" {
 				lang = "Other"
 			}
@@ -509,8 +511,8 @@ func (m *LanguagesMetric) Compute(developers []DeveloperData) []LanguageData {
 				langMap[lang] = ld
 			}
 
-			ld.TotalLines += stats.Added
-			contribution := stats.Added + stats.Removed
+			ld.TotalLines += langSt.Added
+			contribution := langSt.Added + langSt.Removed
 			ld.TotalContribution += contribution
 			ld.Contributors[dev.ID] += contribution
 		}
@@ -560,25 +562,6 @@ const (
 	ThresholdMedium   = 60.0
 )
 
-// Risk level constants.
-const (
-	RiskCritical = "CRITICAL"
-	RiskHigh     = "HIGH"
-	RiskMedium   = "MEDIUM"
-	RiskLow      = "LOW"
-)
-
-// Percent multiplier for calculations.
-const percentMultiplier = 100
-
-// Risk priority values for sorting.
-const (
-	riskPriorityCritical = 0
-	riskPriorityHigh     = 1
-	riskPriorityMedium   = 2
-	riskPriorityDefault  = 3
-)
-
 // busFactorThreshold is the CHAOSS contribution coverage threshold (50%).
 const busFactorThreshold = 0.5
 
@@ -621,31 +604,34 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 		if len(contribs) > 0 {
 			bf.PrimaryDevID = contribs[0].id
 			bf.PrimaryDevName = devName(contribs[0].id, input.Names)
-			bf.PrimaryPct = float64(contribs[0].lines) / float64(ld.TotalContribution) * percentMultiplier
+			bf.PrimaryPct = stats.ToPercent(float64(contribs[0].lines) / float64(ld.TotalContribution))
 		}
 
 		if len(contribs) > 1 {
 			bf.SecondaryDevID = contribs[1].id
 			bf.SecondaryDevName = devName(contribs[1].id, input.Names)
-			bf.SecondaryPct = float64(contribs[1].lines) / float64(ld.TotalContribution) * percentMultiplier
+			bf.SecondaryPct = stats.ToPercent(float64(contribs[1].lines) / float64(ld.TotalContribution))
 		}
 
 		switch {
 		case bf.PrimaryPct >= ThresholdCritical:
-			bf.RiskLevel = RiskCritical
+			bf.RiskLevel = string(metrics.RiskCritical)
 		case bf.PrimaryPct >= ThresholdHigh:
-			bf.RiskLevel = RiskHigh
+			bf.RiskLevel = string(metrics.RiskHigh)
 		case bf.PrimaryPct >= ThresholdMedium:
-			bf.RiskLevel = RiskMedium
+			bf.RiskLevel = string(metrics.RiskMedium)
 		default:
-			bf.RiskLevel = RiskLow
+			bf.RiskLevel = string(metrics.RiskLow)
 		}
 
 		result = append(result, bf)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return riskPriority(result[i].RiskLevel) < riskPriority(result[j].RiskLevel)
+		iP := metrics.RiskPriority(metrics.RiskLevel(result[i].RiskLevel))
+		jP := metrics.RiskPriority(metrics.RiskLevel(result[j].RiskLevel))
+
+		return iP < jP
 	})
 
 	return result
@@ -694,7 +680,7 @@ func NewActivityMetric() *ActivityMetric {
 
 // Compute calculates activity time series from tick data.
 func (m *ActivityMetric) Compute(input *TickData) []ActivityData {
-	tickKeys := sortedKeys(input.Ticks)
+	tickKeys := mapx.SortedKeys(input.Ticks)
 	result := make([]ActivityData, len(tickKeys))
 
 	for i, tick := range tickKeys {
@@ -735,7 +721,7 @@ func NewChurnMetric() *ChurnMetric {
 
 // Compute calculates churn time series from tick data.
 func (m *ChurnMetric) Compute(input *TickData) []ChurnData {
-	tickKeys := sortedKeys(input.Ticks)
+	tickKeys := mapx.SortedKeys(input.Ticks)
 	result := make([]ChurnData, len(tickKeys))
 
 	for i, tick := range tickKeys {
@@ -809,7 +795,7 @@ func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 	}
 
 	if len(input.Ticks) > 0 {
-		tickKeys := sortedKeys(input.Ticks)
+		tickKeys := mapx.SortedKeys(input.Ticks)
 		maxTick := tickKeys[len(tickKeys)-1]
 		agg.AnalysisPeriodTicks = maxTick
 
@@ -1037,19 +1023,6 @@ func (m *ComputedMetrics) ToYAML() any {
 
 const defaultTickHours = 24
 
-func riskPriority(level string) int {
-	switch level {
-	case RiskCritical:
-		return riskPriorityCritical
-	case RiskHigh:
-		return riskPriorityHigh
-	case RiskMedium:
-		return riskPriorityMedium
-	default:
-		return riskPriorityDefault
-	}
-}
-
 func devName(id int, names []string) string {
 	if id == identity.AuthorMissing {
 		return identity.AuthorMissingName
@@ -1060,16 +1033,4 @@ func devName(id int, names []string) string {
 	}
 
 	return fmt.Sprintf("dev_%d", id)
-}
-
-func sortedKeys(m map[int]map[int]*DevTick) []int {
-	keys := make([]int, 0, len(m))
-
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	sort.Ints(keys)
-
-	return keys
 }

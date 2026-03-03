@@ -374,6 +374,93 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 	}
 }
 
+// FRD: specs/frds/FRD-20260303-data-extraction-guard.md.
+
+func TestReportFunctionListWithFallback_PrimaryKeyFound(t *testing.T) {
+	t.Parallel()
+
+	report := Report{
+		"functions": []map[string]any{
+			{"name": "foo", "complexity": 5},
+		},
+	}
+
+	functions, ok := ReportFunctionListWithFallback(report, "functions", "function_complexity")
+	if !ok {
+		t.Fatal("expected ok=true when primary key exists")
+	}
+
+	if len(functions) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(functions))
+	}
+
+	if functions[0]["name"] != "foo" {
+		t.Errorf("expected name=foo, got %v", functions[0]["name"])
+	}
+}
+
+func TestReportFunctionListWithFallback_NeitherKeyExists(t *testing.T) {
+	t.Parallel()
+
+	report := Report{"unrelated": "data"}
+
+	functions, ok := ReportFunctionListWithFallback(report, "functions", "function_complexity")
+	if ok {
+		t.Fatal("expected ok=false when neither key exists")
+	}
+
+	if functions != nil {
+		t.Errorf("expected nil functions, got %v", functions)
+	}
+}
+
+func TestReportFunctionListWithFallback_JSONDecodedFallback(t *testing.T) {
+	t.Parallel()
+
+	// Simulates JSON-decoded data where []map[string]any becomes []any.
+	report := Report{
+		"function_halstead": []any{
+			map[string]any{"name": "baz", "effort": 100.0},
+		},
+	}
+
+	functions, ok := ReportFunctionListWithFallback(report, "functions", "function_halstead")
+	if !ok {
+		t.Fatal("expected ok=true for JSON-decoded fallback data")
+	}
+
+	if len(functions) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(functions))
+	}
+
+	if functions[0]["name"] != "baz" {
+		t.Errorf("expected name=baz, got %v", functions[0]["name"])
+	}
+}
+
+func TestReportFunctionListWithFallback_FallbackKeyUsed(t *testing.T) {
+	t.Parallel()
+
+	report := Report{
+		"function_complexity": []map[string]any{
+			{"name": "bar", "complexity": 10},
+		},
+	}
+
+	functions, ok := ReportFunctionListWithFallback(report, "functions", "function_complexity")
+	if !ok {
+		t.Fatal("expected ok=true when fallback key exists")
+	}
+
+	if len(functions) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(functions))
+	}
+
+	if functions[0]["name"] != "bar" {
+		t.Errorf("expected name=bar, got %v", functions[0]["name"])
+	}
+}
+
 func TestRunAnalyzers_ContextCancellation(t *testing.T) {
 	t.Parallel()
 

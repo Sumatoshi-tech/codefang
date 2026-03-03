@@ -1,6 +1,6 @@
-package framework_test
+package pipeline_test
 
-// FRD: specs/frds/FRD-20260302-shared-response.md.
+// FRD: specs/frds/FRD-20260303-shared-response-move.md.
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Sumatoshi-tech/codefang/internal/framework"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
 var errComputeFailed = errors.New("compute failed")
@@ -22,7 +22,7 @@ func TestSharedResponse_Get_ReturnsComputedValue(t *testing.T) {
 
 	const want = 42
 
-	sr := framework.NewSharedResponse(func(_ context.Context) (int, error) {
+	sr := pipeline.NewSharedResponse(func(_ context.Context) (int, error) {
 		return want, nil
 	})
 
@@ -34,7 +34,7 @@ func TestSharedResponse_Get_ReturnsComputedValue(t *testing.T) {
 func TestSharedResponse_Get_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	sr := framework.NewSharedResponse(func(_ context.Context) (string, error) {
+	sr := pipeline.NewSharedResponse(func(_ context.Context) (string, error) {
 		return "", errComputeFailed
 	})
 
@@ -48,7 +48,7 @@ func TestSharedResponse_Get_EvaluatesOnce(t *testing.T) {
 
 	var calls atomic.Int64
 
-	sr := framework.NewSharedResponse(func(_ context.Context) (int, error) {
+	sr := pipeline.NewSharedResponse(func(_ context.Context) (int, error) {
 		calls.Add(1)
 
 		return 1, nil
@@ -81,7 +81,7 @@ func TestSharedResponse_Get_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	sr := framework.NewSharedResponse(func(ctx context.Context) (int, error) {
+	sr := pipeline.NewSharedResponse(func(ctx context.Context) (int, error) {
 		return 0, ctx.Err()
 	})
 
@@ -94,7 +94,7 @@ func TestSharedResponse_Get_CachesResultAcrossCalls(t *testing.T) {
 
 	const want = 7
 
-	sr := framework.NewSharedResponse(func(_ context.Context) (int, error) {
+	sr := pipeline.NewSharedResponse(func(_ context.Context) (int, error) {
 		return want, nil
 	})
 
@@ -110,7 +110,7 @@ func TestSharedResponse_Get_CachesResultAcrossCalls(t *testing.T) {
 func TestSharedResponse_Get_CachesErrorAcrossCalls(t *testing.T) {
 	t.Parallel()
 
-	sr := framework.NewSharedResponse(func(_ context.Context) (int, error) {
+	sr := pipeline.NewSharedResponse(func(_ context.Context) (int, error) {
 		return 0, errComputeFailed
 	})
 

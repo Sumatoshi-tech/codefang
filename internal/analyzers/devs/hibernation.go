@@ -35,9 +35,3 @@ const workingStateSize = 4 * 1024
 // avgTCSize is the estimated bytes of TC payload per commit
 // for the devs analyzer (per-language stats).
 const avgTCSize = 500
-
-// WorkingStateSize returns the estimated bytes of working state per commit.
-func (a *Analyzer) WorkingStateSize() int64 { return workingStateSize }
-
-// AvgTCSize returns the estimated bytes of TC payload per commit.
-func (a *Analyzer) AvgTCSize() int64 { return avgTCSize }
