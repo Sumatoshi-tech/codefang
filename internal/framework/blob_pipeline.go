@@ -29,6 +29,20 @@ type BlobPipeline struct {
 	WorkerCount    int
 	BlobCache      *cache.LRUBlobCache
 	ArenaSize      int
+
+	// dispatch sends a worker request to the pool. Initialized from PoolWorkerChan
+	// in the constructor; can be overridden for testing.
+	dispatch pipeline.DispatchFunc[gitlib.WorkerRequest]
+
+	// blobFetch checks the global blob cache for previously loaded blobs.
+	// Returns hits and misses from the cache lookup.
+	blobFetch pipeline.Fetcher[[]gitlib.Hash, blobFetchResult]
+}
+
+// blobFetchResult holds the outcome of a blob cache lookup.
+type blobFetchResult struct {
+	hits   map[gitlib.Hash]*gitlib.CachedBlob
+	misses []gitlib.Hash
 }
 
 // NewBlobPipelineWithCache creates a new blob pipeline with an optional global blob cache.
@@ -47,7 +61,7 @@ func NewBlobPipelineWithCache(
 		workerCount = 1
 	}
 
-	return &BlobPipeline{
+	p := &BlobPipeline{
 		SeqWorkerChan:  seqChan,
 		PoolWorkerChan: poolChan,
 		BufferSize:     bufferSize,
@@ -55,6 +69,34 @@ func NewBlobPipelineWithCache(
 		BlobCache:      blobCache,
 		ArenaSize:      DefaultBlobBatchArenaSize,
 	}
+
+	p.dispatch = pipeline.DispatchFunc[gitlib.WorkerRequest](func(ctx context.Context, req gitlib.WorkerRequest) error {
+		select {
+		case poolChan <- req:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+
+	type blobFetcher = pipeline.FetcherFunc[[]gitlib.Hash, blobFetchResult]
+
+	if blobCache != nil {
+		p.blobFetch = blobFetcher(func(_ context.Context, hashes []gitlib.Hash) (blobFetchResult, error) {
+			hits, misses := blobCache.GetMulti(hashes)
+
+			return blobFetchResult{hits: hits, misses: misses}, nil
+		})
+	} else {
+		p.blobFetch = blobFetcher(func(_ context.Context, hashes []gitlib.Hash) (blobFetchResult, error) {
+			return blobFetchResult{
+				hits:   make(map[gitlib.Hash]*gitlib.CachedBlob),
+				misses: hashes,
+			}, nil
+		})
+	}
+
+	return p
 }
 
 type blobJob struct {
@@ -131,9 +173,8 @@ func (p *BlobPipeline) processBatch(
 		}
 
 		// Send to POOL workers for parallelism.
-		select {
-		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
-		case <-ctx.Done():
+		dispatchErr := p.dispatch(ctx, gitlib.WithContext(ctx, req))
+		if dispatchErr != nil {
 			return gitlib.Hash{}
 		}
 
@@ -186,17 +227,15 @@ func (p *BlobPipeline) processBatch(
 		uniqueHashes = append(uniqueHashes, h)
 	}
 
-	var (
-		missingHashes   []gitlib.Hash
-		globalCacheHits map[gitlib.Hash]*gitlib.CachedBlob
-	)
-
-	if p.BlobCache != nil && len(uniqueHashes) > 0 {
-		globalCacheHits, missingHashes = p.BlobCache.GetMulti(uniqueHashes)
-	} else {
-		missingHashes = uniqueHashes
-		globalCacheHits = make(map[gitlib.Hash]*gitlib.CachedBlob)
+	// Check the blob cache via the Fetcher.
+	// The blob fetcher never returns an error (cache lookup is infallible).
+	cacheResult, fetchErr := p.blobFetch.Fetch(ctx, uniqueHashes)
+	if fetchErr != nil {
+		return lastCommitHash
 	}
+
+	globalCacheHits := cacheResult.hits
+	missingHashes := cacheResult.misses
 
 	// Fire sharded blob requests and create shared response.
 	batchState, earlyReturn := p.fireBlobBatchRequests(ctx, missingHashes)
@@ -300,9 +339,8 @@ func (p *BlobPipeline) fireBlobBatchRequests(
 		req.Response = respChan
 		respChans = append(respChans, respChan)
 
-		select {
-		case p.PoolWorkerChan <- gitlib.WithContext(ctx, req):
-		case <-ctx.Done():
+		dispatchErr := p.dispatch(ctx, gitlib.WithContext(ctx, req))
+		if dispatchErr != nil {
 			return nil, true
 		}
 	}

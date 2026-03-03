@@ -19,6 +19,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
 // ErrNotParallelizable is returned when a leaf analyzer does not implement [analyze.Parallelizable].
@@ -127,27 +128,67 @@ func (runner *Runner) tracer() trace.Tracer {
 	return otel.Tracer(tracerName)
 }
 
+// runState threads through the RunPhases chain in Runner.Run().
+type runState struct {
+	runner  *Runner
+	commits []*gitlib.Commit
+	reports map[analyze.HistoryAnalyzer]analyze.Report
+}
+
 // Run executes all analyzers over the given commits: initialize, consume each commit via pipeline, then finalize.
 func (runner *Runner) Run(ctx context.Context, commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
-	for _, a := range runner.Analyzers {
-		err := a.Initialize(runner.Repo)
-		if err != nil {
-			return nil, err
+	final, err := pipeline.RunPhases(ctx, runState{runner: runner, commits: commits},
+		pipeline.PhaseFunc[runState](initAnalyzersPhase),
+		pipeline.PhaseFunc[runState](initAggregatorsPhase),
+		pipeline.PhaseFunc[runState](processCommitsPhase),
+		pipeline.PhaseFunc[runState](finalizePhase),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return final.reports, nil
+}
+
+func initAnalyzersPhase(_ context.Context, s runState) (runState, error) {
+	for _, a := range s.runner.Analyzers {
+		initErr := a.Initialize(s.runner.Repo)
+		if initErr != nil {
+			return s, initErr
 		}
 	}
 
-	runner.initAggregators()
+	return s, nil
+}
 
-	if len(commits) == 0 {
-		return runner.FinalizeWithAggregators(ctx)
+func initAggregatorsPhase(_ context.Context, s runState) (runState, error) {
+	s.runner.initAggregators()
+
+	return s, nil
+}
+
+func processCommitsPhase(ctx context.Context, s runState) (runState, error) {
+	if len(s.commits) == 0 {
+		return s, nil
 	}
 
-	_, processErr := runner.processCommits(ctx, commits, 0, 0)
-	if processErr != nil {
-		return nil, processErr
+	_, err := s.runner.processCommits(ctx, s.commits, 0, 0)
+	if err != nil {
+		return s, err
 	}
 
-	return runner.FinalizeWithAggregators(ctx)
+	return s, nil
+}
+
+func finalizePhase(ctx context.Context, s runState) (runState, error) {
+	reports, err := s.runner.FinalizeWithAggregators(ctx)
+	if err != nil {
+		return s, err
+	}
+
+	s.reports = reports
+
+	return s, nil
 }
 
 // Initialize initializes all analyzers and creates aggregators.
@@ -555,23 +596,56 @@ func (runner *Runner) ProcessChunk(ctx context.Context, commits []*gitlib.Commit
 }
 
 // reportFromAggregator collects, flushes, and converts aggregated TICKs to a report.
+// aggState threads through the RunPhases chain in reportFromAggregator.
+type aggState struct {
+	agg    analyze.Aggregator
+	a      analyze.HistoryAnalyzer
+	ticks  []analyze.TICK
+	report analyze.Report
+}
+
 func reportFromAggregator(ctx context.Context, agg analyze.Aggregator, a analyze.HistoryAnalyzer) (analyze.Report, error) {
-	collectErr := agg.Collect()
+	final, err := pipeline.RunPhases(ctx, aggState{agg: agg, a: a},
+		pipeline.PhaseFunc[aggState](collectPhase),
+		pipeline.PhaseFunc[aggState](flushTicksPhase),
+		pipeline.PhaseFunc[aggState](reportFromTicksPhase),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return final.report, nil
+}
+
+func collectPhase(_ context.Context, s aggState) (aggState, error) {
+	collectErr := s.agg.Collect()
 	if collectErr != nil {
-		return nil, fmt.Errorf("collect %s: %w", a.Name(), collectErr)
+		return s, fmt.Errorf("collect %s: %w", s.a.Name(), collectErr)
 	}
 
-	ticks, flushErr := agg.FlushAllTicks()
-	if flushErr != nil {
-		return nil, fmt.Errorf("flush %s: %w", a.Name(), flushErr)
+	return s, nil
+}
+
+func flushTicksPhase(_ context.Context, s aggState) (aggState, error) {
+	ticks, err := s.agg.FlushAllTicks()
+	if err != nil {
+		return s, fmt.Errorf("flush %s: %w", s.a.Name(), err)
 	}
 
-	rep, repErr := a.ReportFromTICKs(ctx, ticks)
-	if repErr != nil {
-		return nil, fmt.Errorf("report %s: %w", a.Name(), repErr)
+	s.ticks = ticks
+
+	return s, nil
+}
+
+func reportFromTicksPhase(ctx context.Context, s aggState) (aggState, error) {
+	rep, err := s.a.ReportFromTICKs(ctx, s.ticks)
+	if err != nil {
+		return s, fmt.Errorf("report %s: %w", s.a.Name(), err)
 	}
 
-	return rep, nil
+	s.report = rep
+
+	return s, nil
 }
 
 // FinalizeWithAggregators produces reports from all leaf analyzers:
