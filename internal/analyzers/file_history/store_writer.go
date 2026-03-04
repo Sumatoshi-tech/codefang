@@ -11,9 +11,9 @@ import (
 
 // Store record kind constants.
 const (
-	KindFileChurn    = "file_churn"
-	KindSummary      = "summary"
-	KindComposition  = "composition"
+	KindFileChurn   = "file_churn"
+	KindSummary     = "summary"
+	KindComposition = "composition"
 )
 
 // ErrUnexpectedAggregator indicates a type assertion failure for the aggregator.

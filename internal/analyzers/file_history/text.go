@@ -90,14 +90,7 @@ func writeComposition(writer io.Writer, cfg terminal.Config, comp CompositionDat
 }
 
 func buildBar(pct float64, maxWidth int) string {
-	filled := int(pct / percentMultiplier * float64(maxWidth))
-	if filled < 0 {
-		filled = 0
-	}
-
-	if filled > maxWidth {
-		filled = maxWidth
-	}
+	filled := min(max(int(pct/percentMultiplier*float64(maxWidth)), 0), maxWidth)
 
 	return strings.Repeat("|", filled)
 }

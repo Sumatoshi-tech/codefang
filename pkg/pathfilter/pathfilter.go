@@ -16,8 +16,8 @@ import (
 // Filter determines whether a file should be excluded from analysis.
 // It combines enry vendor detection with generated-file name patterns.
 type Filter struct {
-	suffixes    []string // file suffix matches (e.g., ".pb.go")
-	filenamePfx []string // filename prefix matches (e.g., "zz_generated")
+	suffixes    []string // file suffix matches (e.g., ".pb.go").
+	filenamePfx []string // filename prefix matches (e.g., "zz_generated").
 }
 
 // Option configures a Filter.
@@ -139,20 +139,6 @@ func DefaultRules() Option {
 	}
 }
 
-// WithSuffixes adds file suffix exclusions (e.g., ".pb.go").
-func WithSuffixes(suffixes ...string) Option {
-	return func(f *Filter) {
-		f.suffixes = append(f.suffixes, suffixes...)
-	}
-}
-
-// WithFilenamePrefixes adds filename-prefix exclusions (e.g., "zz_generated").
-func WithFilenamePrefixes(prefixes ...string) Option {
-	return func(f *Filter) {
-		f.filenamePfx = append(f.filenamePfx, prefixes...)
-	}
-}
-
 // defaultSuffixes are file suffixes indicating generated code that should not
 // be structurally analyzed. These produce noise in UAST-based metrics and their
 // parse trees consume excessive tree-sitter memory.
@@ -162,9 +148,9 @@ var defaultSuffixes = []string{
 	".pb.gw.go",
 	".generated.go",
 	".deepcopy.go",
-	"_string.go",   // stringer output
-	"_enumer.go",   // enumer output
-	"_easyjson.go", // easyjson output
+	"_string.go",   // stringer output.
+	"_enumer.go",   // enumer output.
+	"_easyjson.go", // easyjson output.
 	// Protocol buffer outputs for other languages.
 	"_pb2.py",
 	"_pb2_grpc.py",
@@ -178,11 +164,11 @@ var defaultSuffixes = []string{
 	".bundle.js",
 }
 
-// defaultFilenamePrefixes are filename prefixes (matched against path.Base)
+// defaultFilenamePrefixes are filename prefixes (matched against [path.Base])
 // indicating generated code.
 var defaultFilenamePrefixes = []string{
-	"zz_generated", // Kubernetes code-generator output
-	"mock_",        // mockgen output
-	"fake_",        // counterfeiter output
-	"wire_gen",     // Google Wire
+	"zz_generated", // Kubernetes code-generator output.
+	"mock_",        // mockgen output.
+	"fake_",        // counterfeiter output.
+	"wire_gen",     // Google Wire.
 }

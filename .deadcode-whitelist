@@ -26,14 +26,3 @@ TestCommit.File
 TestCommit.Free
 TestSignature
 NewCommitForTest
-
-# --- pkg/pipeline: composable pipeline building blocks (library API) ---
-# FRD: specs/frds/FRD-20260302-composable-pipeline-patterns.md
-NewThresholdBatcher
-ThresholdBatcher.Add
-ThresholdBatcher.Flush
-PassthroughBatcher.Add
-PassthroughBatcher.Flush
-FetcherFunc.Fetch
-PhaseFunc.Run
-RunPhases

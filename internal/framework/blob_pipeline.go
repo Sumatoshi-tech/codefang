@@ -3,6 +3,7 @@ package framework
 import (
 	"context"
 	"maps"
+	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -11,6 +12,10 @@ import (
 
 // DefaultBlobBatchArenaSize is the default size of the memory arena for blob loading (4MB).
 const DefaultBlobBatchArenaSize = 4 * 1024 * 1024
+
+// estimatedHashesPerCommit is the average number of blob hashes per commit,
+// used to pre-size the allNeededHashes map.
+const estimatedHashesPerCommit = 4
 
 // BlobData holds loaded blob data for a commit.
 type BlobData struct {
@@ -29,6 +34,9 @@ type BlobPipeline struct {
 	WorkerCount    int
 	BlobCache      *cache.LRUBlobCache
 	ArenaSize      int
+
+	// arenaPool recycles arena byte slices to avoid repeated large allocations.
+	arenaPool sync.Pool
 
 	// dispatch sends a worker request to the pool. Initialized from PoolWorkerChan
 	// in the constructor; can be overridden for testing.
@@ -69,6 +77,10 @@ func NewBlobPipelineWithCache(
 		BlobCache:      blobCache,
 		ArenaSize:      DefaultBlobBatchArenaSize,
 	}
+
+	p.arenaPool = sync.Pool{New: func() any {
+		return make([]byte, p.ArenaSize)
+	}}
 
 	p.dispatch = pipeline.DispatchFunc[gitlib.WorkerRequest](func(ctx context.Context, req gitlib.WorkerRequest) error {
 		select {
@@ -187,7 +199,7 @@ func (p *BlobPipeline) processBatch(
 
 	// Collect Tree Diffs.
 	batchJobs := make([]blobJob, len(batch.Commits))
-	allNeededHashes := make(map[gitlib.Hash]bool)
+	allNeededHashes := make(map[gitlib.Hash]bool, len(batch.Commits)*estimatedHashesPerCommit)
 
 	var lastCommitHash gitlib.Hash
 
@@ -319,16 +331,24 @@ func (p *BlobPipeline) fireBlobBatchRequests(
 	}
 
 	// Fire batch requests and collect response channels.
-	var respChans []chan gitlib.BlobBatchResponse
+	// Track arenas so we can return them to the pool after cloning.
+	var (
+		respChans []chan gitlib.BlobBatchResponse
+		arenas    [][]byte
+	)
 
 	for _, chunk := range chunks {
 		if len(chunk) == 0 {
 			continue
 		}
 
-		// Allocate arena for this batch.
-		// We allocate one arena per request. It will be passed to CGO to fill.
-		arena := make([]byte, p.ArenaSize)
+		// Get arena from pool instead of allocating fresh.
+		arena, ok := p.arenaPool.Get().([]byte)
+		if !ok {
+			arena = make([]byte, p.ArenaSize)
+		}
+
+		arenas = append(arenas, arena)
 
 		req := gitlib.BlobBatchRequest{
 			Hashes: chunk,
@@ -341,34 +361,52 @@ func (p *BlobPipeline) fireBlobBatchRequests(
 
 		dispatchErr := p.dispatch(ctx, gitlib.WithContext(ctx, req))
 		if dispatchErr != nil {
+			// Return arenas on error path.
+			for _, a := range arenas {
+				p.arenaPool.Put(a) //nolint:staticcheck // sync.Pool accepts []byte
+			}
+
 			return nil, true
 		}
 	}
 
 	// Create a shared response that merges all sharded blob responses.
 	blobCache := p.BlobCache
+	arenaPool := &p.arenaPool
 
 	return pipeline.NewSharedResponse(func(ctx context.Context) (map[gitlib.Hash]*gitlib.CachedBlob, error) {
-		results := make(map[gitlib.Hash]*gitlib.CachedBlob)
-		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob)
+		results := make(map[gitlib.Hash]*gitlib.CachedBlob, len(missingHashes))
+		allNewBlobs := make(map[gitlib.Hash]*gitlib.CachedBlob, len(missingHashes))
 
 		for _, ch := range respChans {
 			select {
 			case resp := <-ch:
 				for _, blob := range resp.Blobs {
 					if blob != nil {
-						results[blob.Hash()] = blob
-						allNewBlobs[blob.Hash()] = blob
+						// Clone blob data to detach from arena memory.
+						// This allows the arena to be recycled.
+						cloned := blob.Clone()
+						results[cloned.Hash()] = cloned
+						allNewBlobs[cloned.Hash()] = cloned
 					}
 				}
 			case <-ctx.Done():
+				for _, a := range arenas {
+					arenaPool.Put(a) //nolint:staticcheck // sync.Pool accepts []byte
+				}
+
 				return nil, ctx.Err()
 			}
 		}
 
-		// Store new blobs in global cache.
+		// Return arenas to pool now that all blobs are cloned.
+		for _, a := range arenas {
+			arenaPool.Put(a) //nolint:staticcheck // sync.Pool accepts []byte
+		}
+
+		// Store cloned blobs directly (skip re-cloning since we own them).
 		if blobCache != nil && len(allNewBlobs) > 0 {
-			blobCache.PutMulti(allNewBlobs)
+			blobCache.PutMultiOwned(allNewBlobs)
 		}
 
 		return results, nil

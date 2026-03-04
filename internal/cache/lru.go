@@ -118,6 +118,12 @@ func (c *LRUBlobCache) PutMulti(blobs map[gitlib.Hash]*gitlib.CachedBlob) {
 	c.cache.PutMulti(blobs)
 }
 
+// PutMultiOwned adds multiple blobs without cloning.
+// The caller guarantees the blobs are exclusively owned heap copies (not arena-backed).
+func (c *LRUBlobCache) PutMultiOwned(blobs map[gitlib.Hash]*gitlib.CachedBlob) {
+	c.cache.PutMultiOwned(blobs)
+}
+
 // Stats returns cache statistics.
 func (c *LRUBlobCache) Stats() LRUStats {
 	return c.cache.Stats()

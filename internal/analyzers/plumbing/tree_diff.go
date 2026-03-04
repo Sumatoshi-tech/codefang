@@ -235,33 +235,11 @@ func (t *TreeDiffAnalyzer) filterChanges(ctx context.Context, changes gitlib.Cha
 }
 
 func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitlib.Change) bool {
-	var name string
-
-	var hash gitlib.Hash
-
-	switch change.Action {
-	case gitlib.Insert:
-		name = change.To.Name
-		hash = change.To.Hash
-	case gitlib.Delete:
-		name = change.From.Name
-		hash = change.From.Hash
-	case gitlib.Modify:
-		name = change.To.Name
-		hash = change.To.Hash
-	}
+	name, hash := changeNameHash(change)
 
 	// Check blacklist: user-specified prefixes + vendor/generated detection.
-	if len(t.SkipFiles) > 0 {
-		for _, prefix := range t.SkipFiles {
-			if strings.HasPrefix(name, prefix) {
-				return false
-			}
-		}
-
-		if t.pathFilter != nil && t.pathFilter.IsExcluded(name) {
-			return false
-		}
+	if len(t.SkipFiles) > 0 && t.isBlacklisted(name) {
+		return false
 	}
 
 	// Check whitelist regex.
@@ -278,6 +256,27 @@ func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitl
 	}
 
 	return true
+}
+
+// changeNameHash returns the relevant file name and hash for a change entry.
+func changeNameHash(change *gitlib.Change) (string, gitlib.Hash) {
+	if change.Action == gitlib.Delete {
+		return change.From.Name, change.From.Hash
+	}
+
+	return change.To.Name, change.To.Hash
+}
+
+// isBlacklisted checks whether a file path matches any blacklist prefix or is
+// excluded by the path filter.
+func (t *TreeDiffAnalyzer) isBlacklisted(name string) bool {
+	for _, prefix := range t.SkipFiles {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return t.pathFilter != nil && t.pathFilter.IsExcluded(name)
 }
 
 func (t *TreeDiffAnalyzer) checkLanguage(ctx context.Context, fileName string, hash gitlib.Hash) (bool, error) {

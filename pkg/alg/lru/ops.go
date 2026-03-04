@@ -143,6 +143,24 @@ func (c *Cache[K, V]) PutMulti(items map[K]V) {
 	}
 }
 
+// PutMultiOwned adds multiple key-value pairs without cloning.
+// The caller guarantees the values are exclusively owned and safe to store directly.
+// This avoids the clone cost when values have already been detached from shared memory.
+func (c *Cache[K, V]) PutMultiOwned(items map[K]V) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key, value := range items {
+		valSize := c.valueSize(value)
+
+		if c.maxSize > 0 && valSize > c.maxSize {
+			continue
+		}
+
+		c.putLocked(key, value, valSize)
+	}
+}
+
 // Clear removes all entries and resets the Bloom filter.
 func (c *Cache[K, V]) Clear() {
 	c.mu.Lock()

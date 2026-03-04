@@ -56,9 +56,7 @@ func NewAnalyzer() *HistoryAnalyzer {
 		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
 			return TicksToReport(ctx, t, ha.repo)
 		},
-		SerializeTextFn: func(result analyze.Report, writer io.Writer) error {
-			return generateText(result, writer)
-		},
+		SerializeTextFn: generateText,
 		SerializePlotFn: func(result analyze.Report, writer io.Writer) error {
 			return ha.generatePlot(result, writer)
 		},
@@ -220,6 +218,7 @@ func (h *HistoryAnalyzer) classifyChanges(changes gitlib.Changes, counts *Catego
 		}
 
 		var content []byte
+
 		if cache != nil {
 			if blob, ok := cache[hash]; ok && blob != nil {
 				content = blob.Data

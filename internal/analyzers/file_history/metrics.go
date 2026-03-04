@@ -124,7 +124,11 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		return nil, err
 	}
 
-	tickComp, _ := report["tick_composition"].(map[int]*CategoryCounts)
+	tickComp, ok := report["tick_composition"].(map[int]*CategoryCounts)
+	if !ok {
+		tickComp = nil
+	}
+
 	composition, compositionTS := computeComposition(tickComp)
 
 	return &ComputedMetrics{
@@ -275,6 +279,7 @@ func computeComposition(tickComp map[int]*CategoryCounts) (CompositionData, []Co
 		total.Add(counts)
 
 		breakdown := make(map[string]int)
+
 		for _, cat := range AllCategories {
 			v := counts.Get(cat)
 			if v > 0 {

@@ -118,49 +118,6 @@ func TestIsExcludedWithContent_NilContent(t *testing.T) {
 	assert.False(t, f.IsExcludedWithContent("main.go", nil))
 }
 
-func TestWithSuffixes(t *testing.T) {
-	t.Parallel()
-
-	f := New(WithSuffixes("_custom.go"))
-
-	assert.True(t, f.IsExcluded("pkg/foo_custom.go"))
-	// Default suffixes should not be present (custom option replaces defaults
-	// only when no default rules were added — but New() adds defaults when
-	// both slices are empty before custom options run).
-	// Since WithSuffixes appends, and New() applies DefaultRules when both are empty
-	// BEFORE options, let's verify defaults are NOT present here because
-	// WithSuffixes makes the slice non-empty before DefaultRules check.
-	// Actually: New() applies options first, then checks if both are empty.
-	// WithSuffixes("_custom.go") makes suffixes non-empty, so DefaultRules is skipped.
-	assert.False(t, f.IsExcluded("api/types.pb.go"))
-}
-
-func TestWithFilenamePrefixes(t *testing.T) {
-	t.Parallel()
-
-	f := New(WithFilenamePrefixes("custom_gen"))
-
-	assert.True(t, f.IsExcluded("pkg/custom_gen_types.go"))
-	// Default filename prefixes should not be present (same reasoning as above).
-	assert.False(t, f.IsExcluded("pkg/zz_generated_deepcopy.go"))
-}
-
-func TestCustomAndDefaultRules(t *testing.T) {
-	t.Parallel()
-
-	// Explicitly include DefaultRules plus custom rules.
-	f := New(DefaultRules(), WithSuffixes("_custom.go"), WithFilenamePrefixes("custom_gen"))
-
-	// Custom rules work.
-	assert.True(t, f.IsExcluded("pkg/foo_custom.go"))
-	assert.True(t, f.IsExcluded("pkg/custom_gen_types.go"))
-	// Default rules also work.
-	assert.True(t, f.IsExcluded("api/types.pb.go"))
-	assert.True(t, f.IsExcluded("pkg/zz_generated_deepcopy.go"))
-	// Vendor detection always works (enry).
-	assert.True(t, f.IsExcluded("vendor/foo/bar.go"))
-}
-
 func TestIsGeneratedPath(t *testing.T) {
 	t.Parallel()
 

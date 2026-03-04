@@ -9,6 +9,7 @@ import (
 // Category represents a file classification category.
 type Category string
 
+// File classification categories.
 const (
 	CategorySource        Category = "source"
 	CategoryVendor        Category = "vendor"

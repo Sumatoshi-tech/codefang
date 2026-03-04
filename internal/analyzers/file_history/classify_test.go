@@ -133,5 +133,5 @@ func TestAllCategories_ContainsAll(t *testing.T) {
 		assert.True(t, expected[cat], "unexpected category in AllCategories: %s", cat)
 	}
 
-	assert.Equal(t, len(expected), len(AllCategories), "AllCategories length mismatch")
+	assert.Len(t, AllCategories, len(expected), "AllCategories length mismatch")
 }
