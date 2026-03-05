@@ -98,6 +98,7 @@ func configureRunnerForStreaming(runner *Runner, config StreamingConfig, aggSpil
 	runner.TCSink = config.TCSink
 	runner.AggSpillBudget = aggSpillBudget
 	runner.TmpDir = config.TmpDir
+	runner.StageMetrics = &StageMetrics{}
 }
 
 // clearCheckpointOnCompletion removes the checkpoint directory after all chunks
@@ -726,6 +727,14 @@ func processChunksWithCheckpoint(
 		aggSizeBefore := runner.AggregatorStateSize()
 		runner.ResetTCCount()
 
+		// Start per-chunk sampler for memory triage.
+		if runner.StageMetrics != nil {
+			runner.StageMetrics.Reset()
+		}
+
+		samplerCtx, samplerCancel := context.WithCancel(ctx)
+		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget)
+
 		before := observability.TakeHeapSnapshot()
 
 		chunkCommits := commits[chunk.Start:chunk.End]
@@ -734,6 +743,8 @@ func processChunksWithCheckpoint(
 
 		pStats, err := runner.ProcessChunk(ctx, chunkCommits, chunk.Start, i)
 		if err != nil {
+			samplerCancel()
+
 			return stats, fmt.Errorf("chunk %d failed: %w", i+1, err)
 		}
 
@@ -741,6 +752,10 @@ func processChunksWithCheckpoint(
 		stats.pipeline.Add(pStats)
 
 		after := observability.TakeHeapSnapshot()
+
+		sampler.CaptureT1()
+		samplerCancel()
+
 		obs := buildReplanObservation(i, chunk, before, after, aggSizeBefore, runner, chunks)
 		newChunks := ap.Replan(obs)
 		replanned := len(newChunks) != len(chunks)
@@ -817,12 +832,21 @@ func processChunksFromIterator(
 		aggSizeBefore := runner.AggregatorStateSize()
 		runner.ResetTCCount()
 
+		// Start per-chunk sampler for memory triage.
+		if runner.StageMetrics != nil {
+			runner.StageMetrics.Reset()
+		}
+
+		samplerCtx, samplerCancel := context.WithCancel(ctx)
+		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget)
+
 		before := observability.TakeHeapSnapshot()
 
 		start := time.Now()
 
 		pStats, err := runner.ProcessChunk(ctx, chunkCommits, chunk.Start, i)
 		if err != nil {
+			samplerCancel()
 			freeCommits(chunkCommits)
 
 			return stats, fmt.Errorf("chunk %d failed: %w", i+1, err)
@@ -832,6 +856,9 @@ func processChunksFromIterator(
 		stats.pipeline.Add(pStats)
 
 		after := observability.TakeHeapSnapshot()
+
+		sampler.CaptureT1()
+		samplerCancel()
 
 		var postErr error
 
@@ -919,6 +946,22 @@ func loadCommitsFromIterator(iter *gitlib.CommitIter, n int) ([]*gitlib.Commit, 
 	}
 
 	return commits, nil
+}
+
+// startChunkSampler creates and starts a PipelineSampler for a chunk.
+// Returns the sampler (caller must call CaptureT1 + cancel the context when done).
+func startChunkSampler(ctx context.Context, logger *slog.Logger, metrics *StageMetrics, chunkIdx int, memBudget int64) *PipelineSampler {
+	sampler := NewPipelineSampler(SamplerConfig{
+		Logger:       logger,
+		Metrics:      metrics,
+		DumpDir:      "/tmp",
+		ChunkIndex:   chunkIdx,
+		MemBudget:    memBudget,
+		ProfileAtRSS: memBudget * 9 / 10, // Capture t1 at 90% of budget.
+	})
+	sampler.Start(ctx)
+
+	return sampler
 }
 
 // freeCommits releases all commit resources in the slice.
@@ -1050,10 +1093,19 @@ func processChunksDoubleBuffered(
 		aggSizeBefore := st.runner.AggregatorStateSize()
 		st.runner.ResetTCCount()
 
+		// Reset and start per-chunk sampler for memory triage.
+		if st.runner.StageMetrics != nil {
+			st.runner.StageMetrics.Reset()
+		}
+
+		samplerCtx, samplerCancel := context.WithCancel(ctx)
+		sampler := startChunkSampler(samplerCtx, logger, st.runner.StageMetrics, idx, st.memBudget)
+
 		before := observability.TakeHeapSnapshot()
 
 		dur, pStats, err := st.processCurrentChunk(ctx, idx, startChunk)
 		if err != nil {
+			samplerCancel()
 			drainPrefetch(prefetch)
 
 			return stats, err
@@ -1065,6 +1117,11 @@ func processChunksDoubleBuffered(
 		flushAnalyzers(st.runner.Analyzers)
 
 		after := observability.TakeHeapSnapshot()
+
+		// Capture t1 profile after chunk processing (at peak).
+		sampler.CaptureT1()
+		samplerCancel()
+
 		prefetch = st.replanAndDrainStale(ctx, idx, before, after, aggSizeBefore, prefetchedNext, prefetch)
 
 		handleMemoryPressure(ctx, logger, after, st.memBudget)

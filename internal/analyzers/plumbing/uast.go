@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -288,6 +289,13 @@ func (c *UASTChangesAnalyzer) parseAfterVersion(
 // whose tree-sitter parse trees consume hundreds of MB of CGO memory.
 const maxUASTBlobSize = 256 * 1024 // 256 KiB.
 
+// uastParseTimeout limits tree-sitter parsing time per file.
+// Some files (e.g., deeply nested JSON, generated code) cause pathological
+// tree-sitter behavior where the parser allocates hundreds of MiB/s of native
+// memory without bound. The cancellation flag stops the parse and the file is
+// skipped. 10 seconds is generous for any 256 KiB file.
+const uastParseTimeout = 10 * time.Second
+
 // parseBlob parses a blob into a UAST node if the file is supported.
 func (c *UASTChangesAnalyzer) parseBlob(
 	ctx context.Context,
@@ -318,7 +326,10 @@ func (c *UASTChangesAnalyzer) parseBlob(
 		return nil
 	}
 
-	parsed, err := c.parser.Parse(ctx, filename, blob.Data)
+	parseCtx, cancel := context.WithTimeout(ctx, uastParseTimeout)
+	defer cancel()
+
+	parsed, err := c.parser.Parse(parseCtx, filename, blob.Data)
 	if err != nil {
 		return nil
 	}

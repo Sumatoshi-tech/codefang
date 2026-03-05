@@ -39,6 +39,9 @@ type DiffPipeline struct {
 	// Useful for debugging or single-commit analysis.
 	NoBatch bool
 
+	// Metrics provides per-stage counters for memory triage. Nil-safe.
+	Metrics *StageMetrics
+
 	// dispatch sends a worker request to the pool. Initialized from PoolWorkerChan
 	// in the constructor; can be overridden for testing.
 	dispatch pipeline.DispatchFunc[gitlib.WorkerRequest]
@@ -218,6 +221,16 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 		}
 
 		pendingJobs = append(pendingJobs, job)
+
+		// Record diff queue depth for memory triage.
+		if p.Metrics != nil {
+			totalPending := int64(0)
+			for _, pj := range pendingJobs {
+				totalPending += int64(len(pj.pendingRequests))
+			}
+
+			p.Metrics.RecordDiffQueue(totalPending)
+		}
 
 		if ready {
 			flush()

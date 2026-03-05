@@ -195,6 +195,10 @@ type Coordinator struct {
 	// output channel is fully drained.
 	stats PipelineStats
 
+	// StageMetrics provides per-stage high-watermark counters for memory triage.
+	// When non-nil, pipeline stages update counters atomically and the sampler reads them.
+	StageMetrics *StageMetrics
+
 	commitStreamer *CommitStreamer
 	blobPipeline   *BlobPipeline
 	diffPipeline   *DiffPipeline
@@ -264,6 +268,8 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		blobPipeline.ArenaSize = config.BlobArenaSize
 	}
 
+	diffPipeline := NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache)
+
 	// Create UAST pipeline if workers are configured.
 	var uastPipeline *UASTPipeline
 
@@ -282,7 +288,7 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 			Lookahead: config.BufferSize,
 		},
 		blobPipeline: blobPipeline,
-		diffPipeline: NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache),
+		diffPipeline: diffPipeline,
 		uastPipeline: uastPipeline,
 		blobCache:    blobCache,
 		diffCache:    diffCache,
@@ -429,6 +435,12 @@ func scaleBytesByUnit(value uint64, unit string) uint64 {
 // After the returned channel is fully drained, call Stats() to retrieve
 // pipeline timing and cache metrics.
 func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-chan CommitData {
+	// Propagate stage metrics to pipelines for memory triage.
+	if c.StageMetrics != nil {
+		c.blobPipeline.Metrics = c.StageMetrics
+		c.diffPipeline.Metrics = c.StageMetrics
+	}
+
 	// Start all workers.
 	c.seqWorker.Start()
 
@@ -475,6 +487,11 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 
 		// Wait for all data to pass through.
 		for data := range dataChan {
+			// Record per-commit change count for memory triage.
+			if c.StageMetrics != nil {
+				c.StageMetrics.RecordCommit(int64(len(data.Changes)))
+			}
+
 			select {
 			case finalChan <- data:
 			case <-ctx.Done():

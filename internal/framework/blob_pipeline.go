@@ -2,6 +2,9 @@ package framework
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
 	"maps"
 	"sync"
 
@@ -16,6 +19,18 @@ const DefaultBlobBatchArenaSize = 4 * 1024 * 1024
 // estimatedHashesPerCommit is the average number of blob hashes per commit,
 // used to pre-size the allNeededHashes map.
 const estimatedHashesPerCommit = 4
+
+// maxChangesPerCommit caps the number of file changes per commit that will be
+// processed. Commits exceeding this (vendor moves, mass renames, generated code
+// imports) are skipped — their Error field is set to ErrCommitTooLarge so all
+// downstream stages (diff, UAST, analyzers) skip them cleanly. This bounds peak
+// Go heap usage regardless of commit size.
+const maxChangesPerCommit = 2000
+
+// ErrCommitTooLarge is set on BlobData.Error for commits exceeding maxChangesPerCommit.
+// The runner uses errors.Is to distinguish this from fatal pipeline errors and
+// skips the commit instead of aborting.
+var ErrCommitTooLarge = errors.New("commit exceeds max changes cap")
 
 // BlobData holds loaded blob data for a commit.
 type BlobData struct {
@@ -34,6 +49,9 @@ type BlobPipeline struct {
 	WorkerCount    int
 	BlobCache      *cache.LRUBlobCache
 	ArenaSize      int
+
+	// Metrics provides per-stage counters for memory triage. Nil-safe.
+	Metrics *StageMetrics
 
 	// arenaPool recycles arena byte slices to avoid repeated large allocations.
 	arenaPool sync.Pool
@@ -221,16 +239,37 @@ func (p *BlobPipeline) processBatch(
 		}
 
 		if resp.Error == nil {
-			hashes := p.collectBlobHashes(resp.Changes)
+			// Skip monster commits (vendor moves, mass renames) by setting
+			// ErrCommitTooLarge. The runner detects this and skips the commit
+			// instead of aborting the pipeline.
+			if len(resp.Changes) > maxChangesPerCommit {
+				log.Printf("blob pipeline: skipping commit %s (%d changes > %d cap)",
+					job.commit.Hash(), len(resp.Changes), maxChangesPerCommit)
+				bJob.data.Changes = nil
+				bJob.data.Error = fmt.Errorf("%w: %s has %d changes",
+					ErrCommitTooLarge, job.commit.Hash(), len(resp.Changes))
+			} else {
+				hashes := p.collectBlobHashes(resp.Changes)
 
-			bJob.neededHash = hashes
-			for _, h := range hashes {
-				allNeededHashes[h] = true
+				bJob.neededHash = hashes
+				for _, h := range hashes {
+					allNeededHashes[h] = true
+				}
 			}
 		}
 
 		batchJobs[i] = bJob
 		lastCommitHash = job.commit.Hash()
+	}
+
+	// Record per-batch change count for memory triage.
+	if p.Metrics != nil {
+		totalChanges := int64(0)
+		for _, job := range batchJobs {
+			totalChanges += int64(len(job.data.Changes))
+		}
+
+		p.Metrics.RecordBlobBatch(totalChanges, int64(len(allNeededHashes))*256) // ~256 bytes per hash estimate
 	}
 
 	// Identify missing blobs across the entire batch.

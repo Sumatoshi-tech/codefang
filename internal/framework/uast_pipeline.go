@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -406,7 +407,15 @@ func (p *UASTPipeline) parseBlob(
 		return nil
 	}
 
-	parsed, err := p.Parser.Parse(ctx, filename, blob.Data)
+	// Tree-sitter can exhibit pathological behavior on some files (e.g., deeply
+	// nested JSON, certain generated code patterns) causing unbounded native
+	// memory growth. The timeout triggers the cancellation flag to stop the parse.
+	const parseTimeout = 10 * time.Second
+
+	parseCtx, cancel := context.WithTimeout(ctx, parseTimeout)
+	defer cancel()
+
+	parsed, err := p.Parser.Parse(parseCtx, filename, blob.Data)
 	if err != nil {
 		return nil
 	}

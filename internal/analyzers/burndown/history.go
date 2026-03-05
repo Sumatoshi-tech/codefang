@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"io"
 	"maps"
 	"os"
@@ -148,8 +149,8 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 				"within specific time intervals through time.",
 			Mode: analyze.ModeHistory,
 		},
-		Sequential:         true,
-		CPUHeavyFlag:       false,
+		Sequential:         false,
+		CPUHeavyFlag:       true,
 		EstimatedStateSize: estimatedStateSizeKiB * kib,
 		EstimatedTCSize:    estimatedTCSizeKiB * kib,
 		ComputeMetricsFn:   ComputeAllMetrics,
@@ -1271,7 +1272,10 @@ func (b *HistoryAnalyzer) handleInsertion(
 	b.ensureCapacity(shard, id)
 
 	if shard.filesByID[id] != nil {
-		return fmt.Errorf("%w: %s", errFileAlreadyExists, name)
+		// Stale entry from a skipped commit — overwrite it.
+		log.Printf("burndown: insert collision for %s, resetting stale entry", name)
+		shard.filesByID[id] = nil
+		b.removeActiveID(shard, id)
 	}
 
 	file := b.newFile(shard, id, author, b.tick, lines)
@@ -1313,6 +1317,17 @@ func (b *HistoryAnalyzer) handleDeletion(
 	lines, err := blob.CountLines()
 	if err != nil {
 		return fmt.Errorf("%w: %s", errUnexpectedBinary, name)
+	}
+
+	// Guard against treap/blob length mismatch caused by skipped commits.
+	if file.Len() != lines {
+		log.Printf("burndown: src mismatch for deletion %s (tracked=%d, blob_lines=%d), force-removing",
+			name, file.Len(), lines)
+		file.Delete()
+		shard.filesByID[id] = nil
+		shard.fileHistoriesByID[id] = nil
+		b.removeActiveID(shard, id)
+		return nil
 	}
 
 	tick := b.tick
@@ -1409,8 +1424,17 @@ func (b *HistoryAnalyzer) handleModification(
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		return fmt.Errorf("%w: %s src %d != %d",
-			errInternalIntegritySource, change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
+		// Src mismatch can happen when commits are skipped (e.g., vendor moves
+		// exceeding the per-commit change cap). Reset the file by removing the
+		// stale tracking and re-inserting from the new blob content.
+		log.Printf("burndown: src mismatch for %s (tracked=%d, diff_old=%d), resetting",
+			change.To.Name, file.Len(), thisDiffs.OldLinesOfCode)
+
+		id := b.pathInterner.Intern(change.To.Name)
+		shard.filesByID[id] = nil
+		b.removeActiveID(shard, id)
+
+		return b.handleInsertion(shard, change, author, cache)
 	}
 
 	b.applyDiffs(file, thisDiffs, author)
@@ -1480,8 +1504,16 @@ func (b *HistoryAnalyzer) handleModificationRename(
 
 	thisDiffs := diffs[change.To.Name]
 	if file.Len() != thisDiffs.OldLinesOfCode {
-		return fmt.Errorf("%w: %s src %d != %d",
-			errInternalIntegritySource, change.To.Name, thisDiffs.OldLinesOfCode, file.Len())
+		log.Printf("burndown: src mismatch for rename %s (tracked=%d, diff_old=%d), resetting",
+			change.To.Name, file.Len(), thisDiffs.OldLinesOfCode)
+
+		shardTo := b.getShard(change.To.Name)
+		toID := b.pathInterner.Intern(change.To.Name)
+		b.ensureCapacity(shardTo, toID)
+		shardTo.filesByID[toID] = nil
+		b.removeActiveID(shardTo, toID)
+
+		return b.handleInsertion(shardTo, change, author, cache)
 	}
 
 	b.applyDiffs(file, thisDiffs, author)

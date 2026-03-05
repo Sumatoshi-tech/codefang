@@ -97,6 +97,10 @@ type Runner struct {
 	// Used by three-metric adaptive feedback to measure TC size per commit.
 	tcBytesAccumulated int64
 
+	// StageMetrics provides per-stage counters for memory triage.
+	// When non-nil, passed to Coordinator and updated by pipeline stages.
+	StageMetrics *StageMetrics
+
 	runtimeTuningOnce sync.Once
 	runtimeBallast    []byte
 }
@@ -929,6 +933,7 @@ func (runner *Runner) processCommitsSerial(
 		))
 
 	coordinator := NewCoordinator(runner.Repo, runner.Config)
+	coordinator.StageMetrics = runner.StageMetrics
 	dataChan := coordinator.Process(ctx, commits)
 
 	analyzerDurations := make([]time.Duration, len(runner.Analyzers))
@@ -937,6 +942,13 @@ func (runner *Runner) processCommitsSerial(
 
 	for data := range dataChan {
 		if data.Error != nil {
+			if errors.Is(data.Error, ErrCommitTooLarge) {
+				// Skip oversized commits (vendor moves, mass renames) without aborting.
+				commitIdx++
+
+				continue
+			}
+
 			observability.RecordSpanError(span, data.Error, observability.ErrTypeDependencyUnavailable, observability.ErrSourceDependency)
 			span.End()
 
@@ -1247,6 +1259,7 @@ func (runner *Runner) processCommitsHybrid(
 		))
 
 	coordinator := NewCoordinator(runner.Repo, runner.Config)
+	coordinator.StageMetrics = runner.StageMetrics
 	dataChan := coordinator.Process(ctx, commits)
 
 	core := runner.Analyzers[:runner.CoreCount]
@@ -1325,6 +1338,12 @@ func (runner *Runner) hybridCommitLoop(
 
 	for data := range dataChan {
 		if data.Error != nil {
+			if errors.Is(data.Error, ErrCommitTooLarge) {
+				commitIdx++
+
+				continue
+			}
+
 			closeWorkersAndWait(workers, wg)
 
 			return nil, nil, data.Error

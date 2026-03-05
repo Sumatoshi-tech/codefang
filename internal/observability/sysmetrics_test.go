@@ -40,6 +40,17 @@ func TestTakeHeapSnapshot_TimestampIsRecent(t *testing.T) {
 	assert.Greater(t, snap.TakenAtNS, minTimestamp)
 }
 
+func TestTakeHeapSnapshot_NewFields(t *testing.T) {
+	t.Parallel()
+
+	snap := observability.TakeHeapSnapshot()
+
+	assert.Positive(t, snap.HeapObjects, "HeapObjects should be positive")
+	assert.Positive(t, snap.StackInuse, "StackInuse should be positive")
+	assert.Positive(t, snap.NextGC, "NextGC should be positive")
+	assert.Positive(t, snap.Goroutines, "Goroutines should be positive")
+}
+
 func TestReadRSSBytes_NonNegative(t *testing.T) {
 	t.Parallel()
 
@@ -50,5 +61,18 @@ func TestReadRSSBytes_NonNegative(t *testing.T) {
 
 	if runtime.GOOS == "linux" {
 		assert.Positive(t, rss, "RSS should be positive on Linux")
+	}
+}
+
+func TestReadSmapsRollup_NonNegative(t *testing.T) {
+	t.Parallel()
+
+	smaps := observability.ReadSmapsRollup()
+
+	if runtime.GOOS == "linux" {
+		assert.Positive(t, smaps.Rss, "smaps Rss should be positive on Linux")
+		assert.GreaterOrEqual(t, smaps.Anonymous, int64(0))
+		// FileBacked = Rss - Anonymous, can be zero if all memory is anonymous.
+		assert.GreaterOrEqual(t, smaps.FileBacked, int64(0))
 	}
 }
