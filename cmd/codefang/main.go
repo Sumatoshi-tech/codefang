@@ -125,7 +125,10 @@ func saveProcMaps(path string) {
 	}
 	defer dst.Close()
 
-	_, _ = io.Copy(dst, src)
+	_, copyErr := io.Copy(dst, src)
+	if copyErr != nil {
+		log.Printf("saveProcMaps: %v", copyErr)
+	}
 }
 
 // handleRSSSpike dumps heap profile and /proc/self/maps when RSS exceeds threshold.

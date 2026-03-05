@@ -387,12 +387,13 @@ func TestSplitLeaves_ThreeGroups(t *testing.T) {
 
 	cpuHeavy, lw, ser := framework.SplitLeavesForTest(runner)
 
-	if len(cpuHeavy) != 1 || cpuHeavy[0].Name() != "heavy" {
-		t.Errorf("cpuHeavy = %v, want [heavy]", analyzerNames(cpuHeavy))
+	// All parallelizable leaves (both heavy and lightweight) go to Fork/Merge workers.
+	if len(cpuHeavy) != 2 {
+		t.Errorf("cpuHeavy = %v, want [lightweight heavy]", analyzerNames(cpuHeavy))
 	}
 
-	if len(lw) != 1 || lw[0].Name() != "lightweight" {
-		t.Errorf("lightweight = %v, want [lightweight]", analyzerNames(lw))
+	if len(lw) != 0 {
+		t.Errorf("lightweight = %v, want empty", analyzerNames(lw))
 	}
 
 	if len(ser) != 1 || ser[0].Name() != "serial" {
@@ -424,12 +425,13 @@ func TestSplitLeaves_NoCPUHeavy(t *testing.T) {
 
 	cpuHeavy, lw, ser := framework.SplitLeavesForTest(runner)
 
-	if len(cpuHeavy) != 0 {
-		t.Errorf("cpuHeavy = %v, want empty", analyzerNames(cpuHeavy))
+	// Even non-CPUHeavy parallelizable leaves go to Fork/Merge workers.
+	if len(cpuHeavy) != 1 || cpuHeavy[0].Name() != "lightweight" {
+		t.Errorf("cpuHeavy = %v, want [lightweight]", analyzerNames(cpuHeavy))
 	}
 
-	if len(lw) != 1 || lw[0].Name() != "lightweight" {
-		t.Errorf("lightweight = %v, want [lightweight]", analyzerNames(lw))
+	if len(lw) != 0 {
+		t.Errorf("lightweight = %v, want empty", analyzerNames(lw))
 	}
 
 	if len(ser) != 1 || ser[0].Name() != "serial" {

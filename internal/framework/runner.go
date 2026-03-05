@@ -898,10 +898,12 @@ func (runner *Runner) processCommits(ctx context.Context, commits []*gitlib.Comm
 	return runner.processCommitsSerial(ctx, commits, indexOffset, chunkIndex)
 }
 
-// splitLeaves partitions leaf analyzers into three groups:
-//   - cpuHeavy: Parallelizable, not SequentialOnly, CPUHeavy — dispatched to W workers via Fork/Merge.
-//   - lightweight: Parallelizable, not SequentialOnly, not CPUHeavy — run on main goroutine.
+// splitLeaves partitions leaf analyzers into two groups:
+//   - cpuHeavy: all Parallelizable, not SequentialOnly — dispatched to W workers via Fork/Merge.
 //   - serial: SequentialOnly or not Parallelizable — run on main goroutine.
+//
+// The lightweight return value is always nil; all parallelizable leaves are dispatched
+// to workers for better parallelization regardless of their CPUHeavy() flag.
 func (runner *Runner) splitLeaves() (cpuHeavy, lightweight, serial []analyze.HistoryAnalyzer) {
 	for _, leaf := range runner.Analyzers[runner.CoreCount:] {
 		par, ok := leaf.(analyze.Parallelizable)
