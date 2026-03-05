@@ -32,6 +32,9 @@ var errMissingInterfaces = errors.New("streaming: leaf analyzers missing require
 // 1-basing) + (1 for the prefetched chunk ahead).
 const prefetchChunkDisplayOffset = 2
 
+// profileRSSPercent is the RSS threshold percentage for triggering t1 heap profile.
+const profileRSSPercent = 90
+
 // StreamingConfig holds configuration for streaming pipeline execution.
 type StreamingConfig struct {
 	MemBudget     int64
@@ -756,19 +759,7 @@ func processChunksWithCheckpoint(
 		sampler.CaptureT1()
 		samplerCancel()
 
-		obs := buildReplanObservation(i, chunk, before, after, aggSizeBefore, runner, chunks)
-		newChunks := ap.Replan(obs)
-		replanned := len(newChunks) != len(chunks)
-
-		logChunkMemory(ctx, logger, ap, chunk, before, after, i, memBudget, replanned)
-
-		if replanned {
-			logger.InfoContext(ctx, "streaming: adaptive replan",
-				"old_chunks", len(chunks), "new_chunks", len(newChunks),
-				"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/units.KiB)
-		}
-
-		chunks = newChunks
+		chunks = replanAndLog(ctx, logger, ap, runner, chunks, i, chunk, before, after, aggSizeBefore, memBudget)
 
 		handleMemoryPressure(ctx, logger, after, memBudget)
 
@@ -785,6 +776,27 @@ func processChunksWithCheckpoint(
 	}
 
 	return stats, nil
+}
+
+// replanAndLog runs adaptive replanning and logs the result.
+func replanAndLog(
+	ctx context.Context, logger *slog.Logger, ap *streaming.AdaptivePlanner,
+	runner *Runner, chunks []streaming.ChunkBounds, i int, chunk streaming.ChunkBounds,
+	before, after observability.HeapSnapshot, aggSizeBefore int64, memBudget int64,
+) []streaming.ChunkBounds {
+	obs := buildReplanObservation(i, chunk, before, after, aggSizeBefore, runner, chunks)
+	newChunks := ap.Replan(obs)
+	replanned := len(newChunks) != len(chunks)
+
+	logChunkMemory(ctx, logger, ap, chunk, before, after, i, memBudget, replanned)
+
+	if replanned {
+		logger.InfoContext(ctx, "streaming: adaptive replan",
+			"old_chunks", len(chunks), "new_chunks", len(newChunks),
+			"ema_growth_kib", int64(ap.Stats().FinalGrowthRate)/units.KiB)
+	}
+
+	return newChunks
 }
 
 // processChunksFromIterator loads commits chunk-at-a-time from the iterator,
@@ -957,7 +969,7 @@ func startChunkSampler(ctx context.Context, logger *slog.Logger, metrics *StageM
 		DumpDir:      "/tmp",
 		ChunkIndex:   chunkIdx,
 		MemBudget:    memBudget,
-		ProfileAtRSS: memBudget * 9 / 10, // Capture t1 at 90% of budget.
+		ProfileAtRSS: memBudget * profileRSSPercent / percentDivisor, // Capture t1 at 90% of budget.
 	})
 	sampler.Start(ctx)
 
@@ -1086,21 +1098,14 @@ func processChunksDoubleBuffered(
 	}
 
 	for idx := startChunk; idx < len(st.chunks); idx++ {
-		// Save next chunk boundaries before prefetch so we can detect replan changes.
 		prefetchedNext := st.safeNextChunk(idx)
 		prefetch := st.startNextPrefetch(ctx, idx)
 
 		aggSizeBefore := st.runner.AggregatorStateSize()
 		st.runner.ResetTCCount()
 
-		// Reset and start per-chunk sampler for memory triage.
-		if st.runner.StageMetrics != nil {
-			st.runner.StageMetrics.Reset()
-		}
-
 		samplerCtx, samplerCancel := context.WithCancel(ctx)
-		sampler := startChunkSampler(samplerCtx, logger, st.runner.StageMetrics, idx, st.memBudget)
-
+		sampler := st.startSampler(ctx, samplerCtx, idx)
 		before := observability.TakeHeapSnapshot()
 
 		dur, pStats, err := st.processCurrentChunk(ctx, idx, startChunk)
@@ -1113,14 +1118,9 @@ func processChunksDoubleBuffered(
 
 		stats.record(dur, idx, st.chunks[idx])
 		stats.pipeline.Add(pStats)
-
 		flushAnalyzers(st.runner.Analyzers)
 
-		after := observability.TakeHeapSnapshot()
-
-		// Capture t1 profile after chunk processing (at peak).
-		sampler.CaptureT1()
-		samplerCancel()
+		after := st.stopSampler(sampler, samplerCancel)
 
 		prefetch = st.replanAndDrainStale(ctx, idx, before, after, aggSizeBefore, prefetchedNext, prefetch)
 
@@ -1144,6 +1144,24 @@ func processChunksDoubleBuffered(
 	}
 
 	return stats, nil
+}
+
+// startSampler resets stage metrics and starts a per-chunk pipeline sampler.
+func (st *doubleBufferState) startSampler(_, samplerCtx context.Context, idx int) *PipelineSampler {
+	if st.runner.StageMetrics != nil {
+		st.runner.StageMetrics.Reset()
+	}
+
+	return startChunkSampler(samplerCtx, st.logger, st.runner.StageMetrics, idx, st.memBudget)
+}
+
+// stopSampler captures the T1 snapshot, cancels the sampler context, and
+// returns a heap snapshot taken immediately after the chunk completes.
+func (st *doubleBufferState) stopSampler(sampler *PipelineSampler, cancel context.CancelFunc) observability.HeapSnapshot {
+	sampler.CaptureT1()
+	cancel()
+
+	return observability.TakeHeapSnapshot()
 }
 
 // invokeOnChunkComplete calls the onChunkComplete callback if set, wrapping

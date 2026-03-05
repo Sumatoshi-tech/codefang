@@ -21,9 +21,9 @@ import (
 const bufferSizeMultiplier = 2
 
 // optimalWorkerRatio is the fraction of CPU cores to use for workers.
-// Testing shows ~60% of CPU cores provides optimal performance due to
-// contention overhead when using all cores.
-const optimalWorkerRatio = 60
+// With parallel leaf consumption, the pipeline is the bottleneck so
+// we use all cores for maximum I/O throughput.
+const optimalWorkerRatio = 100
 
 // uastPipelineWorkerRatio is the fraction of CPU cores to use for UAST pipeline workers.
 const uastPipelineWorkerRatio = 40

@@ -27,8 +27,11 @@ const estimatedHashesPerCommit = 4
 // Go heap usage regardless of commit size.
 const maxChangesPerCommit = 2000
 
+// estimatedHashBytes is the approximate memory per hash entry for metrics.
+const estimatedHashBytes = 256
+
 // ErrCommitTooLarge is set on BlobData.Error for commits exceeding maxChangesPerCommit.
-// The runner uses errors.Is to distinguish this from fatal pipeline errors and
+// The runner uses [errors.Is] to distinguish this from fatal pipeline errors and
 // skips the commit instead of aborting.
 var ErrCommitTooLarge = errors.New("commit exceeds max changes cap")
 
@@ -269,7 +272,7 @@ func (p *BlobPipeline) processBatch(
 			totalChanges += int64(len(job.data.Changes))
 		}
 
-		p.Metrics.RecordBlobBatch(totalChanges, int64(len(allNeededHashes))*256) // ~256 bytes per hash estimate
+		p.Metrics.RecordBlobBatch(totalChanges, int64(len(allNeededHashes))*estimatedHashBytes) // Estimated bytes per hash.
 	}
 
 	// Identify missing blobs across the entire batch.

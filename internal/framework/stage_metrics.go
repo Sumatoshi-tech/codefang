@@ -95,7 +95,7 @@ func (m *StageMetrics) Reset() {
 	m.PeakDiffQueued.Store(0)
 }
 
-// Snapshot returns a point-in-time copy of all metrics.
+// StageMetricsSnapshot is a point-in-time copy of all stage metrics.
 type StageMetricsSnapshot struct {
 	BlobChangesInFlight int64
 	BlobBytesLoaded     int64

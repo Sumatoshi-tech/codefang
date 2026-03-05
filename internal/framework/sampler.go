@@ -15,9 +15,12 @@ import (
 // samplerInterval is the polling interval for the pipeline sampler.
 const samplerInterval = 2 * time.Second
 
+// kilo is the divisor for displaying values in thousands.
+const kilo = 1000
+
 // PipelineSampler periodically logs comprehensive memory and pipeline metrics
 // during chunk processing. Implements playbook section 2.1: "lightweight
-// periodic sampler (always-on in debug builds)."
+// periodic sampler (always-on in debug builds).".
 type PipelineSampler struct {
 	logger       *slog.Logger
 	metrics      *StageMetrics
@@ -69,6 +72,7 @@ func (s *PipelineSampler) Start(ctx context.Context) {
 
 func (s *PipelineSampler) run(ctx context.Context) {
 	tick := 0
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -88,16 +92,13 @@ func (s *PipelineSampler) sample(tick int) {
 	smaps := observability.ReadSmapsRollup()
 	stage := s.metrics.Snapshot()
 
-	nativeMiB := (snap.RSS - snap.Sys) / int64(units.MiB)
-	if nativeMiB < 0 {
-		nativeMiB = 0
-	}
+	nativeMiB := max((snap.RSS-snap.Sys)/int64(units.MiB), 0)
 
 	// Classify growth bucket (playbook section 3):
 	// Case A: HeapInuse rises with RSS → Go heap retention
 	// Case B: StackInuse rises → goroutine explosion
 	// Case C: RSS rises but HeapInuse flat → native/mmap
-	// Case D: HeapInuse drops after GC but RSS doesn't → allocator retention
+	// Case D: HeapInuse drops after GC but RSS doesn't = allocator retention.
 	s.logger.Info("SAMPLER",
 		// Chunk context.
 		"chunk", s.chunkIndex+1,
@@ -106,7 +107,7 @@ func (s *PipelineSampler) sample(tick int) {
 		// Go runtime (playbook 2.1).
 		"heap_inuse_mib", snap.HeapInuse/int64(units.MiB),
 		"heap_alloc_mib", snap.HeapAlloc/int64(units.MiB),
-		"heap_objects_k", snap.HeapObjects/1000,
+		"heap_objects_k", snap.HeapObjects/kilo,
 		"stack_inuse_mib", snap.StackInuse/int64(units.MiB),
 		"next_gc_mib", snap.NextGC/int64(units.MiB),
 		"num_gc", snap.NumGC,
@@ -162,7 +163,8 @@ func (s *PipelineSampler) captureProfile(label string) {
 	}
 	defer f.Close()
 
-	if writeErr := pprof.Lookup("heap").WriteTo(f, 0); writeErr != nil {
+	writeErr := pprof.Lookup("heap").WriteTo(f, 0)
+	if writeErr != nil {
 		s.logger.Warn("sampler: failed to write profile", "path", path, "err", writeErr)
 
 		return

@@ -911,11 +911,10 @@ func (runner *Runner) splitLeaves() (cpuHeavy, lightweight, serial []analyze.His
 			continue
 		}
 
-		if par.CPUHeavy() {
-			cpuHeavy = append(cpuHeavy, leaf)
-		} else {
-			lightweight = append(lightweight, leaf)
-		}
+		// All parallelizable leaves go to Fork/Merge workers.
+		// Collectively the lightweight leaves
+		// dominate wall time and serialize the main loop.
+		cpuHeavy = append(cpuHeavy, leaf)
 	}
 
 	return cpuHeavy, lightweight, serial
@@ -1351,44 +1350,22 @@ func (runner *Runner) hybridCommitLoop(
 
 		analyzeCtx := runner.buildAnalyzeContext(data, indexOffset)
 
-		// Run core (plumbing) analyzers sequentially.
-		for i, a := range core {
-			start := time.Now()
+		coreErr := runner.runCoreAnalyzers(ctx, analyzeCtx, core, coreDurations)
+		if coreErr != nil {
+			closeWorkersAndWait(workers, wg)
 
-			_, coreErr := a.Consume(ctx, analyzeCtx)
-
-			coreDurations[i] += time.Since(start)
-
-			if coreErr != nil {
-				closeWorkersAndWait(workers, wg)
-
-				return nil, nil, coreErr
-			}
+			return nil, nil, coreErr
 		}
 
-		// Snapshot plumbing state for parallel workers before serial leaves mutate anything.
-		// Build a composite snapshot from ALL parallel leaves so every plumbing field
-		// (Changes, BlobCache, FileDiffs, UAST, Tick, AuthorID, etc.) is captured.
+		// Snapshot plumbing state and dispatch to a parallel worker.
 		work := runner.buildLeafWork(analyzeCtx, snapshotters)
-
-		// Dispatch parallel leaves to a worker.
 		workers[commitIdx%numWorkers].workChan <- work
 
-		// Run serial leaves on the main goroutine.
-		for i, a := range serialLeaves {
-			start := time.Now()
+		leafErr := runner.runSerialLeaves(ctx, analyzeCtx, serialLeaves, mainIndices, mainDurations)
+		if leafErr != nil {
+			closeWorkersAndWait(workers, wg)
 
-			tc, leafErr := a.Consume(ctx, analyzeCtx)
-
-			mainDurations[i] += time.Since(start)
-
-			if leafErr != nil {
-				closeWorkersAndWait(workers, wg)
-
-				return nil, nil, leafErr
-			}
-
-			runner.addTC(tc, mainIndices[i], analyzeCtx)
+			return nil, nil, leafErr
 		}
 
 		commitIdx++
@@ -1404,6 +1381,48 @@ func (runner *Runner) hybridCommitLoop(
 	closeWorkersAndWait(workers, wg)
 
 	return coreDurations, mainDurations, nil
+}
+
+// runCoreAnalyzers runs core (plumbing) analyzers sequentially, accumulating durations.
+func (runner *Runner) runCoreAnalyzers(
+	ctx context.Context, analyzeCtx *analyze.Context,
+	core []analyze.HistoryAnalyzer, durations []time.Duration,
+) error {
+	for i, a := range core {
+		start := time.Now()
+
+		_, coreErr := a.Consume(ctx, analyzeCtx)
+
+		durations[i] += time.Since(start)
+
+		if coreErr != nil {
+			return coreErr
+		}
+	}
+
+	return nil
+}
+
+// runSerialLeaves runs serial leaf analyzers on the main goroutine, accumulating durations.
+func (runner *Runner) runSerialLeaves(
+	ctx context.Context, analyzeCtx *analyze.Context,
+	leaves []analyze.HistoryAnalyzer, indices []int, durations []time.Duration,
+) error {
+	for i, a := range leaves {
+		start := time.Now()
+
+		tc, leafErr := a.Consume(ctx, analyzeCtx)
+
+		durations[i] += time.Since(start)
+
+		if leafErr != nil {
+			return leafErr
+		}
+
+		runner.addTC(tc, indices[i], analyzeCtx)
+	}
+
+	return nil
 }
 
 // setPipelineAttributes sets pipeline timing and cache stats as attributes on a chunk span.

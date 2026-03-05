@@ -66,23 +66,29 @@ func ReadSmapsRollup() SmapsRollup {
 
 	var s SmapsRollup
 
+	targets := []struct {
+		prefix string
+		dest   *int64
+	}{
+		{"Rss:", &s.Rss},
+		{"Pss:", &s.Pss},
+		{"Anonymous:", &s.Anonymous},
+		{"Shared_Clean:", &s.SharedClean},
+		{"Shared_Dirty:", &s.SharedDirty},
+		{"Private_Clean:", &s.PrivateClean},
+		{"Private_Dirty:", &s.PrivateDirty},
+	}
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if v, ok := parseSmapsKB(line, "Rss:"); ok {
-			s.Rss = v
-		} else if v, ok := parseSmapsKB(line, "Pss:"); ok {
-			s.Pss = v
-		} else if v, ok := parseSmapsKB(line, "Anonymous:"); ok {
-			s.Anonymous = v
-		} else if v, ok := parseSmapsKB(line, "Shared_Clean:"); ok {
-			s.SharedClean = v
-		} else if v, ok := parseSmapsKB(line, "Shared_Dirty:"); ok {
-			s.SharedDirty = v
-		} else if v, ok := parseSmapsKB(line, "Private_Clean:"); ok {
-			s.PrivateClean = v
-		} else if v, ok := parseSmapsKB(line, "Private_Dirty:"); ok {
-			s.PrivateDirty = v
+
+		for i := range targets {
+			if v, ok := parseSmapsKB(line, targets[i].prefix); ok {
+				*targets[i].dest = v
+
+				break
+			}
 		}
 	}
 
@@ -90,6 +96,9 @@ func ReadSmapsRollup() SmapsRollup {
 
 	return s
 }
+
+// bytesPerKB converts kB values from smaps to bytes.
+const bytesPerKB = 1024
 
 // parseSmapsKB extracts a kB value from a smaps line like "Rss: 1234 kB".
 // Returns the value in bytes and true if the line matches the prefix.
@@ -107,7 +116,7 @@ func parseSmapsKB(line, prefix string) (int64, bool) {
 		return 0, false
 	}
 
-	return v * 1024, true
+	return v * bytesPerKB, true
 }
 
 // statmMinFields is the minimum number of fields required from /proc/self/statm

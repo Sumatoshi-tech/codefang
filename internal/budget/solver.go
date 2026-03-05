@@ -64,6 +64,15 @@ const (
 	// OptimalWorkerRatio is the percentage of CPU cores to use for workers.
 	// Testing shows ~60% provides optimal performance due to contention overhead.
 	OptimalWorkerRatio = 60
+
+	// UASTPipelineWorkerRatio is the percentage of CPU cores for UAST pipeline workers.
+	UASTPipelineWorkerRatio = 40
+
+	// LeafWorkerDivisor controls leaf worker count: NumCPU / divisor.
+	LeafWorkerDivisor = 3
+
+	// MinLeafWorkers is the minimum number of leaf workers.
+	MinLeafWorkers = 4
 )
 
 // Solver errors.
@@ -122,12 +131,20 @@ func deriveKnobs(cacheAlloc, workerAlloc, bufferAlloc int64) framework.Coordinat
 	// Use default arena size.
 	arenaSize := DefaultArenaSize
 
+	// UAST pipeline workers: use uastPipelineWorkerRatio of CPU cores.
+	uastWorkers := max(1, runtime.NumCPU()*UASTPipelineWorkerRatio/percentDivisor)
+
+	// Leaf workers: CPU / leafWorkerDivisor, with a floor.
+	leafWorkers := max(MinLeafWorkers, runtime.NumCPU()/LeafWorkerDivisor)
+
 	return framework.CoordinatorConfig{
-		Workers:         workers,
-		BufferSize:      bufferSize,
-		CommitBatchSize: DefaultCommitBatchSize,
-		BlobCacheSize:   blobCacheSize,
-		DiffCacheSize:   diffCacheSize,
-		BlobArenaSize:   arenaSize,
+		Workers:             workers,
+		BufferSize:          bufferSize,
+		CommitBatchSize:     DefaultCommitBatchSize,
+		BlobCacheSize:       blobCacheSize,
+		DiffCacheSize:       diffCacheSize,
+		BlobArenaSize:       arenaSize,
+		UASTPipelineWorkers: uastWorkers,
+		LeafWorkers:         leafWorkers,
 	}
 }

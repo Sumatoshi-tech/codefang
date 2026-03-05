@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"io"
+	"log"
 	"maps"
 	"os"
 	"runtime"
@@ -30,13 +30,11 @@ import (
 
 // Sentinel errors for burndown analysis.
 var (
-	errPeopleNumberNegative    = errors.New("PeopleNumber is negative")
-	errReversedPeopleDictType  = errors.New("expected []string for reversedPeopleDict")
-	errMissingBlob             = errors.New("missing blob")
-	errFileAlreadyExists       = errors.New("file already exists")
-	errFileNotExist            = errors.New("file does not exist")
-	errUnexpectedBinary        = errors.New("previous version unexpectedly became binary")
-	errInternalIntegritySource = errors.New("internal integrity error src mismatch")
+	errPeopleNumberNegative   = errors.New("PeopleNumber is negative")
+	errReversedPeopleDictType = errors.New("expected []string for reversedPeopleDict")
+	errMissingBlob            = errors.New("missing blob")
+	errFileNotExist           = errors.New("file does not exist")
+	errUnexpectedBinary       = errors.New("previous version unexpectedly became binary")
 )
 
 // Configuration constants for burndown analysis.
@@ -1274,6 +1272,7 @@ func (b *HistoryAnalyzer) handleInsertion(
 	if shard.filesByID[id] != nil {
 		// Stale entry from a skipped commit — overwrite it.
 		log.Printf("burndown: insert collision for %s, resetting stale entry", name)
+
 		shard.filesByID[id] = nil
 		b.removeActiveID(shard, id)
 	}
@@ -1324,9 +1323,11 @@ func (b *HistoryAnalyzer) handleDeletion(
 		log.Printf("burndown: src mismatch for deletion %s (tracked=%d, blob_lines=%d), force-removing",
 			name, file.Len(), lines)
 		file.Delete()
+
 		shard.filesByID[id] = nil
 		shard.fileHistoriesByID[id] = nil
 		b.removeActiveID(shard, id)
+
 		return nil
 	}
 
@@ -1422,7 +1423,9 @@ func (b *HistoryAnalyzer) handleModification(
 		return nil
 	}
 
+	id = b.pathInterner.Intern(change.To.Name)
 	thisDiffs := diffs[change.To.Name]
+
 	if file.Len() != thisDiffs.OldLinesOfCode {
 		// Src mismatch can happen when commits are skipped (e.g., vendor moves
 		// exceeding the per-commit change cap). Reset the file by removing the
@@ -1430,7 +1433,6 @@ func (b *HistoryAnalyzer) handleModification(
 		log.Printf("burndown: src mismatch for %s (tracked=%d, diff_old=%d), resetting",
 			change.To.Name, file.Len(), thisDiffs.OldLinesOfCode)
 
-		id := b.pathInterner.Intern(change.To.Name)
 		shard.filesByID[id] = nil
 		b.removeActiveID(shard, id)
 

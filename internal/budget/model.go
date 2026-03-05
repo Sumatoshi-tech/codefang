@@ -50,7 +50,6 @@ const (
 	// The larger object cache compensates by keeping decompressed objects
 	// longer, reducing re-decompression overhead.
 	MwindowCacheRatio = 30
-
 )
 
 // DefaultMallocArenaMax limits glibc malloc arenas to prevent RSS bloat.
