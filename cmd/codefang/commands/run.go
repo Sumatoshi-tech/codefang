@@ -934,7 +934,7 @@ func initStreamingIterator(
 	}
 
 	if opts.Since != "" {
-		sinceTime, parseErr := gitlib.ParseTime(opts.Since)
+		sinceTime, parseErr := repository.ResolveTime(opts.Since)
 		if parseErr != nil {
 			repository.Free()
 

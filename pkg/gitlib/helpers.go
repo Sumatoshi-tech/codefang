@@ -67,6 +67,30 @@ func ParseTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
 }
 
+// ResolveTime resolves a time specification that may be a time string (duration,
+// RFC3339, date-only) or a commit SHA/ref. When a SHA/ref is given, the commit's
+// author timestamp is returned.
+func (r *Repository) ResolveTime(s string) (time.Time, error) {
+	t, parseErr := ParseTime(s)
+	if parseErr == nil {
+		return t, nil
+	}
+
+	obj, err := r.Native().RevparseSingle(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
+	}
+	defer obj.Free()
+
+	commit, err := obj.AsCommit()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s is not a commit: %w", s, err)
+	}
+	defer commit.Free()
+
+	return commit.Author().When, nil
+}
+
 // LoadCommits loads commits from a repository with the given options.
 func LoadCommits(ctx context.Context, repository *Repository, opts CommitLoadOptions) ([]*Commit, error) {
 	if opts.HeadOnly {
@@ -97,7 +121,7 @@ func loadHistoryCommits(ctx context.Context, repository *Repository, opts Commit
 	}
 
 	if opts.Since != "" {
-		sinceTime, parseErr := ParseTime(opts.Since)
+		sinceTime, parseErr := repository.ResolveTime(opts.Since)
 		if parseErr != nil {
 			return nil, fmt.Errorf("invalid time format for --since: %w", parseErr)
 		}
