@@ -38,68 +38,48 @@ func TestAnalyzeNode_BasicStructure(t *testing.T) {
 	result := analyzeNode(root, "test.go")
 
 	// Total: root + pkg + fn + if + call + method + loop = 7 nodes.
-	got, ok := result["total_nodes"].(int)
-	if !ok || got != 7 {
-		t.Errorf("total_nodes = %v, want 7", result["total_nodes"])
+	if result.TotalNodes != 7 {
+		t.Errorf("TotalNodes = %d, want 7", result.TotalNodes)
 	}
 
 	// Leaf count: pkg, call, loop = 3 leaf nodes.
-	gotLeaf, ok := result["leaf_nodes"].(int)
-	if !ok || gotLeaf != 3 {
-		t.Errorf("leaf_nodes = %v, want 3", result["leaf_nodes"])
+	if result.LeafNodes != 3 {
+		t.Errorf("LeafNodes = %d, want 3", result.LeafNodes)
 	}
 
 	// Max depth: root(0) -> fn(1) -> if(2) -> call(3) = depth 3.
-	gotDepth, ok := result["max_depth"].(int)
-	if !ok || gotDepth != 3 {
-		t.Errorf("max_depth = %v, want 3", result["max_depth"])
+	if result.MaxDepth != 3 {
+		t.Errorf("MaxDepth = %d, want 3", result.MaxDepth)
 	}
 
 	// Max children: root has 3 children.
-	gotChildren, ok := result["max_children"].(int)
-	if !ok || gotChildren != 3 {
-		t.Errorf("max_children = %v, want 3", result["max_children"])
+	if result.MaxChildren != 3 {
+		t.Errorf("MaxChildren = %d, want 3", result.MaxChildren)
 	}
 
-	gotFile, ok := result["file"].(string)
-	if !ok || gotFile != "test.go" {
-		t.Errorf("file = %v, want %q", result["file"], "test.go")
+	if result.File != "test.go" {
+		t.Errorf("File = %q, want %q", result.File, "test.go")
 	}
 
-	types, ok := result["types"].(map[string]int)
-	if !ok {
-		t.Fatal("types is not map[string]int")
+	if result.Types["Function"] != 1 {
+		t.Errorf("Types[Function] = %d, want 1", result.Types["Function"])
 	}
 
-	if types["Function"] != 1 {
-		t.Errorf("types[Function] = %d, want 1", types["Function"])
+	if result.Types["Method"] != 1 {
+		t.Errorf("Types[Method] = %d, want 1", result.Types["Method"])
 	}
 
-	if types["Method"] != 1 {
-		t.Errorf("types[Method] = %d, want 1", types["Method"])
+	if result.Types["If"] != 1 {
+		t.Errorf("Types[If] = %d, want 1", result.Types["If"])
 	}
 
-	if types["If"] != 1 {
-		t.Errorf("types[If] = %d, want 1", types["If"])
-	}
-
-	roles, ok := result["roles"].(map[string]int)
-	if !ok {
-		t.Fatal("roles is not map[string]int")
-	}
-
-	if roles["Function"] != 2 {
-		t.Errorf("roles[Function] = %d, want 2", roles["Function"])
+	if result.Roles["Function"] != 2 {
+		t.Errorf("Roles[Function] = %d, want 2", result.Roles["Function"])
 	}
 
 	// Role coverage: 6 out of 7 have roles (root File has none).
-	roleCov, ok := result["role_coverage"].(float64)
-	if !ok {
-		t.Fatal("role_coverage is not float64")
-	}
-
-	if roleCov < 0.85 || roleCov > 0.87 {
-		t.Errorf("role_coverage = %.3f, want ~0.857", roleCov)
+	if result.RoleCoverage < 0.85 || result.RoleCoverage > 0.87 {
+		t.Errorf("RoleCoverage = %.3f, want ~0.857", result.RoleCoverage)
 	}
 }
 
@@ -109,19 +89,16 @@ func TestAnalyzeNode_EmptyTree(t *testing.T) {
 	root := node.NewBuilder().WithType(node.UASTFile).Build()
 	result := analyzeNode(root, "empty.go")
 
-	gotTotal, ok := result["total_nodes"].(int)
-	if !ok || gotTotal != 1 {
-		t.Errorf("total_nodes = %v, want 1", result["total_nodes"])
+	if result.TotalNodes != 1 {
+		t.Errorf("TotalNodes = %d, want 1", result.TotalNodes)
 	}
 
-	gotLeaf, ok := result["leaf_nodes"].(int)
-	if !ok || gotLeaf != 1 {
-		t.Errorf("leaf_nodes = %v, want 1", result["leaf_nodes"])
+	if result.LeafNodes != 1 {
+		t.Errorf("LeafNodes = %d, want 1", result.LeafNodes)
 	}
 
-	gotDepth, ok := result["max_depth"].(int)
-	if !ok || gotDepth != 0 {
-		t.Errorf("max_depth = %v, want 0", result["max_depth"])
+	if result.MaxDepth != 0 {
+		t.Errorf("MaxDepth = %d, want 0", result.MaxDepth)
 	}
 }
 

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -31,6 +33,24 @@ const (
 	typeMapInitCap = 32
 	roleMapInitCap = 16
 )
+
+// analysisResult holds typed analysis metrics for a single file.
+type analysisResult struct {
+	File           string         `json:"file"`
+	TotalNodes     int            `json:"total_nodes"`
+	LeafNodes      int            `json:"leaf_nodes"`
+	LeafRatio      float64        `json:"leaf_ratio"`
+	MaxDepth       int            `json:"max_depth"`
+	AvgDepth       float64        `json:"avg_depth"`
+	MaxChildren    int            `json:"max_children"`
+	AvgBranching   float64        `json:"avg_branching"`
+	TypeDiversity  int            `json:"type_diversity"`
+	Types          map[string]int `json:"types"`
+	Roles          map[string]int `json:"roles"`
+	RoleCoverage   float64        `json:"role_coverage"`
+	PosCoverage    float64        `json:"pos_coverage"`
+	SyntheticNodes int            `json:"synthetic_nodes"`
+}
 
 func analyzeCmd() *cobra.Command {
 	var output, format string
@@ -69,6 +89,10 @@ type indexedFile struct {
 func runAnalyze(files []string, output, format string) error {
 	if len(files) == 0 {
 		return ErrNoFilesSpecified
+	}
+
+	for i, f := range files {
+		files[i] = filepath.Clean(f)
 	}
 
 	// Single parser instance shared across all files (thread-safe via
@@ -114,9 +138,9 @@ func filterSupported(parser *uast.Parser, files []string) []indexedFile {
 }
 
 // runAnalyzeParallel fans analysis out across NumCPU workers.
-func runAnalyzeParallel(parser *uast.Parser, supported []indexedFile) ([]map[string]any, error) {
+func runAnalyzeParallel(parser *uast.Parser, supported []indexedFile) ([]analysisResult, error) {
 	workers := min(runtime.NumCPU(), len(supported))
-	allResults := make([]map[string]any, len(supported))
+	allResults := make([]analysisResult, len(supported))
 	work := make(chan indexedFile, len(supported))
 
 	var (
@@ -154,7 +178,7 @@ func runAnalyzeParallel(parser *uast.Parser, supported []indexedFile) ([]map[str
 }
 
 // analyzeFile parses and analyzes a single file, storing the result in results[item.index].
-func analyzeFile(parser *uast.Parser, item indexedFile, results []map[string]any) error {
+func analyzeFile(parser *uast.Parser, item indexedFile, results []analysisResult) error {
 	code, err := os.ReadFile(item.path)
 	if err != nil {
 		return fmt.Errorf("failed to read file %s: %w", item.path, err)
@@ -184,7 +208,7 @@ func runAnalyzeSingle(parser *uast.Parser, file, output, format string) error {
 
 	analysis := analyzeNode(parsedNode, file)
 
-	return outputAnalysis([]map[string]any{analysis}, output, format)
+	return outputAnalysis([]analysisResult{analysis}, output, format)
 }
 
 // treeStats accumulates structural metrics during a single tree walk.
@@ -210,7 +234,7 @@ type analyzeFrame struct {
 }
 
 // analyzeNode produces structural analysis data for a parsed UAST node.
-func analyzeNode(root *node.Node, filename string) map[string]any {
+func analyzeNode(root *node.Node, filename string) analysisResult {
 	stats := collectTreeStats(root)
 
 	return buildResult(filename, &stats)
@@ -306,25 +330,25 @@ func pushChildren(stack []analyzeFrame, n *node.Node, depth int) []analyzeFrame 
 	return stack
 }
 
-// buildResult constructs the analysis result map from accumulated stats.
-func buildResult(filename string, stats *treeStats) map[string]any {
+// buildResult constructs the typed analysis result from accumulated stats.
+func buildResult(filename string, stats *treeStats) analysisResult {
 	totalF := float64(stats.totalNodes)
 
-	return map[string]any{
-		"file":            filename,
-		"total_nodes":     stats.totalNodes,
-		"leaf_nodes":      stats.leafNodes,
-		"leaf_ratio":      safeDiv(float64(stats.leafNodes), totalF),
-		"max_depth":       stats.maxDepth,
-		"avg_depth":       safeDiv(float64(stats.totalDepth), totalF),
-		"max_children":    stats.maxChildren,
-		"avg_branching":   safeDiv(float64(stats.totalChildren), float64(stats.innerNodes)),
-		"type_diversity":  len(stats.types),
-		"types":           stats.types,
-		"roles":           stats.roles,
-		"role_coverage":   safeDiv(float64(stats.nodesWithRoles), totalF),
-		"pos_coverage":    safeDiv(float64(stats.nodesWithPos), totalF),
-		"synthetic_nodes": stats.syntheticNodes,
+	return analysisResult{
+		File:           filename,
+		TotalNodes:     stats.totalNodes,
+		LeafNodes:      stats.leafNodes,
+		LeafRatio:      safeDiv(float64(stats.leafNodes), totalF),
+		MaxDepth:       stats.maxDepth,
+		AvgDepth:       safeDiv(float64(stats.totalDepth), totalF),
+		MaxChildren:    stats.maxChildren,
+		AvgBranching:   safeDiv(float64(stats.totalChildren), float64(stats.innerNodes)),
+		TypeDiversity:  len(stats.types),
+		Types:          stats.types,
+		Roles:          stats.roles,
+		RoleCoverage:   safeDiv(float64(stats.nodesWithRoles), totalF),
+		PosCoverage:    safeDiv(float64(stats.nodesWithPos), totalF),
+		SyntheticNodes: stats.syntheticNodes,
 	}
 }
 
@@ -337,7 +361,7 @@ func safeDiv(numerator, denominator float64) float64 {
 	return numerator / denominator
 }
 
-func outputAnalysis(results []map[string]any, output, format string) error {
+func outputAnalysis(results []analysisResult, output, format string) error {
 	var writer io.Writer = os.Stdout
 
 	if output != "" {
@@ -358,15 +382,13 @@ func outputAnalysis(results []map[string]any, output, format string) error {
 
 		return nil
 	case "html":
-		generateHTMLReport(results, writer)
-
-		return nil
+		return generateHTMLReport(results, writer)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedAnaFmt, format)
 	}
 }
 
-func outputAnalysisJSON(results []map[string]any, writer io.Writer) error {
+func outputAnalysisJSON(results []analysisResult, writer io.Writer) error {
 	enc := json.NewEncoder(writer)
 	enc.SetIndent("", "  ")
 
@@ -378,71 +400,79 @@ func outputAnalysisJSON(results []map[string]any, writer io.Writer) error {
 	return nil
 }
 
-func outputAnalysisText(results []map[string]any, writer io.Writer) {
-	for _, result := range results {
-		fmt.Fprintf(writer, "File: %s\n", result["file"])
+func outputAnalysisText(results []analysisResult, writer io.Writer) {
+	for _, r := range results {
+		fmt.Fprintf(writer, "File: %s\n", r.File)
 		fmt.Fprintf(writer, "  Tree shape:\n")
-		fmt.Fprintf(writer, "    Total nodes:    %d\n", result["total_nodes"])
+		fmt.Fprintf(writer, "    Total nodes:    %d\n", r.TotalNodes)
 		fmt.Fprintf(writer, "    Leaf nodes:     %d (%.0f%%)\n",
-			result["leaf_nodes"], toFloat(result["leaf_ratio"])*coveragePercent)
-		fmt.Fprintf(writer, "    Max depth:      %d\n", result["max_depth"])
-		fmt.Fprintf(writer, "    Avg depth:      %.1f\n", result["avg_depth"])
-		fmt.Fprintf(writer, "    Max children:   %d\n", result["max_children"])
-		fmt.Fprintf(writer, "    Avg branching:  %.1f\n", result["avg_branching"])
+			r.LeafNodes, r.LeafRatio*coveragePercent)
+		fmt.Fprintf(writer, "    Max depth:      %d\n", r.MaxDepth)
+		fmt.Fprintf(writer, "    Avg depth:      %.1f\n", r.AvgDepth)
+		fmt.Fprintf(writer, "    Max children:   %d\n", r.MaxChildren)
+		fmt.Fprintf(writer, "    Avg branching:  %.1f\n", r.AvgBranching)
 
 		fmt.Fprintf(writer, "  Coverage:\n")
-		fmt.Fprintf(writer, "    Role coverage:  %.0f%%\n", toFloat(result["role_coverage"])*coveragePercent)
-		fmt.Fprintf(writer, "    Pos coverage:   %.0f%%\n", toFloat(result["pos_coverage"])*coveragePercent)
-		fmt.Fprintf(writer, "    Synthetic:      %d\n", result["synthetic_nodes"])
-		fmt.Fprintf(writer, "    Type diversity: %d\n", result["type_diversity"])
+		fmt.Fprintf(writer, "    Role coverage:  %.0f%%\n", r.RoleCoverage*coveragePercent)
+		fmt.Fprintf(writer, "    Pos coverage:   %.0f%%\n", r.PosCoverage*coveragePercent)
+		fmt.Fprintf(writer, "    Synthetic:      %d\n", r.SyntheticNodes)
+		fmt.Fprintf(writer, "    Type diversity: %d\n", r.TypeDiversity)
 
-		if types, ok := result["types"].(map[string]int); ok && len(types) > 0 {
+		if len(r.Types) > 0 {
 			fmt.Fprintf(writer, "  Node types:\n")
-			printSortedMap(writer, types)
+			printSortedMap(writer, r.Types)
 		}
 
-		if roles, ok := result["roles"].(map[string]int); ok && len(roles) > 0 {
+		if len(r.Roles) > 0 {
 			fmt.Fprintf(writer, "  Roles:\n")
-			printSortedMap(writer, roles)
+			printSortedMap(writer, r.Roles)
 		}
 
 		fmt.Fprintln(writer)
 	}
 }
 
-func generateHTMLReport(results []map[string]any, writer io.Writer) {
-	fmt.Fprintf(writer, "<!DOCTYPE html>\n<html>\n<head>\n<title>UAST Structure Report</title>\n")
-	fmt.Fprintf(writer, "<style>\nbody{font-family:Arial,sans-serif;margin:20px;}\n")
-	fmt.Fprintf(writer, "table{border-collapse:collapse;width:100%%;margin-bottom:20px;}\n")
-	fmt.Fprintf(writer, "th,td{border:1px solid #ddd;padding:8px;text-align:left;}\n")
-	fmt.Fprintf(writer, "th{background-color:#f2f2f2;}\n</style>\n</head>\n<body>\n")
+// htmlReportTmpl is the compiled HTML template for the analysis report.
+var htmlReportTmpl = template.Must(template.New("report").Funcs(template.FuncMap{
+	"pct": func(v float64) float64 { return v * coveragePercent },
+}).Parse(`<!DOCTYPE html>
+<html>
+<head>
+<title>UAST Structure Report</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;}
+table{border-collapse:collapse;width:100%;margin-bottom:20px;}
+th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+th{background-color:#f2f2f2;}
+</style>
+</head>
+<body>
+<h1>UAST Structure Report</h1>
+<table>
+<tr><th>File</th><th>Nodes</th><th>Depth</th><th>Branching</th><th>Types</th><th>Role%</th><th>Pos%</th></tr>
+{{- range .}}
+<tr>
+<td>{{.File}}</td>
+<td>{{.TotalNodes}}</td>
+<td>{{.MaxDepth}} (avg {{printf "%.1f" .AvgDepth}})</td>
+<td>max {{.MaxChildren}} (avg {{printf "%.1f" .AvgBranching}})</td>
+<td>{{.TypeDiversity}}</td>
+<td>{{printf "%.0f" (pct .RoleCoverage)}}%</td>
+<td>{{printf "%.0f" (pct .PosCoverage)}}%</td>
+</tr>
+{{- end}}
+</table>
+</body>
+</html>
+`))
 
-	fmt.Fprintf(writer, "<h1>UAST Structure Report</h1>\n")
-	fmt.Fprintf(writer, "<table>\n<tr><th>File</th><th>Nodes</th><th>Depth</th>")
-	fmt.Fprintf(writer, "<th>Branching</th><th>Types</th><th>Role%%</th><th>Pos%%</th></tr>\n")
-
-	for _, result := range results {
-		fmt.Fprintf(writer, "<tr><td>%s</td><td>%d</td><td>%d (avg %.1f)</td>",
-			result["file"], result["total_nodes"], result["max_depth"], result["avg_depth"])
-		fmt.Fprintf(writer, "<td>max %d (avg %.1f)</td><td>%d</td>",
-			result["max_children"], result["avg_branching"], result["type_diversity"])
-		fmt.Fprintf(writer, "<td>%.0f%%</td><td>%.0f%%</td></tr>\n",
-			toFloat(result["role_coverage"])*coveragePercent, toFloat(result["pos_coverage"])*coveragePercent)
+func generateHTMLReport(results []analysisResult, writer io.Writer) error {
+	err := htmlReportTmpl.Execute(writer, results)
+	if err != nil {
+		return fmt.Errorf("render HTML report: %w", err)
 	}
 
-	fmt.Fprintf(writer, "</table>\n</body>\n</html>\n")
-}
-
-// toFloat safely converts an any value to float64.
-func toFloat(v any) float64 {
-	switch val := v.(type) {
-	case float64:
-		return val
-	case int:
-		return float64(val)
-	default:
-		return 0
-	}
+	return nil
 }
 
 // printSortedMap prints a map[string]int sorted by descending value.

@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	nethttppprof "net/http/pprof"
@@ -124,10 +125,7 @@ func saveProcMaps(path string) {
 	}
 	defer dst.Close()
 
-	scanner := bufio.NewScanner(src)
-	for scanner.Scan() {
-		fmt.Fprintln(dst, scanner.Text())
-	}
+	_, _ = io.Copy(dst, src)
 }
 
 // handleRSSSpike dumps heap profile and /proc/self/maps when RSS exceeds threshold.

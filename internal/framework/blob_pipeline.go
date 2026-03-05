@@ -25,7 +25,7 @@ const estimatedHashesPerCommit = 4
 // imports) are skipped — their Error field is set to ErrCommitTooLarge so all
 // downstream stages (diff, UAST, analyzers) skip them cleanly. This bounds peak
 // Go heap usage regardless of commit size.
-const maxChangesPerCommit = 2000
+const maxChangesPerCommit = 10000
 
 // estimatedHashBytes is the approximate memory per hash entry for metrics.
 const estimatedHashBytes = 256
