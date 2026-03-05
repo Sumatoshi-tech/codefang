@@ -186,11 +186,6 @@ linters:
         - G204 # Subprocess launched with variable - needed for command execution
         - G401 # Use of weak cryptographic primitive (SHA1) - used for content fingerprinting, not security
         - G505 # Import of crypto/sha1 - used for content fingerprinting, not security
-        # Taint analysis rules below have zero sanitizers in gosec 2.23.0, making
-        # all CLI-arg-to-sink flows unfixable. Fixed in gosec 2.24.0 (not yet in golangci-lint).
-        - G702 # Command injection taint — re-exec of own binary via os.Executable()
-        - G703 # Path traversal taint — CLI tool reads user-specified files by design
-        - G705 # XSS taint — CLI tool writes to files/stdout, not HTTP responses
       severity: medium
       confidence: medium
 
@@ -533,6 +528,12 @@ linters:
       # Test intentionally creates a blocked directory with restrictive then restored permissions.
       - path: internal/analyzers/analyze/static_test\.go
         text: "G302"
+        linters: [gosec]
+
+      # Gosec taint analysis rules (G702/G703/G705) have zero sanitizers, making
+      # all CLI-arg-to-sink flows unfixable false positives. Suppressed via text
+      # match because golangci-lint v2.9.0 schema rejects these IDs in gosec.excludes.
+      - text: "G70[235]"
         linters: [gosec]
 
       # findFunctions error return is always nil but needed for consistent internal API.
