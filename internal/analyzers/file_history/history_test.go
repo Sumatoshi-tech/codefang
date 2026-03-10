@@ -452,6 +452,57 @@ func TestExtractCommitTimeSeries(t *testing.T) {
 	assert.Equal(t, 2, entryA["modifies"])
 }
 
+func TestFork_ClassifierInitialized(t *testing.T) {
+	t.Parallel()
+
+	h := NewAnalyzer()
+	require.NoError(t, h.Initialize(nil))
+
+	clones := h.Fork(2)
+
+	for i, clone := range clones {
+		ha, ok := clone.(*HistoryAnalyzer)
+		require.True(t, ok, "type assertion failed for clone %d", i)
+		require.NotNil(t, ha.classifier, "forked analyzer %d should have classifier initialized", i)
+	}
+}
+
+func TestFork_ProducesCompositionData(t *testing.T) {
+	t.Parallel()
+
+	h := NewAnalyzer()
+	require.NoError(t, h.Initialize(nil))
+
+	clones := h.Fork(1)
+	forked, ok := clones[0].(*HistoryAnalyzer)
+	require.True(t, ok)
+
+	// Wire up plumbing deps for the fork.
+	change := &gitlib.Change{
+		Action: gitlib.Insert,
+		To:     gitlib.ChangeEntry{Name: "main.go", Hash: gitlib.NewHash("1111111111111111111111111111111111111111")},
+	}
+	forked.TreeDiff.Changes = gitlib.Changes{change}
+	forked.Identity.AuthorID = 0
+	forked.LineStats.LineStats = map[gitlib.ChangeEntry]pkgplumbing.LineStats{
+		change.To: {Added: 10},
+	}
+
+	commit := gitlib.NewTestCommit(
+		gitlib.NewHash("c100000000000000000000000000000000000001"),
+		gitlib.Signature{When: time.Now()},
+		"add main.go",
+	)
+
+	tc, err := forked.Consume(context.Background(), &analyze.Context{Commit: commit})
+	require.NoError(t, err)
+
+	cd, ok := tc.Data.(*CommitData)
+	require.True(t, ok, "TC data should be *CommitData")
+	assert.Positive(t, cd.Composition.Total(), "forked analyzer should produce composition data")
+	assert.Equal(t, 1, cd.Composition.Source, "main.go should be classified as source")
+}
+
 func TestExtractCommitTimeSeries_Empty(t *testing.T) {
 	t.Parallel()
 

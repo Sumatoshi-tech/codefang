@@ -42,11 +42,12 @@ type FileHistory struct {
 // NewAnalyzer creates a new file history analyzer.
 func NewAnalyzer() *HistoryAnalyzer {
 	ha := &HistoryAnalyzer{
-		Identity:  &plumbing.IdentityDetector{},
-		TreeDiff:  &plumbing.TreeDiffAnalyzer{},
-		LineStats: &plumbing.LinesStatsCalculator{},
-		files:     make(map[string]*FileHistory),
-		merges:    analyze.NewMergeTracker(),
+		Identity:   &plumbing.IdentityDetector{},
+		TreeDiff:   &plumbing.TreeDiffAnalyzer{},
+		LineStats:  &plumbing.LinesStatsCalculator{},
+		files:      make(map[string]*FileHistory),
+		merges:     analyze.NewMergeTracker(),
+		classifier: NewClassifier(),
 	}
 
 	ha.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
