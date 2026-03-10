@@ -138,6 +138,22 @@ func Max[T cmp.Ordered](values []T) T {
 	return result
 }
 
+// ExceedsThreshold reports whether observed diverges from predicted
+// by more than threshold (as a fraction, e.g. 0.1 = 10%).
+// Returns false when predicted <= 0 (no meaningful baseline).
+func ExceedsThreshold(observed, predicted, threshold float64) bool {
+	if predicted <= 0 {
+		return false
+	}
+
+	divergence := (observed - predicted) / predicted
+	if divergence < 0 {
+		divergence = -divergence
+	}
+
+	return divergence > threshold
+}
+
 // Distribution counts items per label as determined by classify.
 // Returns nil for a nil slice. Returns an empty map for an empty slice.
 func Distribution[T any](items []T, classify func(T) string) map[string]int {

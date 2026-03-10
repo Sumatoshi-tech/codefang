@@ -251,6 +251,41 @@ func TestMean(t *testing.T) {
 	}
 }
 
+// FRD: specs/frds/FRD-20260310-exceeds-threshold.md.
+
+func TestExceedsThreshold(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		observed  float64
+		predicted float64
+		threshold float64
+		want      bool
+	}{
+		{name: "below_threshold", observed: 105, predicted: 100, threshold: 0.1, want: false},
+		{name: "above_threshold", observed: 115, predicted: 100, threshold: 0.1, want: true},
+		{name: "exact_threshold_not_exceeded", observed: 110, predicted: 100, threshold: 0.1, want: false},
+		{name: "negative_divergence_above", observed: 85, predicted: 100, threshold: 0.1, want: true},
+		{name: "negative_divergence_below", observed: 95, predicted: 100, threshold: 0.1, want: false},
+		{name: "zero_predicted", observed: 50, predicted: 0, threshold: 0.1, want: false},
+		{name: "negative_predicted", observed: 50, predicted: -10, threshold: 0.1, want: false},
+		{name: "negative_observed", observed: -120, predicted: 100, threshold: 0.5, want: true},
+		{name: "both_equal", observed: 100, predicted: 100, threshold: 0.1, want: false},
+		{name: "zero_threshold_equal", observed: 100, predicted: 100, threshold: 0, want: false},
+		{name: "zero_threshold_any_diff", observed: 100.1, predicted: 100, threshold: 0, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := ExceedsThreshold(tt.observed, tt.predicted, tt.threshold)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // FRD: specs/frds/FRD-20260303-distribution.md.
 
 func TestDistribution(t *testing.T) {

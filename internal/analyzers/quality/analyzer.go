@@ -16,6 +16,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
@@ -332,13 +333,13 @@ func sizeState(state *tickAccumulator) int64 {
 	var size int64
 
 	size += structOverhead
+	size += mapx.EstimateMapSize(state.commitQuality, hashEntryBytes)
 
 	for _, q := range state.commitQuality {
 		if q == nil {
 			continue
 		}
 
-		size += hashEntryBytes
 		size += int64(len(q.Complexities)) * bytesPerEntry
 		size += int64(len(q.Cognitives)) * bytesPerEntry
 		size += int64(len(q.MaxComplexities)) * bytesPerEntry

@@ -374,6 +374,13 @@ type Visitor interface {
     VisitNode(node *Node) error
 }
 
+// internal/analyzers/common/uast_traversal.go — generic predicate-based traversal
+// FindNodes is the single entry point; all convenience methods delegate to it:
+traverser := NewUASTTraverser(TraversalConfig{MaxDepth: 10})
+nodes := traverser.FindNodes(root, func(n *node.Node) bool { return n.Type == "FunctionDeclaration" })
+// Convenience wrappers: FindNodesByType, FindNodesByRoles, FindNodesByFilter, FindNodesByFilters
+// FRD: specs/frds/FRD-20260310-find-nodes-predicate.md
+
 // MultiAnalyzerTraverser - single traversal, multiple analyzers
 traverser := NewMultiAnalyzerTraverser(analyzers...)
 traverser.Traverse(ast)
@@ -399,7 +406,7 @@ analyzer.Analyze(ctx, nodes)
 - `cmd/codefang` - Analysis engine
 
 **Core:**
-- `pkg/uast` - UAST node definitions, parser, language mappings
+- `pkg/uast` - UAST node definitions, parser, language mappings; `Parser.ParseFile(ctx, path, lang)` reads+parses a source file; `ParseSourceFile(ctx, path, lang)` is a one-shot convenience. FRD: specs/frds/FRD-20260310-parse-source-file.md
 - `pkg/analyzers` - Static and behavioral analyzers
 - `pkg/report` - Output formatting (JSON, table, HTML)
 
@@ -417,21 +424,22 @@ analyzer.Analyze(ctx, nodes)
 - `pkg/alg/cms` - Count-Min Sketch for bounded-overestimation frequency estimation
 - `pkg/alg/interval` - Generic augmented interval tree `Tree[K Integer, V comparable]` for O(log N + k) overlap/point queries
 - `pkg/alg/lru` - Generic LRU cache with optional Bloom pre-filter, cost-based eviction, and clone-on-insert
-- `pkg/alg` - Generic algorithms: `Range` (half-open interval), `Chunk` (range partitioning), `ForEachPair` (C(n,2) pairwise iteration)
-- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `ToPercent`, `PercentMultiplier`, `Distribution[T]` (classify-and-count), `EMA` (exponential moving average)
-- `pkg/alg/mapx` - Generic map/slice operations: `Clone`, `CloneFunc`, `CloneNested`, `MergeAdditive`, `SortedKeys`, `CloneSlice`, `Unique`, `SortAndLimit`, `BuildLookupSet` (slice → `map[T]struct{}` set)
+- `pkg/alg` - Generic algorithms: `Range` (half-open interval), `Chunk` (range partitioning), `ForEachPair` (C(n,2) pairwise iteration), `Iterator[T]` (pull-based sequence with `Next()` + `Close()`, EOF signals end), `CollectN[T](iter, limit)` (drain up to limit items, 0 = unlimited), `TraverseTree[T any](root, children, visit)` (iterative pre-order DFS with explicit stack — generic tree traversal). FRD: specs/frds/FRD-20260310-iterator.md, specs/frds/FRD-20260310-traverse-tree.md
+- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `ToPercent`, `PercentMultiplier`, `Distribution[T]` (classify-and-count), `EMA` (exponential moving average), `ExceedsThreshold(observed, predicted, threshold)` (absolute relative divergence check). FRD: specs/frds/FRD-20260310-exceeds-threshold.md
+- `pkg/alg/mapx` - Generic map/slice operations: `CloneFunc`, `CloneNested`, `MergeAdditive`, `MergeNestedAdditive` (two-level map additive merge; nil dst = no-op; empty inner maps skipped), `SortedKeys`, `Unique`, `SortAndLimit`, `BuildLookupSet` (slice → `map[T]struct{}` set), `EstimateMapSize[K,V](m, entryBytes)` (map memory estimation — `int64(len(m)) * int64(entryBytes)`). Use stdlib `maps.Clone` for shallow map copies; use stdlib `slices.Clone` for shallow slice copies. FRD: specs/frds/FRD-20260310-estimate-map-size.md
 - `pkg/persist` - Codec-based file persistence: `Codec` interface, `JSONCodec`, `GobCodec`, `SaveState`, `LoadState`, `Persister[T]`
-- `pkg/textutil` - Byte-level text utilities: `IsBinary`, `CountLines`, `BytesReader`, `BinarySniffLength`
+- `pkg/textutil` - Byte-level text utilities: `IsBinary`, `CountLines`, `BinarySniffLength`, `WriteJSON(w, v, pretty)` (JSON encoding with optional two-space indentation). FRD: specs/frds/FRD-20260310-writejson-helper.md
 
 **Caching:**
 - `internal/cache` - LRU blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache
 
 **Shared Utilities:**
 - `pkg/sigutil` - Signal-handling utilities: `SignalCleanupGuard` (SIGINT/SIGTERM + `sync.Once` idempotent cleanup + goroutine listener + deregistration on `Close`)
-- `pkg/safeconv` - Safe type conversions: `Must*` (panic), `Safe*` (clamp), `To*` (extract from `any`)
+- `pkg/safeconv` - Safe type conversions: `Integer` constraint, `MustConvert[From, To Integer]` (panic on overflow), `SafeConvert[From, To Integer]` (clamp on overflow), `Extract[T any](v any) (T, bool)` (type assertion + reflect-based numeric coercion). Legacy wrappers: `MustUintToInt`, `MustIntToUint`, `MustIntToUint32`, `SafeInt64`, `SafeInt`, `ToInt`, `ToFloat64` — all delegate to generic functions. FRD: specs/frds/FRD-20260310-generic-safeconv.md
 - `pkg/units` - Binary size unit multipliers (KiB, MiB, GiB)
 - `pkg/metrics` - Shared metric types: `RiskLevel` constants (`RiskCritical`, `RiskHigh`, `RiskMedium`, `RiskLow`), `RiskPriority(level RiskLevel) int` for sortable risk ordering, `MetricMeta` struct, `RiskResult` struct. Used by devs, file_history, complexity, comments analyzers
 - `internal/analyzers/common/classify.go` - Generic threshold classifier: `Classifier[T cmp.Ordered]`, `Threshold[T]`, `NewClassifier[T]`. Used by clones, shotness, cohesion, halstead
+- `internal/analyzers/common/threshold_labeler.go` - Static message labeler: `ThresholdLabeler` (`[]Threshold[float64]`), `Label(score float64) string`. Thresholds sorted descending by `Limit`; first match wins; `""` for no match. Used by cohesion (x2), comments (x2), halstead aggregators. FRD: specs/frds/FRD-20260306-threshold-labeler.md
 - `internal/analyzers/common/context_stack.go` - Generic LIFO stack: `ContextStack[T]`, `NewContextStack[T]`, `Push`, `Pop`, `Current`, `Depth`. Used by cohesion/visitor, halstead/visitor
 - `internal/analyzers/common/filter.go` - Generic interface filter: `FilterByInterface[T, U](items []T, cast func(T) (U, bool)) []U`. Used by framework/streaming.go for collectHibernatables, collectSpillCleaners, collectCheckpointables
 - `internal/analyzers/common/detailed_data_collector.go` - Multi-key detailed data collector: `DetailedDataCollector`, `NewDetailedDataCollector(keys ...string)`, `CollectFromReports`, `AddToResult`. Used by complexity, halstead, comments aggregators
@@ -440,12 +448,19 @@ analyzer.Analyze(ctx, nodes)
 - `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by all 10 analyzer store_reader.go files
 - `internal/analyzers/analyze/record_writer.go` - Generic store writer: `WriteSliceKind[T](w, kind, records)`. Used by devs, anomaly, quality, sentiment, typos, file_history, couples store_writer.go
 - `internal/analyzers/analyze/analyzer.go` - Report helpers: `ReportFunctionList(report, key)` for single-key extraction, `ReportFunctionListWithFallback(report, primaryKey, fallbackKey)` for two-key fallback extraction. Used by complexity, halstead, cohesion, comments plot.go
+- `internal/analyzers/common/reportutil/reportutil.go` - Type-safe report accessors: `GetAs[T any](report, key) (T, bool)` (generic base, pure type assertion), `GetFloat64`/`GetInt` (safeconv coercion — handles cross-type), `GetString`/`GetStringSlice`/`GetStringIntMap`/`GetFunctions`/`MapString` (delegate to `GetAs`), `FormatInt`/`FormatFloat`/`FormatPercent`/`Pct`. FRD: specs/frds/FRD-20260306-reportutil-getas.md
 
 **Pipeline Building Blocks:**
-- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern), `SharedResponse[T]` (sync.Once memoization with context for once-evaluated shared results across goroutines)
+- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern), `SharedResponse[T]` (sync.Once memoization with context for once-evaluated shared results across goroutines), `SignalOnDrain[T](src) (forwarded, drained)` (forwards items from src channel and signals exhaustion via drained channel close), `WorkerPool[T]{MaxParallel, Work}.Run(ctx, items)` (bounded fan-out with first-error semantics, context cancellation, `MaxParallel=0` defaults to `runtime.NumCPU()`). FRDs: specs/frds/FRD-20260310-signal-on-drain.md, specs/frds/FRD-20260310-worker-pool.md
+
+**I/O Safety:**
+- `pkg/iosafety` - Defensive file-reading and terminal-output utilities: `ReadFile(path) (content, resolvedPath, err)` (resolve + validate + read), `ResolvePath(path) (string, error)` (clean, abs, stat, reject dirs), `SanitizeForTerminal(input) string` (HTML-escape + strip control chars). Sentinel errors: `ErrEmptyPath`, `ErrPathContainsNUL`, `ErrDirectoryPath`. FRD: specs/frds/FRD-20260310-iosafety-promote.md
+
+**Storage:**
+- `internal/storage` - Atomic file persistence: `WriteAtomic(path, perm, write)` (write to `.tmp` sibling, fsync, rename — cleanup on error). FRD: specs/frds/FRD-20260310-atomic-file-write.md
 
 **Infrastructure:**
-- `pkg/gitlib` - Git history mining (libgit2-based)
+- `pkg/gitlib` - Git history mining (libgit2-based). `CommitIter`, `FileIter`, and `RevWalk` satisfy `alg.Iterator[T]` (compile-time assertions in `iter_assert.go`). `RevWalk.Close()` aliases `Free()`
 - `internal/framework` - Analysis pipeline orchestration; `BlobPipeline` and `DiffPipeline` delegate goroutine topology to `pipeline.RunPC`
 - `pkg/version` - Build version info
 

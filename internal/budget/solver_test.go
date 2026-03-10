@@ -202,3 +202,64 @@ func TestDeriveKnobs_HugeWorkerAllocation(t *testing.T) {
 
 	assert.LessOrEqual(t, cfg.Workers, runtime.NumCPU(), "workers capped at CPU count")
 }
+
+// FRD: specs/frds/FRD-20260310-allocate-proportionally.md.
+
+func TestAllocateProportionally_SingleWeight(t *testing.T) {
+	t.Parallel()
+
+	const total int64 = 1000
+
+	result := allocateProportionally(total, map[string]float64{
+		"a": 0.6,
+	})
+
+	assert.Equal(t, int64(600), result["a"])
+}
+
+func TestAllocateProportionally_MultipleWeights(t *testing.T) {
+	t.Parallel()
+
+	const total int64 = 1000
+
+	result := allocateProportionally(total, map[string]float64{
+		"cache":  0.6,
+		"worker": 0.3,
+		"buffer": 0.1,
+	})
+
+	assert.Equal(t, int64(600), result["cache"])
+	assert.Equal(t, int64(300), result["worker"])
+	assert.Equal(t, int64(100), result["buffer"])
+}
+
+func TestAllocateProportionally_ZeroTotal(t *testing.T) {
+	t.Parallel()
+
+	result := allocateProportionally(0, map[string]float64{
+		"a": 0.5,
+	})
+
+	assert.Equal(t, int64(0), result["a"])
+}
+
+func TestAllocateProportionally_NilWeights(t *testing.T) {
+	t.Parallel()
+
+	result := allocateProportionally(1000, nil)
+
+	assert.Empty(t, result)
+}
+
+func TestAllocateProportionally_Truncation(t *testing.T) {
+	t.Parallel()
+
+	// 1001 * 0.3 = 300.3 → truncated to 300.
+	const total int64 = 1001
+
+	result := allocateProportionally(total, map[string]float64{
+		"a": 0.3,
+	})
+
+	assert.Equal(t, int64(300), result["a"])
+}

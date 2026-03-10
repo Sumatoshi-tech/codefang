@@ -1,11 +1,10 @@
 package gitlib
 
 import (
+	"bytes"
 	"io"
 
 	git2go "github.com/libgit2/git2go/v34"
-
-	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 )
 
 // Blob wraps a libgit2 blob.
@@ -30,7 +29,7 @@ func (b *Blob) Contents() []byte {
 
 // Reader returns a reader for the blob contents.
 func (b *Blob) Reader() io.Reader {
-	return textutil.BytesReader(b.blob.Contents())
+	return io.NopCloser(bytes.NewReader(b.blob.Contents()))
 }
 
 // Free releases the blob resources.

@@ -14,19 +14,6 @@ type Numeric interface {
 		~float32 | ~float64
 }
 
-// Clone returns a shallow copy of m.
-// Returns nil for a nil map.
-func Clone[K comparable, V any](m map[K]V) map[K]V {
-	if m == nil {
-		return nil
-	}
-
-	clone := make(map[K]V, len(m))
-	stdmaps.Copy(clone, m)
-
-	return clone
-}
-
 // CloneFunc returns a deep copy of m, applying cloneV to each value.
 // Returns nil for a nil map.
 func CloneFunc[K comparable, V any](m map[K]V, cloneV func(V) V) map[K]V {
@@ -78,6 +65,33 @@ func MergeAdditive[K comparable, V Numeric](dst, src map[K]V) {
 	for k, v := range src {
 		dst[k] += v
 	}
+}
+
+// MergeNestedAdditive merges src into dst for two-level maps.
+// For each key k1 in src with a non-empty inner map, the inner map is merged
+// additively into dst[k1] via [MergeAdditive]. If dst[k1] is nil it is initialized.
+// Empty inner maps in src are skipped. If dst is nil this is a no-op.
+func MergeNestedAdditive[K1, K2 comparable, V Numeric](dst, src map[K1]map[K2]V) {
+	if dst == nil {
+		return
+	}
+
+	for k1, inner := range src {
+		if len(inner) == 0 {
+			continue
+		}
+
+		if dst[k1] == nil {
+			dst[k1] = make(map[K2]V)
+		}
+
+		MergeAdditive(dst[k1], inner)
+	}
+}
+
+// EstimateMapSize estimates memory usage of m assuming entryBytes per entry.
+func EstimateMapSize[K comparable, V any](m map[K]V, entryBytes int) int64 {
+	return int64(len(m)) * int64(entryBytes)
 }
 
 // SortedKeys returns the keys of m in sorted order.

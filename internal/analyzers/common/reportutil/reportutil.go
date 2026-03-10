@@ -13,6 +13,22 @@ const (
 	PercentMultiplier = 100
 )
 
+// GetAs extracts a value of type T from a report map via direct type assertion.
+// Returns (zero, false) if the key is absent or the value is not of type T.
+// For numeric types requiring cross-type coercion use [GetFloat64] or [GetInt].
+func GetAs[T any](report map[string]any, key string) (T, bool) {
+	v, ok := report[key]
+	if !ok {
+		var zero T
+
+		return zero, false
+	}
+
+	t, ok := v.(T)
+
+	return t, ok
+}
+
 // GetFloat64 returns a float64 value from the report, handling type conversion.
 // Delegates to [safeconv.ToFloat64] for consistent type handling.
 func GetFloat64(report map[string]any, key string) float64 {
@@ -47,57 +63,37 @@ func GetInt(report map[string]any, key string) int {
 
 // GetString returns a string value from the report.
 func GetString(report map[string]any, key string) string {
-	if v, ok := report[key]; ok {
-		if s, isStr := v.(string); isStr {
-			return s
-		}
-	}
+	s, _ := GetAs[string](report, key)
 
-	return ""
+	return s
 }
 
 // GetFunctions returns the []map[string]any for the given key.
 func GetFunctions(report map[string]any, key string) []map[string]any {
-	if v, ok := report[key]; ok {
-		if fns, isFns := v.([]map[string]any); isFns {
-			return fns
-		}
-	}
+	fns, _ := GetAs[[]map[string]any](report, key)
 
-	return nil
+	return fns
 }
 
 // GetStringSlice returns a []string value from the report.
 func GetStringSlice(report map[string]any, key string) []string {
-	if v, ok := report[key]; ok {
-		if s, isSlice := v.([]string); isSlice {
-			return s
-		}
-	}
+	s, _ := GetAs[[]string](report, key)
 
-	return nil
+	return s
 }
 
 // GetStringIntMap returns a map[string]int value from the report.
 func GetStringIntMap(report map[string]any, key string) map[string]int {
-	if v, ok := report[key]; ok {
-		if m, isMap := v.(map[string]int); isMap {
-			return m
-		}
-	}
+	m, _ := GetAs[map[string]int](report, key)
 
-	return nil
+	return m
 }
 
 // MapString returns a string from a map[string]any.
 func MapString(m map[string]any, key string) string {
-	if v, ok := m[key]; ok {
-		if s, isStr := v.(string); isStr {
-			return s
-		}
-	}
+	s, _ := GetAs[string](m, key)
 
-	return ""
+	return s
 }
 
 // FormatInt formats an int as a string.

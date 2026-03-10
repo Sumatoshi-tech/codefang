@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg"
 )
 
 // CommitLoadOptions configures how commits are loaded from a repository.
@@ -135,32 +137,12 @@ func loadHistoryCommits(ctx context.Context, repository *Repository, opts Commit
 	}
 	defer iter.Close()
 
-	commits := collectCommits(iter, opts.Limit)
+	commits, collectErr := alg.CollectN[*Commit](iter, opts.Limit)
+	if collectErr != nil {
+		return nil, fmt.Errorf("failed to collect commits: %w", collectErr)
+	}
+
 	slices.Reverse(commits)
 
 	return commits, nil
-}
-
-func collectCommits(iter *CommitIter, limit int) []*Commit {
-	var commits []*Commit
-
-	count := 0
-
-	for {
-		commit, err := iter.Next()
-		if err != nil {
-			break
-		}
-
-		if limit > 0 && count >= limit {
-			commit.Free()
-
-			break
-		}
-
-		commits = append(commits, commit)
-		count++
-	}
-
-	return commits
 }

@@ -3,6 +3,7 @@ package couples
 import (
 	"context"
 	"maps"
+	"slices"
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
@@ -181,7 +182,7 @@ func (a *Aggregator) FlushTick(tick int) (analyze.TICK, error) {
 	td := &TickData{
 		Files:         mapx.CloneNested(a.files.Current()),
 		People:        clonePeopleSlice(a.people),
-		PeopleCommits: mapx.CloneSlice(a.peopleCommits),
+		PeopleCommits: slices.Clone(a.peopleCommits),
 		Renames:       a.renames,
 		CommitStats:   a.commitStats,
 	}
@@ -446,11 +447,11 @@ func (a *Aggregator) EstimatedStateSize() int64 {
 	var size int64
 
 	for _, lane := range a.files.Current() {
-		size += int64(len(lane)) * fileCouplingEntryBytes
+		size += mapx.EstimateMapSize(lane, fileCouplingEntryBytes)
 	}
 
 	for _, files := range a.people {
-		size += int64(len(files)) * personFileEntryBytes
+		size += mapx.EstimateMapSize(files, personFileEntryBytes)
 	}
 
 	size += int64(len(a.peopleCommits)) * personCommitBytes
@@ -541,7 +542,7 @@ func ticksToReport(
 			continue
 		}
 
-		mergeTickFiles(mergedFiles, td.Files)
+		mapx.MergeNestedAdditive(mergedFiles, td.Files)
 		mergeTickPeople(mergedPeople, td.People)
 
 		mergedRenames = append(mergedRenames, td.Renames...)
@@ -563,21 +564,6 @@ func ticksToReport(
 	}
 
 	return report
-}
-
-// mergeTickFiles additively merges per-tick file couplings into the accumulator.
-func mergeTickFiles(dst, src map[string]map[string]int) {
-	for file, couplings := range src {
-		lane, ok := dst[file]
-		if !ok {
-			lane = make(map[string]int)
-			dst[file] = lane
-		}
-
-		for other, count := range couplings {
-			lane[other] += count
-		}
-	}
 }
 
 // mergeTickPeople additively merges per-tick people data into the accumulator.
@@ -839,12 +825,12 @@ func countFileLinesAt(ctx context.Context, name string, commit analyze.CommitLik
 	return count
 }
 
-// clonePeopleSlice deep-clones a slice of per-person file-touch maps using [mapx.Clone].
+// clonePeopleSlice deep-clones a slice of per-person file-touch maps using [maps.Clone].
 func clonePeopleSlice(src []map[string]int) []map[string]int {
 	dst := make([]map[string]int, len(src))
 
 	for i, m := range src {
-		dst[i] = mapx.Clone(m)
+		dst[i] = maps.Clone(m)
 	}
 
 	return dst

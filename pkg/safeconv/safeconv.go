@@ -14,85 +14,29 @@ const MaxInt64 = int64(math.MaxInt64)
 const MaxUint32 = uint32(math.MaxUint32)
 
 // MustUintToInt converts uint to int, panics on overflow.
-// Use only when overflow is logically impossible.
-func MustUintToInt(v uint) int {
-	if v > uint(MaxInt) {
-		panic("safeconv: uint to int overflow")
-	}
-
-	return int(v)
-}
+// Prefer MustConvert[uint, int] for new code.
+func MustUintToInt(v uint) int { return MustConvert[uint, int](v) }
 
 // MustIntToUint converts int to uint, panics if negative.
-// Use only when negative values are logically impossible.
-func MustIntToUint(v int) uint {
-	if v < 0 {
-		panic("safeconv: negative int to uint conversion")
-	}
-
-	return uint(v)
-}
+// Prefer MustConvert[int, uint] for new code.
+func MustIntToUint(v int) uint { return MustConvert[int, uint](v) }
 
 // MustIntToUint32 converts int to uint32, panics on bounds violation.
-// Use only when bounds violations are logically impossible.
-func MustIntToUint32(v int) uint32 {
-	if v < 0 || v > int(MaxUint32) {
-		panic("safeconv: int to uint32 out of bounds")
-	}
+// Prefer MustConvert[int, uint32] for new code.
+func MustIntToUint32(v int) uint32 { return MustConvert[int, uint32](v) }
 
-	return uint32(v)
-}
+// SafeInt64 converts uint64 to int64, clamping on overflow.
+// Prefer SafeConvert[uint64, int64] for new code.
+func SafeInt64(v uint64) int64 { return SafeConvert[uint64, int64](v) }
 
-// SafeInt64 converts uint64 to int64, clamping to [MaxInt64] on overflow.
-func SafeInt64(v uint64) int64 {
-	if v > uint64(MaxInt64) {
-		return MaxInt64
-	}
+// SafeInt converts uint64 to int, clamping on overflow.
+// Prefer SafeConvert[uint64, int] for new code.
+func SafeInt(v uint64) int { return SafeConvert[uint64, int](v) }
 
-	return int64(v)
-}
+// ToInt extracts an int from an any value via numeric coercion.
+// Returns (0, false) for non-numeric types.
+func ToInt(value any) (int, bool) { return Extract[int](value) }
 
-// SafeInt converts uint64 to int, clamping to [MaxInt] on overflow.
-func SafeInt(v uint64) int {
-	if v > uint64(MaxInt) {
-		return MaxInt
-	}
-
-	return int(v)
-}
-
-// ToInt extracts an int from an any value via type switch.
-// Supports int, int32, int64, and float64 source types.
-// Returns (0, false) for unsupported types.
-func ToInt(value any) (int, bool) {
-	switch typedVal := value.(type) {
-	case int:
-		return typedVal, true
-	case int32:
-		return int(typedVal), true
-	case int64:
-		return int(typedVal), true
-	case float64:
-		return int(typedVal), true
-	default:
-		return 0, false
-	}
-}
-
-// ToFloat64 extracts a float64 from an any value via type switch.
-// Supports float64, int, int32, and int64 source types.
-// Returns (0, false) for unsupported types.
-func ToFloat64(value any) (float64, bool) {
-	switch typedVal := value.(type) {
-	case float64:
-		return typedVal, true
-	case int:
-		return float64(typedVal), true
-	case int32:
-		return float64(typedVal), true
-	case int64:
-		return float64(typedVal), true
-	default:
-		return 0, false
-	}
-}
+// ToFloat64 extracts a float64 from an any value via numeric coercion.
+// Returns (0, false) for non-numeric types.
+func ToFloat64(value any) (float64, bool) { return Extract[float64](value) }

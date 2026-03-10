@@ -13,6 +13,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
@@ -455,10 +456,10 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 	diffHitsBefore, diffMissesBefore := cacheStats(c.diffCache)
 
 	blobStart := time.Now()
-	blobOut, blobDone := signalOnDrain(c.blobPipeline.Process(ctx, commitChan))
+	blobOut, blobDone := pipeline.SignalOnDrain(c.blobPipeline.Process(ctx, commitChan))
 
 	diffStart := time.Now()
-	diffOut, diffDone := signalOnDrain(c.diffPipeline.Process(ctx, blobOut))
+	diffOut, diffDone := pipeline.SignalOnDrain(c.diffPipeline.Process(ctx, blobOut))
 
 	// Optionally add UAST pipeline stage for pre-computed UAST parsing.
 	var dataChan <-chan CommitData
@@ -472,7 +473,7 @@ func (c *Coordinator) Process(ctx context.Context, commits []*gitlib.Commit) <-c
 
 		var uastOut <-chan CommitData
 
-		uastOut, uastDone = signalOnDrain(c.uastPipeline.Process(ctx, diffOut))
+		uastOut, uastDone = pipeline.SignalOnDrain(c.uastPipeline.Process(ctx, diffOut))
 
 		dataChan = uastOut
 	} else {
@@ -574,22 +575,4 @@ func cacheStats[T cacheStatsProvider](c T) (hits, misses int64) {
 	}
 
 	return c.CacheHits(), c.CacheMisses()
-}
-
-// signalOnDrain returns a channel that is closed after all items from src
-// have been forwarded to dst. This enables ending stage spans independently.
-func signalOnDrain[T any](src <-chan T) (forwarded <-chan T, drained <-chan struct{}) {
-	sig := make(chan struct{})
-	out := make(chan T)
-
-	go func() {
-		defer close(sig)
-		defer close(out)
-
-		for item := range src {
-			out <- item
-		}
-	}()
-
-	return out, sig
 }

@@ -57,18 +57,16 @@ func (ca *Aggregator) GetResult() analyze.Report {
 	return result
 }
 
+var commentMessageLabeler = common.ThresholdLabeler{
+	{Limit: scoreThresholdHigh, Label: "Excellent comment quality and placement"},
+	{Limit: scoreThresholdMedium, Label: msgGoodCommentQuality},
+	{Limit: scoreThresholdLow, Label: "Fair comment quality - consider improving placement"},
+	{Limit: 0, Label: "Poor comment quality - significant improvement needed"},
+}
+
 // buildMessage creates a message based on the overall score.
 func buildMessage(score float64) string {
-	switch {
-	case score >= scoreThresholdHigh:
-		return "Excellent comment quality and placement"
-	case score >= scoreThresholdMedium:
-		return msgGoodCommentQuality
-	case score >= scoreThresholdLow:
-		return "Fair comment quality - consider improving placement"
-	default:
-		return "Poor comment quality - significant improvement needed"
-	}
+	return commentMessageLabeler.Label(score)
 }
 
 // buildEmptyResult creates an empty result with default values.

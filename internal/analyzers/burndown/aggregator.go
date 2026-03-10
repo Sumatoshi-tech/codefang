@@ -87,7 +87,7 @@ func (a *Aggregator) Add(tc analyze.TC) error {
 		return nil
 	}
 
-	mergeSparseHistory(a.globalHistory, cr.GlobalDeltas)
+	mapx.MergeNestedAdditive(a.globalHistory, cr.GlobalDeltas)
 	mergePeopleHistories(a.peopleHistories, cr.PeopleDeltas)
 	mergeMatrixInto(&a.matrix, cr.MatrixDeltas)
 
@@ -138,15 +138,11 @@ func (a *Aggregator) mergeFileOwnership(ownership map[PathID]map[int]int) {
 
 func (a *Aggregator) mergeFileDeltas(deltas map[PathID]sparseHistory) {
 	for pathID, history := range deltas {
-		if len(history) == 0 {
-			continue
-		}
-
 		if a.fileHistories[pathID] == nil {
 			a.fileHistories[pathID] = sparseHistory{}
 		}
 
-		mergeSparseHistory(a.fileHistories[pathID], history)
+		mapx.MergeNestedAdditive(a.fileHistories[pathID], history)
 	}
 }
 
@@ -346,7 +342,7 @@ func (a *Aggregator) Collect() error {
 			return err
 		}
 
-		mergeSparseHistory(a.globalHistory, snap.GlobalHistory)
+		mapx.MergeNestedAdditive(a.globalHistory, snap.GlobalHistory)
 		mergePeopleHistories(a.peopleHistories, snap.PeopleHistories)
 		mergeMatrixInto(&a.matrix, snap.Matrix)
 
@@ -355,7 +351,7 @@ func (a *Aggregator) Collect() error {
 				a.fileHistories[pathID] = sparseHistory{}
 			}
 
-			mergeSparseHistory(a.fileHistories[pathID], history)
+			mapx.MergeNestedAdditive(a.fileHistories[pathID], history)
 		}
 
 		// FileOwnership is a snapshot; later spills replace earlier ones.
@@ -411,7 +407,7 @@ func (a *Aggregator) EstimatedStateSize() int64 {
 	}
 
 	for _, row := range a.matrix {
-		size += int64(len(row)) * matrixRowBytes
+		size += mapx.EstimateMapSize(row, matrixRowBytes)
 	}
 
 	for _, history := range a.fileHistories {
@@ -425,7 +421,7 @@ func estimateSparseHistorySize(history sparseHistory) int64 {
 	var size int64
 
 	for _, inner := range history {
-		size += int64(len(inner)) * sparseEntryBytes
+		size += mapx.EstimateMapSize(inner, sparseEntryBytes)
 	}
 
 	return size
@@ -551,7 +547,7 @@ func mergeAllTicks(ticks []analyze.TICK) *TickResult {
 			}
 		}
 
-		mergeSparseHistory(merged.GlobalHistory, tr.GlobalHistory)
+		mapx.MergeNestedAdditive(merged.GlobalHistory, tr.GlobalHistory)
 		mergeTickPeopleHistories(merged, tr.PeopleHistories)
 		mergeMatrixInto(&merged.Matrix, tr.Matrix)
 
@@ -568,7 +564,7 @@ func mergeTickFileHistories(merged *TickResult, src map[PathID]sparseHistory) {
 			merged.FileHistories[pathID] = sparseHistory{}
 		}
 
-		mergeSparseHistory(merged.FileHistories[pathID], history)
+		mapx.MergeNestedAdditive(merged.FileHistories[pathID], history)
 	}
 }
 
@@ -620,7 +616,7 @@ func mergeTickPeopleHistories(merged *TickResult, src []sparseHistory) {
 			merged.PeopleHistories[author] = sparseHistory{}
 		}
 
-		mergeSparseHistory(merged.PeopleHistories[author], history)
+		mapx.MergeNestedAdditive(merged.PeopleHistories[author], history)
 	}
 }
 

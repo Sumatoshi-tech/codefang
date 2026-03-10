@@ -2,19 +2,6 @@ package mapx
 
 import "sort"
 
-// CloneSlice returns a shallow copy of s.
-// Returns nil for a nil slice.
-func CloneSlice[T any](s []T) []T {
-	if s == nil {
-		return nil
-	}
-
-	clone := make([]T, len(s))
-	copy(clone, s)
-
-	return clone
-}
-
 // SortAndLimit copies items, sorts the copy using less, and returns at most limit elements.
 // Returns nil for a nil slice. If limit <= 0, returns an empty slice.
 func SortAndLimit[T any](items []T, less func(a, b T) bool, limit int) []T {

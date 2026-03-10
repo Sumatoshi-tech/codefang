@@ -11,6 +11,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
 	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
@@ -331,7 +332,7 @@ func sizeState(state *TickDevData) int64 {
 
 	for _, cdd := range state.DevData {
 		size += commitEntryOverhead
-		size += int64(len(cdd.Languages)) * bytesPerLangEntry
+		size += mapx.EstimateMapSize(cdd.Languages, bytesPerLangEntry)
 	}
 
 	return size

@@ -3,6 +3,7 @@ package common
 import (
 	"slices"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/alg"
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -34,84 +35,63 @@ func NewUASTTraverser(config TraversalConfig) *UASTTraverser {
 	}
 }
 
-// FindNodesByType finds all nodes of specified types in the UAST.
-func (ut *UASTTraverser) FindNodesByType(root *node.Node, nodeTypes []string) []*node.Node {
+// FindNodes returns all nodes for which predicate returns true.
+func (ut *UASTTraverser) FindNodes(root *node.Node, predicate func(*node.Node) bool) []*node.Node {
 	if root == nil {
 		return nil
 	}
 
 	var nodes []*node.Node
 
-	ut.traverse(root, 0, func(n *node.Node, _ int) bool {
-		if ut.matchesTypes(n, nodeTypes) {
-			nodes = append(nodes, n)
+	maxDepth := ut.config.MaxDepth
+
+	alg.TraverseTree(root, func(n *node.Node) []*node.Node {
+		return n.Children
+	}, func(n *node.Node, depth int) {
+		if maxDepth > 0 && depth > maxDepth {
+			return
 		}
 
-		return true
+		if predicate(n) {
+			nodes = append(nodes, n)
+		}
 	})
 
 	return nodes
+}
+
+// FindNodesByType finds all nodes of specified types in the UAST.
+func (ut *UASTTraverser) FindNodesByType(root *node.Node, nodeTypes []string) []*node.Node {
+	return ut.FindNodes(root, func(n *node.Node) bool {
+		return ut.matchesTypes(n, nodeTypes)
+	})
 }
 
 // FindNodesByRoles finds all nodes with specified roles in the UAST.
 func (ut *UASTTraverser) FindNodesByRoles(root *node.Node, roles []string) []*node.Node {
-	if root == nil {
-		return nil
-	}
-
-	var nodes []*node.Node
-
-	ut.traverse(root, 0, func(n *node.Node, _ int) bool {
-		if ut.matchesRoles(n, roles) {
-			nodes = append(nodes, n)
-		}
-
-		return true
+	return ut.FindNodes(root, func(n *node.Node) bool {
+		return ut.matchesRoles(n, roles)
 	})
-
-	return nodes
 }
 
 // FindNodesByFilter finds all nodes matching the specified filter criteria.
 func (ut *UASTTraverser) FindNodesByFilter(root *node.Node, filter NodeFilter) []*node.Node {
-	if root == nil {
-		return nil
-	}
-
-	var nodes []*node.Node
-
-	ut.traverse(root, 0, func(n *node.Node, _ int) bool {
-		if ut.matchesFilter(n, filter) {
-			nodes = append(nodes, n)
-		}
-
-		return true
+	return ut.FindNodes(root, func(n *node.Node) bool {
+		return ut.matchesFilter(n, filter)
 	})
-
-	return nodes
 }
 
 // FindNodesByFilters finds all nodes matching any of the specified filter criteria.
 func (ut *UASTTraverser) FindNodesByFilters(root *node.Node, filters []NodeFilter) []*node.Node {
-	if root == nil {
-		return nil
-	}
-
-	var nodes []*node.Node
-
-	ut.traverse(root, 0, func(n *node.Node, _ int) bool {
+	return ut.FindNodes(root, func(n *node.Node) bool {
 		for _, filter := range filters {
 			if ut.matchesFilter(n, filter) {
-				nodes = append(nodes, n)
-
-				break
+				return true
 			}
 		}
 
-		return true
+		return false
 	})
-
-	return nodes
 }
 
 // CountLines counts the total number of lines in a node and its children.
@@ -140,28 +120,6 @@ func (ut *UASTTraverser) GetNodePosition(n *node.Node) (startLine, endLine int) 
 	}
 
 	return safeconv.MustUintToInt(n.Pos.StartLine), safeconv.MustUintToInt(n.Pos.EndLine)
-}
-
-// traverse performs depth-first traversal of the UAST.
-func (ut *UASTTraverser) traverse(current *node.Node, depth int, visitor func(*node.Node, int) bool) {
-	if current == nil {
-		return
-	}
-
-	// Check depth limit.
-	if ut.config.MaxDepth > 0 && depth > ut.config.MaxDepth {
-		return
-	}
-
-	// Visit current node.
-	if !visitor(current, depth) {
-		return
-	}
-
-	// Traverse children.
-	for _, child := range current.Children {
-		ut.traverse(child, depth+1, visitor)
-	}
 }
 
 // matchesTypes checks if a node matches the specified types.

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	pathpkg "path"
 	"strings"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // AnalyzerMode identifies analyzer runtime mode.
@@ -141,23 +143,21 @@ func (r *Registry) Split(ids []string) (staticIDs, historyIDs []string, err erro
 }
 
 // ExpandPatterns expands glob patterns against registered analyzer IDs.
+// Duplicate IDs across patterns are removed; first occurrence wins.
 func (r *Registry) ExpandPatterns(patterns []string) ([]string, error) {
 	idSet := r.descriptorIDSet()
 	selected := make([]string, 0, len(r.ordered))
-	selectedSet := make(map[string]struct{}, len(r.ordered))
 
 	for _, rawPattern := range patterns {
-		patternValue := strings.TrimSpace(rawPattern)
-
-		ids, err := r.resolvePattern(patternValue, idSet)
+		ids, err := r.resolvePattern(strings.TrimSpace(rawPattern), idSet)
 		if err != nil {
 			return nil, err
 		}
 
-		appendUniqueIDs(&selected, selectedSet, ids)
+		selected = append(selected, ids...)
 	}
 
-	return selected, nil
+	return mapx.Unique(selected), nil
 }
 
 // SelectedIDs returns the analyzer IDs for the given patterns, or all IDs if none specified.
@@ -234,17 +234,6 @@ func (r *Registry) allIDs() []string {
 
 func hasGlobMeta(pattern string) bool {
 	return strings.ContainsAny(pattern, "*?[")
-}
-
-func appendUniqueIDs(target *[]string, targetSet map[string]struct{}, ids []string) {
-	for _, id := range ids {
-		if _, exists := targetSet[id]; exists {
-			continue
-		}
-
-		*target = append(*target, id)
-		targetSet[id] = struct{}{}
-	}
 }
 
 // HistoryKeysByID maps history analyzer IDs to their pipeline keys.

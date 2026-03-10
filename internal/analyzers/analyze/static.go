@@ -9,9 +9,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -92,109 +92,65 @@ func (svc *StaticService) collectFiles(rootPath string) ([]string, error) {
 	return files, nil
 }
 
-// workerState holds shared mutable state for parallel file analysis workers.
-type workerState struct {
-	mu       sync.Mutex
-	firstErr error
-}
-
-// setError records the first error encountered by any worker.
-func (ws *workerState) setError(err error) {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	if ws.firstErr == nil {
-		ws.firstErr = err
-	}
-}
-
-// analyzeFilesParallel processes files using a pool of workers, each with its own parser.
+// analyzeFilesParallel processes files using a WorkerPool, each goroutine
+// lazily creating its own parser via [sync.Pool].
 func (svc *StaticService) analyzeFilesParallel(
 	ctx context.Context,
 	files []string,
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
 ) error {
-	numWorkers := max(1, runtime.NumCPU())
-	fileChan := make(chan string, numWorkers)
-	state := &workerState{}
+	var (
+		parserPool sync.Pool
+		mu         sync.Mutex
+	)
 
-	var wg sync.WaitGroup
+	pool := pipeline.WorkerPool[string]{
+		Work: func(ctx context.Context, filePath string) error {
+			parser, err := svc.getOrCreateParser(&parserPool)
+			if err != nil {
+				return err
+			}
 
-	wg.Add(numWorkers)
+			defer parserPool.Put(parser)
 
-	for range numWorkers {
-		go svc.fileWorker(ctx, &wg, fileChan, analyzersToRun, aggregators, state)
+			reportMap, analyzeErr := svc.analyzeFile(ctx, filePath, parser, analyzersToRun)
+			if analyzeErr != nil {
+				if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
+					return nil
+				}
+
+				return analyzeErr
+			}
+
+			StampSourceFile(reportMap, filePath)
+
+			mu.Lock()
+			aggregateFolderAnalysis(reportMap, aggregators)
+			mu.Unlock()
+
+			return nil
+		},
 	}
 
-	for _, filePath := range files {
-		fileChan <- filePath
-	}
-
-	close(fileChan)
-	wg.Wait()
-
-	return state.firstErr
+	return pool.Run(ctx, files)
 }
 
-// fileWorker is the body of each parallel file analysis goroutine.
-func (svc *StaticService) fileWorker(
-	ctx context.Context,
-	wg *sync.WaitGroup,
-	fileChan <-chan string,
-	analyzersToRun []string,
-	aggregators map[string]ResultAggregator,
-	state *workerState,
-) {
-	defer wg.Done()
-
-	parser, parserErr := uast.NewParser()
-	if parserErr != nil {
-		state.setError(fmt.Errorf("create worker parser: %w", parserErr))
-
-		for range fileChan {
-			continue // Drain remaining items so senders don't block.
-		}
-
-		return
-	}
-
-	for filePath := range fileChan {
-		stopped := svc.processFile(ctx, filePath, parser, analyzersToRun, aggregators, state)
-		if stopped {
-			return
+// getOrCreateParser retrieves a parser from the pool or creates a new one.
+func (svc *StaticService) getOrCreateParser(pool *sync.Pool) (*uast.Parser, error) {
+	if v := pool.Get(); v != nil {
+		parser, ok := v.(*uast.Parser)
+		if ok {
+			return parser, nil
 		}
 	}
-}
 
-// processFile analyzes a single file and aggregates the results.
-// Returns true if the worker should stop due to a fatal error.
-func (svc *StaticService) processFile(
-	ctx context.Context,
-	filePath string,
-	parser *uast.Parser,
-	analyzersToRun []string,
-	aggregators map[string]ResultAggregator,
-	state *workerState,
-) bool {
-	reportMap, analyzeErr := svc.analyzeFile(ctx, filePath, parser, analyzersToRun)
-	if analyzeErr != nil {
-		if errors.Is(analyzeErr, fs.ErrPermission) || errors.Is(analyzeErr, fs.ErrNotExist) {
-			return false
-		}
-
-		state.setError(analyzeErr)
-
-		return true
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil, fmt.Errorf("create worker parser: %w", err)
 	}
 
-	StampSourceFile(reportMap, filePath)
-
-	state.mu.Lock()
-	aggregateFolderAnalysis(reportMap, aggregators)
-	state.mu.Unlock()
-
-	return false
+	return parser, nil
 }
 
 // StampSourceFile adds "_source_file" metadata to every collection item in each report.

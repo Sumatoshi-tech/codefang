@@ -1,6 +1,7 @@
 package reportutil
 
 // FRD: specs/frds/FRD-20260302-safeconv-wiring.md.
+// FRD: specs/frds/FRD-20260306-reportutil-getas.md.
 
 import (
 	"testing"
@@ -209,5 +210,86 @@ func TestPct_Zero(t *testing.T) {
 
 	if got := Pct(0, 0); got != 0 {
 		t.Errorf("Pct(0,0) = %v, want 0", got)
+	}
+}
+
+func TestGetAs_Hit(t *testing.T) {
+	t.Parallel()
+
+	r := map[string]any{"key": "value"}
+
+	got, ok := GetAs[string](r, "key")
+
+	if !ok {
+		t.Fatalf("GetAs[string]() ok = false, want true")
+	}
+
+	if got != "value" {
+		t.Errorf("GetAs[string]() = %q, want %q", got, "value")
+	}
+}
+
+func TestGetAs_KeyMissing(t *testing.T) {
+	t.Parallel()
+
+	r := map[string]any{}
+
+	got, ok := GetAs[string](r, "key")
+
+	if ok {
+		t.Fatalf("GetAs[string]() ok = true, want false")
+	}
+
+	if got != "" {
+		t.Errorf("GetAs[string]() = %q, want zero value", got)
+	}
+}
+
+func TestGetAs_WrongType(t *testing.T) {
+	t.Parallel()
+
+	r := map[string]any{"key": 42}
+
+	got, ok := GetAs[string](r, "key")
+
+	if ok {
+		t.Fatalf("GetAs[string]() ok = true for wrong type, want false")
+	}
+
+	if got != "" {
+		t.Errorf("GetAs[string]() = %q, want zero value", got)
+	}
+}
+
+func TestGetAs_SliceType(t *testing.T) {
+	t.Parallel()
+
+	r := map[string]any{"imports": []string{"os", "fmt"}}
+
+	got, ok := GetAs[[]string](r, "imports")
+
+	if !ok {
+		t.Fatalf("GetAs[[]string]() ok = false, want true")
+	}
+
+	if len(got) != 2 {
+		t.Errorf("GetAs[[]string]() len = %d, want 2", len(got))
+	}
+}
+
+func TestGetAs_MapType(t *testing.T) {
+	t.Parallel()
+
+	m := map[string]int{"os": 3}
+	r := map[string]any{"counts": m}
+
+	got, ok := GetAs[map[string]int](r, "counts")
+
+	if !ok {
+		t.Fatalf("GetAs[map[string]int]() ok = false, want true")
+	}
+
+	if got["os"] != 3 {
+		t.Errorf("GetAs[map[string]int]()[os] = %d, want 3", got["os"])
 	}
 }

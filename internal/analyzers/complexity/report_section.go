@@ -2,11 +2,11 @@ package complexity
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -122,42 +122,55 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	return buildDistribution(counts, total)
 }
 
-// TopIssues returns the top N functions sorted by complexity descending.
-func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildSortedIssues()
-	if n >= len(issues) {
-		return issues
+// issueEnvelope carries numeric sort keys alongside the display Issue.
+type issueEnvelope struct {
+	cognitive  int
+	cyclomatic int
+	issue      analyze.Issue
+	nesting    int
+}
+
+// complexityEnvelopeLess orders envelopes by cyclomatic desc, cognitive desc, nesting desc, name asc.
+func complexityEnvelopeLess(a, b issueEnvelope) bool {
+	if a.cyclomatic != b.cyclomatic {
+		return a.cyclomatic > b.cyclomatic
 	}
 
-	return issues[:n]
+	if a.cognitive != b.cognitive {
+		return a.cognitive > b.cognitive
+	}
+
+	if a.nesting != b.nesting {
+		return a.nesting > b.nesting
+	}
+
+	return a.issue.Name < b.issue.Name
+}
+
+// TopIssues returns the top N functions sorted by complexity descending.
+func (s *ReportSection) TopIssues(n int) []analyze.Issue {
+	return s.complexityIssues(n)
 }
 
 // AllIssues returns all functions as issues sorted by complexity descending.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildSortedIssues()
+	return s.complexityIssues(0)
 }
 
-// buildSortedIssues extracts functions and sorts by complexity descending.
-func (s *ReportSection) buildSortedIssues() []analyze.Issue {
+// complexityIssues builds issues sorted by complexity descending, limited to limit (0 = all).
+func (s *ReportSection) complexityIssues(limit int) []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
 	}
 
-	type issueEnvelope struct {
-		cognitive  int
-		cyclomatic int
-		issue      analyze.Issue
-		nesting    int
-	}
-
-	issues := make([]issueEnvelope, 0, len(functions))
+	envelopes := make([]issueEnvelope, 0, len(functions))
 	for _, fn := range functions {
 		name := reportutil.MapString(fn, KeyFuncName)
 		cc := reportutil.GetInt(fn, KeyFuncCyclomatic)
 		cognitive := reportutil.GetInt(fn, KeyFuncCognitive)
 		nesting := reportutil.GetInt(fn, KeyFuncNesting)
-		issues = append(issues, issueEnvelope{
+		envelopes = append(envelopes, issueEnvelope{
 			cyclomatic: cc,
 			cognitive:  cognitive,
 			nesting:    nesting,
@@ -169,24 +182,10 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 		})
 	}
 
-	sort.Slice(issues, func(i, j int) bool {
-		if issues[i].cyclomatic != issues[j].cyclomatic {
-			return issues[i].cyclomatic > issues[j].cyclomatic
-		}
+	sorted := mapx.SortAndLimit(envelopes, complexityEnvelopeLess, limit)
 
-		if issues[i].cognitive != issues[j].cognitive {
-			return issues[i].cognitive > issues[j].cognitive
-		}
-
-		if issues[i].nesting != issues[j].nesting {
-			return issues[i].nesting > issues[j].nesting
-		}
-
-		return issues[i].issue.Name < issues[j].issue.Name
-	})
-
-	result := make([]analyze.Issue, 0, len(issues))
-	for _, item := range issues {
+	result := make([]analyze.Issue, 0, len(sorted))
+	for _, item := range sorted {
 		result = append(result, item.issue)
 	}
 

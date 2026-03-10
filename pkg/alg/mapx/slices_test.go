@@ -6,46 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCloneSlice(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil_returns_nil", func(t *testing.T) {
-		t.Parallel()
-
-		got := CloneSlice[int](nil)
-		assert.Nil(t, got)
-	})
-
-	t.Run("empty_returns_empty", func(t *testing.T) {
-		t.Parallel()
-
-		got := CloneSlice([]int{})
-		assert.NotNil(t, got)
-		assert.Empty(t, got)
-	})
-
-	t.Run("shallow_copy_independence", func(t *testing.T) {
-		t.Parallel()
-
-		src := []int{1, 2, 3}
-		got := CloneSlice(src)
-		assert.Equal(t, src, got)
-
-		// Mutation independence.
-		got[0] = 99
-
-		assert.Equal(t, 1, src[0])
-	})
-
-	t.Run("string_slice", func(t *testing.T) {
-		t.Parallel()
-
-		src := []string{"a", "b", "c"}
-		got := CloneSlice(src)
-		assert.Equal(t, src, got)
-	})
-}
-
 // FRD: specs/frds/FRD-20260303-sort-and-limit.md.
 
 func TestSortAndLimit(t *testing.T) {
@@ -94,6 +54,15 @@ func TestSortAndLimit(t *testing.T) {
 		t.Parallel()
 
 		got := SortAndLimit([]int{2, 1, 3}, descending, 3)
+		assert.Equal(t, []int{3, 2, 1}, got)
+	})
+
+	t.Run("limit_zero_returns_all", func(t *testing.T) {
+		t.Parallel()
+
+		// limit=0 means "no limit" — returns all items sorted.
+		// Used by AllIssues() in report_section.go files.
+		got := SortAndLimit([]int{3, 1, 2}, descending, 0)
 		assert.Equal(t, []int{3, 2, 1}, got)
 	})
 }

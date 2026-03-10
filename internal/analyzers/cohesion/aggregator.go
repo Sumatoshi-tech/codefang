@@ -67,21 +67,16 @@ func buildMessageBuilder() func(float64) string {
 	return getCohesionMessage
 }
 
+var cohesionMessageLabeler = common.ThresholdLabeler{
+	{Limit: scoreThresholdHigh, Label: "Excellent overall cohesion across all analyzed code"},
+	{Limit: scoreThresholdMedium, Label: "Good overall cohesion with room for improvement"},
+	{Limit: scoreThresholdLow, Label: "Fair overall cohesion - consider refactoring some functions"},
+	{Limit: 0, Label: "Poor overall cohesion - significant refactoring recommended"},
+}
+
 // getCohesionMessage returns a message based on the cohesion score.
 func getCohesionMessage(score float64) string {
-	if score >= scoreThresholdHigh {
-		return "Excellent overall cohesion across all analyzed code"
-	}
-
-	if score >= scoreThresholdMedium {
-		return "Good overall cohesion with room for improvement"
-	}
-
-	if score >= scoreThresholdLow {
-		return "Fair overall cohesion - consider refactoring some functions"
-	}
-
-	return "Poor overall cohesion - significant refactoring recommended"
+	return cohesionMessageLabeler.Label(score)
 }
 
 // buildEmptyResultBuilder creates the empty result builder function.

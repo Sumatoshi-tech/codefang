@@ -1,10 +1,9 @@
 package halstead
 
 import (
-	"sort"
-
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -129,35 +128,32 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	}
 }
 
+// halsteadFuncLess orders functions by effort descending (highest effort = first).
+func halsteadFuncLess(a, b map[string]any) bool {
+	return reportutil.GetFloat64(a, KeyFuncEffort) > reportutil.GetFloat64(b, KeyFuncEffort)
+}
+
 // TopIssues returns the top N functions with highest effort.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildSortedIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return s.halsteadIssues(n)
 }
 
 // AllIssues returns all functions sorted by effort descending.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildSortedIssues()
+	return s.halsteadIssues(0)
 }
 
-// buildSortedIssues extracts functions sorted by effort descending.
-func (s *ReportSection) buildSortedIssues() []analyze.Issue {
+// halsteadIssues builds issues from functions sorted by effort descending, limited to limit (0 = all).
+func (s *ReportSection) halsteadIssues(limit int) []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
 	}
 
-	// Sort functions by effort descending before building issues.
-	sort.Slice(functions, func(i, j int) bool {
-		return reportutil.GetFloat64(functions[i], KeyFuncEffort) > reportutil.GetFloat64(functions[j], KeyFuncEffort)
-	})
+	sorted := mapx.SortAndLimit(functions, halsteadFuncLess, limit)
 
-	issues := make([]analyze.Issue, 0, len(functions))
-	for _, fn := range functions {
+	issues := make([]analyze.Issue, 0, len(sorted))
+	for _, fn := range sorted {
 		name := reportutil.MapString(fn, KeyFuncName)
 		effort := reportutil.GetFloat64(fn, KeyFuncEffort)
 		volume := reportutil.GetFloat64(fn, KeyFuncVolume)

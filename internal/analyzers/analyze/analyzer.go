@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -209,104 +208,54 @@ func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers [
 	return f.runParallel(ctx, root, cats)
 }
 
-// parallelState holds shared state for parallel analyzer execution.
-type parallelState struct {
-	combinedReport map[string]Report
-	reportMu       sync.Mutex
-	errs           []string
-	errMu          sync.Mutex
-}
-
 // runParallel executes visitor-based and independent analyzers concurrently.
+// Visitors run as a single goroutine; independent analyzers fan out via WorkerPool.
 func (f *Factory) runParallel(ctx context.Context, root *node.Node, cats *analyzerCategories) (map[string]Report, error) {
-	state := &parallelState{
-		combinedReport: make(map[string]Report),
-	}
+	combinedReport := make(map[string]Report)
+
+	var reportMu sync.Mutex
 
 	var wg sync.WaitGroup
 
-	sem := make(chan struct{}, f.maxParallel)
-
 	if len(cats.visitors) > 0 {
-		wg.Add(1)
+		wg.Go(func() {
+			f.runVisitors(root, cats.visitors)
 
-		go f.runVisitorsParallel(ctx, root, cats, state, sem, &wg)
+			reportMu.Lock()
+
+			for name, v := range cats.visitorAnalyzers {
+				combinedReport[name] = v.GetReport()
+			}
+
+			reportMu.Unlock()
+		})
 	}
 
-	for _, name := range cats.independentAnalyzers {
-		wg.Add(1)
+	pool := pipeline.WorkerPool[string]{
+		MaxParallel: f.maxParallel,
+		Work: func(_ context.Context, name string) error {
+			report, err := f.RunAnalyzer(name, root)
+			if err != nil {
+				return fmt.Errorf("analyzer %s: %w", name, err)
+			}
 
-		go f.runIndependentParallel(ctx, root, name, state, sem, &wg)
+			reportMu.Lock()
+			combinedReport[name] = report
+			reportMu.Unlock()
+
+			return nil
+		},
 	}
+
+	poolErr := pool.Run(ctx, cats.independentAnalyzers)
 
 	wg.Wait()
 
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("runanalyzers: %w", ctx.Err())
+	if poolErr != nil {
+		return nil, fmt.Errorf("%w: %w", ErrAnalysisFailed, poolErr)
 	}
 
-	if len(state.errs) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrAnalysisFailed, strings.Join(state.errs, "; "))
-	}
-
-	return state.combinedReport, nil
-}
-
-// runVisitorsParallel runs visitor-based analyzers as a single parallel task.
-func (f *Factory) runVisitorsParallel(
-	ctx context.Context, root *node.Node, cats *analyzerCategories,
-	state *parallelState, sem chan struct{}, wg *sync.WaitGroup,
-) {
-	defer wg.Done()
-
-	select {
-	case sem <- struct{}{}:
-		defer func() { <-sem }()
-	case <-ctx.Done():
-		return
-	}
-
-	f.runVisitors(root, cats.visitors)
-
-	state.reportMu.Lock()
-
-	for name, v := range cats.visitorAnalyzers {
-		state.combinedReport[name] = v.GetReport()
-	}
-
-	state.reportMu.Unlock()
-}
-
-// runIndependentParallel runs a single independent analyzer as a parallel task.
-func (f *Factory) runIndependentParallel(
-	ctx context.Context, root *node.Node, name string,
-	state *parallelState, sem chan struct{}, wg *sync.WaitGroup,
-) {
-	defer wg.Done()
-
-	select {
-	case sem <- struct{}{}:
-		defer func() { <-sem }()
-	case <-ctx.Done():
-		return
-	}
-
-	if ctx.Err() != nil {
-		return
-	}
-
-	report, err := f.RunAnalyzer(name, root)
-	if err != nil {
-		state.errMu.Lock()
-		state.errs = append(state.errs, fmt.Sprintf("analyzer %s error: %v", name, err))
-		state.errMu.Unlock()
-
-		return
-	}
-
-	state.reportMu.Lock()
-	state.combinedReport[name] = report
-	state.reportMu.Unlock()
+	return combinedReport, nil
 }
 
 func (f *Factory) runSequentially(

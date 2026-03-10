@@ -272,21 +272,16 @@ func (c *Analyzer) FormatReportBinary(report analyze.Report, w io.Writer) error 
 	return nil
 }
 
+var cohesionDetailMessageLabeler = common.ThresholdLabeler{
+	{Limit: scoreThresholdHigh, Label: "Excellent cohesion - functions are well-focused and cohesive"},
+	{Limit: scoreThresholdMedium, Label: "Good cohesion - functions have reasonable focus"},
+	{Limit: scoreThresholdLow, Label: "Fair cohesion - some functions could be more focused"},
+	{Limit: 0, Label: "Poor cohesion - functions lack focus and should be refactored"},
+}
+
 // getCohesionMessage returns a message based on the cohesion score.
 func (c *Analyzer) getCohesionMessage(score float64) string {
-	if score >= scoreThresholdHigh {
-		return "Excellent cohesion - functions are well-focused and cohesive"
-	}
-
-	if score >= scoreThresholdMedium {
-		return "Good cohesion - functions have reasonable focus"
-	}
-
-	if score >= scoreThresholdLow {
-		return "Fair cohesion - some functions could be more focused"
-	}
-
-	return "Poor cohesion - functions lack focus and should be refactored"
+	return cohesionDetailMessageLabeler.Label(score)
 }
 
 // getCohesionAssessment returns an assessment with emoji for cohesion.

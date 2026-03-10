@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"sync"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -137,54 +136,38 @@ func filterSupported(parser *uast.Parser, files []string) []indexedFile {
 	return supported
 }
 
-// runAnalyzeParallel fans analysis out across NumCPU workers.
+// runAnalyzeParallel fans analysis out across NumCPU workers via WorkerPool.
 func runAnalyzeParallel(parser *uast.Parser, supported []indexedFile) ([]analysisResult, error) {
-	workers := min(runtime.NumCPU(), len(supported))
 	allResults := make([]analysisResult, len(supported))
-	work := make(chan indexedFile, len(supported))
 
-	var (
-		wg       sync.WaitGroup
-		errOnce  sync.Once
-		firstErr error
-	)
-
-	for range workers {
-		wg.Go(func() {
-			for item := range work {
-				pErr := analyzeFile(parser, item, allResults)
-				if pErr != nil {
-					errOnce.Do(func() { firstErr = pErr })
-
-					return
-				}
-			}
-		})
+	// Remap to contiguous indices for result storage.
+	items := make([]indexedFile, len(supported))
+	for i, s := range supported {
+		items[i] = indexedFile{index: i, path: s.path}
 	}
 
-	// Use contiguous indices into allResults.
-	for i, item := range supported {
-		work <- indexedFile{index: i, path: item.path}
+	pool := pipeline.WorkerPool[indexedFile]{
+		Work: func(ctx context.Context, item indexedFile) error {
+			return analyzeFile(ctx, parser, item, allResults)
+		},
 	}
 
-	close(work)
-	wg.Wait()
-
-	if firstErr != nil {
-		return nil, firstErr
+	err := pool.Run(context.Background(), items)
+	if err != nil {
+		return nil, err
 	}
 
 	return allResults, nil
 }
 
 // analyzeFile parses and analyzes a single file, storing the result in results[item.index].
-func analyzeFile(parser *uast.Parser, item indexedFile, results []analysisResult) error {
+func analyzeFile(ctx context.Context, parser *uast.Parser, item indexedFile, results []analysisResult) error {
 	code, err := os.ReadFile(item.path)
 	if err != nil {
 		return fmt.Errorf("failed to read file %s: %w", item.path, err)
 	}
 
-	parsedNode, err := parser.Parse(context.Background(), item.path, code)
+	parsedNode, err := parser.Parse(ctx, item.path, code)
 	if err != nil {
 		return fmt.Errorf("parse error in %s: %w", item.path, err)
 	}
@@ -389,15 +372,7 @@ func outputAnalysis(results []analysisResult, output, format string) error {
 }
 
 func outputAnalysisJSON(results []analysisResult, writer io.Writer) error {
-	enc := json.NewEncoder(writer)
-	enc.SetIndent("", "  ")
-
-	err := enc.Encode(results)
-	if err != nil {
-		return fmt.Errorf("failed to encode JSON: %w", err)
-	}
-
-	return nil
+	return textutil.WriteJSON(writer, results, true)
 }
 
 func outputAnalysisText(results []analysisResult, writer io.Writer) {

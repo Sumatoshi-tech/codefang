@@ -592,19 +592,7 @@ func (c *Analyzer) getCommentType(funcName string, details []CommentDetail) stri
 
 // getCommentMessage returns a message based on the comment quality score.
 func (c *Analyzer) getCommentMessage(score float64) string {
-	if score >= scoreThresholdHigh {
-		return "Excellent comment quality and placement"
-	}
-
-	if score >= scoreThresholdMedium {
-		return msgGoodCommentQuality
-	}
-
-	if score >= scoreThresholdLow {
-		return "Fair comment quality - consider improving placement"
-	}
-
-	return "Poor comment quality - significant improvement needed"
+	return commentMessageLabeler.Label(score)
 }
 
 // buildEmptyResult creates an empty result when no comments are found.

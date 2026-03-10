@@ -6,38 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestClone(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil_returns_nil", func(t *testing.T) {
-		t.Parallel()
-
-		got := Clone[string, int](nil)
-		assert.Nil(t, got)
-	})
-
-	t.Run("empty_returns_empty", func(t *testing.T) {
-		t.Parallel()
-
-		got := Clone(map[string]int{})
-		assert.NotNil(t, got)
-		assert.Empty(t, got)
-	})
-
-	t.Run("shallow_copy", func(t *testing.T) {
-		t.Parallel()
-
-		src := map[string]int{"a": 1, "b": 2}
-		got := Clone(src)
-		assert.Equal(t, src, got)
-
-		// Mutation independence.
-		got["c"] = 3
-
-		assert.NotContains(t, src, "c")
-	})
-}
-
 func TestCloneFunc(t *testing.T) {
 	t.Parallel()
 
@@ -177,6 +145,115 @@ func TestMergeAdditive(t *testing.T) {
 
 		assert.InDelta(t, 4.0, dst["x"], 0.0001)
 		assert.InDelta(t, 3.0, dst["y"], 0.0001)
+	})
+}
+
+// FRD: specs/frds/FRD-20260306-merge-nested-additive.md.
+func TestMergeNestedAdditive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_dst_no_panic", func(t *testing.T) {
+		t.Parallel()
+
+		assert.NotPanics(t, func() {
+			MergeNestedAdditive(nil, map[int]map[int]int64{1: {10: 5}})
+		})
+	})
+
+	t.Run("nil_src_no_op", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{1: {10: 5}}
+		MergeNestedAdditive(dst, nil)
+		assert.Equal(t, int64(5), dst[1][10])
+	})
+
+	t.Run("empty_inner_src_skipped", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{}
+		MergeNestedAdditive(dst, map[int]map[int]int64{1: {}})
+		assert.Nil(t, dst[1], "empty inner map should not allocate dst entry")
+	})
+
+	t.Run("additive_merge_new_outer_key", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{}
+		src := map[int]map[int]int64{1: {10: 100, 20: 200}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, int64(100), dst[1][10])
+		assert.Equal(t, int64(200), dst[1][20])
+	})
+
+	t.Run("additive_merge_existing_inner_keys", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{1: {10: 50}}
+		src := map[int]map[int]int64{1: {10: 50, 20: 200}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, int64(100), dst[1][10])
+		assert.Equal(t, int64(200), dst[1][20])
+	})
+
+	t.Run("string_keys", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[string]map[string]int{"a": {"x": 1}}
+		src := map[string]map[string]int{"a": {"x": 2, "y": 3}, "b": {"z": 4}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, 3, dst["a"]["x"])
+		assert.Equal(t, 3, dst["a"]["y"])
+		assert.Equal(t, 4, dst["b"]["z"])
+	})
+}
+
+// FRD: specs/frds/FRD-20260310-estimate-map-size.md.
+
+func TestEstimateMapSize(t *testing.T) {
+	t.Parallel()
+
+	const entryBytes = 56
+
+	t.Run("nil_map_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		got := EstimateMapSize[string, int](nil, entryBytes)
+		assert.Equal(t, int64(0), got)
+	})
+
+	t.Run("empty_map_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		got := EstimateMapSize(map[string]int{}, entryBytes)
+		assert.Equal(t, int64(0), got)
+	})
+
+	t.Run("single_entry", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[string]int{"a": 1}
+		got := EstimateMapSize(m, entryBytes)
+		assert.Equal(t, int64(entryBytes), got)
+	})
+
+	t.Run("multiple_entries", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[int]string{1: "a", 2: "b", 3: "c"}
+		got := EstimateMapSize(m, entryBytes)
+		assert.Equal(t, int64(3)*int64(entryBytes), got)
+	})
+
+	t.Run("zero_entry_bytes_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[string]int{"a": 1, "b": 2}
+		got := EstimateMapSize(m, 0)
+		assert.Equal(t, int64(0), got)
 	})
 }
 

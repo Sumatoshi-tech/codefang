@@ -1,10 +1,9 @@
 package cohesion
 
 import (
-	"sort"
-
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -103,23 +102,21 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	}
 }
 
+// cohesionLess orders issues by Value ascending (lowest cohesion = worst = first).
+func cohesionLess(a, b analyze.Issue) bool { return a.Value < b.Value }
+
 // TopIssues returns the top N functions with lowest cohesion.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildSortedIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return mapx.SortAndLimit(s.buildIssues(), cohesionLess, n)
 }
 
 // AllIssues returns all functions sorted by cohesion ascending (worst first).
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildSortedIssues()
+	return mapx.SortAndLimit(s.buildIssues(), cohesionLess, 0)
 }
 
-// buildSortedIssues extracts functions sorted by cohesion ascending.
-func (s *ReportSection) buildSortedIssues() []analyze.Issue {
+// buildIssues extracts functions as unsorted issues.
+func (s *ReportSection) buildIssues() []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
 		return nil
@@ -135,11 +132,6 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 			Severity: severityForCohesion(coh),
 		})
 	}
-
-	// Sort ascending (lowest cohesion = worst = first).
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Value < issues[j].Value
-	})
 
 	return issues
 }

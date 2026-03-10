@@ -1,6 +1,8 @@
 package burndown
 
 import (
+	"maps"
+
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
@@ -86,7 +88,7 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		ReversedPeopleDict: append([]string{}, b.ReversedPeopleDict...),
 		Tick:               b.tick,
 		PreviousTick:       b.previousTick,
-		Renames:            mapx.Clone(b.renames),
+		Renames:            maps.Clone(b.renames),
 		RenamesReverse:     mapx.CloneNested(b.renamesReverse),
 	}
 
@@ -108,8 +110,8 @@ func (b *HistoryAnalyzer) buildCheckpointState() *checkpointState {
 		state.Shards[i] = shardState{
 			FileHistoriesByID: cloneSparseHistorySlice(shard.fileHistoriesByID),
 			ActiveIDs:         append([]PathID{}, shard.activeIDs...),
-			MergedByID:        mapx.Clone(shard.mergedByID),
-			DeletionsByID:     mapx.Clone(shard.deletionsByID),
+			MergedByID:        maps.Clone(shard.mergedByID),
+			DeletionsByID:     maps.Clone(shard.deletionsByID),
 		}
 		shard.mu.Unlock()
 	}

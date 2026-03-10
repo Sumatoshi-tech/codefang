@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Sumatoshi-tech/codefang/internal/storage"
 )
 
 const (
@@ -191,19 +193,15 @@ func (s *FileReportStore) writeManifest() error {
 	}
 
 	manifestPath := filepath.Join(s.dir, manifestFile)
-	tmpPath := manifestPath + tmpExtension
 
-	writeErr := os.WriteFile(tmpPath, data, filePerm)
-	if writeErr != nil {
-		return fmt.Errorf("report store write manifest: %w", writeErr)
-	}
+	return storage.WriteAtomic(manifestPath, filePerm, func(w io.Writer) error {
+		_, writeErr := w.Write(data)
+		if writeErr != nil {
+			return fmt.Errorf("report store write manifest: %w", writeErr)
+		}
 
-	renameErr := os.Rename(tmpPath, manifestPath)
-	if renameErr != nil {
-		return fmt.Errorf("report store rename manifest: %w", renameErr)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // gobFileWriter buffers gob-encoded records for one kind.
@@ -272,39 +270,16 @@ func (w *fileReportWriter) Close() error {
 }
 
 func (w *fileReportWriter) flushKind(kind string, gw *gobFileWriter) error {
-	tmpPath := filepath.Join(w.dir, kind+tmpExtension)
 	finalPath := filepath.Join(w.dir, kind+gobExtension)
 
-	fd, createErr := os.Create(tmpPath)
-	if createErr != nil {
-		return fmt.Errorf("report writer create: %w", createErr)
-	}
+	return storage.WriteAtomic(finalPath, filePerm, func(dst io.Writer) error {
+		_, copyErr := io.Copy(dst, &gw.buf)
+		if copyErr != nil {
+			return fmt.Errorf("report writer copy: %w", copyErr)
+		}
 
-	_, copyErr := io.Copy(fd, &gw.buf)
-	if copyErr != nil {
-		fd.Close()
-
-		return fmt.Errorf("report writer copy: %w", copyErr)
-	}
-
-	syncErr := fd.Sync()
-	if syncErr != nil {
-		fd.Close()
-
-		return fmt.Errorf("report writer sync: %w", syncErr)
-	}
-
-	closeErr := fd.Close()
-	if closeErr != nil {
-		return fmt.Errorf("report writer close fd: %w", closeErr)
-	}
-
-	renameErr := os.Rename(tmpPath, finalPath)
-	if renameErr != nil {
-		return fmt.Errorf("report writer rename: %w", renameErr)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // fileReportReader implements [ReportReader] for file-backed stores.

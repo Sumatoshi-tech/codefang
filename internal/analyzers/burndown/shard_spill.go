@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Sumatoshi-tech/codefang/internal/burndown"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // shardSpillState tracks spill files for one shard.
@@ -33,19 +34,6 @@ func (ss *shardSpillState) spillDir(parentDir string, shardIdx int) (string, err
 	return dir, nil
 }
 
-// mergeSparseHistory merges src into dst (additive).
-func mergeSparseHistory(dst, src sparseHistory) {
-	for tick, counts := range src {
-		if dst[tick] == nil {
-			dst[tick] = map[int]int64{}
-		}
-
-		for prevTick, count := range counts {
-			dst[tick][prevTick] += count
-		}
-	}
-}
-
 // mergeMatrixInto merges src matrix rows into dst (additive), growing dst as needed.
 func mergeMatrixInto(dst *[]map[int]int64, src []map[int]int64) {
 	for author, row := range src {
@@ -70,15 +58,11 @@ func mergeMatrixInto(dst *[]map[int]int64, src []map[int]int64) {
 // mergePeopleHistories merges src per-person histories into dst (additive).
 func mergePeopleHistories(dst, src map[int]sparseHistory) {
 	for person, history := range src {
-		if len(history) == 0 {
-			continue
-		}
-
 		if dst[person] == nil {
 			dst[person] = sparseHistory{}
 		}
 
-		mergeSparseHistory(dst[person], history)
+		mapx.MergeNestedAdditive(dst[person], history)
 	}
 }
 

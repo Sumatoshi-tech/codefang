@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -75,7 +76,7 @@ func (b *CachedBlob) Size() int64 {
 
 // Reader returns a reader for the blob data.
 func (b *CachedBlob) Reader() io.ReadCloser {
-	return textutil.BytesReader(b.Data)
+	return io.NopCloser(bytes.NewReader(b.Data))
 }
 
 // Clone creates a deep copy of the CachedBlob, detaching the Data slice.

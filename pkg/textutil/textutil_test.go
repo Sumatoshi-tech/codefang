@@ -1,13 +1,52 @@
 package textutil
 
 import (
-	"io"
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// FRD: specs/frds/FRD-20260310-writejson-helper.md.
+
+func TestWriteJSON_PrettyOutput(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	input := map[string]int{"a": 1}
+
+	err := WriteJSON(&buf, input, true)
+	require.NoError(t, err)
+
+	want := "{\n  \"a\": 1\n}\n"
+	assert.Equal(t, want, buf.String())
+}
+
+func TestWriteJSON_CompactOutput(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	input := map[string]int{"a": 1}
+
+	err := WriteJSON(&buf, input, false)
+	require.NoError(t, err)
+
+	want := "{\"a\":1}\n"
+	assert.Equal(t, want, buf.String())
+}
+
+func TestWriteJSON_ErrorOnUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	// Channels cannot be JSON-encoded.
+	err := WriteJSON(&buf, make(chan int), false)
+	assert.Error(t, err)
+}
 
 func TestIsBinary_EmptyData(t *testing.T) {
 	t.Parallel()
@@ -114,41 +153,6 @@ func TestCountLines_LargeFile(t *testing.T) {
 	lines := strings.Repeat("line\n", 10000)
 
 	assert.Equal(t, 10000, CountLines([]byte(lines)))
-}
-
-func TestBytesReader_EmptyData(t *testing.T) {
-	t.Parallel()
-
-	rc := BytesReader(nil)
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-
-	require.NoError(t, err)
-	assert.Empty(t, data)
-}
-
-func TestBytesReader_RoundTrip(t *testing.T) {
-	t.Parallel()
-
-	input := []byte("hello world")
-	rc := BytesReader(input)
-
-	defer rc.Close()
-
-	data, err := io.ReadAll(rc)
-
-	require.NoError(t, err)
-	assert.Equal(t, input, data)
-}
-
-func TestBytesReader_CloseIsIdempotent(t *testing.T) {
-	t.Parallel()
-
-	rc := BytesReader([]byte("test"))
-
-	require.NoError(t, rc.Close())
-	require.NoError(t, rc.Close())
 }
 
 func TestBinarySniffLength_Value(t *testing.T) {

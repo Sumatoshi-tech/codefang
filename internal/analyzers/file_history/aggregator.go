@@ -7,12 +7,14 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/spillstore"
 	"github.com/Sumatoshi-tech/codefang/internal/plumbing"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
 const (
 	fileHistoryEntryBytes = 64
 	hashEntryBytes        = 24
+	personStatsBytes      = 32
 )
 
 // CommitSummary holds per-commit summary data for timeseries output.
@@ -315,10 +317,7 @@ func (a *Aggregator) EstimatedStateSize() int64 {
 		size += fileHistoryEntryBytes
 		size += int64(len(fh.Hashes)) * hashEntryBytes
 
-		for _, stats := range fh.People {
-			_ = stats
-			size += 32
-		}
+		size += mapx.EstimateMapSize(fh.People, personStatsBytes)
 	}
 
 	return size

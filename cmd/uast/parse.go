@@ -2,19 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -124,98 +124,57 @@ func parseFilesSequential(parser *uast.Parser, files []string, lang, output, for
 	return nil
 }
 
-// runParseParallel processes files concurrently using a worker pool.
-// Each worker gets its own Parser instance to avoid contention.
+// runParseParallel processes files concurrently using WorkerPool.
+// Each goroutine reuses a Parser via [sync.Pool] to avoid contention.
 func runParseParallel(files []string, lang string, progress bool, workers int) error {
-	if workers <= 0 {
-		workers = runtime.NumCPU()
+	var (
+		parserPool sync.Pool
+		completed  atomic.Int64
+		total      = int64(len(files))
+	)
+
+	pool := pipeline.WorkerPool[string]{
+		MaxParallel: workers,
+		Work: func(ctx context.Context, path string) error {
+			p, err := getOrCreateParseParser(&parserPool)
+			if err != nil {
+				return err
+			}
+			defer parserPool.Put(p)
+
+			parseErr := parseOnly(ctx, p, path, lang)
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse %s: %w", path, parseErr)
+			}
+
+			if progress {
+				done := completed.Add(1)
+				fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", done, total, path)
+			}
+
+			return nil
+		},
 	}
 
-	if workers > len(files) {
-		workers = len(files)
-	}
-
-	state := &parallelState{total: int64(len(files))}
-	fileCh := make(chan string, workers)
-
-	var wg sync.WaitGroup
-
-	for range workers {
-		wg.Go(func() {
-			state.worker(fileCh, lang, progress)
-		})
-	}
-
-	for _, f := range files {
-		if state.firstErr.Load() != nil {
-			break
-		}
-
-		fileCh <- f
-	}
-
-	close(fileCh)
-	wg.Wait()
-
-	if errVal := state.firstErr.Load(); errVal != nil {
-		if err, ok := errVal.(error); ok {
-			return err
-		}
-	}
-
-	return nil
+	return pool.Run(context.Background(), files)
 }
 
-type parallelState struct {
-	firstErr  atomic.Value
-	completed atomic.Int64
-	total     int64
-}
-
-func (s *parallelState) worker(fileCh <-chan string, lang string, progress bool) {
-	workerParser, initErr := uast.NewParser()
-	if initErr != nil {
-		s.firstErr.CompareAndSwap(nil, initErr)
-
-		return
-	}
-
-	for path := range fileCh {
-		if s.firstErr.Load() != nil {
-			return
-		}
-
-		parseErr := parseOnly(workerParser, path, lang)
-		if parseErr != nil {
-			s.firstErr.CompareAndSwap(nil, fmt.Errorf("failed to parse %s: %w", path, parseErr))
-
-			return
-		}
-
-		done := s.completed.Add(1)
-
-		if progress {
-			fmt.Fprintf(os.Stderr, "[%d/%d] %s\n", done, s.total, path)
+// getOrCreateParseParser retrieves a parser from the pool or creates a new one.
+func getOrCreateParseParser(pool *sync.Pool) (*uast.Parser, error) {
+	if v := pool.Get(); v != nil {
+		if p, ok := v.(*uast.Parser); ok {
+			return p, nil
 		}
 	}
+
+	return uast.NewParser()
 }
 
 // parseOnly parses a file without serialization — used in parallel mode.
-func parseOnly(parser *uast.Parser, file, lang string) error {
-	code, resolvedPath, err := safeReadFile(file)
+func parseOnly(ctx context.Context, parser *uast.Parser, file, lang string) error {
+	parsedNode, err := parser.ParseFile(ctx, file, lang)
 	if err != nil {
 		return err
-	}
-
-	filename := resolvedPath
-	if lang != "" {
-		ext := filepath.Ext(resolvedPath)
-		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
-	}
-
-	parsedNode, parseErr := parser.Parse(context.Background(), filename, code)
-	if parseErr != nil {
-		return parseErr
 	}
 
 	runtime.KeepAlive(parsedNode)
@@ -250,20 +209,9 @@ func parseStdin(lang, output, format string, writer io.Writer) error {
 }
 
 func parseFileWithParser(parser *uast.Parser, file, lang, output, format string, writer io.Writer) error {
-	code, resolvedPath, err := safeReadFile(file)
+	parsedNode, err := parser.ParseFile(context.Background(), file, lang)
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", file, err)
-	}
-
-	filename := resolvedPath
-	if lang != "" {
-		ext := filepath.Ext(resolvedPath)
-		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
-	}
-
-	parsedNode, err := parser.Parse(context.Background(), filename, code)
-	if err != nil {
-		return fmt.Errorf("parse error in %s: %w", file, err)
+		return fmt.Errorf("failed to parse %s: %w", file, err)
 	}
 
 	if format == formatNone {
@@ -290,24 +238,9 @@ func outputNode(parsedNode *node.Node, output, format string, writer io.Writer) 
 
 	switch format {
 	case formatJSON:
-		enc := json.NewEncoder(writer)
-		enc.SetIndent("", "  ")
-
-		encodeErr := enc.Encode(parsedNode.ToMap())
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
-		}
-
-		return nil
+		return textutil.WriteJSON(writer, parsedNode.ToMap(), true)
 	case formatCompact:
-		enc := json.NewEncoder(writer)
-
-		encodeErr := enc.Encode(parsedNode.ToMap())
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode compact JSON: %w", encodeErr)
-		}
-
-		return nil
+		return textutil.WriteJSON(writer, parsedNode.ToMap(), false)
 	case formatNone:
 		return nil
 	default:

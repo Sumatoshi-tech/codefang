@@ -236,9 +236,9 @@ func (ap *AdaptivePlanner) Replan(obs ReplanObservation) []ChunkBounds {
 	// (the previous EMA value, or the first observation). Since we don't have
 	// separate declared rates for TC and agg, we use the working state predicted
 	// rate as a reference for all three — a divergence in any signals instability.
-	triggered := exceedsThreshold(workVal, predicted, ap.replanThreshold) ||
-		exceedsThreshold(tcVal, predicted, ap.replanThreshold) ||
-		exceedsThreshold(aggVal, predicted, ap.replanThreshold)
+	triggered := stats.ExceedsThreshold(workVal, predicted, ap.replanThreshold) ||
+		stats.ExceedsThreshold(tcVal, predicted, ap.replanThreshold) ||
+		stats.ExceedsThreshold(aggVal, predicted, ap.replanThreshold)
 
 	if !triggered {
 		return obs.CurrentChunks
@@ -259,21 +259,6 @@ func (ap *AdaptivePlanner) Replan(obs ReplanObservation) []ChunkBounds {
 	result = append(result, tailChunks...)
 
 	return result
-}
-
-// exceedsThreshold returns true if the observed EMA value diverges from predicted
-// by more than the given threshold fraction.
-func exceedsThreshold(observed, predicted, threshold float64) bool {
-	if predicted <= 0 {
-		return false
-	}
-
-	divergence := (observed - predicted) / predicted
-	if divergence < 0 {
-		divergence = -divergence
-	}
-
-	return divergence > threshold
 }
 
 // Stats returns adaptive planner telemetry.

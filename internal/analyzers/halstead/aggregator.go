@@ -76,18 +76,16 @@ func getCountKeys() []string {
 	return []string{"total_functions"}
 }
 
+var halsteadMessageLabeler = common.ThresholdLabeler{
+	{Limit: volumeThresholdHigh, Label: "Very high Halstead complexity - significant refactoring recommended"},
+	{Limit: magic1000, Label: "High Halstead complexity - consider refactoring"},
+	{Limit: magic100, Label: "Moderate Halstead complexity - acceptable"},
+	{Limit: 0, Label: "Low Halstead complexity - well-structured code"},
+}
+
 // buildHalsteadMessage creates a message based on the volume metric.
 func buildHalsteadMessage(volume float64) string {
-	switch {
-	case volume >= volumeThresholdHigh:
-		return "Very high Halstead complexity - significant refactoring recommended"
-	case volume >= magic1000:
-		return "High Halstead complexity - consider refactoring"
-	case volume >= magic100:
-		return "Moderate Halstead complexity - acceptable"
-	default:
-		return "Low Halstead complexity - well-structured code"
-	}
+	return halsteadMessageLabeler.Label(volume)
 }
 
 // buildEmptyHalsteadResult creates an empty result with default Halstead values.

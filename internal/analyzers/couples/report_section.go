@@ -2,10 +2,10 @@ package couples
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -125,22 +125,20 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	}
 }
 
+// couplesValueLess orders issues by Value descending (highest coupling = most concerning = first).
+func couplesValueLess(a, b analyze.Issue) bool { return a.Value > b.Value }
+
 // TopIssues returns the top N most coupled file pairs.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildSortedIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return mapx.SortAndLimit(s.buildIssues(), couplesValueLess, n)
 }
 
 // AllIssues returns all coupled file pairs sorted by strength descending.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildSortedIssues()
+	return mapx.SortAndLimit(s.buildIssues(), couplesValueLess, 0)
 }
 
-func (s *ReportSection) buildSortedIssues() []analyze.Issue {
+func (s *ReportSection) buildIssues() []analyze.Issue {
 	couples := s.metrics.FileCoupling
 	if len(couples) == 0 {
 		return nil
@@ -155,11 +153,6 @@ func (s *ReportSection) buildSortedIssues() []analyze.Issue {
 			Severity: severityForStrength(cp.Strength),
 		})
 	}
-
-	// Sort by strength descending (highest coupling = most concerning = first).
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Value > issues[j].Value
-	})
 
 	return issues
 }

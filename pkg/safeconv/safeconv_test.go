@@ -36,7 +36,7 @@ func TestMustUintToInt(t *testing.T) {
 	t.Run("overflow_panics", func(t *testing.T) {
 		t.Parallel()
 
-		assert.PanicsWithValue(t, "safeconv: uint to int overflow", func() {
+		assert.PanicsWithValue(t, panicOverflow, func() {
 			MustUintToInt(uint(MaxInt) + 1)
 		})
 	})
@@ -62,7 +62,7 @@ func TestMustIntToUint(t *testing.T) {
 	t.Run("negative_panics", func(t *testing.T) {
 		t.Parallel()
 
-		assert.PanicsWithValue(t, "safeconv: negative int to uint conversion", func() {
+		assert.PanicsWithValue(t, panicOverflow, func() {
 			MustIntToUint(-1)
 		})
 	})
@@ -95,7 +95,7 @@ func TestMustIntToUint32(t *testing.T) {
 	t.Run("negative_panics", func(t *testing.T) {
 		t.Parallel()
 
-		assert.PanicsWithValue(t, "safeconv: int to uint32 out of bounds", func() {
+		assert.PanicsWithValue(t, panicOverflow, func() {
 			MustIntToUint32(-1)
 		})
 	})
@@ -103,7 +103,7 @@ func TestMustIntToUint32(t *testing.T) {
 	t.Run("overflow_panics", func(t *testing.T) {
 		t.Parallel()
 
-		assert.PanicsWithValue(t, "safeconv: int to uint32 out of bounds", func() {
+		assert.PanicsWithValue(t, panicOverflow, func() {
 			MustIntToUint32(int(MaxUint32) + 1)
 		})
 	})
@@ -127,7 +127,7 @@ func TestToInt(t *testing.T) {
 		{name: "string_unsupported", input: "42", expected: 0, ok: false},
 		{name: "nil_unsupported", input: nil, expected: 0, ok: false},
 		{name: "bool_unsupported", input: true, expected: 0, ok: false},
-		{name: "uint_unsupported", input: uint(10), expected: 0, ok: false},
+		{name: "uint_coerced", input: uint(10), expected: 10, ok: true},
 	}
 
 	for _, tt := range tests {
@@ -159,7 +159,7 @@ func TestToFloat64(t *testing.T) {
 		{name: "string_unsupported", input: "3.14", expected: 0, ok: false},
 		{name: "nil_unsupported", input: nil, expected: 0, ok: false},
 		{name: "bool_unsupported", input: true, expected: 0, ok: false},
-		{name: "uint_unsupported", input: uint(10), expected: 0, ok: false},
+		{name: "uint_coerced", input: uint(10), expected: 10.0, ok: true},
 	}
 
 	for _, tt := range tests {

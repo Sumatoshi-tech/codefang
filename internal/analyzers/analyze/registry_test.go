@@ -98,7 +98,7 @@ func TestRegistry_AllStableOrder(t *testing.T) {
 		t.Fatal("expected non-empty descriptor list")
 	}
 
-	if descriptors[0].ID != "static/complexity" {
+	if descriptors[0].ID != complexityID {
 		t.Fatalf("unexpected first descriptor: %s", descriptors[0].ID)
 	}
 
@@ -163,9 +163,157 @@ func TestRegistry_SplitUnknown(t *testing.T) {
 	}
 }
 
+// complexityID is a stable fixture for the first registered static analyzer.
+// Used by ExpandPatterns tests — FRD: specs/frds/FRD-20260306-append-unique-ids-removal.md.
+const complexityID = "static/complexity"
+
+func TestRegistry_ExpandPatterns_ExactMatch(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	ids, err := registry.ExpandPatterns([]string{complexityID})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 1 || ids[0] != complexityID {
+		t.Fatalf("expected [static/complexity], got %v", ids)
+	}
+}
+
+func TestRegistry_ExpandPatterns_GlobMatch(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	ids, err := registry.ExpandPatterns([]string{"static/*"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 5 {
+		t.Fatalf("expected 5 static ids, got %d: %v", len(ids), ids)
+	}
+
+	if ids[0] != complexityID {
+		t.Fatalf("expected stable order: first should be static/complexity, got %s", ids[0])
+	}
+}
+
+func TestRegistry_ExpandPatterns_Wildcard(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	ids, err := registry.ExpandPatterns([]string{"*"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 13 {
+		t.Fatalf("expected 13 total ids, got %d: %v", len(ids), ids)
+	}
+}
+
+func TestRegistry_ExpandPatterns_DedupAcrossPatterns(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	// complexityID appears explicitly and again via "static/*".
+	// The first occurrence wins; no duplicates.
+	ids, err := registry.ExpandPatterns([]string{complexityID, "static/*"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 5 {
+		t.Fatalf("expected 5 ids (no duplicates), got %d: %v", len(ids), ids)
+	}
+
+	if ids[0] != complexityID {
+		t.Fatalf("expected static/complexity first, got %s", ids[0])
+	}
+}
+
+func TestRegistry_ExpandPatterns_UnknownExact(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	_, err := registry.ExpandPatterns([]string{"unknown/id"})
+	if !errors.Is(err, analyze.ErrUnknownAnalyzerID) {
+		t.Fatalf("expected ErrUnknownAnalyzerID, got %v", err)
+	}
+}
+
+func TestRegistry_ExpandPatterns_EmptyPattern(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	_, err := registry.ExpandPatterns([]string{""})
+	if !errors.Is(err, analyze.ErrUnknownAnalyzerID) {
+		t.Fatalf("expected ErrUnknownAnalyzerID for empty pattern, got %v", err)
+	}
+}
+
+func TestRegistry_ExpandPatterns_GlobNoMatch(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	_, err := registry.ExpandPatterns([]string{"nosuchprefix/*"})
+	if !errors.Is(err, analyze.ErrUnknownAnalyzerID) {
+		t.Fatalf("expected ErrUnknownAnalyzerID for no-match glob, got %v", err)
+	}
+}
+
+func TestRegistry_SelectedIDs_EmptyPatternsReturnsAll(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	ids, err := registry.SelectedIDs(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 13 {
+		t.Fatalf("expected 13 ids (all), got %d", len(ids))
+	}
+}
+
+func TestRegistry_SelectedIDs_WithPatterns(t *testing.T) {
+	t.Parallel()
+
+	registry := newTestRegistry(t)
+
+	ids, err := registry.SelectedIDs([]string{"history/burndown", "history/couples"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 ids, got %d: %v", len(ids), ids)
+	}
+}
+
+func newTestRegistry(t *testing.T) *analyze.Registry {
+	t.Helper()
+
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	return registry
+}
+
 func defaultStaticForRegistryTest() []analyze.StaticAnalyzer {
 	return []analyze.StaticAnalyzer{
-		&stubStaticAnalyzer{id: "static/complexity", name: "complexity", desc: "complexity"},
+		&stubStaticAnalyzer{id: complexityID, name: "complexity", desc: "complexity"},
 		&stubStaticAnalyzer{id: "static/comments", name: "comments", desc: "comments"},
 		&stubStaticAnalyzer{id: "static/halstead", name: "halstead", desc: "halstead"},
 		&stubStaticAnalyzer{id: "static/cohesion", name: "cohesion", desc: "cohesion"},

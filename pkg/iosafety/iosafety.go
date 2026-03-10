@@ -1,4 +1,6 @@
-package main
+// Package iosafety provides defensive file-reading and terminal-output
+// utilities for user-supplied paths and strings.
+package iosafety
 
 import (
 	"errors"
@@ -10,6 +12,7 @@ import (
 	"unicode"
 )
 
+// Sentinel errors for path validation.
 var (
 	// ErrDirectoryPath indicates a file operation was attempted on a directory.
 	ErrDirectoryPath = errors.New("path points to a directory")
@@ -19,13 +22,14 @@ var (
 	ErrPathContainsNUL = errors.New("path contains NUL byte")
 )
 
-func safeReadFile(path string) (content []byte, resolvedPath string, err error) {
-	resolvedPath, err = resolveUserFilePath(path)
+// ReadFile resolves, validates, and reads a user-supplied file path.
+// Returns content, the resolved absolute path, and any error.
+func ReadFile(path string) (content []byte, resolvedPath string, err error) {
+	resolvedPath, err = ResolvePath(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve path %q: %w", path, err)
 	}
 
-	// #nosec G703 -- resolvedPath is normalized and validated in resolveUserFilePath.
 	content, err = os.ReadFile(resolvedPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", resolvedPath, err)
@@ -34,7 +38,10 @@ func safeReadFile(path string) (content []byte, resolvedPath string, err error) 
 	return content, resolvedPath, nil
 }
 
-func resolveUserFilePath(path string) (string, error) {
+// ResolvePath normalises and validates a user-supplied file path.
+// Returns the absolute path after cleaning, resolving, and stat-checking.
+// Returns an error for empty paths, NUL bytes, directories, or stat failures.
+func ResolvePath(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", ErrEmptyPath
 	}
@@ -50,7 +57,6 @@ func resolveUserFilePath(path string) (string, error) {
 		return "", fmt.Errorf("resolve absolute path for %q: %w", path, err)
 	}
 
-	// #nosec G703 -- absPath is normalized and validated as a file path.
 	info, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("stat %s: %w", absPath, err)
@@ -63,7 +69,9 @@ func resolveUserFilePath(path string) (string, error) {
 	return absPath, nil
 }
 
-func sanitizeForTerminal(input string) string {
+// SanitizeForTerminal strips control characters and HTML-escapes the input.
+// Newlines, carriage returns, and tabs are replaced with spaces.
+func SanitizeForTerminal(input string) string {
 	escaped := html.EscapeString(input)
 
 	return strings.Map(func(r rune) rune {
@@ -76,9 +84,4 @@ func sanitizeForTerminal(input string) string {
 			return r
 		}
 	}, escaped)
-}
-
-func writeTerminalLine(args ...any) {
-	// #nosec G705 -- writes to terminal stdout, not a web sink.
-	fmt.Fprintln(os.Stdout, args...)
 }

@@ -2,10 +2,10 @@ package clones
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Report section display constants.
@@ -110,35 +110,31 @@ func categorizeClonePairs(pairs []ClonePair) cloneTypeCounts {
 	return counts
 }
 
+// clonePairLess orders clone pairs by Similarity descending (most similar = first).
+func clonePairLess(a, b ClonePair) bool { return a.Similarity > b.Similarity }
+
 // TopIssues returns the top N clone pairs as issues.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildSortedIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return s.cloneIssues(n)
 }
 
-// AllIssues returns all clone pairs as issues.
+// AllIssues returns all clone pairs as issues sorted by similarity descending.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildSortedIssues()
+	return s.cloneIssues(0)
 }
 
-// buildSortedIssues builds issues from clone pairs sorted by severity.
-func (s *ReportSection) buildSortedIssues() []analyze.Issue {
+// cloneIssues builds issues from clone pairs sorted by similarity descending, limited to limit (0 = all).
+func (s *ReportSection) cloneIssues(limit int) []analyze.Issue {
 	pairs := extractClonePairs(s.report)
 	if len(pairs) == 0 {
 		return nil
 	}
 
-	sort.Slice(pairs, func(i, j int) bool {
-		return pairs[i].Similarity > pairs[j].Similarity
-	})
+	sorted := mapx.SortAndLimit(pairs, clonePairLess, limit)
 
-	issues := make([]analyze.Issue, 0, len(pairs))
+	issues := make([]analyze.Issue, 0, len(sorted))
 
-	for _, p := range pairs {
+	for _, p := range sorted {
 		severity := analyze.SeverityFair
 		if p.Similarity >= severityThreshHigh {
 			severity = analyze.SeverityPoor

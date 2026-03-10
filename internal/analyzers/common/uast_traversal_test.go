@@ -6,6 +6,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+const (
+	nodeTypeFunction = "FunctionDeclaration"
+	nodeTypeVariable = "VariableDeclaration"
+	nodeTypeClass    = "ClassDeclaration"
+	nodeTypeProgram  = "Program"
+)
+
 func TestNewUASTTraverser(t *testing.T) {
 	t.Parallel()
 
@@ -31,27 +38,27 @@ func TestUASTTraverser_FindNodesByType(t *testing.T) {
 
 	// Create test tree.
 	root := &node.Node{
-		Type: "Program",
+		Type: nodeTypeProgram,
 		Children: []*node.Node{
-			{Type: "FunctionDeclaration"},
-			{Type: "VariableDeclaration"},
+			{Type: nodeTypeFunction},
+			{Type: nodeTypeVariable},
 			{
-				Type: "ClassDeclaration",
+				Type: nodeTypeClass,
 				Children: []*node.Node{
-					{Type: "FunctionDeclaration"},
+					{Type: nodeTypeFunction},
 				},
 			},
 		},
 	}
 
 	// Find FunctionDeclaration nodes.
-	nodes := traverser.FindNodesByType(root, []string{"FunctionDeclaration"})
+	nodes := traverser.FindNodesByType(root, []string{nodeTypeFunction})
 	if len(nodes) != 2 {
 		t.Errorf("expected 2 FunctionDeclaration nodes, got %d", len(nodes))
 	}
 
 	// Find multiple types.
-	nodes = traverser.FindNodesByType(root, []string{"FunctionDeclaration", "VariableDeclaration"})
+	nodes = traverser.FindNodesByType(root, []string{nodeTypeFunction, nodeTypeVariable})
 	if len(nodes) != 3 {
 		t.Errorf("expected 3 nodes, got %d", len(nodes))
 	}
@@ -63,7 +70,7 @@ func TestUASTTraverser_FindNodesByType(t *testing.T) {
 	}
 
 	// Test nil root.
-	nodes = traverser.FindNodesByType(nil, []string{"FunctionDeclaration"})
+	nodes = traverser.FindNodesByType(nil, []string{nodeTypeFunction})
 	if nodes != nil {
 		t.Error("expected nil for nil root")
 	}
@@ -79,8 +86,8 @@ func TestUASTTraverser_FindNodesByRoles(t *testing.T) {
 		Type:  "Program",
 		Roles: []node.Role{"File"},
 		Children: []*node.Node{
-			{Type: "FunctionDeclaration", Roles: []node.Role{"Function", "Declaration"}},
-			{Type: "VariableDeclaration", Roles: []node.Role{"Variable", "Declaration"}},
+			{Type: nodeTypeFunction, Roles: []node.Role{"Function", "Declaration"}},
+			{Type: nodeTypeVariable, Roles: []node.Role{"Variable", "Declaration"}},
 		},
 	}
 
@@ -116,7 +123,7 @@ func TestUASTTraverser_FindNodesByFilter(t *testing.T) {
 
 	// Create test tree with positions.
 	root := &node.Node{
-		Type: "Program",
+		Type: nodeTypeProgram,
 		Pos:  &node.Positions{StartLine: 1, EndLine: 100},
 		Children: []*node.Node{
 			{
@@ -134,7 +141,7 @@ func TestUASTTraverser_FindNodesByFilter(t *testing.T) {
 
 	// Filter by type and role.
 	filter := NodeFilter{
-		Types: []string{"FunctionDeclaration"},
+		Types: []string{nodeTypeFunction},
 		Roles: []string{"Function"},
 	}
 
@@ -177,18 +184,18 @@ func TestUASTTraverser_FindNodesByFilters(t *testing.T) {
 
 	// Create test tree.
 	root := &node.Node{
-		Type: "Program",
+		Type: nodeTypeProgram,
 		Children: []*node.Node{
-			{Type: "FunctionDeclaration", Roles: []node.Role{"Function"}},
-			{Type: "VariableDeclaration", Roles: []node.Role{"Variable"}},
-			{Type: "ClassDeclaration", Roles: []node.Role{"Class"}},
+			{Type: nodeTypeFunction, Roles: []node.Role{"Function"}},
+			{Type: nodeTypeVariable, Roles: []node.Role{"Variable"}},
+			{Type: nodeTypeClass, Roles: []node.Role{"Class"}},
 		},
 	}
 
 	// Multiple filters.
 	filters := []NodeFilter{
-		{Types: []string{"FunctionDeclaration"}},
-		{Types: []string{"ClassDeclaration"}},
+		{Types: []string{nodeTypeFunction}},
+		{Types: []string{nodeTypeClass}},
 	}
 
 	nodes := traverser.FindNodesByFilters(root, filters)
@@ -303,47 +310,20 @@ func TestUASTTraverser_traverse_MaxDepth(t *testing.T) {
 	}
 }
 
-func TestUASTTraverser_traverse_StopVisiting(t *testing.T) {
-	t.Parallel()
-
-	traverser := NewUASTTraverser(TraversalConfig{})
-
-	root := &node.Node{
-		Type: "Root",
-		Children: []*node.Node{
-			{Type: "Child1"},
-			{Type: "Child2"},
-		},
-	}
-
-	// Test that visitor returning false stops traversal.
-	count := 0
-
-	traverser.traverse(root, 0, func(_ *node.Node, _ int) bool {
-		count++
-
-		return false // Stop after first node.
-	})
-
-	if count != 1 {
-		t.Errorf("expected visitor to stop after 1 node, visited %d", count)
-	}
-}
-
 func TestUASTTraverser_matchesTypes(t *testing.T) {
 	t.Parallel()
 
 	traverser := NewUASTTraverser(TraversalConfig{})
 
-	testNode := &node.Node{Type: "FunctionDeclaration"}
+	testNode := &node.Node{Type: nodeTypeFunction}
 
 	// Test matching type.
-	if !traverser.matchesTypes(testNode, []string{"FunctionDeclaration"}) {
+	if !traverser.matchesTypes(testNode, []string{nodeTypeFunction}) {
 		t.Error("expected match for FunctionDeclaration")
 	}
 
 	// Test non-matching type.
-	if traverser.matchesTypes(testNode, []string{"VariableDeclaration"}) {
+	if traverser.matchesTypes(testNode, []string{nodeTypeVariable}) {
 		t.Error("expected no match for VariableDeclaration")
 	}
 
@@ -353,7 +333,7 @@ func TestUASTTraverser_matchesTypes(t *testing.T) {
 	}
 
 	// Test multiple types with one matching.
-	if !traverser.matchesTypes(testNode, []string{"VariableDeclaration", "FunctionDeclaration"}) {
+	if !traverser.matchesTypes(testNode, []string{nodeTypeVariable, nodeTypeFunction}) {
 		t.Error("expected match for multiple types")
 	}
 }
@@ -383,6 +363,85 @@ func TestUASTTraverser_matchesRoles(t *testing.T) {
 	}
 }
 
+// FRD: specs/frds/FRD-20260310-find-nodes-predicate.md.
+
+func TestUASTTraverser_FindNodes(t *testing.T) {
+	t.Parallel()
+
+	traverser := NewUASTTraverser(TraversalConfig{})
+
+	root := &node.Node{
+		Type: nodeTypeProgram,
+		Children: []*node.Node{
+			{Type: nodeTypeFunction, Roles: []node.Role{"Function"}},
+			{Type: nodeTypeVariable, Roles: []node.Role{"Variable"}},
+			{
+				Type: nodeTypeClass,
+				Children: []*node.Node{
+					{Type: nodeTypeFunction, Roles: []node.Role{"Function"}},
+				},
+			},
+		},
+	}
+
+	// Custom predicate: find all FunctionDeclaration nodes.
+	nodes := traverser.FindNodes(root, func(n *node.Node) bool {
+		return n.Type == nodeTypeFunction
+	})
+	if len(nodes) != 2 {
+		t.Errorf("expected 2 FunctionDeclaration nodes, got %d", len(nodes))
+	}
+
+	// Predicate that matches nothing.
+	nodes = traverser.FindNodes(root, func(_ *node.Node) bool {
+		return false
+	})
+	if len(nodes) != 0 {
+		t.Errorf("expected 0 nodes, got %d", len(nodes))
+	}
+
+	// Predicate that matches everything.
+	nodes = traverser.FindNodes(root, func(_ *node.Node) bool {
+		return true
+	})
+	if len(nodes) != 5 {
+		t.Errorf("expected 5 nodes (all), got %d", len(nodes))
+	}
+
+	// Nil root returns nil.
+	nodes = traverser.FindNodes(nil, func(_ *node.Node) bool {
+		return true
+	})
+	if nodes != nil {
+		t.Error("expected nil for nil root")
+	}
+}
+
+func TestUASTTraverser_FindNodes_RespectsMaxDepth(t *testing.T) {
+	t.Parallel()
+
+	traverser := NewUASTTraverser(TraversalConfig{MaxDepth: 1})
+
+	root := &node.Node{
+		Type: "Level0",
+		Children: []*node.Node{
+			{
+				Type: "Level1",
+				Children: []*node.Node{
+					{Type: "Level2"},
+				},
+			},
+		},
+	}
+
+	nodes := traverser.FindNodes(root, func(_ *node.Node) bool {
+		return true
+	})
+	if len(nodes) != 2 {
+		t.Errorf("expected 2 nodes with MaxDepth=1, got %d", len(nodes))
+	}
+}
+
 func TestUASTTraverser_matchesFilter(t *testing.T) {
 	t.Parallel()
 
@@ -404,7 +463,7 @@ func TestUASTTraverser_matchesFilter(t *testing.T) {
 
 	// Test filter with types that don't match.
 	filter = NodeFilter{
-		Types: []string{"VariableDeclaration"},
+		Types: []string{nodeTypeVariable},
 	}
 	if traverser.matchesFilter(testNode, filter) {
 		t.Error("expected no match for wrong type")
@@ -428,7 +487,7 @@ func TestUASTTraverser_matchesFilter(t *testing.T) {
 
 	// Test filter that matches everything.
 	filter = NodeFilter{
-		Types:    []string{"FunctionDeclaration"},
+		Types:    []string{nodeTypeFunction},
 		Roles:    []string{"Function"},
 		MinLines: 5,
 		MaxLines: 15,

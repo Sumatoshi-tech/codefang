@@ -32,6 +32,25 @@ const (
 	percentDivisor = 100
 )
 
+// Float64 weights derived from the integer percentage constants above.
+// Used with allocateProportionally for budget distribution.
+const (
+	cacheWeight  = float64(CacheAllocationPercent) / percentDivisor
+	workerWeight = float64(WorkerAllocationPercent) / percentDivisor
+	bufferWeight = float64(BufferAllocationPercent) / percentDivisor
+	blobWeight   = float64(BlobCacheRatio) / percentDivisor
+	diffWeight   = float64(DiffCacheRatio) / percentDivisor
+)
+
+// Bucket name constants for allocateProportionally.
+const (
+	bucketCache  = "cache"
+	bucketWorker = "worker"
+	bucketBuffer = "buffer"
+	bucketBlob   = "blob"
+	bucketDiff   = "diff"
+)
+
 // Solver constraints.
 const (
 	// MinimumBudget is the smallest budget the solver will accept.
@@ -81,6 +100,19 @@ var (
 	ErrBudgetTooSmall = errors.New("memory budget is too small")
 )
 
+// allocateProportionally distributes total bytes across named buckets by weight.
+// Weights must be in [0,1] and should sum to <= 1.0.
+// Returns a map from bucket name to allocated bytes (truncated to int64).
+func allocateProportionally(total int64, weights map[string]float64) map[string]int64 {
+	result := make(map[string]int64, len(weights))
+
+	for name, weight := range weights {
+		result[name] = int64(float64(total) * weight)
+	}
+
+	return result
+}
+
 // SolveForBudget calculates optimal CoordinatorConfig for the given memory budget.
 // The solver distributes available memory across workers, caches, and buffers
 // while ensuring the total estimated usage stays within budget.
@@ -89,21 +121,20 @@ func SolveForBudget(budget int64) (framework.CoordinatorConfig, error) {
 		return framework.CoordinatorConfig{}, ErrBudgetTooSmall
 	}
 
-	// Reserve slack for runtime overhead.
 	usableBudget := budget * (percentDivisor - SlackPercent) / percentDivisor
-
-	// Subtract base overhead.
 	available := usableBudget - BaseOverhead
+
 	if available <= 0 {
 		return framework.CoordinatorConfig{}, ErrBudgetTooSmall
 	}
 
-	// Allocate proportionally.
-	cacheAlloc := available * CacheAllocationPercent / percentDivisor
-	workerAlloc := available * WorkerAllocationPercent / percentDivisor
-	bufferAlloc := available * BufferAllocationPercent / percentDivisor
+	allocs := allocateProportionally(available, map[string]float64{
+		bucketCache:  cacheWeight,
+		bucketWorker: workerWeight,
+		bucketBuffer: bufferWeight,
+	})
 
-	cfg := deriveKnobs(cacheAlloc, workerAlloc, bufferAlloc)
+	cfg := deriveKnobs(allocs[bucketCache], allocs[bucketWorker], allocs[bucketBuffer])
 
 	return cfg, nil
 }
@@ -116,12 +147,18 @@ func deriveKnobs(cacheAlloc, workerAlloc, bufferAlloc int64) framework.Coordinat
 	workerCost := int64(RepoHandleSize + DefaultArenaSize + WorkerNativeOverhead)
 	workers := max(MinWorkers, min(maxWorkers, int(workerAlloc/workerCost)))
 
-	// Blob cache: 80% of cache allocation, capped to avoid dominating the budget.
-	blobCacheSize := max(int64(MinBlobCacheSize), cacheAlloc*BlobCacheRatio/percentDivisor)
+	// Split cache allocation into blob and diff sub-budgets.
+	cacheAllocs := allocateProportionally(cacheAlloc, map[string]float64{
+		bucketBlob: blobWeight,
+		bucketDiff: diffWeight,
+	})
+
+	// Blob cache: capped to avoid dominating the budget.
+	blobCacheSize := max(int64(MinBlobCacheSize), cacheAllocs[bucketBlob])
 	blobCacheSize = min(blobCacheSize, MaxBlobCacheSize)
 
-	// Diff cache: 20% of cache allocation, converted to entries, capped.
-	diffCacheAlloc := cacheAlloc * DiffCacheRatio / percentDivisor
+	// Diff cache: converted to entries, capped.
+	diffCacheAlloc := cacheAllocs[bucketDiff]
 	diffCacheSize := max(MinDiffCacheSize, int(diffCacheAlloc/AvgDiffSize))
 	diffCacheSize = min(diffCacheSize, MaxDiffCacheEntries)
 

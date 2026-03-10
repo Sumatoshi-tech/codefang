@@ -3,6 +3,7 @@ package burndown
 import (
 	"github.com/Sumatoshi-tech/codefang/internal/burndown"
 	"github.com/Sumatoshi-tech/codefang/internal/identity"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // incrementSparseHistory adds delta to history[curTick][prevTick], lazily initializing nested maps.
@@ -31,7 +32,7 @@ func mergeKeyedDeltas[K comparable](source, result map[K]sparseHistory) map[K]sp
 			result[key] = sparseHistory{}
 		}
 
-		mergeSparseHistory(result[key], history)
+		mapx.MergeNestedAdditive(result[key], history)
 	}
 
 	return result
@@ -60,7 +61,7 @@ func (b *HistoryAnalyzer) collectDeltas() *CommitResult {
 	}
 
 	for _, shard := range b.shards {
-		mergeSparseHistory(result.GlobalDeltas, shard.deltas.globalDeltas)
+		mapx.MergeNestedAdditive(result.GlobalDeltas, shard.deltas.globalDeltas)
 		b.collectPeopleDeltas(result, shard)
 		b.collectMatrixDeltas(result, shard)
 		b.collectFileDeltas(result, shard)

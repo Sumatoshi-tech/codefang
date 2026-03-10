@@ -1,10 +1,9 @@
 package comments
 
 import (
-	"sort"
-
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -105,22 +104,20 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	}
 }
 
-// TopIssues returns the top N undocumented functions.
+// commentNameLess orders issues by Name ascending (alphabetical).
+func commentNameLess(a, b analyze.Issue) bool { return a.Name < b.Name }
+
+// TopIssues returns the top N undocumented functions sorted by name.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return mapx.SortAndLimit(s.buildIssues(), commentNameLess, n)
 }
 
-// AllIssues returns all undocumented functions.
+// AllIssues returns all undocumented functions sorted by name.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildIssues()
+	return mapx.SortAndLimit(s.buildIssues(), commentNameLess, 0)
 }
 
-// buildIssues extracts undocumented functions from the report.
+// buildIssues extracts undocumented functions as unsorted issues.
 func (s *ReportSection) buildIssues() []analyze.Issue {
 	functions := reportutil.GetFunctions(s.report, KeyFunctions)
 	if len(functions) == 0 {
@@ -142,10 +139,6 @@ func (s *ReportSection) buildIssues() []analyze.Issue {
 			Severity: analyze.SeverityPoor,
 		})
 	}
-
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Name < issues[j].Name
-	})
 
 	return issues
 }

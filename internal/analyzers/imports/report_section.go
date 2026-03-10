@@ -1,10 +1,9 @@
 package imports
 
 import (
-	"sort"
-
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/mapx"
 )
 
 // Section rendering constants.
@@ -67,26 +66,33 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	return nil
 }
 
+// importEntry holds an import name with its count for sorting.
+type importEntry struct {
+	name  string
+	count int
+}
+
+// importEntryLess orders entries by count descending (most used = first).
+func importEntryLess(a, b importEntry) bool { return a.count > b.count }
+
+// importNameLess orders string imports alphabetically ascending.
+func importNameLess(a, b string) bool { return a < b }
+
 // TopIssues returns the top N most used imports as info items.
 func (s *ReportSection) TopIssues(n int) []analyze.Issue {
-	issues := s.buildImportIssues()
-	if n >= len(issues) {
-		return issues
-	}
-
-	return issues[:n]
+	return s.importIssues(n)
 }
 
 // AllIssues returns all imports as info items.
 func (s *ReportSection) AllIssues() []analyze.Issue {
-	return s.buildImportIssues()
+	return s.importIssues(0)
 }
 
-// buildImportIssues creates issues from import counts, sorted by frequency.
-func (s *ReportSection) buildImportIssues() []analyze.Issue {
+// importIssues builds import issues sorted by frequency (or name), limited to limit (0 = all).
+func (s *ReportSection) importIssues(limit int) []analyze.Issue {
 	counts := reportutil.GetStringIntMap(s.report, KeyImportCounts)
 	if len(counts) > 0 {
-		return buildIssuesFromCounts(counts)
+		return buildIssuesFromCounts(counts, limit)
 	}
 
 	// Fallback: use simple imports list.
@@ -95,29 +101,21 @@ func (s *ReportSection) buildImportIssues() []analyze.Issue {
 		return nil
 	}
 
-	return buildIssuesFromList(imports)
-}
-
-// importEntry holds an import name with its count for sorting.
-type importEntry struct {
-	name  string
-	count int
+	return buildIssuesFromList(imports, limit)
 }
 
 // buildIssuesFromCounts creates sorted issues from import_counts map.
-func buildIssuesFromCounts(counts map[string]int) []analyze.Issue {
+func buildIssuesFromCounts(counts map[string]int, limit int) []analyze.Issue {
 	entries := make([]importEntry, 0, len(counts))
 	for name, count := range counts {
 		entries = append(entries, importEntry{name: name, count: count})
 	}
 
 	// Sort by count descending (numeric, not string).
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].count > entries[j].count
-	})
+	sorted := mapx.SortAndLimit(entries, importEntryLess, limit)
 
-	issues := make([]analyze.Issue, 0, len(entries))
-	for _, e := range entries {
+	issues := make([]analyze.Issue, 0, len(sorted))
+	for _, e := range sorted {
 		issues = append(issues, analyze.Issue{
 			Name:     e.name,
 			Value:    reportutil.FormatInt(e.count),
@@ -128,20 +126,18 @@ func buildIssuesFromCounts(counts map[string]int) []analyze.Issue {
 	return issues
 }
 
-// buildIssuesFromList creates issues from a simple string slice.
-func buildIssuesFromList(imports []string) []analyze.Issue {
-	issues := make([]analyze.Issue, 0, len(imports))
-	for _, imp := range imports {
+// buildIssuesFromList creates issues from a simple string slice sorted alphabetically.
+func buildIssuesFromList(imports []string, limit int) []analyze.Issue {
+	sorted := mapx.SortAndLimit(imports, importNameLess, limit)
+
+	issues := make([]analyze.Issue, 0, len(sorted))
+	for _, imp := range sorted {
 		issues = append(issues, analyze.Issue{
 			Name:     imp,
 			Value:    "1",
 			Severity: analyze.SeverityInfo,
 		})
 	}
-
-	sort.Slice(issues, func(i, j int) bool {
-		return issues[i].Name < issues[j].Name
-	})
 
 	return issues
 }
