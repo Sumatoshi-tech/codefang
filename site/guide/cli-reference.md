@@ -64,7 +64,7 @@ codefang run -a '*' .
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--format` | | `string` | `json` | Output format: `json`, `text`, `compact`, `yaml`, `plot`, `bin`, `timeseries` |
-| `--verbose` | `-v` | `bool` | `false` | Show full static report details |
+| `--verbose` | `-v` | `bool` | `false` | Enable detailed output (RSS/memory stats in progress logs, full static report details) |
 | `--silent` | | `bool` | `false` | Suppress progress output on stderr |
 | `--no-color` | | `bool` | `false` | Disable colored static output |
 
@@ -182,13 +182,22 @@ codefang run -a 'history/*' --clear-checkpoint .
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--profile` | `bool` | `false` | Start pprof HTTP server on `localhost:6060` and memory watchdog (heap dumps on RSS spikes) |
 | `--cpuprofile` | `string` | `""` | Write CPU profile to file |
 | `--heapprofile` | `string` | `""` | Write heap profile to file |
 | `--debug-trace` | `bool` | `false` | Enable 100% OpenTelemetry trace sampling |
 
+`--profile` is a **global flag** (available on all subcommands). It enables:
+
+- A pprof HTTP server on `localhost:6060` for live heap/goroutine/CPU inspection
+- A memory watchdog that logs RSS every 2s and dumps heap profiles to `/tmp` when RSS exceeds 4 GiB
+
 ```bash
 # CPU profile a large run
 codefang run -a 'history/*' --cpuprofile cpu.prof .
+
+# Live pprof + memory watchdog
+codefang run -a 'static/*' --profile --path ~/sources/kubernetes
 
 # Full debug tracing
 codefang run -a 'history/*' --debug-trace .
