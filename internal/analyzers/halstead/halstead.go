@@ -157,6 +157,32 @@ type FunctionHalsteadMetrics struct {
 	DistinctOperators       int            `json:"distinct_operators"`
 }
 
+// FunctionReportItem is a typed representation of a per-function halstead report item.
+// Includes assessment strings and operator/operand maps. Avoids map[string]any allocation.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+type FunctionReportItem struct {
+	Operators               map[string]int
+	Operands                map[string]int
+	Name                    string
+	VolumeAssessment        string
+	DifficultyAssessment    string
+	EffortAssessment        string
+	EstimatedTotalOperators int64
+	EstimatedTotalOperands  int64
+	Length                  int
+	TotalOperands           int
+	Vocabulary              int
+	TotalOperators          int
+	DistinctOperands        int
+	DistinctOperators       int
+	EstimatedLength         float64
+	Volume                  float64
+	Difficulty              float64
+	Effort                  float64
+	TimeToProgram           float64
+	DeliveredBugs           float64
+}
+
 // Config holds configuration for Halstead analysis.
 type Config struct {
 	// IncludeFunctionBreakdown determines whether to include per-function metrics.
@@ -246,11 +272,10 @@ func (h *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 
 	functionMetrics := h.calculateAllFunctionMetrics(functions)
 	fileMetrics := h.calculateFileLevelMetrics(functionMetrics)
-	detailedFunctionsTable := h.buildDetailedFunctionsTable(functionMetrics)
-	functionDetails := h.buildFunctionDetails(functionMetrics)
+	reportItems := h.buildDetailedFunctionsTable(functionMetrics)
 	message := h.formatter.GetHalsteadMessage(fileMetrics.Volume, fileMetrics.Difficulty, fileMetrics.Effort)
 
-	return h.buildResult(fileMetrics, detailedFunctionsTable, functionDetails, message), nil
+	return h.buildResult(fileMetrics, reportItems, len(functionMetrics), message), nil
 }
 
 // FormatReport formats the analysis report for display.
@@ -367,84 +392,88 @@ func (h *Analyzer) aggregateOperatorsAndOperandsFromMetrics(
 	}
 }
 
-// buildDetailedFunctionsTable creates the detailed functions table for display.
-func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics map[string]*FunctionHalsteadMetrics) []map[string]any {
-	detailedFunctionsTable := make([]map[string]any, 0, len(functionMetrics))
+// buildDetailedFunctionsTable creates the detailed functions table as typed structs.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics map[string]*FunctionHalsteadMetrics) []FunctionReportItem {
+	items := make([]FunctionReportItem, 0, len(functionMetrics))
 
 	for _, fn := range functionMetrics {
-		functionData := h.buildFunctionTableEntry(fn)
-		detailedFunctionsTable = append(detailedFunctionsTable, functionData)
+		items = append(items, FunctionReportItem{
+			Name:                    fn.Name,
+			Volume:                  fn.Volume,
+			Difficulty:              fn.Difficulty,
+			Effort:                  fn.Effort,
+			TimeToProgram:           fn.TimeToProgram,
+			DeliveredBugs:           fn.DeliveredBugs,
+			DistinctOperators:       fn.DistinctOperators,
+			DistinctOperands:        fn.DistinctOperands,
+			TotalOperators:          fn.TotalOperators,
+			TotalOperands:           fn.TotalOperands,
+			Vocabulary:              fn.Vocabulary,
+			Length:                  fn.Length,
+			EstimatedLength:         fn.EstimatedLength,
+			EstimatedTotalOperators: fn.EstimatedTotalOperators,
+			EstimatedTotalOperands:  fn.EstimatedTotalOperands,
+			VolumeAssessment:        h.formatter.GetVolumeAssessment(fn.Volume),
+			DifficultyAssessment:    h.formatter.GetDifficultyAssessment(fn.Difficulty),
+			EffortAssessment:        h.formatter.GetEffortAssessment(fn.Effort),
+			Operators:               fn.Operators,
+			Operands:                fn.Operands,
+		})
 	}
 
-	return detailedFunctionsTable
+	return items
 }
 
-// buildFunctionTableEntry creates a single function table entry with metrics and assessments.
-func (h *Analyzer) buildFunctionTableEntry(fn *FunctionHalsteadMetrics) map[string]any {
-	return map[string]any{
-		"name":                      fn.Name,
-		"volume":                    fn.Volume,
-		"difficulty":                fn.Difficulty,
-		"effort":                    fn.Effort,
-		"time_to_program":           fn.TimeToProgram,
-		"delivered_bugs":            fn.DeliveredBugs,
-		"distinct_operators":        fn.DistinctOperators,
-		"distinct_operands":         fn.DistinctOperands,
-		"total_operators":           fn.TotalOperators,
-		"total_operands":            fn.TotalOperands,
-		"vocabulary":                fn.Vocabulary,
-		"length":                    fn.Length,
-		"estimated_length":          fn.EstimatedLength,
-		"estimated_total_operators": fn.EstimatedTotalOperators,
-		"estimated_total_operands":  fn.EstimatedTotalOperands,
-		"volume_assessment":         h.formatter.GetVolumeAssessment(fn.Volume),
-		"difficulty_assessment":     h.formatter.GetDifficultyAssessment(fn.Difficulty),
-		"effort_assessment":         h.formatter.GetEffortAssessment(fn.Effort),
-		"operators":                 fn.Operators,
-		"operands":                  fn.Operands,
-	}
-}
-
-// buildFunctionDetails creates simplified function details for result.
-func (h *Analyzer) buildFunctionDetails(functionMetrics map[string]*FunctionHalsteadMetrics) []map[string]any {
-	functionDetails := make([]map[string]any, 0, len(functionMetrics))
-
-	for _, fn := range functionMetrics {
-		functionData := h.buildFunctionDetailEntry(fn)
-		functionDetails = append(functionDetails, functionData)
+// convertHalsteadFunctionItems converts typed halstead items to []map[string]any for serialization.
+func convertHalsteadFunctionItems(items any, sourceFile string) []map[string]any {
+	typed, ok := items.([]FunctionReportItem)
+	if !ok {
+		return nil
 	}
 
-	return functionDetails
-}
+	result := make([]map[string]any, 0, len(typed))
 
-// buildFunctionDetailEntry creates a single function detail entry with comprehensive metrics.
-func (h *Analyzer) buildFunctionDetailEntry(fn *FunctionHalsteadMetrics) map[string]any {
-	return map[string]any{
-		"name":                      fn.Name,
-		"volume":                    fn.Volume,
-		"difficulty":                fn.Difficulty,
-		"effort":                    fn.Effort,
-		"time_to_program":           fn.TimeToProgram,
-		"delivered_bugs":            fn.DeliveredBugs,
-		"distinct_operators":        fn.DistinctOperators,
-		"distinct_operands":         fn.DistinctOperands,
-		"total_operators":           fn.TotalOperators,
-		"total_operands":            fn.TotalOperands,
-		"vocabulary":                fn.Vocabulary,
-		"length":                    fn.Length,
-		"estimated_length":          fn.EstimatedLength,
-		"estimated_total_operators": fn.EstimatedTotalOperators,
-		"estimated_total_operands":  fn.EstimatedTotalOperands,
-		"operators":                 fn.Operators,
-		"operands":                  fn.Operands,
+	for _, fn := range typed {
+		m := map[string]any{
+			"name":                      fn.Name,
+			"volume":                    fn.Volume,
+			"difficulty":                fn.Difficulty,
+			"effort":                    fn.Effort,
+			"time_to_program":           fn.TimeToProgram,
+			"delivered_bugs":            fn.DeliveredBugs,
+			"distinct_operators":        fn.DistinctOperators,
+			"distinct_operands":         fn.DistinctOperands,
+			"total_operators":           fn.TotalOperators,
+			"total_operands":            fn.TotalOperands,
+			"vocabulary":                fn.Vocabulary,
+			"length":                    fn.Length,
+			"estimated_length":          fn.EstimatedLength,
+			"estimated_total_operators": fn.EstimatedTotalOperators,
+			"estimated_total_operands":  fn.EstimatedTotalOperands,
+			"volume_assessment":         fn.VolumeAssessment,
+			"difficulty_assessment":     fn.DifficultyAssessment,
+			"effort_assessment":         fn.EffortAssessment,
+			"operators":                 fn.Operators,
+			"operands":                  fn.Operands,
+		}
+		if sourceFile != "" {
+			m[analyze.SourceFileKey] = sourceFile
+		}
+
+		result = append(result, m)
 	}
+
+	return result
 }
 
 // buildResult constructs the final analysis result.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (h *Analyzer) buildResult(
-	fileMetrics *Metrics, detailedFunctionsTable, functionDetails []map[string]any, message string,
+	fileMetrics *Metrics, reportItems []FunctionReportItem, totalFunctions int, message string,
 ) analyze.Report {
-	metrics := map[string]any{
+	return analyze.Report{
+		"analyzer_name":             "halstead",
 		"volume":                    fileMetrics.Volume,
 		"difficulty":                fileMetrics.Difficulty,
 		"effort":                    fileMetrics.Effort,
@@ -459,18 +488,13 @@ func (h *Analyzer) buildResult(
 		"estimated_length":          fileMetrics.EstimatedLength,
 		"estimated_total_operators": fileMetrics.EstimatedTotalOperators,
 		"estimated_total_operands":  fileMetrics.EstimatedTotalOperands,
-		"total_functions":           len(functionDetails),
+		"total_functions":           totalFunctions,
+		"functions": analyze.TypedCollection{
+			Items:  reportItems,
+			ToMaps: convertHalsteadFunctionItems,
+		},
+		"message": message,
 	}
-
-	result := common.NewResultBuilder().BuildCollectionResult(
-		"halstead",
-		"functions",
-		detailedFunctionsTable,
-		metrics,
-		message,
-	)
-
-	return result
 }
 
 // findFunctions finds all functions using the enhanced traverser.

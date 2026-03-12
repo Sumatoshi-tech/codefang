@@ -64,11 +64,10 @@ func (v *Visitor) GetReport() analyze.Report {
 	}
 
 	fileMetrics := analyzer.calculateFileLevelMetrics(v.functionMetrics)
-	detailedFunctionsTable := analyzer.buildDetailedFunctionsTable(v.functionMetrics)
-	functionDetails := analyzer.buildFunctionDetails(v.functionMetrics)
+	reportItems := analyzer.buildDetailedFunctionsTable(v.functionMetrics)
 	message := analyzer.formatter.GetHalsteadMessage(fileMetrics.Volume, fileMetrics.Difficulty, fileMetrics.Effort)
 
-	return analyzer.buildResult(fileMetrics, detailedFunctionsTable, functionDetails, message)
+	return analyzer.buildResult(fileMetrics, reportItems, len(v.functionMetrics), message)
 }
 
 func (v *Visitor) isFunction(n *node.Node) bool {

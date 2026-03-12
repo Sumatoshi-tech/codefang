@@ -102,11 +102,10 @@ func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Repor
 }
 
 // findClonePairs queries the LSH index and collects unique clone pairs.
-func findClonePairs(entries []funcEntry, idx *lsh.Index) []ClonePair {
+// pairCap limits the stored pairs slice (0 = unlimited). The returned totalCount
+// reflects ALL unique pairs found, regardless of the cap.
+func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int) (pairs []ClonePair, totalCount int) {
 	seen := make(map[PairKey]bool)
-
-	var pairs []ClonePair
-
 	sigMap := buildSignatureMap(entries)
 
 	for _, entry := range entries {
@@ -115,14 +114,14 @@ func findClonePairs(entries []funcEntry, idx *lsh.Index) []ClonePair {
 			continue
 		}
 
-		pairs = matchCandidates(entry, candidates, sigMap, seen, pairs)
+		pairs, totalCount = matchCandidates(entry, candidates, sigMap, seen, pairs, totalCount, pairCap)
 	}
 
 	sort.Slice(pairs, func(i, j int) bool {
 		return pairs[i].Similarity > pairs[j].Similarity
 	})
 
-	return pairs
+	return pairs, totalCount
 }
 
 // buildSignatureMap creates a name-to-signature lookup from entries.
@@ -137,13 +136,16 @@ func buildSignatureMap(entries []funcEntry) map[string]*minhash.Signature {
 }
 
 // matchCandidates processes LSH candidates for a single entry and appends matching pairs.
+// totalCount tracks ALL valid pairs found. pairCap limits the stored slice (0 = unlimited).
 func matchCandidates(
 	entry funcEntry,
 	candidates []string,
 	sigMap map[string]*minhash.Signature,
 	seen map[PairKey]bool,
 	pairs []ClonePair,
-) []ClonePair {
+	totalCount int,
+	pairCap int,
+) (updatedPairs []ClonePair, updatedCount int) {
 	for _, candidateID := range candidates {
 		if candidateID == entry.name {
 			continue
@@ -158,11 +160,15 @@ func matchCandidates(
 
 		pair, ok := computeClonePair(entry, candidateID, sigMap)
 		if ok {
-			pairs = append(pairs, pair)
+			totalCount++
+
+			if pairCap <= 0 || len(pairs) < pairCap {
+				pairs = append(pairs, pair)
+			}
 		}
 	}
 
-	return pairs
+	return pairs, totalCount
 }
 
 // computeClonePair computes a clone pair between an entry and a candidate.

@@ -860,7 +860,7 @@ func TestAnalyzer_Integration(t *testing.T) {
 	}
 
 	// Verify functions are present in the report.
-	if functions, fnOK := report["functions"].([]map[string]any); fnOK {
+	if functions, fnOK := analyze.ReportFunctionList(report, "functions"); fnOK {
 		functionNames := make(map[string]bool)
 
 		for _, fn := range functions {

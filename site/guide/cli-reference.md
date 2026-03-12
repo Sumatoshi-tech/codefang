@@ -138,11 +138,14 @@ codefang run -a history/couples --limit 500 .
 | `--blob-cache-size` | `string` | `""` | Max blob cache size (e.g. `256MB`, `1GB`; empty = 1 GB) |
 | `--diff-cache-size` | `int` | `0` | Max diff cache entries (`0` = default 10000) |
 | `--blob-arena-size` | `string` | `""` | Memory arena for blob loading (e.g. `4MB`; empty = 4 MB) |
-| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`) |
+| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`). Applies to both history and static phases — auto-derives worker count, spill thresholds, and Go memory limit |
 
 ```bash
 # Large repository with constrained memory
 codefang run -a 'history/*' --workers 4 --memory-budget 2GB .
+
+# Static analysis with memory budget (auto-tunes workers and spill thresholds)
+codefang run -a 'static/*' --memory-budget 512MB .
 
 # High-throughput with large caches
 codefang run -a 'history/*' --blob-cache-size 2GB --diff-cache-size 50000 .

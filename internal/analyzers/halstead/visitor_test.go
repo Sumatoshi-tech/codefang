@@ -49,7 +49,7 @@ func TestVisitor_Basic(t *testing.T) {
 	// Get results.
 	report := visitor.GetReport()
 
-	metrics, ok := report["functions"].([]map[string]any)
+	metrics, ok := analyze.ReportFunctionList(report, "functions")
 	require.True(t, ok, "type assertion failed for metrics")
 	assert.Len(t, metrics, 1)
 

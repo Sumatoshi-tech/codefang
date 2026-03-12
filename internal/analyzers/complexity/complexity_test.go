@@ -324,7 +324,7 @@ func ElseIfChain(x int) int {
 	report, err := analyzer.Analyze(root)
 	require.NoError(t, err)
 
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
 	require.True(t, ok)
 	require.Len(t, functions, 7)
 

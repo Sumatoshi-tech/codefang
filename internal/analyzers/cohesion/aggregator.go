@@ -27,7 +27,7 @@ func NewAggregator() *Aggregator {
 			config.numericKeys,
 			config.countKeys,
 			"functions",
-			"name",
+			[]string{"_source_file", "name"},
 			config.messageBuilder,
 			config.emptyResultBuilder,
 		),

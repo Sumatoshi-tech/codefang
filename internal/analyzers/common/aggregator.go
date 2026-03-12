@@ -5,10 +5,16 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
+// Compile-time interface checks.
+var (
+	_ analyze.SpillThresholdSetter = (*Aggregator)(nil)
+	_ analyze.StateSizer           = (*Aggregator)(nil)
+)
+
 // Aggregator provides generic aggregation capabilities for analyzers.
 type Aggregator struct {
 	metricsProcessor   *MetricsProcessor
-	dataCollector      *DataCollector
+	dataCollector      *SpillableDataCollector
 	resultBuilder      *ResultBuilder
 	messageBuilder     func(float64) string
 	emptyResultBuilder func() analyze.Report
@@ -16,16 +22,27 @@ type Aggregator struct {
 }
 
 // NewAggregator creates a new Aggregator with configurable components.
+// identifierKeys specifies the key(s) used for deduplication. When multiple keys
+// are provided, they form a composite dedup key (e.g., ["_source_file", "name"])
+// to prevent cross-file overwrites of items with the same primary name.
 func NewAggregator(
 	analyzerName string,
 	numericKeys, countKeys []string,
-	collectionKey, identifierKey string,
+	collectionKey string,
+	identifierKeys []string,
 	messageBuilder func(float64) string,
 	emptyResultBuilder func() analyze.Report,
 ) *Aggregator {
+	var dc *SpillableDataCollector
+	if len(identifierKeys) == 1 {
+		dc = NewSpillableDataCollector(collectionKey, identifierKeys[0], defaultSpillThreshold)
+	} else {
+		dc = NewSpillableDataCollectorComposite(collectionKey, identifierKeys, defaultSpillThreshold)
+	}
+
 	return &Aggregator{
 		metricsProcessor:   NewMetricsProcessor(numericKeys, countKeys),
-		dataCollector:      NewDataCollector(collectionKey, identifierKey),
+		dataCollector:      dc,
 		resultBuilder:      NewResultBuilder(),
 		analyzerName:       analyzerName,
 		messageBuilder:     messageBuilder,
@@ -100,11 +117,29 @@ func (a *Aggregator) GetMetricsProcessor() *MetricsProcessor {
 }
 
 // GetDataCollector returns the data collector.
-func (a *Aggregator) GetDataCollector() *DataCollector {
+func (a *Aggregator) GetDataCollector() *SpillableDataCollector {
 	return a.dataCollector
+}
+
+// SetSpillThreshold configures the spill threshold on the data collector.
+// A threshold of 0 disables spilling.
+func (a *Aggregator) SetSpillThreshold(threshold int) {
+	a.dataCollector.spillThreshold = threshold
 }
 
 // GetResultBuilder returns the result builder.
 func (a *Aggregator) GetResultBuilder() *ResultBuilder {
 	return a.resultBuilder
+}
+
+// EstimatedStateSize returns the estimated in-memory state size in bytes.
+// Sums MetricsProcessor and SpillableDataCollector estimates.
+func (a *Aggregator) EstimatedStateSize() int64 {
+	return a.metricsProcessor.EstimatedStateBytes() + a.dataCollector.EstimatedBufferBytes()
+}
+
+// SetAggregationMode sets the aggregation mode on the data collector.
+// In [analyze.AggregationModeSummaryOnly], per-item data collection is disabled.
+func (a *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
+	a.dataCollector.SetAggregationMode(mode)
 }

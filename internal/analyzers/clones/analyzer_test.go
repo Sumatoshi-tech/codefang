@@ -924,6 +924,87 @@ func TestExtractFuncName(t *testing.T) {
 	assert.Equal(t, string(node.UASTFunction), extractFuncName(fn3))
 }
 
+// FRD: specs/frds/FRD-20260311-clones-pair-cap.md.
+
+// TestAggregator_MaxClonePairs_Default verifies NewAggregator sets default cap.
+func TestAggregator_MaxClonePairs_Default(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+	assert.Equal(t, DefaultMaxClonePairs, agg.MaxClonePairs)
+}
+
+// TestAggregator_MaxClonePairs_CapsReportSlice verifies the pairs slice is capped
+// but total_clone_pairs remains exact.
+func TestAggregator_MaxClonePairs_CapsReportSlice(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+	agg.MaxClonePairs = 1
+
+	// Three files with identical signatures → 3 pairs: (x,y), (x,z), (y,z).
+	tokens := []string{"a", "b", "c", "d", "e"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
+	sig3 := buildTestSignature(t, tokens)
+
+	report1 := buildTestFileReport(t, "x.go", map[string]*minhash.Signature{"init": sig1})
+	report2 := buildTestFileReport(t, "y.go", map[string]*minhash.Signature{"init": sig2})
+	report3 := buildTestFileReport(t, "z.go", map[string]*minhash.Signature{"init": sig3})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+	agg.Aggregate(map[string]analyze.Report{"clones": report3})
+
+	result := agg.GetResult()
+
+	// total_clone_pairs is exact — all 3 pairs counted.
+	totalPairs, ok := result[keyTotalClonePairs].(int)
+	require.True(t, ok)
+	assert.Equal(t, 3, totalPairs)
+
+	// clone_pairs slice is capped at MaxClonePairs=1.
+	pairsRaw, ok := result[keyClonePairs].([]map[string]any)
+	require.True(t, ok)
+	assert.Len(t, pairsRaw, 1)
+
+	// clone_ratio uses exact count: 3 / 3 = 1.0.
+	ratio, ratioOK := result[keyCloneRatio].(float64)
+	require.True(t, ratioOK)
+	assert.InDelta(t, 1.0, ratio, testFloatDelta)
+}
+
+// TestAggregator_MaxClonePairs_Unlimited verifies cap=0 means unlimited.
+func TestAggregator_MaxClonePairs_Unlimited(t *testing.T) {
+	t.Parallel()
+
+	agg := NewAggregator()
+	agg.MaxClonePairs = 0
+
+	tokens := []string{"a", "b", "c", "d", "e"}
+	sig1 := buildTestSignature(t, tokens)
+	sig2 := buildTestSignature(t, tokens)
+	sig3 := buildTestSignature(t, tokens)
+
+	report1 := buildTestFileReport(t, "x.go", map[string]*minhash.Signature{"init": sig1})
+	report2 := buildTestFileReport(t, "y.go", map[string]*minhash.Signature{"init": sig2})
+	report3 := buildTestFileReport(t, "z.go", map[string]*minhash.Signature{"init": sig3})
+
+	agg.Aggregate(map[string]analyze.Report{"clones": report1})
+	agg.Aggregate(map[string]analyze.Report{"clones": report2})
+	agg.Aggregate(map[string]analyze.Report{"clones": report3})
+
+	result := agg.GetResult()
+
+	totalPairs, ok := result[keyTotalClonePairs].(int)
+	require.True(t, ok)
+	assert.Equal(t, 3, totalPairs)
+
+	pairsRaw, pOK := result[keyClonePairs].([]map[string]any)
+	require.True(t, pOK)
+	assert.Len(t, pairsRaw, 3)
+}
+
 // TestComputeScore verifies score computation from clone ratio.
 func TestComputeScore(t *testing.T) {
 	t.Parallel()

@@ -228,7 +228,7 @@ func TestFileLevelMetrics_WithCMS(t *testing.T) {
 	require.NotNil(t, result)
 
 	// File-level should aggregate both functions.
-	functions, ok := result["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(result, "functions")
 	require.True(t, ok, "functions should be []map[string]any")
 	assert.Len(t, functions, 2)
 

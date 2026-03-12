@@ -26,6 +26,10 @@ const (
 	similarityType3 = 0.5
 )
 
+// DefaultMaxClonePairs is the maximum number of clone pairs stored in the report detail.
+// The total_clone_pairs count remains exact (not capped). Zero means unlimited.
+const DefaultMaxClonePairs = 1000
+
 // Report keys.
 const (
 	keyAnalyzerName    = "analyzer_name"

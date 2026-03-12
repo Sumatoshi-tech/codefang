@@ -84,6 +84,20 @@ type FunctionMetrics struct {
 	ReturnStatements     int    `json:"return_statements"`
 }
 
+// FunctionReportItem is a typed representation of a per-function complexity report item.
+// It includes assessment strings computed from thresholds, avoiding map[string]any allocation.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+type FunctionReportItem struct {
+	Name                 string
+	CyclomaticComplexity int
+	CognitiveComplexity  int
+	NestingDepth         int
+	LinesOfCode          int
+	ComplexityAssessment string
+	CognitiveAssessment  string
+	NestingAssessment    string
+}
+
 // Config holds configuration for complexity analysis.
 type Config struct {
 	ComplexityThresholds       map[string]int
@@ -264,11 +278,11 @@ func (c *Analyzer) Analyze(root *node.Node) (analyze.Report, error) {
 	}
 
 	functionMetrics, totals := c.calculateAllFunctionMetrics(functions, config)
-	detailedFunctionsTable := c.buildDetailedFunctionsTable(functionMetrics, config)
+	reportItems := c.buildDetailedFunctionsTable(functionMetrics, config)
 	avgComplexity := c.calculateAverageComplexity(totals, len(functions))
 	message := c.getComplexityMessage(avgComplexity)
 
-	return c.buildResult(len(functions), avgComplexity, totals, detailedFunctionsTable, message), nil
+	return c.buildResult(len(functions), avgComplexity, totals, reportItems, message), nil
 }
 
 // buildEmptyResult creates an empty result for cases with no functions.
@@ -282,31 +296,58 @@ func (c *Analyzer) buildEmptyResult(message string) analyze.Report {
 	})
 }
 
-// buildDetailedFunctionsTable creates the detailed functions table for display.
+// buildDetailedFunctionsTable creates the detailed functions table as typed structs.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildDetailedFunctionsTable(
 	functionMetrics []FunctionMetrics,
 	config Config,
-) []map[string]any {
-	detailedFunctionsTable := make([]map[string]any, 0, len(functionMetrics))
+) []FunctionReportItem {
+	items := make([]FunctionReportItem, 0, len(functionMetrics))
 
 	for _, metrics := range functionMetrics {
-		complexityAssessment := c.getComplexityAssessment(metrics.CyclomaticComplexity, config.ComplexityThresholds)
-		cognitiveAssessment := c.getCognitiveAssessment(metrics.CognitiveComplexity)
-		nestingAssessment := c.getNestingAssessment(metrics.NestingDepth)
-
-		detailedFunctionsTable = append(detailedFunctionsTable, map[string]any{
-			"name":                  metrics.Name,
-			"cyclomatic_complexity": metrics.CyclomaticComplexity,
-			"cognitive_complexity":  metrics.CognitiveComplexity,
-			"nesting_depth":         metrics.NestingDepth,
-			"lines_of_code":         metrics.LinesOfCode,
-			"complexity_assessment": complexityAssessment,
-			"cognitive_assessment":  cognitiveAssessment,
-			"nesting_assessment":    nestingAssessment,
+		items = append(items, FunctionReportItem{
+			Name:                 metrics.Name,
+			CyclomaticComplexity: metrics.CyclomaticComplexity,
+			CognitiveComplexity:  metrics.CognitiveComplexity,
+			NestingDepth:         metrics.NestingDepth,
+			LinesOfCode:          metrics.LinesOfCode,
+			ComplexityAssessment: c.getComplexityAssessment(metrics.CyclomaticComplexity, config.ComplexityThresholds),
+			CognitiveAssessment:  c.getCognitiveAssessment(metrics.CognitiveComplexity),
+			NestingAssessment:    c.getNestingAssessment(metrics.NestingDepth),
 		})
 	}
 
-	return detailedFunctionsTable
+	return items
+}
+
+// convertFunctionReportItems converts typed function items to []map[string]any for serialization.
+func convertFunctionReportItems(items any, sourceFile string) []map[string]any {
+	typed, ok := items.([]FunctionReportItem)
+	if !ok {
+		return nil
+	}
+
+	result := make([]map[string]any, 0, len(typed))
+
+	for _, fn := range typed {
+		m := map[string]any{
+			"name":                  fn.Name,
+			"cyclomatic_complexity": fn.CyclomaticComplexity,
+			"cognitive_complexity":  fn.CognitiveComplexity,
+			"nesting_depth":         fn.NestingDepth,
+			"lines_of_code":         fn.LinesOfCode,
+			"complexity_assessment": fn.ComplexityAssessment,
+			"cognitive_assessment":  fn.CognitiveAssessment,
+			"nesting_assessment":    fn.NestingAssessment,
+		}
+		if sourceFile != "" {
+			m[analyze.SourceFileKey] = sourceFile
+		}
+
+		result = append(result, m)
+	}
+
+	return result
 }
 
 // calculateAverageComplexity calculates the average complexity across all functions.
@@ -319,11 +360,12 @@ func (c *Analyzer) calculateAverageComplexity(totals map[string]int, functionCou
 }
 
 // buildResult constructs the final analysis result.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(
 	functionCount int,
 	avgComplexity float64,
 	totals map[string]int,
-	detailedFunctionsTable []map[string]any,
+	reportItems []FunctionReportItem,
 	message string,
 ) analyze.Report {
 	return analyze.Report{
@@ -335,8 +377,11 @@ func (c *Analyzer) buildResult(
 		"cognitive_complexity": totals["cognitive"],
 		"nesting_depth":        totals["nesting"],
 		"decision_points":      totals["decisions"],
-		"functions":            detailedFunctionsTable,
-		"message":              message,
+		"functions": analyze.TypedCollection{
+			Items:  reportItems,
+			ToMaps: convertFunctionReportItems,
+		},
+		"message": message,
 	}
 }
 

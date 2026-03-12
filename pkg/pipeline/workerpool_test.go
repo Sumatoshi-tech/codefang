@@ -234,3 +234,121 @@ func TestWorkerPool_ErrorCancelsContext(t *testing.T) {
 	err := pool.Run(context.Background(), []int{0, 1, 2})
 	assert.ErrorIs(t, err, errWorker)
 }
+
+// FRD: specs/frds/FRD-20260311-streaming-file-discovery.md.
+
+func TestWorkerPool_RunChan_EmptyChannel(t *testing.T) {
+	t.Parallel()
+
+	pool := WorkerPool[int]{
+		MaxParallel: 1,
+		Work: func(_ context.Context, _ int) error {
+			t.Fatal("should not be called")
+
+			return nil
+		},
+	}
+
+	ch := make(chan int)
+	close(ch)
+
+	err := pool.RunChan(context.Background(), ch)
+	require.NoError(t, err)
+}
+
+func TestWorkerPool_RunChan_ProcessesAllItems(t *testing.T) {
+	t.Parallel()
+
+	const itemCount = 50
+
+	var count atomic.Int64
+
+	pool := WorkerPool[int]{
+		MaxParallel: 4,
+		Work: func(_ context.Context, _ int) error {
+			count.Add(1)
+
+			return nil
+		},
+	}
+
+	ch := make(chan int, itemCount)
+
+	for i := range itemCount {
+		ch <- i
+	}
+
+	close(ch)
+
+	err := pool.RunChan(context.Background(), ch)
+	require.NoError(t, err)
+	assert.Equal(t, int64(itemCount), count.Load())
+}
+
+func TestWorkerPool_RunChan_FirstError(t *testing.T) {
+	t.Parallel()
+
+	pool := WorkerPool[int]{
+		MaxParallel: 1,
+		Work: func(_ context.Context, item int) error {
+			if item == 0 {
+				return errWorker
+			}
+
+			return nil
+		},
+	}
+
+	ch := feedChan(0, 1, 2)
+
+	err := pool.RunChan(context.Background(), ch)
+	assert.ErrorIs(t, err, errWorker)
+}
+
+func TestWorkerPool_RunChan_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	pool := WorkerPool[int]{
+		MaxParallel: 2,
+		Work: func(workCtx context.Context, _ int) error {
+			return workCtx.Err()
+		},
+	}
+
+	ch := feedChan(1, 2, 3)
+
+	err := pool.RunChan(ctx, ch)
+	assert.Error(t, err)
+}
+
+func TestWorkerPool_RunChan_NilChannel(t *testing.T) {
+	t.Parallel()
+
+	pool := WorkerPool[int]{
+		MaxParallel: 1,
+		Work: func(_ context.Context, _ int) error {
+			t.Fatal("should not be called")
+
+			return nil
+		},
+	}
+
+	err := pool.RunChan(context.Background(), nil)
+	require.NoError(t, err)
+}
+
+// feedChan creates a buffered, pre-filled, closed channel from the given items.
+func feedChan(items ...int) <-chan int {
+	ch := make(chan int, len(items))
+
+	for _, item := range items {
+		ch <- item
+	}
+
+	close(ch)
+
+	return ch
+}

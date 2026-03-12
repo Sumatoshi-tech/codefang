@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
 
@@ -45,7 +46,7 @@ func TestAnalyzer_DoesNotCountParameterNodeAsOperand(t *testing.T) {
 	report, err := analyzer.Analyze(root)
 	require.NoError(t, err)
 
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
 	require.True(t, ok)
 	require.Len(t, functions, 1)
 
@@ -73,7 +74,7 @@ func TestAnalyzer_ReportIncludesPerFunctionTokenCounts(t *testing.T) {
 	report, err := analyzer.Analyze(root)
 	require.NoError(t, err)
 
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
 	require.True(t, ok)
 	require.Len(t, functions, 1)
 

@@ -69,6 +69,26 @@ type CommentConfig struct {
 	MaxCommentLength int
 }
 
+// CommentReportItem is a typed representation of a per-comment report item.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+type CommentReportItem struct {
+	Comment    string
+	Placement  string
+	Target     string
+	Assessment string
+	Line       int
+}
+
+// FunctionReportItem is a typed representation of a per-function report item.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+type FunctionReportItem struct {
+	Function   string
+	Type       string
+	Comment    string
+	Assessment string
+	Lines      int
+}
+
 // CommentBlock represents a group of consecutive comment lines.
 type CommentBlock struct {
 	FullText  string

@@ -46,7 +46,7 @@ func TestVisitor_Basic(t *testing.T) {
 
 	assert.Equal(t, 1, report["total_functions"])
 
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
 	require.True(t, ok, "type assertion failed for functions")
 	assert.Len(t, functions, 1)
 

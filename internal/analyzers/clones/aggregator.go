@@ -13,11 +13,16 @@ import (
 type Aggregator struct {
 	entries        []funcEntry
 	totalFunctions int
+	// MaxClonePairs limits the number of clone pairs stored in the report detail.
+	// The total_clone_pairs count remains exact. Zero means unlimited.
+	MaxClonePairs int
 }
 
 // NewAggregator creates a new clone detection aggregator.
 func NewAggregator() *Aggregator {
-	return &Aggregator{}
+	return &Aggregator{
+		MaxClonePairs: DefaultMaxClonePairs,
+	}
 }
 
 // Aggregate extracts function signatures from per-file reports.
@@ -88,10 +93,10 @@ func (a *Aggregator) GetResult() analyze.Report {
 		return buildEmptyReport(msgNoFunctions)
 	}
 
-	pairs := a.detectGlobalClones()
+	pairs, totalCount := a.detectGlobalClones()
 
-	cloneRatio := computeCloneRatio(len(pairs), a.totalFunctions)
-	message := cloneMessage(len(pairs))
+	cloneRatio := computeCloneRatio(totalCount, a.totalFunctions)
+	message := cloneMessage(totalCount)
 
 	pairsForReport := make([]map[string]any, 0, len(pairs))
 
@@ -107,7 +112,7 @@ func (a *Aggregator) GetResult() analyze.Report {
 	return analyze.Report{
 		keyAnalyzerName:    analyzerName,
 		keyTotalFunctions:  a.totalFunctions,
-		keyTotalClonePairs: len(pairs),
+		keyTotalClonePairs: totalCount,
 		keyCloneRatio:      cloneRatio,
 		keyClonePairs:      pairsForReport,
 		keyMessage:         message,
@@ -115,14 +120,15 @@ func (a *Aggregator) GetResult() analyze.Report {
 }
 
 // detectGlobalClones builds a single LSH index from all entries and finds clone pairs.
-func (a *Aggregator) detectGlobalClones() []ClonePair {
+// Returns the (possibly capped) pairs slice and the exact total count of all pairs found.
+func (a *Aggregator) detectGlobalClones() (pairs []ClonePair, totalCount int) {
 	if len(a.entries) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	idx, err := lsh.New(numBands, numRows)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 
 	for _, entry := range a.entries {
@@ -132,7 +138,7 @@ func (a *Aggregator) detectGlobalClones() []ClonePair {
 		}
 	}
 
-	return findClonePairs(a.entries, idx)
+	return findClonePairs(a.entries, idx, a.MaxClonePairs)
 }
 
 // qualifyFuncName returns "sourceFile::name" if sourceFile is non-empty,

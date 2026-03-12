@@ -68,11 +68,28 @@ func GetString(report map[string]any, key string) string {
 	return s
 }
 
-// GetFunctions returns the []map[string]any for the given key.
-func GetFunctions(report map[string]any, key string) []map[string]any {
-	fns, _ := GetAs[[]map[string]any](report, key)
+// mapSlicer is satisfied by analyze.TypedCollection without importing analyze.
+type mapSlicer interface {
+	MapSlice() []map[string]any
+}
 
-	return fns
+// GetFunctions returns the []map[string]any for the given key.
+// Handles both direct []map[string]any and TypedCollection values.
+func GetFunctions(report map[string]any, key string) []map[string]any {
+	val, exists := report[key]
+	if !exists {
+		return nil
+	}
+
+	if fns, ok := val.([]map[string]any); ok {
+		return fns
+	}
+
+	if tc, ok := val.(mapSlicer); ok {
+		return tc.MapSlice()
+	}
+
+	return nil
 }
 
 // GetStringSlice returns a []string value from the report.

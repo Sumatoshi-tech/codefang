@@ -316,3 +316,51 @@ func TestBuildEmptyHalsteadResult(t *testing.T) {
 		t.Errorf("Expected message='No functions found', got %v", result["message"])
 	}
 }
+
+// FRD: specs/frds/FRD-20260311-halstead-dedup.md.
+
+func TestAggregator_DuplicateFuncNames_PreservedAcrossFiles(t *testing.T) {
+	t.Parallel()
+
+	aggregator := NewAggregator()
+
+	// 4 files, each with functions "init", "main", "New", "Close".
+	fileCount := 4
+	funcNames := []string{"init", "main", "New", "Close"}
+
+	for i := range fileCount {
+		functions := make([]map[string]any, 0, len(funcNames))
+		for _, name := range funcNames {
+			functions = append(functions, map[string]any{
+				"name":         name,
+				"_source_file": makeSourceFile(i),
+				"volume":       100.0,
+			})
+		}
+
+		report := analyze.Report{
+			"total_functions": len(funcNames),
+			"volume":          100.0,
+			"functions":       functions,
+		}
+
+		aggregator.Aggregate(map[string]analyze.Report{"halstead": report})
+	}
+
+	result := aggregator.GetResult()
+
+	functions, ok := result["functions"].([]map[string]any)
+	if !ok {
+		t.Fatal("Expected functions to be []map[string]any")
+	}
+
+	expectedCount := fileCount * len(funcNames)
+	if len(functions) != expectedCount {
+		t.Errorf("Expected %d functions (no overwrites), got %d", expectedCount, len(functions))
+	}
+}
+
+// makeSourceFile generates a synthetic source file path.
+func makeSourceFile(index int) string {
+	return "pkg/file" + string(rune('A'+index)) + ".go"
+}

@@ -281,3 +281,36 @@ func TestMetricsProcessor_IntegrationWorkflow(t *testing.T) {
 		t.Errorf("expected line count 600, got %d", counts["line_count"])
 	}
 }
+
+// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
+
+func TestMetricsProcessor_EstimatedStateBytes_Empty(t *testing.T) {
+	t.Parallel()
+
+	mp := NewMetricsProcessor([]string{"score"}, []string{"count"})
+
+	if mp.EstimatedStateBytes() != 0 {
+		t.Errorf("expected 0, got %d", mp.EstimatedStateBytes())
+	}
+}
+
+func TestMetricsProcessor_EstimatedStateBytes_WithData(t *testing.T) {
+	t.Parallel()
+
+	mp := NewMetricsProcessor([]string{"score"}, []string{"count"})
+
+	report := analyze.Report{
+		"score": 3.5,
+		"count": 10,
+	}
+
+	mp.ProcessReport(report)
+
+	estimated := mp.EstimatedStateBytes()
+
+	// 1 metric entry + 1 count entry = 2 * metricsEntryBytes.
+	expected := int64(2) * metricsEntryBytes
+	if estimated != expected {
+		t.Errorf("expected %d, got %d", expected, estimated)
+	}
+}

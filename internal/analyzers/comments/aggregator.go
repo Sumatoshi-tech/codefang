@@ -35,12 +35,19 @@ func NewAggregator() *Aggregator {
 			numericKeys,
 			countKeys,
 			"comments",
-			"line",
+			[]string{"line"},
 			messageBuilder,
 			emptyResultBuilder,
 		),
 		detailed: common.NewDetailedDataCollector("comments", "functions"),
 	}
+}
+
+// SetAggregationMode propagates the mode to both the base aggregator and
+// the detailed data collector.
+func (ca *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
+	ca.Aggregator.SetAggregationMode(mode)
+	ca.detailed.SetAggregationMode(mode)
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed comments and functions.

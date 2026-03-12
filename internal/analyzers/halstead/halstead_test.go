@@ -73,7 +73,7 @@ func TestAnalyzer_SimpleFunction(t *testing.T) {
 		t.Errorf("Expected total_functions 1, got %v", result["total_functions"])
 	}
 
-	functions, ok := result["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(result, "functions")
 	require.True(t, ok, "type assertion failed for functions")
 
 	if len(functions) != 1 {
@@ -309,7 +309,7 @@ func TestAnalyzer_RealAggregation(t *testing.T) {
 	}
 
 	// Verify that the function details contain the actual operators and operands.
-	functions, ok := result["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(result, "functions")
 	require.True(t, ok, "type assertion failed for functions")
 
 	if len(functions) != 1 {
@@ -426,7 +426,7 @@ func TestAnalyzer_MultipleFunctionsAggregation(t *testing.T) {
 	}
 
 	// Verify that the aggregation correctly counted overlapping operators and operands.
-	functions, ok := result["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(result, "functions")
 	require.True(t, ok, "type assertion failed for functions")
 
 	if len(functions) != 2 {

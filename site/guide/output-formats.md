@@ -304,18 +304,23 @@ codefang run -a history/devs,history/sentiment --format timeseries .
 
 **Flag:** `--format plot`
 
-Self-contained interactive HTML page with charts rendered by
-[go-echarts](https://github.com/go-echarts/go-echarts). The output is a single
-HTML file that can be opened in any browser. When multiple analyzers are
-selected, they are combined into a single multi-section page.
+**Requires:** `--output <dir>` (`-o <dir>`)
+
+Multi-page interactive HTML report with charts rendered by
+[go-echarts](https://github.com/go-echarts/go-echarts). Each analyzer gets its
+own HTML page, plus an `index.html` with navigation cards. The output directory
+can be opened in any browser.
+
+Both static and history analyzers produce the same multi-page layout.
 
 ```bash
-# Generate and open in browser
-codefang run -a 'history/*' --format plot . > report.html
-open report.html
+# Generate multi-page report
+codefang run -a 'static/*' --format plot -o ./report .
+open ./report/index.html
 
-# Single analyzer
-codefang run -a history/burndown --format plot . > burndown.html
+# History analyzers
+codefang run -a 'history/*' --format plot -o ./report .
+open ./report/index.html
 ```
 
 ??? example "What the Output Contains"
@@ -361,6 +366,15 @@ categories:
     must be one of the **universal formats**: `json`, `yaml`, `plot`, or
     `timeseries`. The `text` and `compact` formats are only available when
     running static analyzers alone.
+
+!!! info "Memory optimization"
+
+    The `text` and `compact` formats use **summary-only aggregation**: only
+    running sums and averages are kept in memory, while per-function detail
+    data is not collected. This dramatically reduces memory usage on large
+    codebases (up to 97% heap reduction). The `json`, `yaml`, `plot`, and
+    `binary` formats use **full aggregation** since they need per-item data
+    for serialization.
 
 ---
 

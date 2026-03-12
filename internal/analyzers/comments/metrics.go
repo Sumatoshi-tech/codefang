@@ -92,7 +92,7 @@ func parseReportScalars(data *ReportData, report analyze.Report) {
 }
 
 func parseReportComments(report analyze.Report) []CommentData {
-	comments, ok := report["comments"].([]map[string]any)
+	comments, ok := analyze.ReportFunctionList(report, "comments")
 	if !ok {
 		return nil
 	}
@@ -145,7 +145,7 @@ func parseComment(comment map[string]any) CommentData {
 }
 
 func parseReportFunctions(report analyze.Report) []FunctionCommentData {
-	functions, ok := report["functions"].([]map[string]any)
+	functions, ok := analyze.ReportFunctionList(report, "functions")
 	if !ok {
 		return nil
 	}

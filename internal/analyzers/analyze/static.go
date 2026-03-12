@@ -9,12 +9,46 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
+	"github.com/Sumatoshi-tech/codefang/pkg/meminfo"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
+
+// DefaultStaticMaxWorkers is the maximum number of concurrent file analysis workers
+// when no explicit override is provided. Caps memory from concurrent UAST parse trees.
+const DefaultStaticMaxWorkers = 8
+
+// DefaultMallocTrimInterval is the number of files between malloc_trim calls.
+// Releases glibc arenas back to the OS to prevent native memory accumulation.
+const DefaultMallocTrimInterval = 50
+
+// DefaultProgressInterval is the number of files between progress callback invocations.
+const DefaultProgressInterval = 1000
+
+// ProgressPhaseProcessing indicates files are being analyzed.
+const ProgressPhaseProcessing = "processing"
+
+// ProgressPhaseComplete indicates analysis has finished.
+const ProgressPhaseComplete = "complete"
+
+// StaticProgressEvent represents a static analysis progress milestone.
+type StaticProgressEvent struct {
+	FilesProcessed int64
+	RSSBytes       int64
+	AggregatorSize int64
+	Phase          string
+}
+
+// StaticProgressFunc is called at key pipeline milestones.
+type StaticProgressFunc func(event StaticProgressEvent)
 
 // ErrRendererNotSet is returned when a formatting method is called without a Renderer.
 var ErrRendererNotSet = errors.New("static service renderer not set")
@@ -37,6 +71,34 @@ type StaticRenderer interface {
 type StaticService struct {
 	Analyzers []StaticAnalyzer
 
+	// MaxWorkers limits the number of concurrent file analysis goroutines.
+	// Zero means use min(runtime.NumCPU(), DefaultStaticMaxWorkers).
+	MaxWorkers int
+
+	// MallocTrimInterval is the number of files between native memory trim calls.
+	// Zero means use DefaultMallocTrimInterval. Negative disables trimming.
+	MallocTrimInterval int
+
+	// NativeMemoryReleaseFn is called periodically to release native memory.
+	// Defaults to gitlib.ReleaseNativeMemory when nil.
+	NativeMemoryReleaseFn func()
+
+	// AggregationMode controls whether per-item data is collected during aggregation.
+	// Full (default) collects all data. SummaryOnly skips per-item collection.
+	AggregationMode AggregationMode
+
+	// SpillThreshold overrides the default spill-to-disk threshold on aggregators.
+	// Zero means use the aggregator default. Derived from --memory-budget.
+	SpillThreshold int
+
+	// ProgressFunc is called at pipeline milestones when non-nil.
+	// Called every ProgressInterval files during processing, and once after completion.
+	ProgressFunc StaticProgressFunc
+
+	// ProgressInterval is the number of files between progress callbacks.
+	// Zero means use DefaultProgressInterval.
+	ProgressInterval int
+
 	// Renderer provides section-based output rendering.
 	// Must be set before calling FormatJSON, FormatText, FormatCompact, or RunAndFormat.
 	Renderer StaticRenderer
@@ -47,72 +109,181 @@ func NewStaticService(analyzers []StaticAnalyzer) *StaticService {
 	return &StaticService{Analyzers: analyzers}
 }
 
+// ResolveMaxWorkers returns the effective worker count for parallel file analysis.
+// Zero resolves to min(runtime.NumCPU(), DefaultStaticMaxWorkers).
+func (svc *StaticService) ResolveMaxWorkers() int {
+	if svc.MaxWorkers > 0 {
+		return svc.MaxWorkers
+	}
+
+	cpus := runtime.NumCPU()
+	if cpus > DefaultStaticMaxWorkers {
+		return DefaultStaticMaxWorkers
+	}
+
+	return cpus
+}
+
+// ResolveMallocTrimInterval returns the effective trim interval.
+// Zero resolves to DefaultMallocTrimInterval. Negative means disabled (returns -1).
+func (svc *StaticService) ResolveMallocTrimInterval() int {
+	if svc.MallocTrimInterval > 0 {
+		return svc.MallocTrimInterval
+	}
+
+	if svc.MallocTrimInterval < 0 {
+		return -1
+	}
+
+	return DefaultMallocTrimInterval
+}
+
+// resolveProgressInterval returns the effective progress interval.
+func (svc *StaticService) resolveProgressInterval() int64 {
+	if svc.ProgressInterval > 0 {
+		return int64(svc.ProgressInterval)
+	}
+
+	return DefaultProgressInterval
+}
+
+// emitProgress calls ProgressFunc if set, computing aggregator sizes and reading RSS.
+func (svc *StaticService) emitProgress(
+	filesProcessed int64,
+	aggregators map[string]ResultAggregator,
+	phase string,
+) {
+	if svc.ProgressFunc == nil {
+		return
+	}
+
+	var aggSize int64
+
+	for _, agg := range aggregators {
+		if sizer, ok := agg.(StateSizer); ok {
+			aggSize += sizer.EstimatedStateSize()
+		}
+	}
+
+	svc.ProgressFunc(StaticProgressEvent{
+		FilesProcessed: filesProcessed,
+		RSSBytes:       meminfo.ReadRSSBytes(),
+		AggregatorSize: aggSize,
+		Phase:          phase,
+	})
+}
+
+// streamFilesBufSize is the channel buffer size for streaming file discovery.
+// Workers block naturally when the buffer is full, providing backpressure.
+const streamFilesBufSize = 100
+
 // AnalyzeFolder runs static analyzers for supported files in a folder tree.
-// Files are discovered sequentially, then analyzed in parallel using a worker pool.
+// File discovery streams paths to workers via a channel, providing natural backpressure.
 func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, analyzerList []string) (map[string]Report, error) {
 	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
 	aggregators := svc.initAggregators(analyzersToRun)
 
-	files, err := svc.collectFiles(rootPath)
-	if err != nil {
-		return nil, err
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var fileCounter atomic.Int64
+
+	fileCh := make(chan string, streamFilesBufSize)
+	walkErrCh := make(chan error, 1)
+
+	go func() {
+		walkErrCh <- svc.streamFiles(ctx, rootPath, fileCh)
+	}()
+
+	poolErr := svc.analyzeFilesParallel(ctx, fileCh, analyzersToRun, aggregators, &fileCounter)
+
+	walkErr := <-walkErrCh
+
+	if poolErr != nil {
+		return nil, poolErr
 	}
 
-	err = svc.analyzeFilesParallel(ctx, files, analyzersToRun, aggregators)
-	if err != nil {
-		return nil, err
+	if walkErr != nil {
+		return nil, walkErr
 	}
 
-	return buildFinalResults(aggregators), nil
+	results := buildFinalResults(aggregators)
+
+	svc.emitProgress(fileCounter.Load(), aggregators, ProgressPhaseComplete)
+
+	return results, nil
 }
 
-// collectFiles walks the directory tree and returns paths of supported files.
-func (svc *StaticService) collectFiles(rootPath string) ([]string, error) {
+// streamFiles walks the directory tree and sends supported file paths on fileCh.
+// The channel is closed when the walk completes. Returns walk errors.
+func (svc *StaticService) streamFiles(ctx context.Context, rootPath string, fileCh chan<- string) error {
+	defer close(fileCh)
+
 	parser, err := uast.NewParser()
 	if err != nil {
-		return nil, fmt.Errorf("create parser: %w", err)
+		return fmt.Errorf("create parser: %w", err)
 	}
 
-	var files []string
-
 	err = filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		skip, skipErr := ShouldSkipFolderNode(path, entry, walkErr, parser)
 		if skip || skipErr != nil {
 			return skipErr
 		}
 
-		files = append(files, path)
+		select {
+		case fileCh <- path:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walk %s: %w", rootPath, err)
+		return fmt.Errorf("walk %s: %w", rootPath, err)
 	}
 
-	return files, nil
+	return nil
 }
 
-// analyzeFilesParallel processes files using a WorkerPool, each goroutine
-// lazily creating its own parser via [sync.Pool].
+// resolveReleaseFn returns the effective native memory release function.
+func (svc *StaticService) resolveReleaseFn() func() {
+	if svc.NativeMemoryReleaseFn != nil {
+		return svc.NativeMemoryReleaseFn
+	}
+
+	return func() { gitlib.ReleaseNativeMemory() }
+}
+
+// analyzeFilesParallel processes files from a channel using a WorkerPool,
+// each goroutine acquiring a parser from a bounded channel-based pool.
 func (svc *StaticService) analyzeFilesParallel(
 	ctx context.Context,
-	files []string,
+	fileCh <-chan string,
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
+	fileCounter *atomic.Int64,
 ) error {
-	var (
-		parserPool sync.Pool
-		mu         sync.Mutex
-	)
+	var mu sync.Mutex
+
+	maxWorkers := svc.ResolveMaxWorkers()
+	parserCh := make(chan *uast.Parser, maxWorkers)
+	trimInterval := svc.ResolveMallocTrimInterval()
+	releaseFn := svc.resolveReleaseFn()
+	progressInterval := svc.resolveProgressInterval()
 
 	pool := pipeline.WorkerPool[string]{
+		MaxParallel: maxWorkers,
 		Work: func(ctx context.Context, filePath string) error {
-			parser, err := svc.getOrCreateParser(&parserPool)
+			parser, err := acquireParser(parserCh)
 			if err != nil {
 				return err
 			}
 
-			defer parserPool.Put(parser)
+			defer func() { parserCh <- parser }()
 
 			reportMap, analyzeErr := svc.analyzeFile(ctx, filePath, parser, analyzersToRun)
 			if analyzeErr != nil {
@@ -129,20 +300,29 @@ func (svc *StaticService) analyzeFilesParallel(
 			aggregateFolderAnalysis(reportMap, aggregators)
 			mu.Unlock()
 
+			count := fileCounter.Add(1)
+
+			if trimInterval > 0 && count%int64(trimInterval) == 0 {
+				releaseFn()
+			}
+
+			if count%progressInterval == 0 {
+				svc.emitProgress(count, aggregators, ProgressPhaseProcessing)
+			}
+
 			return nil
 		},
 	}
 
-	return pool.Run(ctx, files)
+	return pool.RunChan(ctx, fileCh)
 }
 
-// getOrCreateParser retrieves a parser from the pool or creates a new one.
-func (svc *StaticService) getOrCreateParser(pool *sync.Pool) (*uast.Parser, error) {
-	if v := pool.Get(); v != nil {
-		parser, ok := v.(*uast.Parser)
-		if ok {
-			return parser, nil
-		}
+// acquireParser retrieves a parser from the channel or creates a new one.
+func acquireParser(ch chan *uast.Parser) (*uast.Parser, error) {
+	select {
+	case p := <-ch:
+		return p, nil
+	default:
 	}
 
 	parser, err := uast.NewParser()
@@ -155,12 +335,17 @@ func (svc *StaticService) getOrCreateParser(pool *sync.Pool) (*uast.Parser, erro
 
 // StampSourceFile adds "_source_file" metadata to every collection item in each report.
 // This allows downstream consumers (e.g., plot generators) to group results by file/package.
+// Handles both legacy []map[string]any collections and TypedCollection wrappers.
 func StampSourceFile(reports map[string]Report, filePath string) {
 	for _, report := range reports {
-		for _, val := range report {
-			if collection, ok := val.([]map[string]any); ok {
-				for _, item := range collection {
-					item["_source_file"] = filePath
+		for key, val := range report {
+			switch v := val.(type) {
+			case TypedCollection:
+				v.SourceFile = filePath
+				report[key] = v
+			case []map[string]any:
+				for _, item := range v {
+					item[SourceFileKey] = filePath
 				}
 			}
 		}
@@ -214,6 +399,9 @@ func (svc *StaticService) analyzeFile(
 	}
 
 	results, err := svc.runAnalyzers(ctx, uastNode, analyzersToRun)
+
+	node.ReleaseTree(uastNode)
+
 	if err != nil {
 		return nil, fmt.Errorf("run analyzers for %s: %w", path, err)
 	}
@@ -251,9 +439,21 @@ func (svc *StaticService) initAggregators(analyzersToRun []string) map[string]Re
 
 	for _, analyzerName := range analyzersToRun {
 		analyzer := svc.FindAnalyzer(analyzerName)
-		if analyzer != nil {
-			aggregators[analyzerName] = analyzer.CreateAggregator()
+		if analyzer == nil {
+			continue
 		}
+
+		agg := analyzer.CreateAggregator()
+
+		if aware, ok := agg.(AggregationModeAware); ok {
+			aware.SetAggregationMode(svc.AggregationMode)
+		}
+
+		if setter, ok := agg.(SpillThresholdSetter); svc.SpillThreshold > 0 && ok {
+			setter.SetSpillThreshold(svc.SpillThreshold)
+		}
+
+		aggregators[analyzerName] = agg
 	}
 
 	return aggregators
@@ -413,6 +613,89 @@ func (svc *StaticService) FormatPerAnalyzer(
 	return nil
 }
 
+// plotPageTitle is the project title shown on plot pages.
+const plotPageTitle = "Codefang"
+
+// plotIDSep is the separator in analyzer IDs (e.g., "static/complexity").
+const plotIDSep = "/"
+
+// plotSafeIDSep is the safe separator for filenames (e.g., "static-complexity").
+const plotSafeIDSep = "-"
+
+// plotDirPerm is the permission for plot output directories.
+const plotDirPerm = 0o750
+
+// FormatPlotPages renders multi-page HTML plot output to outputDir.
+// Each analyzer gets its own HTML page plus an index page with navigation.
+// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+func (svc *StaticService) FormatPlotPages(
+	analyzerNames []string,
+	results map[string]Report,
+	outputDir string,
+) error {
+	mkErr := os.MkdirAll(outputDir, plotDirPerm)
+	if mkErr != nil {
+		return fmt.Errorf("create plot output dir: %w", mkErr)
+	}
+
+	renderer := &plotpage.MultiPageRenderer{
+		OutputDir: outputDir,
+		Title:     plotPageTitle,
+		Theme:     plotpage.ThemeDark,
+	}
+
+	pages := make([]plotpage.PageMeta, 0, len(analyzerNames))
+
+	for _, name := range analyzerNames {
+		report, ok := results[name]
+		if !ok {
+			continue
+		}
+
+		analyzer := svc.FindAnalyzer(name)
+		if analyzer == nil {
+			continue
+		}
+
+		fullID := analyzer.Descriptor().ID
+		sectionFn := PlotSectionsFor(fullID)
+
+		if sectionFn == nil {
+			continue
+		}
+
+		sections, secErr := sectionFn(report)
+		if secErr != nil {
+			continue
+		}
+
+		safeID := strings.ReplaceAll(fullID, plotIDSep, plotSafeIDSep)
+
+		pageErr := renderer.RenderAnalyzerPage(safeID, fullID, sections)
+		if pageErr != nil {
+			return fmt.Errorf("render static plot page %s: %w", fullID, pageErr)
+		}
+
+		pages = append(pages, plotpage.PageMeta{
+			ID:    safeID,
+			Title: fullID,
+		})
+	}
+
+	return renderer.RenderIndex(pages)
+}
+
+// ResolveAggregationMode returns the aggregation mode for a given output format.
+// Text and compact formats only show summary metrics, so per-item data is skipped.
+func ResolveAggregationMode(format string) AggregationMode {
+	switch format {
+	case FormatText, FormatCompact:
+		return AggregationModeSummaryOnly
+	default:
+		return AggregationModeFull
+	}
+}
+
 // RunAndFormat resolves analyzer IDs, runs analysis on the given path, and formats the output.
 func (svc *StaticService) RunAndFormat(
 	ctx context.Context,
@@ -426,6 +709,8 @@ func (svc *StaticService) RunAndFormat(
 	if err != nil {
 		return err
 	}
+
+	svc.AggregationMode = ResolveAggregationMode(format)
 
 	results, err := svc.AnalyzeFolder(ctx, path, analyzerNames)
 	if err != nil {

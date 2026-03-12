@@ -26,11 +26,17 @@ var ErrNilRootNode = errors.New("root node is nil")
 type Report = map[string]any
 
 // ReportFunctionList extracts a []map[string]any from a report key.
-// Handles both direct typed values and JSON-decoded []any slices.
+// Handles direct typed values, [TypedCollection] wrappers, and JSON-decoded []any slices.
 func ReportFunctionList(report Report, key string) ([]map[string]any, bool) {
 	val, exists := report[key]
 	if !exists {
 		return nil, false
+	}
+
+	if tc, ok := val.(TypedCollection); ok {
+		result := tc.ToMaps(tc.Items, tc.SourceFile)
+
+		return result, len(result) > 0
 	}
 
 	if typed, ok := val.([]map[string]any); ok {
@@ -106,6 +112,18 @@ type VisitorProvider interface {
 type ResultAggregator interface {
 	Aggregate(results map[string]Report)
 	GetResult() Report
+}
+
+// SpillThresholdSetter is implemented by aggregators that support configurable
+// spill-to-disk thresholds. Used by StaticService to apply budget-derived thresholds.
+type SpillThresholdSetter interface {
+	SetSpillThreshold(threshold int)
+}
+
+// StateSizer is implemented by aggregators that can estimate their in-memory state size.
+// Used by StaticService to log aggregator memory usage at pipeline milestones.
+type StateSizer interface {
+	EstimatedStateSize() int64
 }
 
 // Factory manages registration and execution of static analyzers.

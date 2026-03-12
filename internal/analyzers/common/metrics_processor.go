@@ -7,6 +7,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
 )
 
+// metricsEntryBytes is the estimated per-entry memory for a map entry
+// (string key pointer + numeric value).
+const metricsEntryBytes = 16
+
 // MetricsProcessor handles extraction and calculation of metrics from reports.
 type MetricsProcessor struct {
 	metrics     map[string]float64
@@ -82,6 +86,11 @@ func (mp *MetricsProcessor) GetMetric(key string) float64 {
 // GetCount returns a specific count total.
 func (mp *MetricsProcessor) GetCount(key string) int {
 	return mp.counts[key]
+}
+
+// EstimatedStateBytes returns the estimated memory usage of the processor state.
+func (mp *MetricsProcessor) EstimatedStateBytes() int64 {
+	return int64(len(mp.metrics)+len(mp.counts)) * metricsEntryBytes
 }
 
 // isNumericMetric checks if a key represents a numeric metric.

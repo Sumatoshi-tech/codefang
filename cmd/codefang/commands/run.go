@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"syscall"
 	"time"
@@ -58,7 +59,17 @@ type staticExecutor func(
 	format string,
 	verbose bool,
 	noColor bool,
+	maxWorkers int,
+	memoryBudget int64,
 	writer io.Writer,
+) error
+
+type staticPlotExecutor func(
+	path string,
+	analyzerIDs []string,
+	maxWorkers int,
+	memoryBudget int64,
+	outputDir string,
 ) error
 
 type historyExecutor func(
@@ -162,11 +173,14 @@ type RunCommand struct {
 	listAnalyzers   bool
 	diagnosticsAddr string
 
+	staticWorkers int
+
 	plotOutput string
 	keepStore  bool
 	tmpDir     string
 
 	staticExec        staticExecutor
+	staticPlotExec    staticPlotExecutor
 	historyExec       historyExecutor
 	registryFn        registryProvider
 	observabilityInit observabilityInitFunc
@@ -205,6 +219,7 @@ func newRunCommandWithDeps(
 	rc := &RunCommand{
 		format:            analyze.FormatJSON,
 		staticExec:        staticExec,
+		staticPlotExec:    runStaticPlotAnalyzers,
 		historyExec:       historyExec,
 		registryFn:        registryFn,
 		observabilityInit: otelInit,
@@ -243,6 +258,7 @@ func newRunCommandWithDeps(
 	cmd.Flags().StringVar(&rc.since, "since", "", "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)")
 
 	cmd.Flags().IntVar(&rc.workers, "workers", 0, "Number of parallel workers (0 = use CPU count)")
+	cmd.Flags().IntVar(&rc.staticWorkers, "static-workers", 0, "Number of parallel static analysis workers (0 = min(CPU count, 8))")
 	cmd.Flags().IntVar(&rc.bufferSize, "buffer-size", 0, "Size of internal pipeline channels (0 = workers*2)")
 	cmd.Flags().IntVar(&rc.commitBatchSize, "commit-batch-size", 0, "Commits per processing batch (0 = default 100)")
 	cmd.Flags().StringVar(&rc.blobCacheSize, "blob-cache-size", "", "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)")
@@ -510,11 +526,28 @@ func (rc *RunCommand) runStaticPhase(
 		return nil
 	}
 
+	plotErr := validatePlotFlags(staticFormat, rc.plotOutput)
+	if plotErr != nil {
+		return plotErr
+	}
+
+	budgetBytes := parseMemoryBudgetBytes(rc.memoryBudget)
+
+	restoreLimit := applyStaticMemoryLimit(budgetBytes)
+	defer restoreLimit()
+
 	startedAt := time.Now()
 
 	rc.progressf(silent, progressWriter, "static phase started (%d analyzers)", len(staticIDs))
 
-	err := rc.staticExec(path, staticIDs, staticFormat, rc.verbose, rc.noColor, writer)
+	var err error
+
+	if staticFormat == analyze.FormatPlot {
+		err = rc.staticPlotExec(path, staticIDs, rc.staticWorkers, budgetBytes, rc.plotOutput)
+	} else {
+		err = rc.staticExec(path, staticIDs, staticFormat, rc.verbose, rc.noColor, rc.staticWorkers, budgetBytes, writer)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -576,7 +609,12 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	rc.progressf(silent, progressWriter, "combined static phase started")
 
-	err := rc.staticExec(path, staticIDs, analyze.FormatBinary, rc.verbose, rc.noColor, &raw)
+	budgetBytes := parseMemoryBudgetBytes(rc.memoryBudget)
+
+	err := rc.staticExec(
+		path, staticIDs, analyze.FormatBinary,
+		rc.verbose, rc.noColor, rc.staticWorkers, budgetBytes, &raw,
+	)
 	if err != nil {
 		return fmt.Errorf("render combined static phase: %w", err)
 	}
@@ -771,12 +809,77 @@ func runStaticAnalyzers(
 	format string,
 	verbose bool,
 	noColor bool,
+	maxWorkers int,
+	memoryBudget int64,
 	writer io.Writer,
 ) error {
 	service := analyze.NewStaticService(defaultStaticAnalyzers())
 	service.Renderer = renderer.NewDefaultStaticRenderer()
+	service.MaxWorkers = maxWorkers
+
+	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
+	applyStaticProgressLogging(service)
 
 	return service.RunAndFormat(context.Background(), path, analyzerIDs, format, verbose, noColor, writer)
+}
+
+// runStaticPlotAnalyzers runs static analysis and renders multi-page HTML plot output.
+// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+func runStaticPlotAnalyzers(
+	path string,
+	analyzerIDs []string,
+	maxWorkers int,
+	memoryBudget int64,
+	outputDir string,
+) error {
+	service := analyze.NewStaticService(defaultStaticAnalyzers())
+	service.MaxWorkers = maxWorkers
+	service.AggregationMode = analyze.AggregationModeFull
+
+	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
+	applyStaticProgressLogging(service)
+
+	analyzerNames, err := service.AnalyzerNamesByID(analyzerIDs)
+	if err != nil {
+		return err
+	}
+
+	results, err := service.AnalyzeFolder(context.Background(), path, analyzerNames)
+	if err != nil {
+		return err
+	}
+
+	return service.FormatPlotPages(analyzerNames, results, outputDir)
+}
+
+// applyStaticProgressLogging wires progress logging into the static service.
+// Logs RSS, aggregator estimated sizes, and file count at pipeline milestones.
+// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
+func applyStaticProgressLogging(service *analyze.StaticService) {
+	service.ProgressFunc = func(e analyze.StaticProgressEvent) {
+		rssMiB := e.RSSBytes / int64(units.MiB)
+		aggMiB := e.AggregatorSize / int64(units.MiB)
+
+		log.Printf("STATIC %s files=%d RSS=%dMiB agg=%dMiB",
+			e.Phase, e.FilesProcessed, rssMiB, aggMiB)
+	}
+}
+
+// applyStaticBudgetConfig applies budget-derived parameters to the static service.
+// Explicit --static-workers overrides budget-derived MaxWorkers.
+// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
+func applyStaticBudgetConfig(service *analyze.StaticService, explicitWorkers int, memoryBudget int64) {
+	cfg := budget.SolveStaticBudget(memoryBudget)
+	if cfg.MaxWorkers == 0 {
+		return
+	}
+
+	// Only override workers if not explicitly set via --static-workers.
+	if explicitWorkers == 0 {
+		service.MaxWorkers = cfg.MaxWorkers
+	}
+
+	service.SpillThreshold = cfg.SpillThreshold
 }
 
 func runHistoryAnalyzers(
@@ -1515,6 +1618,46 @@ func configureLibgit2MemoryLimits(budgetStr string) {
 		"mwindow_limit_mib", limits.MwindowMappedLimit/units.MiB,
 		"cache_limit_mib", limits.CacheMaxSize/units.MiB,
 		"malloc_arena_max", limits.MallocArenaMax)
+}
+
+// staticMemoryLimitRatio is the fraction of the memory budget applied as Go's
+// soft memory limit during the static analysis phase.
+const staticMemoryLimitRatio = 90
+
+// staticMemoryLimitDivisor converts the ratio to a fraction.
+const staticMemoryLimitDivisor = 100
+
+// parseMemoryBudgetBytes parses a human-readable memory budget string (e.g. "512MB")
+// into bytes. Returns 0 if the string is empty or unparseable.
+func parseMemoryBudgetBytes(budgetStr string) int64 {
+	if budgetStr == "" {
+		return 0
+	}
+
+	parsed, err := humanize.ParseBytes(budgetStr)
+	if err != nil {
+		return 0
+	}
+
+	return safeconv.SafeInt64(parsed)
+}
+
+// applyStaticMemoryLimit sets [debug.SetMemoryLimit] for the static analysis phase.
+// Returns a function that restores the previous limit. If budgetBytes is zero,
+// returns a no-op restore function.
+func applyStaticMemoryLimit(budgetBytes int64) func() {
+	if budgetBytes <= 0 {
+		return func() {}
+	}
+
+	limit := budgetBytes * staticMemoryLimitRatio / staticMemoryLimitDivisor
+	previous := debug.SetMemoryLimit(limit)
+
+	slog.Default().Info("static phase memory limit set",
+		"budget_mib", budgetBytes/int64(units.MiB),
+		"limit_mib", limit/int64(units.MiB))
+
+	return func() { debug.SetMemoryLimit(previous) }
 }
 
 func suppressStandardLogger(silent bool) func() {

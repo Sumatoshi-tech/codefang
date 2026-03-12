@@ -609,6 +609,7 @@ func (c *Analyzer) buildEmptyResult() analyze.Report {
 }
 
 // buildResult builds the complete analysis result.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(commentDetails []CommentDetail, functions []*node.Node, metrics CommentMetrics) analyze.Report {
 	commentDetailsInterface := c.buildCommentDetailsInterface(commentDetails)
 	detailedCommentsTable := c.buildDetailedCommentsTable(commentDetails)
@@ -626,10 +627,16 @@ func (c *Analyzer) buildResult(commentDetails []CommentDetail, functions []*node
 		"documentation_coverage": safeDiv(float64(metrics.DocumentedFunctions), float64(metrics.TotalFunctions)),
 		"total_comment_details":  len(commentDetails),
 		"comment_details":        commentDetailsInterface,
-		"comments":               detailedCommentsTable,
-		"functions":              detailedFunctionsTable,
-		"function_summary":       functionSummaryInterface,
-		"message":                c.getCommentMessage(metrics.OverallScore),
+		"comments": analyze.TypedCollection{
+			Items:  detailedCommentsTable,
+			ToMaps: convertCommentReportItems,
+		},
+		"functions": analyze.TypedCollection{
+			Items:  detailedFunctionsTable,
+			ToMaps: convertFunctionReportItems,
+		},
+		"function_summary": functionSummaryInterface,
+		"message":          c.getCommentMessage(metrics.OverallScore),
 	}
 }
 
@@ -652,28 +659,58 @@ func (c *Analyzer) buildCommentDetailsInterface(commentDetails []CommentDetail) 
 	return commentDetailsInterface
 }
 
-// buildDetailedCommentsTable builds the detailed comments table for display.
-func (c *Analyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []map[string]any {
-	detailedCommentsTable := make([]map[string]any, 0, len(commentDetails))
+// buildDetailedCommentsTable builds the detailed comments table as typed structs.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func (c *Analyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []CommentReportItem {
+	items := make([]CommentReportItem, 0, len(commentDetails))
 	for _, detail := range commentDetails {
 		assessment := c.getCommentAssessment(detail.IsGood)
 		commentBody := c.truncateCommentBody(detail.Token)
 
-		detailedCommentsTable = append(detailedCommentsTable, map[string]any{
-			"line":       detail.LineNumber,
-			"comment":    commentBody,
-			"placement":  detail.Position,
-			"target":     detail.TargetName,
-			"assessment": assessment,
+		items = append(items, CommentReportItem{
+			Line:       detail.LineNumber,
+			Comment:    commentBody,
+			Placement:  detail.Position,
+			Target:     detail.TargetName,
+			Assessment: assessment,
 		})
 	}
 
-	return detailedCommentsTable
+	return items
 }
 
-// buildDetailedFunctionsTable builds the detailed functions table for display.
-func (c *Analyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics CommentMetrics) []map[string]any {
-	detailedFunctionsTable := make([]map[string]any, 0, len(functions))
+// convertCommentReportItems converts typed comment items to []map[string]any for serialization.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func convertCommentReportItems(items any, sourceFile string) []map[string]any {
+	typed, ok := items.([]CommentReportItem)
+	if !ok {
+		return nil
+	}
+
+	result := make([]map[string]any, 0, len(typed))
+
+	for _, item := range typed {
+		m := map[string]any{
+			"line":       item.Line,
+			"comment":    item.Comment,
+			"placement":  item.Placement,
+			"target":     item.Target,
+			"assessment": item.Assessment,
+		}
+		if sourceFile != "" {
+			m[analyze.SourceFileKey] = sourceFile
+		}
+
+		result = append(result, m)
+	}
+
+	return result
+}
+
+// buildDetailedFunctionsTable builds the detailed functions table as typed structs.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func (c *Analyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics CommentMetrics) []FunctionReportItem {
+	items := make([]FunctionReportItem, 0, len(functions))
 	for _, function := range functions {
 		funcName := c.extractTargetName(function)
 		funcInfo := metrics.FunctionSummary[funcName]
@@ -682,16 +719,44 @@ func (c *Analyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics C
 		funcType := c.getFunctionType(function)
 		lineCount := c.getFunctionLineCount(function)
 
-		detailedFunctionsTable = append(detailedFunctionsTable, map[string]any{
-			"function":   funcName,
-			"type":       funcType,
-			"lines":      lineCount,
-			"comment":    commentType,
-			"assessment": assessment,
+		items = append(items, FunctionReportItem{
+			Function:   funcName,
+			Type:       funcType,
+			Lines:      lineCount,
+			Comment:    commentType,
+			Assessment: assessment,
 		})
 	}
 
-	return detailedFunctionsTable
+	return items
+}
+
+// convertFunctionReportItems converts typed function items to []map[string]any for serialization.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func convertFunctionReportItems(items any, sourceFile string) []map[string]any {
+	typed, ok := items.([]FunctionReportItem)
+	if !ok {
+		return nil
+	}
+
+	result := make([]map[string]any, 0, len(typed))
+
+	for _, fn := range typed {
+		m := map[string]any{
+			"function":   fn.Function,
+			"type":       fn.Type,
+			"lines":      fn.Lines,
+			"comment":    fn.Comment,
+			"assessment": fn.Assessment,
+		}
+		if sourceFile != "" {
+			m[analyze.SourceFileKey] = sourceFile
+		}
+
+		result = append(result, m)
+	}
+
+	return result
 }
 
 // buildFunctionSummaryInterface builds the function summary interface.

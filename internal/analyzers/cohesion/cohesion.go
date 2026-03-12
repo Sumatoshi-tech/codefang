@@ -168,8 +168,9 @@ func (c *Analyzer) calculateMetrics(functions []Function) map[string]float64 {
 }
 
 // buildResult constructs the final analysis result.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(functions []Function, metrics map[string]float64) analyze.Report {
-	detailedFunctionsTable := c.buildDetailedFunctionsTable(functions)
+	reportItems := c.buildDetailedFunctionsTable(functions)
 	message := c.getCohesionMessage(metrics["cohesion_score"])
 
 	return analyze.Report{
@@ -178,29 +179,73 @@ func (c *Analyzer) buildResult(functions []Function, metrics map[string]float64)
 		"lcom":              metrics["lcom"],
 		"cohesion_score":    metrics["cohesion_score"],
 		"function_cohesion": metrics["function_cohesion"],
-		"functions":         detailedFunctionsTable,
-		"message":           message,
+		"functions": analyze.TypedCollection{
+			Items:  reportItems,
+			ToMaps: convertCohesionFunctionItems,
+		},
+		"message": message,
 	}
 }
 
-// buildDetailedFunctionsTable creates the detailed functions table with assessments.
-func (c *Analyzer) buildDetailedFunctionsTable(functions []Function) []map[string]any {
-	table := make([]map[string]any, 0, len(functions))
+// FunctionReportItem is a typed representation of a per-function cohesion report item.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+type FunctionReportItem struct {
+	Name               string
+	CohesionAssessment string
+	VariableAssessment string
+	SizeAssessment     string
+	LineCount          int
+	VariableCount      int
+	Cohesion           float64
+}
+
+// buildDetailedFunctionsTable creates the detailed functions table as typed structs.
+// FRD: specs/frds/FRD-20260311-typed-report-items.md.
+func (c *Analyzer) buildDetailedFunctionsTable(functions []Function) []FunctionReportItem {
+	items := make([]FunctionReportItem, 0, len(functions))
 
 	for _, fn := range functions {
-		entry := map[string]any{
-			"name":                fn.Name,
-			"line_count":          fn.LineCount,
-			"variable_count":      len(fn.Variables),
-			"cohesion":            fn.Cohesion,
-			"cohesion_assessment": c.getCohesionAssessment(fn.Cohesion),
-			"variable_assessment": c.getVariableAssessment(len(fn.Variables)),
-			"size_assessment":     c.getSizeAssessment(fn.LineCount),
-		}
-		table = append(table, entry)
+		items = append(items, FunctionReportItem{
+			Name:               fn.Name,
+			LineCount:          fn.LineCount,
+			VariableCount:      len(fn.Variables),
+			Cohesion:           fn.Cohesion,
+			CohesionAssessment: c.getCohesionAssessment(fn.Cohesion),
+			VariableAssessment: c.getVariableAssessment(len(fn.Variables)),
+			SizeAssessment:     c.getSizeAssessment(fn.LineCount),
+		})
 	}
 
-	return table
+	return items
+}
+
+// convertCohesionFunctionItems converts typed cohesion items to []map[string]any for serialization.
+func convertCohesionFunctionItems(items any, sourceFile string) []map[string]any {
+	typed, ok := items.([]FunctionReportItem)
+	if !ok {
+		return nil
+	}
+
+	result := make([]map[string]any, 0, len(typed))
+
+	for _, fn := range typed {
+		m := map[string]any{
+			"name":                fn.Name,
+			"line_count":          fn.LineCount,
+			"variable_count":      fn.VariableCount,
+			"cohesion":            fn.Cohesion,
+			"cohesion_assessment": fn.CohesionAssessment,
+			"variable_assessment": fn.VariableAssessment,
+			"size_assessment":     fn.SizeAssessment,
+		}
+		if sourceFile != "" {
+			m[analyze.SourceFileKey] = sourceFile
+		}
+
+		result = append(result, m)
+	}
+
+	return result
 }
 
 // FormatReport formats the analysis report for display.

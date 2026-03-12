@@ -220,7 +220,10 @@ func (a *Analyzer) detectClones(functions []*node.Node) []ClonePair {
 		}
 	}
 
-	return findClonePairs(entries, idx)
+	// Per-file detection: no cap (single-file scope, bounded by function count).
+	pairs, _ := findClonePairs(entries, idx, 0)
+
+	return pairs
 }
 
 // buildSignatures computes MinHash signatures for all functions.

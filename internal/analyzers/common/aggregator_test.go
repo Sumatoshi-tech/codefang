@@ -29,7 +29,7 @@ func TestNewAggregator(t *testing.T) {
 		[]string{"score", "complexity"},
 		[]string{"total_items"},
 		"items",
-		"name",
+		[]string{"name"},
 		messageBuilder,
 		emptyResultBuilder,
 	)
@@ -79,7 +79,7 @@ func TestNewAggregator_NilEmptyResultBuilder(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil, // Nil emptyResultBuilder should use default.
 	)
@@ -103,7 +103,7 @@ func TestAggregator_Aggregate_SingleReport(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -133,7 +133,7 @@ func TestAggregator_Aggregate_MultipleReports(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -164,7 +164,7 @@ func TestAggregator_Aggregate_NilReports(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -190,7 +190,7 @@ func TestAggregator_GetResult_Empty(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -221,7 +221,7 @@ func TestAggregator_GetResult_WithCustomEmptyBuilder(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		emptyResultBuilder,
 	)
@@ -249,7 +249,7 @@ func TestAggregator_GetResult_WithData(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		messageBuilder,
 		nil,
 	)
@@ -289,7 +289,7 @@ func TestAggregator_GetResult_WithoutMessageBuilder(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil, // No message builder.
 		nil,
 	)
@@ -315,7 +315,7 @@ func TestAggregator_GetMetricsProcessor(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -335,7 +335,7 @@ func TestAggregator_GetDataCollector(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -355,7 +355,7 @@ func TestAggregator_GetResultBuilder(t *testing.T) {
 		[]string{"score"},
 		[]string{"count"},
 		"items",
-		"name",
+		[]string{"name"},
 		nil,
 		nil,
 	)
@@ -383,7 +383,7 @@ func TestAggregator_FullWorkflow(t *testing.T) {
 		[]string{"average_complexity"},
 		[]string{"total_functions"},
 		"functions",
-		"function_name",
+		[]string{"function_name"},
 		messageBuilder,
 		nil,
 	)

@@ -593,10 +593,14 @@ func TestAnalyzer_DebugOutput(t *testing.T) {
 		t.Logf("Function summary: %+v", functionSummary)
 	}
 
-	// Print full result for debugging.
-	resultJSON, err := json.MarshalIndent(result, "", "  ")
-	require.NoError(t, err)
-	t.Logf("Full result: %s", string(resultJSON))
+	// Verify TypedCollection values are accessible via ReportFunctionList.
+	if comments, ok := analyze.ReportFunctionList(result, "comments"); ok {
+		t.Logf("Comments (via ReportFunctionList): %+v", comments)
+	}
+
+	if funcs, ok := analyze.ReportFunctionList(result, "functions"); ok {
+		t.Logf("Functions (via ReportFunctionList): %+v", funcs)
+	}
 }
 
 func TestAnalyzer_FormatReport(t *testing.T) {
@@ -787,18 +791,10 @@ func TestAnalyzer_RealFile(t *testing.T) {
 		}
 	}
 
-	if functions, ok := result["functions"]; ok {
-		t.Logf("Functions type: %T", functions)
-		t.Logf("Functions: %+v", functions)
-
-		if funcs, funcsOK := functions.([]map[string]any); funcsOK {
-			t.Logf("Functions length: %d", len(funcs))
-		}
+	if funcs, ok := analyze.ReportFunctionList(result, "functions"); ok {
+		t.Logf("Functions length: %d", len(funcs))
+		t.Logf("Functions: %+v", funcs)
 	}
-
-	resultJSON, err := json.MarshalIndent(result, "", "  ")
-	require.NoError(t, err)
-	t.Logf("Full result: %s", string(resultJSON))
 }
 
 func getKeys(m map[string]any) []string {

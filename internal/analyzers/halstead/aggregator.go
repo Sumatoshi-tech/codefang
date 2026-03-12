@@ -31,12 +31,19 @@ func NewAggregator() *Aggregator {
 			numericKeys,
 			countKeys,
 			"functions",
-			"name",
+			[]string{"_source_file", "name"},
 			messageBuilder,
 			emptyResultBuilder,
 		),
 		detailed: common.NewDetailedDataCollector("functions"),
 	}
+}
+
+// SetAggregationMode propagates the mode to both the base aggregator and
+// the detailed data collector.
+func (ha *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
+	ha.Aggregator.SetAggregationMode(mode)
+	ha.detailed.SetAggregationMode(mode)
 }
 
 // Aggregate overrides the base Aggregate method to collect detailed functions.

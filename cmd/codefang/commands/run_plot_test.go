@@ -20,7 +20,7 @@ func TestRunCommand_ForwardsPlotOutputFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -50,7 +50,7 @@ func TestRunCommand_ForwardsKeepStoreFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -123,6 +123,31 @@ func TestRenderFromStore_CreatesOutputDir(t *testing.T) {
 
 	_, statErr := os.Stat(filepath.Join(outputDir, "index.html"))
 	require.NoError(t, statErr, "index.html should exist in nested output dir")
+}
+
+// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+
+func TestStaticPlot_RequiresOutputFlag(t *testing.T) {
+	t.Parallel()
+
+	command := newRunCommandWithDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+			return nil
+		},
+		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			return nil
+		},
+		stubRunRegistry,
+		noopObservabilityInit,
+	)
+
+	command.SetArgs([]string{
+		"-a", "static/complexity",
+		"--format", "plot",
+	})
+
+	err := command.Execute()
+	require.ErrorIs(t, err, ErrPlotOutputRequired)
 }
 
 func TestPlotOutputRequired_WhenFormatPlot(t *testing.T) {
