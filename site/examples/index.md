@@ -38,13 +38,16 @@ See the [Burndown analyzer docs](../analyzers/burndown.md) for configuration opt
 
 The couples chart visualizes co-change relationships between files — files that are frequently modified together in the same commits.
 
-<div id="kubernetes-couples-chart" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-couples-chart0" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-couples-chart1" style="width: 100%; height: 600px; margin-top: 20px;"></div>
 <script src="kubernetes-couples-data.js"></script>
 <script>
 (function() {
-    var chart = echarts.init(document.getElementById('kubernetes-couples-chart'), null, { renderer: 'canvas' });
-    chart.setOption(couplesChartOption);
-    window.addEventListener('resize', function() { chart.resize(); });
+    var c0 = echarts.init(document.getElementById('kubernetes-couples-chart0'), null, { renderer: 'canvas' });
+    c0.setOption(couplesChart0);
+    var c1 = echarts.init(document.getElementById('kubernetes-couples-chart1'), null, { renderer: 'canvas' });
+    c1.setOption(couplesChart1);
+    window.addEventListener('resize', function() { c0.resize(); c1.resize(); });
 })();
 </script>
 
@@ -66,13 +69,16 @@ See the [Couples analyzer docs](../analyzers/couples.md) for configuration optio
 
 The file history chart shows the most frequently modified files across the repository's entire commit history.
 
-<div id="kubernetes-file-history-chart" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-file-history-chart0" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-file-history-chart1" style="width: 100%; height: 600px; margin-top: 20px;"></div>
 <script src="kubernetes-file-history-data.js"></script>
 <script>
 (function() {
-    var chart = echarts.init(document.getElementById('kubernetes-file-history-chart'), null, { renderer: 'canvas' });
-    chart.setOption(filehistoryChartOption);
-    window.addEventListener('resize', function() { chart.resize(); });
+    var c0 = echarts.init(document.getElementById('kubernetes-file-history-chart0'), null, { renderer: 'canvas' });
+    c0.setOption(filehistoryChart0);
+    var c1 = echarts.init(document.getElementById('kubernetes-file-history-chart1'), null, { renderer: 'canvas' });
+    c1.setOption(filehistoryChart1);
+    window.addEventListener('resize', function() { c0.resize(); c1.resize(); });
 })();
 </script>
 
@@ -179,13 +185,16 @@ See the [Developers analyzer docs](../analyzers/developers.md) for configuration
 
 The sentiment chart shows the emotional tone of commit messages over the project's history, detecting periods of positive or negative developer sentiment.
 
-<div id="kubernetes-sentiment-chart" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-sentiment-chart0" style="width: 100%; height: 600px;"></div>
+<div id="kubernetes-sentiment-chart1" style="width: 100%; height: 600px; margin-top: 20px;"></div>
 <script src="kubernetes-sentiment-data.js"></script>
 <script>
 (function() {
-    var chart = echarts.init(document.getElementById('kubernetes-sentiment-chart'), null, { renderer: 'canvas' });
-    chart.setOption(sentimentChartOption);
-    window.addEventListener('resize', function() { chart.resize(); });
+    var c0 = echarts.init(document.getElementById('kubernetes-sentiment-chart0'), null, { renderer: 'canvas' });
+    c0.setOption(sentimentChart0);
+    var c1 = echarts.init(document.getElementById('kubernetes-sentiment-chart1'), null, { renderer: 'canvas' });
+    c1.setOption(sentimentChart1);
+    window.addEventListener('resize', function() { c0.resize(); c1.resize(); });
 })();
 </script>
 
@@ -363,6 +372,7 @@ The cohesion charts measure how well the methods within a class or struct relate
 
 <div id="kubernetes-cohesion-chart0" style="width: 100%; height: 500px;"></div>
 <div id="kubernetes-cohesion-chart1" style="width: 100%; height: 500px; margin-top: 20px;"></div>
+<div id="kubernetes-cohesion-chart2" style="width: 100%; height: 500px; margin-top: 20px;"></div>
 <script src="kubernetes-cohesion-data.js"></script>
 <script>
 (function() {
@@ -370,7 +380,9 @@ The cohesion charts measure how well the methods within a class or struct relate
     c0.setOption(cohesionChart0);
     var c1 = echarts.init(document.getElementById('kubernetes-cohesion-chart1'), null, { renderer: 'canvas' });
     c1.setOption(cohesionChart1);
-    window.addEventListener('resize', function() { c0.resize(); c1.resize(); });
+    var c2 = echarts.init(document.getElementById('kubernetes-cohesion-chart2'), null, { renderer: 'canvas' });
+    c2.setOption(cohesionChart2);
+    window.addEventListener('resize', function() { c0.resize(); c1.resize(); c2.resize(); });
 })();
 </script>
 
@@ -448,3 +460,31 @@ codefang run -a static/imports --format plot /path/to/repo > imports.html
 ```
 
 See the [Imports analyzer docs](../analyzers/imports.md) for configuration options.
+
+---
+
+### Clones
+
+The clones chart detects duplicated code blocks across the codebase — potential candidates for extraction into shared functions or modules.
+
+<div id="kubernetes-clones-chart" style="width: 100%; height: 600px;"></div>
+<script src="kubernetes-clones-data.js"></script>
+<script>
+(function() {
+    var chart = echarts.init(document.getElementById('kubernetes-clones-chart'), null, { renderer: 'canvas' });
+    chart.setOption(clonesChartOption);
+    window.addEventListener('resize', function() { chart.resize(); });
+})();
+</script>
+
+!!! tip "How to interpret"
+
+    - **Larger blocks** = more duplicated code
+    - **Connected files** = files sharing duplicate fragments
+    - High duplication suggests opportunities for refactoring
+
+```bash
+codefang run -a static/clones --format plot /path/to/repo > clones.html
+```
+
+See the [Clones analyzer docs](../analyzers/clones.md) for configuration options.
