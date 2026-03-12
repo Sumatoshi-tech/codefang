@@ -7,8 +7,11 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/alg"
 )
 
 // CommitLoadOptions configures how commits are loaded from a repository.
@@ -66,11 +69,28 @@ func ParseTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
 }
 
-// ReverseCommits reverses the order of commits (to oldest first).
-func ReverseCommits(commits []*Commit) {
-	for i, j := 0, len(commits)-1; i < j; i, j = i+1, j-1 {
-		commits[i], commits[j] = commits[j], commits[i]
+// ResolveTime resolves a time specification that may be a time string (duration,
+// RFC3339, date-only) or a commit SHA/ref. When a SHA/ref is given, the commit's
+// author timestamp is returned.
+func (r *Repository) ResolveTime(s string) (time.Time, error) {
+	t, parseErr := ParseTime(s)
+	if parseErr == nil {
+		return t, nil
 	}
+
+	obj, err := r.Native().RevparseSingle(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidTimeFormat, s)
+	}
+	defer obj.Free()
+
+	commit, err := obj.AsCommit()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s is not a commit: %w", s, err)
+	}
+	defer commit.Free()
+
+	return commit.Author().When, nil
 }
 
 // LoadCommits loads commits from a repository with the given options.
@@ -103,7 +123,7 @@ func loadHistoryCommits(ctx context.Context, repository *Repository, opts Commit
 	}
 
 	if opts.Since != "" {
-		sinceTime, parseErr := ParseTime(opts.Since)
+		sinceTime, parseErr := repository.ResolveTime(opts.Since)
 		if parseErr != nil {
 			return nil, fmt.Errorf("invalid time format for --since: %w", parseErr)
 		}
@@ -117,32 +137,12 @@ func loadHistoryCommits(ctx context.Context, repository *Repository, opts Commit
 	}
 	defer iter.Close()
 
-	commits := collectCommits(iter, opts.Limit)
-	ReverseCommits(commits)
-
-	return commits, nil
-}
-
-func collectCommits(iter *CommitIter, limit int) []*Commit {
-	var commits []*Commit
-
-	count := 0
-
-	for {
-		commit, err := iter.Next()
-		if err != nil {
-			break
-		}
-
-		if limit > 0 && count >= limit {
-			commit.Free()
-
-			break
-		}
-
-		commits = append(commits, commit)
-		count++
+	commits, collectErr := alg.CollectN[*Commit](iter, opts.Limit)
+	if collectErr != nil {
+		return nil, fmt.Errorf("failed to collect commits: %w", collectErr)
 	}
 
-	return commits
+	slices.Reverse(commits)
+
+	return commits, nil
 }

@@ -11,18 +11,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/burndown"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/cohesion"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/comments"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/complexity"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/couples"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/devs"
-	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/halstead"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/imports"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/sentiment"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/shotness"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/typos"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/burndown"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/devs"
+	filehistory "github.com/Sumatoshi-tech/codefang/internal/analyzers/file_history"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/imports"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/sentiment"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/shotness"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/typos"
 )
 
 // Schema represents a JSON Schema.
@@ -36,6 +36,16 @@ type Schema struct {
 	Required    []string           `json:"required,omitempty"`
 	Ref         string             `json:"$ref,omitempty"`
 	Definitions map[string]*Schema `json:"definitions,omitempty"`
+}
+
+// typosSchemaType represents the typos analyzer output format for schema generation.
+// The typos analyzer was migrated to use common.MetricSet (map-based serialization),
+// so this struct preserves the schema by referencing the exported data types.
+type typosSchemaType struct {
+	TypoList  []typos.TypoData        `json:"typo_list"`
+	Patterns  []typos.TypoPatternData `json:"patterns"`
+	FileTypos []typos.FileTypoData    `json:"file_typos"`
+	Aggregate typos.AggregateData     `json:"aggregate"`
 }
 
 var outputDir string
@@ -61,7 +71,7 @@ func main() {
 		"halstead":     &halstead.ComputedMetrics{},
 		"comments":     &comments.ComputedMetrics{},
 		"imports":      &imports.ComputedMetrics{},
-		"typos":        &typos.ComputedMetrics{},
+		"typos":        &typosSchemaType{},
 	}
 
 	for name, metrics := range analyzers {

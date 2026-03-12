@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -58,14 +58,9 @@ func runDiff(file1, file2, output, format string) error {
 		return fmt.Errorf("%w: %s", ErrUnsupportedFileType, file1)
 	}
 
-	code1, err := os.ReadFile(file1)
+	node1, err := parser.ParseFile(context.Background(), file1, "")
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", file1, err)
-	}
-
-	node1, err := parser.Parse(context.Background(), file1, code1)
-	if err != nil {
-		return fmt.Errorf("parse error in %s: %w", file1, err)
+		return fmt.Errorf("failed to parse %s: %w", file1, err)
 	}
 
 	// Parse second file.
@@ -73,14 +68,9 @@ func runDiff(file1, file2, output, format string) error {
 		return fmt.Errorf("%w: %s", ErrUnsupportedFileType, file2)
 	}
 
-	code2, err := os.ReadFile(file2)
+	node2, err := parser.ParseFile(context.Background(), file2, "")
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", file2, err)
-	}
-
-	node2, err := parser.Parse(context.Background(), file2, code2)
-	if err != nil {
-		return fmt.Errorf("parse error in %s: %w", file2, err)
+		return fmt.Errorf("failed to parse %s: %w", file2, err)
 	}
 
 	// Detect changes.
@@ -131,15 +121,7 @@ func outputChanges(changes []Change, output, format string) error {
 
 	switch format {
 	case formatJSON:
-		enc := json.NewEncoder(writer)
-		enc.SetIndent("", "  ")
-
-		encodeErr := enc.Encode(changes)
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
-		}
-
-		return nil
+		return textutil.WriteJSON(writer, changes, true)
 	case "unified":
 		printUnifiedDiff(changes, writer)
 

@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/iosafety"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -61,7 +61,7 @@ func runExplore(file, lang string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "Exploring %s\n", sanitizeForTerminal(file))
+	fmt.Fprintf(os.Stdout, "Exploring %s\n", iosafety.SanitizeForTerminal(file))
 	fmt.Fprintln(os.Stdout, "Type 'help' for commands, 'quit' to exit")
 	fmt.Fprintln(os.Stdout)
 
@@ -78,20 +78,9 @@ func parseExploreFile(file, lang string) (*node.Node, error) {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedExploreFile, file)
 	}
 
-	code, resolvedPath, err := safeReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file %s: %w", file, err)
-	}
-
-	filename := resolvedPath
-	if lang != "" {
-		ext := filepath.Ext(resolvedPath)
-		filename = strings.TrimSuffix(resolvedPath, ext) + "." + lang
-	}
-
-	parsedNode, err := parser.Parse(context.Background(), filename, code)
-	if err != nil {
-		return nil, fmt.Errorf("parse error in %s: %w", file, err)
+	parsedNode, parseErr := parser.ParseFile(context.Background(), file, lang)
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", file, parseErr)
 	}
 
 	return parsedNode, nil
@@ -162,18 +151,18 @@ func handleExploreParts(parts []string, parsedNode *node.Node) {
 		if err != nil {
 			fmt.Fprintf(os.Stdout, "Error: %v\n", err)
 		} else {
-			writeTerminalLine("Found", len(results), "results")
+			fmt.Fprintln(os.Stdout, "Found", len(results), "results")
 
 			for idx, result := range results {
-				writeTerminalLine(
+				fmt.Fprintln(os.Stdout,
 					"["+strconv.Itoa(idx+1)+"]",
-					sanitizeForTerminal(string(result.Type))+":",
-					sanitizeForTerminal(result.Token),
+					iosafety.SanitizeForTerminal(string(result.Type))+":",
+					iosafety.SanitizeForTerminal(result.Token),
 				)
 			}
 		}
 	default:
-		writeTerminalLine("Unknown command:", sanitizeForTerminal(parts[0]))
+		fmt.Fprintln(os.Stdout, "Unknown command:", iosafety.SanitizeForTerminal(parts[0]))
 		fmt.Fprintln(os.Stdout, "Type 'help' for available commands")
 	}
 }
@@ -206,13 +195,13 @@ func findNodes(rootNode *node.Node, nodeType string) {
 		return
 	}
 
-	writeTerminalLine("Found", len(results), "nodes of type", "'"+sanitizeForTerminal(nodeType)+"':")
+	fmt.Fprintln(os.Stdout, "Found", len(results), "nodes of type", "'"+iosafety.SanitizeForTerminal(nodeType)+"':")
 
 	for idx, result := range results {
-		writeTerminalLine(
+		fmt.Fprintln(os.Stdout,
 			"["+strconv.Itoa(idx+1)+"]",
-			sanitizeForTerminal(string(result.Type))+":",
-			sanitizeForTerminal(result.Token),
+			iosafety.SanitizeForTerminal(string(result.Type))+":",
+			iosafety.SanitizeForTerminal(result.Token),
 		)
 	}
 }

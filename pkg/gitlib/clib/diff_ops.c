@@ -25,15 +25,37 @@ typedef struct {
     int new_line_pos;
 } diff_ctx_t;
 
+/* Grow ops array when full, up to CF_MAX_DIFF_OPS hard cap. Returns 0 on success. */
+static int grow_ops(cf_diff_result* res) {
+    if (res->op_capacity >= CF_MAX_DIFF_OPS) {
+        return -1;
+    }
+    int new_cap = res->op_capacity * 2;
+    if (new_cap > CF_MAX_DIFF_OPS) {
+        new_cap = CF_MAX_DIFF_OPS;
+    }
+    cf_diff_op* new_ops = (cf_diff_op*)realloc(res->ops, new_cap * sizeof(cf_diff_op));
+    if (new_ops == NULL) {
+        return -1;
+    }
+    res->ops = new_ops;
+    res->op_capacity = new_cap;
+    return 0;
+}
+
 /* Flush pending diff operation to result */
 static void flush_op(diff_ctx_t* ctx) {
     if (ctx->current_count > 0) {
         cf_diff_result* res = ctx->result;
-        if (res->op_count < res->op_capacity) {
-            res->ops[res->op_count].type_ = ctx->current_type;
-            res->ops[res->op_count].line_count = ctx->current_count;
-            res->op_count++;
+        if (res->op_count >= res->op_capacity) {
+            if (grow_ops(res) != 0) {
+                ctx->current_count = 0;
+                return;
+            }
         }
+        res->ops[res->op_count].type_ = ctx->current_type;
+        res->ops[res->op_count].line_count = ctx->current_count;
+        res->op_count++;
         ctx->current_count = 0;
     }
 }
@@ -112,7 +134,7 @@ static int compute_single_diff(
     int ret = CF_OK;
 
     /* Initialize result */
-    ret = cf_init_diff_result(result, CF_MAX_DIFF_OPS);
+    ret = cf_init_diff_result(result, CF_INITIAL_DIFF_OPS);
     if (ret != CF_OK) {
         return ret;
     }
@@ -291,8 +313,13 @@ static int preload_blobs_for_diff(
 
         git_odb_object* obj = NULL;
         int err = git_odb_read(&obj, odb, &all_oids[i]);
-        if (err != 0 || git_odb_object_type(obj) != GIT_OBJECT_BLOB) {
-            if (obj) git_odb_object_free(obj);
+        if (err != 0) {
+            blob->valid = 0;
+            blob_idx++;
+            continue;
+        }
+        if (git_odb_object_type(obj) != GIT_OBJECT_BLOB) {
+            git_odb_object_free(obj);
             blob->valid = 0;
             blob_idx++;
             continue;
@@ -352,7 +379,7 @@ static int compute_diff_generic(
     cf_diff_result* result
 ) {
     /* Initialize result */
-    int ret = cf_init_diff_result(result, CF_MAX_DIFF_OPS);
+    int ret = cf_init_diff_result(result, CF_INITIAL_DIFF_OPS);
     if (ret != CF_OK) {
         return ret;
     }
@@ -657,6 +684,8 @@ int cf_tree_diff(
         change->new_mode = delta->new_file.mode;
 
         if (change->old_path == NULL || change->new_path == NULL) {
+            free(change->old_path);
+            free(change->new_path);
             ret = CF_ERR_NOMEM;
             goto cleanup;
         }

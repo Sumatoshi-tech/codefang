@@ -1,0 +1,125 @@
+package burndown
+
+import (
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/go-echarts/go-echarts/v2/charts"
+
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/pkg/alg/stats"
+)
+
+// GenerateStoreSections reads pre-computed burndown data from a ReportReader
+// and builds the same plot sections as GenerateSections, without materializing
+// a full Report or recomputing metrics.
+func GenerateStoreSections(reader analyze.ReportReader) ([]plotpage.Section, error) {
+	kinds := reader.Kinds()
+
+	chartData, chartErr := readChartDataIfPresent(reader, kinds)
+	if chartErr != nil {
+		return nil, fmt.Errorf("read %s: %w", KindChartData, chartErr)
+	}
+
+	metrics, metricsErr := readMetricsIfPresent(reader, kinds)
+	if metricsErr != nil {
+		return nil, fmt.Errorf("read %s: %w", KindMetrics, metricsErr)
+	}
+
+	return buildStoreSections(chartData, metrics), nil
+}
+
+// readChartDataIfPresent reads the chart_data record, returning zero value if absent.
+func readChartDataIfPresent(reader analyze.ReportReader, kinds []string) (ChartData, error) {
+	return analyze.ReadRecordIfPresent[ChartData](reader, kinds, KindChartData)
+}
+
+// readMetricsIfPresent reads the metrics record, returning zero value if absent.
+func readMetricsIfPresent(reader analyze.ReportReader, kinds []string) (ComputedMetrics, error) {
+	return analyze.ReadRecordIfPresent[ComputedMetrics](reader, kinds, KindMetrics)
+}
+
+// buildStoreSections constructs the burndown plot sections from pre-computed data.
+func buildStoreSections(chartData ChartData, metrics ComputedMetrics) []plotpage.Section {
+	var result []plotpage.Section
+
+	// Section 1: Summary stats from pre-computed metrics.
+	result = append(result, buildStoreSummarySection(&metrics))
+
+	// Section 2: Burndown chart from pre-computed dense history.
+	if len(chartData.GlobalHistory) > 0 {
+		chart := buildChartFromStoreData(&chartData)
+
+		result = append(result, plotpage.Section{
+			Title:    "Code Burndown Chart",
+			Subtitle: "Shows how code written at different times survives over the project's lifetime.",
+			Chart:    plotpage.WrapChart(chart),
+			Hint: plotpage.Hint{
+				Title: "How to interpret:",
+				Items: []string{
+					"Stacked layers = code written in different time periods",
+					"Bottom layers = oldest code still surviving",
+					"Narrowing layers = code being deleted or rewritten",
+					"Flat layers = stable code that rarely changes",
+					"Rapid decrease in recent layers indicates instability",
+				},
+			},
+		})
+	}
+
+	return result
+}
+
+// buildStoreSummarySection builds the summary section from pre-computed metrics.
+func buildStoreSummarySection(metrics *ComputedMetrics) plotpage.Section {
+	agg := metrics.Aggregate
+	survivalPct := fmt.Sprintf("%.1f%%", stats.ToPercent(agg.OverallSurvivalRate))
+	survivalColor := survivalBadgeColor(agg.OverallSurvivalRate)
+
+	statCards := []plotpage.Renderable{
+		plotpage.NewStat("Current Lines", formatInt64(agg.TotalCurrentLines)),
+		plotpage.NewStat("Peak Lines", formatInt64(agg.TotalPeakLines)),
+		plotpage.NewStat("Survival Rate", survivalPct).WithTrend(survivalPct, survivalColor),
+		plotpage.NewStat("Analysis Period", fmt.Sprintf("%d days", agg.AnalysisPeriodDays)),
+	}
+
+	if agg.TrackedDevelopers > 0 {
+		statCards = append(statCards, plotpage.NewStat("Developers", strconv.Itoa(agg.TrackedDevelopers)))
+	}
+
+	if agg.TrackedFiles > 0 {
+		statCards = append(statCards, plotpage.NewStat("Tracked Files", strconv.Itoa(agg.TrackedFiles)))
+	}
+
+	return plotpage.Section{
+		Title:    "Burndown Summary",
+		Subtitle: "Aggregate statistics from code burndown analysis.",
+		Chart:    plotpage.NewGrid(plotMaxStatsColumns, statCards...),
+	}
+}
+
+// buildChartFromStoreData builds the burndown chart directly from store data.
+func buildChartFromStoreData(data *ChartData) *charts.Line {
+	projectName := data.ProjectName
+	if projectName == "" {
+		projectName = "project"
+	}
+
+	params := &burndownParams{
+		globalHistory: data.GlobalHistory,
+		sampling:      data.Sampling,
+		granularity:   data.Granularity,
+		tickSize:      time.Duration(data.TickSize),
+		endTime:       time.Unix(0, data.EndTime),
+		projectName:   projectName,
+	}
+
+	co := plotpage.DefaultChartOpts()
+	xLabels := buildXLabels(params)
+	line := createLineChart(xLabels, params, co)
+	addSeries(line, params)
+
+	return line
+}

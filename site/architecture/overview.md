@@ -48,19 +48,27 @@ uast parse main.go | codefang run -a static/* --format json
 
 | Package | Description |
 |---------|-------------|
-| `pkg/uast/` | UAST parser engine. Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. |
-| `pkg/analyzers/` | All analysis logic -- static analyzers and history analyzers. |
-| `pkg/framework/` | Pipeline orchestration: runner, coordinator, streaming, blob/diff/UAST pipelines, profiling, watchdog. |
+| `pkg/uast/` | UAST parser engine. Tree-sitter integration, DSL engine, language mappings, pre-compiled matchers. `Parser.ParseFile` reads+parses a source file. |
+| `internal/analyzers/` | All analysis logic -- static analyzers and history analyzers. |
+| `internal/framework/` | Pipeline orchestration: runner, coordinator, streaming, blob/diff/UAST pipelines, profiling, watchdog. |
+| `pkg/alg/` | Generic algorithms: Range, Chunk, ForEachPair, Iterator[T] (pull-based sequence), CollectN[T] (drain up to N items), TraverseTree[T] (iterative pre-order DFS). |
+| `pkg/alg/stats/` | Core statistics: Mean, MeanStdDev, Percentile, Median, Clamp, Min, Max, Sum, EMA, ExceedsThreshold. Used by quality, anomaly, cohesion, streaming. |
+| `pkg/alg/mapx/` | Generic map/slice operations: CloneFunc, CloneNested, MergeAdditive, SortedKeys, Unique, SortAndLimit, BuildLookupSet, EstimateMapSize. Use stdlib maps.Clone/slices.Clone for shallow copies. Used by burndown, couples, anomaly, quality, cohesion, devs, file_history. |
+| `pkg/safeconv/` | Safe type conversions: MustConvert (panic), SafeConvert (clamp), Extract (type assertion + numeric coercion). Used across cmd/uast, pkg/gitlib, internal/framework, and analyzers. |
+| `pkg/persist/` | Codec-based file persistence: Codec interface, JSONCodec, GobCodec, SaveState, LoadState, Persister[T]. Used by internal/checkpoint for crash recovery. |
+| `pkg/textutil/` | Text utilities: IsBinary, CountLines, WriteJSON. Used by pkg/gitlib for binary detection and by cmd/uast for JSON output. |
+| `pkg/iosafety/` | Defensive I/O utilities: ReadFile (resolve+validate+read), ResolvePath (clean+abs+stat), SanitizeForTerminal (HTML-escape+strip control chars). Used by cmd/uast sub-commands. |
 | `pkg/gitlib/` | Git operations via libgit2 (git2go): repository, commit, tree, changes, worker pool, batch processing. |
-| `pkg/config/` | Configuration system: types with mapstructure tags, Viper-based loader, compiled defaults, validation. |
-| `pkg/mcp/` | Model Context Protocol server: tools for `codefang_analyze`, `uast_parse`, `codefang_history`. |
-| `pkg/observability/` | OpenTelemetry integration: tracing, RED metrics, structured logging, HTTP middleware, attribute filter. |
-| `pkg/streaming/` | Streaming pipeline planner: chunk sizing, memory budgets, double-buffered pipelining. |
-| `pkg/cache/` | Generic LRU cache used by blob and diff caches. |
-| `pkg/checkpoint/` | Checkpoint manager for crash recovery across streaming chunks. |
-| `pkg/budget/` | Memory budget solver for auto-tuning pipeline parameters. |
+| `internal/config/` | Configuration system: types with mapstructure tags, Viper-based loader, compiled defaults, validation. |
+| `internal/mcp/` | Model Context Protocol server: tools for `codefang_analyze`, `uast_parse`, `codefang_history`. |
+| `internal/observability/` | OpenTelemetry integration: tracing, RED metrics, structured logging, HTTP middleware, attribute filter. |
+| `internal/streaming/` | Streaming pipeline planner: chunk sizing, memory budgets, double-buffered pipelining. |
+| `internal/cache/` | Blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache. |
+| `internal/checkpoint/` | Checkpoint manager for crash recovery across streaming chunks. |
+| `internal/budget/` | Memory budget solver for auto-tuning pipeline parameters. |
+| `internal/storage/` | Atomic file persistence: WriteAtomic (tmp+fsync+rename with cleanup on error). |
 
-### Analyzers (`pkg/analyzers/`)
+### Analyzers (`internal/analyzers/`)
 
 #### Shared Components (`plumbing/`)
 
@@ -135,7 +143,7 @@ flowchart TD
         NODES[UAST Nodes]
     end
 
-    subgraph framework["pkg/framework"]
+    subgraph framework["internal/framework"]
         COORD[Coordinator<br/><em>worker pool</em>]
         BLOB_PIPE[Blob Pipeline]
         DIFF_PIPE[Diff Pipeline]
@@ -280,7 +288,7 @@ Configuration follows a clear priority chain:
 CLI flags  >  Environment variables  >  .codefang.yaml  >  Compiled defaults
 ```
 
-The `pkg/config/` package uses [Viper](https://github.com/spf13/viper) for
+The `internal/config/` package uses [Viper](https://github.com/spf13/viper) for
 loading and merging. Environment variables use the `CODEFANG_` prefix with
 underscore-separated nesting (e.g., `CODEFANG_PIPELINE_WORKERS=8`).
 

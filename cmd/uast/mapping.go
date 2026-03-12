@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/safeconv"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/mapping"
 )
@@ -156,15 +156,7 @@ func outputMappingJSON(nodes []mapping.NodeTypeInfo, rules []mapping.Rule, cover
 		out["coverage"] = covResult
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-
-	err := enc.Encode(out)
-	if err != nil {
-		return fmt.Errorf("failed to encode JSON: %w", err)
-	}
-
-	return nil
+	return textutil.WriteJSON(os.Stdout, out, true)
 }
 
 func outputMappingText(nodes []mapping.NodeTypeInfo, rules []mapping.Rule, coverage bool) error {
@@ -244,12 +236,9 @@ func processFileForTreeSitterJSON(filename, language string) error {
 
 	fmt.Fprintf(os.Stdout, "=== Tree-sitter JSON for %s (language: %s) ===\n", filename, language)
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-
-	encodeErr := enc.Encode(jsonTree)
+	encodeErr := textutil.WriteJSON(os.Stdout, jsonTree, true)
 	if encodeErr != nil {
-		return fmt.Errorf("failed to encode JSON: %w", encodeErr)
+		return encodeErr
 	}
 
 	fmt.Fprintln(os.Stdout)

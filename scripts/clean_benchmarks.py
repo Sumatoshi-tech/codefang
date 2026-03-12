@@ -1,7 +1,7 @@
 import re
 import os
 
-benchmark_file = 'pkg/streaming/benchmark_test.go'
+benchmark_file = 'internal/streaming/benchmark_test.go'
 with open(benchmark_file, 'r') as f:
     content = f.read()
 
@@ -20,7 +20,7 @@ for pattern in patterns_to_remove:
 with open(benchmark_file, 'w') as f:
     f.write(content)
 
-integration_file = 'pkg/streaming/integration_test.go'
+integration_file = 'internal/streaming/integration_test.go'
 with open(integration_file, 'r') as f:
     content = f.read()
 

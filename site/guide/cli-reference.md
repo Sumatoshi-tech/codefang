@@ -64,7 +64,7 @@ codefang run -a '*' .
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
 | `--format` | | `string` | `json` | Output format: `json`, `text`, `compact`, `yaml`, `plot`, `bin`, `timeseries` |
-| `--verbose` | `-v` | `bool` | `false` | Show full static report details |
+| `--verbose` | `-v` | `bool` | `false` | Enable detailed output (RSS/memory stats in progress logs, full static report details) |
 | `--silent` | | `bool` | `false` | Suppress progress output on stderr |
 | `--no-color` | | `bool` | `false` | Disable colored static output |
 
@@ -138,11 +138,14 @@ codefang run -a history/couples --limit 500 .
 | `--blob-cache-size` | `string` | `""` | Max blob cache size (e.g. `256MB`, `1GB`; empty = 1 GB) |
 | `--diff-cache-size` | `int` | `0` | Max diff cache entries (`0` = default 10000) |
 | `--blob-arena-size` | `string` | `""` | Memory arena for blob loading (e.g. `4MB`; empty = 4 MB) |
-| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`) |
+| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`). Applies to both history and static phases — auto-derives worker count, spill thresholds, and Go memory limit |
 
 ```bash
 # Large repository with constrained memory
 codefang run -a 'history/*' --workers 4 --memory-budget 2GB .
+
+# Static analysis with memory budget (auto-tunes workers and spill thresholds)
+codefang run -a 'static/*' --memory-budget 512MB .
 
 # High-throughput with large caches
 codefang run -a 'history/*' --blob-cache-size 2GB --diff-cache-size 50000 .
@@ -179,13 +182,22 @@ codefang run -a 'history/*' --clear-checkpoint .
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--profile` | `bool` | `false` | Start pprof HTTP server on `localhost:6060` and memory watchdog (heap dumps on RSS spikes) |
 | `--cpuprofile` | `string` | `""` | Write CPU profile to file |
 | `--heapprofile` | `string` | `""` | Write heap profile to file |
 | `--debug-trace` | `bool` | `false` | Enable 100% OpenTelemetry trace sampling |
 
+`--profile` is a **global flag** (available on all subcommands). It enables:
+
+- A pprof HTTP server on `localhost:6060` for live heap/goroutine/CPU inspection
+- A memory watchdog that logs RSS every 2s and dumps heap profiles to `/tmp` when RSS exceeds 4 GiB
+
 ```bash
 # CPU profile a large run
 codefang run -a 'history/*' --cpuprofile cpu.prof .
+
+# Live pprof + memory watchdog
+codefang run -a 'static/*' --profile --path ~/sources/kubernetes
 
 # Full debug tracing
 codefang run -a 'history/*' --debug-trace .

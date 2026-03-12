@@ -18,12 +18,12 @@ import (
 	"runtime/pprof"
 	"slices"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	filehistory "github.com/Sumatoshi-tech/codefang/pkg/analyzers/file_history"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/plumbing"
-	"github.com/Sumatoshi-tech/codefang/pkg/framework"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	filehistory "github.com/Sumatoshi-tech/codefang/internal/analyzers/file_history"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/framework"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/streaming"
+	"github.com/Sumatoshi-tech/codefang/internal/streaming"
 )
 
 func main() {

@@ -14,7 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/observability"
+	"github.com/Sumatoshi-tech/codefang/internal/observability"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -149,7 +150,7 @@ func startServer(port, staticDir string) {
 func writeJSON(ctx context.Context, responseWriter http.ResponseWriter, value any) {
 	responseWriter.Header().Set("Content-Type", "application/json")
 
-	encodeErr := json.NewEncoder(responseWriter).Encode(value)
+	encodeErr := textutil.WriteJSON(responseWriter, value, false)
 	if encodeErr != nil {
 		slog.Default().ErrorContext(ctx, "failed to encode JSON response", "error", encodeErr)
 	}
