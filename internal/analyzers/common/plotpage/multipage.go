@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 const (
@@ -98,6 +100,36 @@ func (r *MultiPageRenderer) RenderIndex(pages []PageMeta) error {
 	}
 
 	return nil
+}
+
+// RebuildIndex scans outputDir for *.html files (excluding index.html),
+// derives page metadata from filenames, and regenerates index.html.
+// This is useful after multiple renderers write pages to the same directory.
+func (r *MultiPageRenderer) RebuildIndex() error {
+	entries, err := os.ReadDir(r.OutputDir)
+	if err != nil {
+		return fmt.Errorf("read output dir: %w", err)
+	}
+
+	var pages []PageMeta
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".html") || name == indexFileName {
+			continue
+		}
+
+		id := strings.TrimSuffix(name, ".html")
+		title := strings.ReplaceAll(id, "-", "/")
+
+		pages = append(pages, PageMeta{ID: id, Title: title})
+	}
+
+	sort.Slice(pages, func(i, j int) bool {
+		return pages[i].Title < pages[j].Title
+	})
+
+	return r.RenderIndex(pages)
 }
 
 // indexData holds template data for index.html.

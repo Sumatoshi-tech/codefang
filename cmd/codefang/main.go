@@ -240,12 +240,8 @@ func ensureMallocTunables() {
 	}
 }
 
-func main() {
-	ensureMallocTunables()
-
-	// Start pprof HTTP server on localhost:6060 with explicit handler
-	// registration (avoids gosec G108: DefaultServeMux exposure) and
-	// read header timeout (avoids gosec G114: no timeouts).
+// startPprofServer launches the pprof HTTP server on localhost:6060.
+func startPprofServer() {
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", nethttppprof.Index)
@@ -260,9 +256,10 @@ func main() {
 		}
 		log.Println(server.ListenAndServe())
 	}()
+}
 
-	// Auto-dump heap when RSS exceeds 4 GiB.
-	startMemoryWatchdog(rssThresholdMiB, "/tmp")
+func main() {
+	ensureMallocTunables()
 
 	version.InitBinaryVersion()
 
@@ -276,9 +273,15 @@ Commands:
   render    Render stored analysis results as multi-page HTML`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+			if verbose {
+				startPprofServer()
+				startMemoryWatchdog(rssThresholdMiB, "/tmp")
+			}
+		},
 	}
 
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable profiling, memory watchdog, and detailed output")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress output")
 
 	// Add commands.

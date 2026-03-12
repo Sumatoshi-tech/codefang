@@ -625,17 +625,16 @@ const plotSafeIDSep = "-"
 // plotDirPerm is the permission for plot output directories.
 const plotDirPerm = 0o750
 
-// FormatPlotPages renders multi-page HTML plot output to outputDir.
-// Each analyzer gets its own HTML page plus an index page with navigation.
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
-func (svc *StaticService) FormatPlotPages(
+// RenderPlotPages renders per-analyzer HTML pages to outputDir without an index.
+// Returns page metadata for later index rendering.
+func (svc *StaticService) RenderPlotPages(
 	analyzerNames []string,
 	results map[string]Report,
 	outputDir string,
-) error {
+) ([]plotpage.PageMeta, error) {
 	mkErr := os.MkdirAll(outputDir, plotDirPerm)
 	if mkErr != nil {
-		return fmt.Errorf("create plot output dir: %w", mkErr)
+		return nil, fmt.Errorf("create plot output dir: %w", mkErr)
 	}
 
 	renderer := &plotpage.MultiPageRenderer{
@@ -673,13 +672,35 @@ func (svc *StaticService) FormatPlotPages(
 
 		pageErr := renderer.RenderAnalyzerPage(safeID, fullID, sections)
 		if pageErr != nil {
-			return fmt.Errorf("render static plot page %s: %w", fullID, pageErr)
+			return nil, fmt.Errorf("render static plot page %s: %w", fullID, pageErr)
 		}
 
 		pages = append(pages, plotpage.PageMeta{
 			ID:    safeID,
 			Title: fullID,
 		})
+	}
+
+	return pages, nil
+}
+
+// FormatPlotPages renders multi-page HTML plot output to outputDir.
+// Each analyzer gets its own HTML page plus an index page with navigation.
+// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+func (svc *StaticService) FormatPlotPages(
+	analyzerNames []string,
+	results map[string]Report,
+	outputDir string,
+) error {
+	pages, err := svc.RenderPlotPages(analyzerNames, results, outputDir)
+	if err != nil {
+		return err
+	}
+
+	renderer := &plotpage.MultiPageRenderer{
+		OutputDir: outputDir,
+		Title:     plotPageTitle,
+		Theme:     plotpage.ThemeDark,
 	}
 
 	return renderer.RenderIndex(pages)

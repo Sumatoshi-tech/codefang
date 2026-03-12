@@ -29,6 +29,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/clones"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
@@ -216,10 +217,20 @@ func newRunCommandWithDeps(
 	registryFn registryProvider,
 	otelInit observabilityInitFunc,
 ) *cobra.Command {
+	return newRunCommandWithAllDeps(staticExec, runStaticPlotAnalyzers, historyExec, registryFn, otelInit)
+}
+
+func newRunCommandWithAllDeps(
+	staticExec staticExecutor,
+	staticPlotExec staticPlotExecutor,
+	historyExec historyExecutor,
+	registryFn registryProvider,
+	otelInit observabilityInitFunc,
+) *cobra.Command {
 	rc := &RunCommand{
 		format:            analyze.FormatJSON,
 		staticExec:        staticExec,
-		staticPlotExec:    runStaticPlotAnalyzers,
+		staticPlotExec:    staticPlotExec,
 		historyExec:       historyExec,
 		registryFn:        registryFn,
 		observabilityInit: otelInit,
@@ -242,7 +253,6 @@ func newRunCommandWithDeps(
 	cmd.Flags().StringVar(&rc.inputFormat, "input-format", analyze.InputFormatAuto, "Input format: auto, json, bin")
 	cmd.Flags().IntVar(&rc.gogc, "gogc", 0, "GC percent for history pipeline (0 = auto, >0 = exact)")
 	cmd.Flags().StringVar(&rc.ballastSize, "ballast-size", "0", "Optional GC ballast size for history pipeline (0 = disabled)")
-	cmd.Flags().BoolVarP(&rc.verbose, "verbose", "v", false, "Show full static report details")
 	cmd.Flags().BoolVar(&rc.silent, "silent", false, "Disable progress output")
 	cmd.Flags().BoolVar(&rc.noColor, "no-color", false, "Disable colored static output")
 	cmd.Flags().StringVarP(&rc.path, "path", "p", ".", "Folder/repository path to analyze")
@@ -287,7 +297,17 @@ func newRunCommandWithDeps(
 	return cmd
 }
 
+// resolveVerbose inherits --verbose from root persistent flag when present.
+func (rc *RunCommand) resolveVerbose(cmd *cobra.Command) {
+	v, lookupErr := cmd.Flags().GetBool("verbose")
+	if lookupErr == nil {
+		rc.verbose = v
+	}
+}
+
 func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
+	rc.resolveVerbose(cmd)
+
 	providers, err := rc.initObservability()
 	if err != nil {
 		return fmt.Errorf("init observability: %w", err)
@@ -335,8 +355,6 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 
 	defer cleanup()
 
-	rc.progressf(silent, progressWriter, "starting run path=%s", path)
-
 	registry, err := rc.registryFn()
 	if err != nil {
 		return err
@@ -354,8 +372,6 @@ func (rc *RunCommand) run(cmd *cobra.Command, args []string) (runResult error) {
 	}
 
 	enrichSpanWithRunParams(ctx, path, len(ids), rc.limit)
-
-	rc.progressf(silent, progressWriter, "selected analyzers: total=%d", len(ids))
 
 	if rc.inputPath != "" {
 		return rc.runInputConversion(cmd.OutOrStdout(), silent, progressWriter)
@@ -500,7 +516,9 @@ func (rc *RunCommand) runDirect(
 	rc.progressf(silent, progressWriter, "resolved analyzers: static=%d history=%d output_format=%s",
 		len(staticIDs), len(historyIDs), resolvedOutputFormat)
 
-	if len(staticIDs) > 0 && len(historyIDs) > 0 {
+	isMixedPlot := len(staticIDs) > 0 && len(historyIDs) > 0 && staticFormat == analyze.FormatPlot
+
+	if len(staticIDs) > 0 && len(historyIDs) > 0 && !isMixedPlot {
 		rc.progressf(silent, progressWriter, "mixed run detected: rendering combined output")
 
 		return rc.renderCombinedDirect(ctx, path, staticIDs, historyIDs, staticFormat, silent, progressWriter, writer, cmd)
@@ -511,7 +529,16 @@ func (rc *RunCommand) runDirect(
 		return err
 	}
 
-	return rc.runHistoryPhase(ctx, path, historyIDs, historyFormat, silent, progressWriter, writer, cmd)
+	err = rc.runHistoryPhase(ctx, path, historyIDs, historyFormat, silent, progressWriter, writer, cmd)
+	if err != nil {
+		return err
+	}
+
+	if isMixedPlot {
+		return rc.rebuildPlotIndex(rc.plotOutput)
+	}
+
+	return nil
 }
 
 func (rc *RunCommand) runStaticPhase(
@@ -818,7 +845,7 @@ func runStaticAnalyzers(
 	service.MaxWorkers = maxWorkers
 
 	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
-	applyStaticProgressLogging(service)
+	applyStaticProgressLogging(service, verbose)
 
 	return service.RunAndFormat(context.Background(), path, analyzerIDs, format, verbose, noColor, writer)
 }
@@ -837,7 +864,7 @@ func runStaticPlotAnalyzers(
 	service.AggregationMode = analyze.AggregationModeFull
 
 	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
-	applyStaticProgressLogging(service)
+	applyStaticProgressLogging(service, false)
 
 	analyzerNames, err := service.AnalyzerNamesByID(analyzerIDs)
 	if err != nil {
@@ -853,15 +880,23 @@ func runStaticPlotAnalyzers(
 }
 
 // applyStaticProgressLogging wires progress logging into the static service.
-// Logs RSS, aggregator estimated sizes, and file count at pipeline milestones.
+// Default mode logs phase and file count. Verbose mode adds RSS and aggregator sizes.
 // FRD: specs/frds/FRD-20260312-static-rss-logging.md.
-func applyStaticProgressLogging(service *analyze.StaticService) {
-	service.ProgressFunc = func(e analyze.StaticProgressEvent) {
-		rssMiB := e.RSSBytes / int64(units.MiB)
-		aggMiB := e.AggregatorSize / int64(units.MiB)
+func applyStaticProgressLogging(service *analyze.StaticService, verbose bool) {
+	if verbose {
+		service.ProgressFunc = func(e analyze.StaticProgressEvent) {
+			rssMiB := e.RSSBytes / int64(units.MiB)
+			aggMiB := e.AggregatorSize / int64(units.MiB)
 
-		log.Printf("STATIC %s files=%d RSS=%dMiB agg=%dMiB",
-			e.Phase, e.FilesProcessed, rssMiB, aggMiB)
+			log.Printf("static: %s files=%d RSS=%dMiB agg=%dMiB",
+				e.Phase, e.FilesProcessed, rssMiB, aggMiB)
+		}
+
+		return
+	}
+
+	service.ProgressFunc = func(e analyze.StaticProgressEvent) {
+		log.Printf("static: %s files=%d", e.Phase, e.FilesProcessed)
 	}
 }
 
@@ -1809,6 +1844,18 @@ func defaultStaticAnalyzers() []analyze.StaticAnalyzer {
 }
 
 // validatePlotFlags checks that required flags are present when --format plot is used.
+// rebuildPlotIndex re-scans the output directory and generates a unified index.html
+// that includes pages from all phases (static + history).
+func (rc *RunCommand) rebuildPlotIndex(outputDir string) error {
+	mpRenderer := &plotpage.MultiPageRenderer{
+		OutputDir: outputDir,
+		Title:     "Codefang",
+		Theme:     plotpage.ThemeDark,
+	}
+
+	return mpRenderer.RebuildIndex()
+}
+
 func validatePlotFlags(format, plotOutput string) error {
 	if format == analyze.FormatPlot && plotOutput == "" {
 		return ErrPlotOutputRequired

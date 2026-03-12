@@ -194,7 +194,6 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 	command.SetArgs([]string{"-a", "static/complexity", "--format", "json"})
 	err := command.Execute()
 	require.NoError(t, err)
-	require.Contains(t, errOut.String(), "progress: starting run")
 	require.Contains(t, errOut.String(), "progress: static phase started")
 }
 
@@ -797,44 +796,49 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	require.Contains(t, out.String(), "history/devs")
 }
 
-func TestRunCommand_MixedPlotRendersCombinedPage(t *testing.T) {
+func TestRunCommand_MixedPlotRunsSeparatePhases(t *testing.T) {
 	t.Parallel()
 
 	var (
-		staticFormat  string
-		historyFormat string
+		staticPlotCalled  bool
+		historyPlotCalled bool
 	)
 
-	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
-			staticFormat = format
-			require.Equal(t, analyze.FormatBinary, format)
-			require.Equal(t, []string{"static/complexity"}, ids)
+	outDir := t.TempDir()
 
-			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
+	command := newRunCommandWithAllDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+			t.Fatal("static text executor should not be called for plot format")
+
+			return nil
 		},
-		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
-			historyFormat = format
-			require.Equal(t, analyze.FormatBinary, format)
+		func(_ string, ids []string, _ int, _ int64, dir string) error {
+			staticPlotCalled = true
+
+			require.Equal(t, []string{"static/complexity"}, ids)
+			require.Equal(t, outDir, dir)
+
+			return nil
+		},
+		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			historyPlotCalled = true
+
+			require.Equal(t, analyze.FormatPlot, format)
 			require.Equal(t, []string{"history/devs"}, ids)
 
-			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
+			return nil
 		},
 		stubRunRegistry,
 		noopObservabilityInit,
 	)
 
-	var out bytes.Buffer
-	command.SetOut(&out)
-	command.SetArgs([]string{"--format", "plot", "-a", "static/complexity,history/devs", "--path", "."})
+	command.SetOut(io.Discard)
+	command.SetArgs([]string{"--format", "plot", "-a", "static/complexity,history/devs", "--path", ".", "--output", outDir})
 
 	err := command.Execute()
 	require.NoError(t, err)
-	require.Equal(t, analyze.FormatBinary, staticFormat)
-	require.Equal(t, analyze.FormatBinary, historyFormat)
-	require.Contains(t, out.String(), "<!doctype html>")
-	require.Contains(t, out.String(), "static/complexity")
-	require.Contains(t, out.String(), "history/devs")
+	require.True(t, staticPlotCalled, "static plot executor should be called")
+	require.True(t, historyPlotCalled, "history executor should be called with plot format")
 }
 
 func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
