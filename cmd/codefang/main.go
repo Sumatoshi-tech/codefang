@@ -39,6 +39,7 @@ const (
 var (
 	verbose bool
 	quiet   bool
+	profile bool
 )
 
 // readRSSMiB reads current RSS from /proc/self/statm.
@@ -274,15 +275,16 @@ Commands:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			if verbose {
+			if profile {
 				startPprofServer()
 				startMemoryWatchdog(rssThresholdMiB, "/tmp")
 			}
 		},
 	}
 
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable profiling, memory watchdog, and detailed output")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable detailed output")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress output")
+	rootCmd.PersistentFlags().BoolVar(&profile, "profile", false, "enable pprof server (localhost:6060) and memory watchdog")
 
 	// Add commands.
 	rootCmd.AddCommand(commands.NewRunCommand())
