@@ -214,7 +214,7 @@ See the [Sentiment analyzer docs](../analyzers/sentiment.md) for configuration o
 
 ### Shotness
 
-The shotness charts visualize function-level co-change patterns — which functions are frequently modified together across commits.
+The shotness charts visualize function-level hotness and coupling — how often each function is modified across commits and which functions tend to change in the same commits.
 
 <div id="kubernetes-shotness-chart0" style="width: 100%; height: 500px;"></div>
 <div id="kubernetes-shotness-chart1" style="width: 100%; height: 500px; margin-top: 20px;"></div>
