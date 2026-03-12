@@ -1,0 +1,293 @@
+package mapx
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestCloneFunc(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_returns_nil", func(t *testing.T) {
+		t.Parallel()
+
+		got := CloneFunc[string, []int](nil, nil)
+		assert.Nil(t, got)
+	})
+
+	t.Run("deep_copy_with_custom_cloner", func(t *testing.T) {
+		t.Parallel()
+
+		src := map[string][]int{
+			"x": {1, 2, 3},
+			"y": {4, 5},
+		}
+
+		got := CloneFunc(src, func(v []int) []int {
+			cp := make([]int, len(v))
+			copy(cp, v)
+
+			return cp
+		})
+
+		assert.Equal(t, src, got)
+
+		// Inner slice mutation independence.
+		got["x"][0] = 99
+
+		assert.Equal(t, 1, src["x"][0])
+	})
+}
+
+func TestCloneNested(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_returns_nil", func(t *testing.T) {
+		t.Parallel()
+
+		got := CloneNested[string, int, bool](nil)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		got := CloneNested(map[string]map[int]bool{})
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
+
+	t.Run("deep_independence", func(t *testing.T) {
+		t.Parallel()
+
+		src := map[int]map[int]int64{
+			1: {10: 100, 20: 200},
+			2: {30: 300},
+		}
+
+		got := CloneNested(src)
+		assert.Equal(t, src, got)
+
+		// Inner map mutation independence.
+		got[1][10] = 999
+
+		assert.Equal(t, int64(100), src[1][10])
+
+		// New key in clone does not appear in source.
+		got[1][99] = 1
+
+		assert.NotContains(t, src[1], 99)
+	})
+
+	t.Run("nil_inner_maps_preserved", func(t *testing.T) {
+		t.Parallel()
+
+		src := map[string]map[string]int{
+			"a": nil,
+			"b": {"x": 1},
+		}
+
+		got := CloneNested(src)
+		assert.Nil(t, got["a"])
+		assert.Equal(t, map[string]int{"x": 1}, got["b"])
+	})
+}
+
+func TestMergeAdditive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_src_no_op", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[string]int{"a": 1}
+		MergeAdditive(dst, nil)
+		assert.Equal(t, map[string]int{"a": 1}, dst)
+	})
+
+	t.Run("nil_dst_no_panic", func(t *testing.T) {
+		t.Parallel()
+
+		assert.NotPanics(t, func() {
+			MergeAdditive(nil, map[string]int{"a": 1})
+		})
+	})
+
+	t.Run("additive_int", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[string]int{"a": 1, "b": 2}
+		src := map[string]int{"b": 3, "c": 4}
+		MergeAdditive(dst, src)
+
+		assert.Equal(t, 1, dst["a"])
+		assert.Equal(t, 5, dst["b"])
+		assert.Equal(t, 4, dst["c"])
+	})
+
+	t.Run("additive_int64", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]int64{1: 100}
+		src := map[int]int64{1: 50, 2: 200}
+		MergeAdditive(dst, src)
+
+		assert.Equal(t, int64(150), dst[1])
+		assert.Equal(t, int64(200), dst[2])
+	})
+
+	t.Run("additive_float64", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[string]float64{"x": 1.5}
+		src := map[string]float64{"x": 2.5, "y": 3.0}
+		MergeAdditive(dst, src)
+
+		assert.InDelta(t, 4.0, dst["x"], 0.0001)
+		assert.InDelta(t, 3.0, dst["y"], 0.0001)
+	})
+}
+
+// FRD: specs/frds/FRD-20260306-merge-nested-additive.md.
+func TestMergeNestedAdditive(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_dst_no_panic", func(t *testing.T) {
+		t.Parallel()
+
+		assert.NotPanics(t, func() {
+			MergeNestedAdditive(nil, map[int]map[int]int64{1: {10: 5}})
+		})
+	})
+
+	t.Run("nil_src_no_op", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{1: {10: 5}}
+		MergeNestedAdditive(dst, nil)
+		assert.Equal(t, int64(5), dst[1][10])
+	})
+
+	t.Run("empty_inner_src_skipped", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{}
+		MergeNestedAdditive(dst, map[int]map[int]int64{1: {}})
+		assert.Nil(t, dst[1], "empty inner map should not allocate dst entry")
+	})
+
+	t.Run("additive_merge_new_outer_key", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{}
+		src := map[int]map[int]int64{1: {10: 100, 20: 200}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, int64(100), dst[1][10])
+		assert.Equal(t, int64(200), dst[1][20])
+	})
+
+	t.Run("additive_merge_existing_inner_keys", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[int]map[int]int64{1: {10: 50}}
+		src := map[int]map[int]int64{1: {10: 50, 20: 200}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, int64(100), dst[1][10])
+		assert.Equal(t, int64(200), dst[1][20])
+	})
+
+	t.Run("string_keys", func(t *testing.T) {
+		t.Parallel()
+
+		dst := map[string]map[string]int{"a": {"x": 1}}
+		src := map[string]map[string]int{"a": {"x": 2, "y": 3}, "b": {"z": 4}}
+		MergeNestedAdditive(dst, src)
+
+		assert.Equal(t, 3, dst["a"]["x"])
+		assert.Equal(t, 3, dst["a"]["y"])
+		assert.Equal(t, 4, dst["b"]["z"])
+	})
+}
+
+// FRD: specs/frds/FRD-20260310-estimate-map-size.md.
+
+func TestEstimateMapSize(t *testing.T) {
+	t.Parallel()
+
+	const entryBytes = 56
+
+	t.Run("nil_map_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		got := EstimateMapSize[string, int](nil, entryBytes)
+		assert.Equal(t, int64(0), got)
+	})
+
+	t.Run("empty_map_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		got := EstimateMapSize(map[string]int{}, entryBytes)
+		assert.Equal(t, int64(0), got)
+	})
+
+	t.Run("single_entry", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[string]int{"a": 1}
+		got := EstimateMapSize(m, entryBytes)
+		assert.Equal(t, int64(entryBytes), got)
+	})
+
+	t.Run("multiple_entries", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[int]string{1: "a", 2: "b", 3: "c"}
+		got := EstimateMapSize(m, entryBytes)
+		assert.Equal(t, int64(3)*int64(entryBytes), got)
+	})
+
+	t.Run("zero_entry_bytes_returns_zero", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[string]int{"a": 1, "b": 2}
+		got := EstimateMapSize(m, 0)
+		assert.Equal(t, int64(0), got)
+	})
+}
+
+func TestSortedKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil_returns_nil", func(t *testing.T) {
+		t.Parallel()
+
+		got := SortedKeys[int, any](nil)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		got := SortedKeys(map[int]string{})
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
+
+	t.Run("int_keys_sorted", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[int]string{3: "c", 1: "a", 2: "b"}
+		got := SortedKeys(m)
+		assert.Equal(t, []int{1, 2, 3}, got)
+	})
+
+	t.Run("string_keys_sorted", func(t *testing.T) {
+		t.Parallel()
+
+		m := map[string]int{"banana": 2, "apple": 1, "cherry": 3}
+		got := SortedKeys(m)
+		assert.Equal(t, []string{"apple", "banana", "cherry"}, got)
+	})
+}

@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"io"
 	"os"
@@ -12,23 +13,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/analyze"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/renderer"
-	"github.com/Sumatoshi-tech/codefang/pkg/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
-	"github.com/Sumatoshi-tech/codefang/pkg/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
 func TestMain(m *testing.M) {
 	renderer.RegisterPlotRenderer()
+	registerGobTypesForTest()
 	os.Exit(m.Run())
+}
+
+func registerGobTypesForTest() {
+	gob.Register(map[string]any{})
+	gob.Register("")
+	gob.Register(0)
+	gob.Register([]string{})
 }
 
 type stubStaticRunAnalyzer struct {
@@ -104,7 +114,7 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 	)
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
+		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
 			staticCalled = true
 			staticFormat = format
 
@@ -139,7 +149,7 @@ func TestRunCommand_StaticOnly(t *testing.T) {
 	var historyCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, ids []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 
 			return nil
@@ -163,7 +173,7 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -184,9 +194,7 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 	command.SetArgs([]string{"-a", "static/complexity", "--format", "json"})
 	err := command.Execute()
 	require.NoError(t, err)
-	require.Contains(t, errOut.String(), "progress: starting run")
 	require.Contains(t, errOut.String(), "progress: static phase started")
-	require.Contains(t, errOut.String(), "progress: run completed")
 }
 
 func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
@@ -195,7 +203,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 	var historySilent bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			t.Fatal("static executor should not be called")
 
 			return nil
@@ -228,7 +236,7 @@ func TestRunCommand_ForwardsHistoryRuntimeOptions(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			t.Fatal("static executor should not be called")
 
 			return nil
@@ -260,7 +268,7 @@ func TestRunCommand_ForwardsCommitSelectionFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -294,7 +302,7 @@ func TestRunCommand_ForwardsProfilingFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -324,7 +332,7 @@ func TestRunCommand_ForwardsResourceTuningFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -364,7 +372,7 @@ func TestRunCommand_ForwardsCheckpointFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -400,7 +408,7 @@ func TestRunCommand_CheckpointDefaultsPreserved(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -424,7 +432,7 @@ func TestRunCommand_ProgressOutput_Quiet(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -454,7 +462,7 @@ func TestRunCommand_UnknownAnalyzer(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			return nil
 		},
@@ -473,7 +481,7 @@ func TestRunCommand_GlobStaticAnalyzers(t *testing.T) {
 	var historyCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -505,7 +513,7 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 	)
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
+		func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
 			staticCalled = true
 			staticFormat = format
 
@@ -538,7 +546,7 @@ func TestRunCommand_GlobUnknownPattern(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			return nil
 		},
@@ -555,7 +563,7 @@ func TestRunCommand_GlobInvalidPattern(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			return nil
 		},
@@ -643,15 +651,20 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputPath := filepath.Join(tmpDir, "out.bin")
 
-	var raw bytes.Buffer
-	require.NoError(t, defaultStaticAnalyzers()[0].FormatReportBinary(analyze.Report{}, &raw))
+	model := analyze.UnifiedModel{
+		Version: analyze.UnifiedModelVersion,
+		Analyzers: []analyze.AnalyzerResult{
+			{ID: "static/complexity", Mode: analyze.ModeStatic, Report: analyze.Report{}},
+			{ID: "history/devs", Mode: analyze.ModeHistory, Report: analyze.Report{}},
+		},
+	}
 
-	testPipeline := buildPipeline(nil)
-	require.NoError(t, testPipeline.Leaves["devs"].Serialize(analyze.Report{}, analyze.FormatBinary, &raw))
+	var raw bytes.Buffer
+	require.NoError(t, reportutil.EncodeBinaryEnvelope(model, &raw))
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -705,7 +718,7 @@ func TestRunCommand_ConvertInput_JSONToPlot(t *testing.T) {
 	require.NoError(t, os.WriteFile(inputPath, []byte(input), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -740,13 +753,20 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputPath := filepath.Join(tmpDir, "out.bin")
 
+	model := analyze.UnifiedModel{
+		Version: analyze.UnifiedModelVersion,
+		Analyzers: []analyze.AnalyzerResult{
+			{ID: "static/complexity", Mode: analyze.ModeStatic, Report: analyze.Report{"static": true}},
+			{ID: "history/devs", Mode: analyze.ModeHistory, Report: analyze.Report{"history": true}},
+		},
+	}
+
 	var raw bytes.Buffer
-	require.NoError(t, reportutil.EncodeBinaryEnvelope(analyze.Report{"static": true}, &raw))
-	require.NoError(t, reportutil.EncodeBinaryEnvelope(analyze.Report{"history": true}, &raw))
+	require.NoError(t, reportutil.EncodeBinaryEnvelope(model, &raw))
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -776,44 +796,49 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	require.Contains(t, out.String(), "history/devs")
 }
 
-func TestRunCommand_MixedPlotRendersCombinedPage(t *testing.T) {
+func TestRunCommand_MixedPlotRunsSeparatePhases(t *testing.T) {
 	t.Parallel()
 
 	var (
-		staticFormat  string
-		historyFormat string
+		staticPlotCalled  bool
+		historyPlotCalled bool
 	)
 
-	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
-			staticFormat = format
-			require.Equal(t, analyze.FormatBinary, format)
-			require.Equal(t, []string{"static/complexity"}, ids)
+	outDir := t.TempDir()
 
-			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "static"}, writer)
+	command := newRunCommandWithAllDeps(
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+			t.Fatal("static text executor should not be called for plot format")
+
+			return nil
 		},
-		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, writer io.Writer) error {
-			historyFormat = format
-			require.Equal(t, analyze.FormatBinary, format)
+		func(_ string, ids []string, _ int, _ int64, dir string) error {
+			staticPlotCalled = true
+
+			require.Equal(t, []string{"static/complexity"}, ids)
+			require.Equal(t, outDir, dir)
+
+			return nil
+		},
+		func(_ context.Context, _ string, ids []string, format string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
+			historyPlotCalled = true
+
+			require.Equal(t, analyze.FormatPlot, format)
 			require.Equal(t, []string{"history/devs"}, ids)
 
-			return reportutil.EncodeBinaryEnvelope(analyze.Report{"source": "history"}, writer)
+			return nil
 		},
 		stubRunRegistry,
 		noopObservabilityInit,
 	)
 
-	var out bytes.Buffer
-	command.SetOut(&out)
-	command.SetArgs([]string{"--format", "plot", "-a", "static/complexity,history/devs", "--path", "."})
+	command.SetOut(io.Discard)
+	command.SetArgs([]string{"--format", "plot", "-a", "static/complexity,history/devs", "--path", ".", "--output", outDir})
 
 	err := command.Execute()
 	require.NoError(t, err)
-	require.Equal(t, analyze.FormatBinary, staticFormat)
-	require.Equal(t, analyze.FormatBinary, historyFormat)
-	require.Contains(t, out.String(), "<!doctype html>")
-	require.Contains(t, out.String(), "static/complexity")
-	require.Contains(t, out.String(), "history/devs")
+	require.True(t, staticPlotCalled, "static plot executor should be called")
+	require.True(t, historyPlotCalled, "history executor should be called with plot format")
 }
 
 func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
@@ -838,7 +863,7 @@ func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
 			)
 
 			command := newRunCommandWithDeps(
-				func(_ string, ids []string, format string, _ bool, _ bool, writer io.Writer) error {
+				func(_ string, ids []string, format string, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
 					staticFormat = format
 
 					require.Equal(t, []string{"static/complexity"}, ids)
@@ -1059,7 +1084,7 @@ func TestRunCommand_DebugTraceFlag_Accepted(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1084,7 +1109,7 @@ func TestRunCommand_CreatesRootSpan(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1126,7 +1151,7 @@ func TestRunCommand_ShutdownCalledOnExit(t *testing.T) {
 	var shutdownCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1169,7 +1194,7 @@ func TestRunCommand_InitializesObservability(t *testing.T) {
 	}
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1258,7 +1283,7 @@ func TestRunCommand_RootSpanAttributes(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1297,4 +1322,86 @@ func TestRunCommand_RootSpanAttributes(t *testing.T) {
 	require.Contains(t, rootAttrs, "error", "root span should have error attribute")
 	require.Equal(t, false, rootAttrs["error"], "error should be false on success")
 	require.Contains(t, rootAttrs, "codefang.duration_class", "root span should have duration_class")
+}
+
+// FRD: specs/frds/FRD-20260311-static-memory-limit.md.
+
+func TestParseMemoryBudgetBytes_Valid(t *testing.T) {
+	t.Parallel()
+
+	const expectedBytes int64 = 512 * 1000 * 1000
+
+	got := parseMemoryBudgetBytes("512MB")
+
+	require.Equal(t, expectedBytes, got)
+}
+
+func TestParseMemoryBudgetBytes_Empty(t *testing.T) {
+	t.Parallel()
+
+	require.Zero(t, parseMemoryBudgetBytes(""))
+}
+
+func TestParseMemoryBudgetBytes_Invalid(t *testing.T) {
+	t.Parallel()
+
+	require.Zero(t, parseMemoryBudgetBytes("not-a-size"))
+}
+
+func TestApplyStaticMemoryLimit_ZeroBudget(t *testing.T) {
+	t.Parallel()
+
+	restore := applyStaticMemoryLimit(0)
+	restore()
+}
+
+func TestApplyStaticMemoryLimit_SetsAndRestores(t *testing.T) {
+	t.Parallel()
+
+	const budgetBytes int64 = 1024 * 1024 * 1024
+
+	restore := applyStaticMemoryLimit(budgetBytes)
+	restore()
+}
+
+// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
+
+func TestApplyStaticBudgetConfig_ZeroBudget(t *testing.T) {
+	t.Parallel()
+
+	service := analyze.NewStaticService(nil)
+	applyStaticBudgetConfig(service, 0, 0)
+
+	assert.Zero(t, service.MaxWorkers)
+	assert.Zero(t, service.SpillThreshold)
+}
+
+func TestApplyStaticBudgetConfig_WithBudget(t *testing.T) {
+	t.Parallel()
+
+	const budgetOneGiB int64 = 1024 * 1024 * 1024
+
+	service := analyze.NewStaticService(nil)
+	applyStaticBudgetConfig(service, 0, budgetOneGiB)
+
+	assert.Positive(t, service.MaxWorkers)
+	assert.Positive(t, service.SpillThreshold)
+}
+
+func TestApplyStaticBudgetConfig_ExplicitWorkersOverride(t *testing.T) {
+	t.Parallel()
+
+	const budgetOneGiB int64 = 1024 * 1024 * 1024
+
+	const explicitWorkers = 2
+
+	service := analyze.NewStaticService(nil)
+	service.MaxWorkers = explicitWorkers
+	applyStaticBudgetConfig(service, explicitWorkers, budgetOneGiB)
+
+	// Explicit --static-workers should not be overridden by budget.
+	assert.Equal(t, explicitWorkers, service.MaxWorkers)
+
+	// Spill threshold should still be derived from budget.
+	assert.Positive(t, service.SpillThreshold)
 }

@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Sumatoshi-tech/codefang/pkg/mcp"
-	"github.com/Sumatoshi-tech/codefang/pkg/observability"
+	"github.com/Sumatoshi-tech/codefang/internal/mcp"
+	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/version"
 )
 

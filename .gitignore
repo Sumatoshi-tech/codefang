@@ -87,3 +87,4 @@ build/
 coverage.out
 profiles/
 .promptkit
+.tmp

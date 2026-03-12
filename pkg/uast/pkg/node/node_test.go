@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+func NewPositions(startLine, startCol, startOffset, endLine, endCol, endOffset uint) *Positions {
+	pos, ok := posPool.Get().(*Positions)
+	if !ok {
+		pos = &Positions{}
+	}
+
+	pos.StartLine = startLine
+	pos.StartCol = startCol
+	pos.StartOffset = startOffset
+	pos.EndLine = endLine
+	pos.EndCol = endCol
+	pos.EndOffset = endOffset
+
+	return pos
+}
+
 const testHelloToken = "hello"
 
 func TestNodeEdgeCases(t *testing.T) {

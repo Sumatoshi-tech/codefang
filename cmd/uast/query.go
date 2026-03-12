@@ -13,6 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Sumatoshi-tech/codefang/pkg/iosafety"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -138,7 +140,7 @@ func parseFileForQuery(file string) (*node.Node, error) {
 		return parsedNode, nil
 	}
 
-	code, resolvedPath, readErr := safeReadFile(file)
+	code, resolvedPath, readErr := iosafety.ReadFile(file)
 	if readErr != nil {
 		return nil, fmt.Errorf("failed to read file %s: %w", file, readErr)
 	}
@@ -208,7 +210,7 @@ func loadInteractiveInputFromFile(input string) (*node.Node, error) {
 	}
 
 	if parser.IsSupported(input) {
-		code, resolvedPath, readErr := safeReadFile(input)
+		code, resolvedPath, readErr := iosafety.ReadFile(input)
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read file %s: %w", input, readErr)
 		}
@@ -270,13 +272,13 @@ func executeInteractiveQuery(parsedNode *node.Node, query string) {
 	if len(results) == 0 {
 		fmt.Fprintln(os.Stdout, "No results found")
 	} else {
-		writeTerminalLine("Found", len(results), "results:")
+		fmt.Fprintln(os.Stdout, "Found", len(results), "results:")
 
 		for idx, resultNode := range results {
-			writeTerminalLine(
+			fmt.Fprintln(os.Stdout,
 				"["+strconv.Itoa(idx+1)+"]",
-				sanitizeForTerminal(string(resultNode.Type))+":",
-				sanitizeForTerminal(resultNode.Token),
+				iosafety.SanitizeForTerminal(string(resultNode.Type))+":",
+				iosafety.SanitizeForTerminal(resultNode.Token),
 			)
 		}
 	}
@@ -299,24 +301,9 @@ func outputResults(results []*node.Node, output, format string, writer io.Writer
 
 	switch format {
 	case formatJSON:
-		enc := json.NewEncoder(outputWriter)
-		enc.SetIndent("", "  ")
-
-		encodeErr := enc.Encode(mapped)
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode JSON: %w", encodeErr)
-		}
-
-		return nil
+		return textutil.WriteJSON(outputWriter, mapped, true)
 	case "compact":
-		enc := json.NewEncoder(outputWriter)
-
-		encodeErr := enc.Encode(mapped)
-		if encodeErr != nil {
-			return fmt.Errorf("failed to encode compact JSON: %w", encodeErr)
-		}
-
-		return nil
+		return textutil.WriteJSON(outputWriter, mapped, false)
 	case "count":
 		count := 0
 

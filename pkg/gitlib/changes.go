@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -209,7 +210,7 @@ func (f *File) Reader() (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	return io.NopCloser(&blobReader{data: contents}), nil
+	return io.NopCloser(bytes.NewReader(contents)), nil
 }
 
 // BlobContext returns the blob object for this file, accepting a context for tracing.

@@ -52,28 +52,21 @@ func BenchmarkDiffOpSlice(b *testing.B) {
 	}
 }
 
-// BenchmarkBlobBatchCreation measures batch creation overhead.
-func BenchmarkBlobBatchCreation(b *testing.B) {
-	i := 0
+// BenchmarkBlobBatchResponseCreation measures batch response creation overhead.
+func BenchmarkBlobBatchResponseCreation(b *testing.B) {
 	for b.Loop() {
-		_ = gitlib.BlobBatch{
-			BatchID: i,
+		_ = gitlib.BlobBatchResponse{
 			Blobs:   make([]*gitlib.CachedBlob, 100),
 			Results: make([]gitlib.BlobResult, 100),
 		}
-		i++
 	}
 }
 
-// BenchmarkDiffBatchCreation measures diff batch creation overhead.
-func BenchmarkDiffBatchCreation(b *testing.B) {
-	i := 0
+// BenchmarkDiffBatchResponseCreation measures diff batch response creation overhead.
+func BenchmarkDiffBatchResponseCreation(b *testing.B) {
 	for b.Loop() {
-		_ = gitlib.DiffBatch{
-			BatchID:  i,
-			Diffs:    make([]gitlib.DiffResult, 50),
-			Requests: make([]gitlib.DiffRequest, 50),
+		_ = gitlib.DiffBatchResponse{
+			Results: make([]gitlib.DiffResult, 50),
 		}
-		i++
 	}
 }

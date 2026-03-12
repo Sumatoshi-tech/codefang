@@ -14,6 +14,10 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
 
+func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
+	return parser.acquireParseContext(tree, content)
+}
+
 const testHelloName = "Hello"
 
 func TestDSLProviderIntegration(t *testing.T) {

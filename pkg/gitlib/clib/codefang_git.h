@@ -20,8 +20,11 @@ extern "C" {
  * Constants
  * ============================================================================ */
 
-/* Maximum operations per diff result (for pre-allocation) */
+/* Maximum operations per diff result (hard cap) */
 #define CF_MAX_DIFF_OPS 100000
+
+/* Initial ops capacity per diff result (grows dynamically via realloc) */
+#define CF_INITIAL_DIFF_OPS 64
 
 /* Number of bytes to check for binary detection */
 #define CF_BINARY_CHECK_LEN 8000
@@ -234,6 +237,7 @@ int cf_is_binary(const char* data, size_t size);
 void cf_free_blob_results(cf_blob_result* results, int count);
 void cf_free_diff_results(cf_diff_result* results, int count);
 int cf_init_diff_result(cf_diff_result* result, int capacity);
+int cf_release_native_memory(void);
 
 #ifdef __cplusplus
 }

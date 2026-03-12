@@ -1,6 +1,6 @@
 import re
 
-history_test_path = "pkg/analyzers/imports/history_test.go"
+history_test_path = "internal/analyzers/imports/history_test.go"
 
 with open(history_test_path, 'r') as f:
     code = f.read()

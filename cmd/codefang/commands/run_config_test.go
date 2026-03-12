@@ -35,7 +35,7 @@ pipeline:
 	)
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, ids []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -135,7 +135,7 @@ func TestRunCommand_InvalidConfig_ReturnsError(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
 			return nil
 		},
@@ -170,7 +170,7 @@ func TestRunCommand_ConfigPipelineValues_ForwardedToHistory(t *testing.T) {
 	var seenOpts HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOpts = opts
 
@@ -212,7 +212,7 @@ func TestRunCommand_ConfigCheckpoint_Forwarded(t *testing.T) {
 	var seenOpts HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOpts = opts
 
@@ -245,7 +245,7 @@ func TestRunCommand_ConfigAnalyzerConfig_PassedToHistory(t *testing.T) {
 	var seenOpts HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ io.Writer) error { return nil },
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error { return nil },
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
 			seenOpts = opts
 

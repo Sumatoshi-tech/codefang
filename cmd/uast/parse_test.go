@@ -3,9 +3,23 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"testing"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 )
+
+// ParseFile parses a single source file into UAST format.
+func ParseFile(file, lang, output, format string, writer io.Writer) error {
+	parser, err := uast.NewParser()
+	if err != nil {
+		return fmt.Errorf("failed to initialize parser: %w", err)
+	}
+
+	return parseFileWithParser(parser, file, lang, output, format, writer)
+}
 
 func TestParseOutputIncludesPositions(t *testing.T) {
 	t.Parallel()

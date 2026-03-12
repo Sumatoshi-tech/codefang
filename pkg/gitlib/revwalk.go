@@ -68,6 +68,12 @@ func (w *RevWalk) Iterate(cb func(*Commit) bool) error {
 	return nil
 }
 
+// Close releases the walker resources.
+// Alias for Free to satisfy [alg.Iterator].
+func (w *RevWalk) Close() {
+	w.Free()
+}
+
 // Free releases the walker resources.
 func (w *RevWalk) Free() {
 	if w.walk != nil {

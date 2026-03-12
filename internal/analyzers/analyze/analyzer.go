@@ -1,0 +1,323 @@
+// Package analyze provides analyze functionality.
+package analyze
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"runtime"
+	"sync"
+
+	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
+)
+
+// ErrUnregisteredAnalyzer indicates that no analyzer with the given name is registered.
+var ErrUnregisteredAnalyzer = errors.New("no registered analyzer with name")
+
+// ErrAnalysisFailed indicates that one or more analyzers failed during parallel execution.
+var ErrAnalysisFailed = errors.New("analysis failed")
+
+// ErrNilRootNode indicates that a nil root node was passed to an analyzer.
+var ErrNilRootNode = errors.New("root node is nil")
+
+// Report is a map of string keys to arbitrary values representing analysis output.
+type Report = map[string]any
+
+// ReportFunctionList extracts a []map[string]any from a report key.
+// Handles direct typed values, [TypedCollection] wrappers, and JSON-decoded []any slices.
+func ReportFunctionList(report Report, key string) ([]map[string]any, bool) {
+	val, exists := report[key]
+	if !exists {
+		return nil, false
+	}
+
+	if tc, ok := val.(TypedCollection); ok {
+		result := tc.ToMaps(tc.Items, tc.SourceFile)
+
+		return result, len(result) > 0
+	}
+
+	if typed, ok := val.([]map[string]any); ok {
+		return typed, true
+	}
+
+	raw, ok := val.([]any)
+	if !ok {
+		return nil, false
+	}
+
+	result := make([]map[string]any, 0, len(raw))
+
+	for _, item := range raw {
+		if m, mOK := item.(map[string]any); mOK {
+			result = append(result, m)
+		}
+	}
+
+	return result, len(result) > 0
+}
+
+// ReportFunctionListWithFallback extracts a function list from a report,
+// trying the primary key first, then the fallback key.
+func ReportFunctionListWithFallback(report Report, primaryKey, fallbackKey string) ([]map[string]any, bool) {
+	functions, ok := ReportFunctionList(report, primaryKey)
+	if ok {
+		return functions, true
+	}
+
+	return ReportFunctionList(report, fallbackKey)
+}
+
+// Thresholds represents color-coded thresholds for multiple metrics
+// Structure: {"metric_name": {"red": value, "yellow": value, "green": value}}.
+type Thresholds = map[string]map[string]any
+
+// Analyzer is the common base interface for all analyzers.
+type Analyzer interface {
+	Name() string
+	Flag() string
+	Descriptor() Descriptor
+
+	// Configuration.
+	ListConfigurationOptions() []pipeline.ConfigurationOption
+	Configure(facts map[string]any) error
+}
+
+// StaticAnalyzer interface defines the contract for UAST-based static analysis.
+type StaticAnalyzer interface {
+	Analyzer
+
+	Analyze(root *node.Node) (Report, error)
+	Thresholds() Thresholds
+
+	// Aggregation methods.
+	CreateAggregator() ResultAggregator
+
+	// Formatting methods.
+	FormatReport(report Report, writer io.Writer) error
+	FormatReportJSON(report Report, writer io.Writer) error
+	FormatReportYAML(report Report, writer io.Writer) error
+	FormatReportPlot(report Report, writer io.Writer) error
+	FormatReportBinary(report Report, writer io.Writer) error
+}
+
+// VisitorProvider enables single-pass traversal optimization.
+type VisitorProvider interface {
+	CreateVisitor() AnalysisVisitor
+}
+
+// ResultAggregator defines the interface for aggregating analyzer results.
+type ResultAggregator interface {
+	Aggregate(results map[string]Report)
+	GetResult() Report
+}
+
+// SpillThresholdSetter is implemented by aggregators that support configurable
+// spill-to-disk thresholds. Used by StaticService to apply budget-derived thresholds.
+type SpillThresholdSetter interface {
+	SetSpillThreshold(threshold int)
+}
+
+// StateSizer is implemented by aggregators that can estimate their in-memory state size.
+// Used by StaticService to log aggregator memory usage at pipeline milestones.
+type StateSizer interface {
+	EstimatedStateSize() int64
+}
+
+// Factory manages registration and execution of static analyzers.
+type Factory struct {
+	analyzers   map[string]StaticAnalyzer
+	maxParallel int
+}
+
+// NewFactory creates a new factory instance.
+func NewFactory(analyzers []StaticAnalyzer) *Factory {
+	factory := &Factory{
+		analyzers:   make(map[string]StaticAnalyzer),
+		maxParallel: runtime.NumCPU(),
+	}
+
+	for _, a := range analyzers {
+		factory.RegisterAnalyzer(a)
+	}
+
+	return factory
+}
+
+// RegisterAnalyzer adds an analyzer to the registry.
+func (f *Factory) RegisterAnalyzer(analyzer StaticAnalyzer) {
+	f.analyzers[analyzer.Name()] = analyzer
+}
+
+// RunAnalyzer executes the specified analyzer.
+func (f *Factory) RunAnalyzer(name string, root *node.Node) (Report, error) {
+	analyzer, ok := f.analyzers[name]
+
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrUnregisteredAnalyzer, name)
+	}
+
+	return analyzer.Analyze(root)
+}
+
+// analyzerCategories holds categorized analyzers for dispatch.
+type analyzerCategories struct {
+	visitors             []NodeVisitor
+	visitorAnalyzers     map[string]AnalysisVisitor
+	independentAnalyzers []string
+}
+
+// categorizeAnalyzers splits analyzers into visitor-based and independent categories.
+func (f *Factory) categorizeAnalyzers(analyzers []string) (*analyzerCategories, error) {
+	cats := &analyzerCategories{
+		visitors:             make([]NodeVisitor, 0),
+		visitorAnalyzers:     make(map[string]AnalysisVisitor),
+		independentAnalyzers: make([]string, 0),
+	}
+
+	for _, name := range analyzers {
+		analyzer, ok := f.analyzers[name]
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrUnregisteredAnalyzer, name)
+		}
+
+		if vp, isVP := analyzer.(VisitorProvider); isVP {
+			v := vp.CreateVisitor()
+			cats.visitors = append(cats.visitors, v)
+			cats.visitorAnalyzers[name] = v
+		} else {
+			cats.independentAnalyzers = append(cats.independentAnalyzers, name)
+		}
+	}
+
+	return cats, nil
+}
+
+func (c *analyzerCategories) totalTasks() int {
+	total := len(c.independentAnalyzers)
+	if len(c.visitors) > 0 {
+		total++
+	}
+
+	return total
+}
+
+// RunAnalyzers runs the specified analyzers on the given UAST root node.
+func (f *Factory) RunAnalyzers(ctx context.Context, root *node.Node, analyzers []string) (map[string]Report, error) {
+	cats, err := f.categorizeAnalyzers(analyzers)
+	if err != nil {
+		return nil, err
+	}
+
+	if cats.totalTasks() == 0 {
+		return make(map[string]Report), nil
+	}
+
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("runanalyzers: %w", ctx.Err())
+	}
+
+	if cats.totalTasks() == 1 || f.maxParallel <= 1 {
+		return f.runSequentially(ctx, root, cats.visitors, cats.visitorAnalyzers, cats.independentAnalyzers)
+	}
+
+	return f.runParallel(ctx, root, cats)
+}
+
+// runParallel executes visitor-based and independent analyzers concurrently.
+// Visitors run as a single goroutine; independent analyzers fan out via WorkerPool.
+func (f *Factory) runParallel(ctx context.Context, root *node.Node, cats *analyzerCategories) (map[string]Report, error) {
+	combinedReport := make(map[string]Report)
+
+	var reportMu sync.Mutex
+
+	var wg sync.WaitGroup
+
+	if len(cats.visitors) > 0 {
+		wg.Go(func() {
+			f.runVisitors(root, cats.visitors)
+
+			reportMu.Lock()
+
+			for name, v := range cats.visitorAnalyzers {
+				combinedReport[name] = v.GetReport()
+			}
+
+			reportMu.Unlock()
+		})
+	}
+
+	pool := pipeline.WorkerPool[string]{
+		MaxParallel: f.maxParallel,
+		Work: func(_ context.Context, name string) error {
+			report, err := f.RunAnalyzer(name, root)
+			if err != nil {
+				return fmt.Errorf("analyzer %s: %w", name, err)
+			}
+
+			reportMu.Lock()
+			combinedReport[name] = report
+			reportMu.Unlock()
+
+			return nil
+		},
+	}
+
+	poolErr := pool.Run(ctx, cats.independentAnalyzers)
+
+	wg.Wait()
+
+	if poolErr != nil {
+		return nil, fmt.Errorf("%w: %w", ErrAnalysisFailed, poolErr)
+	}
+
+	return combinedReport, nil
+}
+
+func (f *Factory) runSequentially(
+	ctx context.Context,
+	root *node.Node,
+	visitors []NodeVisitor,
+	visitorAnalyzers map[string]AnalysisVisitor,
+	independentAnalyzers []string,
+) (map[string]Report, error) {
+	combinedReport := make(map[string]Report)
+
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("runsequentially: %w", ctx.Err())
+	}
+
+	if len(visitors) > 0 {
+		f.runVisitors(root, visitors)
+
+		for name, v := range visitorAnalyzers {
+			combinedReport[name] = v.GetReport()
+		}
+	}
+
+	for _, name := range independentAnalyzers {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("runsequentially: %w", ctx.Err())
+		}
+
+		report, err := f.RunAnalyzer(name, root)
+		if err != nil {
+			return nil, err
+		}
+
+		combinedReport[name] = report
+	}
+
+	return combinedReport, nil
+}
+
+func (f *Factory) runVisitors(root *node.Node, visitors []NodeVisitor) {
+	traverser := NewMultiAnalyzerTraverser()
+	for _, v := range visitors {
+		traverser.RegisterVisitor(v)
+	}
+
+	traverser.Traverse(root)
+}

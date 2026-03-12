@@ -15,6 +15,22 @@ You are a pragmatic, test-obsessed Golang agent who ships value through end-to-e
 * TODOs are prohibited. Implement, or stop.
 * I know that this project is planet-scale so I will be mindful of scalability and performance considerations.
 
+Internal Monologue / Chain of Thought:
+
+* Pause and Assess: Stop. Do not touch the production code yet. What is the requirement? The business rule states that premium users get a 10% discount, but only on items over $50. This is logic, not infrastructure. Keep it pure.
+
+* Test First (Red): I need a safety net. I will write a test that expresses this requirement in code. The test name must be a sentence: testPremiumUserReceivesTenPercentDiscountOnItemsOverFifty. If I can't name it clearly, I don't understand the requirement. The test fails. Good. That is the "Red" in Red-Green-Refactor.
+
+* Implementation (Green): Now I write the minimum code to make the test pass. No over-engineering. No anticipating future needs. Just make it work. I see a magic number 0.10. That is a lie. It reveals no intent. I will extract a constant PREMIUM_DISCOUNT_RATE. Now the test passes. That is "Green".
+
+* Refactor (Clean): Look at the function. It is named calc. That is an abomination. It tells me nothing. It violates the intention-revealing rule. I will rename it to applyPremiumDiscount. Does this function do more than one thing? It checks the user status and calculates the price. That violates the Single Responsibility Principle (SRP). I will extract the eligibility check into isEligibleForPremiumDiscount. Now the code reads like a prose poem.
+
+* Debugging Mindset: A bug report comes in. "Discount applied to non-premium users." A professional does not just patch this. A bug is a missing test. Why did the test suite allow this? I will write a regression test first: testNonPremiumUserReceivesNoDiscount. It passes? No, it fails. Good. Now I fix the logic. Now it passes. I have not just fixed a bug; I have tightened the net.
+
+* Final Review: Are there comments? I see a comment explaining the discount logic. Comments are often failures to express intent in code. I will delete the comment and rename the method to applyStandardPremiumPolicy. The code now documents itself.
+
+* Professional Ethics: Would I be proud to put my name on this? Yes. It is disciplined. It is tested. It is clean. Frameworks will change, languages will evolve, but this craftsmanship remains. Commit.
+
 ## Non-Negotiables
 
 * Always ask yourself "Is it implemented somewhere in code - and search for it"
@@ -197,6 +213,15 @@ func WithVerbose(v bool) Option { ... }
 
 // Usage
 analyzer, _ := NewAnalyzer(cfg, WithVerbose(true))
+
+// GOOD: Generic LRU cache with functional options (pkg/alg/lru)
+cache := lru.New(
+    lru.WithMaxBytes[K, V](maxBytes, sizeFunc),
+    lru.WithBloomFilter[K, V](keyToBytes, expectedN),
+    lru.WithCostEviction[K, V](sampleSize, costFunc),
+    lru.WithCloneFunc[K, V](cloneFunc),
+)
+// Use internal/cache.LRUBlobCache or internal/framework.DiffCache as thin wrappers
 ```
 
 ### Testing
@@ -256,7 +281,7 @@ type AnalyzerPool struct {
 
 ### Analyzer Pattern
 ```go
-// pkg/analyzers/analyze/analyzer.go
+// internal/analyzers/analyze/analyzer.go
 type Analyzer interface {
     Name() string
     Description() string
@@ -276,12 +301,67 @@ type Analyzer interface {
 //     )
 // }
 //
+// For safe metrics computation, use the shared wrapper with common.MetricSet:
+// ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &common.MetricSet{}),
+//
+// Where ComputeAllMetrics uses the common orchestrator:
+// func ComputeAllMetrics(report analyze.Report) (*common.MetricSet, error) {
+//     input, err := ParseReportData(report)
+//     if err != nil { return nil, err }
+//     computers := []func(analyze.Report) common.MetricResult{
+//         func(_ analyze.Report) common.MetricResult {
+//             return common.MetricResult{Name: "metric_name", Value: computeMetric(input)}
+//         },
+//     }
+//     return common.ComputeAllMetrics("analyzer_name", computers, report), nil
+// }
+//
+// For shared pipeline facts in Configure(), use typed accessors from internal/plumbing:
+// if val, ok := pkgplumbing.GetTickSize(facts); ok { a.tickSize = val }
+// if val, ok := pkgplumbing.GetCommitsByTick(facts); ok { a.commitsByTick = val }
+// if val, ok := pkgplumbing.GetReversedPeopleDict(facts); ok { a.ReversedPeopleDict = val }
+// if val, ok := pkgplumbing.GetPeopleCount(facts); ok { a.count = val }
+//
+// For history analyzers that need identity resolution, embed common.IdentityMixin:
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     common.IdentityMixin  // provides Identity + ReversedPeopleDict + GetReversedPeopleDict()
+//     // ...
+// }
+// In Configure(): a.ReversedPeopleDict = val
+// In Fork struct literals: IdentityMixin: common.IdentityMixin{Identity: ..., ReversedPeopleDict: ...}
+// Used by: burndown, couples, imports, devs
+//
+// For checkpoint persistence, embed *common.CheckpointHelper[T] to promote
+// SaveCheckpoint/LoadCheckpoint via embedding (satisfies checkpoint.Checkpointable):
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     *common.CheckpointHelper[checkpointState]
+//     // ...
+// }
+// In NewAnalyzer():
+//     ha.CheckpointHelper = common.NewCheckpointHelper[checkpointState](
+//         checkpointBasename, persist.NewJSONCodec(), // or persist.NewGobCodec()
+//         ha.buildCheckpointState, ha.restoreFromCheckpoint,
+//     )
+// CheckpointSize() remains analyzer-specific (not part of the helper).
+// Used by: file_history (migrated), burndown and couples (candidates)
+//
+// For history analyzers with no working state between chunks, embed common.NoStateHibernation:
+// type MyAnalyzer struct {
+//     *analyze.BaseHistoryAnalyzer[*MyMetrics]
+//     common.NoStateHibernation  // provides Hibernate() → nil, Boot() → nil
+//     // ...
+// }
+// Set EstimatedTCSize in the constructor for proper memory budgeting.
+// Used by: anomaly, imports, quality, sentiment, typos
+//
 // Implementations: complexity, cohesion, halstead, sentiment, burndown, couples
 ```
 
 ### Factory Pattern
 ```go
-// pkg/analyzers/factory.go
+// internal/analyzers/factory.go
 f := factory.NewFactory()
 analyzer, _ := f.GetAnalyzer("complexity")
 result, _ := analyzer.Analyze(ctx, input)
@@ -293,6 +373,13 @@ result, _ := analyzer.Analyze(ctx, input)
 type Visitor interface {
     VisitNode(node *Node) error
 }
+
+// internal/analyzers/common/uast_traversal.go — generic predicate-based traversal
+// FindNodes is the single entry point; all convenience methods delegate to it:
+traverser := NewUASTTraverser(TraversalConfig{MaxDepth: 10})
+nodes := traverser.FindNodes(root, func(n *node.Node) bool { return n.Type == "FunctionDeclaration" })
+// Convenience wrappers: FindNodesByType, FindNodesByRoles, FindNodesByFilter, FindNodesByFilters
+// FRD: specs/frds/FRD-20260310-find-nodes-predicate.md
 
 // MultiAnalyzerTraverser - single traversal, multiple analyzers
 traverser := NewMultiAnalyzerTraverser(analyzers...)
@@ -319,21 +406,81 @@ analyzer.Analyze(ctx, nodes)
 - `cmd/codefang` - Analysis engine
 
 **Core:**
-- `pkg/uast` - UAST node definitions, parser, language mappings
+- `pkg/uast` - UAST node definitions, parser, language mappings; `Parser.ParseFile(ctx, path, lang)` reads+parses a source file; `ParseSourceFile(ctx, path, lang)` is a one-shot convenience. FRD: specs/frds/FRD-20260310-parse-source-file.md
 - `pkg/analyzers` - Static and behavioral analyzers
 - `pkg/report` - Output formatting (JSON, table, HTML)
 
 **Analyzers:**
-- `pkg/analyzers/complexity` - Cyclomatic complexity
-- `pkg/analyzers/cohesion` - LCOM metrics
-- `pkg/analyzers/halstead` - Halstead complexity metrics
-- `pkg/analyzers/sentiment` - Comment sentiment analysis
-- `pkg/analyzers/burndown` - Code survival over time
-- `pkg/analyzers/couples` - File coupling analysis
+- `internal/analyzers/complexity` - Cyclomatic complexity
+- `internal/analyzers/cohesion` - LCOM metrics
+- `internal/analyzers/halstead` - Halstead complexity metrics
+- `internal/analyzers/sentiment` - Comment sentiment analysis
+- `internal/analyzers/burndown` - Code survival over time
+- `internal/analyzers/couples` - File coupling analysis
+
+**Data Structures:**
+- `pkg/alg/bloom` - Probabilistic Bloom filter for fast set membership testing
+- `pkg/alg/hll` - HyperLogLog cardinality estimator with LogLog-Beta bias correction
+- `pkg/alg/cms` - Count-Min Sketch for bounded-overestimation frequency estimation
+- `pkg/alg/interval` - Generic augmented interval tree `Tree[K Integer, V comparable]` for O(log N + k) overlap/point queries
+- `pkg/alg/lru` - Generic LRU cache with optional Bloom pre-filter, cost-based eviction, and clone-on-insert
+- `pkg/alg` - Generic algorithms: `Range` (half-open interval), `Chunk` (range partitioning), `ForEachPair` (C(n,2) pairwise iteration), `Iterator[T]` (pull-based sequence with `Next()` + `Close()`, EOF signals end), `CollectN[T](iter, limit)` (drain up to limit items, 0 = unlimited), `TraverseTree[T any](root, children, visit)` (iterative pre-order DFS with explicit stack — generic tree traversal). FRD: specs/frds/FRD-20260310-iterator.md, specs/frds/FRD-20260310-traverse-tree.md
+- `pkg/alg/stats` - Core statistics: `Mean`, `MeanStdDev`, `Percentile`, `Median`, `Clamp[T]`, `Min[T]`, `Max[T]`, `Sum[T]`, `ToPercent`, `PercentMultiplier`, `Distribution[T]` (classify-and-count), `EMA` (exponential moving average), `ExceedsThreshold(observed, predicted, threshold)` (absolute relative divergence check). FRD: specs/frds/FRD-20260310-exceeds-threshold.md
+- `pkg/alg/mapx` - Generic map/slice operations: `CloneFunc`, `CloneNested`, `MergeAdditive`, `MergeNestedAdditive` (two-level map additive merge; nil dst = no-op; empty inner maps skipped), `SortedKeys`, `Unique`, `SortAndLimit`, `BuildLookupSet` (slice → `map[T]struct{}` set), `EstimateMapSize[K,V](m, entryBytes)` (map memory estimation — `int64(len(m)) * int64(entryBytes)`). Use stdlib `maps.Clone` for shallow map copies; use stdlib `slices.Clone` for shallow slice copies. FRD: specs/frds/FRD-20260310-estimate-map-size.md
+- `pkg/persist` - Codec-based file persistence: `Codec` interface, `JSONCodec`, `GobCodec`, `SaveState`, `LoadState`, `Persister[T]`
+- `pkg/textutil` - Byte-level text utilities: `IsBinary`, `CountLines`, `BinarySniffLength`, `WriteJSON(w, v, pretty)` (JSON encoding with optional two-space indentation). FRD: specs/frds/FRD-20260310-writejson-helper.md
+
+**Caching:**
+- `internal/cache` - LRU blob cache (thin wrapper over `pkg/alg/lru`), hash sets, generic blob cache
+
+**Shared Utilities:**
+- `pkg/sigutil` - Signal-handling utilities: `SignalCleanupGuard` (SIGINT/SIGTERM + `sync.Once` idempotent cleanup + goroutine listener + deregistration on `Close`)
+- `pkg/safeconv` - Safe type conversions: `Integer` constraint, `MustConvert[From, To Integer]` (panic on overflow), `SafeConvert[From, To Integer]` (clamp on overflow), `Extract[T any](v any) (T, bool)` (type assertion + reflect-based numeric coercion). Legacy wrappers: `MustUintToInt`, `MustIntToUint`, `MustIntToUint32`, `SafeInt64`, `SafeInt`, `ToInt`, `ToFloat64` — all delegate to generic functions. FRD: specs/frds/FRD-20260310-generic-safeconv.md
+- `pkg/units` - Binary size unit multipliers (KiB, MiB, GiB)
+- `pkg/metrics` - Shared metric types: `RiskLevel` constants (`RiskCritical`, `RiskHigh`, `RiskMedium`, `RiskLow`), `RiskPriority(level RiskLevel) int` for sortable risk ordering, `MetricMeta` struct, `RiskResult` struct. Used by devs, file_history, complexity, comments analyzers
+- `internal/analyzers/common/classify.go` - Generic threshold classifier: `Classifier[T cmp.Ordered]`, `Threshold[T]`, `NewClassifier[T]`. Used by clones, shotness, cohesion, halstead
+- `internal/analyzers/common/threshold_labeler.go` - Static message labeler: `ThresholdLabeler` (`[]Threshold[float64]`), `Label(score float64) string`. Thresholds sorted descending by `Limit`; first match wins; `""` for no match. Used by cohesion (x2), comments (x2), halstead aggregators. FRD: specs/frds/FRD-20260306-threshold-labeler.md
+- `internal/analyzers/common/context_stack.go` - Generic LIFO stack: `ContextStack[T]`, `NewContextStack[T]`, `Push`, `Pop`, `Current`, `Depth`. Used by cohesion/visitor, halstead/visitor
+- `internal/analyzers/common/filter.go` - Generic interface filter: `FilterByInterface[T, U](items []T, cast func(T) (U, bool)) []U`. Used by framework/streaming.go for collectHibernatables, collectSpillCleaners, collectCheckpointables
+- `internal/analyzers/common/spillable_data_collector.go` - Spillable data collector with transparent spill-to-disk: `SpillableDataCollector`, `NewSpillableDataCollector(collectionKey, identifierKey, threshold)`, `NewSpillableDataCollectorComposite(collectionKey, identifierKeys, threshold)` (composite dedup key from multiple fields — last key required, earlier keys optional), `CollectFromReport`, `GetSortedData`, `SetAggregationMode`, `Cleanup`. Gob-encoded spill files, last-write-wins dedup, threshold-based spilling (default 10K items, 0 disables). Halstead/complexity/cohesion use `["_source_file", "name"]` composite keys to prevent cross-file overwrites. FRDs: specs/frds/FRD-20260311-spillable-data-collector.md, specs/frds/FRD-20260311-halstead-dedup.md
+- `internal/analyzers/common/detailed_data_collector.go` - Multi-key detailed data collector: `DetailedDataCollector`, `NewDetailedDataCollector(keys ...string)`, `CollectFromReports`, `AddToResult`. Supports `SetAggregationMode` — becomes no-op in `SummaryOnly`. Stores `analyze.TypedCollection` as-is (defers map conversion to `AddToResult`); falls through to legacy `[]map[string]any` for backward compat. Used by complexity, halstead, comments aggregators
+- `internal/analyzers/analyze/aggregation_mode.go` - Aggregation mode control: `AggregationMode` (`AggregationModeFull`, `AggregationModeSummaryOnly`), `AggregationModeAware` interface, `ResolveAggregationMode(format)`. Text/compact → SummaryOnly (no per-item data, 97% heap reduction); json/yaml/plot/binary → Full. FRD: specs/frds/FRD-20260311-summary-only-aggregation.md
+- `internal/analyzers/common/plotpage/plotpage.go` - Plot page rendering: `NewPage`, `RenderAnalyzerPage(w, title, desc, sections...)`. `RenderAnalyzerPage` is the preferred one-liner for all analyzer plot rendering
+- `internal/analyzers/common/plotpage/builders.go` - Chart factories: `BuildBarChart`, `BuildLineChart`, `BuildPieChart(co, seriesName, data, radius)`. `BuildPieChart` handles 600x400 dimensions, bottom legend, themed labels. Used by cohesion, complexity, comments, halstead, couples
+- `internal/analyzers/analyze/record_reader.go` - Generic store readers: `ReadRecordsIfPresent[T](reader, kinds, kind)` and `ReadRecordIfPresent[T](reader, kinds, kind)`. Used by all 10 analyzer store_reader.go files
+- `internal/analyzers/analyze/record_writer.go` - Generic store writer: `WriteSliceKind[T](w, kind, records)`. Used by devs, anomaly, quality, sentiment, typos, file_history, couples store_writer.go
+- `internal/analyzers/analyze/typed_collection.go` - `TypedCollection` wrapper for deferred map conversion: `TypedCollection{Items, SourceFile, ToMaps}`, `ItemConverter` func type, `SourceFileKey` const, `MapSlice()` method. Per-file analyzers return `TypedCollection` instead of `[]map[string]any`; conversion deferred to serialization boundary. FRD: specs/frds/FRD-20260311-typed-report-items.md
+- `internal/analyzers/analyze/analyzer.go` - Report helpers: `ReportFunctionList(report, key)` for single-key extraction (handles both `TypedCollection` and `[]map[string]any`), `ReportFunctionListWithFallback(report, primaryKey, fallbackKey)` for two-key fallback extraction. Used by complexity, halstead, cohesion, comments plot.go
+- `internal/analyzers/common/reportutil/reportutil.go` - Type-safe report accessors: `GetAs[T any](report, key) (T, bool)` (generic base, pure type assertion), `GetFloat64`/`GetInt` (safeconv coercion — handles cross-type), `GetString`/`GetStringSlice`/`GetStringIntMap`/`GetFunctions`/`MapString` (delegate to `GetAs`), `FormatInt`/`FormatFloat`/`FormatPercent`/`Pct`. `GetFunctions` handles `mapSlicer` interface (duck-typing for `TypedCollection` without import cycle). FRD: specs/frds/FRD-20260306-reportutil-getas.md
+
+**Static Analysis Memory Patterns:**
+- `internal/analyzers/analyze/static.go` - `analyzeFile` calls `node.ReleaseTree(uastNode)` after `runAnalyzers()` to eagerly return Go-side UAST nodes to `sync.Pool`. Tree-sitter native trees are already released within `DSLParser.Parse()` via `defer tree.Close()`. FRD: specs/frds/FRD-20260311-eager-tree-release.md
+- `internal/analyzers/clones/aggregator.go` - `Aggregator.MaxClonePairs` (default 1000 via `DefaultMaxClonePairs`) caps stored `[]ClonePair` slice during cross-file aggregation while preserving exact `total_clone_pairs` count and `clone_ratio`. `findClonePairs(entries, idx, pairCap)` in `visitor.go` accepts cap; 0 = unlimited. FRD: specs/frds/FRD-20260311-clones-pair-cap.md
+- Per-file analyzers (complexity, halstead, comments, cohesion) return `analyze.TypedCollection` in reports instead of `[]map[string]any`. Each defines a `FunctionReportItem` (or `CommentReportItem`) struct and an `ItemConverter` function. `DetailedDataCollector` stores these as-is; conversion to maps deferred to `AddToResult()`. Benchmark: 2.6x heap reduction (21→8.2 MiB for 50K items). FRD: specs/frds/FRD-20260311-typed-report-items.md
+- `internal/budget/static_solver.go` - `SolveStaticBudget(budgetBytes int64) StaticBudgetConfig` derives `MaxWorkers` and `SpillThreshold` from `--memory-budget`. Cost model: `StaticBaseOverhead=150MiB`, `StaticWorkerFootprint=50MiB`, `StaticAvgItemBytes=512`, `StaticAnalyzerCount=6`. Zero/below-minimum budget returns zero config (no override). `StaticService.SpillThreshold` field wired in `initAggregators` via `analyze.SpillThresholdSetter` interface. Explicit `--static-workers` overrides budget-derived workers. FRD: specs/frds/FRD-20260312-static-budget-tuning.md
+- `internal/analyzers/analyze/static.go` - `StaticProgressEvent`, `StaticProgressFunc`, `ProgressFunc`/`ProgressInterval` fields on `StaticService`. `emitProgress` queries aggregators via `analyze.StateSizer` interface and reads RSS via `pkg/meminfo.ReadRSSBytes()`. Called every `ProgressInterval` files (default 1000) and after `buildFinalResults`. `applyStaticProgressLogging` in `run.go` wires `log.Printf`-based logging. FRD: specs/frds/FRD-20260312-static-rss-logging.md
+- `internal/analyzers/common/aggregator.go` - `EstimatedStateSize() int64` sums `MetricsProcessor.EstimatedStateBytes()` + `SpillableDataCollector.EstimatedBufferBytes()`. Implements `analyze.StateSizer` (compile-time check). Benchmark: estimated 48.83 MiB vs actual 48.60 MiB (within 1%) for 100K items. FRD: specs/frds/FRD-20260312-static-rss-logging.md
+- `internal/analyzers/analyze/budget_static_test.go` - Integration test (`//go:build integration`) that generates 5000 Go files × 50 functions (250K functions), runs `StaticService.AnalyzeFolder` with 512 MiB budget via `budget.SolveStaticBudget`, and asserts peak `HeapInuse` < 1 GiB (2× budget). Uses `heapSampler` for 50ms sampling, `debug.SetMemoryLimit` for GC self-regulation, and `AggregationModeSummaryOnly`. Result: 62 MiB peak (94% headroom). Run with: `go test -tags integration -run TestStaticAnalyzers_MemoryBudget ./internal/analyzers/analyze/...`. FRD: specs/frds/FRD-20260312-static-budget-integration-test.md
+
+**Static Plot Output:**
+- `internal/analyzers/analyze/static.go` - `FormatPlotPages(analyzerNames, results, outputDir)` renders multi-page HTML plot output using `plotpage.MultiPageRenderer` and `PlotSectionsFor(fullID)`. Produces per-analyzer HTML pages + index.html in the output directory. Uses `ThemeDark`. Skips analyzers without registered section renderers. FRD: specs/frds/FRD-20260312-static-plot-multipage.md
+- `cmd/codefang/commands/run.go` - `staticPlotExecutor` type and `runStaticPlotAnalyzers` function. `runStaticPhase` calls `validatePlotFlags` for static format (same as history), routes to `staticPlotExec` when format is plot. `--format plot` requires `--output` for both static and history phases. FRD: specs/frds/FRD-20260312-static-plot-multipage.md
+
+**Observability:**
+- `pkg/meminfo` - Portable RSS reading: `ReadRSSBytes() int64` reads `/proc/self/statm` on Linux, returns 0 on other platforms. Used by `StaticService.emitProgress` for progress logging. FRD: specs/frds/FRD-20260312-static-rss-logging.md
+
+**Pipeline Building Blocks:**
+- `pkg/pipeline` - Composable pipeline patterns: `RunPC[In, Out, Job]` (producer-consumer micro-skeleton — manages goroutine lifecycle, channel creation/closing, context propagation), `Phase[S]` + `RunPhases[S]` (chain-of-responsibility phase runner), `Batcher[In, Batch]` with `ThresholdBatcher[T]` and `PassthroughBatcher[T]`, `DispatchFunc[Req]` (dispatch strategy), `Fetcher[Req, Resp]` + `FetcherFunc[Req, Resp]` (cache decorator pattern), `SharedResponse[T]` (sync.Once memoization with context for once-evaluated shared results across goroutines), `SignalOnDrain[T](src) (forwarded, drained)` (forwards items from src channel and signals exhaustion via drained channel close), `WorkerPool[T]{MaxParallel, Work}.Run(ctx, items)` (bounded fan-out with first-error semantics, context cancellation, `MaxParallel=0` defaults to `runtime.NumCPU()`), `RunChan(ctx, <-chan T) error` (same semantics but consumes from channel — enables streaming/backpressure). FRDs: specs/frds/FRD-20260310-signal-on-drain.md, specs/frds/FRD-20260310-worker-pool.md, specs/frds/FRD-20260311-streaming-file-discovery.md
+
+**I/O Safety:**
+- `pkg/iosafety` - Defensive file-reading and terminal-output utilities: `ReadFile(path) (content, resolvedPath, err)` (resolve + validate + read), `ResolvePath(path) (string, error)` (clean, abs, stat, reject dirs), `SanitizeForTerminal(input) string` (HTML-escape + strip control chars). Sentinel errors: `ErrEmptyPath`, `ErrPathContainsNUL`, `ErrDirectoryPath`. FRD: specs/frds/FRD-20260310-iosafety-promote.md
+
+**Storage:**
+- `internal/storage` - Atomic file persistence: `WriteAtomic(path, perm, write)` (write to `.tmp` sibling, fsync, rename — cleanup on error). FRD: specs/frds/FRD-20260310-atomic-file-write.md
 
 **Infrastructure:**
-- `pkg/gitlib` - Git history mining (libgit2-based)
-- `pkg/framework` - Analysis pipeline orchestration
+- `pkg/gitlib` - Git history mining (libgit2-based). `CommitIter`, `FileIter`, and `RevWalk` satisfy `alg.Iterator[T]` (compile-time assertions in `iter_assert.go`). `RevWalk.Close()` aliases `Free()`
+- `internal/framework` - Analysis pipeline orchestration; `BlobPipeline` and `DiffPipeline` delegate goroutine topology to `pipeline.RunPC`
 - `pkg/version` - Build version info
 
 ---

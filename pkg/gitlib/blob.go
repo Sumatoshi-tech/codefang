@@ -1,6 +1,7 @@
 package gitlib
 
 import (
+	"bytes"
 	"io"
 
 	git2go "github.com/libgit2/git2go/v34"
@@ -28,7 +29,7 @@ func (b *Blob) Contents() []byte {
 
 // Reader returns a reader for the blob contents.
 func (b *Blob) Reader() io.Reader {
-	return &blobReader{data: b.blob.Contents()}
+	return io.NopCloser(bytes.NewReader(b.blob.Contents()))
 }
 
 // Free releases the blob resources.
@@ -42,21 +43,4 @@ func (b *Blob) Free() {
 // Native returns the underlying libgit2 blob.
 func (b *Blob) Native() *git2go.Blob {
 	return b.blob
-}
-
-// blobReader implements [io.Reader] for blob contents.
-type blobReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *blobReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-
-	return n, nil
 }

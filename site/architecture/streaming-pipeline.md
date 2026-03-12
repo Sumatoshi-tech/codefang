@@ -80,7 +80,7 @@ flowchart LR
 ## The Planner
 
 The `streaming.Planner` calculates optimal chunk boundaries. It lives in
-`pkg/streaming/planner.go`.
+`internal/streaming/planner.go`.
 
 ### Parameters
 
@@ -112,7 +112,7 @@ aggState  = remaining * 0.30           (A = aggregator state / spill budget)
 chunkMem  = remaining * 0.10           (reserved for in-flight CommitData + TCs)
 ```
 
-The `ComputeSchedule()` function in `pkg/streaming/planner.go` performs this
+The `ComputeSchedule()` function in `internal/streaming/planner.go` performs this
 decomposition and returns a `Schedule` containing chunk boundaries, chunk size,
 buffering factor, and the aggregator spill budget.
 

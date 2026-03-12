@@ -286,6 +286,44 @@ devs_df = df.select("repo", explode("results.devs.authors").alias("author"))
 devs_df.write.partitionBy("scan_date").parquet("s3://warehouse/codefang/devs/")
 ```
 
+## Static Analysis Memory Monitoring
+
+The static analysis phase logs progress events at regular intervals (every
+1000 files). By default, only phase and file count are shown:
+
+```
+static: processing files=1000
+static: processing files=2000
+static: complete   files=5432
+```
+
+With `--verbose`, RSS and aggregator buffer sizes are included:
+
+```
+static: processing files=1000 RSS=245MiB agg=12MiB
+static: processing files=2000 RSS=312MiB agg=18MiB
+static: complete   files=5432 RSS=280MiB agg=6MiB
+```
+
+For live profiling, use `--profile` to start a pprof HTTP server on
+`localhost:6060` and a memory watchdog that dumps heap profiles when RSS
+exceeds 4 GiB.
+
+These logs appear every 1000 files and after completion. The budget solver
+(`budget.SolveStaticBudget`) automatically derives worker count and spill
+threshold from the memory budget:
+
+| Budget | Max Workers | Spill Threshold |
+|--------|-------------|-----------------|
+| 512 MiB | 4 | 5,461 |
+| 1 GiB | 8 | 17,476 |
+| 2 GiB | 8 | 41,530 |
+| 4 GiB | 8 | 89,641 |
+
+For text/compact output formats, the `SummaryOnly` aggregation mode is
+automatically enabled, reducing heap usage by ~97% (no per-function data
+retained in memory).
+
 ## Observability
 
 Codefang includes OpenTelemetry support for monitoring scan fleet health.

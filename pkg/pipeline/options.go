@@ -1,4 +1,8 @@
-// Package pipeline defines configuration option types for analysis pipeline items.
+// Package pipeline provides configuration option types for analysis pipeline items
+// and composable building blocks for concurrent pipeline construction: RunPC
+// (producer-consumer goroutine skeleton), Phase/RunPhases (chain-of-responsibility),
+// Batcher (batching strategies), DispatchFunc (dispatch strategy), and Fetcher
+// (cache decorator pattern).
 package pipeline
 
 import (

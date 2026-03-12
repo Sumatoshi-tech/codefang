@@ -277,11 +277,6 @@ func (parser *DSLParser) releaseParseContext(pctx *parseContext) {
 	parser.parseCtxPool.Put(pctx)
 }
 
-// newParseContext is a convenience alias used by tests and benchmarks.
-func (parser *DSLParser) newParseContext(tree *sitter.Tree, content []byte) *parseContext {
-	return parser.acquireParseContext(tree, content)
-}
-
 // getCursor returns a TreeCursor from the pool, or creates a new one.
 // Cursors are reused across recursive processChildren calls within a single parse.
 func (ctx *parseContext) getCursor(root sitter.Node) *sitter.TreeCursor {

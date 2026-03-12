@@ -97,7 +97,7 @@ codefang run -a static/complexity --format text .
     ===============================
 
     static/complexity:
-      pkg/framework/runner.go
+      internal/framework/runner.go
         Function RunPipeline            -- Cyclomatic: 12  Cognitive: 8
         Function buildPipeline          -- Cyclomatic: 7   Cognitive: 5
         Function initWorkers            -- Cyclomatic: 4   Cognitive: 3
@@ -125,7 +125,7 @@ codefang run -a static/halstead --format text .
 
     ```
     static/halstead:
-      pkg/framework/runner.go
+      internal/framework/runner.go
         Vocabulary: 142   Length: 389   Volume: 2776.4
         Difficulty: 28.3  Effort: 78572  Est. Bugs: 0.93
       pkg/uast/parser.go
@@ -197,7 +197,7 @@ the universal formats; some also support format-specific extras.
     {
       "static/complexity": {
         "files": {
-          "pkg/framework/runner.go": {
+          "internal/framework/runner.go": {
             "functions": [
               {
                 "name": "RunPipeline",
@@ -224,7 +224,7 @@ the universal formats; some also support format-specific extras.
     ===============================
 
     static/complexity:
-      pkg/framework/runner.go
+      internal/framework/runner.go
         Function RunPipeline        -- Cyclomatic: 12  Cognitive: 8
     ```
 
@@ -235,7 +235,7 @@ the universal formats; some also support format-specific extras.
     ```
 
     ```
-    complexity  pkg/framework/runner.go  RunPipeline  cyc=12  cog=8
+    complexity  internal/framework/runner.go  RunPipeline  cyc=12  cog=8
     complexity  pkg/uast/parser.go       Parse        cyc=6   cog=5
     ```
 

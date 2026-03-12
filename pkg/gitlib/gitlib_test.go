@@ -1980,6 +1980,71 @@ func TestRepositoryLogWithSince(t *testing.T) {
 	assert.GreaterOrEqual(t, count, 2)
 }
 
+func TestResolveTime_CommitSHA(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	hash := tr.commit("first")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	// Full SHA.
+	resolved, err := repo.ResolveTime(hash.String())
+	require.NoError(t, err)
+	assert.False(t, resolved.IsZero())
+
+	// Abbreviated SHA (first 7 chars).
+	short := hash.String()[:7]
+	resolved2, err := repo.ResolveTime(short)
+	require.NoError(t, err)
+	assert.Equal(t, resolved, resolved2)
+}
+
+func TestResolveTime_FallbackToParseTime(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	tr.commit("first")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	// Date-only format should still work through ResolveTime.
+	resolved, err := repo.ResolveTime("2024-01-01")
+	require.NoError(t, err)
+	assert.Equal(t, 2024, resolved.Year())
+}
+
+func TestResolveTime_InvalidInput(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.txt", "a")
+	tr.commit("first")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	_, err = repo.ResolveTime("not-a-time-or-sha")
+	require.Error(t, err)
+	require.ErrorIs(t, err, gitlib.ErrInvalidTimeFormat)
+}
+
 func TestFileContentsError(t *testing.T) {
 	t.Parallel()
 

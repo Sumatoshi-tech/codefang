@@ -1,5 +1,12 @@
 #!/bin/bash
 # deadcode-filter.sh - Filter deadcode output using whitelist
+#
+# Whitelist format: "unreachable func: <qualified_name>"
+# where qualified_name is exactly what deadcode prints after "unreachable func: "
+# Examples:
+#   mockReportSection.SectionTitle
+#   Allocator.Size
+#   Pretty
 
 set -e
 
@@ -29,43 +36,38 @@ if [ ! -f "$WHITELIST_FILE" ]; then
     exit 0
 fi
 
-# Extract function names from whitelist
-WHITELIST_FUNCTIONS=()
+# Build associative array of whitelisted function names for O(1) lookup.
+# Each entry is the exact qualified name as printed by deadcode
+# (e.g. "mockReportSection.SectionTitle", "Pretty").
+declare -A WHITELIST_SET
+WHITELIST_COUNT=0
 while IFS= read -r whitelist_line; do
     # Skip comments and empty lines
-    if [[ "$whitelist_line" =~ ^[[:space:]]*# ]] || [[ -z "$whitelist_line" ]]; then
-        continue
-    fi
+    [[ "$whitelist_line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${whitelist_line// /}" ]] && continue
 
-    # Extract function name (last part after the last colon)
-    func_name=$(echo "$whitelist_line" | sed 's/.*://' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Trim whitespace
+    func_name=$(echo "$whitelist_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     if [ -n "$func_name" ]; then
-        WHITELIST_FUNCTIONS+=("$func_name")
+        WHITELIST_SET["$func_name"]=1
+        WHITELIST_COUNT=$((WHITELIST_COUNT + 1))
     fi
 done < "$WHITELIST_FILE"
 
-# Filter out whitelisted functions
+# Filter out whitelisted functions using exact match on the qualified name.
+# deadcode output format: "path/to/file.go:line:col: unreachable func: QualifiedName"
 FILTERED_OUTPUT=""
 FILTERED_COUNT=0
 
 while IFS= read -r line; do
-    # Skip empty lines
-    if [ -z "$line" ]; then
-        continue
-    fi
+    [ -z "$line" ] && continue
 
-    # Check if this line contains any whitelisted function
-    WHITELISTED=false
-    for func_name in "${WHITELIST_FUNCTIONS[@]}"; do
-        if [[ "$line" == *"$func_name"* ]]; then
-            WHITELISTED=true
-            FILTERED_COUNT=$((FILTERED_COUNT + 1))
-            break
-        fi
-    done
+    # Extract the qualified function name after "unreachable func: "
+    dead_func="${line##*unreachable func: }"
 
-    # If not whitelisted, include in output
-    if [ "$WHITELISTED" = false ]; then
+    if [ -n "${WHITELIST_SET[$dead_func]+x}" ]; then
+        FILTERED_COUNT=$((FILTERED_COUNT + 1))
+    else
         FILTERED_OUTPUT="$FILTERED_OUTPUT$line"$'\n'
     fi
 done <<< "$DEADCODE_OUTPUT"
@@ -74,10 +76,10 @@ done <<< "$DEADCODE_OUTPUT"
 if [ -n "$FILTERED_OUTPUT" ]; then
     echo "$FILTERED_OUTPUT"
     echo ""
-    echo "Note: $FILTERED_COUNT functions whitelisted (interface requirements)"
+    echo "Note: $FILTERED_COUNT/$WHITELIST_COUNT whitelisted functions excluded"
     echo "Tip: Use 'deadcode -whylive <function>' to understand why a function is considered reachable"
     exit 1
 else
-    echo "✓ No dead code found (excluding $FILTERED_COUNT whitelisted functions)"
+    echo "✓ No dead code found (excluding $FILTERED_COUNT/$WHITELIST_COUNT whitelisted functions)"
     exit 0
 fi
