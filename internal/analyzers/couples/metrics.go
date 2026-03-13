@@ -2,6 +2,7 @@ package couples
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
@@ -277,8 +278,14 @@ func NewFileOwnershipMetric() *FileOwnershipMetric {
 // Uses HyperLogLog sketches per file to estimate contributor cardinality
 // instead of maintaining a map[int]bool per file. This reduces memory from
 // O(F × D) to O(F × 2^p) where p is the HLL precision.
+// Compute calculates file ownership data using default options.
 func (m *FileOwnershipMetric) Compute(input *ReportData) []FileOwnershipData {
-	fileSketches := buildFileContributorSketches(len(input.Files), input.PeopleFiles)
+	return m.ComputeWithOptions(input, DefaultMetricOptions())
+}
+
+// ComputeWithOptions calculates file ownership data with configurable HLL precision.
+func (m *FileOwnershipMetric) ComputeWithOptions(input *ReportData, opts MetricOptions) []FileOwnershipData {
+	fileSketches := buildFileContributorSketchesWithPrecision(len(input.Files), input.PeopleFiles, uint8(opts.HLLPrecision))
 	result := make([]FileOwnershipData, 0, len(input.Files))
 
 	for i, file := range input.Files {
@@ -305,9 +312,14 @@ func (m *FileOwnershipMetric) Compute(input *ReportData) []FileOwnershipData {
 // buildFileContributorSketches creates per-file HLL sketches and populates them
 // from the people-files mapping.
 func buildFileContributorSketches(numFiles int, peopleFiles [][]int) []*hll.Sketch {
+	return buildFileContributorSketchesWithPrecision(numFiles, peopleFiles, fileContribHLLPrecision)
+}
+
+// buildFileContributorSketchesWithPrecision creates per-file HLL sketches with custom precision.
+func buildFileContributorSketchesWithPrecision(numFiles int, peopleFiles [][]int, precision uint8) []*hll.Sketch {
 	sketches := make([]*hll.Sketch, numFiles)
 	for i := range sketches {
-		sketch, err := hll.New(fileContribHLLPrecision)
+		sketch, err := hll.New(precision)
 		if err != nil {
 			continue
 		}
@@ -356,10 +368,14 @@ type aggregateAccum struct {
 }
 
 func (a *aggregateAccum) addPair(coChanges, selfI, selfJ int64) {
+	a.addPairWithThreshold(coChanges, selfI, selfJ, CouplingThresholdHigh)
+}
+
+func (a *aggregateAccum) addPairWithThreshold(coChanges, selfI, selfJ, threshold int64) {
 	a.totalCoChanges += coChanges
 	a.pairCount++
 
-	if coChanges >= CouplingThresholdHigh {
+	if coChanges >= threshold {
 		a.highlyCoupled++
 	}
 
@@ -369,12 +385,14 @@ func (a *aggregateAccum) addPair(coChanges, selfI, selfJ int64) {
 	}
 }
 
-// Compute calculates aggregate statistics.
-func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
+// ComputeWithOptions calculates aggregate statistics with configurable thresholds.
+func (m *AggregateMetric) ComputeWithOptions(input *ReportData, opts MetricOptions) AggregateData {
 	agg := AggregateData{
 		TotalFiles:      len(input.Files),
 		TotalDevelopers: len(input.ReversedPeopleDict),
 	}
+
+	threshold := int64(opts.CouplingThresholdHigh)
 
 	var acc aggregateAccum
 
@@ -384,7 +402,7 @@ func (m *AggregateMetric) Compute(input *ReportData) AggregateData {
 				continue
 			}
 
-			acc.addPair(coChanges, row[i], input.FilesMatrix[j][j])
+			acc.addPairWithThreshold(coChanges, row[i], input.FilesMatrix[j][j], threshold)
 		}
 	}
 
@@ -414,15 +432,20 @@ const (
 
 // BucketOwnership groups file ownership data into contributor count categories.
 func BucketOwnership(ownership []FileOwnershipData) []OwnershipBucket {
+	return BucketOwnershipWithThresholds(ownership, ownershipFewThreshold, ownershipModerateThreshold)
+}
+
+// BucketOwnershipWithThresholds groups file ownership data with configurable thresholds.
+func BucketOwnershipWithThresholds(ownership []FileOwnershipData, fewThreshold, moderateThreshold int) []OwnershipBucket {
 	single, few, moderate, many := 0, 0, 0, 0
 
 	for _, fo := range ownership {
 		switch {
 		case fo.Contributors <= 1:
 			single++
-		case fo.Contributors <= ownershipFewThreshold:
+		case fo.Contributors <= fewThreshold:
 			few++
-		case fo.Contributors <= ownershipModerateThreshold:
+		case fo.Contributors <= moderateThreshold:
 			moderate++
 		default:
 			many++
@@ -431,9 +454,9 @@ func BucketOwnership(ownership []FileOwnershipData) []OwnershipBucket {
 
 	return []OwnershipBucket{
 		{Label: "Single owner", Count: single},
-		{Label: "2-3 owners", Count: few},
-		{Label: "4-5 owners", Count: moderate},
-		{Label: "6+ owners", Count: many},
+		{Label: fmt.Sprintf("2-%d owners", fewThreshold), Count: few},
+		{Label: fmt.Sprintf("%d-%d owners", fewThreshold+1, moderateThreshold), Count: moderate},
+		{Label: fmt.Sprintf("%d+ owners", moderateThreshold+1), Count: many},
 	}
 }
 
@@ -504,6 +527,25 @@ func FilterTopDevs(matrix []map[int]int64, names []string, limit int) (filtered 
 	return newMatrix, newNames
 }
 
+// MetricOptions holds configurable thresholds for couples metric computation.
+type MetricOptions struct {
+	CouplingThresholdHigh      int
+	OwnershipFewThreshold      int
+	OwnershipModerateThreshold int
+	BatchCouplingThreshold     int
+	HLLPrecision               int
+}
+
+// DefaultMetricOptions returns MetricOptions populated with package-level defaults.
+func DefaultMetricOptions() MetricOptions {
+	return MetricOptions{
+		CouplingThresholdHigh:      int(CouplingThresholdHigh),
+		OwnershipFewThreshold:      ownershipFewThreshold,
+		OwnershipModerateThreshold: ownershipModerateThreshold,
+		HLLPrecision:               int(fileContribHLLPrecision),
+	}
+}
+
 // --- Computed Metrics ---.
 
 // ComputedMetrics holds all computed metric results for the couples analyzer.
@@ -533,6 +575,11 @@ func (m *ComputedMetrics) ToYAML() any {
 
 // ComputeAllMetrics runs all couples metrics and returns the results.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+	return ComputeAllMetricsWithOptions(report, DefaultMetricOptions())
+}
+
+// ComputeAllMetricsWithOptions runs all couples metrics with configurable thresholds.
+func ComputeAllMetricsWithOptions(report analyze.Report, opts MetricOptions) (*ComputedMetrics, error) {
 	input, err := ParseReportData(report)
 	if err != nil {
 		return nil, err
@@ -545,10 +592,10 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	devCoupling := devMetric.Compute(input)
 
 	ownerMetric := NewFileOwnershipMetric()
-	fileOwnership := ownerMetric.Compute(input)
+	fileOwnership := ownerMetric.ComputeWithOptions(input, opts)
 
 	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(input)
+	aggregate := aggMetric.ComputeWithOptions(input, opts)
 
 	return &ComputedMetrics{
 		FileCoupling:      fileCoupling,

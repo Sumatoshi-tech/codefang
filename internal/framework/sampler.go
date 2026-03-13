@@ -40,12 +40,16 @@ type SamplerConfig struct {
 	DumpDir      string
 	ChunkIndex   int
 	MemBudget    int64
-	ProfileAtRSS int64 // RSS in bytes at which to capture t1 profile. 0 = disabled.
+	ProfileAtRSS int64         // RSS in bytes at which to capture t1 profile. 0 = disabled.
+	Interval     time.Duration // Polling interval. Zero uses default.
 }
 
 // NewPipelineSampler creates a sampler. Call Start to begin periodic logging.
 func NewPipelineSampler(cfg SamplerConfig) *PipelineSampler {
-	interval := samplerInterval
+	interval := cfg.Interval
+	if interval <= 0 {
+		interval = samplerInterval
+	}
 
 	return &PipelineSampler{
 		logger:       cfg.Logger,

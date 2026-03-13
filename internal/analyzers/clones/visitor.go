@@ -13,14 +13,20 @@ import (
 // It collects function nodes during traversal and exports MinHash signatures
 // for cross-file clone detection by the aggregator.
 type Visitor struct {
-	functions []*node.Node
-	shingler  *Shingler
+	functions       []*node.Node
+	shingler        *Shingler
+	numHashes       int
+	similarityType2 float64
+	similarityType3 float64
 }
 
 // NewVisitor creates a new clone detection Visitor.
 func NewVisitor() *Visitor {
 	return &Visitor{
-		shingler: NewShingler(defaultShingleSize),
+		shingler:        NewShingler(defaultShingleSize),
+		numHashes:       numHashes,
+		similarityType2: similarityType2,
+		similarityType3: similarityType3,
 	}
 }
 
@@ -58,7 +64,7 @@ func (v *Visitor) buildSignatures() []funcEntry {
 			continue
 		}
 
-		sig, err := minhash.New(numHashes)
+		sig, err := minhash.New(v.numHashes)
 		if err != nil {
 			continue
 		}
@@ -104,17 +110,17 @@ func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Repor
 // findClonePairs queries the LSH index and collects unique clone pairs.
 // pairCap limits the stored pairs slice (0 = unlimited). The returned totalCount
 // reflects ALL unique pairs found, regardless of the cap.
-func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int) (pairs []ClonePair, totalCount int) {
+func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int, minSimilarity float64) (pairs []ClonePair, totalCount int) {
 	seen := make(map[PairKey]bool)
 	sigMap := buildSignatureMap(entries)
 
 	for _, entry := range entries {
-		candidates, err := idx.QueryThreshold(entry.sig, similarityType3)
+		candidates, err := idx.QueryThreshold(entry.sig, minSimilarity)
 		if err != nil {
 			continue
 		}
 
-		pairs, totalCount = matchCandidates(entry, candidates, sigMap, seen, pairs, totalCount, pairCap)
+		pairs, totalCount = matchCandidates(entry, candidates, sigMap, seen, pairs, totalCount, pairCap, minSimilarity)
 	}
 
 	sort.Slice(pairs, func(i, j int) bool {
@@ -145,6 +151,7 @@ func matchCandidates(
 	pairs []ClonePair,
 	totalCount int,
 	pairCap int,
+	minSimilarity float64,
 ) (updatedPairs []ClonePair, updatedCount int) {
 	for _, candidateID := range candidates {
 		if candidateID == entry.name {
@@ -158,7 +165,7 @@ func matchCandidates(
 
 		seen[key] = true
 
-		pair, ok := computeClonePair(entry, candidateID, sigMap)
+		pair, ok := computeClonePair(entry, candidateID, sigMap, minSimilarity)
 		if ok {
 			totalCount++
 
@@ -172,7 +179,7 @@ func matchCandidates(
 }
 
 // computeClonePair computes a clone pair between an entry and a candidate.
-func computeClonePair(entry funcEntry, candidateID string, sigMap map[string]*minhash.Signature) (ClonePair, bool) {
+func computeClonePair(entry funcEntry, candidateID string, sigMap map[string]*minhash.Signature, minSimilarity float64) (ClonePair, bool) {
 	candidateSig := sigMap[candidateID]
 	if candidateSig == nil {
 		return ClonePair{}, false
@@ -183,7 +190,7 @@ func computeClonePair(entry funcEntry, candidateID string, sigMap map[string]*mi
 		return ClonePair{}, false
 	}
 
-	if similarity < similarityType3 {
+	if similarity < minSimilarity {
 		return ClonePair{}, false
 	}
 

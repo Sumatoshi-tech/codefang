@@ -25,6 +25,13 @@ type UASTPipeline struct {
 	Workers    int
 	BufferSize int
 	PathFilter *pathfilter.Filter
+
+	SpillThreshold            int
+	IntraCommitParallelThresh int
+	MaxIntraCommitWorkers     int
+	MaxBlobSize               int
+	ParseTimeout              time.Duration
+	SpillTrimInterval         int
 }
 
 // NewUASTPipeline creates a new UAST pipeline stage.
@@ -38,10 +45,16 @@ func NewUASTPipeline(parser *uast.Parser, workers, bufferSize int) *UASTPipeline
 	}
 
 	return &UASTPipeline{
-		Parser:     parser,
-		Workers:    workers,
-		BufferSize: bufferSize,
-		PathFilter: pathfilter.New(),
+		Parser:                    parser,
+		Workers:                   workers,
+		BufferSize:                bufferSize,
+		PathFilter:                pathfilter.New(),
+		SpillThreshold:            uastSpillThreshold,
+		IntraCommitParallelThresh: intraCommitParallelThreshold,
+		MaxIntraCommitWorkers:     defaultMaxIntraCommitWorkers,
+		MaxBlobSize:               maxUASTBlobSize,
+		ParseTimeout:              defaultParseTimeout,
+		SpillTrimInterval:         uastSpillTrimInterval,
 	}
 }
 
@@ -113,8 +126,9 @@ func (p *UASTPipeline) startWorkers(ctx context.Context, jobs <-chan *uastSlot) 
 		go func() {
 			defer wg.Done()
 
+			spillThresh := p.SpillThreshold
 			for slot := range jobs {
-				if len(slot.data.Changes) > uastSpillThreshold {
+				if len(slot.data.Changes) > spillThresh {
 					path, err := p.parseCommitAndSpill(ctx, slot.data.Changes, slot.data.BlobCache)
 					if err != nil {
 						log.Printf("UAST spill error: %v", err)
@@ -167,6 +181,10 @@ const uastSpillThreshold = 32
 // Every N files, reclaim C arena pages to prevent fragmentation buildup.
 const uastSpillTrimInterval = 16
 
+// defaultMaxIntraCommitWorkers caps the goroutine count for parsing files within
+// a single commit. Keeping this small avoids excessive concurrency.
+const defaultMaxIntraCommitWorkers = 4
+
 // intraCommitParallelThreshold is the minimum number of file changes in a commit
 // before intra-commit parallelism is used. Below this, sequential parsing is faster.
 const intraCommitParallelThreshold = 4
@@ -189,7 +207,7 @@ func (p *UASTPipeline) parseCommitChanges(
 		return nil
 	}
 
-	if len(changes) <= intraCommitParallelThreshold {
+	if len(changes) <= p.IntraCommitParallelThresh {
 		return p.parseCommitSequential(ctx, changes, cache)
 	}
 
@@ -237,11 +255,7 @@ func (p *UASTPipeline) parseCommitParallel(
 	jobs := make(chan *gitlib.Change, len(changes))
 	results := make(chan uastFileResult, len(changes))
 
-	// maxIntraCommitWorkers caps the goroutine count for parsing files within
-	// a single commit. Keeping this small avoids excessive concurrency.
-	const maxIntraCommitWorkers = 4
-
-	numWorkers := min(maxIntraCommitWorkers, len(changes))
+	numWorkers := min(p.MaxIntraCommitWorkers, len(changes))
 
 	var wg sync.WaitGroup
 
@@ -335,7 +349,7 @@ func (p *UASTPipeline) parseCommitAndSpill(
 		wrote++
 
 		// Periodically reclaim C arena pages during long sequential parsing.
-		if wrote%uastSpillTrimInterval == 0 {
+		if wrote%p.SpillTrimInterval == 0 {
 			uast.MallocTrim()
 		}
 	}
@@ -398,7 +412,7 @@ func (p *UASTPipeline) parseBlob(
 		return nil
 	}
 
-	if len(blob.Data) > maxUASTBlobSize {
+	if len(blob.Data) > p.MaxBlobSize {
 		return nil
 	}
 
@@ -410,9 +424,7 @@ func (p *UASTPipeline) parseBlob(
 	// Tree-sitter can exhibit pathological behavior on some files (e.g., deeply
 	// nested JSON, certain generated code patterns) causing unbounded native
 	// memory growth. The timeout triggers the cancellation flag to stop the parse.
-	const parseTimeout = 10 * time.Second
-
-	parseCtx, cancel := context.WithTimeout(ctx, parseTimeout)
+	parseCtx, cancel := context.WithTimeout(ctx, p.ParseTimeout)
 	defer cancel()
 
 	parsed, err := p.Parser.Parse(parseCtx, filename, blob.Data)
@@ -422,3 +434,6 @@ func (p *UASTPipeline) parseBlob(
 
 	return parsed
 }
+
+// defaultParseTimeout is the per-file UAST parse timeout.
+const defaultParseTimeout = 10 * time.Second

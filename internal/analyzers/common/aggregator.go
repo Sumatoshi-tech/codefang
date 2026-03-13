@@ -2,6 +2,8 @@
 package common
 
 import (
+	"sync"
+
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
@@ -13,6 +15,7 @@ var (
 
 // Aggregator provides generic aggregation capabilities for analyzers.
 type Aggregator struct {
+	mu                 sync.Mutex
 	metricsProcessor   *MetricsProcessor
 	dataCollector      *SpillableDataCollector
 	resultBuilder      *ResultBuilder
@@ -52,6 +55,9 @@ func NewAggregator(
 
 // Aggregate combines multiple analysis results.
 func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	for _, report := range results {
 		if report == nil {
 			continue
@@ -135,6 +141,9 @@ func (a *Aggregator) GetResultBuilder() *ResultBuilder {
 // EstimatedStateSize returns the estimated in-memory state size in bytes.
 // Sums MetricsProcessor and SpillableDataCollector estimates.
 func (a *Aggregator) EstimatedStateSize() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	return a.metricsProcessor.EstimatedStateBytes() + a.dataCollector.EstimatedBufferBytes()
 }
 

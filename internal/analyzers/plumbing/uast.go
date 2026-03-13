@@ -22,14 +22,16 @@ import (
 // UASTChangesAnalyzer extracts UAST-level changes between commits.
 // It uses lazy parsing - changes are only parsed when Changes() is called.
 type UASTChangesAnalyzer struct {
-	TreeDiff   *TreeDiffAnalyzer
-	BlobCache  *BlobCacheAnalyzer
-	Goroutines int
-	parser     *uast.Parser
-	pathFilter *pathfilter.Filter
-	changes    []uast.Change
-	parsed     bool   // tracks whether parsing was done for current commit.
-	spillPath  string // path to spill file from current commit (for cleanup on next Consume).
+	TreeDiff     *TreeDiffAnalyzer
+	BlobCache    *BlobCacheAnalyzer
+	Goroutines   int
+	MaxBlobSize  int           // Maximum blob size for parsing. Zero uses default.
+	ParseTimeout time.Duration // Timeout per file. Zero uses default.
+	parser       *uast.Parser
+	pathFilter   *pathfilter.Filter
+	changes      []uast.Change
+	parsed       bool   // tracks whether parsing was done for current commit.
+	spillPath    string // path to spill file from current commit (for cleanup on next Consume).
 }
 
 const (
@@ -317,7 +319,12 @@ func (c *UASTChangesAnalyzer) parseBlob(
 		return nil
 	}
 
-	if len(blob.Data) > maxUASTBlobSize {
+	blobLimit := c.MaxBlobSize
+	if blobLimit <= 0 {
+		blobLimit = maxUASTBlobSize
+	}
+
+	if len(blob.Data) > blobLimit {
 		return nil
 	}
 
@@ -326,7 +333,12 @@ func (c *UASTChangesAnalyzer) parseBlob(
 		return nil
 	}
 
-	parseCtx, cancel := context.WithTimeout(ctx, uastParseTimeout)
+	timeout := c.ParseTimeout
+	if timeout <= 0 {
+		timeout = uastParseTimeout
+	}
+
+	parseCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	parsed, err := c.parser.Parse(parseCtx, filename, blob.Data)

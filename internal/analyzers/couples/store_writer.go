@@ -53,7 +53,7 @@ func (c *HistoryAnalyzer) WriteToStoreFromAggregator(
 		return ErrUnexpectedAggregator
 	}
 
-	minWeight := c.minEdgeWeight()
+	minWeight := c.MinEdgeWeight
 
 	reducedFiles, reducedPeople, err := c.collectAndReduce(ctx, ca, minWeight)
 	if err != nil {
@@ -62,7 +62,7 @@ func (c *HistoryAnalyzer) WriteToStoreFromAggregator(
 
 	filesSequence, filesIndex := buildFilesIndex(reducedFiles)
 
-	fcErr := writeFileCoupling(w, reducedFiles, filesSequence, filesIndex, c.topKPerFile(), minWeight)
+	fcErr := writeFileCoupling(w, reducedFiles, filesSequence, filesIndex, c.TopKPerFile, minWeight)
 	if fcErr != nil {
 		return fmt.Errorf("write file_coupling: %w", fcErr)
 	}
@@ -157,24 +157,6 @@ func (c *HistoryAnalyzer) collectUnfiltered(
 	reducedPeople := reducePeople(ca.people, matcher)
 
 	return reducedFiles, reducedPeople, nil
-}
-
-// topKPerFile returns the configured TopK or the default.
-func (c *HistoryAnalyzer) topKPerFile() int {
-	if c.TopKPerFile > 0 {
-		return c.TopKPerFile
-	}
-
-	return DefaultTopKPerFile
-}
-
-// minEdgeWeight returns the configured MinEdgeWeight or the default.
-func (c *HistoryAnalyzer) minEdgeWeight() int64 {
-	if c.MinEdgeWeight > 0 {
-		return c.MinEdgeWeight
-	}
-
-	return DefaultMinEdgeWeight
 }
 
 // writeFileCoupling computes top-K file coupling pairs from the sparse map

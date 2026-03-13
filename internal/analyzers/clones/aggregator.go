@@ -15,13 +15,19 @@ type Aggregator struct {
 	totalFunctions int
 	// MaxClonePairs limits the number of clone pairs stored in the report detail.
 	// The total_clone_pairs count remains exact. Zero means unlimited.
-	MaxClonePairs int
+	MaxClonePairs   int
+	NumBands        int
+	NumRows         int
+	SimilarityType3 float64
 }
 
 // NewAggregator creates a new clone detection aggregator.
 func NewAggregator() *Aggregator {
 	return &Aggregator{
-		MaxClonePairs: DefaultMaxClonePairs,
+		MaxClonePairs:   DefaultMaxClonePairs,
+		NumBands:        numBands,
+		NumRows:         numRows,
+		SimilarityType3: similarityType3,
 	}
 }
 
@@ -126,7 +132,7 @@ func (a *Aggregator) detectGlobalClones() (pairs []ClonePair, totalCount int) {
 		return nil, 0
 	}
 
-	idx, err := lsh.New(numBands, numRows)
+	idx, err := lsh.New(a.NumBands, a.NumRows)
 	if err != nil {
 		return nil, 0
 	}
@@ -138,7 +144,7 @@ func (a *Aggregator) detectGlobalClones() (pairs []ClonePair, totalCount int) {
 		}
 	}
 
-	return findClonePairs(a.entries, idx, a.MaxClonePairs)
+	return findClonePairs(a.entries, idx, a.MaxClonePairs, a.SimilarityType3)
 }
 
 // qualifyFuncName returns "sourceFile::name" if sourceFile is non-empty,

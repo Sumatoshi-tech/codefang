@@ -294,7 +294,7 @@ func TestFileOwnershipMetric_Empty(t *testing.T) {
 	m := NewFileOwnershipMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	assert.Empty(t, result)
 }
@@ -309,7 +309,7 @@ func TestFileOwnershipMetric_SingleFile(t *testing.T) {
 		PeopleFiles: [][]int{{0}}, // dev0 touched file0.
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	require.Len(t, result, 1)
 	assert.Equal(t, testFile1, result[0].File)
@@ -331,7 +331,7 @@ func TestFileOwnershipMetric_MultipleContributors(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	require.Len(t, result, 2)
 	// file0 - touched by dev0 and dev1.
@@ -353,7 +353,7 @@ func TestFileOwnershipMetric_MissingFilesLines(t *testing.T) {
 		FilesLines: []int{100}, // Only 1 entry for 2 files.
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	require.Len(t, result, 2)
 	assert.Equal(t, 100, result[0].Lines)
@@ -370,7 +370,7 @@ func TestFileOwnershipMetric_OutOfBoundsFileIndex(t *testing.T) {
 		PeopleFiles: [][]int{{0, 5}}, // Index 5 is out of bounds.
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	require.Len(t, result, 1)
 	assert.Equal(t, 1, result[0].Contributors) // Only valid index counted.
@@ -395,7 +395,7 @@ func TestCouplesAggregateMetric_Empty(t *testing.T) {
 	m := NewAggregateMetric()
 	input := &ReportData{}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	assert.Equal(t, 0, result.TotalFiles)
 	assert.Equal(t, 0, result.TotalDevelopers)
@@ -418,7 +418,7 @@ func TestCouplesAggregateMetric_WithData(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	assert.Equal(t, 3, result.TotalFiles)
 	assert.Equal(t, 2, result.TotalDevelopers)
@@ -446,7 +446,7 @@ func TestCouplesAggregateMetric_HighlyCoupledThreshold(t *testing.T) {
 		},
 	}
 
-	result := m.Compute(input)
+	result := m.ComputeWithOptions(input, DefaultMetricOptions())
 
 	// 10 is exactly at threshold CouplingThresholdHigh.
 	assert.Equal(t, 1, result.HighlyCoupledPairs)

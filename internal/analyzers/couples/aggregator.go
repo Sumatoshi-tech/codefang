@@ -51,6 +51,10 @@ type Aggregator struct {
 	reversedNames []string
 	lastCommit    analyze.CommitLike
 	closed        bool
+
+	// cfgBatchCouplingThreshold overrides the default batchCouplingThreshold.
+	// Zero uses the package-level default.
+	cfgBatchCouplingThreshold int
 }
 
 func newAggregator(
@@ -58,6 +62,7 @@ func newAggregator(
 	peopleNumber int,
 	reversedNames []string,
 	lastCommit analyze.CommitLike,
+	batchThreshold int,
 ) *Aggregator {
 	people := make([]map[string]int, peopleNumber+1)
 	for i := range people {
@@ -65,15 +70,16 @@ func newAggregator(
 	}
 
 	return &Aggregator{
-		files:         spillstore.New[map[string]int](opts.SpillDir),
-		people:        people,
-		peopleCommits: make([]int, peopleNumber+1),
-		commitStats:   make(map[string]*CommitSummary),
-		commitsByTick: make(map[int][]gitlib.Hash),
-		opts:          opts,
-		peopleNumber:  peopleNumber,
-		reversedNames: reversedNames,
-		lastCommit:    lastCommit,
+		files:                     spillstore.New[map[string]int](opts.SpillDir),
+		people:                    people,
+		peopleCommits:             make([]int, peopleNumber+1),
+		commitStats:               make(map[string]*CommitSummary),
+		commitsByTick:             make(map[int][]gitlib.Hash),
+		opts:                      opts,
+		peopleNumber:              peopleNumber,
+		reversedNames:             reversedNames,
+		lastCommit:                lastCommit,
+		cfgBatchCouplingThreshold: batchThreshold,
 	}
 }
 
@@ -125,6 +131,15 @@ func (a *Aggregator) addAuthorFiles(authorFiles map[string]int, author int) {
 // lane maps with the known coupling set size to reduce map growth overhead.
 const batchCouplingThreshold = 100
 
+// effectiveBatchCouplingThreshold returns the configured or default batch coupling threshold.
+func (a *Aggregator) effectiveBatchCouplingThreshold() int {
+	if a.cfgBatchCouplingThreshold > 0 {
+		return a.cfgBatchCouplingThreshold
+	}
+
+	return batchCouplingThreshold
+}
+
 // addFileCouplings updates the file co-occurrence matrix.
 //
 // For large commits (>= batchCouplingThreshold files), pre-allocates lane
@@ -132,13 +147,14 @@ const batchCouplingThreshold = 100
 // insertions.
 func (a *Aggregator) addFileCouplings(couplingFiles []string) {
 	n := len(couplingFiles)
+	threshold := a.effectiveBatchCouplingThreshold()
 
 	for _, file := range couplingFiles {
 		lane, ok := a.files.Get(file)
 		if !ok {
 			// Pre-allocate to the known size for large commits.
 			initCap := 0
-			if n >= batchCouplingThreshold {
+			if n >= threshold {
 				initCap = n
 			}
 

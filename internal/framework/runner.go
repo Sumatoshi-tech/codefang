@@ -970,7 +970,7 @@ func (runner *Runner) processCommitsSerial(
 
 		// Periodically release native (C malloc) memory back to the OS to prevent
 		// tree-sitter/libgit2 fragmentation from accumulating within a chunk.
-		if commitIdx%nativeTrimInterval == 0 {
+		if runner.Config.NativeTrimInterval > 0 && commitIdx%runner.Config.NativeTrimInterval == 0 {
 			gitlib.ReleaseNativeMemory()
 		}
 	}
@@ -1374,7 +1374,7 @@ func (runner *Runner) hybridCommitLoop(
 
 		// Periodically release native (C malloc) memory back to the OS to prevent
 		// tree-sitter/libgit2 fragmentation from accumulating within a chunk.
-		if commitIdx%nativeTrimInterval == 0 {
+		if runner.Config.NativeTrimInterval > 0 && commitIdx%runner.Config.NativeTrimInterval == 0 {
 			gitlib.ReleaseNativeMemory()
 		}
 	}

@@ -749,6 +749,20 @@ func parseBoolFlag(cmd *cobra.Command, name string) *bool {
 	return &v
 }
 
+// applyIfZero sets *dst to src if *dst is zero (not explicitly set by CLI flags).
+func applyIfZero(dst *int, src int) {
+	if *dst == 0 && src != 0 {
+		*dst = src
+	}
+}
+
+// applyIfZeroStr sets *dst to src if *dst is empty.
+func applyIfZeroStr(dst *string, src string) {
+	if *dst == "" && src != "" {
+		*dst = src
+	}
+}
+
 // collectAnalyzerFlags reads CLI flag overrides for all registered analyzer configuration options.
 func collectAnalyzerFlags(cmd *cobra.Command) map[string]any {
 	flags := make(map[string]any)
@@ -953,7 +967,7 @@ func runHistoryAnalyzers(
 	return executeHistoryPipeline(
 		ctx, result.pipeline, path, result.selectedLeaves,
 		result.commits, result.commitIter, result.commitCount,
-		result.analyzerKeys, pipelineFormat, result.opts, result.repository, writer,
+		result.analyzerKeys, pipelineFormat, result.opts, result.fileCfg, result.repository, writer,
 	)
 }
 
@@ -968,6 +982,7 @@ type initResult struct {
 	analyzerKeys   []string
 	format         string
 	opts           HistoryRunOptions
+	fileCfg        *cfgpkg.Config // Loaded config file (may be nil).
 }
 
 // initHistoryPipeline performs the initialization phase: builds the pipeline,
@@ -1035,7 +1050,7 @@ func initHeadOnly(
 		return initResult{}, loadErr
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, opts)
+	selectedLeaves, fileCfg, configErr := configureAndSelect(pl, analyzerKeys, opts)
 	if configErr != nil {
 		repository.Free()
 
@@ -1055,6 +1070,7 @@ func initHeadOnly(
 		analyzerKeys:   analyzerKeys,
 		format:         normalizedFormat,
 		opts:           opts,
+		fileCfg:        fileCfg,
 	}, nil
 }
 
@@ -1104,7 +1120,7 @@ func initStreamingIterator(
 		return initResult{}, fmt.Errorf("failed to create commit iterator: %w", err)
 	}
 
-	selectedLeaves, configErr := configureAndSelect(pl, analyzerKeys, opts)
+	selectedLeaves, fileCfg, configErr := configureAndSelect(pl, analyzerKeys, opts)
 	if configErr != nil {
 		iter.Close()
 		repository.Free()
@@ -1127,13 +1143,16 @@ func initStreamingIterator(
 		analyzerKeys:   analyzerKeys,
 		format:         normalizedFormat,
 		opts:           opts,
+		fileCfg:        fileCfg,
 	}, nil
 }
 
 // configureAndSelect configures core analyzers with facts and selects leaf analyzers.
 // When configFile is non-empty, it loads analyzer settings from the given config file
 // and applies them to facts before configuring analyzers.
-func configureAndSelect(pl *historyPipeline, analyzerKeys []string, opts HistoryRunOptions) ([]analyze.HistoryAnalyzer, error) {
+func configureAndSelect(
+	pl *historyPipeline, analyzerKeys []string, opts HistoryRunOptions,
+) ([]analyze.HistoryAnalyzer, *cfgpkg.Config, error) {
 	facts := buildFacts(pl, opts)
 
 	if opts.TmpDir != "" {
@@ -1143,7 +1162,7 @@ func configureAndSelect(pl *historyPipeline, analyzerKeys []string, opts History
 	// Apply file-based configuration if provided.
 	cfg, cfgErr := cfgpkg.LoadConfig(opts.ConfigFile)
 	if cfgErr != nil {
-		return nil, fmt.Errorf("load config: %w", cfgErr)
+		return nil, nil, fmt.Errorf("load config: %w", cfgErr)
 	}
 
 	cfg.ApplyToFacts(facts)
@@ -1152,15 +1171,61 @@ func configureAndSelect(pl *historyPipeline, analyzerKeys []string, opts History
 	// (e.g. TicksSinceStart publishes FactCommitsByTick) that leaves depend on.
 	err := configureAnalyzers(pl.Core, facts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	selectedLeaves, err := selectLeaves(pl.Leaves, analyzerKeys, facts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return selectedLeaves, nil
+	return selectedLeaves, cfg, nil
+}
+
+func buildConfigParams(opts HistoryRunOptions, fileCfg *cfgpkg.Config) framework.ConfigParams {
+	params := framework.ConfigParams{
+		Workers:         opts.Workers,
+		BufferSize:      opts.BufferSize,
+		CommitBatchSize: opts.CommitBatchSize,
+		BlobCacheSize:   opts.BlobCacheSize,
+		DiffCacheSize:   opts.DiffCacheSize,
+		BlobArenaSize:   opts.BlobArenaSize,
+		MemoryBudget:    opts.MemoryBudget,
+		GCPercent:       opts.GCPercent,
+		BallastSize:     opts.BallastSize,
+	}
+
+	if fileCfg != nil {
+		applyPipelineConfigParams(&params, fileCfg.Pipeline)
+	}
+
+	return params
+}
+
+func applyPipelineConfigParams(params *framework.ConfigParams, p cfgpkg.PipelineConfig) {
+	applyIfZero(&params.UASTSpillThreshold, p.UASTSpillThreshold)
+	applyIfZero(&params.IntraCommitParallelThreshold, p.IntraCommitParallelThreshold)
+	applyIfZero(&params.MaxIntraCommitWorkers, p.MaxIntraCommitWorkers)
+	applyIfZero(&params.MaxUASTBlobSize, p.MaxUASTBlobSize)
+	applyIfZeroStr(&params.UASTParseTimeout, p.UASTParseTimeout)
+	applyIfZero(&params.MaxChangesPerCommit, p.MaxChangesPerCommit)
+	applyIfZero(&params.MaxDiffBatchSize, p.MaxDiffBatchSize)
+	applyIfZero(&params.MemoryBudgetRatio, p.MemoryBudgetRatio)
+	applyIfZeroStr(&params.MemoryBudgetCap, p.MemoryBudgetCap)
+	applyIfZero(&params.MemoryLimitRatio, p.MemoryLimitRatio)
+	applyIfZero(&params.UASTSpillTrimInterval, p.UASTSpillTrimInterval)
+	applyIfZero(&params.NativeTrimInterval, p.NativeTrimInterval)
+	applyIfZero(&params.MaxStreamingBuffering, p.MaxStreamingBuffering)
+	applyIfZeroStr(&params.DrainPrefetchTimeout, p.DrainPrefetchTimeout)
+	applyIfZeroStr(&params.SamplerInterval, p.SamplerInterval)
+	applyIfZero(&params.WorkerRatio, p.WorkerRatio)
+	applyIfZero(&params.UASTWorkerRatio, p.UASTWorkerRatio)
+	applyIfZero(&params.LeafWorkerDivisor, p.LeafWorkerDivisor)
+	applyIfZero(&params.MinLeafWorkers, p.MinLeafWorkers)
+	applyIfZero(&params.BufferSizeMultiplier, p.BufferSizeMultiplier)
+	applyIfZero(&params.BudgetLimitRatio, p.BudgetLimitRatio)
+	applyIfZero(&params.SystemRAMLimitRatio, p.SystemRAMLimitRatio)
+	applyIfZero(&params.DiffJobBufferMultiplier, p.DiffJobBufferMultiplier)
 }
 
 func executeHistoryPipeline(
@@ -1174,6 +1239,7 @@ func executeHistoryPipeline(
 	analyzerKeys []string,
 	normalizedFormat string,
 	opts HistoryRunOptions,
+	fileCfg *cfgpkg.Config,
 	repository *gitlib.Repository,
 	writer io.Writer,
 ) error {
@@ -1183,17 +1249,9 @@ func executeHistoryPipeline(
 	allAnalyzers = append(allAnalyzers, pl.Core...)
 	allAnalyzers = append(allAnalyzers, selectedLeaves...)
 
-	coordConfig, memBudget, err := framework.BuildConfigFromParams(framework.ConfigParams{
-		Workers:         opts.Workers,
-		BufferSize:      opts.BufferSize,
-		CommitBatchSize: opts.CommitBatchSize,
-		BlobCacheSize:   opts.BlobCacheSize,
-		DiffCacheSize:   opts.DiffCacheSize,
-		BlobArenaSize:   opts.BlobArenaSize,
-		MemoryBudget:    opts.MemoryBudget,
-		GCPercent:       opts.GCPercent,
-		BallastSize:     opts.BallastSize,
-	}, budget.SolveForBudget)
+	params := buildConfigParams(opts, fileCfg)
+
+	coordConfig, memBudget, err := framework.BuildConfigFromParams(params, budget.SolveForBudget)
 	if err != nil {
 		return err
 	}

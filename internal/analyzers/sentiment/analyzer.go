@@ -47,6 +47,18 @@ const (
 	ConfigCommentSentimentMinLength = "CommentSentiment.MinLength"
 	// ConfigCommentSentimentGap is the configuration key for the sentiment gap threshold.
 	ConfigCommentSentimentGap = "CommentSentiment.Gap"
+	// ConfigCommentSentimentNeutralizerWeight is the configuration key for the SE domain neutralizer weight.
+	ConfigCommentSentimentNeutralizerWeight = "CommentSentiment.NeutralizerWeight"
+	// ConfigCommentSentimentMaxWeightRatio is the configuration key for the max comment weight ratio.
+	ConfigCommentSentimentMaxWeightRatio = "CommentSentiment.MaxWeightRatio"
+	// ConfigCommentSentimentPositiveThreshold is the config key for the positive sentiment classification threshold.
+	ConfigCommentSentimentPositiveThreshold = "CommentSentiment.PositiveThreshold"
+	// ConfigCommentSentimentNegativeThreshold is the config key for the negative sentiment classification threshold.
+	ConfigCommentSentimentNegativeThreshold = "CommentSentiment.NegativeThreshold"
+	// ConfigCommentSentimentTrendThreshold is the config key for the trend direction threshold.
+	ConfigCommentSentimentTrendThreshold = "CommentSentiment.TrendThreshold"
+	// ConfigCommentSentimentLowRiskThreshold is the config key for the low sentiment risk threshold.
+	ConfigCommentSentimentLowRiskThreshold = "CommentSentiment.LowSentimentRiskThreshold"
 
 	// DefaultCommentSentimentCommentMinLength is the default minimum comment length for sentiment analysis.
 	DefaultCommentSentimentCommentMinLength = 20
@@ -79,11 +91,26 @@ type Analyzer struct {
 	commitsByTick    map[int][]gitlib.Hash
 	MinCommentLength int
 	Gap              float32
+
+	// Configurable scoring parameters (zero = use package-level defaults).
+	cfgNeutralizerWeight float64
+	cfgMaxWeightRatio    float64
+
+	// Configurable metrics thresholds.
+	cfgPositiveThreshold      float64
+	cfgNegativeThreshold      float64
+	cfgTrendThreshold         float64
+	cfgLowSentimentRiskThresh float64
 }
 
 // NewAnalyzer creates a new sentiment analyzer.
 func NewAnalyzer() *Analyzer {
-	a := &Analyzer{}
+	a := &Analyzer{
+		cfgPositiveThreshold:      SentimentPositiveThreshold,
+		cfgNegativeThreshold:      SentimentNegativeThreshold,
+		cfgTrendThreshold:         trendThreshold,
+		cfgLowSentimentRiskThresh: lowSentimentRiskThreshold,
+	}
 	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
 		Desc: analyze.Descriptor{
 			ID:          "history/sentiment",
@@ -108,8 +135,10 @@ func NewAnalyzer() *Analyzer {
 				Default:     DefaultCommentSentimentGap,
 			},
 		},
-		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
-		AggregatorFn:     newAggregator,
+		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
+			return ComputeAllMetricsWithOptions(report, a.metricOptions())
+		},
+		AggregatorFn: newAggregator,
 	}
 
 	a.TicksToReportFn = func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
@@ -164,6 +193,30 @@ func (s *Analyzer) Configure(facts map[string]any) error {
 		s.MinCommentLength = val
 	}
 
+	if val, ok := facts[ConfigCommentSentimentNeutralizerWeight].(float64); ok {
+		s.cfgNeutralizerWeight = val
+	}
+
+	if val, ok := facts[ConfigCommentSentimentMaxWeightRatio].(float64); ok {
+		s.cfgMaxWeightRatio = val
+	}
+
+	if val, ok := facts[ConfigCommentSentimentPositiveThreshold].(float64); ok {
+		s.cfgPositiveThreshold = val
+	}
+
+	if val, ok := facts[ConfigCommentSentimentNegativeThreshold].(float64); ok {
+		s.cfgNegativeThreshold = val
+	}
+
+	if val, ok := facts[ConfigCommentSentimentTrendThreshold].(float64); ok {
+		s.cfgTrendThreshold = val
+	}
+
+	if val, ok := facts[ConfigCommentSentimentLowRiskThreshold].(float64); ok {
+		s.cfgLowSentimentRiskThresh = val
+	}
+
 	if val, ok := pkgplumbing.GetCommitsByTick(facts); ok {
 		s.commitsByTick = val
 	}
@@ -171,6 +224,16 @@ func (s *Analyzer) Configure(facts map[string]any) error {
 	s.validate()
 
 	return nil
+}
+
+// metricOptions returns the configured sentiment metric options.
+func (s *Analyzer) metricOptions() MetricOptions {
+	return MetricOptions{
+		PositiveThreshold:      s.cfgPositiveThreshold,
+		NegativeThreshold:      s.cfgNegativeThreshold,
+		TrendThreshold:         s.cfgTrendThreshold,
+		LowSentimentRiskThresh: s.cfgLowSentimentRiskThresh,
+	}
 }
 
 func (s *Analyzer) validate() {

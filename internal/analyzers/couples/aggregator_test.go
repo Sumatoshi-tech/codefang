@@ -13,7 +13,7 @@ import (
 func TestAggregator_Add_StoresData(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 2, []string{"alice", "bob"}, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 2, []string{"alice", "bob"}, nil, 0)
 
 	tc := analyze.TC{
 		AuthorID: 0,
@@ -47,7 +47,7 @@ func TestAggregator_Add_StoresData(t *testing.T) {
 func TestAggregator_Add_NilData(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{Data: nil}))
 
@@ -57,7 +57,7 @@ func TestAggregator_Add_NilData(t *testing.T) {
 func TestAggregator_Add_WrongType(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{Data: "wrong"}))
 
@@ -67,7 +67,7 @@ func TestAggregator_Add_WrongType(t *testing.T) {
 func TestAggregator_Add_EmptyCouplingFiles(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	tc := analyze.TC{
 		AuthorID: 0,
@@ -91,7 +91,7 @@ func TestAggregator_Add_EmptyCouplingFiles(t *testing.T) {
 func TestAggregator_Add_PeopleGrowth(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	tc := analyze.TC{
 		AuthorID: 5, // Exceeds initial capacity of 2 (PeopleNumber+1).
@@ -110,7 +110,7 @@ func TestAggregator_Add_PeopleGrowth(t *testing.T) {
 func TestAggregator_Add_CommitNotCounted(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	tc := analyze.TC{
 		AuthorID: 0,
@@ -130,7 +130,7 @@ func TestAggregator_Add_CommitNotCounted(t *testing.T) {
 func TestAggregator_FlushTick_Empty(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	tick, err := agg.FlushTick(0)
 	require.NoError(t, err)
@@ -142,7 +142,7 @@ func TestAggregator_FlushTick_Empty(t *testing.T) {
 func TestAggregator_FlushTick_WithData(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{
 		AuthorID: 0,
@@ -168,7 +168,7 @@ func TestAggregator_FlushTick_WithData(t *testing.T) {
 func TestAggregator_SpillCollect(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{
 		AuthorID: 0,
@@ -209,7 +209,7 @@ func TestAggregator_SpillCollect(t *testing.T) {
 func TestAggregator_AutoSpill(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{SpillBudget: 1}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{SpillBudget: 1}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{
 		AuthorID: 0,
@@ -228,7 +228,7 @@ func TestAggregator_AutoSpill(t *testing.T) {
 func TestAggregator_Close_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Close())
 	require.NoError(t, agg.Close())
@@ -237,7 +237,7 @@ func TestAggregator_Close_Idempotent(t *testing.T) {
 func TestAggregator_EstimatedStateSize(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	// Initial size accounts for the pre-allocated peopleCommits slice.
 	initialSize := agg.EstimatedStateSize()
@@ -336,7 +336,7 @@ func TestMergeFileCouplings(t *testing.T) {
 func TestAggregator_MultipleCommits(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 2, []string{"alice", "bob"}, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 2, []string{"alice", "bob"}, nil, 0)
 
 	// Commit 1: alice touches a.go, b.go.
 	require.NoError(t, agg.Add(analyze.TC{
@@ -372,7 +372,7 @@ func TestAggregator_MultipleCommits(t *testing.T) {
 func TestAggregator_Renames(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	require.NoError(t, agg.Add(analyze.TC{
 		AuthorID: 0,
@@ -397,7 +397,7 @@ func TestAggregator_Renames(t *testing.T) {
 func TestAggregator_Spill_Empty(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 1, nil, nil, 0)
 
 	freed, err := agg.Spill()
 	require.NoError(t, err)
@@ -672,7 +672,7 @@ func TestEndToEnd_Consume_Aggregator_TicksToReport(t *testing.T) {
 	}
 
 	// Step 2: Feed through Aggregator (PeopleNumber=0 — no --people-dict).
-	agg := newAggregator(analyze.AggregatorOptions{}, 0, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 0, nil, nil, 0)
 	defer agg.Close()
 
 	for _, tc := range commits {

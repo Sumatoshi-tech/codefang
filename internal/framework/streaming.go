@@ -149,7 +149,7 @@ func RunStreaming(
 		PipelineOverhead:   pipelineOverhead,
 		WorkStatePerCommit: workStatePerCommit,
 		AvgTCSize:          avgTCSize,
-		MaxBuffering:       maxStreamingBuffering,
+		MaxBuffering:       runner.Config.MaxStreamingBuffering,
 	})
 
 	chunks := schedule.Chunks
@@ -736,7 +736,7 @@ func processChunksWithCheckpoint(
 		}
 
 		samplerCtx, samplerCancel := context.WithCancel(ctx)
-		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget)
+		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget, runner.Config.SamplerInterval)
 
 		before := observability.TakeHeapSnapshot()
 
@@ -850,7 +850,7 @@ func processChunksFromIterator(
 		}
 
 		samplerCtx, samplerCancel := context.WithCancel(ctx)
-		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget)
+		sampler := startChunkSampler(samplerCtx, logger, runner.StageMetrics, i, memBudget, runner.Config.SamplerInterval)
 
 		before := observability.TakeHeapSnapshot()
 
@@ -962,7 +962,10 @@ func loadCommitsFromIterator(iter *gitlib.CommitIter, n int) ([]*gitlib.Commit, 
 
 // startChunkSampler creates and starts a PipelineSampler for a chunk.
 // Returns the sampler (caller must call CaptureT1 + cancel the context when done).
-func startChunkSampler(ctx context.Context, logger *slog.Logger, metrics *StageMetrics, chunkIdx int, memBudget int64) *PipelineSampler {
+func startChunkSampler(
+	ctx context.Context, logger *slog.Logger, metrics *StageMetrics,
+	chunkIdx int, memBudget int64, interval time.Duration,
+) *PipelineSampler {
 	sampler := NewPipelineSampler(SamplerConfig{
 		Logger:       logger,
 		Metrics:      metrics,
@@ -970,6 +973,7 @@ func startChunkSampler(ctx context.Context, logger *slog.Logger, metrics *StageM
 		ChunkIndex:   chunkIdx,
 		MemBudget:    memBudget,
 		ProfileAtRSS: memBudget * profileRSSPercent / percentDivisor, // Capture t1 at 90% of budget.
+		Interval:     interval,
 	})
 	sampler.Start(ctx)
 
@@ -1111,7 +1115,7 @@ func processChunksDoubleBuffered(
 		dur, pStats, err := st.processCurrentChunk(ctx, idx, startChunk)
 		if err != nil {
 			samplerCancel()
-			drainPrefetch(prefetch)
+			drainPrefetch(prefetch, st.runner.Config.DrainPrefetchTimeout)
 
 			return stats, err
 		}
@@ -1128,7 +1132,7 @@ func processChunksDoubleBuffered(
 
 		cbErr := st.invokeOnChunkComplete(idx + 1)
 		if cbErr != nil {
-			drainPrefetch(prefetch)
+			drainPrefetch(prefetch, st.runner.Config.DrainPrefetchTimeout)
 
 			return stats, cbErr
 		}
@@ -1152,7 +1156,7 @@ func (st *doubleBufferState) startSampler(_, samplerCtx context.Context, idx int
 		st.runner.StageMetrics.Reset()
 	}
 
-	return startChunkSampler(samplerCtx, st.logger, st.runner.StageMetrics, idx, st.memBudget)
+	return startChunkSampler(samplerCtx, st.logger, st.runner.StageMetrics, idx, st.memBudget, st.runner.Config.SamplerInterval)
 }
 
 // stopSampler captures the T1 snapshot, cancels the sampler context, and
@@ -1231,7 +1235,7 @@ func (st *doubleBufferState) replanAndDrainStale(
 		// If next chunk boundaries changed, drain stale prefetch.
 		newNext := safeChunkAt(newChunks, idx+1)
 		if prefetch != nil && !chunksEqual(prefetchedNext, newNext) {
-			drainPrefetch(prefetch)
+			drainPrefetch(prefetch, st.runner.Config.DrainPrefetchTimeout)
 			prefetch = nil
 		}
 	}
@@ -1359,15 +1363,19 @@ const drainPrefetchTimeout = 30 * time.Second
 
 // drainPrefetch waits for a pending prefetch to complete (if any) to prevent
 // goroutine leaks. The result is discarded. If the prefetch does not complete
-// within drainPrefetchTimeout, it is abandoned.
-func drainPrefetch(ch <-chan prefetchedChunk) {
+// within the given timeout, it is abandoned.
+func drainPrefetch(ch <-chan prefetchedChunk, timeout time.Duration) {
 	if ch == nil {
 		return
 	}
 
+	if timeout <= 0 {
+		timeout = drainPrefetchTimeout
+	}
+
 	select {
 	case <-ch:
-	case <-time.After(drainPrefetchTimeout):
+	case <-time.After(timeout):
 	}
 }
 

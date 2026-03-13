@@ -50,7 +50,7 @@ func TestParseTickData_Valid(t *testing.T) {
 		"TickSize":           testTickSize,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.NoError(t, err)
 	require.NotNil(t, data)
@@ -69,7 +69,7 @@ func TestParseTickData_EmptyCanonical(t *testing.T) {
 		"TickSize":           testTickSize,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.NoError(t, err)
 	require.NotNil(t, data)
@@ -86,7 +86,7 @@ func TestParseTickData_MissingPeopleDict(t *testing.T) {
 		"TickSize":      testTickSize,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.Error(t, err)
 	assert.Equal(t, ErrInvalidPeopleDict, err)
@@ -104,7 +104,7 @@ func TestParseTickData_MissingTickSize_DefaultsTo24Hours(t *testing.T) {
 		"ReversedPeopleDict": names,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.NoError(t, err)
 	require.NotNil(t, data)

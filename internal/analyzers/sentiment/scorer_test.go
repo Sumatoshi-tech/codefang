@@ -134,28 +134,28 @@ func TestComputeSentiment_LengthWeighting(t *testing.T) {
 func TestApplySEDomainAdjustment_NoTerms(t *testing.T) {
 	t.Parallel()
 
-	result := applySEDomainAdjustment("simple regular comment", 0.5)
+	result := applySEDomainAdjustmentWithWeight("simple regular comment", 0.5, neutralizerWeight)
 	assert.InDelta(t, 0.5, result, floatDelta, "no SE terms should leave compound unchanged")
 }
 
 func TestApplySEDomainAdjustment_WithNeutralizer(t *testing.T) {
 	t.Parallel()
 
-	result := applySEDomainAdjustment("kill the process", -0.6)
+	result := applySEDomainAdjustmentWithWeight("kill the process", -0.6, neutralizerWeight)
 	assert.Greater(t, result, -0.6, "neutralizer should push negative compound toward neutral")
 }
 
 func TestApplySEDomainAdjustment_WithNegativeTerm(t *testing.T) {
 	t.Parallel()
 
-	result := applySEDomainAdjustment("this is a terrible hack", 0.0)
+	result := applySEDomainAdjustmentWithWeight("this is a terrible hack", 0.0, neutralizerWeight)
 	assert.Less(t, result, 0.0, "SE negative term should push compound toward negative")
 }
 
 func TestApplySEDomainAdjustment_ClampsBounds(t *testing.T) {
 	t.Parallel()
 
-	result := applySEDomainAdjustment("nightmare spaghetti awful terrible hack kludge", 0.9)
+	result := applySEDomainAdjustmentWithWeight("nightmare spaghetti awful terrible hack kludge", 0.9, neutralizerWeight)
 	assert.GreaterOrEqual(t, result, -1.0, "result should be >= -1")
 	assert.LessOrEqual(t, result, 1.0, "result should be <= 1")
 }
@@ -204,7 +204,7 @@ func TestCommentWeight(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := commentWeight(tt.length, tt.avgLength)
+			result := commentWeightWithMax(tt.length, tt.avgLength, DefaultScorerOptions().MaxWeightRatio)
 			assert.InDelta(t, tt.expected, result, floatDelta)
 		})
 	}
