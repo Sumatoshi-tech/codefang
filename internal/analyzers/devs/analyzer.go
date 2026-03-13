@@ -43,8 +43,15 @@ type TickDevData struct {
 
 // Configuration option keys for the devs analyzer.
 const (
-	ConfigDevsConsiderEmptyCommits = "Devs.ConsiderEmptyCommits"
-	ConfigDevsAnonymize            = "Devs.Anonymize"
+	ConfigDevsConsiderEmptyCommits  = "Devs.ConsiderEmptyCommits"
+	ConfigDevsAnonymize             = "Devs.Anonymize"
+	ConfigDevsBusFactorThreshold    = "Devs.BusFactorThreshold"
+	ConfigDevsRiskThresholdCritical = "Devs.RiskThresholdCritical"
+	ConfigDevsRiskThresholdHigh     = "Devs.RiskThresholdHigh"
+	ConfigDevsRiskThresholdMedium   = "Devs.RiskThresholdMedium"
+	ConfigDevsActiveThresholdRatio  = "Devs.ActiveThresholdRatio"
+	ConfigDevsDefaultActiveDays     = "Devs.DefaultActiveDays"
+	ConfigDevsHLLPrecision          = "Devs.HLLPrecision"
 
 	defaultHoursPerDay = 24
 )
@@ -63,6 +70,15 @@ type Analyzer struct {
 	tickSize             time.Duration
 	ConsiderEmptyCommits bool
 	Anonymize            bool
+
+	// Configurable thresholds (zero = use package-level defaults).
+	cfgBusFactorThreshold    float64
+	cfgRiskThresholdCritical float64
+	cfgRiskThresholdHigh     float64
+	cfgRiskThresholdMedium   float64
+	cfgActiveThresholdRatio  float64
+	cfgDefaultActiveDays     int
+	cfgHLLPrecision          int
 }
 
 // NewAnalyzer creates a new devs analyzer.
@@ -93,8 +109,11 @@ func NewAnalyzer() *Analyzer {
 				Default:     false,
 			},
 		},
-		ComputeMetricsFn: analyze.SafeMetricComputer(ComputeAllMetrics, &ComputedMetrics{}),
-		AggregatorFn:     newAggregator,
+		ComputeMetricsFn: analyze.SafeMetricComputer(
+			func(report analyze.Report) (*ComputedMetrics, error) {
+				return ComputeAllMetricsWithOptions(report, a.metricOptions())
+			}, &ComputedMetrics{}),
+		AggregatorFn: newAggregator,
 	}
 
 	a.TicksToReportFn = func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
@@ -119,6 +138,34 @@ func (a *Analyzer) Configure(facts map[string]any) error {
 		a.Anonymize = val
 	}
 
+	if val, ok := facts[ConfigDevsBusFactorThreshold].(float64); ok {
+		a.cfgBusFactorThreshold = val
+	}
+
+	if val, ok := facts[ConfigDevsRiskThresholdCritical].(float64); ok {
+		a.cfgRiskThresholdCritical = val
+	}
+
+	if val, ok := facts[ConfigDevsRiskThresholdHigh].(float64); ok {
+		a.cfgRiskThresholdHigh = val
+	}
+
+	if val, ok := facts[ConfigDevsRiskThresholdMedium].(float64); ok {
+		a.cfgRiskThresholdMedium = val
+	}
+
+	if val, ok := facts[ConfigDevsActiveThresholdRatio].(float64); ok {
+		a.cfgActiveThresholdRatio = val
+	}
+
+	if val, ok := facts[ConfigDevsDefaultActiveDays].(int); ok {
+		a.cfgDefaultActiveDays = val
+	}
+
+	if val, ok := facts[ConfigDevsHLLPrecision].(int); ok {
+		a.cfgHLLPrecision = val
+	}
+
 	if val, ok := pkgplumbing.GetReversedPeopleDict(facts); ok {
 		a.ReversedPeopleDict = val
 	}
@@ -132,6 +179,19 @@ func (a *Analyzer) Configure(facts map[string]any) error {
 	}
 
 	return nil
+}
+
+// metricOptions returns the metric computation options from configured values.
+func (a *Analyzer) metricOptions() MetricOptions {
+	return MetricOptions{
+		BusFactorThreshold:    a.cfgBusFactorThreshold,
+		RiskThresholdCritical: a.cfgRiskThresholdCritical,
+		RiskThresholdHigh:     a.cfgRiskThresholdHigh,
+		RiskThresholdMedium:   a.cfgRiskThresholdMedium,
+		ActiveThresholdRatio:  a.cfgActiveThresholdRatio,
+		DefaultActiveDays:     a.cfgDefaultActiveDays,
+		HLLPrecision:          a.cfgHLLPrecision,
+	}
 }
 
 // Initialize prepares the analyzer for processing commits.

@@ -40,6 +40,11 @@ func (a *Analyzer) generateStaticSections(report analyze.Report) []plotpage.Sect
 		metrics = &ComputedMetrics{}
 	}
 
+	riskRowLimit := maxDependencyRiskRows
+	if a.cfgMaxDependencyRiskRows > 0 {
+		riskRowLimit = a.cfgMaxDependencyRiskRows
+	}
+
 	return []plotpage.Section{
 		{
 			Title:    "Top Imports Usage",
@@ -70,7 +75,7 @@ func (a *Analyzer) generateStaticSections(report analyze.Report) []plotpage.Sect
 		{
 			Title:    "Dependency Risk Overview",
 			Subtitle: "Potentially risky import patterns extracted from static metrics.",
-			Chart:    buildDependencyRiskTable(metrics),
+			Chart:    buildDependencyRiskTableWithLimit(metrics, riskRowLimit),
 			Hint: plotpage.Hint{
 				Title: "How to interpret:",
 				Items: []string{
@@ -169,7 +174,7 @@ func createEmptyImportCategoriesPie() *charts.Pie {
 
 const maxDependencyRiskRows = 30
 
-func buildDependencyRiskTable(metrics *ComputedMetrics) *plotpage.Table {
+func buildDependencyRiskTableWithLimit(metrics *ComputedMetrics, rowLimit int) *plotpage.Table {
 	table := plotpage.NewTable([]string{"Import", "Risk", "Reason"})
 
 	if len(metrics.Dependencies) == 0 {
@@ -188,17 +193,17 @@ func buildDependencyRiskTable(metrics *ComputedMetrics) *plotpage.Table {
 		return deps[i].Path < deps[j].Path
 	})
 
-	limit := min(len(deps), maxDependencyRiskRows)
+	limit := min(len(deps), rowLimit)
 
 	for _, dep := range deps[:limit] {
 		table.AddRow(dep.Path, dep.RiskLevel, dep.Reason)
 	}
 
-	if len(deps) > maxDependencyRiskRows {
+	if len(deps) > rowLimit {
 		table.AddRow(
-			fmt.Sprintf("... and %d more", len(deps)-maxDependencyRiskRows),
+			fmt.Sprintf("... and %d more", len(deps)-rowLimit),
 			"INFO",
-			fmt.Sprintf("Showing top %d of %d total risks", maxDependencyRiskRows, len(deps)),
+			fmt.Sprintf("Showing top %d of %d total risks", rowLimit, len(deps)),
 		)
 	}
 

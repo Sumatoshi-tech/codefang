@@ -35,6 +35,12 @@ type DiffPipeline struct {
 	BufferSize     int
 	DiffCache      *DiffCache
 
+	// MaxBatchSize is the maximum number of diff requests per batch.
+	MaxBatchSize int
+
+	// JobBufferMultiplier scales the job buffer relative to pipeline buffer size.
+	JobBufferMultiplier int
+
 	// NoBatch disables cross-commit batching. Each diff request fires immediately.
 	// Useful for debugging or single-commit analysis.
 	NoBatch bool
@@ -61,9 +67,11 @@ func NewDiffPipelineWithCache(workerChan chan<- gitlib.WorkerRequest, bufferSize
 	}
 
 	p := &DiffPipeline{
-		PoolWorkerChan: workerChan,
-		BufferSize:     bufferSize,
-		DiffCache:      cache,
+		PoolWorkerChan:      workerChan,
+		BufferSize:          bufferSize,
+		MaxBatchSize:        defaultMaxDiffBatchSize,
+		JobBufferMultiplier: diffJobBufferMultiplier,
+		DiffCache:           cache,
 	}
 
 	p.dispatch = pipeline.DispatchFunc[gitlib.WorkerRequest](func(ctx context.Context, req gitlib.WorkerRequest) error {
@@ -113,12 +121,8 @@ type diffJob struct {
 
 // Process receives blob data and outputs commit data with computed diffs.
 func (p *DiffPipeline) Process(ctx context.Context, blobs <-chan BlobData) <-chan CommitData {
-	// diffJobBufferMultiplier scales the job buffer relative to pipeline buffer size.
-	// A larger buffer allows accumulating more diff jobs for cross-commit batching.
-	const diffJobBufferMultiplier = 10
-
 	pc := pipeline.RunPC[<-chan BlobData, CommitData, diffJob]{
-		Buffer:  p.BufferSize * diffJobBufferMultiplier,
+		Buffer:  p.BufferSize * p.JobBufferMultiplier,
 		Produce: p.runDiffProducer,
 		Consume: p.runDiffConsumer,
 	}
@@ -133,13 +137,11 @@ func (p *DiffPipeline) runDiffProducer(ctx context.Context, blobs <-chan BlobDat
 	// or until input channel is dry.
 	// Since BlobPipeline emits BlobData which already contains multiple diffs per commit,
 	// we are effectively re-batching across commits.
-	const maxBatchSize = 1000
-
 	var batcher pipeline.Batcher[gitlib.DiffRequest, []gitlib.DiffRequest]
 	if p.NoBatch {
 		batcher = &pipeline.PassthroughBatcher[gitlib.DiffRequest]{}
 	} else {
-		batcher = pipeline.NewThresholdBatcher[gitlib.DiffRequest](maxBatchSize)
+		batcher = pipeline.NewThresholdBatcher[gitlib.DiffRequest](p.MaxBatchSize)
 	}
 
 	var pendingJobs []*diffJob
@@ -455,3 +457,9 @@ func (p *DiffPipeline) fileDiffFromGoDiff(oldBlob, newBlob *gitlib.CachedBlob, o
 		Diffs:          diffs,
 	}
 }
+
+// defaultMaxDiffBatchSize is the default maximum number of diff requests per batch.
+const defaultMaxDiffBatchSize = 1000
+
+// diffJobBufferMultiplier scales the job buffer relative to pipeline buffer size.
+const diffJobBufferMultiplier = 10

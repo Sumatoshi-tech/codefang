@@ -134,16 +134,28 @@ const neutralizerWeight = 0.8
 // maxWeightRatio caps comment length weight to prevent single long comments from dominating.
 const maxWeightRatio = 3.0
 
-// applySEDomainAdjustment adjusts VADER compound score for SE-domain terms.
-// Returns adjusted compound score in [-1, 1].
-func applySEDomainAdjustment(text string, compound float64) float64 {
+// ScorerOptions holds configurable parameters for sentiment scoring.
+type ScorerOptions struct {
+	NeutralizerWeight float64
+	MaxWeightRatio    float64
+}
+
+// DefaultScorerOptions returns ScorerOptions populated with package-level defaults.
+func DefaultScorerOptions() ScorerOptions {
+	return ScorerOptions{
+		NeutralizerWeight: neutralizerWeight,
+		MaxWeightRatio:    maxWeightRatio,
+	}
+}
+
+func applySEDomainAdjustmentWithWeight(text string, compound, nWeight float64) float64 {
 	lower := strings.ToLower(text)
 	adjustment := 0.0
 	count := 0
 
 	for term, shift := range seDomainNeutralizers {
 		if strings.Contains(lower, term) {
-			adjustment += (shift - compound) * neutralizerWeight
+			adjustment += (shift - compound) * nWeight
 			count++
 		}
 	}
@@ -170,11 +182,18 @@ func applySEDomainAdjustment(text string, compound float64) float64 {
 // Empty comments yield 0 (no comment implies no sentiment signal).
 // Comments are weighted by length (longer comments carry more signal).
 func ComputeSentiment(comments []string) float32 {
+	return ComputeSentimentWithOptions(comments, DefaultScorerOptions())
+}
+
+// ComputeSentimentWithOptions returns a sentiment score with configurable parameters.
+func ComputeSentimentWithOptions(comments []string, opts ScorerOptions) float32 {
 	if len(comments) == 0 {
 		return 0
 	}
 
 	analyzer := getVaderAnalyzer()
+	nWeight := opts.NeutralizerWeight
+	maxWR := opts.MaxWeightRatio
 
 	var weightedSum float64
 
@@ -189,9 +208,9 @@ func ComputeSentiment(comments []string) float32 {
 		}
 
 		scores := analyzer.PolarityScores(c)
-		adjusted := applySEDomainAdjustment(c, scores.Compound)
+		adjusted := applySEDomainAdjustmentWithWeight(c, scores.Compound, nWeight)
 
-		weight := commentWeight(len(c), avgLen)
+		weight := commentWeightWithMax(len(c), avgLen, maxWR)
 		weightedSum += float64(vaderCompoundToScore(adjusted)) * weight
 		totalWeight += weight
 	}
@@ -225,14 +244,12 @@ func averageCommentLength(comments []string) float64 {
 	return float64(total) / float64(count)
 }
 
-// commentWeight returns the weight for a comment based on its length relative to the average.
-// Longer comments get more weight, capped at maxWeightRatio to prevent dominance.
-func commentWeight(length int, avgLength float64) float64 {
+func commentWeightWithMax(length int, avgLength, maxRatio float64) float64 {
 	if avgLength <= 0 {
 		return 1
 	}
 
 	ratio := float64(length) / avgLength
 
-	return math.Min(ratio, maxWeightRatio)
+	return math.Min(ratio, maxRatio)
 }

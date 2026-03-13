@@ -90,7 +90,7 @@ func TestParseTickData_PopulatesDevSketch(t *testing.T) {
 		"TickSize":           testTickSize,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.NoError(t, err)
 	require.NotNil(t, data)
@@ -109,7 +109,7 @@ func TestParseTickData_EmptyTicks_NilSketch(t *testing.T) {
 		"TickSize":           testTickSize,
 	}
 
-	data, err := ParseTickData(report)
+	data, err := ParseTickDataWithPrecision(report, hllPrecision)
 
 	require.NoError(t, err)
 	require.NotNil(t, data)

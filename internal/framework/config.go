@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 
@@ -28,6 +29,33 @@ type ConfigParams struct {
 	MemoryBudget    string
 	GCPercent       int
 	BallastSize     string
+
+	// Advanced pipeline tuning (zero = use defaults).
+	UASTSpillThreshold           int
+	IntraCommitParallelThreshold int
+	MaxIntraCommitWorkers        int
+	MaxUASTBlobSize              int
+	UASTParseTimeout             string
+	MaxChangesPerCommit          int
+	MaxDiffBatchSize             int
+	MemoryBudgetRatio            int
+	MemoryBudgetCap              string
+	MemoryLimitRatio             int
+
+	// Extended pipeline tuning.
+	UASTSpillTrimInterval   int
+	NativeTrimInterval      int
+	MaxStreamingBuffering   int
+	DrainPrefetchTimeout    string
+	SamplerInterval         string
+	WorkerRatio             int
+	UASTWorkerRatio         int
+	LeafWorkerDivisor       int
+	MinLeafWorkers          int
+	BufferSizeMultiplier    int
+	BudgetLimitRatio        int
+	SystemRAMLimitRatio     int
+	DiffJobBufferMultiplier int
 }
 
 // CheckpointParams holds checkpoint-related configuration.
@@ -54,16 +82,31 @@ const percentDenominator = 100
 const defaultMemoryBudgetCap = int64(2 * 1024 * 1024 * 1024)
 
 // DefaultMemoryBudget returns a sensible memory budget based on available system memory.
-// Returns min(50% of total RAM, 4 GiB), or 0 if detection fails.
+// Returns min(50% of total RAM, 2 GiB), or 0 if detection fails.
 func DefaultMemoryBudget() int64 {
+	return DefaultMemoryBudgetWithParams(defaultMemoryBudgetRatio, "")
+}
+
+// DefaultMemoryBudgetWithParams returns a memory budget with configurable ratio and cap.
+// Empty cap string uses defaultMemoryBudgetCap.
+func DefaultMemoryBudgetWithParams(ratio int, capStr string) int64 {
 	total := detectTotalMemoryBytes()
 	if total == 0 {
 		return 0
 	}
 
-	budget := safeconv.SafeInt64(total * defaultMemoryBudgetRatio / percentDenominator)
+	budgetCap := defaultMemoryBudgetCap
 
-	return min(budget, defaultMemoryBudgetCap)
+	if capStr != "" {
+		parsed, err := humanize.ParseBytes(capStr)
+		if err == nil && parsed > 0 {
+			budgetCap = safeconv.SafeInt64(parsed)
+		}
+	}
+
+	budget := safeconv.SafeInt64(total * uint64(ratio) / percentDenominator)
+
+	return min(budget, budgetCap)
 }
 
 // BuildConfigFromParams builds a CoordinatorConfig from raw parameters.
@@ -99,13 +142,23 @@ func BuildConfigFromParams(params ConfigParams, budgetSolver BudgetSolver) (Coor
 		return config, 0, sizeErr
 	}
 
+	advErr := applyAdvancedParams(&config, params)
+	if advErr != nil {
+		return config, 0, advErr
+	}
+
 	tuningErr := applyRuntimeTuningParams(&config, params.GCPercent, params.BallastSize)
 	if tuningErr != nil {
 		return config, 0, tuningErr
 	}
 
 	// Auto-detect memory budget from system memory when not explicitly set.
-	memBudget := DefaultMemoryBudget()
+	budgetRatio := params.MemoryBudgetRatio
+	if budgetRatio == 0 {
+		budgetRatio = defaultMemoryBudgetRatio
+	}
+
+	memBudget := DefaultMemoryBudgetWithParams(budgetRatio, params.MemoryBudgetCap)
 
 	return config, memBudget, nil
 }
@@ -140,6 +193,113 @@ func applyIntParams(config *CoordinatorConfig, params ConfigParams) {
 	if params.DiffCacheSize > 0 {
 		config.DiffCacheSize = params.DiffCacheSize
 	}
+
+	if params.UASTSpillThreshold > 0 {
+		config.UASTSpillThreshold = params.UASTSpillThreshold
+	}
+
+	if params.IntraCommitParallelThreshold > 0 {
+		config.IntraCommitParallelThreshold = params.IntraCommitParallelThreshold
+	}
+
+	if params.MaxIntraCommitWorkers > 0 {
+		config.MaxIntraCommitWorkers = params.MaxIntraCommitWorkers
+	}
+
+	if params.MaxUASTBlobSize > 0 {
+		config.MaxUASTBlobSize = params.MaxUASTBlobSize
+	}
+
+	if params.MaxChangesPerCommit > 0 {
+		config.MaxChangesPerCommit = params.MaxChangesPerCommit
+	}
+
+	if params.MaxDiffBatchSize > 0 {
+		config.MaxDiffBatchSize = params.MaxDiffBatchSize
+	}
+
+	if params.MemoryLimitRatio > 0 {
+		config.MemoryLimitRatio = params.MemoryLimitRatio
+	}
+
+	applyExtendedIntParams(config, params)
+}
+
+func applyExtendedIntParams(config *CoordinatorConfig, params ConfigParams) {
+	if params.UASTSpillTrimInterval > 0 {
+		config.UASTSpillTrimInterval = params.UASTSpillTrimInterval
+	}
+
+	if params.NativeTrimInterval > 0 {
+		config.NativeTrimInterval = params.NativeTrimInterval
+	}
+
+	if params.MaxStreamingBuffering > 0 {
+		config.MaxStreamingBuffering = params.MaxStreamingBuffering
+	}
+
+	if params.WorkerRatio > 0 {
+		config.WorkerRatio = params.WorkerRatio
+	}
+
+	if params.UASTWorkerRatio > 0 {
+		config.UASTWorkerRatio = params.UASTWorkerRatio
+	}
+
+	if params.LeafWorkerDivisor > 0 {
+		config.LeafWorkerDivisor = params.LeafWorkerDivisor
+	}
+
+	if params.MinLeafWorkers > 0 {
+		config.MinLeafWorkers = params.MinLeafWorkers
+	}
+
+	if params.BufferSizeMultiplier > 0 {
+		config.BufferSizeMultiplier = params.BufferSizeMultiplier
+	}
+
+	if params.BudgetLimitRatio > 0 {
+		config.BudgetLimitRatio = params.BudgetLimitRatio
+	}
+
+	if params.SystemRAMLimitRatio > 0 {
+		config.SystemRAMLimitRatio = params.SystemRAMLimitRatio
+	}
+
+	if params.DiffJobBufferMultiplier > 0 {
+		config.DiffJobBufferMultiplier = params.DiffJobBufferMultiplier
+	}
+}
+
+func applyAdvancedParams(config *CoordinatorConfig, params ConfigParams) error {
+	if params.UASTParseTimeout != "" {
+		d, err := time.ParseDuration(params.UASTParseTimeout)
+		if err != nil {
+			return fmt.Errorf("%w for uast-parse-timeout: %s", ErrInvalidSizeFormat, params.UASTParseTimeout)
+		}
+
+		config.UASTParseTimeout = d
+	}
+
+	if params.DrainPrefetchTimeout != "" {
+		d, err := time.ParseDuration(params.DrainPrefetchTimeout)
+		if err != nil {
+			return fmt.Errorf("%w for drain-prefetch-timeout: %s", ErrInvalidSizeFormat, params.DrainPrefetchTimeout)
+		}
+
+		config.DrainPrefetchTimeout = d
+	}
+
+	if params.SamplerInterval != "" {
+		d, err := time.ParseDuration(params.SamplerInterval)
+		if err != nil {
+			return fmt.Errorf("%w for sampler-interval: %s", ErrInvalidSizeFormat, params.SamplerInterval)
+		}
+
+		config.SamplerInterval = d
+	}
+
+	return nil
 }
 
 func applySizeParams(config *CoordinatorConfig, params ConfigParams) error {

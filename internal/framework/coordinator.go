@@ -138,6 +138,72 @@ type CoordinatorConfig struct {
 	// WorkerTimeout is the maximum time to wait for a worker response before
 	// considering it stalled. Set to 0 to disable the watchdog.
 	WorkerTimeout time.Duration
+
+	// Advanced pipeline tuning (zero = use package-level defaults).
+
+	// UASTSpillThreshold is the number of file changes above which the UAST pipeline
+	// spills parsed trees to disk to cap memory.
+	UASTSpillThreshold int
+
+	// IntraCommitParallelThreshold is the minimum number of file changes for intra-commit parallelism.
+	IntraCommitParallelThreshold int
+
+	// MaxIntraCommitWorkers caps the goroutine count for parsing files within a single commit.
+	MaxIntraCommitWorkers int
+
+	// MaxUASTBlobSize is the maximum blob size (in bytes) for UAST parsing.
+	MaxUASTBlobSize int
+
+	// UASTParseTimeout is the per-file UAST parse timeout.
+	UASTParseTimeout time.Duration
+
+	// MaxChangesPerCommit caps the number of file changes per commit for blob loading.
+	MaxChangesPerCommit int
+
+	// MaxDiffBatchSize is the maximum number of diff requests per batch.
+	MaxDiffBatchSize int
+
+	// MemoryLimitRatio is the fraction of system memory to use as the soft limit.
+	MemoryLimitRatio int
+
+	// UASTSpillTrimInterval controls MallocTrim frequency during UAST spill-mode parsing.
+	UASTSpillTrimInterval int
+
+	// NativeTrimInterval controls malloc_trim frequency within a chunk.
+	NativeTrimInterval int
+
+	// MaxStreamingBuffering is the maximum buffering factor for RunStreaming (triple-buffering).
+	MaxStreamingBuffering int
+
+	// DrainPrefetchTimeout is the timeout for abandoning prefetch goroutines.
+	DrainPrefetchTimeout time.Duration
+
+	// SamplerInterval is the polling interval for the pipeline sampler.
+	SamplerInterval time.Duration
+
+	// WorkerRatio is the fraction of CPU cores to use for workers (percentage).
+	WorkerRatio int
+
+	// UASTWorkerRatio is the fraction of CPU cores to use for UAST pipeline workers (percentage).
+	UASTWorkerRatio int
+
+	// LeafWorkerDivisor controls default leaf workers: NumCPU / divisor.
+	LeafWorkerDivisor int
+
+	// MinLeafWorkers is the minimum number of leaf workers when enabled.
+	MinLeafWorkers int
+
+	// BufferSizeMultiplier scales buffer size with worker count.
+	BufferSizeMultiplier int
+
+	// BudgetLimitRatio is the budget-to-memory-limit conversion ratio (percentage).
+	BudgetLimitRatio int
+
+	// SystemRAMLimitRatio caps the memory limit at this fraction of system RAM (percentage).
+	SystemRAMLimitRatio int
+
+	// DiffJobBufferMultiplier scales the diff job queue buffer.
+	DiffJobBufferMultiplier int
 }
 
 // DefaultCoordinatorConfig returns the default coordinator configuration.
@@ -162,6 +228,29 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 		BlobArenaSize:       defaultBlobArenaBytes,
 		GCPercent:           0,
 		BallastSize:         0,
+
+		// Advanced pipeline tuning — actual defaults, not zero sentinels.
+		UASTSpillThreshold:           uastSpillThreshold,
+		IntraCommitParallelThreshold: intraCommitParallelThreshold,
+		MaxIntraCommitWorkers:        defaultMaxIntraCommitWorkers,
+		MaxUASTBlobSize:              maxUASTBlobSize,
+		UASTParseTimeout:             defaultParseTimeout,
+		MaxChangesPerCommit:          maxChangesPerCommit,
+		MaxDiffBatchSize:             defaultMaxDiffBatchSize,
+		MemoryLimitRatio:             memoryLimitRatio,
+		UASTSpillTrimInterval:        uastSpillTrimInterval,
+		NativeTrimInterval:           nativeTrimInterval,
+		MaxStreamingBuffering:        maxStreamingBuffering,
+		DrainPrefetchTimeout:         drainPrefetchTimeout,
+		SamplerInterval:              samplerInterval,
+		WorkerRatio:                  optimalWorkerRatio,
+		UASTWorkerRatio:              uastPipelineWorkerRatio,
+		LeafWorkerDivisor:            leafWorkerDivisor,
+		MinLeafWorkers:               minLeafWorkers,
+		BufferSizeMultiplier:         bufferSizeMultiplier,
+		BudgetLimitRatio:             budgetLimitRatio,
+		SystemRAMLimitRatio:          systemRAMLimitRatio,
+		DiffJobBufferMultiplier:      diffJobBufferMultiplier,
 	}
 }
 
@@ -264,22 +353,9 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 		diffCache = NewDiffCache(config.DiffCacheSize)
 	}
 
-	blobPipeline := NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, config.Workers, blobCache)
-	if config.BlobArenaSize > 0 {
-		blobPipeline.ArenaSize = config.BlobArenaSize
-	}
-
-	diffPipeline := NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache)
-
-	// Create UAST pipeline if workers are configured.
-	var uastPipeline *UASTPipeline
-
-	if config.UASTPipelineWorkers > 0 {
-		parser, err := uast.NewParser()
-		if err == nil {
-			uastPipeline = NewUASTPipeline(parser, config.UASTPipelineWorkers, config.BufferSize)
-		}
-	}
+	blobPipeline := newBlobPipelineFromConfig(seqChan, poolChan, config, blobCache)
+	diffPipeline := newDiffPipelineFromConfig(poolChan, config, diffCache)
+	uastPipeline := newUASTPipelineFromConfig(config)
 
 	return &Coordinator{
 		repo:   repo,
@@ -302,6 +378,78 @@ func NewCoordinator(repo *gitlib.Repository, config CoordinatorConfig) *Coordina
 	}
 }
 
+func newBlobPipelineFromConfig(
+	seqChan, poolChan chan gitlib.WorkerRequest,
+	config CoordinatorConfig, blobCache *cache.LRUBlobCache,
+) *BlobPipeline {
+	p := NewBlobPipelineWithCache(seqChan, poolChan, config.BufferSize, config.Workers, blobCache)
+
+	if config.BlobArenaSize > 0 {
+		p.ArenaSize = config.BlobArenaSize
+	}
+
+	if config.MaxChangesPerCommit > 0 {
+		p.MaxChanges = config.MaxChangesPerCommit
+	}
+
+	return p
+}
+
+func newDiffPipelineFromConfig(
+	poolChan chan gitlib.WorkerRequest, config CoordinatorConfig, diffCache *DiffCache,
+) *DiffPipeline {
+	p := NewDiffPipelineWithCache(poolChan, config.BufferSize, diffCache)
+
+	if config.MaxDiffBatchSize > 0 {
+		p.MaxBatchSize = config.MaxDiffBatchSize
+	}
+
+	if config.DiffJobBufferMultiplier > 0 {
+		p.JobBufferMultiplier = config.DiffJobBufferMultiplier
+	}
+
+	return p
+}
+
+func newUASTPipelineFromConfig(config CoordinatorConfig) *UASTPipeline {
+	if config.UASTPipelineWorkers <= 0 {
+		return nil
+	}
+
+	parser, err := uast.NewParser()
+	if err != nil {
+		return nil
+	}
+
+	p := NewUASTPipeline(parser, config.UASTPipelineWorkers, config.BufferSize)
+
+	if config.UASTSpillThreshold > 0 {
+		p.SpillThreshold = config.UASTSpillThreshold
+	}
+
+	if config.IntraCommitParallelThreshold > 0 {
+		p.IntraCommitParallelThresh = config.IntraCommitParallelThreshold
+	}
+
+	if config.MaxIntraCommitWorkers > 0 {
+		p.MaxIntraCommitWorkers = config.MaxIntraCommitWorkers
+	}
+
+	if config.MaxUASTBlobSize > 0 {
+		p.MaxBlobSize = config.MaxUASTBlobSize
+	}
+
+	if config.UASTParseTimeout > 0 {
+		p.ParseTimeout = config.UASTParseTimeout
+	}
+
+	if config.UASTSpillTrimInterval > 0 {
+		p.SpillTrimInterval = config.UASTSpillTrimInterval
+	}
+
+	return p
+}
+
 // Stats returns the pipeline stats collected during Process().
 // Only valid after the channel returned by Process() is fully drained.
 func (c *Coordinator) Stats() PipelineStats {
@@ -312,9 +460,9 @@ func applyRuntimeTuning(config CoordinatorConfig, memBudgetOverride int64) []byt
 	applyGCPercent(config.GCPercent)
 
 	if memBudgetOverride > 0 {
-		applyMemoryLimitFromBudget(memBudgetOverride)
+		applyMemoryLimitFromBudget(memBudgetOverride, config.BudgetLimitRatio, config.SystemRAMLimitRatio)
 	} else {
-		applyMemoryLimit()
+		applyMemoryLimitWithRatio(config.MemoryLimitRatio)
 	}
 
 	return applyBallast(config.BallastSize)
@@ -331,16 +479,16 @@ const systemRAMLimitRatio = 90
 // applyMemoryLimitFromBudget sets Go's soft memory limit to a fraction of the
 // user's memory budget. Capped at 90% of system RAM to prevent GC thrashing
 // when the budget exceeds available memory.
-func applyMemoryLimitFromBudget(budget int64) {
-	limit := resolveMemoryLimitFromBudget(budget, detectTotalMemoryBytes())
+func applyMemoryLimitFromBudget(budget int64, budgetRatio, systemRatio int) {
+	limit := resolveMemoryLimitFromBudget(budget, detectTotalMemoryBytes(), budgetRatio, systemRatio)
 	debug.SetMemoryLimit(safeconv.SafeInt64(limit))
 }
 
-func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64) uint64 {
-	budgetBased := uint64(budget) * budgetLimitRatio / percentDivisor
+func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64, budgetRatioVal, systemRatioVal int) uint64 {
+	budgetBased := uint64(budget) * uint64(budgetRatioVal) / percentDivisor
 
 	if totalMemoryBytes > 0 {
-		systemCap := totalMemoryBytes * systemRAMLimitRatio / percentDivisor
+		systemCap := totalMemoryBytes * uint64(systemRatioVal) / percentDivisor
 
 		return min(budgetBased, systemCap)
 	}
@@ -348,21 +496,20 @@ func resolveMemoryLimitFromBudget(budget int64, totalMemoryBytes uint64) uint64 
 	return budgetBased
 }
 
-// applyMemoryLimit sets Go's soft memory limit based on available system memory.
-// Uses 75% of system memory (capped at 4 GiB) to trigger aggressive GC before OOM.
-// Go's GC uses this as a target: when heap approaches the limit, GC runs more
-// frequently regardless of GOGC. This prevents OOM on large analysis workloads.
-func applyMemoryLimit() {
-	limit := resolveMemoryLimit(detectTotalMemoryBytes())
+// applyMemoryLimitWithRatio sets Go's soft memory limit based on available system memory.
+// Uses the given ratio (percent) of system memory (capped at defaultMemoryLimitBytes).
+// Zero ratio uses the package-level default (75%).
+func applyMemoryLimitWithRatio(ratio int) {
+	limit := resolveMemoryLimitWithRatio(detectTotalMemoryBytes(), ratio)
 	debug.SetMemoryLimit(safeconv.SafeInt64(limit))
 }
 
-func resolveMemoryLimit(totalMemoryBytes uint64) uint64 {
+func resolveMemoryLimitWithRatio(totalMemoryBytes uint64, ratio int) uint64 {
 	if totalMemoryBytes == 0 {
 		return defaultMemoryLimitBytes
 	}
 
-	systemBased := totalMemoryBytes * memoryLimitRatio / percentDivisor
+	systemBased := totalMemoryBytes * uint64(ratio) / percentDivisor
 
 	return min(systemBased, defaultMemoryLimitBytes)
 }

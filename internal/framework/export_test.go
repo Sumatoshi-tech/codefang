@@ -261,12 +261,12 @@ func RunnerBallastSizeForTest(runner *Runner) int {
 
 // ResolveMemoryLimitForTest exposes memory limit resolution logic.
 func ResolveMemoryLimitForTest(totalMemoryBytes uint64) uint64 {
-	return resolveMemoryLimit(totalMemoryBytes)
+	return resolveMemoryLimitWithRatio(totalMemoryBytes, memoryLimitRatio)
 }
 
 // ResolveMemoryLimitFromBudgetForTest exposes budget-aligned memory limit logic.
-func ResolveMemoryLimitFromBudgetForTest(budget int64, totalMemoryBytes uint64) uint64 {
-	return resolveMemoryLimitFromBudget(budget, totalMemoryBytes)
+func ResolveMemoryLimitFromBudgetForTest(budget int64, totalMemoryBytes uint64, budgetRatio, systemRatio int) uint64 {
+	return resolveMemoryLimitFromBudget(budget, totalMemoryBytes, budgetRatio, systemRatio)
 }
 
 // SplitLeavesForTest exposes the three-group leaf split for testing.

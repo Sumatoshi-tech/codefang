@@ -23,6 +23,36 @@
 #   ballast_size: "0"       # e.g. "128MiB"
 #   memory_limit: ""        # e.g. "8GiB" — sets debug.SetMemoryLimit
 #   worker_timeout: ""      # e.g. "60s" — stall detection timeout per worker request
+#
+#   # Advanced pipeline tuning (0 = use defaults).
+#   uast_spill_threshold: 32            # file changes per commit before spilling UAST to disk
+#   intra_commit_parallel_threshold: 4  # min file changes for intra-commit parallel parsing
+#   max_intra_commit_workers: 4         # max goroutines for intra-commit UAST parsing
+#   max_uast_blob_size: 262144          # max blob size (bytes) for UAST parsing (256 KiB)
+#   uast_parse_timeout: "10s"           # per-file UAST parse timeout
+#   max_changes_per_commit: 10000       # commits exceeding this are skipped
+#   max_diff_batch_size: 1000           # max diff requests per batch
+#   memory_budget_ratio: 50             # % of system RAM for auto memory budget
+#   memory_budget_cap: "2GiB"           # max auto memory budget
+#   memory_limit_ratio: 75              # % of system RAM for Go soft memory limit
+#
+#   # Extended pipeline tuning.
+#   uast_spill_trim_interval: 16        # MallocTrim frequency during UAST spill-mode parsing
+#   native_trim_interval: 10            # malloc_trim frequency within a chunk
+#   max_streaming_buffering: 3          # max buffering factor for streaming (triple-buffering)
+#   drain_prefetch_timeout: "30s"       # timeout for abandoned prefetch goroutines
+#   sampler_interval: "2s"              # pipeline sampler polling interval
+#   worker_ratio: 100                   # % of CPU cores for pipeline workers
+#   uast_worker_ratio: 40              # % of CPU cores for UAST pipeline workers
+#   leaf_worker_divisor: 3              # leaf workers = NumCPU / divisor
+#   min_leaf_workers: 4                 # minimum leaf workers
+#   buffer_size_multiplier: 2           # buffer size = workers * multiplier
+#   budget_limit_ratio: 95              # budget-to-memory-limit conversion (%)
+#   system_ram_limit_ratio: 90          # memory limit cap as % of system RAM
+#   diff_job_buffer_multiplier: 10      # scales diff job queue buffer
+#   static_max_workers: 8               # max concurrent workers for static analysis
+#   malloc_trim_interval: 50            # files between malloc_trim calls in static analysis
+#   static_memory_limit_ratio: 90       # % of budget for static phase memory limit
 
 # History analyzer settings.
 # history:
@@ -37,17 +67,58 @@
 #     debug: false
 #     goroutines: 0         # 0 = auto
 #
+#   couples:
+#     coupling_threshold_high: 10       # min co-change count for "high" coupling
+#     ownership_few_threshold: 3        # max contributors for "few owners" bucket
+#     ownership_moderate_threshold: 5   # max contributors for "moderate owners" bucket
+#     batch_coupling_threshold: 100     # max file pairs per commit for coupling
+#     hll_precision: 10                 # HyperLogLog precision for contributor sketches
+#     top_k_per_file: 100               # max coupling pairs per file in store output
+#     min_edge_weight: 2                # min co-changes for a coupling edge
+#
 #   devs:
 #     consider_empty_commits: false
 #     anonymize: false
+#     bus_factor_threshold: 0.5         # cumulative ownership fraction for bus factor
+#     risk_threshold_critical: 90.0     # % ownership for critical risk
+#     risk_threshold_high: 80.0         # % ownership for high risk
+#     risk_threshold_medium: 60.0       # % ownership for medium risk
+#     active_threshold_ratio: 0.7       # fraction of max commits for "active" developer
+#     default_active_days: 90           # lookback window (days) for active developer check
+#     hll_precision: 14                 # HyperLogLog precision for developer sketches
+#
+#   file_history:
+#     hotspot_threshold_critical: 50    # commits for critical hotspot
+#     hotspot_threshold_high: 30        # commits for high hotspot
+#     hotspot_threshold_medium: 15      # commits for medium hotspot
 #
 #   imports:
 #     goroutines: 4
-#     max_file_size: 1048576  # 1 MiB
+#     max_file_size: 1048576            # 1 MiB
+#     max_dependency_risk_rows: 30      # max rows in dependency risk table
 #
 #   sentiment:
 #     min_comment_length: 20
-#     gap: 0.5               # 0.0 - 1.0
+#     gap: 0.5                          # 0.0 - 1.0
+#     neutralizer_weight: 0.8           # SE-domain adjustment weight (0-1)
+#     max_weight_ratio: 3.0             # max comment length weight ratio
+#     positive_threshold: 0.6           # sentiment >= this is "positive"
+#     negative_threshold: 0.4           # sentiment <= this is "negative"
+#     trend_threshold: 0.1              # change needed to classify trend direction
+#     low_sentiment_risk_thresh: 0.2    # sentiment <= this is HIGH risk
+#
+#   clones:
+#     max_clone_pairs: 1000             # max clone pairs in aggregated report
+#     num_hashes: 128                   # MinHash signature size
+#     num_bands: 16                     # LSH band count
+#     num_rows: 8                       # rows per LSH band
+#     shingle_size: 5                   # token shingle window size
+#     similarity_type2: 0.8             # Type-2 clone similarity threshold
+#     similarity_type3: 0.5             # Type-3 clone similarity threshold
+#     threshold_ratio_yellow: 0.1       # clone ratio for yellow warning
+#     threshold_ratio_red: 0.3          # clone ratio for red warning
+#     threshold_pairs_yellow: 5         # clone pairs for yellow warning
+#     threshold_pairs_red: 20           # clone pairs for red warning
 #
 #   shotness:
 #     dsl_struct: 'filter(.roles has "Function")'

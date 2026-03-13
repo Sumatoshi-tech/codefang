@@ -170,18 +170,23 @@ func (m *ComputedMetrics) ToYAML() any {
 	return m
 }
 
-// ComputeAllMetrics runs all sentiment metrics and returns the results.
+// ComputeAllMetrics runs all sentiment metrics with default options.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+	return ComputeAllMetricsWithOptions(report, DefaultMetricOptions())
+}
+
+// ComputeAllMetricsWithOptions runs all sentiment metrics with configurable thresholds.
+func ComputeAllMetricsWithOptions(report analyze.Report, opts MetricOptions) (*ComputedMetrics, error) {
 	input, err := ParseReportData(report)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ComputedMetrics{
-		TimeSeries:          computeTimeSeries(input),
-		Trend:               computeTrend(input),
-		LowSentimentPeriods: computeLowSentimentPeriods(input),
-		Aggregate:           computeAggregate(input),
+		TimeSeries:          computeTimeSeriesWithOpts(input, opts),
+		Trend:               computeTrendWithOpts(input, opts),
+		LowSentimentPeriods: computeLowSentimentPeriodsWithOpts(input, opts),
+		Aggregate:           computeAggregateWithOpts(input, opts),
 	}, nil
 }
 
@@ -199,18 +204,38 @@ const (
 	lowSentimentRiskThreshold = 0.2
 )
 
-func classifyTrendDirection(startSentiment, endSentiment float32) string {
+// MetricOptions holds configurable thresholds for sentiment metrics computation.
+type MetricOptions struct {
+	PositiveThreshold      float64
+	NegativeThreshold      float64
+	TrendThreshold         float64
+	LowSentimentRiskThresh float64
+}
+
+// DefaultMetricOptions returns default sentiment metric options.
+func DefaultMetricOptions() MetricOptions {
+	return MetricOptions{
+		PositiveThreshold:      SentimentPositiveThreshold,
+		NegativeThreshold:      SentimentNegativeThreshold,
+		TrendThreshold:         trendThreshold,
+		LowSentimentRiskThresh: lowSentimentRiskThreshold,
+	}
+}
+
+func classifyTrendDirectionWithOpts(startSentiment, endSentiment float32, opts MetricOptions) string {
+	thresh := float32(opts.TrendThreshold)
+
 	switch {
-	case endSentiment > startSentiment+trendThreshold:
+	case endSentiment > startSentiment+thresh:
 		return "improving"
-	case endSentiment < startSentiment-trendThreshold:
+	case endSentiment < startSentiment-thresh:
 		return "declining"
 	default:
 		return "stable"
 	}
 }
 
-func computeTimeSeries(input *ReportData) []TimeSeriesData {
+func computeTimeSeriesWithOpts(input *ReportData, opts MetricOptions) []TimeSeriesData {
 	ticks := make([]int, 0, len(input.EmotionsByTick))
 	for tick := range input.EmotionsByTick {
 		ticks = append(ticks, tick)
@@ -233,7 +258,7 @@ func computeTimeSeries(input *ReportData) []TimeSeriesData {
 			commitCount = len(commits)
 		}
 
-		classification := classifySentiment(sentiment)
+		classification := classifySentimentWithOpts(sentiment, opts)
 
 		result = append(result, TimeSeriesData{
 			Tick:           tick,
@@ -247,18 +272,18 @@ func computeTimeSeries(input *ReportData) []TimeSeriesData {
 	return result
 }
 
-func classifySentiment(sentiment float32) string {
+func classifySentimentWithOpts(sentiment float32, opts MetricOptions) string {
 	switch {
-	case sentiment >= SentimentPositiveThreshold:
+	case sentiment >= float32(opts.PositiveThreshold):
 		return "positive"
-	case sentiment <= SentimentNegativeThreshold:
+	case sentiment <= float32(opts.NegativeThreshold):
 		return "negative"
 	default:
 		return "neutral"
 	}
 }
 
-func computeTrend(input *ReportData) TrendData {
+func computeTrendWithOpts(input *ReportData, opts MetricOptions) TrendData {
 	if len(input.EmotionsByTick) == 0 {
 		return TrendData{}
 	}
@@ -282,7 +307,7 @@ func computeTrend(input *ReportData) TrendData {
 		changePercent = stats.ToPercent(float64(regressionEnd-regressionStart) / float64(regressionStart))
 	}
 
-	direction := classifyTrendDirection(regressionStart, regressionEnd)
+	direction := classifyTrendDirectionWithOpts(regressionStart, regressionEnd, opts)
 
 	return TrendData{
 		StartTick:      startTick,
@@ -336,16 +361,16 @@ func linearRegressionEndpoints(ticks []int, emotions map[int]float32) (start, en
 	return startVal, endVal
 }
 
-func computeLowSentimentPeriods(input *ReportData) []LowSentimentPeriodData {
+func computeLowSentimentPeriodsWithOpts(input *ReportData, opts MetricOptions) []LowSentimentPeriodData {
 	var result []LowSentimentPeriodData
 
 	for tick, sentiment := range input.EmotionsByTick {
-		if sentiment > SentimentNegativeThreshold {
+		if sentiment > float32(opts.NegativeThreshold) {
 			continue
 		}
 
 		var riskLevel string
-		if sentiment <= lowSentimentRiskThreshold {
+		if sentiment <= float32(opts.LowSentimentRiskThresh) {
 			riskLevel = "HIGH"
 		} else {
 			riskLevel = "MEDIUM"
@@ -369,7 +394,7 @@ func computeLowSentimentPeriods(input *ReportData) []LowSentimentPeriodData {
 	return result
 }
 
-func computeAggregate(input *ReportData) AggregateData {
+func computeAggregateWithOpts(input *ReportData, opts MetricOptions) AggregateData {
 	agg := AggregateData{
 		TotalTicks: len(input.EmotionsByTick),
 	}
@@ -384,9 +409,9 @@ func computeAggregate(input *ReportData) AggregateData {
 		totalSentiment += sentiment
 
 		switch {
-		case sentiment >= SentimentPositiveThreshold:
+		case sentiment >= float32(opts.PositiveThreshold):
 			agg.PositiveTicks++
-		case sentiment <= SentimentNegativeThreshold:
+		case sentiment <= float32(opts.NegativeThreshold):
 			agg.NegativeTicks++
 		default:
 			agg.NeutralTicks++

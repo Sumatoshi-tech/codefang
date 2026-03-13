@@ -286,7 +286,7 @@ func TestResolveMemoryLimitFromBudget_SetsBudgetBased(t *testing.T) {
 		totalRAM = uint64(32 * 1024 * 1024 * 1024) // 32 GiB system.
 	)
 
-	got := framework.ResolveMemoryLimitFromBudgetForTest(budget, totalRAM)
+	got := framework.ResolveMemoryLimitFromBudgetForTest(budget, totalRAM, 95, 90)
 
 	// 95% of 4 GiB = 3.8 GiB. System cap = 90% of 32 GiB = 28.8 GiB. Min = 3.8 GiB.
 	want := uint64(budget) * 95 / 100
@@ -303,7 +303,7 @@ func TestResolveMemoryLimitFromBudget_CappedAtSystemRAM(t *testing.T) {
 		totalRAM = uint64(8 * 1024 * 1024 * 1024) // 8 GiB system (budget > system).
 	)
 
-	got := framework.ResolveMemoryLimitFromBudgetForTest(budget, totalRAM)
+	got := framework.ResolveMemoryLimitFromBudgetForTest(budget, totalRAM, 95, 90)
 
 	// 95% of 16 GiB = 15.2 GiB, but capped at 90% of 8 GiB = 7.2 GiB.
 	want := totalRAM * 90 / 100
@@ -315,7 +315,7 @@ func TestResolveMemoryLimitFromBudget_CappedAtSystemRAM(t *testing.T) {
 func TestResolveMemoryLimitFromBudget_ZeroBudget(t *testing.T) {
 	t.Parallel()
 
-	got := framework.ResolveMemoryLimitFromBudgetForTest(0, 32*1024*1024*1024)
+	got := framework.ResolveMemoryLimitFromBudgetForTest(0, 32*1024*1024*1024, 95, 90)
 	if got != 0 {
 		t.Fatalf("memory limit = %d, want 0 for zero budget", got)
 	}

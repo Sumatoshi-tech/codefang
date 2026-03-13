@@ -223,7 +223,7 @@ func TestFileContributorMetric_NoContributors(t *testing.T) {
 // --- HotspotMetric Tests ---.
 
 // func TestHotspotMetric_Metadata(_ *testing.T) {
-// 	result := computeHotspots(nil)
+// 	result := computeHotspotsWithOptions(nil, DefaultMetricOptions())
 // 	assert.Equal(t, "Hotspots", result.Name)
 // 	assert.Equal(t, "Identifies high-risk files based on commit frequency", result.Description)
 // }.
@@ -233,7 +233,7 @@ func TestHotspotMetric_Empty(t *testing.T) {
 
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
-	result := computeHotspots(input)
+	result := computeHotspotsWithOptions(input, DefaultMetricOptions())
 
 	assert.Empty(t, result)
 }
@@ -250,7 +250,7 @@ func TestHotspotMetric_BelowThreshold(t *testing.T) {
 		},
 	}
 
-	result := computeHotspots(input)
+	result := computeHotspotsWithOptions(input, DefaultMetricOptions())
 
 	assert.Empty(t, result)
 }
@@ -284,7 +284,7 @@ func TestHotspotMetric_RiskLevels(t *testing.T) {
 				},
 			}
 
-			result := computeHotspots(input)
+			result := computeHotspotsWithOptions(input, DefaultMetricOptions())
 
 			require.Len(t, result, 1)
 			assert.Equal(t, tt.expected, result[0].RiskLevel)
@@ -313,7 +313,7 @@ func TestHotspotMetric_SortedByRiskThenCommitCount(t *testing.T) {
 		},
 	}
 
-	result := computeHotspots(input)
+	result := computeHotspotsWithOptions(input, DefaultMetricOptions())
 
 	require.Len(t, result, 3)
 	// Sorted by risk first (critical > high > medium).
@@ -325,7 +325,7 @@ func TestHotspotMetric_SortedByRiskThenCommitCount(t *testing.T) {
 // --- FileHistoryAggregateMetric Tests ---.
 
 // func TestAggregateMetric_Metadata(_ *testing.T) {
-// 	result := computeAggregate(nil)
+// 	result := computeAggregateWithOptions(nil, DefaultMetricOptions())
 // 	assert.Equal(t, "File History Summary", result.Name)
 // 	assert.Equal(t, "Aggregates overall file history statistics", result.Description)
 // }.
@@ -335,7 +335,7 @@ func TestFileHistoryAggregateMetric_Empty(t *testing.T) {
 
 	input := &ReportData{Files: make(map[string]FileHistory)}
 
-	result := computeAggregate(input)
+	result := computeAggregateWithOptions(input, DefaultMetricOptions())
 
 	assert.Equal(t, 0, result.TotalFiles)
 	assert.Equal(t, 0, result.TotalCommits)
@@ -367,7 +367,7 @@ func TestFileHistoryAggregateMetric_WithData(t *testing.T) {
 		},
 	}
 
-	result := computeAggregate(input)
+	result := computeAggregateWithOptions(input, DefaultMetricOptions())
 
 	assert.Equal(t, 2, result.TotalFiles)
 	assert.Equal(t, 30, result.TotalCommits)                          // 20 + 10

@@ -14,6 +14,13 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
 )
 
+// Configuration option keys for the file history analyzer.
+const (
+	ConfigFileHistoryHotspotThresholdCritical = "FileHistory.HotspotThresholdCritical"
+	ConfigFileHistoryHotspotThresholdHigh     = "FileHistory.HotspotThresholdHigh"
+	ConfigFileHistoryHotspotThresholdMedium   = "FileHistory.HotspotThresholdMedium"
+)
+
 // HistoryAnalyzer tracks file-level change history across commits.
 type HistoryAnalyzer struct {
 	*analyze.BaseHistoryAnalyzer[*ComputedMetrics]
@@ -31,6 +38,11 @@ type HistoryAnalyzer struct {
 	repo           *gitlib.Repository
 	merges         *analyze.MergeTracker
 	classifier     *Classifier
+
+	// Configurable thresholds (zero = use package-level defaults).
+	cfgHotspotCritical int
+	cfgHotspotHigh     int
+	cfgHotspotMedium   int
 }
 
 // FileHistory holds the change history for a single file.
@@ -53,7 +65,9 @@ func NewAnalyzer() *HistoryAnalyzer {
 	ha.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
 		EstimatedStateSize: workingStateSize,
 		EstimatedTCSize:    avgTCSize,
-		ComputeMetricsFn:   ComputeAllMetrics,
+		ComputeMetricsFn: func(report analyze.Report) (*ComputedMetrics, error) {
+			return ComputeAllMetricsWithOptions(report, ha.metricOptions())
+		},
 		TicksToReportFn: func(ctx context.Context, t []analyze.TICK) analyze.Report {
 			return TicksToReport(ctx, t, ha.repo)
 		},
@@ -102,8 +116,29 @@ func (h *HistoryAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOpt
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (h *HistoryAnalyzer) Configure(_ map[string]any) error {
+func (h *HistoryAnalyzer) Configure(facts map[string]any) error {
+	if val, ok := facts[ConfigFileHistoryHotspotThresholdCritical].(int); ok {
+		h.cfgHotspotCritical = val
+	}
+
+	if val, ok := facts[ConfigFileHistoryHotspotThresholdHigh].(int); ok {
+		h.cfgHotspotHigh = val
+	}
+
+	if val, ok := facts[ConfigFileHistoryHotspotThresholdMedium].(int); ok {
+		h.cfgHotspotMedium = val
+	}
+
 	return nil
+}
+
+// metricOptions returns the metric computation options from configured values.
+func (h *HistoryAnalyzer) metricOptions() MetricOptions {
+	return MetricOptions{
+		HotspotThresholdCritical: h.cfgHotspotCritical,
+		HotspotThresholdHigh:     h.cfgHotspotHigh,
+		HotspotThresholdMedium:   h.cfgHotspotMedium,
+	}
 }
 
 // Initialize prepares the analyzer for processing commits.

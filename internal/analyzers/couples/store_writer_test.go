@@ -29,6 +29,7 @@ func buildTestAggregator(tb testing.TB) *Aggregator {
 		testPeopleCount,
 		testNames,
 		nil, // no lastCommit for unit tests.
+		0,   // use default batch coupling threshold.
 	)
 
 	// Commit 1: alice touches a.go + b.go.
@@ -210,7 +211,7 @@ func TestWriteToStoreFromAggregator_WrongAggregatorType(t *testing.T) {
 func TestWriteToStoreFromAggregator_EmptyAggregator(t *testing.T) {
 	t.Parallel()
 
-	agg := newAggregator(analyze.AggregatorOptions{}, 0, nil, nil)
+	agg := newAggregator(analyze.AggregatorOptions{}, 0, nil, nil, 0)
 	defer agg.Close()
 
 	storeDir := t.TempDir()
@@ -458,7 +459,7 @@ func TestComputeSparseAggregate_MatchesDenseAggregate(t *testing.T) {
 		ReversedPeopleDict: names,
 	}
 	aggMetric := NewAggregateMetric()
-	denseAgg := aggMetric.Compute(input)
+	denseAgg := aggMetric.ComputeWithOptions(input, DefaultMetricOptions())
 
 	assert.Equal(t, denseAgg.TotalFiles, sparseAgg.TotalFiles)
 	assert.Equal(t, denseAgg.TotalDevelopers, sparseAgg.TotalDevelopers)
