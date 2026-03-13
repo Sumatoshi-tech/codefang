@@ -64,10 +64,36 @@ const (
 	maxTraversalVal = 10
 )
 
+// Configuration option keys for the clones analyzer.
+const (
+	ConfigClonesMaxClonePairs        = "Clones.MaxClonePairs"
+	ConfigClonesNumHashes            = "Clones.NumHashes"
+	ConfigClonesNumBands             = "Clones.NumBands"
+	ConfigClonesNumRows              = "Clones.NumRows"
+	ConfigClonesShingleSize          = "Clones.ShingleSize"
+	ConfigClonesSimilarityType2      = "Clones.SimilarityType2"
+	ConfigClonesSimilarityType3      = "Clones.SimilarityType3"
+	ConfigClonesThresholdRatioYellow = "Clones.ThresholdRatioYellow"
+	ConfigClonesThresholdRatioRed    = "Clones.ThresholdRatioRed"
+	ConfigClonesThresholdPairsYellow = "Clones.ThresholdPairsYellow"
+	ConfigClonesThresholdPairsRed    = "Clones.ThresholdPairsRed"
+)
+
 // Analyzer provides clone detection analysis using MinHash and LSH.
 type Analyzer struct {
 	traverser *common.UASTTraverser
 	shingler  *Shingler
+
+	cfgMaxClonePairs        int
+	cfgNumHashes            int
+	cfgNumBands             int
+	cfgNumRows              int
+	cfgSimilarityType2      float64
+	cfgSimilarityType3      float64
+	cfgThresholdRatioYellow float64
+	cfgThresholdRatioRed    float64
+	cfgThresholdPairsYellow int
+	cfgThresholdPairsRed    int
 }
 
 // NewAnalyzer creates a new clone detection Analyzer.
@@ -77,7 +103,16 @@ func NewAnalyzer() *Analyzer {
 			MaxDepth:    maxTraversalVal,
 			IncludeRoot: true,
 		}),
-		shingler: NewShingler(defaultShingleSize),
+		shingler:                NewShingler(defaultShingleSize),
+		cfgNumHashes:            numHashes,
+		cfgNumBands:             numBands,
+		cfgNumRows:              numRows,
+		cfgSimilarityType2:      similarityType2,
+		cfgSimilarityType3:      similarityType3,
+		cfgThresholdRatioYellow: thresholdCloneRatioYellow,
+		cfgThresholdRatioRed:    thresholdCloneRatioRed,
+		cfgThresholdPairsYellow: thresholdClonePairsYellow,
+		cfgThresholdPairsRed:    thresholdClonePairsRed,
 	}
 }
 
@@ -106,7 +141,51 @@ func (a *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 }
 
 // Configure configures the analyzer.
-func (a *Analyzer) Configure(_ map[string]any) error {
+func (a *Analyzer) Configure(facts map[string]any) error {
+	if val, ok := facts[ConfigClonesMaxClonePairs].(int); ok {
+		a.cfgMaxClonePairs = val
+	}
+
+	if val, ok := facts[ConfigClonesNumHashes].(int); ok {
+		a.cfgNumHashes = val
+	}
+
+	if val, ok := facts[ConfigClonesNumBands].(int); ok {
+		a.cfgNumBands = val
+	}
+
+	if val, ok := facts[ConfigClonesNumRows].(int); ok {
+		a.cfgNumRows = val
+	}
+
+	if val, ok := facts[ConfigClonesShingleSize].(int); ok {
+		a.shingler = NewShingler(val)
+	}
+
+	if val, ok := facts[ConfigClonesSimilarityType2].(float64); ok {
+		a.cfgSimilarityType2 = val
+	}
+
+	if val, ok := facts[ConfigClonesSimilarityType3].(float64); ok {
+		a.cfgSimilarityType3 = val
+	}
+
+	if val, ok := facts[ConfigClonesThresholdRatioYellow].(float64); ok {
+		a.cfgThresholdRatioYellow = val
+	}
+
+	if val, ok := facts[ConfigClonesThresholdRatioRed].(float64); ok {
+		a.cfgThresholdRatioRed = val
+	}
+
+	if val, ok := facts[ConfigClonesThresholdPairsYellow].(int); ok {
+		a.cfgThresholdPairsYellow = val
+	}
+
+	if val, ok := facts[ConfigClonesThresholdPairsRed].(int); ok {
+		a.cfgThresholdPairsRed = val
+	}
+
 	return nil
 }
 
@@ -115,25 +194,40 @@ func (a *Analyzer) Thresholds() analyze.Thresholds {
 	return analyze.Thresholds{
 		"clone_ratio": {
 			"green":  0.0,
-			"yellow": thresholdCloneRatioYellow,
-			"red":    thresholdCloneRatioRed,
+			"yellow": a.cfgThresholdRatioYellow,
+			"red":    a.cfgThresholdRatioRed,
 		},
 		"total_clone_pairs": {
 			"green":  0,
-			"yellow": thresholdClonePairsYellow,
-			"red":    thresholdClonePairsRed,
+			"yellow": a.cfgThresholdPairsYellow,
+			"red":    a.cfgThresholdPairsRed,
 		},
 	}
 }
 
 // CreateAggregator returns a new aggregator for clone analysis.
 func (a *Analyzer) CreateAggregator() analyze.ResultAggregator {
-	return NewAggregator()
+	agg := NewAggregator()
+	if a.cfgMaxClonePairs > 0 {
+		agg.MaxClonePairs = a.cfgMaxClonePairs
+	}
+
+	agg.NumBands = a.cfgNumBands
+	agg.NumRows = a.cfgNumRows
+	agg.SimilarityType3 = a.cfgSimilarityType3
+
+	return agg
 }
 
 // CreateVisitor creates a new visitor for single-pass traversal optimization.
 func (a *Analyzer) CreateVisitor() analyze.AnalysisVisitor {
-	return NewVisitor()
+	v := NewVisitor()
+	v.numHashes = a.cfgNumHashes
+	v.shingler = a.shingler
+	v.similarityType2 = a.cfgSimilarityType2
+	v.similarityType3 = a.cfgSimilarityType3
+
+	return v
 }
 
 // CreateReportSection creates a ReportSection from report data.
@@ -208,7 +302,7 @@ func (a *Analyzer) detectClones(functions []*node.Node) []ClonePair {
 		return nil
 	}
 
-	idx, err := lsh.New(numBands, numRows)
+	idx, err := lsh.New(a.cfgNumBands, a.cfgNumRows)
 	if err != nil {
 		return nil
 	}
@@ -221,7 +315,7 @@ func (a *Analyzer) detectClones(functions []*node.Node) []ClonePair {
 	}
 
 	// Per-file detection: no cap (single-file scope, bounded by function count).
-	pairs, _ := findClonePairs(entries, idx, 0)
+	pairs, _ := findClonePairs(entries, idx, 0, a.cfgSimilarityType3)
 
 	return pairs
 }
@@ -236,7 +330,7 @@ func (a *Analyzer) buildSignatures(functions []*node.Node) []funcEntry {
 			continue
 		}
 
-		sig, err := minhash.New(numHashes)
+		sig, err := minhash.New(a.cfgNumHashes)
 		if err != nil {
 			continue
 		}

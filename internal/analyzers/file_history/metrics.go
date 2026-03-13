@@ -117,8 +117,29 @@ func (m *ComputedMetrics) ToYAML() any {
 	return m
 }
 
+// MetricOptions holds configurable thresholds for file history metrics.
+type MetricOptions struct {
+	HotspotThresholdCritical int
+	HotspotThresholdHigh     int
+	HotspotThresholdMedium   int
+}
+
+// DefaultMetricOptions returns MetricOptions populated with package-level defaults.
+func DefaultMetricOptions() MetricOptions {
+	return MetricOptions{
+		HotspotThresholdCritical: HotspotThresholdCritical,
+		HotspotThresholdHigh:     HotspotThresholdHigh,
+		HotspotThresholdMedium:   HotspotThresholdMedium,
+	}
+}
+
 // ComputeAllMetrics runs all file history metrics and returns the results.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
+	return ComputeAllMetricsWithOptions(report, DefaultMetricOptions())
+}
+
+// ComputeAllMetricsWithOptions runs all file history metrics with configurable thresholds.
+func ComputeAllMetricsWithOptions(report analyze.Report, opts MetricOptions) (*ComputedMetrics, error) {
 	input, err := ParseReportData(report)
 	if err != nil {
 		return nil, err
@@ -134,8 +155,8 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	return &ComputedMetrics{
 		FileChurn:        computeFileChurn(input),
 		FileContributors: computeFileContributors(input),
-		Hotspots:         computeHotspots(input),
-		Aggregate:        computeAggregate(input),
+		Hotspots:         computeHotspotsWithOptions(input, opts),
+		Aggregate:        computeAggregateWithOptions(input, opts),
 		Composition:      composition,
 		CompositionTS:    compositionTS,
 	}, nil
@@ -202,7 +223,11 @@ func computeFileContributors(input *ReportData) []FileContributorData {
 	return result
 }
 
-func computeHotspots(input *ReportData) []HotspotData {
+func computeHotspotsWithOptions(input *ReportData, opts MetricOptions) []HotspotData {
+	critical := opts.HotspotThresholdCritical
+	high := opts.HotspotThresholdHigh
+	medium := opts.HotspotThresholdMedium
+
 	result := make([]HotspotData, 0, len(input.Files))
 
 	for path, fh := range input.Files {
@@ -220,11 +245,11 @@ func computeHotspots(input *ReportData) []HotspotData {
 		var riskLevel string
 
 		switch {
-		case commitCount >= HotspotThresholdCritical:
+		case commitCount >= critical:
 			riskLevel = string(metrics.RiskCritical)
-		case commitCount >= HotspotThresholdHigh:
+		case commitCount >= high:
 			riskLevel = string(metrics.RiskHigh)
-		case commitCount >= HotspotThresholdMedium:
+		case commitCount >= medium:
 			riskLevel = string(metrics.RiskMedium)
 		default:
 			continue // Skip low-risk files.
@@ -312,7 +337,7 @@ func computeComposition(tickComp map[int]*CategoryCounts) (CompositionData, []Co
 
 const percentMultiplier = 100.0
 
-func computeAggregate(input *ReportData) AggregateData {
+func computeAggregateWithOptions(input *ReportData, opts MetricOptions) AggregateData {
 	agg := AggregateData{
 		TotalFiles: len(input.Files),
 	}
@@ -321,6 +346,7 @@ func computeAggregate(input *ReportData) AggregateData {
 		return agg
 	}
 
+	medium := opts.HotspotThresholdMedium
 	allContributors := make(map[int]bool)
 
 	var totalCommits, highChurnCount int
@@ -332,7 +358,7 @@ func computeAggregate(input *ReportData) AggregateData {
 			allContributors[devID] = true
 		}
 
-		if len(fh.Hashes) >= HotspotThresholdMedium {
+		if len(fh.Hashes) >= medium {
 			highChurnCount++
 		}
 	}

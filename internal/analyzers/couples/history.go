@@ -34,7 +34,16 @@ const (
 // ErrInvalidReversedPeopleDict indicates a type assertion failure for reversedPeopleDict.
 var ErrInvalidReversedPeopleDict = errors.New("expected []string for reversedPeopleDict")
 
-//
+// Configuration option keys for the couples analyzer.
+const (
+	ConfigCouplesCouplingThresholdHigh      = "Couples.CouplingThresholdHigh"
+	ConfigCouplesOwnershipFewThreshold      = "Couples.OwnershipFewThreshold"
+	ConfigCouplesOwnershipModerateThreshold = "Couples.OwnershipModerateThreshold"
+	ConfigCouplesBatchCouplingThreshold     = "Couples.BatchCouplingThreshold"
+	ConfigCouplesHLLPrecision               = "Couples.HLLPrecision"
+	ConfigCouplesTopKPerFile                = "Couples.TopKPerFile"
+	ConfigCouplesMinEdgeWeight              = "Couples.MinEdgeWeight"
+)
 
 // HistoryAnalyzer identifies co-change coupling between files and developers.
 type HistoryAnalyzer struct {
@@ -48,16 +57,24 @@ type HistoryAnalyzer struct {
 	seenFiles    *bloom.Filter
 
 	// TopKPerFile limits the number of file coupling pairs emitted by WriteToStoreFromAggregator.
-	// Zero uses DefaultTopKPerFile.
 	TopKPerFile int
 	// MinEdgeWeight is the minimum co-change count for an edge to be emitted.
-	// Zero uses DefaultMinEdgeWeight.
 	MinEdgeWeight int64
+
+	// Configurable thresholds (zero = use package-level defaults).
+	cfgCouplingThresholdHigh      int
+	cfgOwnershipFewThreshold      int
+	cfgOwnershipModerateThreshold int
+	cfgBatchCouplingThreshold     int
+	cfgHLLPrecision               int
 }
 
 // NewHistoryAnalyzer creates a new HistoryAnalyzer.
 func NewHistoryAnalyzer() *HistoryAnalyzer {
-	a := &HistoryAnalyzer{}
+	a := &HistoryAnalyzer{
+		TopKPerFile:   DefaultTopKPerFile,
+		MinEdgeWeight: DefaultMinEdgeWeight,
+	}
 
 	a.BaseHistoryAnalyzer = &analyze.BaseHistoryAnalyzer[*ComputedMetrics]{
 		Desc: analyze.Descriptor{
@@ -74,10 +91,10 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 				return &ComputedMetrics{}, nil
 			}
 
-			return ComputeAllMetrics(report)
+			return ComputeAllMetricsWithOptions(report, a.metricOptions())
 		},
 		AggregatorFn: func(opts analyze.AggregatorOptions) analyze.Aggregator {
-			return newAggregator(opts, a.PeopleNumber, a.GetReversedPeopleDict(), a.lastCommit)
+			return newAggregator(opts, a.PeopleNumber, a.GetReversedPeopleDict(), a.lastCommit, a.cfgBatchCouplingThreshold)
 		},
 		TicksToReportFn: func(ctx context.Context, ticks []analyze.TICK) analyze.Report {
 			return ticksToReport(ctx, ticks, a.GetReversedPeopleDict(), a.PeopleNumber, a.lastCommit)
@@ -146,7 +163,46 @@ func (c *HistoryAnalyzer) Configure(facts map[string]any) error {
 		c.ReversedPeopleDict = rpd
 	}
 
+	if val, ok := facts[ConfigCouplesCouplingThresholdHigh].(int); ok {
+		c.cfgCouplingThresholdHigh = val
+	}
+
+	if val, ok := facts[ConfigCouplesOwnershipFewThreshold].(int); ok {
+		c.cfgOwnershipFewThreshold = val
+	}
+
+	if val, ok := facts[ConfigCouplesOwnershipModerateThreshold].(int); ok {
+		c.cfgOwnershipModerateThreshold = val
+	}
+
+	if val, ok := facts[ConfigCouplesBatchCouplingThreshold].(int); ok {
+		c.cfgBatchCouplingThreshold = val
+	}
+
+	if val, ok := facts[ConfigCouplesHLLPrecision].(int); ok {
+		c.cfgHLLPrecision = val
+	}
+
+	if val, ok := facts[ConfigCouplesTopKPerFile].(int); ok {
+		c.TopKPerFile = val
+	}
+
+	if val, ok := facts[ConfigCouplesMinEdgeWeight].(int); ok {
+		c.MinEdgeWeight = int64(val)
+	}
+
 	return nil
+}
+
+// metricOptions returns the metric computation options from configured values.
+func (c *HistoryAnalyzer) metricOptions() MetricOptions {
+	return MetricOptions{
+		CouplingThresholdHigh:      c.cfgCouplingThresholdHigh,
+		OwnershipFewThreshold:      c.cfgOwnershipFewThreshold,
+		OwnershipModerateThreshold: c.cfgOwnershipModerateThreshold,
+		BatchCouplingThreshold:     c.cfgBatchCouplingThreshold,
+		HLLPrecision:               c.cfgHLLPrecision,
+	}
 }
 
 // MapDependencies returns the required plumbing analyzers.
@@ -492,7 +548,7 @@ func (c *HistoryAnalyzer) Merge(branches []analyze.HistoryAnalyzer) {
 
 // NewAggregator creates a new aggregator for this analyzer.
 func (c *HistoryAnalyzer) NewAggregator(opts analyze.AggregatorOptions) analyze.Aggregator {
-	return newAggregator(opts, c.PeopleNumber, c.GetReversedPeopleDict(), c.lastCommit)
+	return newAggregator(opts, c.PeopleNumber, c.GetReversedPeopleDict(), c.lastCommit, c.cfgBatchCouplingThreshold)
 }
 
 // ExtractCommitTimeSeries implements analyze.CommitTimeSeriesProvider.

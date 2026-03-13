@@ -53,6 +53,9 @@ type BlobPipeline struct {
 	BlobCache      *cache.LRUBlobCache
 	ArenaSize      int
 
+	// MaxChanges caps the number of file changes per commit. Zero = use default.
+	MaxChanges int
+
 	// Metrics provides per-stage counters for memory triage. Nil-safe.
 	Metrics *StageMetrics
 
@@ -93,6 +96,7 @@ func NewBlobPipelineWithCache(
 	p := &BlobPipeline{
 		SeqWorkerChan:  seqChan,
 		PoolWorkerChan: poolChan,
+		MaxChanges:     maxChangesPerCommit,
 		BufferSize:     bufferSize,
 		WorkerCount:    workerCount,
 		BlobCache:      blobCache,
@@ -245,9 +249,10 @@ func (p *BlobPipeline) processBatch(
 			// Skip monster commits (vendor moves, mass renames) by setting
 			// ErrCommitTooLarge. The runner detects this and skips the commit
 			// instead of aborting the pipeline.
-			if len(resp.Changes) > maxChangesPerCommit {
+			changeCap := p.MaxChanges
+			if len(resp.Changes) > changeCap {
 				log.Printf("blob pipeline: skipping commit %s (%d changes > %d cap)",
-					job.commit.Hash(), len(resp.Changes), maxChangesPerCommit)
+					job.commit.Hash(), len(resp.Changes), changeCap)
 				bJob.data.Changes = nil
 				bJob.data.Error = fmt.Errorf("%w: %s has %d changes",
 					ErrCommitTooLarge, job.commit.Hash(), len(resp.Changes))

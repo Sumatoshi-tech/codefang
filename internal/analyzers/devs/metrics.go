@@ -100,8 +100,8 @@ func aggregateDevTickFromCommits(hashes []gitlib.Hash, commitDevData map[string]
 	return devTicks
 }
 
-// ParseTickData extracts TickData from an analyzer report.
-func ParseTickData(report analyze.Report) (*TickData, error) {
+// ParseTickDataWithPrecision extracts TickData from an analyzer report using a custom HLL precision.
+func ParseTickDataWithPrecision(report analyze.Report, precision int) (*TickData, error) {
 	names, err := parseReversedPeopleDict(report)
 	if err != nil {
 		return nil, err
@@ -127,19 +127,18 @@ func ParseTickData(report analyze.Report) (*TickData, error) {
 		TickSize: tickSize,
 	}
 
-	td.DevSketch = buildDevSketch(ticks)
+	td.DevSketch = buildDevSketchWithPrecision(ticks, precision)
 
 	return td, nil
 }
 
-// buildDevSketch creates an HLL sketch from all unique developer IDs across ticks.
-// Returns nil if no ticks contain developer data.
-func buildDevSketch(ticks map[int]map[int]*DevTick) *hll.Sketch {
+// buildDevSketchWithPrecision creates an HLL sketch with a custom precision from all unique developer IDs across ticks.
+func buildDevSketchWithPrecision(ticks map[int]map[int]*DevTick, precision int) *hll.Sketch {
 	if len(ticks) == 0 {
 		return nil
 	}
 
-	sketch, err := hll.New(hllPrecision)
+	sketch, err := hll.New(uint8(precision))
 	if err != nil {
 		return nil
 	}
@@ -568,7 +567,17 @@ const busFactorThreshold = 0.5
 // Compute calculates bus factor risk from language data.
 // Contributors map values represent total contribution (Added+Removed).
 func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
+	return m.ComputeWithOptions(input, DefaultMetricOptions())
+}
+
+// ComputeWithOptions calculates bus factor risk with configurable thresholds.
+func (m *BusFactorMetric) ComputeWithOptions(input BusFactorInput, opts MetricOptions) []BusFactorData {
 	result := make([]BusFactorData, 0, len(input.Languages))
+
+	bfThreshold := opts.BusFactorThreshold
+	critThreshold := opts.RiskThresholdCritical
+	highThreshold := opts.RiskThresholdHigh
+	medThreshold := opts.RiskThresholdMedium
 
 	for _, ld := range input.Languages {
 		if ld.TotalContribution == 0 {
@@ -598,7 +607,7 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 		bf := BusFactorData{
 			Language:          ld.Name,
 			TotalContributors: len(contribs),
-			BusFactor:         computeBusFactorFromSorted(sortedAmounts, ld.TotalContribution),
+			BusFactor:         computeBusFactorFromSortedWithThreshold(sortedAmounts, ld.TotalContribution, bfThreshold),
 		}
 
 		if len(contribs) > 0 {
@@ -614,11 +623,11 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 		}
 
 		switch {
-		case bf.PrimaryPct >= ThresholdCritical:
+		case bf.PrimaryPct >= critThreshold:
 			bf.RiskLevel = string(metrics.RiskCritical)
-		case bf.PrimaryPct >= ThresholdHigh:
+		case bf.PrimaryPct >= highThreshold:
 			bf.RiskLevel = string(metrics.RiskHigh)
-		case bf.PrimaryPct >= ThresholdMedium:
+		case bf.PrimaryPct >= medThreshold:
 			bf.RiskLevel = string(metrics.RiskMedium)
 		default:
 			bf.RiskLevel = string(metrics.RiskLow)
@@ -637,22 +646,21 @@ func (m *BusFactorMetric) Compute(input BusFactorInput) []BusFactorData {
 	return result
 }
 
-// computeBusFactorFromSorted returns the smallest number of contributors
-// who together account for at least 50% of total contributions.
-// This follows the CHAOSS Contributor Absence Factor methodology.
+// computeBusFactorFromSortedWithThreshold returns the smallest number of contributors
+// who together account for at least the given threshold fraction of total contributions.
 // sortedContribs must be sorted descending by contribution amount.
-func computeBusFactorFromSorted(sortedContribs []int, total int) int {
+func computeBusFactorFromSortedWithThreshold(sortedContribs []int, total int, threshold float64) int {
 	if total == 0 || len(sortedContribs) == 0 {
 		return 0
 	}
 
-	threshold := float64(total) * busFactorThreshold
+	target := float64(total) * threshold
 	cumulative := 0
 
 	for i, amount := range sortedContribs {
 		cumulative += amount
 
-		if float64(cumulative) >= threshold {
+		if float64(cumulative) >= target {
 			return i + 1
 		}
 	}
@@ -777,12 +785,18 @@ const DefaultActiveDays = 90
 
 // Compute calculates aggregate statistics.
 func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
+	return m.ComputeWithOptions(input, DefaultMetricOptions())
+}
+
+// ComputeWithOptions calculates aggregate statistics with configurable thresholds.
+func (m *AggregateMetric) ComputeWithOptions(input AggregateInput, opts MetricOptions) AggregateData {
 	agg := AggregateData{
 		TotalDevelopers: len(input.Developers),
 		TotalLanguages:  len(input.Languages),
 	}
 
-	totalSketch := buildTotalDevSketch(input.Developers)
+	precision := opts.HLLPrecision
+	totalSketch := buildTotalDevSketchWithPrecision(input.Developers, precision)
 
 	for _, d := range input.Developers {
 		agg.TotalCommits += d.Commits
@@ -799,9 +813,9 @@ func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 		maxTick := tickKeys[len(tickKeys)-1]
 		agg.AnalysisPeriodTicks = maxTick
 
-		recentThreshold := computeActiveThreshold(maxTick, input.TickSize)
+		recentThreshold := computeActiveThresholdWithOptions(maxTick, input.TickSize, opts)
 		activeDevs := make(map[int]bool)
-		activeSketch := buildActiveDevSketch(input.Ticks, recentThreshold)
+		activeSketch := buildActiveDevSketchWithPrecision(input.Ticks, recentThreshold, precision)
 
 		for tick, devTicks := range input.Ticks {
 			if tick >= recentThreshold {
@@ -818,18 +832,18 @@ func (m *AggregateMetric) Compute(input AggregateInput) AggregateData {
 		}
 	}
 
-	agg.ProjectBusFactor = computeProjectBusFactor(input.Developers)
+	agg.ProjectBusFactor = computeProjectBusFactorWithThreshold(input.Developers, opts.BusFactorThreshold)
 
 	return agg
 }
 
-// buildTotalDevSketch creates an HLL sketch from all developer IDs in the input.
-func buildTotalDevSketch(developers []DeveloperData) *hll.Sketch {
+// buildTotalDevSketchWithPrecision creates an HLL sketch with custom precision from all developer IDs.
+func buildTotalDevSketchWithPrecision(developers []DeveloperData, precision int) *hll.Sketch {
 	if len(developers) == 0 {
 		return nil
 	}
 
-	sketch, err := hll.New(hllPrecision)
+	sketch, err := hll.New(uint8(precision))
 	if err != nil {
 		return nil
 	}
@@ -841,9 +855,9 @@ func buildTotalDevSketch(developers []DeveloperData) *hll.Sketch {
 	return sketch
 }
 
-// buildActiveDevSketch creates an HLL sketch from developer IDs in ticks at or above the threshold.
-func buildActiveDevSketch(ticks map[int]map[int]*DevTick, threshold int) *hll.Sketch {
-	sketch, err := hll.New(hllPrecision)
+// buildActiveDevSketchWithPrecision creates an HLL sketch with custom precision from active developer IDs.
+func buildActiveDevSketchWithPrecision(ticks map[int]map[int]*DevTick, threshold, precision int) *hll.Sketch {
+	sketch, err := hll.New(uint8(precision))
 	if err != nil {
 		return nil
 	}
@@ -859,12 +873,11 @@ func buildActiveDevSketch(ticks map[int]map[int]*DevTick, threshold int) *hll.Sk
 	return sketch
 }
 
-// computeActiveThreshold returns the tick index threshold for "active" developers.
-// When TickSize is known, uses time-based calculation (last 90 days).
-// Otherwise falls back to ratio-based (last 30% of analysis period).
-func computeActiveThreshold(maxTick int, tickSize time.Duration) int {
+// computeActiveThresholdWithOptions returns the active threshold using configurable parameters.
+func computeActiveThresholdWithOptions(maxTick int, tickSize time.Duration, opts MetricOptions) int {
 	if tickSize > 0 {
-		activeDuration := time.Duration(DefaultActiveDays) * defaultTickHours * time.Hour
+		activeDays := opts.DefaultActiveDays
+		activeDuration := time.Duration(activeDays) * defaultTickHours * time.Hour
 		ticksForActive := int(activeDuration / tickSize)
 		threshold := maxTick - ticksForActive
 
@@ -875,13 +888,11 @@ func computeActiveThreshold(maxTick int, tickSize time.Duration) int {
 		return threshold
 	}
 
-	return int(float64(maxTick) * ActiveThresholdRatio)
+	return int(float64(maxTick) * opts.ActiveThresholdRatio)
 }
 
-// computeProjectBusFactor computes the CHAOSS Contributor Absence Factor
-// across the entire project: the smallest number of developers responsible
-// for 50% of all contributions (Added+Removed).
-func computeProjectBusFactor(developers []DeveloperData) int {
+// computeProjectBusFactorWithThreshold computes project bus factor with a configurable threshold.
+func computeProjectBusFactorWithThreshold(developers []DeveloperData, threshold float64) int {
 	if len(developers) == 0 {
 		return 0
 	}
@@ -908,7 +919,7 @@ func computeProjectBusFactor(developers []DeveloperData) int {
 		sortedAmounts[i] = c.contribution
 	}
 
-	return computeBusFactorFromSorted(sortedAmounts, total)
+	return computeBusFactorFromSortedWithThreshold(sortedAmounts, total, threshold)
 }
 
 // ComputedMetrics holds all computed metric results for the devs analyzer.
@@ -925,9 +936,38 @@ type ComputedMetrics struct {
 	metricNames []string                 `json:"-"          yaml:"-"`
 }
 
+// MetricOptions holds configurable thresholds for devs metric computation.
+type MetricOptions struct {
+	BusFactorThreshold    float64
+	RiskThresholdCritical float64
+	RiskThresholdHigh     float64
+	RiskThresholdMedium   float64
+	ActiveThresholdRatio  float64
+	DefaultActiveDays     int
+	HLLPrecision          int
+}
+
+// DefaultMetricOptions returns MetricOptions populated with package-level defaults.
+func DefaultMetricOptions() MetricOptions {
+	return MetricOptions{
+		BusFactorThreshold:    busFactorThreshold,
+		RiskThresholdCritical: ThresholdCritical,
+		RiskThresholdHigh:     ThresholdHigh,
+		RiskThresholdMedium:   ThresholdMedium,
+		ActiveThresholdRatio:  ActiveThresholdRatio,
+		DefaultActiveDays:     DefaultActiveDays,
+		HLLPrecision:          hllPrecision,
+	}
+}
+
 // ComputeAllMetrics runs all devs metrics and returns the results.
 func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
-	input, err := ParseTickData(report)
+	return ComputeAllMetricsWithOptions(report, DefaultMetricOptions())
+}
+
+// ComputeAllMetricsWithOptions runs all devs metrics with configurable thresholds.
+func ComputeAllMetricsWithOptions(report analyze.Report, opts MetricOptions) (*ComputedMetrics, error) {
+	input, err := ParseTickDataWithPrecision(report, opts.HLLPrecision)
 	if err != nil {
 		return nil, err
 	}
@@ -940,7 +980,7 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	languages := langMetric.Compute(developers)
 
 	busMetric := NewBusFactorMetric()
-	busFactor := busMetric.Compute(BusFactorInput{Languages: languages, Names: input.Names})
+	busFactor := busMetric.ComputeWithOptions(BusFactorInput{Languages: languages, Names: input.Names}, opts)
 
 	actMetric := NewActivityMetric()
 	activity := actMetric.Compute(input)
@@ -949,12 +989,12 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 	churn := churnMetric.Compute(input)
 
 	aggMetric := NewAggregateMetric()
-	aggregate := aggMetric.Compute(AggregateInput{
+	aggregate := aggMetric.ComputeWithOptions(AggregateInput{
 		Developers: developers,
 		Languages:  languages,
 		Ticks:      input.Ticks,
 		TickSize:   input.TickSize,
-	})
+	}, opts)
 
 	return &ComputedMetrics{
 		Ticks:      input.Ticks,

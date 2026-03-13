@@ -23,8 +23,13 @@ const (
 	magic2_2 = 2
 )
 
+// ConfigImportsMaxDependencyRiskRows is the configuration key for max dependency risk rows.
+const ConfigImportsMaxDependencyRiskRows = "Imports.MaxDependencyRiskRows"
+
 // Analyzer analyzes import statements in source code.
 type Analyzer struct {
+	// cfgMaxDependencyRiskRows overrides the default maxDependencyRiskRows. Zero = use default.
+	cfgMaxDependencyRiskRows int
 }
 
 // NewAnalyzer creates a new Analyzer.
@@ -62,7 +67,11 @@ func (a *Analyzer) ListConfigurationOptions() []pipeline.ConfigurationOption {
 }
 
 // Configure sets up the analyzer with the provided facts.
-func (a *Analyzer) Configure(_ map[string]any) error {
+func (a *Analyzer) Configure(facts map[string]any) error {
+	if val, ok := facts[ConfigImportsMaxDependencyRiskRows].(int); ok {
+		a.cfgMaxDependencyRiskRows = val
+	}
+
 	return nil
 }
 
