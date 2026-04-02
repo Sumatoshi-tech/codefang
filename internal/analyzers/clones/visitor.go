@@ -59,6 +59,10 @@ func (v *Visitor) buildSignatures() []funcEntry {
 	entries := make([]funcEntry, 0, len(v.functions))
 
 	for _, fn := range v.functions {
+		if countNodes(fn) < minFunctionNodes {
+			continue
+		}
+
 		shingles := v.shingler.ExtractShingles(fn)
 		if len(shingles) == 0 {
 			continue

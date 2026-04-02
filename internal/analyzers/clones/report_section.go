@@ -50,13 +50,18 @@ func NewReportSection(report analyze.Report) *ReportSection {
 }
 
 // computeScore converts clone ratio to a 0-1 score (lower ratio = higher score).
+// Clone ratio is pairs/functions which can exceed 1.0 (quadratic pair growth),
+// so we clamp to [0, 1] before inverting.
 func computeScore(cloneRatio float64) float64 {
-	score := 1.0 - cloneRatio
-	if score < 0 {
+	if cloneRatio >= 1.0 {
 		return 0.0
 	}
 
-	return score
+	if cloneRatio <= 0.0 {
+		return 1.0
+	}
+
+	return 1.0 - cloneRatio
 }
 
 // KeyMetrics returns ordered key metrics for display.

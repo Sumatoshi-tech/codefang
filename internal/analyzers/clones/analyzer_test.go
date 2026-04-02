@@ -30,10 +30,17 @@ func buildFunctionNode(name string, childTypes []node.Type) *node.Node {
 		WithRoles([]node.Role{node.RoleFunction, node.RoleDeclaration}).
 		Build()
 
+	// Build nested subtrees so the total node count exceeds minFunctionNodes.
+	// Each child gets 2 sub-children to produce realistic AST depth.
 	children := make([]*node.Node, 0, len(childTypes))
 
-	for _, ct := range childTypes {
+	for i, ct := range childTypes {
 		child := node.NewBuilder().WithType(ct).Build()
+
+		sub1 := node.NewBuilder().WithType(childTypes[i%len(childTypes)]).Build()
+		sub2 := node.NewBuilder().WithType(childTypes[(i+1)%len(childTypes)]).Build()
+		child.Children = []*node.Node{sub1, sub2}
+
 		children = append(children, child)
 	}
 
@@ -407,9 +414,9 @@ func TestShingler_ExtractShingles_Valid(t *testing.T) {
 	shingles := s.ExtractShingles(fn)
 	require.NotNil(t, shingles)
 
-	// Function node itself + 8 children = 9 nodes.
-	// With k=5: 9 - 5 + 1 = 5 shingles.
-	assert.Len(t, shingles, defaultShingleSize)
+	// Function node + 8 children × 3 nodes each = 25 nodes.
+	// With k=5: 25 - 5 + 1 = 21 shingles.
+	assert.Len(t, shingles, 21)
 }
 
 // TestShingler_ExtractShingles_Deterministic verifies same tree produces same shingles.
@@ -455,8 +462,12 @@ func TestComputeCloneRatio(t *testing.T) {
 	t.Parallel()
 
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 0), testFloatDelta)
+	assert.InDelta(t, 0.0, computeCloneRatio(0, 1), testFloatDelta)
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 10), testFloatDelta)
-	assert.InDelta(t, 0.5, computeCloneRatio(5, 10), testFloatDelta)
+	// 5 pairs out of 10*(10-1)/2 = 45 possible → 5/45 ≈ 0.111.
+	assert.InDelta(t, 5.0/45.0, computeCloneRatio(5, 10), testFloatDelta)
+	// All pairs: 45/45 = 1.0.
+	assert.InDelta(t, 1.0, computeCloneRatio(45, 10), testFloatDelta)
 }
 
 // TestCloneMessage verifies message selection.

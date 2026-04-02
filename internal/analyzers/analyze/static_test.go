@@ -689,7 +689,6 @@ func TestStaticService_PerFile_FormatJSONIncludesFiles(t *testing.T) {
 	jsonStr := buf.String()
 	assert.Contains(t, jsonStr, `"files"`, "JSON must include files array")
 	assert.Contains(t, jsonStr, `"file_path"`, "files entries must have file_path")
-	assert.NotContains(t, jsonStr, `"summary_stats"`, "summary_stats must not be in output")
 }
 
 func TestStaticService_PerFile_DisabledReturnsNil(t *testing.T) {

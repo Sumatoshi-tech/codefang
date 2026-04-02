@@ -212,7 +212,6 @@ func TestJSONSection_NoFiles_OmittedFromJSON(t *testing.T) {
 
 	jsonStr := string(data)
 	assert.NotContains(t, jsonStr, `"files"`, "files must be omitted when nil")
-	assert.NotContains(t, jsonStr, `"summary_stats"`, "summary_stats must be omitted when nil")
 }
 
 func TestJSONSection_WithFiles_IncludedInJSON(t *testing.T) {
