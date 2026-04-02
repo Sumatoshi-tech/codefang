@@ -44,7 +44,7 @@ func TestHTTPMiddleware_CreatesSpan(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/analyze", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/analyze", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	mw.ServeHTTP(rec, req)
@@ -74,7 +74,7 @@ func TestHTTPMiddleware_PropagatesContext(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, handler)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/history", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/history", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	mw.ServeHTTP(rec, req)
@@ -114,7 +114,7 @@ func TestHTTPMiddleware_ExtractsTraceParent(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/analyze", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/analyze", http.NoBody)
 	req.Header.Set("Traceparent", traceparent)
 
 	rec := httptest.NewRecorder()
@@ -145,7 +145,7 @@ func TestHTTPMiddleware_RecoversPanic(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/crash", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/crash", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	// Should not panic — middleware should recover.
@@ -199,7 +199,7 @@ func TestHTTPMiddleware_SetsStatusOnError(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/score", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/score", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	mw.ServeHTTP(rec, req)
@@ -286,7 +286,7 @@ func TestHTTPMiddleware_AccessLog(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, logger, handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/analyze", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/analyze", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	mw.ServeHTTP(rec, req)

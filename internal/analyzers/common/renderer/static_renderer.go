@@ -18,8 +18,11 @@ func NewDefaultStaticRenderer() *DefaultStaticRenderer {
 }
 
 // SectionsToJSON converts report sections to a JSON-serializable value.
+// Returns a pointer to enable per-file enrichment via PerFileEnricher interface.
 func (r *DefaultStaticRenderer) SectionsToJSON(sections []analyze.ReportSection) any {
-	return SectionsToJSON(sections)
+	report := SectionsToJSON(sections)
+
+	return &report
 }
 
 // RenderText writes human-readable text output for the given sections.

@@ -15,6 +15,7 @@ const (
 // Aggregator aggregates results from multiple cohesion analyses.
 type Aggregator struct {
 	*common.Aggregator
+	common.PerFileRetainer
 }
 
 // NewAggregator creates a new Aggregator.
@@ -32,6 +33,15 @@ func NewAggregator() *Aggregator {
 			config.emptyResultBuilder,
 		),
 	}
+}
+
+// Aggregate overrides the base Aggregate method to retain per-file reports.
+func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
+	for _, report := range results {
+		a.Retain(report)
+	}
+
+	a.Aggregator.Aggregate(results)
 }
 
 // aggregatorConfig holds the configuration for the aggregator.

@@ -135,6 +135,7 @@ func (s *ReportSection) buildIssues() []analyze.Issue {
 		name := reportutil.MapString(fn, KeyFuncName)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
+			Location: reportutil.MapString(fn, analyze.SourceFileKey),
 			Value:    IssueValueNoDoc,
 			Severity: analyze.SeverityPoor,
 		})

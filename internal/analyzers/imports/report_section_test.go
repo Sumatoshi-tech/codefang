@@ -193,3 +193,48 @@ func TestImportsImplementsInterface(t *testing.T) {
 
 	var _ analyze.ReportSection = (*ReportSection)(nil)
 }
+
+// FRD: specs/frds/FRD-20260328-imports-perfile-location.md.
+
+func TestImportsPerFile_IssuesHaveLocation(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"imports":             []string{"fmt", "os"},
+		"count":               2,
+		"import_counts":       map[string]int{"fmt": 1, "os": 1},
+		analyze.SourceFileKey: "/repo/pkg/foo.go",
+	}
+
+	section := NewReportSection(report)
+	issues := section.AllIssues()
+
+	if len(issues) == 0 {
+		t.Fatal("expected issues for imports")
+	}
+
+	for _, issue := range issues {
+		if issue.Location != "/repo/pkg/foo.go" {
+			t.Errorf("issue %q location = %q, want %q",
+				issue.Name, issue.Location, "/repo/pkg/foo.go")
+		}
+	}
+}
+
+func TestImportsPerFile_NoSourceFile_EmptyLocation(t *testing.T) {
+	t.Parallel()
+
+	report := newTestImportsReport()
+	section := NewReportSection(report)
+	issues := section.AllIssues()
+
+	if len(issues) == 0 {
+		t.Fatal("expected issues")
+	}
+
+	for _, issue := range issues {
+		if issue.Location != "" {
+			t.Errorf("issue %q location = %q, want empty", issue.Name, issue.Location)
+		}
+	}
+}

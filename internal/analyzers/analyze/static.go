@@ -15,9 +15,11 @@ import (
 	"sync/atomic"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/internal/storage"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/meminfo"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -102,6 +104,18 @@ type StaticService struct {
 	// Renderer provides section-based output rendering.
 	// Must be set before calling FormatJSON, FormatText, FormatCompact, or RunAndFormat.
 	Renderer StaticRenderer
+
+	// PerFile enables per-file report retention in aggregators.
+	// When true, aggregators store per-file snapshots accessible via PerFileResults.
+	PerFile bool
+
+	// perFileResults is populated after AnalyzeFolder when PerFile is true.
+	// Keyed by analyzer name → file path → per-file report.
+	perFileResults map[string]map[string]Report
+
+	// analysisRootPath is the root path used in the last AnalyzeFolder call.
+	// Used by FormatJSON to make per-file paths relative.
+	analysisRootPath string
 }
 
 // NewStaticService creates a StaticService with the given analyzers.
@@ -180,6 +194,8 @@ const streamFilesBufSize = 100
 // AnalyzeFolder runs static analyzers for supported files in a folder tree.
 // File discovery streams paths to workers via a channel, providing natural backpressure.
 func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, analyzerList []string) (map[string]Report, error) {
+	svc.analysisRootPath = rootPath
+
 	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
 	aggregators := svc.initAggregators(analyzersToRun)
 
@@ -208,6 +224,10 @@ func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, an
 	}
 
 	results := buildFinalResults(aggregators)
+
+	if svc.PerFile {
+		svc.perFileResults = extractPerFileResults(aggregators)
+	}
 
 	svc.emitProgress(fileCounter.Load(), aggregators, ProgressPhaseComplete)
 
@@ -334,10 +354,13 @@ func acquireParser(ch chan *uast.Parser) (*uast.Parser, error) {
 }
 
 // StampSourceFile adds "_source_file" metadata to every collection item in each report.
-// This allows downstream consumers (e.g., plot generators) to group results by file/package.
+// Also sets SourceFileKey at the report top level for analyzers without collections (e.g., imports).
+// This allows downstream consumers (e.g., plot generators, per-file retention) to group results by file.
 // Handles both legacy []map[string]any collections and TypedCollection wrappers.
 func StampSourceFile(reports map[string]Report, filePath string) {
 	for _, report := range reports {
+		report[SourceFileKey] = filePath
+
 		for key, val := range report {
 			switch v := val.(type) {
 			case TypedCollection:
@@ -453,6 +476,10 @@ func (svc *StaticService) initAggregators(analyzersToRun []string) map[string]Re
 			setter.SetSpillThreshold(svc.SpillThreshold)
 		}
 
+		if pf, ok := agg.(PerFileModeEnabled); svc.PerFile && ok {
+			pf.SetPerFileMode(true)
+		}
+
 		aggregators[analyzerName] = agg
 	}
 
@@ -532,6 +559,10 @@ func (svc *StaticService) FormatJSON(results map[string]Report, writer io.Writer
 
 	sections := svc.BuildSections(results)
 	report := svc.Renderer.SectionsToJSON(sections)
+
+	if svc.PerFile {
+		report = svc.enrichWithPerFileData(report, sections)
+	}
 
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
@@ -684,9 +715,17 @@ func (svc *StaticService) RenderPlotPages(
 	return pages, nil
 }
 
+// reportJSONFilename is the name of the machine-readable JSON report emitted alongside plot pages.
+const reportJSONFilename = "report.json"
+
+// reportJSONPerm is the file permission for report.json.
+const reportJSONPerm = 0o640
+
 // FormatPlotPages renders multi-page HTML plot output to outputDir.
 // Each analyzer gets its own HTML page plus an index page with navigation.
+// Also emits report.json with the raw analysis results for external dashboards.
 // FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+// FRD: specs/frds/FRD-20260328-report-json-emission.md.
 func (svc *StaticService) FormatPlotPages(
 	analyzerNames []string,
 	results map[string]Report,
@@ -697,13 +736,27 @@ func (svc *StaticService) FormatPlotPages(
 		return err
 	}
 
-	renderer := &plotpage.MultiPageRenderer{
+	mpRenderer := &plotpage.MultiPageRenderer{
 		OutputDir: outputDir,
 		Title:     plotPageTitle,
 		Theme:     plotpage.ThemeDark,
 	}
 
-	return renderer.RenderIndex(pages)
+	indexErr := mpRenderer.RenderIndex(pages)
+	if indexErr != nil {
+		return indexErr
+	}
+
+	return writeReportJSON(results, outputDir)
+}
+
+// writeReportJSON writes the analysis results as indented JSON to outputDir/report.json.
+func writeReportJSON(results map[string]Report, outputDir string) error {
+	reportPath := filepath.Join(outputDir, reportJSONFilename)
+
+	return storage.WriteAtomic(reportPath, reportJSONPerm, func(w io.Writer) error {
+		return textutil.WriteJSON(w, results, true)
+	})
 }
 
 // ResolveAggregationMode returns the aggregation mode for a given output format.

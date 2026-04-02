@@ -3,6 +3,7 @@ package analyze_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/imports"
@@ -626,4 +628,107 @@ func writeTestGoFile(t *testing.T, dir, name string) {
 	content := []byte("package main\n\nfunc F() { x := 1; _ = x }\n")
 
 	require.NoError(t, os.WriteFile(path, content, 0o600))
+}
+
+// FRD: specs/frds/FRD-20260327-static-perfile-orchestration.md.
+
+func TestStaticService_PerFile_FieldExists(t *testing.T) {
+	t.Parallel()
+
+	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc.PerFile = true
+
+	assert.True(t, svc.PerFile)
+}
+
+func TestStaticService_PerFile_AnalyzeFolderRetainsPerFileResults(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+	writeTestGoFile(t, dir, "b.go")
+	writeTestGoFile(t, dir, "c.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc.NativeMemoryReleaseFn = func() {}
+	svc.PerFile = true
+
+	results, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	_ = results
+
+	perFile := svc.PerFileResults()
+	require.NotNil(t, perFile, "per-file results must be present when PerFile=true")
+
+	// Each analyzer should have 3 per-file entries.
+	for analyzerName, fileResults := range perFile {
+		assert.Len(t, fileResults, 3,
+			"analyzer %s must have 3 per-file entries", analyzerName)
+	}
+}
+
+func TestStaticService_PerFile_FormatJSONIncludesFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+	writeTestGoFile(t, dir, "b.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc.NativeMemoryReleaseFn = func() {}
+	svc.Renderer = &renderer.DefaultStaticRenderer{}
+	svc.PerFile = true
+
+	results, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	require.NoError(t, svc.FormatJSON(results, &buf))
+
+	jsonStr := buf.String()
+	assert.Contains(t, jsonStr, `"files"`, "JSON must include files array")
+	assert.Contains(t, jsonStr, `"file_path"`, "files entries must have file_path")
+	assert.NotContains(t, jsonStr, `"summary_stats"`, "summary_stats must not be in output")
+}
+
+func TestStaticService_PerFile_DisabledReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc.NativeMemoryReleaseFn = func() {}
+	// PerFile is false (default).
+
+	_, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	assert.Nil(t, svc.PerFileResults(), "per-file results must be nil when PerFile is false")
+}
+
+// FRD: specs/frds/FRD-20260328-report-json-emission.md.
+
+func TestStaticService_FormatPlotPages_EmitsReportJSON(t *testing.T) {
+	t.Parallel()
+
+	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc.NativeMemoryReleaseFn = func() {}
+
+	results := map[string]analyze.Report{
+		"complexity": {"total_functions": 1},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), "plot-output")
+
+	require.NoError(t, svc.FormatPlotPages([]string{"complexity"}, results, outputDir))
+
+	reportPath := filepath.Join(outputDir, "report.json")
+	data, err := os.ReadFile(reportPath)
+	require.NoError(t, err, "report.json must exist after FormatPlotPages")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(data, &parsed), "report.json must be valid JSON")
+	assert.Contains(t, parsed, "complexity", "report.json must contain analyzer results")
 }

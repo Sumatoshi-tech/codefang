@@ -170,12 +170,14 @@ func (s *ReportSection) complexityIssues(limit int) []analyze.Issue {
 		cc := reportutil.GetInt(fn, KeyFuncCyclomatic)
 		cognitive := reportutil.GetInt(fn, KeyFuncCognitive)
 		nesting := reportutil.GetInt(fn, KeyFuncNesting)
+		location := reportutil.MapString(fn, analyze.SourceFileKey)
 		envelopes = append(envelopes, issueEnvelope{
 			cyclomatic: cc,
 			cognitive:  cognitive,
 			nesting:    nesting,
 			issue: analyze.Issue{
 				Name:     name,
+				Location: location,
 				Value:    fmt.Sprintf("%s%d | Cog=%d | Nest=%d", IssueValuePrefix, cc, cognitive, nesting),
 				Severity: severityForComplexity(cc),
 			},

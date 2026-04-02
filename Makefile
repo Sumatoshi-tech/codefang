@@ -37,8 +37,9 @@ help:
 	@echo "  build            - Build all binaries (alias for all)"
 	@echo "  libgit2          - Build vendored libgit2 statically (auto-built by 'all')"
 	@echo "  install          - Install binaries to system PATH"
-	@echo "  test             - Run all tests"
-	@echo "  lint             - Run linters and deadcode analysis"
+	@echo "  test             - Run all tests (unit)"
+	@echo "  test-e2e         - Run e2e acceptance tests (RUN=<regex> to filter)"
+	@echo "  lint             - Run linters, deadcode, and orphan package detection"
 	@echo "  fmt              - Format code"
 	@echo "  schemas          - Generate JSON schemas for all analyzers"
 	@echo "  deadcode         - Run deadcode analysis with detailed output"
@@ -110,6 +111,17 @@ testv: all
 	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
 	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
 	CGO_ENABLED=1 go test ./... -v
+
+# Run end-to-end acceptance tests (tests/e2e/).
+# Add new spec tests by dropping *_test.go files into tests/e2e/.
+# Optional: RUN=<regex> to filter, e.g. make test-e2e RUN=TestPerFile
+RUN ?= .
+.PHONY: test-e2e
+test-e2e: libgit2
+	PKG_CONFIG_PATH=$(LIBGIT2_PKG_CONFIG) \
+	CGO_CFLAGS="-I$(CURDIR)/$(LIBGIT2_INSTALL)/include" \
+	CGO_LDFLAGS="-L$(CURDIR)/$(LIBGIT2_INSTALL)/lib64 -L$(CURDIR)/$(LIBGIT2_INSTALL)/lib -lgit2 -lpthread" \
+	CGO_ENABLED=1 go test -tags e2e -count=1 -v -run $(RUN) ./tests/e2e/...
 
 # Run UAST performance benchmarks (comprehensive suite with organized results)
 bench: all
@@ -302,13 +314,15 @@ lint:
 	CGO_ENABLED=1 $(GOLINT) run $(INTERNAL_PKGS)
 	@echo "Running deadcode analysis (production)..."
 	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh $(DEADCODE_PKGS)
+	@echo "Running orphan package detection..."
+	@./scripts/orphan-packages.sh $(INTERNAL_PKGS)
 	@echo "✓ Linting complete"
 
 ## deadcode: Run deadcode analysis with whitelist filter (fails if dead code found)
 .PHONY: deadcode
 deadcode:
 	@echo "Running deadcode analysis with whitelist..."
-	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh -test $(DEADCODE_PKGS)
+	@GOCACHE=$(LINT_GOCACHE) ./scripts/deadcode-filter.sh $(DEADCODE_PKGS)
 
 ## deadcode-prod: Run deadcode analysis excluding tests (production-only dead code)
 .PHONY: deadcode-prod

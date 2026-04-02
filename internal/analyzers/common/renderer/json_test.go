@@ -192,3 +192,91 @@ func TestSectionsToJSON_Serializable(t *testing.T) {
 	assert.Contains(t, string(data), `"title":"COMPLEXITY"`)
 	assert.Contains(t, string(data), `"overall_score":0.8`)
 }
+
+// FRD: specs/frds/FRD-20260327-json-perfile-types.md.
+
+func TestJSONSection_NoFiles_OmittedFromJSON(t *testing.T) {
+	t.Parallel()
+
+	section := JSONSection{
+		Title:      "COMPLEXITY",
+		Score:      0.8,
+		ScoreLabel: "8/10",
+		Status:     "Good",
+		Metrics:    []JSONMetric{{Label: "Total Functions", Value: "42"}},
+		Issues:     []JSONIssue{},
+	}
+
+	data, err := json.Marshal(section)
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	assert.NotContains(t, jsonStr, `"files"`, "files must be omitted when nil")
+	assert.NotContains(t, jsonStr, `"summary_stats"`, "summary_stats must be omitted when nil")
+}
+
+func TestJSONSection_WithFiles_IncludedInJSON(t *testing.T) {
+	t.Parallel()
+
+	section := JSONSection{
+		Title:      "COMPLEXITY",
+		Score:      0.8,
+		ScoreLabel: "8/10",
+		Status:     "Good",
+		Metrics:    []JSONMetric{{Label: "Total Functions", Value: "42"}},
+		Issues:     []JSONIssue{},
+		Files: &[]JSONFileEntry{
+			{
+				FilePath:   "pkg/foo/bar.go",
+				Score:      0.6,
+				ScoreLabel: "6/10",
+				Status:     "Fair",
+				Metrics:    []JSONMetric{{Label: "Total Functions", Value: "12"}},
+				Issues:     []JSONIssue{},
+			},
+		},
+	}
+
+	data, err := json.Marshal(section)
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	assert.Contains(t, jsonStr, `"files"`)
+	assert.Contains(t, jsonStr, `"file_path":"pkg/foo/bar.go"`)
+	assert.Contains(t, jsonStr, `"score":0.6`)
+}
+
+func TestJSONSection_PerFileRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := JSONSection{
+		Title:      "HALSTEAD",
+		Score:      0.7,
+		ScoreLabel: "7/10",
+		Status:     "Fair",
+		Metrics:    []JSONMetric{{Label: "Volume", Value: "500"}},
+		Issues:     []JSONIssue{},
+		Files: &[]JSONFileEntry{
+			{
+				FilePath:   "cmd/main.go",
+				Score:      0.5,
+				ScoreLabel: "5/10",
+				Status:     "Moderate",
+				Metrics:    []JSONMetric{{Label: "Volume", Value: "200"}},
+				Issues:     []JSONIssue{},
+			},
+		},
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded JSONSection
+	require.NoError(t, json.Unmarshal(data, &decoded))
+
+	assert.Equal(t, original.Title, decoded.Title)
+	require.NotNil(t, decoded.Files)
+	require.Len(t, *decoded.Files, 1)
+	assert.Equal(t, "cmd/main.go", (*decoded.Files)[0].FilePath)
+	assert.InDelta(t, 0.5, (*decoded.Files)[0].Score, 0.001)
+}

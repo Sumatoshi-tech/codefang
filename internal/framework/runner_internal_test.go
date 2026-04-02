@@ -31,9 +31,9 @@ func TestRunner_drainWorkerTCs_ConcurrentRouting(t *testing.T) {
 		commitMeta: make(map[string]analyze.CommitMeta),
 	}
 
-	var active int32
+	var active atomic.Int32
 
-	var maxActive int32
+	var maxActive atomic.Int32
 
 	var startWg sync.WaitGroup
 
@@ -43,21 +43,21 @@ func TestRunner_drainWorkerTCs_ConcurrentRouting(t *testing.T) {
 		startWg.Done()
 		startWg.Wait()
 
-		current := atomic.AddInt32(&active, 1)
+		current := active.Add(1)
 
 		for {
-			maxA := atomic.LoadInt32(&maxActive)
+			maxA := maxActive.Load()
 			if current <= maxA {
 				break
 			}
 
-			if atomic.CompareAndSwapInt32(&maxActive, maxA, current) {
+			if maxActive.CompareAndSwap(maxA, current) {
 				break
 			}
 		}
 
 		time.Sleep(10 * time.Millisecond)
-		atomic.AddInt32(&active, -1)
+		active.Add(-1)
 
 		return nil
 	}
@@ -78,5 +78,5 @@ func TestRunner_drainWorkerTCs_ConcurrentRouting(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.Less(t, elapsed, 50*time.Millisecond, "should run concurrently")
-	assert.Equal(t, int32(2), atomic.LoadInt32(&maxActive), "should have 2 concurrent routes")
+	assert.Equal(t, int32(2), maxActive.Load(), "should have 2 concurrent routes")
 }

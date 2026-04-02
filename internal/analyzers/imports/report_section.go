@@ -89,10 +89,13 @@ func (s *ReportSection) AllIssues() []analyze.Issue {
 }
 
 // importIssues builds import issues sorted by frequency (or name), limited to limit (0 = all).
+// When the report contains a _source_file key, it is used as the Location for each issue.
 func (s *ReportSection) importIssues(limit int) []analyze.Issue {
+	location := reportutil.GetString(s.report, analyze.SourceFileKey)
+
 	counts := reportutil.GetStringIntMap(s.report, KeyImportCounts)
 	if len(counts) > 0 {
-		return buildIssuesFromCounts(counts, limit)
+		return buildIssuesFromCounts(counts, limit, location)
 	}
 
 	// Fallback: use simple imports list.
@@ -101,11 +104,11 @@ func (s *ReportSection) importIssues(limit int) []analyze.Issue {
 		return nil
 	}
 
-	return buildIssuesFromList(imports, limit)
+	return buildIssuesFromList(imports, limit, location)
 }
 
 // buildIssuesFromCounts creates sorted issues from import_counts map.
-func buildIssuesFromCounts(counts map[string]int, limit int) []analyze.Issue {
+func buildIssuesFromCounts(counts map[string]int, limit int, location string) []analyze.Issue {
 	entries := make([]importEntry, 0, len(counts))
 	for name, count := range counts {
 		entries = append(entries, importEntry{name: name, count: count})
@@ -118,6 +121,7 @@ func buildIssuesFromCounts(counts map[string]int, limit int) []analyze.Issue {
 	for _, e := range sorted {
 		issues = append(issues, analyze.Issue{
 			Name:     e.name,
+			Location: location,
 			Value:    reportutil.FormatInt(e.count),
 			Severity: analyze.SeverityInfo,
 		})
@@ -127,13 +131,14 @@ func buildIssuesFromCounts(counts map[string]int, limit int) []analyze.Issue {
 }
 
 // buildIssuesFromList creates issues from a simple string slice sorted alphabetically.
-func buildIssuesFromList(imports []string, limit int) []analyze.Issue {
+func buildIssuesFromList(imports []string, limit int, location string) []analyze.Issue {
 	sorted := mapx.SortAndLimit(imports, importNameLess, limit)
 
 	issues := make([]analyze.Issue, 0, len(sorted))
 	for _, imp := range sorted {
 		issues = append(issues, analyze.Issue{
 			Name:     imp,
+			Location: location,
 			Value:    "1",
 			Severity: analyze.SeverityInfo,
 		})

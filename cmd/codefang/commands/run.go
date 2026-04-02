@@ -60,6 +60,7 @@ type staticExecutor func(
 	format string,
 	verbose bool,
 	noColor bool,
+	perFile bool,
 	maxWorkers int,
 	memoryBudget int64,
 	writer io.Writer,
@@ -107,6 +108,9 @@ type HistoryRunOptions struct {
 	CheckpointDir   string
 	Resume          *bool
 	ClearCheckpoint bool
+
+	CacheDir string
+	NoCache  bool
 
 	DebugTrace bool
 	NDJSON     bool
@@ -167,6 +171,8 @@ type RunCommand struct {
 
 	checkpointDir   string
 	clearCheckpoint bool
+	cacheDir        string
+	noCache         bool
 
 	ndjson bool
 
@@ -175,6 +181,7 @@ type RunCommand struct {
 	diagnosticsAddr string
 
 	staticWorkers int
+	perFile       bool
 
 	plotOutput string
 	keepStore  bool
@@ -269,6 +276,8 @@ func newRunCommandWithAllDeps(
 
 	cmd.Flags().IntVar(&rc.workers, "workers", 0, "Number of parallel workers (0 = use CPU count)")
 	cmd.Flags().IntVar(&rc.staticWorkers, "static-workers", 0, "Number of parallel static analysis workers (0 = min(CPU count, 8))")
+	cmd.Flags().BoolVarP(&rc.perFile, "per-file", "F", false,
+		"Include per-file breakdowns and summary statistics in static output")
 	cmd.Flags().IntVar(&rc.bufferSize, "buffer-size", 0, "Size of internal pipeline channels (0 = workers*2)")
 	cmd.Flags().IntVar(&rc.commitBatchSize, "commit-batch-size", 0, "Commits per processing batch (0 = default 100)")
 	cmd.Flags().StringVar(&rc.blobCacheSize, "blob-cache-size", "", "Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)")
@@ -276,10 +285,7 @@ func newRunCommandWithAllDeps(
 	cmd.Flags().StringVar(&rc.blobArenaSize, "blob-arena-size", "", "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)")
 	cmd.Flags().StringVar(&rc.memoryBudget, "memory-budget", "", "Memory budget for auto-tuning (e.g., '512MB', '2GB')")
 
-	cmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
-	cmd.Flags().StringVar(&rc.checkpointDir, "checkpoint-dir", "", "Checkpoint directory (default: ~/.codefang/checkpoints)")
-	cmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
-	cmd.Flags().BoolVar(&rc.clearCheckpoint, "clear-checkpoint", false, "Clear existing checkpoint before run")
+	rc.registerPersistenceFlags(cmd)
 
 	cmd.Flags().StringVar(&rc.configFile, "config", "", "Configuration file path (default: .codefang.yaml in CWD or $HOME)")
 	cmd.Flags().BoolVar(&rc.listAnalyzers, "list-analyzers", false, "List all available analyzer IDs and exit")
@@ -572,7 +578,7 @@ func (rc *RunCommand) runStaticPhase(
 	if staticFormat == analyze.FormatPlot {
 		err = rc.staticPlotExec(path, staticIDs, rc.staticWorkers, budgetBytes, rc.plotOutput)
 	} else {
-		err = rc.staticExec(path, staticIDs, staticFormat, rc.verbose, rc.noColor, rc.staticWorkers, budgetBytes, writer)
+		err = rc.staticExec(path, staticIDs, staticFormat, rc.verbose, rc.noColor, rc.perFile, rc.staticWorkers, budgetBytes, writer)
 	}
 
 	if err != nil {
@@ -640,7 +646,7 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	err := rc.staticExec(
 		path, staticIDs, analyze.FormatBinary,
-		rc.verbose, rc.noColor, rc.staticWorkers, budgetBytes, &raw,
+		rc.verbose, rc.noColor, rc.perFile, rc.staticWorkers, budgetBytes, &raw,
 	)
 	if err != nil {
 		return fmt.Errorf("render combined static phase: %w", err)
@@ -720,6 +726,8 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 		MemoryBudget:    rc.memoryBudget,
 		CheckpointDir:   rc.checkpointDir,
 		ClearCheckpoint: rc.clearCheckpoint,
+		CacheDir:        rc.cacheDir,
+		NoCache:         rc.noCache,
 		DebugTrace:      rc.debugTrace,
 		NDJSON:          rc.ndjson,
 		ConfigFile:      rc.configFile,
@@ -733,6 +741,30 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 	opts.AnalyzerFlags = collectAnalyzerFlags(cmd)
 
 	return opts
+}
+
+// registerPersistenceFlags registers checkpoint and incremental cache flags.
+// FRD: specs/frds/FRD-20260328-cache-cli-flags.md.
+func (rc *RunCommand) registerPersistenceFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
+	cmd.Flags().StringVar(&rc.checkpointDir, "checkpoint-dir", "",
+		"Checkpoint directory (default: ~/.codefang/checkpoints)")
+	cmd.Flags().Bool("resume", true, "Resume from checkpoint if available")
+	cmd.Flags().BoolVar(&rc.clearCheckpoint, "clear-checkpoint", false,
+		"Clear existing checkpoint before run")
+	cmd.Flags().StringVar(&rc.cacheDir, "cache-dir", "",
+		"Incremental analysis cache directory (skip already-processed commits)")
+	cmd.Flags().BoolVar(&rc.noCache, "no-cache", false,
+		"Force full re-analysis, overwriting any existing cache")
+}
+
+// resolveCacheDir returns the cache directory from opts, or empty when --no-cache is set.
+func resolveCacheDir(opts HistoryRunOptions) string {
+	if opts.NoCache || opts.CacheDir == "" {
+		return ""
+	}
+
+	return opts.CacheDir
 }
 
 // parseBoolFlag returns a pointer to the flag value if it was explicitly set, nil otherwise.
@@ -850,6 +882,7 @@ func runStaticAnalyzers(
 	format string,
 	verbose bool,
 	noColor bool,
+	perFile bool,
 	maxWorkers int,
 	memoryBudget int64,
 	writer io.Writer,
@@ -857,6 +890,7 @@ func runStaticAnalyzers(
 	service := analyze.NewStaticService(defaultStaticAnalyzers())
 	service.Renderer = renderer.NewDefaultStaticRenderer()
 	service.MaxWorkers = maxWorkers
+	service.PerFile = perFile
 
 	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
 	applyStaticProgressLogging(service, verbose)
@@ -1264,6 +1298,7 @@ func executeHistoryPipeline(
 
 	runner := framework.NewRunnerWithConfig(repository, path, coordConfig, allAnalyzers...)
 	runner.CoreCount = len(pl.Core)
+	runner.CacheDir = resolveCacheDir(opts)
 
 	red, analysisMetrics, metricsErr := createRunMetrics()
 	if metricsErr != nil {

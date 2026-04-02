@@ -19,7 +19,7 @@ func TestHealthHandler_ReturnsOK(t *testing.T) {
 
 	handler := observability.HealthHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -38,7 +38,7 @@ func TestHealthHandler_ContentTypeJSON(t *testing.T) {
 
 	handler := observability.HealthHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -53,7 +53,7 @@ func TestReadyHandler_AllChecksPass(t *testing.T) {
 	passCheckB := func(_ context.Context) error { return nil }
 	handler := observability.ReadyHandler(passCheckA, passCheckB)
 
-	req := httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -72,7 +72,7 @@ func TestReadyHandler_NoChecks(t *testing.T) {
 
 	handler := observability.ReadyHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -91,7 +91,7 @@ func TestReadyHandler_CheckFails(t *testing.T) {
 
 	handler := observability.ReadyHandler(passCheck, failCheck)
 
-	req := httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)

@@ -17,6 +17,19 @@ type JSONSection struct {
 	Metrics      []JSONMetric       `json:"metrics"`
 	Distribution []JSONDistribution `json:"distribution,omitempty"`
 	Issues       []JSONIssue        `json:"issues"`
+	Files        *[]JSONFileEntry   `json:"files,omitempty"`
+	Score        float64            `json:"score"`
+}
+
+// JSONFileEntry represents one file's analysis results within a section.
+// FRD: specs/frds/FRD-20260327-json-perfile-types.md.
+type JSONFileEntry struct {
+	FilePath     string             `json:"file_path"`
+	ScoreLabel   string             `json:"score_label"`
+	Status       string             `json:"status"`
+	Metrics      []JSONMetric       `json:"metrics"`
+	Distribution []JSONDistribution `json:"distribution,omitempty"`
+	Issues       []JSONIssue        `json:"issues"`
 	Score        float64            `json:"score"`
 }
 
@@ -81,6 +94,83 @@ func SectionToJSON(section analyze.ReportSection) JSONSection {
 		Metrics:      metrics,
 		Distribution: distribution,
 		Issues:       issues,
+	}
+}
+
+// EnrichWithPerFileData injects per-file data and summary statistics into JSON sections.
+// Implements analyze.PerFileEnricher to avoid import cycles.
+func (r *JSONReport) EnrichWithPerFileData(
+	perFileResults map[string]map[string]analyze.Report,
+	rootPath string,
+	analyzers []analyze.StaticAnalyzer,
+) {
+	// Build analyzer name → (section title, provider) mapping.
+	type analyzerInfo struct {
+		title    string
+		provider analyze.ReportSectionProvider
+	}
+
+	infoByName := make(map[string]analyzerInfo, len(analyzers))
+
+	for _, analyzer := range analyzers {
+		provider, ok := analyzer.(analyze.ReportSectionProvider)
+		if !ok {
+			continue
+		}
+
+		emptySection := provider.CreateReportSection(analyze.Report{})
+		infoByName[analyzer.Name()] = analyzerInfo{
+			title:    emptySection.SectionTitle(),
+			provider: provider,
+		}
+	}
+
+	// Build section title → index for O(1) lookup.
+	titleToIdx := make(map[string]int, len(r.Sections))
+	for idx, section := range r.Sections {
+		titleToIdx[section.Title] = idx
+	}
+
+	// Initialize all sections with empty files array (spec: empty array, not omitted).
+	for idx := range r.Sections {
+		emptyFiles := make([]JSONFileEntry, 0)
+		r.Sections[idx].Files = &emptyFiles
+	}
+
+	for analyzerName, fileReports := range perFileResults {
+		info, ok := infoByName[analyzerName]
+		if !ok {
+			continue
+		}
+
+		idx, found := titleToIdx[info.title]
+		if !found {
+			continue
+		}
+
+		files := make([]JSONFileEntry, 0, len(fileReports))
+		for filePath, report := range fileReports {
+			section := info.provider.CreateReportSection(report)
+			relPath := analyze.MakeRelativePath(filePath, rootPath)
+			files = append(files, SectionToJSONFileEntry(section, relPath))
+		}
+
+		r.Sections[idx].Files = &files
+	}
+}
+
+// SectionToJSONFileEntry converts a ReportSection to a JSONFileEntry for per-file output.
+func SectionToJSONFileEntry(section analyze.ReportSection, filePath string) JSONFileEntry {
+	base := SectionToJSON(section)
+
+	return JSONFileEntry{
+		FilePath:     filePath,
+		Score:        base.Score,
+		ScoreLabel:   base.ScoreLabel,
+		Status:       base.Status,
+		Metrics:      base.Metrics,
+		Distribution: base.Distribution,
+		Issues:       base.Issues,
 	}
 }
 

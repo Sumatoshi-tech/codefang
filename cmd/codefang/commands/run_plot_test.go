@@ -20,7 +20,7 @@ func TestRunCommand_ForwardsPlotOutputFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -50,7 +50,7 @@ func TestRunCommand_ForwardsKeepStoreFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -131,7 +131,7 @@ func TestStaticPlot_RequiresOutputFlag(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {

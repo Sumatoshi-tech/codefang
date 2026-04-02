@@ -128,6 +128,7 @@ func (s *ReportSection) buildIssues() []analyze.Issue {
 		coh := reportutil.GetFloat64(fn, KeyFuncCohesion)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
+			Location: reportutil.MapString(fn, analyze.SourceFileKey),
 			Value:    reportutil.FormatFloat(coh),
 			Severity: severityForCohesion(coh),
 		})
