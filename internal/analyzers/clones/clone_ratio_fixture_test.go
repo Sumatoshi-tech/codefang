@@ -334,8 +334,8 @@ func TestFixture_HalfClones_PartialRatio(t *testing.T) {
 		"3 identical + 3 unique must produce at least 3 clone pairs")
 
 	ratio := reportRatio(t, report)
-	assert.Greater(t, ratio, 0.1, "ratio must reflect partial duplication")
-	assert.Less(t, ratio, 0.5, "ratio must not overcount unique functions")
+	// 3 cloned functions out of 6 total → 0.5.
+	assert.InDelta(t, 0.5, ratio, 0.1, "ratio must reflect partial duplication")
 }
 
 func TestFixture_RatioBounded(t *testing.T) {

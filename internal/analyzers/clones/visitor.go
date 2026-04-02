@@ -114,9 +114,17 @@ func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Repor
 // findClonePairs queries the LSH index and collects unique clone pairs.
 // pairCap limits the stored pairs slice (0 = unlimited). The returned totalCount
 // reflects ALL unique pairs found, regardless of the cap.
-func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int, minSimilarity float64) (pairs []ClonePair, totalCount int) {
+// clonePairResult holds the output of findClonePairs.
+type clonePairResult struct {
+	pairs      []ClonePair
+	totalCount int
+	clonedFunc map[string]struct{} // distinct function names involved in any pair.
+}
+
+func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int, minSimilarity float64) clonePairResult {
 	seen := make(map[PairKey]bool)
 	sigMap := buildSignatureMap(entries)
+	result := clonePairResult{clonedFunc: make(map[string]struct{})}
 
 	for _, entry := range entries {
 		candidates, err := idx.QueryThreshold(entry.sig, minSimilarity)
@@ -124,14 +132,14 @@ func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int, minSimilar
 			continue
 		}
 
-		pairs, totalCount = matchCandidates(entry, candidates, sigMap, seen, pairs, totalCount, pairCap, minSimilarity)
+		result = matchCandidates(entry, candidates, sigMap, seen, result, pairCap, minSimilarity)
 	}
 
-	sort.Slice(pairs, func(i, j int) bool {
-		return pairs[i].Similarity > pairs[j].Similarity
+	sort.Slice(result.pairs, func(i, j int) bool {
+		return result.pairs[i].Similarity > result.pairs[j].Similarity
 	})
 
-	return pairs, totalCount
+	return result
 }
 
 // buildSignatureMap creates a name-to-signature lookup from entries.
@@ -152,11 +160,10 @@ func matchCandidates(
 	candidates []string,
 	sigMap map[string]*minhash.Signature,
 	seen map[PairKey]bool,
-	pairs []ClonePair,
-	totalCount int,
+	result clonePairResult,
 	pairCap int,
 	minSimilarity float64,
-) (updatedPairs []ClonePair, updatedCount int) {
+) clonePairResult {
 	for _, candidateID := range candidates {
 		if candidateID == entry.name {
 			continue
@@ -171,15 +178,17 @@ func matchCandidates(
 
 		pair, ok := computeClonePair(entry, candidateID, sigMap, minSimilarity)
 		if ok {
-			totalCount++
+			result.totalCount++
+			result.clonedFunc[pair.FuncA] = struct{}{}
+			result.clonedFunc[pair.FuncB] = struct{}{}
 
-			if pairCap <= 0 || len(pairs) < pairCap {
-				pairs = append(pairs, pair)
+			if pairCap <= 0 || len(result.pairs) < pairCap {
+				result.pairs = append(result.pairs, pair)
 			}
 		}
 	}
 
-	return pairs, totalCount
+	return result
 }
 
 // computeClonePair computes a clone pair between an entry and a candidate.

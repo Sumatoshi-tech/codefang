@@ -323,9 +323,9 @@ func (a *Analyzer) detectClones(functions []*node.Node) []ClonePair {
 	}
 
 	// Per-file detection: no cap (single-file scope, bounded by function count).
-	pairs, _ := findClonePairs(entries, idx, 0, a.cfgSimilarityType3)
+	result := findClonePairs(entries, idx, 0, a.cfgSimilarityType3)
 
-	return pairs
+	return result.pairs
 }
 
 // buildSignatures computes MinHash signatures for all functions.
@@ -441,7 +441,7 @@ func countNodes(n *node.Node) int {
 
 // buildReport constructs the analysis report.
 func (a *Analyzer) buildReport(totalFunctions int, pairs []ClonePair) analyze.Report {
-	cloneRatio := computeCloneRatio(len(pairs), totalFunctions)
+	cloneRatio := computeCloneRatio(countDistinctFuncs(pairs), totalFunctions)
 	message := cloneMessage(len(pairs))
 
 	pairsForReport := make([]map[string]any, 0, len(pairs))
@@ -476,19 +476,26 @@ func buildEmptyReport(message string) analyze.Report {
 	})
 }
 
-// minFunctionsForRatio is the minimum number of functions needed to compute a ratio.
-const minFunctionsForRatio = 2
+// countDistinctFuncs returns the number of unique function names across all pairs.
+func countDistinctFuncs(pairs []ClonePair) int {
+	unique := make(map[string]struct{}, len(pairs))
 
-// computeCloneRatio calculates the fraction of all possible function pairs that are clones.
-// The maximum possible pairs for N functions is N*(N-1)/2, so the result is always in [0, 1].
-func computeCloneRatio(pairCount, totalFunctions int) float64 {
-	if totalFunctions < minFunctionsForRatio {
+	for idx := range pairs {
+		unique[pairs[idx].FuncA] = struct{}{}
+		unique[pairs[idx].FuncB] = struct{}{}
+	}
+
+	return len(unique)
+}
+
+// computeCloneRatio calculates the fraction of functions involved in at least one clone pair.
+// Returns a value in [0, 1]: 0 means no duplication, 1 means every function has a clone.
+func computeCloneRatio(clonedFuncs, totalFunctions int) float64 {
+	if totalFunctions == 0 || clonedFuncs == 0 {
 		return 0.0
 	}
 
-	maxPairs := float64(totalFunctions) * float64(totalFunctions-1) / float64(minFunctionsForRatio)
-
-	return float64(pairCount) / maxPairs
+	return float64(clonedFuncs) / float64(totalFunctions)
 }
 
 // cloneMessage returns a human-readable message based on clone pair count.

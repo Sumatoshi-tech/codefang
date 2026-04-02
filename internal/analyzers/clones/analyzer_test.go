@@ -457,17 +457,18 @@ func TestClonePairKey(t *testing.T) {
 	assert.Equal(t, key1, key2)
 }
 
-// TestComputeCloneRatio verifies ratio computation.
+// TestComputeCloneRatio verifies ratio = distinct cloned functions / total functions.
 func TestComputeCloneRatio(t *testing.T) {
 	t.Parallel()
 
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 0), testFloatDelta)
-	assert.InDelta(t, 0.0, computeCloneRatio(0, 1), testFloatDelta)
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 10), testFloatDelta)
-	// 5 pairs out of 10*(10-1)/2 = 45 possible → 5/45 ≈ 0.111.
-	assert.InDelta(t, 5.0/45.0, computeCloneRatio(5, 10), testFloatDelta)
-	// All pairs: 45/45 = 1.0.
-	assert.InDelta(t, 1.0, computeCloneRatio(45, 10), testFloatDelta)
+
+	// 2 distinct cloned functions out of 10 → 0.2.
+	assert.InDelta(t, 0.2, computeCloneRatio(2, 10), testFloatDelta)
+
+	// 4 out of 4 → 1.0.
+	assert.InDelta(t, 1.0, computeCloneRatio(4, 4), testFloatDelta)
 }
 
 // TestCloneMessage verifies message selection.
@@ -812,10 +813,10 @@ func TestAggregator_RecomputedCloneRatio(t *testing.T) {
 	result := agg.GetResult()
 	assert.Equal(t, 3, result[keyTotalFunctions])
 
-	// 1 clone pair / 3 functions = 0.333...
+	// 1 clone pair → 2 distinct cloned functions out of 3 → 2/3 ≈ 0.667.
 	ratio, ok := result[keyCloneRatio].(float64)
 	require.True(t, ok)
-	assert.InDelta(t, 1.0/3.0, ratio, testFloatDelta)
+	assert.InDelta(t, 2.0/3.0, ratio, testFloatDelta)
 }
 
 // TestAggregator_NoDedupByFuncA verifies multiple pairs sharing func_a name all appear.
