@@ -424,6 +424,142 @@ codefang run --since 6m --first-parent --format json /repo
 
 ---
 
+## Incremental Analysis & Checkpointing
+
+Codefang supports two persistence mechanisms for long-running analysis:
+**incremental caching** (skip already-processed commits) and **checkpointing**
+(crash recovery).
+
+### Incremental Cache
+
+The incremental cache stores analysis results keyed by repository root SHA and
+branch. On subsequent runs, only new commits since the last cached position
+are processed.
+
+```bash
+# First run — full analysis (slow)
+codefang run --format json --memory-budget 8GB \
+  --cache-dir ~/.codefang/cache /repo > report-v1.json
+
+# Second run — only new commits since last run (fast)
+codefang run --format json --memory-budget 8GB \
+  --cache-dir ~/.codefang/cache /repo > report-v2.json
+
+# Force full re-analysis (ignore cache)
+codefang run --format json --memory-budget 8GB \
+  --cache-dir ~/.codefang/cache --no-cache /repo > report-full.json
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cache-dir` | none | Directory for incremental cache storage |
+| `--no-cache` | false | Force full re-analysis, ignore existing cache |
+
+The cache stores a metadata file (`cache.json`) with head SHA, branch, commit
+count, and analyzer IDs. If the root SHA changes (force-push or history
+rewrite), the cache is automatically invalidated.
+
+!!! tip "Ideal for daily DWH loads"
+    Point `--cache-dir` to a persistent directory on your CI machine.
+    Each daily run only processes the new commits since yesterday,
+    cutting analysis time from hours to minutes.
+
+### Checkpointing (Crash Recovery)
+
+For very long runs (e.g., full kubernetes at ~3 hours), checkpointing saves
+progress periodically so a crash doesn't lose all work.
+
+```bash
+# Enable checkpointing (on by default)
+codefang run --format json --memory-budget 8GB \
+  --checkpoint --checkpoint-dir ~/.codefang/checkpoints /repo
+
+# Resume from checkpoint after crash
+codefang run --format json --memory-budget 8GB \
+  --resume --checkpoint-dir ~/.codefang/checkpoints /repo
+
+# Clear old checkpoint and start fresh
+codefang run --format json --memory-budget 8GB \
+  --clear-checkpoint /repo
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--checkpoint` | true | Enable periodic checkpointing |
+| `--checkpoint-dir` | `~/.codefang/checkpoints` | Directory for checkpoint files |
+| `--resume` | true | Resume from checkpoint if available |
+| `--clear-checkpoint` | false | Clear existing checkpoint before run |
+
+The checkpoint stores:
+
+- Current chunk position (which commits have been processed)
+- Aggregator spill state (intermediate results on disk)
+- Repository hash (for validation on resume)
+
+!!! warning "Checkpoint vs Cache"
+    **Checkpoint** = crash recovery within a single run (temporary, auto-cleaned on success).
+    **Cache** = incremental analysis across runs (persistent, reused on next invocation).
+    For DWH pipelines, you want **both**: `--cache-dir` for incremental loads and
+    `--checkpoint` for resilience.
+
+### Production Pipeline Example
+
+A daily cron job that incrementally analyzes a repository:
+
+```bash
+#!/bin/bash
+REPO=/opt/repos/kubernetes
+CACHE_DIR=/var/lib/codefang/cache
+CHECKPOINT_DIR=/var/lib/codefang/checkpoints
+OUTPUT_DIR=/var/lib/codefang/output
+
+# Pull latest
+cd "$REPO" && git pull --ff-only
+
+# Incremental analysis with crash recovery
+codefang run \
+  --format ndjson \
+  --per-file \
+  --memory-budget 8GB \
+  --cache-dir "$CACHE_DIR" \
+  --checkpoint-dir "$CHECKPOINT_DIR" \
+  "$REPO" > "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson"
+
+# Load into ClickHouse
+cat "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson" \
+  | clickhouse-client --query "INSERT INTO codefang_raw FORMAT JSONEachRow"
+```
+
+### Advanced Tuning for History Pipeline
+
+Fine-tune the history streaming pipeline for specific hardware:
+
+```bash
+codefang run \
+  --memory-budget 8GB \
+  --commit-batch-size 200 \
+  --blob-cache-size 2GB \
+  --diff-cache-size 20000 \
+  --blob-arena-size 8MB \
+  --tmp-dir /fast-ssd/tmp \
+  --format ndjson /repo
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--commit-batch-size` | 100 | Commits per processing batch |
+| `--blob-cache-size` | 1GB | Max blob cache (LRU, keeps hot files in memory) |
+| `--diff-cache-size` | 10000 | Max diff cache entries |
+| `--blob-arena-size` | 4MB | Memory arena for blob loading |
+| `--tmp-dir` | system temp | Directory for spill files (use fast SSD) |
+| `--keep-store` | false | Keep temp ReportStore after rendering (for debugging) |
+
+!!! tip "SSD for tmp-dir"
+    The streaming pipeline spills intermediate data to disk when memory
+    pressure is high. Point `--tmp-dir` to a fast SSD for best performance.
+
+---
+
 ## Row Count Estimates
 
 Use these to plan DWH capacity:
