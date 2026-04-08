@@ -422,6 +422,11 @@ No manual tuning needed. Key parameters:
 codefang run --since 6m --first-parent --format json /repo
 ```
 
+!!! note "`--since` with inactive repos"
+    If no commits fall within the `--since` window, history analyzers produce
+    empty results (zero ticks, zero developers). Static analyzers still run
+    normally since they analyze the current file tree, not commit history.
+
 ---
 
 ## Incremental Analysis & Checkpointing
@@ -436,18 +441,23 @@ The incremental cache stores analysis results keyed by repository root SHA and
 branch. On subsequent runs, only new commits since the last cached position
 are processed.
 
-```bash
-# First run — full analysis (slow)
-codefang run --format json --memory-budget 8GB \
-  --cache-dir ~/.codefang/cache /repo > report-v1.json
+!!! warning "History-only mode required"
+    The incremental cache currently works with history-only runs
+    (`-a 'history/*'`). In the default combined mode (static + history),
+    the cache directory is accepted but may not produce cache files.
+    For incremental DWH loads, run history and static phases separately.
 
-# Second run — only new commits since last run (fast)
-codefang run --format json --memory-budget 8GB \
-  --cache-dir ~/.codefang/cache /repo > report-v2.json
+```bash
+# History-only run with cache (incremental)
+codefang run -a 'history/*' --format json --memory-budget 8GB \
+  --cache-dir ~/.codefang/cache /repo > history.json
+
+# Static run (always full, no caching needed — fast)
+codefang run -a 'static/*' --format json --per-file /repo > static.json
 
 # Force full re-analysis (ignore cache)
-codefang run --format json --memory-budget 8GB \
-  --cache-dir ~/.codefang/cache --no-cache /repo > report-full.json
+codefang run -a 'history/*' --format json --memory-budget 8GB \
+  --cache-dir ~/.codefang/cache --no-cache /repo > history-full.json
 ```
 
 | Flag | Default | Description |
@@ -496,6 +506,11 @@ The checkpoint stores:
 - Aggregator spill state (intermediate results on disk)
 - Repository hash (for validation on resume)
 
+!!! info "Auto-cleanup on success"
+    Checkpoint files are **automatically deleted** after a successful run.
+    They only persist if the process crashes mid-analysis. This is by design —
+    checkpoints are for crash recovery, not persistent storage.
+
 !!! warning "Checkpoint vs Cache"
     **Checkpoint** = crash recovery within a single run (temporary, auto-cleaned on success).
     **Cache** = incremental analysis across runs (persistent, reused on next invocation).
@@ -516,14 +531,21 @@ OUTPUT_DIR=/var/lib/codefang/output
 # Pull latest
 cd "$REPO" && git pull --ff-only
 
-# Incremental analysis with crash recovery
+# Static analysis (always full, fast)
 codefang run \
+  -a 'static/*' \
   --format ndjson \
   --per-file \
+  "$REPO" > "$OUTPUT_DIR/static-$(date +%Y%m%d).ndjson"
+
+# History analysis (incremental via cache)
+codefang run \
+  -a 'history/*' \
+  --format ndjson \
   --memory-budget 8GB \
   --cache-dir "$CACHE_DIR" \
   --checkpoint-dir "$CHECKPOINT_DIR" \
-  "$REPO" > "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson"
+  "$REPO" > "$OUTPUT_DIR/history-$(date +%Y%m%d).ndjson"
 
 # Load into ClickHouse
 cat "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson" \
