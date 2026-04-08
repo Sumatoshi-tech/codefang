@@ -71,12 +71,14 @@ type AggregateData struct {
 
 // TimeSeriesEntry holds per-tick data for the time series output.
 type TimeSeriesEntry struct {
-	Tick              int        `json:"tick"               yaml:"tick"`
-	Metrics           RawMetrics `json:"metrics"            yaml:"metrics"`
-	IsAnomaly         bool       `json:"is_anomaly"         yaml:"is_anomaly"`
-	ChurnZScore       float64    `json:"churn_z_score"      yaml:"churn_z_score"`
-	LanguageDiversity int        `json:"language_diversity" yaml:"language_diversity"`
-	AuthorCount       int        `json:"author_count"       yaml:"author_count"`
+	Tick              int        `json:"tick"                 yaml:"tick"`
+	StartTime         string     `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime           string     `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	Metrics           RawMetrics `json:"metrics"              yaml:"metrics"`
+	IsAnomaly         bool       `json:"is_anomaly"           yaml:"is_anomaly"`
+	ChurnZScore       float64    `json:"churn_z_score"        yaml:"churn_z_score"`
+	LanguageDiversity int        `json:"language_diversity"   yaml:"language_diversity"`
+	AuthorCount       int        `json:"author_count"         yaml:"author_count"`
 }
 
 // --- External Anomaly Types ---.
@@ -184,7 +186,7 @@ func computeTimeSeries(input *ReportData) []TimeSeriesEntry {
 			churnZ = churnScores[i]
 		}
 
-		entries[i] = TimeSeriesEntry{
+		entry := TimeSeriesEntry{
 			Tick: tick,
 			Metrics: RawMetrics{
 				FilesChanged:      tm.FilesChanged,
@@ -199,6 +201,13 @@ func computeTimeSeries(input *ReportData) []TimeSeriesEntry {
 			LanguageDiversity: len(tm.Languages),
 			AuthorCount:       len(tm.AuthorIDs),
 		}
+
+		if bounds, hasBounds := input.TickBounds[tick]; hasBounds {
+			entry.StartTime = bounds.FormatStartTime()
+			entry.EndTime = bounds.FormatEndTime()
+		}
+
+		entries[i] = entry
 	}
 
 	return entries
@@ -210,6 +219,7 @@ func computeTimeSeries(input *ReportData) []TimeSeriesEntry {
 type ReportData struct {
 	Anomalies         []Record
 	TickMetrics       map[int]*TickMetrics
+	TickBounds        map[int]analyze.TickBounds
 	Threshold         float32
 	WindowSize        int
 	ExternalAnomalies []ExternalAnomaly
@@ -305,6 +315,10 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 
 	if v, ok := report["external_summaries"].([]ExternalSummary); ok {
 		data.ExternalSummaries = v
+	}
+
+	if v, ok := report["tick_bounds"].(map[int]analyze.TickBounds); ok {
+		data.TickBounds = v
 	}
 
 	return data, nil

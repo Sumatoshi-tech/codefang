@@ -50,7 +50,7 @@ func (svc *StaticService) enrichWithPerFileData(report any, _ []ReportSection) a
 		return report
 	}
 
-	enricher.EnrichWithPerFileData(svc.PerFileResults(), svc.analysisRootPath, svc.Analyzers)
+	enricher.EnrichWithPerFileData(svc.PerFileResults(), svc.analysisRootPath, svc.allFormattable())
 
 	return report
 }
@@ -61,7 +61,7 @@ type PerFileEnricher interface {
 	EnrichWithPerFileData(
 		perFileResults map[string]map[string]Report,
 		rootPath string,
-		analyzers []StaticAnalyzer,
+		analyzers []FormattableAnalyzer,
 	)
 }
 

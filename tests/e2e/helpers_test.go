@@ -42,7 +42,7 @@ func allStaticAnalyzers() []analyze.StaticAnalyzer {
 // newStaticService creates a StaticService wired for e2e testing:
 // all analyzers, real renderer, no native memory ops.
 func newStaticService() *analyze.StaticService {
-	svc := analyze.NewStaticService(allStaticAnalyzers())
+	svc := analyze.NewStaticService(allStaticAnalyzers(), nil)
 	svc.Renderer = &renderer.DefaultStaticRenderer{}
 	svc.NativeMemoryReleaseFn = func() {}
 

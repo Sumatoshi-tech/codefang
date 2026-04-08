@@ -110,10 +110,10 @@ func findPrimaryLanguage(dev DeveloperData) string {
 	primaryLang := langOther
 	maxLines := 0
 
-	for lang, stats := range dev.Languages {
-		if stats.Added > maxLines {
-			maxLines = stats.Added
-			primaryLang = lang
+	for _, entry := range dev.Languages {
+		if entry.Added > maxLines {
+			maxLines = entry.Added
+			primaryLang = entry.Language
 
 			if primaryLang == "" {
 				primaryLang = langOther

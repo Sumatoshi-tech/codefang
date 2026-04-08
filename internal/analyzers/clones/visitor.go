@@ -116,9 +116,10 @@ func buildSignatureReport(totalFunctions int, entries []funcEntry) analyze.Repor
 // reflects ALL unique pairs found, regardless of the cap.
 // clonePairResult holds the output of findClonePairs.
 type clonePairResult struct {
-	pairs      []ClonePair
-	totalCount int
-	clonedFunc map[string]struct{} // distinct function names involved in any pair.
+	pairs            []ClonePair
+	totalCount       int
+	typeDistribution cloneTypeCounts
+	clonedFunc       map[string]struct{} // distinct function names involved in any pair.
 }
 
 func findClonePairs(entries []funcEntry, idx *lsh.Index, pairCap int, minSimilarity float64) clonePairResult {
@@ -179,6 +180,7 @@ func matchCandidates(
 		pair, ok := computeClonePair(entry, candidateID, sigMap, minSimilarity)
 		if ok {
 			result.totalCount++
+			result.typeDistribution.increment(pair.CloneType)
 			result.clonedFunc[pair.FuncA] = struct{}{}
 			result.clonedFunc[pair.FuncB] = struct{}{}
 

@@ -38,10 +38,11 @@ func devIDBytes(id int) []byte {
 
 // TickData is the raw input data for devs metrics computation.
 type TickData struct {
-	Ticks     map[int]map[int]*DevTick
-	Names     []string
-	TickSize  time.Duration
-	DevSketch *hll.Sketch `json:"-" yaml:"-"`
+	Ticks      map[int]map[int]*DevTick
+	Names      []string
+	TickSize   time.Duration
+	TickBounds map[int]analyze.TickBounds
+	DevSketch  *hll.Sketch `json:"-" yaml:"-"`
 }
 
 // AggregateCommitsToTicks builds per-tick per-developer data from per-commit
@@ -125,6 +126,10 @@ func ParseTickDataWithPrecision(report analyze.Report, precision int) (*TickData
 		Ticks:    ticks,
 		Names:    names,
 		TickSize: tickSize,
+	}
+
+	if v, ok := report["tick_bounds"].(map[int]analyze.TickBounds); ok {
+		td.TickBounds = v
 	}
 
 	td.DevSketch = buildDevSketchWithPrecision(ticks, precision)
@@ -307,17 +312,55 @@ func buildCommitsByTickFromMap(cbtMap map[string]any) map[int][]gitlib.Hash {
 
 // DeveloperData contains computed data for a single developer.
 type DeveloperData struct {
-	ID          int                              `json:"id"            yaml:"id"`
-	Name        string                           `json:"name"          yaml:"name"`
-	Commits     int                              `json:"commits"       yaml:"commits"`
-	Added       int                              `json:"lines_added"   yaml:"lines_added"`
-	Removed     int                              `json:"lines_removed" yaml:"lines_removed"`
-	Changed     int                              `json:"lines_changed" yaml:"lines_changed"`
-	NetLines    int                              `json:"net_lines"     yaml:"net_lines"`
-	Languages   map[string]pkgplumbing.LineStats `json:"languages"     yaml:"languages"`
-	FirstTick   int                              `json:"first_tick"    yaml:"first_tick"`
-	LastTick    int                              `json:"last_tick"     yaml:"last_tick"`
-	ActiveTicks int                              `json:"active_ticks"  yaml:"active_ticks"`
+	ID          int                  `json:"id"              yaml:"id"`
+	Name        string               `json:"name"            yaml:"name"`
+	Email       string               `json:"email,omitempty" yaml:"email,omitempty"`
+	Commits     int                  `json:"commits"         yaml:"commits"`
+	Added       int                  `json:"lines_added"     yaml:"lines_added"`
+	Removed     int                  `json:"lines_removed"   yaml:"lines_removed"`
+	Changed     int                  `json:"lines_changed"   yaml:"lines_changed"`
+	NetLines    int                  `json:"net_lines"       yaml:"net_lines"`
+	Languages   []LanguageStatsEntry `json:"languages"       yaml:"languages"`
+	FirstTick   int                  `json:"first_tick"      yaml:"first_tick"`
+	LastTick    int                  `json:"last_tick"       yaml:"last_tick"`
+	ActiveTicks int                  `json:"active_ticks"    yaml:"active_ticks"`
+
+	// langMap is the internal accumulation map, converted to Languages by finalizeLanguages.
+	langMap map[string]pkgplumbing.LineStats `json:"-" yaml:"-"`
+}
+
+// LanguageStatsEntry holds line stats for a single language.
+type LanguageStatsEntry struct {
+	Language string `json:"language" yaml:"language"`
+	Added    int    `json:"added"    yaml:"added"`
+	Removed  int    `json:"removed"  yaml:"removed"`
+	Changed  int    `json:"changed"  yaml:"changed"`
+}
+
+// finalizeLanguages converts the internal langMap to a sorted Languages slice.
+func (d *DeveloperData) finalizeLanguages() {
+	if len(d.langMap) == 0 {
+		return
+	}
+
+	d.Languages = make([]LanguageStatsEntry, 0, len(d.langMap))
+
+	for lang, stats := range d.langMap {
+		if lang == "" {
+			lang = "Other"
+		}
+
+		d.Languages = append(d.Languages, LanguageStatsEntry{
+			Language: lang,
+			Added:    stats.Added,
+			Removed:  stats.Removed,
+			Changed:  stats.Changed,
+		})
+	}
+
+	sort.Slice(d.Languages, func(i, j int) bool {
+		return d.Languages[i].Language < d.Languages[j].Language
+	})
 }
 
 // LanguageData contains computed data for a programming language.
@@ -337,26 +380,38 @@ type BusFactorData struct {
 	TotalContributors int     `json:"total_contributors"             yaml:"total_contributors"`
 	PrimaryDevID      int     `json:"primary_dev_id"                 yaml:"primary_dev_id"`
 	PrimaryDevName    string  `json:"primary_dev_name"               yaml:"primary_dev_name"`
+	PrimaryDevEmail   string  `json:"primary_dev_email,omitempty"    yaml:"primary_dev_email,omitempty"`
 	PrimaryPct        float64 `json:"primary_percentage"             yaml:"primary_percentage"`
 	SecondaryDevID    int     `json:"secondary_dev_id,omitempty"     yaml:"secondary_dev_id,omitempty"`
 	SecondaryDevName  string  `json:"secondary_dev_name,omitempty"   yaml:"secondary_dev_name,omitempty"`
+	SecondaryDevEmail string  `json:"secondary_dev_email,omitempty"  yaml:"secondary_dev_email,omitempty"`
 	SecondaryPct      float64 `json:"secondary_percentage,omitempty" yaml:"secondary_percentage,omitempty"`
 	RiskLevel         string  `json:"risk_level"                     yaml:"risk_level"`
 }
 
+// DeveloperCommits holds a developer's commit count within a single tick.
+type DeveloperCommits struct {
+	DevID   int `json:"dev_id"  yaml:"dev_id"`
+	Commits int `json:"commits" yaml:"commits"`
+}
+
 // ActivityData contains time-series activity for a single tick.
 type ActivityData struct {
-	Tick         int         `json:"tick"          yaml:"tick"`
-	ByDeveloper  map[int]int `json:"by_developer"  yaml:"by_developer"`
-	TotalCommits int         `json:"total_commits" yaml:"total_commits"`
+	Tick         int                `json:"tick"                 yaml:"tick"`
+	StartTime    string             `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime      string             `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	ByDeveloper  []DeveloperCommits `json:"by_developer"         yaml:"by_developer"`
+	TotalCommits int                `json:"total_commits"        yaml:"total_commits"`
 }
 
 // ChurnData contains code churn for a single tick.
 type ChurnData struct {
-	Tick    int `json:"tick"          yaml:"tick"`
-	Added   int `json:"lines_added"   yaml:"lines_added"`
-	Removed int `json:"lines_removed" yaml:"lines_removed"`
-	Net     int `json:"net_change"    yaml:"net_change"`
+	Tick      int    `json:"tick"                 yaml:"tick"`
+	StartTime string `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime   string `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	Added     int    `json:"lines_added"          yaml:"lines_added"`
+	Removed   int    `json:"lines_removed"        yaml:"lines_removed"`
+	Net       int    `json:"net_change"           yaml:"net_change"`
 }
 
 // AggregateData contains summary statistics.
@@ -420,10 +475,12 @@ func processTickDevs(tick int, devTicks map[int]*DevTick, devMap map[int]*Develo
 func getOrCreateDev(devID, tick int, devMap map[int]*DeveloperData, names []string) *DeveloperData {
 	dev := devMap[devID]
 	if dev == nil {
+		name, email := devNameAndEmail(devID, names)
 		dev = &DeveloperData{
 			ID:        devID,
-			Name:      devName(devID, names),
-			Languages: make(map[string]pkgplumbing.LineStats),
+			Name:      name,
+			Email:     email,
+			langMap:   make(map[string]pkgplumbing.LineStats),
 			FirstTick: tick,
 			LastTick:  tick,
 		}
@@ -448,7 +505,7 @@ func updateDevStats(dev *DeveloperData, dt *DevTick, tick int) {
 		dev.LastTick = tick
 	}
 
-	mergeLanguageStats(dev.Languages, dt.Languages)
+	mergeLanguageStats(dev.langMap, dt.Languages)
 }
 
 func mergeLanguageStats(target, source map[string]pkgplumbing.LineStats) {
@@ -467,6 +524,7 @@ func collectDevResults(devMap map[int]*DeveloperData) []DeveloperData {
 
 	for _, dev := range devMap {
 		dev.NetLines = dev.Added - dev.Removed
+		dev.finalizeLanguages()
 		result = append(result, *dev)
 	}
 
@@ -496,7 +554,8 @@ func (m *LanguagesMetric) Compute(developers []DeveloperData) []LanguageData {
 	langMap := make(map[string]*LanguageData)
 
 	for _, dev := range developers {
-		for lang, langSt := range dev.Languages {
+		for _, langEntry := range dev.Languages {
+			lang := langEntry.Language
 			if lang == "" {
 				lang = "Other"
 			}
@@ -510,8 +569,8 @@ func (m *LanguagesMetric) Compute(developers []DeveloperData) []LanguageData {
 				langMap[lang] = ld
 			}
 
-			ld.TotalLines += langSt.Added
-			contribution := langSt.Added + langSt.Removed
+			ld.TotalLines += langEntry.Added
+			contribution := langEntry.Added + langEntry.Removed
 			ld.TotalContribution += contribution
 			ld.Contributors[dev.ID] += contribution
 		}
@@ -612,13 +671,13 @@ func (m *BusFactorMetric) ComputeWithOptions(input BusFactorInput, opts MetricOp
 
 		if len(contribs) > 0 {
 			bf.PrimaryDevID = contribs[0].id
-			bf.PrimaryDevName = devName(contribs[0].id, input.Names)
+			bf.PrimaryDevName, bf.PrimaryDevEmail = devNameAndEmail(contribs[0].id, input.Names)
 			bf.PrimaryPct = stats.ToPercent(float64(contribs[0].lines) / float64(ld.TotalContribution))
 		}
 
 		if len(contribs) > 1 {
 			bf.SecondaryDevID = contribs[1].id
-			bf.SecondaryDevName = devName(contribs[1].id, input.Names)
+			bf.SecondaryDevName, bf.SecondaryDevEmail = devNameAndEmail(contribs[1].id, input.Names)
 			bf.SecondaryPct = stats.ToPercent(float64(contribs[1].lines) / float64(ld.TotalContribution))
 		}
 
@@ -692,14 +751,20 @@ func (m *ActivityMetric) Compute(input *TickData) []ActivityData {
 	result := make([]ActivityData, len(tickKeys))
 
 	for i, tick := range tickKeys {
-		ad := ActivityData{
-			Tick:        tick,
-			ByDeveloper: make(map[int]int),
+		ad := ActivityData{Tick: tick}
+
+		devIDs := mapx.SortedKeys(input.Ticks[tick])
+		ad.ByDeveloper = make([]DeveloperCommits, 0, len(devIDs))
+
+		for _, devID := range devIDs {
+			dt := input.Ticks[tick][devID]
+			ad.ByDeveloper = append(ad.ByDeveloper, DeveloperCommits{DevID: devID, Commits: dt.Commits})
+			ad.TotalCommits += dt.Commits
 		}
 
-		for devID, dt := range input.Ticks[tick] {
-			ad.ByDeveloper[devID] = dt.Commits
-			ad.TotalCommits += dt.Commits
+		if bounds, hasBounds := input.TickBounds[tick]; hasBounds {
+			ad.StartTime = bounds.FormatStartTime()
+			ad.EndTime = bounds.FormatEndTime()
 		}
 
 		result[i] = ad
@@ -741,6 +806,11 @@ func (m *ChurnMetric) Compute(input *TickData) []ChurnData {
 		}
 
 		cd.Net = cd.Added - cd.Removed
+
+		if bounds, hasBounds := input.TickBounds[tick]; hasBounds {
+			cd.StartTime = bounds.FormatStartTime()
+			cd.EndTime = bounds.FormatEndTime()
+		}
 
 		result[i] = cd
 	}
@@ -1063,14 +1133,14 @@ func (m *ComputedMetrics) ToYAML() any {
 
 const defaultTickHours = 24
 
-func devName(id int, names []string) string {
+func devNameAndEmail(id int, names []string) (name, email string) {
 	if id == identity.AuthorMissing {
-		return identity.AuthorMissingName
+		return identity.AuthorMissingName, ""
 	}
 
 	if id >= 0 && id < len(names) {
-		return names[id]
+		return identity.SplitIdentity(names[id])
 	}
 
-	return fmt.Sprintf("dev_%d", id)
+	return fmt.Sprintf("dev_%d", id), ""
 }

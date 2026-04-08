@@ -456,12 +456,13 @@ func (a *Analyzer) buildReport(totalFunctions int, pairs []ClonePair) analyze.Re
 	}
 
 	return analyze.Report{
-		keyAnalyzerName:    analyzerName,
-		keyTotalFunctions:  totalFunctions,
-		keyTotalClonePairs: len(pairs),
-		keyCloneRatio:      cloneRatio,
-		keyClonePairs:      pairsForReport,
-		keyMessage:         message,
+		keyAnalyzerName:          analyzerName,
+		keyTotalFunctions:        totalFunctions,
+		keyTotalClonePairs:       len(pairs),
+		keyCloneRatio:            cloneRatio,
+		keyClonePairs:            pairsForReport,
+		keyCloneTypeDistribution: cloneTypeDistMap(categorizeClonePairs(pairs)),
+		keyMessage:               message,
 	}
 }
 

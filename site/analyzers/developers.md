@@ -115,15 +115,16 @@ history:
         {
           "id": 0,
           "name": "alice",
+          "email": "alice@example.com",
           "commits": 342,
           "lines_added": 28500,
           "lines_removed": 12300,
           "lines_changed": 8400,
           "net_lines": 16200,
-          "languages": {
-            "Go": {"added": 22000, "removed": 9800, "changed": 6200},
-            "Python": {"added": 6500, "removed": 2500, "changed": 2200}
-          },
+          "languages": [
+            {"language": "Go", "added": 22000, "removed": 9800, "changed": 6200},
+            {"language": "Python", "added": 6500, "removed": 2500, "changed": 2200}
+          ],
           "first_tick": 0,
           "last_tick": 120,
           "active_ticks": 85
@@ -135,12 +136,6 @@ history:
           "total_lines": 45000,
           "total_contribution": 67800,
           "contributors": {"0": 54600, "1": 13200}
-        },
-        {
-          "name": "Python",
-          "total_lines": 12000,
-          "total_contribution": 16700,
-          "contributors": {"0": 11200, "1": 5500}
         }
       ],
       "busfactor": [
@@ -148,24 +143,41 @@ history:
           "language": "Python",
           "bus_factor": 1,
           "total_contributors": 2,
+          "primary_dev_id": 0,
           "primary_dev_name": "alice",
+          "primary_dev_email": "alice@example.com",
           "primary_percentage": 67.1,
+          "secondary_dev_id": 1,
           "secondary_dev_name": "bob",
+          "secondary_dev_email": "bob@example.com",
           "secondary_percentage": 32.9,
           "risk_level": "MEDIUM"
         }
       ],
       "activity": [
-        {"tick": 0, "total_commits": 5, "by_developer": {"0": 3, "1": 2}},
-        {"tick": 1, "total_commits": 8, "by_developer": {"0": 5, "1": 3}}
+        {
+          "tick": 0,
+          "start_time": "2024-01-15T10:30:00Z",
+          "end_time": "2024-01-16T08:45:00Z",
+          "total_commits": 5,
+          "by_developer": [
+            {"dev_id": 0, "commits": 3},
+            {"dev_id": 1, "commits": 2}
+          ]
+        }
       ],
       "churn": [
-        {"tick": 0, "lines_added": 450, "lines_removed": 120, "net_change": 330}
+        {
+          "tick": 0,
+          "start_time": "2024-01-15T10:30:00Z",
+          "end_time": "2024-01-16T08:45:00Z",
+          "lines_added": 450,
+          "lines_removed": 120,
+          "net_change": 330
+        }
       ],
       "aggregate": {
         "total_commits": 850,
-        "total_lines_added": 95000,
-        "total_lines_removed": 42000,
         "total_developers": 5,
         "active_developers": 3,
         "analysis_period_ticks": 120,
@@ -174,6 +186,15 @@ history:
       }
     }
     ```
+
+    **Key fields for analytics:**
+
+    - `developers[].email` — split from previously pipe-delimited name
+    - `developers[].languages` — flattened from map to sorted array
+    - `activity[].by_developer` — flattened from `map[int]int` to `[{dev_id, commits}]` array
+    - `activity[].start_time` / `end_time` — RFC 3339 tick boundaries
+    - `churn[].start_time` / `end_time` — RFC 3339 tick boundaries
+    - `busfactor[].primary_dev_email` / `secondary_dev_email` — split identity fields
 
 === "YAML"
 

@@ -2,6 +2,7 @@ package sentiment
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,11 @@ const (
 
 	testHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	testHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+var (
+	testTickTime1 = time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+	testTickTime2 = time.Date(2024, 1, 16, 12, 0, 0, 0, time.UTC)
 )
 
 // Helper function to create test hash.
@@ -180,6 +186,42 @@ func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].CommentCount)
 	assert.Equal(t, 0, result[0].CommitCount)
+}
+
+// FRD: specs/frds/FRD-20260408-tick-timestamps.md.
+
+func TestSentimentTimeSeriesMetric_TickTimestamps(t *testing.T) {
+	t.Parallel()
+
+	t1 := testTickTime1
+	t2 := testTickTime2
+
+	input := &ReportData{
+		EmotionsByTick: map[int]float32{0: testSentimentPositive},
+		TickBounds: map[int]analyze.TickBounds{
+			0: {StartTime: t1, EndTime: t2},
+		},
+	}
+
+	result := computeTimeSeriesWithOpts(input, DefaultMetricOptions())
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "2024-01-15T10:00:00Z", result[0].StartTime)
+	assert.Equal(t, "2024-01-16T12:00:00Z", result[0].EndTime)
+}
+
+func TestSentimentTimeSeriesMetric_NoTickBounds(t *testing.T) {
+	t.Parallel()
+
+	input := &ReportData{
+		EmotionsByTick: map[int]float32{0: testSentimentPositive},
+	}
+
+	result := computeTimeSeriesWithOpts(input, DefaultMetricOptions())
+
+	require.Len(t, result, 1)
+	assert.Empty(t, result[0].StartTime)
+	assert.Empty(t, result[0].EndTime)
 }
 
 // --- SentimentTrendMetric Tests ---.

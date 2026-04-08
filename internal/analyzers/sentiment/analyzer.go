@@ -662,6 +662,7 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK, commitsByTick map[in
 	return analyze.Report{
 		"comments_by_commit": commentsByCommit,
 		"commits_by_tick":    ct,
+		"tick_bounds":        analyze.BuildTickBounds(ticks),
 	}
 }
 

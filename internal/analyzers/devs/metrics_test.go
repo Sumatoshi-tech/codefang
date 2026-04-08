@@ -30,6 +30,21 @@ const (
 	testHashB        = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
+// findLang finds a LanguageStatsEntry by name in a developer's Languages slice.
+func findLang(t *testing.T, langs []LanguageStatsEntry, name string) LanguageStatsEntry {
+	t.Helper()
+
+	for _, l := range langs {
+		if l.Language == name {
+			return l
+		}
+	}
+
+	t.Fatalf("language %q not found", name)
+
+	return LanguageStatsEntry{}
+}
+
 // --- ParseTickData Tests ---.
 
 func TestParseTickData_Valid(t *testing.T) {
@@ -247,12 +262,15 @@ func TestDevelopersMetric_LanguageAggregation(t *testing.T) {
 
 	require.Len(t, result, 1)
 	require.NotNil(t, result[0].Languages)
-	assert.Equal(t, 70, result[0].Languages[testLangGo].Added)   // 50 + 20
-	assert.Equal(t, 15, result[0].Languages[testLangGo].Removed) // 10 + 5
-	assert.Equal(t, 8, result[0].Languages[testLangGo].Changed)  // 5 + 3
-	assert.Equal(t, 30, result[0].Languages[testLangPython].Added)
-	assert.Equal(t, 5, result[0].Languages[testLangPython].Removed)
-	assert.Equal(t, 2, result[0].Languages[testLangPython].Changed)
+	goLang := findLang(t, result[0].Languages, testLangGo)
+	assert.Equal(t, 70, goLang.Added)   // 50 + 20
+	assert.Equal(t, 15, goLang.Removed) // 10 + 5
+	assert.Equal(t, 8, goLang.Changed)  // 5 + 3
+
+	pyLang := findLang(t, result[0].Languages, testLangPython)
+	assert.Equal(t, 30, pyLang.Added)
+	assert.Equal(t, 5, pyLang.Removed)
+	assert.Equal(t, 2, pyLang.Changed)
 }
 
 func TestDevelopersMetric_ChangedField(t *testing.T) {
@@ -306,7 +324,7 @@ func TestLanguagesMetric_SingleLanguage(t *testing.T) {
 	developers := []DeveloperData{
 		{
 			ID:        0,
-			Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: testLinesAdded}},
+			Languages: []LanguageStatsEntry{{Language: testLangGo, Added: testLinesAdded}},
 		},
 	}
 	metric := NewLanguagesMetric()
@@ -326,9 +344,9 @@ func TestLanguagesMetric_MultipleLanguages_SortedByTotalLines(t *testing.T) {
 	developers := []DeveloperData{
 		{
 			ID: 0,
-			Languages: map[string]pkgplumbing.LineStats{
-				testLangGo:     {Added: 50},
-				testLangPython: {Added: 150},
+			Languages: []LanguageStatsEntry{
+				{Language: testLangGo, Added: 50},
+				{Language: testLangPython, Added: 150},
 			},
 		},
 	}
@@ -350,7 +368,7 @@ func TestLanguagesMetric_EmptyLanguageName_BecomesOther(t *testing.T) {
 	developers := []DeveloperData{
 		{
 			ID:        0,
-			Languages: map[string]pkgplumbing.LineStats{"": {Added: testLinesAdded}},
+			Languages: []LanguageStatsEntry{{Language: "", Added: testLinesAdded}},
 		},
 	}
 	metric := NewLanguagesMetric()
@@ -365,8 +383,8 @@ func TestLanguagesMetric_MultipleContributors(t *testing.T) {
 	t.Parallel()
 
 	developers := []DeveloperData{
-		{ID: 0, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 60}}},
-		{ID: 1, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 40}}},
+		{ID: 0, Languages: []LanguageStatsEntry{{Language: testLangGo, Added: 60}}},
+		{ID: 1, Languages: []LanguageStatsEntry{{Language: testLangGo, Added: 40}}},
 	}
 	metric := NewLanguagesMetric()
 
@@ -384,8 +402,8 @@ func TestLanguagesMetric_ContributionIncludesRemoved(t *testing.T) {
 	t.Parallel()
 
 	developers := []DeveloperData{
-		{ID: 0, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 60, Removed: 40}}},
-		{ID: 1, Languages: map[string]pkgplumbing.LineStats{testLangGo: {Added: 10, Removed: 90}}},
+		{ID: 0, Languages: []LanguageStatsEntry{{Language: testLangGo, Added: 60, Removed: 40}}},
+		{ID: 1, Languages: []LanguageStatsEntry{{Language: testLangGo, Added: 10, Removed: 90}}},
 	}
 	metric := NewLanguagesMetric()
 
@@ -590,8 +608,11 @@ func TestActivityMetric_SingleTick(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].Tick)
 	assert.Equal(t, 8, result[0].TotalCommits)
-	assert.Equal(t, 5, result[0].ByDeveloper[0])
-	assert.Equal(t, 3, result[0].ByDeveloper[1])
+	require.Len(t, result[0].ByDeveloper, 2)
+	assert.Equal(t, 0, result[0].ByDeveloper[0].DevID)
+	assert.Equal(t, 5, result[0].ByDeveloper[0].Commits)
+	assert.Equal(t, 1, result[0].ByDeveloper[1].DevID)
+	assert.Equal(t, 3, result[0].ByDeveloper[1].Commits)
 }
 
 func TestActivityMetric_MultipleTicks(t *testing.T) {
@@ -1011,12 +1032,16 @@ func TestParseCommitsByTick_FromMap(t *testing.T) {
 	require.Len(t, result, 1)
 }
 
-func TestDevName_Variants(t *testing.T) {
+func TestDevNameAndEmail_Variants(t *testing.T) {
 	t.Parallel()
 
 	names := []string{"Alice", "Bob"}
 
-	assert.Equal(t, "Alice", devName(0, names))
-	assert.Equal(t, "Bob", devName(1, names))
-	assert.Contains(t, devName(99, names), "dev_99")
+	name0, _ := devNameAndEmail(0, names)
+	name1, _ := devNameAndEmail(1, names)
+	name99, _ := devNameAndEmail(99, names)
+
+	assert.Equal(t, "Alice", name0)
+	assert.Equal(t, "Bob", name1)
+	assert.Contains(t, name99, "dev_99")
 }

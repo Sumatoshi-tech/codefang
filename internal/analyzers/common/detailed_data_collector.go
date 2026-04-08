@@ -89,12 +89,29 @@ func (d *DetailedDataCollector) buildItems(key string) []map[string]any {
 	items := make([]map[string]any, 0, capacity)
 
 	for _, tc := range typed {
-		items = append(items, tc.ToMaps(tc.Items, tc.SourceFile)...)
+		converted := tc.ToMaps(tc.Items, tc.SourceFile)
+		stampCollectionMetadata(converted, tc)
+		items = append(items, converted...)
 	}
 
 	items = append(items, legacy...)
 
 	return items
+}
+
+// stampCollectionMetadata adds language and directory from a TypedCollection
+// to each converted map item. The converter only passes sourceFile; this
+// stamps the remaining metadata fields that TypedCollection carries.
+func stampCollectionMetadata(items []map[string]any, tc analyze.TypedCollection) {
+	for _, item := range items {
+		if tc.Language != "" {
+			item[analyze.LanguageKey] = tc.Language
+		}
+
+		if tc.Directory != "" {
+			item[analyze.DirectoryKey] = tc.Directory
+		}
+	}
 }
 
 // typedCollectionLen returns the length of a TypedCollection's Items slice

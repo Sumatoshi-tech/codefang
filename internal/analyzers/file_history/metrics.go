@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
-	pkgplumbing "github.com/Sumatoshi-tech/codefang/internal/plumbing"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
 
@@ -38,12 +37,20 @@ type FileChurnData struct {
 	ChurnScore       float64 `json:"churn_score"         yaml:"churn_score"`
 }
 
-// FileContributorData contains contributor statistics for a file.
+// ContributorEntry holds line stats for a single contributor to a file.
+type ContributorEntry struct {
+	DevID   int `json:"dev_id"  yaml:"dev_id"`
+	Added   int `json:"added"   yaml:"added"`
+	Removed int `json:"removed" yaml:"removed"`
+	Changed int `json:"changed" yaml:"changed"`
+}
+
+// FileContributorData contains contributor breakdown for a file.
 type FileContributorData struct {
-	Path                string                        `json:"path"                  yaml:"path"`
-	Contributors        map[int]pkgplumbing.LineStats `json:"contributors"          yaml:"contributors"`
-	TopContributorID    int                           `json:"top_contributor_id"    yaml:"top_contributor_id"`
-	TopContributorLines int                           `json:"top_contributor_lines" yaml:"top_contributor_lines"`
+	Path                string             `json:"path"                  yaml:"path"`
+	Contributors        []ContributorEntry `json:"contributors"          yaml:"contributors"`
+	TopContributorID    int                `json:"top_contributor_id"    yaml:"top_contributor_id"`
+	TopContributorLines int                `json:"top_contributor_lines" yaml:"top_contributor_lines"`
 }
 
 // HotspotData identifies high-churn files that may need attention.
@@ -84,8 +91,10 @@ type CompositionData struct {
 
 // CompositionTimeSeriesEntry holds file composition for a single tick.
 type CompositionTimeSeriesEntry struct {
-	Tick      int            `json:"tick"      yaml:"tick"`
-	Breakdown map[string]int `json:"breakdown" yaml:"breakdown"`
+	Tick      int            `json:"tick"                 yaml:"tick"`
+	StartTime string         `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime   string         `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	Breakdown map[string]int `json:"breakdown"            yaml:"breakdown"`
 }
 
 // --- Computed Metrics ---.
@@ -150,7 +159,12 @@ func ComputeAllMetricsWithOptions(report analyze.Report, opts MetricOptions) (*C
 		tickComp = nil
 	}
 
-	composition, compositionTS := computeComposition(tickComp)
+	var tickBounds map[int]analyze.TickBounds
+	if v, tbOK := report["tick_bounds"].(map[int]analyze.TickBounds); tbOK {
+		tickBounds = v
+	}
+
+	composition, compositionTS := computeComposition(tickComp, tickBounds)
 
 	return &ComputedMetrics{
 		FileChurn:        computeFileChurn(input),
@@ -204,7 +218,16 @@ func computeFileContributors(input *ReportData) []FileContributorData {
 	for path, fh := range input.Files {
 		var topID, topLines int
 
+		contribs := make([]ContributorEntry, 0, len(fh.People))
+
 		for devID, stats := range fh.People {
+			contribs = append(contribs, ContributorEntry{
+				DevID:   devID,
+				Added:   stats.Added,
+				Removed: stats.Removed,
+				Changed: stats.Changed,
+			})
+
 			totalLines := stats.Added + stats.Changed
 			if totalLines > topLines {
 				topLines = totalLines
@@ -212,9 +235,13 @@ func computeFileContributors(input *ReportData) []FileContributorData {
 			}
 		}
 
+		sort.Slice(contribs, func(i, j int) bool {
+			return contribs[i].DevID < contribs[j].DevID
+		})
+
 		result = append(result, FileContributorData{
 			Path:                path,
-			Contributors:        fh.People,
+			Contributors:        contribs,
 			TopContributorID:    topID,
 			TopContributorLines: topLines,
 		})
@@ -278,7 +305,10 @@ func computeHotspotsWithOptions(input *ReportData, opts MetricOptions) []Hotspot
 	return result
 }
 
-func computeComposition(tickComp map[int]*CategoryCounts) (CompositionData, []CompositionTimeSeriesEntry) {
+func computeComposition(
+	tickComp map[int]*CategoryCounts,
+	tickBounds map[int]analyze.TickBounds,
+) (CompositionData, []CompositionTimeSeriesEntry) {
 	comp := CompositionData{
 		Breakdown:   make(map[string]int),
 		Percentages: make(map[string]float64),
@@ -312,10 +342,17 @@ func computeComposition(tickComp map[int]*CategoryCounts) (CompositionData, []Co
 			}
 		}
 
-		ts = append(ts, CompositionTimeSeriesEntry{
+		entry := CompositionTimeSeriesEntry{
 			Tick:      t,
 			Breakdown: breakdown,
-		})
+		}
+
+		if bounds, hasBounds := tickBounds[t]; hasBounds {
+			entry.StartTime = bounds.FormatStartTime()
+			entry.EndTime = bounds.FormatEndTime()
+		}
+
+		ts = append(ts, entry)
 	}
 
 	// Aggregate breakdown and percentages.

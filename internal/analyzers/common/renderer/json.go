@@ -102,7 +102,7 @@ func SectionToJSON(section analyze.ReportSection) JSONSection {
 func (r *JSONReport) EnrichWithPerFileData(
 	perFileResults map[string]map[string]analyze.Report,
 	rootPath string,
-	analyzers []analyze.StaticAnalyzer,
+	analyzers []analyze.FormattableAnalyzer,
 ) {
 	// Build analyzer name → (section title, provider) mapping.
 	type analyzerInfo struct {

@@ -116,12 +116,13 @@ func (a *Aggregator) GetResult() analyze.Report {
 	}
 
 	return analyze.Report{
-		keyAnalyzerName:    analyzerName,
-		keyTotalFunctions:  a.totalFunctions,
-		keyTotalClonePairs: result.totalCount,
-		keyCloneRatio:      cloneRatio,
-		keyClonePairs:      pairsForReport,
-		keyMessage:         message,
+		keyAnalyzerName:          analyzerName,
+		keyTotalFunctions:        a.totalFunctions,
+		keyTotalClonePairs:       result.totalCount,
+		keyCloneRatio:            cloneRatio,
+		keyClonePairs:            pairsForReport,
+		keyCloneTypeDistribution: cloneTypeDistMap(result.typeDistribution),
+		keyMessage:               message,
 	}
 }
 

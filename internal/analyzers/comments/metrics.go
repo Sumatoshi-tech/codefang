@@ -25,6 +25,9 @@ type ReportData struct {
 // CommentData holds data for a single comment.
 type CommentData struct {
 	LineNumber     int
+	SourceFile     string
+	Language       string
+	Directory      string
 	Quality        string
 	Type           string
 	TargetType     string
@@ -37,6 +40,9 @@ type CommentData struct {
 // FunctionCommentData holds comment data for a function.
 type FunctionCommentData struct {
 	Name         string
+	SourceFile   string
+	Language     string
+	Directory    string
 	HasComment   bool
 	NeedsComment bool
 	CommentScore float64
@@ -113,6 +119,18 @@ func parseComment(comment map[string]any) CommentData {
 		cd.LineNumber = v
 	}
 
+	if sf, ok := comment[analyze.SourceFileKey].(string); ok {
+		cd.SourceFile = sf
+	}
+
+	if lang, ok := comment[analyze.LanguageKey].(string); ok {
+		cd.Language = lang
+	}
+
+	if dir, ok := comment[analyze.DirectoryKey].(string); ok {
+		cd.Directory = dir
+	}
+
 	if v, ok := comment["quality"].(string); ok {
 		cd.Quality = v
 	}
@@ -166,6 +184,18 @@ func parseFunctionComment(fn map[string]any) FunctionCommentData {
 		fd.Name = v
 	}
 
+	if sf, ok := fn[analyze.SourceFileKey].(string); ok {
+		fd.SourceFile = sf
+	}
+
+	if lang, ok := fn[analyze.LanguageKey].(string); ok {
+		fd.Language = lang
+	}
+
+	if dir, ok := fn[analyze.DirectoryKey].(string); ok {
+		fd.Directory = dir
+	}
+
 	if v, ok := fn["has_comment"].(bool); ok {
 		fd.HasComment = v
 	}
@@ -190,6 +220,9 @@ func parseFunctionComment(fn map[string]any) FunctionCommentData {
 // CommentQualityData contains quality assessment for a comment.
 type CommentQualityData struct {
 	LineNumber     int     `json:"line_number"              yaml:"line_number"`
+	SourceFile     string  `json:"source_file,omitempty"    yaml:"source_file,omitempty"`
+	Language       string  `json:"language,omitempty"       yaml:"language,omitempty"`
+	Directory      string  `json:"directory,omitempty"      yaml:"directory,omitempty"`
 	Quality        string  `json:"quality"                  yaml:"quality"`
 	Type           string  `json:"type"                     yaml:"type"`
 	TargetName     string  `json:"target_name"              yaml:"target_name"`
@@ -199,17 +232,23 @@ type CommentQualityData struct {
 
 // FunctionDocumentationData contains documentation status for a function.
 type FunctionDocumentationData struct {
-	Name               string  `json:"name"                yaml:"name"`
-	IsDocumented       bool    `json:"is_documented"       yaml:"is_documented"`
-	DocumentationScore float64 `json:"documentation_score" yaml:"documentation_score"`
-	Status             string  `json:"status"              yaml:"status"`
+	Name               string  `json:"name"                  yaml:"name"`
+	SourceFile         string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language           string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory          string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	IsDocumented       bool    `json:"is_documented"         yaml:"is_documented"`
+	DocumentationScore float64 `json:"documentation_score"   yaml:"documentation_score"`
+	Status             string  `json:"status"                yaml:"status"`
 }
 
 // UndocumentedFunctionData identifies functions lacking documentation.
 type UndocumentedFunctionData struct {
-	Name         string `json:"name"          yaml:"name"`
-	NeedsComment bool   `json:"needs_comment" yaml:"needs_comment"`
-	RiskLevel    string `json:"risk_level"    yaml:"risk_level"`
+	Name         string `json:"name"                  yaml:"name"`
+	SourceFile   string `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language     string `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory    string `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	NeedsComment bool   `json:"needs_comment"         yaml:"needs_comment"`
+	RiskLevel    string `json:"risk_level"            yaml:"risk_level"`
 }
 
 // AggregateData contains summary statistics.
@@ -251,6 +290,9 @@ func (m *CommentQualityMetric) Compute(input *ReportData) []CommentQualityData {
 	for _, comment := range input.Comments {
 		result = append(result, CommentQualityData{
 			LineNumber:     comment.LineNumber,
+			SourceFile:     comment.SourceFile,
+			Language:       comment.Language,
+			Directory:      comment.Directory,
 			Quality:        comment.Quality,
 			Type:           comment.Type,
 			TargetName:     comment.TargetName,
@@ -314,6 +356,9 @@ func (m *FunctionDocumentationMetric) Compute(input *ReportData) []FunctionDocum
 
 		result = append(result, FunctionDocumentationData{
 			Name:               fn.Name,
+			SourceFile:         fn.SourceFile,
+			Language:           fn.Language,
+			Directory:          fn.Directory,
 			IsDocumented:       fn.HasComment,
 			DocumentationScore: fn.CommentScore,
 			Status:             status,
@@ -364,6 +409,9 @@ func (m *UndocumentedFunctionMetric) Compute(input *ReportData) []UndocumentedFu
 
 		result = append(result, UndocumentedFunctionData{
 			Name:         fn.Name,
+			SourceFile:   fn.SourceFile,
+			Language:     fn.Language,
+			Directory:    fn.Directory,
 			NeedsComment: fn.NeedsComment,
 			RiskLevel:    riskLevel,
 		})

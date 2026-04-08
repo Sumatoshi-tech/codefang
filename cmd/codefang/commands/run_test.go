@@ -1241,7 +1241,7 @@ func stubRunRegistry() (*analyze.Registry, error) {
 		},
 	}
 
-	return analyze.NewRegistry(staticAnalyzers, historyAnalyzers)
+	return analyze.NewRegistry(staticAnalyzers, nil, historyAnalyzers)
 }
 
 func noopObservabilityInit(_ observability.Config) (observability.Providers, error) {
@@ -1375,7 +1375,7 @@ func TestApplyStaticMemoryLimit_SetsAndRestores(t *testing.T) {
 func TestApplyStaticBudgetConfig_ZeroBudget(t *testing.T) {
 	t.Parallel()
 
-	service := analyze.NewStaticService(nil)
+	service := analyze.NewStaticService(nil, nil)
 	applyStaticBudgetConfig(service, 0, 0)
 
 	assert.Zero(t, service.MaxWorkers)
@@ -1387,7 +1387,7 @@ func TestApplyStaticBudgetConfig_WithBudget(t *testing.T) {
 
 	const budgetOneGiB int64 = 1024 * 1024 * 1024
 
-	service := analyze.NewStaticService(nil)
+	service := analyze.NewStaticService(nil, nil)
 	applyStaticBudgetConfig(service, 0, budgetOneGiB)
 
 	assert.Positive(t, service.MaxWorkers)
@@ -1401,7 +1401,7 @@ func TestApplyStaticBudgetConfig_ExplicitWorkersOverride(t *testing.T) {
 
 	const explicitWorkers = 2
 
-	service := analyze.NewStaticService(nil)
+	service := analyze.NewStaticService(nil, nil)
 	service.MaxWorkers = explicitWorkers
 	applyStaticBudgetConfig(service, explicitWorkers, budgetOneGiB)
 

@@ -32,13 +32,14 @@ const DefaultMaxClonePairs = 1000
 
 // Report keys.
 const (
-	keyAnalyzerName    = "analyzer_name"
-	keyTotalClonePairs = "total_clone_pairs"
-	keyClonePairs      = "clone_pairs"
-	keyTotalFunctions  = "total_functions"
-	keyMessage         = "message"
-	keyCloneRatio      = "clone_ratio"
-	keyFuncSignatures  = "_func_signatures"
+	keyAnalyzerName          = "analyzer_name"
+	keyTotalClonePairs       = "total_clone_pairs"
+	keyClonePairs            = "clone_pairs"
+	keyTotalFunctions        = "total_functions"
+	keyMessage               = "message"
+	keyCloneRatio            = "clone_ratio"
+	keyFuncSignatures        = "_func_signatures"
+	keyCloneTypeDistribution = "clone_type_distribution"
 )
 
 // ClonePair represents a detected clone relationship between two functions.
@@ -51,11 +52,12 @@ type ClonePair struct {
 
 // ComputedMetrics holds computed clone detection metrics for JSON/YAML/binary export.
 type ComputedMetrics struct {
-	TotalFunctions  int         `json:"total_functions"   yaml:"total_functions"`
-	TotalClonePairs int         `json:"total_clone_pairs" yaml:"total_clone_pairs"`
-	CloneRatio      float64     `json:"clone_ratio"       yaml:"clone_ratio"`
-	ClonePairs      []ClonePair `json:"clone_pairs"       yaml:"clone_pairs"`
-	Message         string      `json:"message"           yaml:"message"`
+	TotalFunctions  int            `json:"total_functions"                   yaml:"total_functions"`
+	TotalClonePairs int            `json:"total_clone_pairs"                 yaml:"total_clone_pairs"`
+	CloneRatio      float64        `json:"clone_ratio"                       yaml:"clone_ratio"`
+	CloneTypeDist   map[string]int `json:"clone_type_distribution,omitempty" yaml:"clone_type_distribution,omitempty"`
+	ClonePairs      []ClonePair    `json:"clone_pairs"                       yaml:"clone_pairs"`
+	Message         string         `json:"message"                           yaml:"message"`
 }
 
 // cloneTypeClassifier classifies clone similarity into clone types.
@@ -114,6 +116,10 @@ func computeMetricsFromReport(report map[string]any) *ComputedMetrics {
 	}
 
 	metrics.ClonePairs = extractClonePairs(report)
+
+	if v, ok := report[keyCloneTypeDistribution].(map[string]int); ok {
+		metrics.CloneTypeDist = v
+	}
 
 	return metrics
 }

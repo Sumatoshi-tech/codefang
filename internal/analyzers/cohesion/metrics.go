@@ -23,8 +23,11 @@ type ReportData struct {
 
 // FunctionData holds cohesion data for a single function.
 type FunctionData struct {
-	Name     string
-	Cohesion float64
+	Name       string
+	SourceFile string
+	Language   string
+	Directory  string
+	Cohesion   float64
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
@@ -51,35 +54,62 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 		data.Message = v
 	}
 
-	// Parse functions.
-	if functions, ok := report["functions"].([]map[string]any); ok {
-		data.Functions = make([]FunctionData, 0, len(functions))
-
-		for _, fn := range functions {
-			fd := FunctionData{}
-
-			if name, nameOK := fn["name"].(string); nameOK {
-				fd.Name = name
-			}
-
-			if v, vOK := fn["cohesion"].(float64); vOK {
-				fd.Cohesion = v
-			}
-
-			data.Functions = append(data.Functions, fd)
-		}
-	}
+	data.Functions = parseReportFunctions(report)
 
 	return data, nil
+}
+
+func parseReportFunctions(report analyze.Report) []FunctionData {
+	functions, ok := report["functions"].([]map[string]any)
+	if !ok {
+		return nil
+	}
+
+	result := make([]FunctionData, 0, len(functions))
+
+	for _, fn := range functions {
+		result = append(result, parseFunctionData(fn))
+	}
+
+	return result
+}
+
+func parseFunctionData(fn map[string]any) FunctionData {
+	fd := FunctionData{}
+
+	if name, ok := fn["name"].(string); ok {
+		fd.Name = name
+	}
+
+	if sf, ok := fn[analyze.SourceFileKey].(string); ok {
+		fd.SourceFile = sf
+	}
+
+	if lang, ok := fn[analyze.LanguageKey].(string); ok {
+		fd.Language = lang
+	}
+
+	if dir, ok := fn[analyze.DirectoryKey].(string); ok {
+		fd.Directory = dir
+	}
+
+	if v, ok := fn["cohesion"].(float64); ok {
+		fd.Cohesion = v
+	}
+
+	return fd
 }
 
 // --- Output Data Types ---.
 
 // FunctionCohesionData contains cohesion data for a function.
 type FunctionCohesionData struct {
-	Name         string  `json:"name"          yaml:"name"`
-	Cohesion     float64 `json:"cohesion"      yaml:"cohesion"`
-	QualityLevel string  `json:"quality_level" yaml:"quality_level"`
+	Name         string  `json:"name"                  yaml:"name"`
+	SourceFile   string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language     string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory    string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	Cohesion     float64 `json:"cohesion"              yaml:"cohesion"`
+	QualityLevel string  `json:"quality_level"         yaml:"quality_level"`
 }
 
 // MetricDist* constants are JSON-compatible distribution keys for metrics output.
@@ -92,10 +122,13 @@ const (
 
 // LowCohesionFunctionData identifies functions with poor cohesion.
 type LowCohesionFunctionData struct {
-	Name           string  `json:"name"           yaml:"name"`
-	Cohesion       float64 `json:"cohesion"       yaml:"cohesion"`
-	RiskLevel      string  `json:"risk_level"     yaml:"risk_level"`
-	Recommendation string  `json:"recommendation" yaml:"recommendation"`
+	Name           string  `json:"name"                  yaml:"name"`
+	SourceFile     string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language       string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory      string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	Cohesion       float64 `json:"cohesion"              yaml:"cohesion"`
+	RiskLevel      string  `json:"risk_level"            yaml:"risk_level"`
+	Recommendation string  `json:"recommendation"        yaml:"recommendation"`
 }
 
 // AggregateData contains summary statistics.
@@ -149,6 +182,9 @@ func (m *FunctionCohesionMetric) Compute(input *ReportData) []FunctionCohesionDa
 
 		result = append(result, FunctionCohesionData{
 			Name:         fn.Name,
+			SourceFile:   fn.SourceFile,
+			Language:     fn.Language,
+			Directory:    fn.Directory,
 			Cohesion:     fn.Cohesion,
 			QualityLevel: qualityLevel,
 		})
@@ -249,6 +285,7 @@ func (m *LowCohesionFunctionMetric) Compute(input *ReportData) []LowCohesionFunc
 
 		result = append(result, LowCohesionFunctionData{
 			Name:           fn.Name,
+			SourceFile:     fn.SourceFile,
 			Cohesion:       fn.Cohesion,
 			RiskLevel:      riskLevel,
 			Recommendation: recommendation,

@@ -89,12 +89,12 @@ The file history analyzer has no additional configuration options.
       "file_contributors": [
         {
           "path": "pkg/core/engine.go",
-          "contributors": {
-            "0": {"added": 2200, "removed": 900, "changed": 600},
-            "1": {"added": 800, "removed": 700, "changed": 250},
-            "2": {"added": 150, "removed": 150, "changed": 80},
-            "3": {"added": 50, "removed": 50, "changed": 20}
-          },
+          "contributors": [
+            {"dev_id": 0, "added": 2200, "removed": 900, "changed": 600},
+            {"dev_id": 1, "added": 800, "removed": 700, "changed": 250},
+            {"dev_id": 2, "added": 150, "removed": 150, "changed": 80},
+            {"dev_id": 3, "added": 50, "removed": 50, "changed": 20}
+          ],
           "top_contributor_id": 0,
           "top_contributor_lines": 2800
         }

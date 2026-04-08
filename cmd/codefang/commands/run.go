@@ -32,6 +32,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/composition"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/couples"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/devs"
 	filehistory "github.com/Sumatoshi-tech/codefang/internal/analyzers/file_history"
@@ -685,6 +686,8 @@ func (rc *RunCommand) renderCombinedDirect(
 		return fmt.Errorf("decode combined payload: %w", err)
 	}
 
+	model.Metadata = analyze.NewAnalysisMetadata(path)
+
 	rc.progressf(silent, progressWriter, "combined payload decoded")
 
 	startedAt = time.Now()
@@ -873,7 +876,7 @@ func (rc *RunCommand) printAnalyzerList(writer io.Writer, registry *analyze.Regi
 }
 
 func defaultRegistry() (*analyze.Registry, error) {
-	return analyze.NewRegistry(defaultStaticAnalyzers(), defaultHistoryLeaves())
+	return analyze.NewRegistry(defaultUASTAnalyzers(), defaultRawFileAnalyzers(), defaultHistoryLeaves())
 }
 
 func runStaticAnalyzers(
@@ -887,7 +890,7 @@ func runStaticAnalyzers(
 	memoryBudget int64,
 	writer io.Writer,
 ) error {
-	service := analyze.NewStaticService(defaultStaticAnalyzers())
+	service := analyze.NewStaticService(defaultUASTAnalyzers(), defaultRawFileAnalyzers())
 	service.Renderer = renderer.NewDefaultStaticRenderer()
 	service.MaxWorkers = maxWorkers
 	service.PerFile = perFile
@@ -907,7 +910,7 @@ func runStaticPlotAnalyzers(
 	memoryBudget int64,
 	outputDir string,
 ) error {
-	service := analyze.NewStaticService(defaultStaticAnalyzers())
+	service := analyze.NewStaticService(defaultUASTAnalyzers(), defaultRawFileAnalyzers())
 	service.MaxWorkers = maxWorkers
 	service.AggregationMode = analyze.AggregationModeFull
 
@@ -1925,7 +1928,7 @@ func defaultHistoryLeaves() []analyze.HistoryAnalyzer {
 	return result
 }
 
-func defaultStaticAnalyzers() []analyze.StaticAnalyzer {
+func defaultUASTAnalyzers() []analyze.StaticAnalyzer {
 	return []analyze.StaticAnalyzer{
 		clones.NewAnalyzer(),
 		complexity.NewAnalyzer(),
@@ -1933,6 +1936,12 @@ func defaultStaticAnalyzers() []analyze.StaticAnalyzer {
 		halstead.NewAnalyzer(),
 		cohesion.NewAnalyzer(),
 		imports.NewAnalyzer(),
+	}
+}
+
+func defaultRawFileAnalyzers() []analyze.RawFileAnalyzer {
+	return []analyze.RawFileAnalyzer{
+		composition.NewAnalyzer(),
 	}
 }
 

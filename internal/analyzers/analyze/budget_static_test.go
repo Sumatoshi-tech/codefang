@@ -46,7 +46,7 @@ func TestStaticAnalyzers_MemoryBudget(t *testing.T) {
 
 	dir := setupHeavyBenchDir(t, budgetTestFileCount, budgetTestFunctionsPerFile)
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {} // Skip real malloc_trim in test.
 
 	// Apply budget-derived parameters.

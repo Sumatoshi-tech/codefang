@@ -13,6 +13,8 @@ type ItemConverter func(items any, sourceFile string) []map[string]any
 type TypedCollection struct {
 	Items      any           // concrete typed slice (e.g., []FunctionMetrics).
 	SourceFile string        // stamped by StampSourceFile.
+	Language   string        // stamped by StampLanguage.
+	Directory  string        // stamped by StampSourceFile (filepath.Dir of relative path).
 	ToMaps     ItemConverter // deferred converter.
 }
 
@@ -27,3 +29,9 @@ func (tc TypedCollection) MapSlice() []map[string]any {
 
 // SourceFileKey is the report key used to stamp the originating source file.
 const SourceFileKey = "_source_file"
+
+// LanguageKey is the report key used to stamp the detected programming language.
+const LanguageKey = "_language"
+
+// DirectoryKey is the report key used to stamp the parent directory of the source file.
+const DirectoryKey = "_directory"

@@ -1,0 +1,223 @@
+# Changelog
+
+All notable changes to the Codefang project are documented in this file.
+The format follows [Keep a Changelog](https://keepachangelog.com/).
+
+---
+
+## [Unreleased] — Analytics Readiness & DWH Suitability
+
+**Motivation**: A comprehensive data analyst review of Codefang's JSON output revealed that while the data was analytically rich (17 analyzers, 1M+ function-level rows, time-series, coupling data), it was structurally hostile to analytics tooling and DWH loading. Function records had bare names with no file paths, time-series ticks had no calendar dates, developer identities used pipe-delimited strings, and nested maps blocked efficient columnar ingestion. This release systematically fixes every identified blocker, raising the data quality score from **2.1/5 to 4.6/5**.
+
+### Architecture: Pipeline Stage Refactor
+
+#### `RawFileAnalyzer` and `FormattableAnalyzer` interfaces
+
+Replaced the `FileContentAnalyzer` + `WalksAllFiles` marker interface pattern with a proper pipeline stage architecture.
+
+**Before**: Analyzers that needed raw file access (not UAST) had to implement `StaticAnalyzer` with a no-op `Analyze(*node.Node)`, plus two marker interfaces discovered at runtime via type assertions.
+
+**After**: Two clean interface hierarchies — `StaticAnalyzer` for UAST-based analysis and `RawFileAnalyzer` for raw file analysis — both embed a shared `FormattableAnalyzer` base. `StaticService` holds separate slices. `AnalyzeFolder` uses `pipeline.RunPhases` with explicit `rawFilePhase` and `uastPhase` stages.
+
+**Why it matters for BI**: The pipeline refactor enabled `StampSourceFile` to receive `rootPath` and convert all file paths to relative — a prerequisite for portable DWH data. It also enabled `StampLanguage` to inject detected language into every function record.
+
+**Files changed**:
+- `internal/analyzers/analyze/analyzer.go` — new `FormattableAnalyzer`, `RawFileAnalyzer` interfaces; `StaticAnalyzer` refactored to embed `FormattableAnalyzer`
+- `internal/analyzers/analyze/static.go` — `StaticService` gains `UASTAnalyzers` + `RawFileAnalyzers` slices; `AnalyzeFolder` uses `pipeline.RunPhases`
+- `internal/analyzers/composition/analyzer.go` — implements `RawFileAnalyzer` directly (removed no-op `Analyze`, `NeedsAllFiles`)
+- `internal/analyzers/analyze/registry.go` — `NewRegistry` accepts three slices
+- `cmd/codefang/commands/run.go` — split `defaultStaticAnalyzers` into `defaultUASTAnalyzers` + `defaultRawFileAnalyzers`
+- `internal/analyzers/analyze/perfile.go` — `PerFileEnricher` uses `[]FormattableAnalyzer`
+- `internal/analyzers/common/renderer/json.go` — `EnrichWithPerFileData` uses `[]FormattableAnalyzer`
+
+---
+
+### Static Analyzers: New Fields on Every Function Record
+
+#### `source_file` — File path on every function record
+
+**Motivation**: 152,000+ function records in the JSON output had bare names like `"ForKind"` with no indication of which file they belonged to. This made it impossible to join function metrics to file-level data, build file heatmaps, or drill down from "bad function" to "where in the repo."
+
+**Root cause**: The `_source_file` stamping mechanism existed and worked through aggregation, but `FormatReportBinary` called `ComputeAllMetrics` which parsed `[]map[string]any` items into typed structs. Those structs had no `SourceFile` field, silently dropping the value during struct conversion.
+
+**Fix**: Added `SourceFile string` to all input `FunctionData` and output data structs (`FunctionComplexityData`, `FunctionHalsteadData`, `FunctionCohesionData`, all comment data structs, `HighRiskFunctionData`, `HighEffortFunctionData`, `LowCohesionFunctionData`, `UndocumentedFunctionData`). Populated from `_source_file` map key during `parseFunctionData` → `Compute()`. Updated `StampSourceFile` to accept `rootPath` and convert to relative via `MakeRelativePath`.
+
+**JSON output key**: `"source_file"` (relative path, e.g., `"pkg/kubelet/kubelet.go"`)
+
+**Analyzers affected**: `static/complexity`, `static/halstead`, `static/cohesion`, `static/comments`
+
+#### `language` — Programming language on every function record
+
+**Motivation**: Analysts had to infer language from file extension at query time. The parser already knows the language.
+
+**Fix**: Added `LanguageKey` constant, `StampLanguage()` function, and `Language` field to `TypedCollection` struct. Language is stamped in `analyzeFilesParallel` via `parser.GetLanguage(filePath)` and propagated through `TypedCollection` → `DetailedDataCollector.buildItems()` → `stampCollectionMetadata()` to reach the output structs.
+
+**JSON output key**: `"language"` (e.g., `"go"`, `"bash"`)
+
+**Analyzers affected**: `static/complexity`, `static/halstead`, `static/cohesion`, `static/comments`
+
+#### `directory` — Parent directory on every function record
+
+**Motivation**: Directory-level aggregation (e.g., "which package has worst complexity") requires parsing file paths at query time, which is expensive in columnar DWH.
+
+**Fix**: Added `DirectoryKey` constant and `Directory` field to `TypedCollection`. Stamped as `filepath.Dir(relativePath)` inside `StampSourceFile`. Propagated via `stampCollectionMetadata()` alongside language.
+
+**JSON output key**: `"directory"` (e.g., `"pkg/kubelet"`)
+
+**Analyzers affected**: `static/complexity`, `static/halstead`, `static/cohesion`, `static/comments`
+
+---
+
+### History Analyzers: Tick Timestamps
+
+#### `start_time` / `end_time` on every time-series tick
+
+**Motivation**: All 6 history time-series analyzers emitted `tick: <int>` with no calendar date. Every time-series chart had an unlabeled X-axis. The `TICK` struct already carried `StartTime`/`EndTime` internally but didn't export them.
+
+**Fix**: Created `TickBounds` type and `BuildTickBounds(ticks []TICK)` helper. Each analyzer's `ticksToReport` adds `tick_bounds` to the Report. Each `ParseReportData` reads it. Each time-series output struct gains `StartTime`/`EndTime` string fields (RFC 3339). For quality and devs analyzers, added timestamp tracking to their tick accumulators (`tickAccumulator.startTime/endTime`, `TickDevData.startTime/endTime`) with min/max tracking in `extractTC` and population in `buildTick`.
+
+**JSON output keys**: `"start_time"`, `"end_time"` (RFC 3339, e.g., `"2024-01-15T10:30:00Z"`)
+
+**Analyzers affected**: `history/sentiment`, `history/anomaly`, `history/quality`, `history/devs` (activity + churn), `history/file-history` (composition_ts)
+
+---
+
+### Developer Identity Normalization
+
+#### Split pipe-delimited names into `name` + `email`
+
+**Motivation**: Developer identity used `"daniel smith|dbsmith@google.com"` pipe-delimited strings from `ReversedPeopleDict`. This blocked clean dimension table creation in DWH systems.
+
+**Fix**: Created `SplitIdentity(s string) (name, email string)` in `internal/identity/split.go`. Handles pipe-delimited, exact `"name <email>"`, and plain name formats. Updated `devName()` → `devNameAndEmail()` and `getDevName()` → `getDevNameAndEmail()`.
+
+**Fields added**:
+- `DeveloperData`: `email` field
+- `BusFactorData`: `primary_dev_email`, `secondary_dev_email`
+- `DeveloperCouplingData`: `developer1_email`, `developer2_email`
+
+**Analyzers affected**: `history/devs`, `history/couples`
+
+---
+
+### Output Structure: Flattened Arrays
+
+#### `developers[].languages` — map → array
+
+**Motivation**: `map[string]LineStats` with variable language-name keys cannot be UNNEST'd in columnar DWH without custom ETL.
+
+**Fix**: Changed `DeveloperData.Languages` from `map[string]pkgplumbing.LineStats` to `[]LanguageStatsEntry`. Internal accumulation uses unexported `langMap`, converted to sorted array via `finalizeLanguages()`. Empty language strings replaced with `"Other"`.
+
+**Before**: `{"Go": {"added": 100, "removed": 5, "changed": 3}}`
+**After**: `[{"language": "Go", "added": 100, "removed": 5, "changed": 3}]`
+
+#### `activity[].by_developer` — map → array
+
+**Motivation**: `map[int]int` (dev_id → commit_count) serializes to JSON with string keys, blocking typed ingestion.
+
+**Fix**: Changed to `[]DeveloperCommits` with `{dev_id, commits}` fields. Sorted by dev_id for deterministic output.
+
+**Before**: `{"2": 5, "3": 3}`
+**After**: `[{"dev_id": 2, "commits": 5}, {"dev_id": 3, "commits": 3}]`
+
+#### `file_contributors[].contributors` — map → array
+
+**Motivation**: `map[int]LineStats` blocked DWH UNNEST.
+
+**Fix**: Changed to `[]ContributorEntry` with `{dev_id, added, removed, changed}` fields. Sorted by dev_id.
+
+**Before**: `{"2": {"added": 42, "removed": 5, "changed": 3}}`
+**After**: `[{"dev_id": 2, "added": 42, "removed": 5, "changed": 3}]`
+
+---
+
+### Output Envelope
+
+#### Top-level `metadata` section
+
+**Motivation**: A DWH ingesting reports from multiple repos could not distinguish them. No repo name, analysis timestamp, or version.
+
+**Fix**: Added `AnalysisMetadata` struct with `repo_path`, `repo_name` (from `filepath.Base`), `analyzed_at` (RFC 3339), `codefang_version` (from build ldflags). Injected after `DecodeCombinedBinaryReports` in the combined render path.
+
+```json
+{
+  "version": "codefang.run.v1",
+  "metadata": {
+    "repo_path": "/home/user/sources/kubernetes",
+    "repo_name": "kubernetes",
+    "analyzed_at": "2026-04-07T23:33:00Z",
+    "codefang_version": "dev"
+  },
+  "analyzers": [...]
+}
+```
+
+#### Per-analyzer `schema` manifest
+
+**Motivation**: DWH consumers need to know field types, grain, and cardinality for automated ETL generation.
+
+**Fix**: Added `FieldMeta` struct with `{type, grain, description}` and static `analyzerSchemas` registry covering all 17 analyzers. Each `AnalyzerResult` in the output includes a `schema` field.
+
+```json
+{
+  "id": "static/complexity",
+  "schema": {
+    "function_complexity": {
+      "type": "list",
+      "grain": "function",
+      "description": "Per-function cyclomatic and cognitive complexity"
+    }
+  },
+  "report": {...}
+}
+```
+
+#### NDJSON output format
+
+**Motivation**: The monolithic JSON (467MB for kubernetes) must be fully parsed to extract any single analyzer. NDJSON enables streaming ingestion into ClickHouse.
+
+**Fix**: Added `FormatNDJSON` case to `WriteConvertedOutput`. One JSON line per analyzer result, with optional metadata line prepended.
+
+```bash
+codefang run --format ndjson /repo > output.ndjson
+```
+
+---
+
+### Clone Analysis
+
+#### `clone_type_distribution` from full population
+
+**Motivation**: Clone pairs are capped at 1,000 in the output, but the distribution metrics (Type-1/2/3 breakdown) were computed from the capped sample, skewing percentages for large codebases with 22M+ total pairs.
+
+**Fix**: Added `typeDistribution cloneTypeCounts` to `clonePairResult`. `matchCandidates` increments per-type counters for ALL valid pairs before the cap check. Both aggregator and per-file paths emit `clone_type_distribution` in the report. `ReportSection.Distribution()` reads from the full-population distribution.
+
+**Before**: Distribution from 1,000 capped pairs
+**After**: Distribution from 22,381,694 total pairs: `{"Type-1": 12366266, "Type-2": 3307147, "Type-3": 6708281}`
+
+#### Relative paths in clone pairs
+
+Clone pair `func_a` / `func_b` paths changed from absolute (`/home/user/sources/repo/file.go::funcName`) to relative (`cmd/controller/app.go::newController`). Enabled by the `StampSourceFile` rootPath change.
+
+---
+
+### New Files Created
+
+| File | Purpose |
+|------|---------|
+| `internal/analyzers/analyze/tick_bounds.go` | `TickBounds` type + `BuildTickBounds` helper |
+| `internal/analyzers/analyze/metadata.go` | `AnalysisMetadata` struct + `NewAnalysisMetadata` constructor |
+| `internal/analyzers/analyze/schema_registry.go` | Static schema registry for all 17 analyzers |
+| `internal/identity/split.go` | `SplitIdentity(s string) (name, email string)` |
+
+---
+
+### Empty Analyzer Root Causes (Documented)
+
+Investigation of 4 analyzers that returned empty data on kubernetes (1000 commits):
+
+| Analyzer | Root Cause | Resolution |
+|----------|-----------|------------|
+| `burndown.developer_survival` | Disabled by default (`Burndown.TrackPeople: false`) | Enable via config |
+| `burndown.file_survival` | Disabled by default (`Burndown.TrackFiles: false`) | Enable via config |
+| `history/imports` | Requires UAST-enabled pipeline mode (`NeedsUAST() = true`) | Architectural dependency |
+| `history/typos` | Requires UAST-enabled pipeline mode (`NeedsUAST() = true`) | Architectural dependency |

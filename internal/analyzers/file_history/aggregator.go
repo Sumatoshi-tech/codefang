@@ -411,6 +411,8 @@ func TicksToReport(ctx context.Context, ticks []analyze.TICK, repo *gitlib.Repos
 		report["tick_composition"] = tickComposition
 	}
 
+	report["tick_bounds"] = analyze.BuildTickBounds(ticks)
+
 	return report
 }
 

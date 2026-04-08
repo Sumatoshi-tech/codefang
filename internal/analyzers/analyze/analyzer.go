@@ -85,11 +85,12 @@ type Analyzer interface {
 	Configure(facts map[string]any) error
 }
 
-// StaticAnalyzer interface defines the contract for UAST-based static analysis.
-type StaticAnalyzer interface {
+// FormattableAnalyzer is the shared contract for analyzers that produce
+// reportable output with thresholds, aggregation, and format methods.
+// Both StaticAnalyzer and RawFileAnalyzer satisfy this interface.
+type FormattableAnalyzer interface {
 	Analyzer
 
-	Analyze(root *node.Node) (Report, error)
 	Thresholds() Thresholds
 
 	// Aggregation methods.
@@ -101,6 +102,23 @@ type StaticAnalyzer interface {
 	FormatReportYAML(report Report, writer io.Writer) error
 	FormatReportPlot(report Report, writer io.Writer) error
 	FormatReportBinary(report Report, writer io.Writer) error
+}
+
+// StaticAnalyzer defines the contract for UAST-based static analysis.
+// Runs during the UAST phase on parsed AST nodes.
+type StaticAnalyzer interface {
+	FormattableAnalyzer
+
+	Analyze(root *node.Node) (Report, error)
+}
+
+// RawFileAnalyzer defines the contract for analyzers that operate on raw file
+// content (path + bytes) without UAST parsing. Runs during the raw-file phase
+// which walks ALL files in the directory tree (not just UAST-supported ones).
+type RawFileAnalyzer interface {
+	FormattableAnalyzer
+
+	AnalyzeFileContent(path string, content []byte) (Report, error)
 }
 
 // VisitorProvider enables single-pass traversal optimization.

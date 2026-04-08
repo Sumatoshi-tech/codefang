@@ -63,7 +63,7 @@ func (h *HistoryAnalyzer) WriteToStoreFromAggregator(
 
 	// Write composition time series if available.
 	if len(fa.tickComposition) > 0 {
-		_, compositionTS := computeComposition(fa.tickComposition)
+		_, compositionTS := computeComposition(fa.tickComposition, nil)
 
 		compErr := analyze.WriteSliceKind(w, KindComposition, compositionTS)
 		if compErr != nil {
