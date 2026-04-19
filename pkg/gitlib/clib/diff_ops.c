@@ -623,6 +623,21 @@ int cf_tree_diff(
     git_oid* new_tree_oid,
     cf_tree_diff_result* result
 ) {
+    return cf_tree_diff_v2(repo, old_tree_oid, new_tree_oid, NULL, 0, result);
+}
+
+/*
+ * Compute diff between two trees with an optional libgit2 pathspec
+ * pre-filter. See header for semantics.
+ */
+int cf_tree_diff_v2(
+    git_repository* repo,
+    git_oid* old_tree_oid,
+    git_oid* new_tree_oid,
+    const char** pathspec,
+    size_t pathspec_n,
+    cf_tree_diff_result* result
+) {
     git_tree* old_tree = NULL;
     git_tree* new_tree = NULL;
     git_diff* diff = NULL;
@@ -650,6 +665,13 @@ int cf_tree_diff(
 
     /* Compute diff */
     git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+    if (pathspec != NULL && pathspec_n > 0) {
+        /* git_strarray.strings is declared `char**` but libgit2 only
+         * reads from it during the diff call, so the const-stripping
+         * cast is safe. The Go bridge owns all backing memory. */
+        opts.pathspec.strings = (char**)pathspec;
+        opts.pathspec.count   = pathspec_n;
+    }
     if (git_diff_tree_to_tree(&diff, repo, old_tree, new_tree, &opts) != 0) {
         ret = CF_ERR_DIFF;
         goto cleanup;

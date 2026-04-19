@@ -1294,6 +1294,7 @@ func executeHistoryPipeline(
 	}
 
 	coordConfig.FirstParent = opts.FirstParent
+	coordConfig.TreeDiffPathspec = extractTreeDiffPathspec(pl.Core)
 
 	if !needsUAST(selectedLeaves) {
 		coordConfig.UASTPipelineWorkers = 0
@@ -1681,6 +1682,19 @@ func registerConfigFlag(cobraCmd *cobra.Command, opt pipeline.ConfigurationOptio
 
 type uastDependent interface {
 	NeedsUAST() bool
+}
+
+// extractTreeDiffPathspec returns the libgit2 pathspec pre-filter produced by
+// TreeDiffAnalyzer.Configure, or nil when no TreeDiffAnalyzer is present or
+// the user did not restrict by language. See specs/frds/FRD-20260419-pathspec-builder.md.
+func extractTreeDiffPathspec(core []analyze.HistoryAnalyzer) []string {
+	for _, a := range core {
+		if td, ok := a.(*plumbing.TreeDiffAnalyzer); ok {
+			return td.Pathspec
+		}
+	}
+
+	return nil
 }
 
 func needsUAST(leaves []analyze.HistoryAnalyzer) bool {

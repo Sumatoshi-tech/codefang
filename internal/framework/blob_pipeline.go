@@ -56,6 +56,11 @@ type BlobPipeline struct {
 	// MaxChanges caps the number of file changes per commit. Zero = use default.
 	MaxChanges int
 
+	// TreeDiffPathspec is the libgit2 pathspec pre-filter for tree diffs.
+	// An empty or nil slice disables the filter (libgit2 returns all deltas).
+	// Derived from the configured --languages set by TreeDiffAnalyzer.
+	TreeDiffPathspec []string
+
 	// Metrics provides per-stage counters for memory triage. Nil-safe.
 	Metrics *StageMetrics
 
@@ -206,6 +211,7 @@ func (p *BlobPipeline) processBatch(
 		req := gitlib.TreeDiffRequest{
 			PreviousCommitHash: prevHash,
 			CommitHash:         commit.Hash(),
+			Pathspec:           p.TreeDiffPathspec,
 			Response:           respChan,
 		}
 

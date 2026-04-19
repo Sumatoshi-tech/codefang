@@ -160,6 +160,11 @@ type CoordinatorConfig struct {
 	// MaxChangesPerCommit caps the number of file changes per commit for blob loading.
 	MaxChangesPerCommit int
 
+	// TreeDiffPathspec is the libgit2 pathspec pre-filter for tree diffs,
+	// derived from --languages by the TreeDiffAnalyzer. An empty slice
+	// disables path-based filtering (libgit2 returns all deltas).
+	TreeDiffPathspec []string
+
 	// MaxDiffBatchSize is the maximum number of diff requests per batch.
 	MaxDiffBatchSize int
 
@@ -391,6 +396,8 @@ func newBlobPipelineFromConfig(
 	if config.MaxChangesPerCommit > 0 {
 		p.MaxChanges = config.MaxChangesPerCommit
 	}
+
+	p.TreeDiffPathspec = config.TreeDiffPathspec
 
 	return p
 }

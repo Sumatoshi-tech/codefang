@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -299,6 +300,55 @@ func TestCGOBridge_BatchDiffBlobsInvalidHash(t *testing.T) {
 	require.Equal(t, gitlib.ErrDiffLookup, results[0].Error)
 }
 
+// TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob verifies that passing
+// a pathspec to the cgo bridge drops non-matching files at the libgit2
+// level — before they cross the cgo boundary. FRD:
+// specs/frds/FRD-20260419-pathspec-builder.md.
+func TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob(t *testing.T) {
+	t.Parallel()
+
+	tr := newTestRepo(t)
+	defer tr.cleanup()
+
+	tr.createFile("a.go", "package a")
+	tr.createFile("b.py", "x = 1")
+	tr.createFile("c.js", "var y = 2;")
+	firstHash := tr.commit("first")
+
+	tr.createFile("a.go", "package a\n// edit")
+	tr.createFile("b.py", "x = 2")
+	tr.createFile("c.js", "var y = 3;")
+	secondHash := tr.commit("second")
+
+	repo, err := gitlib.OpenRepository(tr.path)
+	require.NoError(t, err)
+
+	defer repo.Free()
+
+	firstCommit, err := repo.LookupCommit(context.Background(), firstHash)
+	require.NoError(t, err)
+
+	defer firstCommit.Free()
+
+	secondCommit, err := repo.LookupCommit(context.Background(), secondHash)
+	require.NoError(t, err)
+
+	defer secondCommit.Free()
+
+	bridge := gitlib.NewCGOBridge(repo)
+
+	baseline, err := bridge.TreeDiffWithPathspec(firstCommit.TreeHash(), secondCommit.TreeHash(), nil)
+	require.NoError(t, err)
+	require.Len(t, baseline, 3, "baseline must see all 3 modified files")
+
+	filtered, err := bridge.TreeDiffWithPathspec(
+		firstCommit.TreeHash(), secondCommit.TreeHash(), []string{"*.go"},
+	)
+	require.NoError(t, err)
+	require.Len(t, filtered, 1, "pathspec '*.go' must restrict to Go files")
+	assert.Equal(t, "a.go", filtered[0].To.Name)
+}
+
 // TestCGOBridge_TreeDiffSameHash verifies TreeDiff returns empty when both tree hashes are equal (skip path).
 func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
 	t.Parallel()
@@ -323,7 +373,7 @@ func TestCGOBridge_TreeDiffSameHash(t *testing.T) {
 	require.False(t, treeHash.IsZero())
 
 	bridge := gitlib.NewCGOBridge(repo)
-	changes, err := bridge.TreeDiff(treeHash, treeHash)
+	changes, err := bridge.TreeDiffWithPathspec(treeHash, treeHash, nil)
 	require.NoError(t, err)
 	require.Empty(t, changes)
 }

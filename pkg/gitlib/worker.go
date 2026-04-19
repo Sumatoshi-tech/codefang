@@ -33,7 +33,11 @@ type TreeDiffRequest struct {
 	PreviousTree       *Tree // Optimization: Use existing tree if on same worker/repo.
 	PreviousCommitHash Hash  // Fallback: Lookup previous tree by hash (safe for pool workers).
 	CommitHash         Hash  // Hash of the commit to process.
-	Response           chan<- TreeDiffResponse
+	// Pathspec restricts the diff to files matching any of the given
+	// fnmatch-style globs (e.g. []string{"*.go", "Dockerfile"}). An empty
+	// or nil slice disables path-based pre-filtering.
+	Pathspec []string
+	Response chan<- TreeDiffResponse
 }
 
 // TreeDiffResponse is the response for a TreeDiffRequest.
@@ -185,7 +189,7 @@ func (w *Worker) handle(req WorkerRequest) {
 			prevTreeHash := prevCommit.TreeHash()
 			prevCommit.Free()
 
-			changes, err = w.bridge.TreeDiff(prevTreeHash, currTreeHash)
+			changes, err = w.bridge.TreeDiffWithPathspec(prevTreeHash, currTreeHash, typedReq.Pathspec)
 		default:
 			changes, err = InitialTreeChanges(ctx, w.repo, commitTree)
 		}

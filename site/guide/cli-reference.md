@@ -128,6 +128,43 @@ codefang run -a history/couples --limit 500 .
     The burndown analyzer automatically enables `--first-parent` when selected.
     This is required for correct line-tracking across merge commits.
 
+#### Language Filtering
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--languages` | `[]string` | `[all]` | Restrict history analysis to the given Linguist languages; comma-separated. `all` (default) disables the filter. |
+
+The filter is pushed down into libgit2's `pathspec` at the tree-diff stage, so
+non-matching files are skipped before the diff crosses the cgo boundary. On a
+polyglot repo a narrow filter can reduce wall time by 30–40 %. The Go-side
+language check still runs as the authoritative pass for content-disambiguated
+extensions (`.h`, `.pl`, `.m`, `.r`).
+
+Language names are [Linguist keys](https://github.com/github/linguist/blob/master/lib/linguist/languages.yml)
+and common aliases resolve automatically:
+
+```bash
+# Canonical names (any case, whitespace is trimmed)
+codefang run -a 'history/devs' --languages go,python,typescript .
+
+# Aliases resolve via enry
+codefang run -a 'history/devs' --languages golang,js,ts .
+
+# Unknown language fails fast at configure time instead of silently
+# returning an empty report:
+codefang run -a 'history/devs' --languages notalang .
+# → Error: failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang"
+```
+
+Filename-only languages (e.g. `Dockerfile`, `Makefile`) are also supported:
+
+```bash
+codefang run -a 'history/devs' --languages dockerfile .
+```
+
+See `specs/optimize-lang/PROPOSAL.md` for the architecture and acceptance-gate
+numbers.
+
 #### Pipeline Tuning Flags
 
 | Flag | Type | Default | Description |

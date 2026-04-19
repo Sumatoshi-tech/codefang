@@ -61,6 +61,29 @@ func NewCGOBridge(repo *Repository) *CGOBridge {
 	return &CGOBridge{repo: repo}
 }
 
+// marshalPathspec converts a Go []string into a C **char array suitable for
+// passing to cf_tree_diff_v2. Returns a free function that must be deferred
+// by the caller to release the C memory. A nil/empty pathspec returns
+// (nil, noop-free).
+func marshalPathspec(pathspec []string) (**C.char, func()) {
+	if len(pathspec) == 0 {
+		return nil, func() {}
+	}
+
+	cStrings := make([]*C.char, len(pathspec))
+	for i, s := range pathspec {
+		cStrings[i] = C.CString(s)
+	}
+
+	free := func() {
+		for _, cs := range cStrings {
+			C.free(unsafe.Pointer(cs))
+		}
+	}
+
+	return (**C.char)(unsafe.Pointer(&cStrings[0])), free
+}
+
 // getRepoPtr extracts the underlying C pointer from git2go.Repository.
 // Uses reflection to access the unexported 'ptr' field.
 func (b *CGOBridge) getRepoPtr() unsafe.Pointer {
@@ -289,9 +312,14 @@ func (b *CGOBridge) BatchLoadBlobs(hashes []Hash) []BlobResult {
 	return results
 }
 
-// TreeDiff computes the difference between two trees in a single batch CGO call.
-// Skips libgit2 diff when both tree OIDs are equal (e.g. metadata-only commits).
-func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
+// TreeDiffWithPathspec computes the difference between two trees in a single
+// batch CGO call. pathspec is a list of fnmatch-style globs (e.g. "*.go",
+// "Dockerfile") applied as a libgit2 pre-filter; when empty or nil, libgit2
+// returns the full diff. Skips libgit2 diff when both tree OIDs are equal
+// (e.g. metadata-only commits).
+func (b *CGOBridge) TreeDiffWithPathspec(
+	oldTreeHash, newTreeHash Hash, pathspec []string,
+) (Changes, error) {
 	if !oldTreeHash.IsZero() && !newTreeHash.IsZero() && oldTreeHash == newTreeHash {
 		return make(Changes, 0), nil
 	}
@@ -318,6 +346,9 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 		return nil, ErrRepositoryPointer
 	}
 
+	cPathspec, freePathspec := marshalPathspec(pathspec)
+	defer freePathspec()
+
 	var cResult C.cf_tree_diff_result
 
 	// Ensure result is clean
@@ -325,10 +356,12 @@ func (b *CGOBridge) TreeDiff(oldTreeHash, newTreeHash Hash) (Changes, error) {
 	cResult.count = 0
 
 	// Call C function
-	ret := C.cf_tree_diff(
+	ret := C.cf_tree_diff_v2(
 		(*C.git_repository)(repoPtr),
 		pOldOid,
 		pNewOid,
+		cPathspec,
+		C.size_t(len(pathspec)),
 		&cResult,
 	)
 

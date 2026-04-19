@@ -26,6 +26,60 @@ func TestTreeDiffAnalyzer_Configure(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
+func TestTreeDiffAnalyzer_Configure_BuildsPathspecFromLanguages(t *testing.T) {
+	t.Parallel()
+
+	td := &TreeDiffAnalyzer{}
+	err := td.Configure(map[string]any{
+		ConfigTreeDiffLanguages: []string{"go"},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, td.Pathspec, "pathspec must be built from --languages")
+	require.Contains(t, td.Pathspec, "*.go")
+}
+
+// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
+func TestTreeDiffAnalyzer_Configure_AllLanguagesGivesEmptyPathspec(t *testing.T) {
+	t.Parallel()
+
+	td := &TreeDiffAnalyzer{}
+	err := td.Configure(map[string]any{
+		ConfigTreeDiffLanguages: []string{"all"},
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, td.Pathspec,
+		"all languages must skip path-spec push-down (empty pathspec)")
+}
+
+// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
+func TestTreeDiffAnalyzer_Configure_AliasResolvesToCanonicalInLanguagesSet(t *testing.T) {
+	t.Parallel()
+
+	td := &TreeDiffAnalyzer{}
+	err := td.Configure(map[string]any{
+		ConfigTreeDiffLanguages: []string{"golang"},
+	})
+
+	require.NoError(t, err)
+	require.True(t, td.Languages["go"],
+		"alias 'golang' must resolve so the Go-side filter recognizes canonical lowercase 'go'")
+}
+
+// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
+func TestTreeDiffAnalyzer_Configure_UnknownLanguageReturnsError(t *testing.T) {
+	t.Parallel()
+
+	td := &TreeDiffAnalyzer{}
+	err := td.Configure(map[string]any{
+		ConfigTreeDiffLanguages: []string{"notalang"},
+	})
+
+	require.Error(t, err, "unknown language must surface at Configure time")
+}
+
 func TestTreeDiffAnalyzer_Initialize(t *testing.T) {
 	t.Parallel()
 

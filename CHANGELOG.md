@@ -5,6 +5,60 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased] — Performance: `--languages` filter push-down into libgit2
+
+**Motivation**: The `--languages` flag used to be applied *after* libgit2 had
+already produced a full tree diff. Every delta crossed the cgo boundary, was
+materialised in Go, and only then dropped by the analyzer if its detected
+language wasn't in the allow-list. On polyglot repositories with a narrow
+filter, libgit2 was doing 4× the tree-diff work it needed to.
+
+### Changes
+
+- **New package `internal/analyzers/plumbing/langpath`** — pure Go
+  `Globs(langs []string) (globs []string, wantsAll bool, err error)` backed
+  by enry's generated Linguist dataset (`data.ExtensionsByLanguage` +
+  `data.LanguagesByFilename`). Single source of truth; 100 % test coverage.
+- **New C ABI `cf_tree_diff_v2`** in `pkg/gitlib/clib/{codefang_git.h,diff_ops.c}`
+  accepts a pathspec array which it forwards to libgit2's
+  `git_diff_options.pathspec`. The old `cf_tree_diff` is retired in favour of
+  `cf_tree_diff_v2` via `CGOBridge.TreeDiffWithPathspec`.
+- **`TreeDiffRequest.Pathspec` + `BlobPipeline.TreeDiffPathspec` +
+  `CoordinatorConfig.TreeDiffPathspec`** thread the pathspec from the
+  analyzer through the pipeline to every worker call.
+- **`TreeDiffAnalyzer.Pathspec` + `applyLanguageConfig`** resolve aliases via
+  `enry.GetLanguageByAlias` (so `--languages golang` / `js` / `ts` now work,
+  not just canonical Linguist names) and pre-compute the pathspec at
+  `Configure` time.
+- **Fail-fast on unknown languages**: `--languages notalang` now returns
+  `failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang"`
+  instead of silently producing an empty report.
+
+### Measured impact
+
+On a 500-commit × 200-file × 4-language synthetic fixture with
+`--languages go`:
+
+| Metric                      | Before  | After   | Δ      |
+| --------------------------- | ------: | ------: | -----: |
+| Wall time                   | 0.44 s  | 0.29 s  | −34 %  |
+| Max RSS                     | 74 MB   | 66 MB   | −11 %  |
+| `cgocall` cumulative CPU    | 800 ms  | 510 ms  | −36 %  |
+| Unique functions in profile | 286     | 209     | −27 %  |
+| JSON report                 |    —    |    —    | byte-identical |
+
+Regression guard (no `--languages` filter): wall time 0.51 s → 0.49 s,
+within noise.
+
+### Non-goals (for this changeset)
+
+- No new user flags.
+- The Go-side `shouldIncludeChange` language filter remains as the precise
+  post-pass (pathspec is deliberately over-inclusive for
+  content-disambiguated extensions such as `.h`, `.pl`, `.m`, `.r`).
+
+---
+
 ## [Unreleased] — Analytics Readiness & DWH Suitability
 
 **Motivation**: A comprehensive data analyst review of Codefang's JSON output revealed that while the data was analytically rich (17 analyzers, 1M+ function-level rows, time-series, coupling data), it was structurally hostile to analytics tooling and DWH loading. Function records had bare names with no file paths, time-series ticks had no calendar dates, developer identities used pipe-delimited strings, and nested maps blocked efficient columnar ingestion. This release systematically fixes every identified blocker, raising the data quality score from **2.1/5 to 4.6/5**.
