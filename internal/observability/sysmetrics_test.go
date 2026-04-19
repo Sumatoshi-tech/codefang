@@ -1,7 +1,5 @@
 package observability_test
 
-// FRD: specs/frds/FRD-20260302-sysmetrics-move.md.
-
 import (
 	"runtime"
 	"testing"

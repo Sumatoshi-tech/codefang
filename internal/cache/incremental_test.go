@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260328-incremental-cache-meta.md.
-
 package cache
 
 import (

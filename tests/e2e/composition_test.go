@@ -1,6 +1,5 @@
 //go:build e2e
 
-// FRD: specs/frds/FRD-20260404-static-composition-analyzer.md.
 
 package e2e_test
 

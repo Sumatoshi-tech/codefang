@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260310-parse-source-file.md.
-
 package uast
 
 import (

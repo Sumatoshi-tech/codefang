@@ -1,7 +1,5 @@
 package analyze_test
 
-// FRD: specs/frds/FRD-20260408-output-metadata.md.
-
 import (
 	"encoding/json"
 	"testing"

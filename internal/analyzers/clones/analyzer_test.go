@@ -936,8 +936,6 @@ func TestExtractFuncName(t *testing.T) {
 	assert.Equal(t, string(node.UASTFunction), extractFuncName(fn3))
 }
 
-// FRD: specs/frds/FRD-20260311-clones-pair-cap.md.
-
 // TestAggregator_MaxClonePairs_Default verifies NewAggregator sets default cap.
 func TestAggregator_MaxClonePairs_Default(t *testing.T) {
 	t.Parallel()

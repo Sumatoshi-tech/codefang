@@ -188,8 +188,6 @@ func TestSentimentTimeSeriesMetric_MissingCommmentsAndCommits(t *testing.T) {
 	assert.Equal(t, 0, result[0].CommitCount)
 }
 
-// FRD: specs/frds/FRD-20260408-tick-timestamps.md.
-
 func TestSentimentTimeSeriesMetric_TickTimestamps(t *testing.T) {
 	t.Parallel()
 

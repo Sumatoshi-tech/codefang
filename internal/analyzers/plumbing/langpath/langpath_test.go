@@ -1,4 +1,3 @@
-// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 package langpath_test
 
 import (

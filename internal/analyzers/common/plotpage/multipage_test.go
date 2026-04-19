@@ -1,7 +1,5 @@
 package plotpage
 
-// FRD: specs/frds/FRD-20260228-multipage-renderer.md.
-
 import (
 	"os"
 	"path/filepath"

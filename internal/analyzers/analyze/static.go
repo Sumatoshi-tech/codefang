@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/internal/storage"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/meminfo"
@@ -109,6 +110,18 @@ type StaticService struct {
 	// PerFile enables per-file report retention in aggregators.
 	// When true, aggregators store per-file snapshots accessible via PerFileResults.
 	PerFile bool
+
+	// LanguageGlobs restricts the directory walk to files whose basename
+	// matches any of the given fnmatch-style globs (e.g. "*.go",
+	// "Dockerfile"). Built from --languages via langpath.Globs. Empty or
+	// nil disables the filter — default behavior.
+	LanguageGlobs []string
+
+	// PathPolicy carries vendor / generated / extra-prefix exclusion
+	// rules shared across phases. The zero value excludes
+	// enry.IsVendor and pathfilter-detected generated files by
+	// default.
+	PathPolicy pathpolicy.Options
 
 	// perFileResults is populated after AnalyzeFolder when PerFile is true.
 	// Keyed by analyzer name → file path → per-file report.
@@ -270,6 +283,14 @@ func (svc *StaticService) rawFilePhase(ctx context.Context, state analysisPipeli
 			return skipErr
 		}
 
+		if !matchesLanguageGlobs(path, svc.LanguageGlobs) {
+			return nil
+		}
+
+		if pathpolicy.Exclude(path, nil, svc.PathPolicy) {
+			return nil
+		}
+
 		classifyFile(path, rawNames, state.aggregators, &mu, state.rootPath)
 
 		return nil
@@ -369,6 +390,14 @@ func (svc *StaticService) streamFiles(ctx context.Context, rootPath string, file
 		skip, skipErr := ShouldSkipFolderNode(path, entry, walkErr, parser)
 		if skip || skipErr != nil {
 			return skipErr
+		}
+
+		if !matchesLanguageGlobs(path, svc.LanguageGlobs) {
+			return nil
+		}
+
+		if pathpolicy.Exclude(path, nil, svc.PathPolicy) {
+			return nil
 		}
 
 		select {
@@ -960,8 +989,6 @@ const reportJSONPerm = 0o640
 // FormatPlotPages renders multi-page HTML plot output to outputDir.
 // Each analyzer gets its own HTML page plus an index page with navigation.
 // Also emits report.json with the raw analysis results for external dashboards.
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
-// FRD: specs/frds/FRD-20260328-report-json-emission.md.
 func (svc *StaticService) FormatPlotPages(
 	analyzerNames []string,
 	results map[string]Report,

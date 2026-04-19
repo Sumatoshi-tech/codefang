@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
@@ -26,7 +27,6 @@ func TestTreeDiffAnalyzer_Configure(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 func TestTreeDiffAnalyzer_Configure_BuildsPathspecFromLanguages(t *testing.T) {
 	t.Parallel()
 
@@ -40,7 +40,6 @@ func TestTreeDiffAnalyzer_Configure_BuildsPathspecFromLanguages(t *testing.T) {
 	require.Contains(t, td.Pathspec, "*.go")
 }
 
-// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 func TestTreeDiffAnalyzer_Configure_AllLanguagesGivesEmptyPathspec(t *testing.T) {
 	t.Parallel()
 
@@ -54,7 +53,6 @@ func TestTreeDiffAnalyzer_Configure_AllLanguagesGivesEmptyPathspec(t *testing.T)
 		"all languages must skip path-spec push-down (empty pathspec)")
 }
 
-// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 func TestTreeDiffAnalyzer_Configure_AliasResolvesToCanonicalInLanguagesSet(t *testing.T) {
 	t.Parallel()
 
@@ -68,7 +66,6 @@ func TestTreeDiffAnalyzer_Configure_AliasResolvesToCanonicalInLanguagesSet(t *te
 		"alias 'golang' must resolve so the Go-side filter recognizes canonical lowercase 'go'")
 }
 
-// FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 func TestTreeDiffAnalyzer_Configure_UnknownLanguageReturnsError(t *testing.T) {
 	t.Parallel()
 
@@ -180,6 +177,44 @@ func TestChangeEntry_Hash(t *testing.T) {
 	if ce.Name != "test.go" {
 		t.Error("Name mismatch")
 	}
+}
+
+func TestTreeDiff_filterChanges_DefaultPolicyDropsVendor(t *testing.T) {
+	t.Parallel()
+
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	td := &TreeDiffAnalyzer{
+		Languages: map[string]bool{allLanguages: true},
+	}
+
+	changes := gitlib.Changes{
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "vendor/foo.go", Hash: hash}},
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "pkg/bar.go", Hash: hash}},
+	}
+
+	filtered := td.filterChanges(context.Background(), changes)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "pkg/bar.go", filtered[0].To.Name,
+		"default TreeDiffAnalyzer (zero PathPolicy) must drop vendor paths")
+}
+
+func TestTreeDiff_filterChanges_IncludeVendoredKeepsVendor(t *testing.T) {
+	t.Parallel()
+
+	hash := gitlib.NewHash("1111111111111111111111111111111111111111")
+	td := &TreeDiffAnalyzer{
+		Languages:  map[string]bool{allLanguages: true},
+		PathPolicy: pathpolicy.Options{IncludeVendored: true, IncludeGenerated: true},
+	}
+
+	changes := gitlib.Changes{
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "vendor/foo.go", Hash: hash}},
+		{Action: gitlib.Modify, To: gitlib.ChangeEntry{Name: "pkg/bar.go", Hash: hash}},
+	}
+
+	filtered := td.filterChanges(context.Background(), changes)
+	require.Len(t, filtered, 2,
+		"IncludeVendored=true must keep vendor changes in the filtered set")
 }
 
 // TestTreeDiff_filterChanges_prefixBlacklist verifies blacklist uses path prefix match only.

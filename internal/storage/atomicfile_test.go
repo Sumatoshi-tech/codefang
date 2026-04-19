@@ -1,7 +1,5 @@
 package storage
 
-// FRD: specs/frds/FRD-20260310-atomic-file-write.md.
-
 import (
 	"errors"
 	"fmt"

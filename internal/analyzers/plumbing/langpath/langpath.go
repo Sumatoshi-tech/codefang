@@ -1,7 +1,5 @@
 // Package langpath converts user-supplied language tokens into
 // deterministic pathspec globs backed by enry's Linguist data.
-//
-// See FRD: specs/frds/FRD-20260419-pathspec-builder.md.
 package langpath
 
 import (

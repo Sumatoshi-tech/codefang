@@ -159,7 +159,6 @@ type FunctionHalsteadMetrics struct {
 
 // FunctionReportItem is a typed representation of a per-function halstead report item.
 // Includes assessment strings and operator/operand maps. Avoids map[string]any allocation.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type FunctionReportItem struct {
 	Operators               map[string]int
 	Operands                map[string]int
@@ -393,7 +392,6 @@ func (h *Analyzer) aggregateOperatorsAndOperandsFromMetrics(
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics map[string]*FunctionHalsteadMetrics) []FunctionReportItem {
 	items := make([]FunctionReportItem, 0, len(functionMetrics))
 
@@ -468,7 +466,6 @@ func convertHalsteadFunctionItems(items any, sourceFile string) []map[string]any
 }
 
 // buildResult constructs the final analysis result.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (h *Analyzer) buildResult(
 	fileMetrics *Metrics, reportItems []FunctionReportItem, totalFunctions int, message string,
 ) analyze.Report {

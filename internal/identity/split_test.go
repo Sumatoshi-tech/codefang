@@ -1,7 +1,5 @@
 package identity_test
 
-// FRD: specs/frds/FRD-20260408-normalize-developer-identity.md.
-
 import (
 	"testing"
 

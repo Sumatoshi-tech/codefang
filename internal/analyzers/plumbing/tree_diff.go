@@ -14,6 +14,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/langpath"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pathfilter"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -33,6 +34,12 @@ type TreeDiffAnalyzer struct {
 	// configured --languages set via langpath.Globs. Empty when no language
 	// restriction applies.
 	Pathspec []string
+
+	// PathPolicy carries vendor / generated / extra-prefix exclusion
+	// rules shared with the static phase. The zero value excludes
+	// enry.IsVendor and pathfilter-detected generated files by
+	// default.
+	PathPolicy pathpolicy.Options
 }
 
 const (
@@ -44,7 +51,10 @@ const (
 	ConfigTreeDiffLanguages = "TreeDiff.LanguagesDetection"
 	// ConfigTreeDiffFilterRegexp is the configuration key for the file path filter regular expression.
 	ConfigTreeDiffFilterRegexp = "TreeDiff.FilteredRegexes"
-	allLanguages               = "all"
+	// ConfigTreeDiffPathPolicy is the fact key for the cross-phase vendor /
+	// generated / extra-prefix exclusion policy populated by the CLI.
+	ConfigTreeDiffPathPolicy = "TreeDiff.PathPolicy"
+	allLanguages             = "all"
 )
 
 // ErrInvalidSkipFiles indicates a type assertion failure for SkipFiles configuration.
@@ -172,6 +182,10 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 		t.pathFilter = pathfilter.New()
 	}
 
+	if val, exists := facts[ConfigTreeDiffPathPolicy].(pathpolicy.Options); exists {
+		t.PathPolicy = val
+	}
+
 	if val, exists := facts[ConfigTreeDiffLanguages].([]string); exists {
 		err := t.applyLanguageConfig(val)
 		if err != nil {
@@ -285,6 +299,11 @@ func (t *TreeDiffAnalyzer) filterChanges(ctx context.Context, changes gitlib.Cha
 
 func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitlib.Change) bool {
 	name, hash := changeNameHash(change)
+
+	// Shared vendor / generated / extra-prefix exclusion policy.
+	if pathpolicy.Exclude(name, nil, t.PathPolicy) {
+		return false
+	}
 
 	// Check blacklist: user-specified prefixes + vendor/generated detection.
 	if len(t.SkipFiles) > 0 && t.isBlacklisted(name) {

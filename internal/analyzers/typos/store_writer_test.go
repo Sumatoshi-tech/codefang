@@ -1,7 +1,5 @@
 package typos
 
-// FRD: specs/frds/FRD-20260301-all-analyzers-store-based.md.
-
 import (
 	"context"
 	"sort"

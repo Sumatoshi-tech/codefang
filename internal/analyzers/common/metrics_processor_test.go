@@ -282,8 +282,6 @@ func TestMetricsProcessor_IntegrationWorkflow(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
-
 func TestMetricsProcessor_EstimatedStateBytes_Empty(t *testing.T) {
 	t.Parallel()
 

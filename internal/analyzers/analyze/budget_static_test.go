@@ -2,8 +2,6 @@
 
 package analyze_test
 
-// FRD: specs/frds/FRD-20260312-static-budget-integration-test.md.
-
 import (
 	"context"
 	"runtime/debug"

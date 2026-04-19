@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FRD: specs/frds/FRD-20260302-compute-metrics-safe.md.
-
 // testMetrics is a minimal metrics type for testing SafeMetricComputer.
 type testMetrics struct {
 	Value int

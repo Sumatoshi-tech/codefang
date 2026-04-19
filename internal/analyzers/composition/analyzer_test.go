@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260404-static-composition-analyzer.md.
-
 package composition
 
 import (

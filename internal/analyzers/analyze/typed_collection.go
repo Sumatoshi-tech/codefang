@@ -1,7 +1,5 @@
 package analyze
 
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
-
 // ItemConverter converts a typed items slice and source file path into []map[string]any.
 // The sourceFile parameter is the path stamped by StampSourceFile; when non-empty, the
 // converter should include it as "_source_file" in each output map.

@@ -1,7 +1,5 @@
 package analyze_test
 
-// FRD: specs/frds/FRD-20260408-schema-manifest.md.
-
 import (
 	"testing"
 

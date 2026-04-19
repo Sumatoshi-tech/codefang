@@ -1,7 +1,5 @@
 package budget
 
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
-
 import (
 	"runtime"
 	"testing"

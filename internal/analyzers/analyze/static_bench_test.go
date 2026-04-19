@@ -1,11 +1,5 @@
 package analyze_test
 
-// FRD: specs/frds/FRD-20260311-cap-static-workers.md.
-// FRD: specs/frds/FRD-20260311-static-malloc-trim.md.
-// FRD: specs/frds/FRD-20260311-static-memory-limit.md.
-// FRD: specs/frds/FRD-20260311-bounded-parser-pool.md.
-// FRD: specs/frds/FRD-20260311-eager-tree-release.md.
-
 import (
 	"context"
 	"fmt"

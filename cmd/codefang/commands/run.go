@@ -39,6 +39,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/imports"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/langpath"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/quality"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/shotness"
@@ -64,6 +66,8 @@ type staticExecutor func(
 	perFile bool,
 	maxWorkers int,
 	memoryBudget int64,
+	languages []string,
+	pathPolicy pathpolicy.Options,
 	writer io.Writer,
 ) error
 
@@ -72,6 +76,8 @@ type staticPlotExecutor func(
 	analyzerIDs []string,
 	maxWorkers int,
 	memoryBudget int64,
+	languages []string,
+	pathPolicy pathpolicy.Options,
 	outputDir string,
 ) error
 
@@ -184,6 +190,11 @@ type RunCommand struct {
 	staticWorkers int
 	perFile       bool
 
+	// Cross-phase path exclusion policy.
+	includeVendored       bool
+	includeGenerated      bool
+	extraExcludedPrefixes []string
+
 	plotOutput string
 	keepStore  bool
 	tmpDir     string
@@ -277,6 +288,8 @@ func newRunCommandWithAllDeps(
 
 	cmd.Flags().IntVar(&rc.workers, "workers", 0, "Number of parallel workers (0 = use CPU count)")
 	cmd.Flags().IntVar(&rc.staticWorkers, "static-workers", 0, "Number of parallel static analysis workers (0 = min(CPU count, 8))")
+	rc.registerExclusionFlags(cmd)
+
 	cmd.Flags().BoolVarP(&rc.perFile, "per-file", "F", false,
 		"Include per-file breakdowns and summary statistics in static output")
 	cmd.Flags().IntVar(&rc.bufferSize, "buffer-size", 0, "Size of internal pipeline channels (0 = workers*2)")
@@ -531,7 +544,7 @@ func (rc *RunCommand) runDirect(
 		return rc.renderCombinedDirect(ctx, path, staticIDs, historyIDs, staticFormat, silent, progressWriter, writer, cmd)
 	}
 
-	err = rc.runStaticPhase(path, staticIDs, staticFormat, silent, progressWriter, writer)
+	err = rc.runStaticPhase(path, staticIDs, staticFormat, silent, progressWriter, writer, cmd)
 	if err != nil {
 		return err
 	}
@@ -555,6 +568,7 @@ func (rc *RunCommand) runStaticPhase(
 	silent bool,
 	progressWriter io.Writer,
 	writer io.Writer,
+	cmd *cobra.Command,
 ) error {
 	if len(staticIDs) == 0 {
 		return nil
@@ -574,12 +588,21 @@ func (rc *RunCommand) runStaticPhase(
 
 	rc.progressf(silent, progressWriter, "static phase started (%d analyzers)", len(staticIDs))
 
+	languages := readLanguagesFlag(cmd)
+	policy := rc.buildPathPolicy()
+
 	var err error
 
 	if staticFormat == analyze.FormatPlot {
-		err = rc.staticPlotExec(path, staticIDs, rc.staticWorkers, budgetBytes, rc.plotOutput)
+		err = rc.staticPlotExec(
+			path, staticIDs, rc.staticWorkers, budgetBytes, languages, policy, rc.plotOutput,
+		)
 	} else {
-		err = rc.staticExec(path, staticIDs, staticFormat, rc.verbose, rc.noColor, rc.perFile, rc.staticWorkers, budgetBytes, writer)
+		err = rc.staticExec(
+			path, staticIDs, staticFormat,
+			rc.verbose, rc.noColor, rc.perFile,
+			rc.staticWorkers, budgetBytes, languages, policy, writer,
+		)
 	}
 
 	if err != nil {
@@ -626,6 +649,25 @@ func (rc *RunCommand) runHistoryPhase(
 	return nil
 }
 
+// combinedIDsAndModes builds parallel slices of analyzer IDs and their modes
+// (static first, history second) for DecodeCombinedBinaryReports.
+func combinedIDsAndModes(staticIDs, historyIDs []string) ([]string, []analyze.AnalyzerMode) {
+	ids := make([]string, 0, len(staticIDs)+len(historyIDs))
+	modes := make([]analyze.AnalyzerMode, 0, len(staticIDs)+len(historyIDs))
+
+	for _, id := range staticIDs {
+		ids = append(ids, id)
+		modes = append(modes, analyze.ModeStatic)
+	}
+
+	for _, id := range historyIDs {
+		ids = append(ids, id)
+		modes = append(modes, analyze.ModeHistory)
+	}
+
+	return ids, modes
+}
+
 func (rc *RunCommand) renderCombinedDirect(
 	ctx context.Context,
 	path string,
@@ -647,7 +689,8 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	err := rc.staticExec(
 		path, staticIDs, analyze.FormatBinary,
-		rc.verbose, rc.noColor, rc.perFile, rc.staticWorkers, budgetBytes, &raw,
+		rc.verbose, rc.noColor, rc.perFile, rc.staticWorkers, budgetBytes,
+		readLanguagesFlag(cmd), rc.buildPathPolicy(), &raw,
 	)
 	if err != nil {
 		return fmt.Errorf("render combined static phase: %w", err)
@@ -668,18 +711,7 @@ func (rc *RunCommand) renderCombinedDirect(
 
 	rc.progressf(silent, progressWriter, "combined history phase finished in %s", time.Since(startedAt).Round(time.Millisecond))
 
-	ids := make([]string, 0, len(staticIDs)+len(historyIDs))
-	modes := make([]analyze.AnalyzerMode, 0, len(staticIDs)+len(historyIDs))
-
-	for _, id := range staticIDs {
-		ids = append(ids, id)
-		modes = append(modes, analyze.ModeStatic)
-	}
-
-	for _, id := range historyIDs {
-		ids = append(ids, id)
-		modes = append(modes, analyze.ModeHistory)
-	}
+	ids, modes := combinedIDsAndModes(staticIDs, historyIDs)
 
 	model, err := analyze.DecodeCombinedBinaryReports(raw.Bytes(), ids, modes)
 	if err != nil {
@@ -742,12 +774,12 @@ func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptio
 	opts.Checkpoint = parseBoolFlag(cmd, "checkpoint")
 	opts.Resume = parseBoolFlag(cmd, "resume")
 	opts.AnalyzerFlags = collectAnalyzerFlags(cmd)
+	opts.AnalyzerFlags[plumbing.ConfigTreeDiffPathPolicy] = rc.buildPathPolicy()
 
 	return opts
 }
 
 // registerPersistenceFlags registers checkpoint and incremental cache flags.
-// FRD: specs/frds/FRD-20260328-cache-cli-flags.md.
 func (rc *RunCommand) registerPersistenceFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("checkpoint", true, "Enable checkpointing for crash recovery")
 	cmd.Flags().StringVar(&rc.checkpointDir, "checkpoint-dir", "",
@@ -888,12 +920,20 @@ func runStaticAnalyzers(
 	perFile bool,
 	maxWorkers int,
 	memoryBudget int64,
+	languages []string,
+	pathPolicy pathpolicy.Options,
 	writer io.Writer,
 ) error {
 	service := analyze.NewStaticService(defaultUASTAnalyzers(), defaultRawFileAnalyzers())
 	service.Renderer = renderer.NewDefaultStaticRenderer()
 	service.MaxWorkers = maxWorkers
 	service.PerFile = perFile
+	service.PathPolicy = pathPolicy
+
+	err := applyStaticLanguageFilter(service, languages)
+	if err != nil {
+		return err
+	}
 
 	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
 	applyStaticProgressLogging(service, verbose)
@@ -902,17 +942,24 @@ func runStaticAnalyzers(
 }
 
 // runStaticPlotAnalyzers runs static analysis and renders multi-page HTML plot output.
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
 func runStaticPlotAnalyzers(
 	path string,
 	analyzerIDs []string,
 	maxWorkers int,
 	memoryBudget int64,
+	languages []string,
+	pathPolicy pathpolicy.Options,
 	outputDir string,
 ) error {
 	service := analyze.NewStaticService(defaultUASTAnalyzers(), defaultRawFileAnalyzers())
 	service.MaxWorkers = maxWorkers
 	service.AggregationMode = analyze.AggregationModeFull
+	service.PathPolicy = pathPolicy
+
+	err := applyStaticLanguageFilter(service, languages)
+	if err != nil {
+		return err
+	}
 
 	applyStaticBudgetConfig(service, maxWorkers, memoryBudget)
 	applyStaticProgressLogging(service, false)
@@ -932,7 +979,6 @@ func runStaticPlotAnalyzers(
 
 // applyStaticProgressLogging wires progress logging into the static service.
 // Default mode logs phase and file count. Verbose mode adds RSS and aggregator sizes.
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
 func applyStaticProgressLogging(service *analyze.StaticService, verbose bool) {
 	if verbose {
 		service.ProgressFunc = func(e analyze.StaticProgressEvent) {
@@ -951,9 +997,73 @@ func applyStaticProgressLogging(service *analyze.StaticService, verbose bool) {
 	}
 }
 
+// registerExclusionFlags registers the three cross-phase path exclusion
+// flags.
+func (rc *RunCommand) registerExclusionFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&rc.includeVendored, "include-vendored", false,
+		"Re-include vendored dependencies (detected by enry / Linguist) in analysis. "+
+			"Default: exclude vendor/, node_modules/, third_party/, testdata/, minified bundles, etc.")
+	cmd.Flags().BoolVar(&rc.includeGenerated, "include-generated", false,
+		"Re-include auto-generated files in analysis. "+
+			"Default: exclude *.pb.go, zz_generated_*.go, *_pb2.py, *.min.js, and any file whose "+
+			"first 512 bytes contain a generated-file marker (\"DO NOT EDIT\", \"Code generated\", etc.).")
+	cmd.Flags().StringSliceVar(&rc.extraExcludedPrefixes, "extra-excluded-prefixes", nil,
+		"Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. "+
+			"\".venv/,target/,build/\"). Applies to both static and history phases.")
+}
+
+// buildPathPolicy constructs the cross-phase path exclusion policy from
+// the --include-vendored, --include-generated, and --extra-excluded-prefixes
+// flags.
+func (rc *RunCommand) buildPathPolicy() pathpolicy.Options {
+	return pathpolicy.Options{
+		IncludeVendored:       rc.includeVendored,
+		IncludeGenerated:      rc.includeGenerated,
+		ExtraExcludedPrefixes: rc.extraExcludedPrefixes,
+	}
+}
+
+// readLanguagesFlag extracts the --languages slice from the cobra command
+// when present. Returns nil for a nil command or when the flag is absent,
+// which keeps the caller path-safe in tests that construct a
+// RunCommand without wiring every cobra flag.
+func readLanguagesFlag(cmd *cobra.Command) []string {
+	if cmd == nil {
+		return nil
+	}
+
+	languages, err := cmd.Flags().GetStringSlice("languages")
+	if err != nil {
+		return nil
+	}
+
+	return languages
+}
+
+// applyStaticLanguageFilter derives libgit2-style basename globs from the
+// user's --languages value and assigns them to the static service. Empty
+// or "all" disables the filter (default behavior). An unknown language
+// token surfaces as an error so static-only runs fail fast — matching the
+// history-side semantics.
+func applyStaticLanguageFilter(service *analyze.StaticService, languages []string) error {
+	globs, wantsAll, err := langpath.Globs(languages)
+	if err != nil {
+		return fmt.Errorf("static --languages: %w", err)
+	}
+
+	if wantsAll {
+		service.LanguageGlobs = nil
+
+		return nil
+	}
+
+	service.LanguageGlobs = globs
+
+	return nil
+}
+
 // applyStaticBudgetConfig applies budget-derived parameters to the static service.
 // Explicit --static-workers overrides budget-derived MaxWorkers.
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
 func applyStaticBudgetConfig(service *analyze.StaticService, explicitWorkers int, memoryBudget int64) {
 	cfg := budget.SolveStaticBudget(memoryBudget)
 	if cfg.MaxWorkers == 0 {
@@ -1649,6 +1759,34 @@ func registerAnalyzerFlags(cobraCmd *cobra.Command) {
 			registerConfigFlag(cobraCmd, opt)
 		}
 	}
+
+	markDeprecatedExclusionFlags(cobraCmd)
+}
+
+// markDeprecatedExclusionFlags marks the legacy exclusion flags as
+// deprecated, directing users to the new cross-phase flags. Errors are
+// reported via the standard library logger because cobra returns a
+// deterministic error only when the flag does not exist — a programmer
+// mistake we want to surface during development, not silently swallow.
+func markDeprecatedExclusionFlags(cobraCmd *cobra.Command) {
+	const (
+		skipBlacklistFlag  = "skip-blacklist"
+		blacklistedPfxFlag = "blacklisted-prefixes"
+	)
+
+	err := cobraCmd.Flags().MarkDeprecated(skipBlacklistFlag,
+		"use --include-vendored=false and --include-generated=false "+
+			"(the new defaults). See CHANGELOG for migration.")
+	if err != nil {
+		log.Printf("warn: mark %q deprecated: %v", skipBlacklistFlag, err)
+	}
+
+	err = cobraCmd.Flags().MarkDeprecated(blacklistedPfxFlag,
+		"use --extra-excluded-prefixes; the old flag name is preserved "+
+			"for back-compat but will be removed in the next minor release.")
+	if err != nil {
+		log.Printf("warn: mark %q deprecated: %v", blacklistedPfxFlag, err)
+	}
 }
 
 func registerConfigFlag(cobraCmd *cobra.Command, opt pipeline.ConfigurationOption) {
@@ -1686,7 +1824,7 @@ type uastDependent interface {
 
 // extractTreeDiffPathspec returns the libgit2 pathspec pre-filter produced by
 // TreeDiffAnalyzer.Configure, or nil when no TreeDiffAnalyzer is present or
-// the user did not restrict by language. See specs/frds/FRD-20260419-pathspec-builder.md.
+// the user did not restrict by language.
 func extractTreeDiffPathspec(core []analyze.HistoryAnalyzer) []string {
 	for _, a := range core {
 		if td, ok := a.(*plumbing.TreeDiffAnalyzer); ok {

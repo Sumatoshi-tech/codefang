@@ -1,7 +1,5 @@
 package common
 
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
-
 import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )

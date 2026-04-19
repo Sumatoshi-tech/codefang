@@ -193,8 +193,6 @@ func TestSectionsToJSON_Serializable(t *testing.T) {
 	assert.Contains(t, string(data), `"overall_score":0.8`)
 }
 
-// FRD: specs/frds/FRD-20260327-json-perfile-types.md.
-
 func TestJSONSection_NoFiles_OmittedFromJSON(t *testing.T) {
 	t.Parallel()
 

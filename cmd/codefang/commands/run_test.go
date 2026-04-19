@@ -22,6 +22,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/reportutil"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -114,7 +115,10 @@ func TestRunCommand_DispatchesBothModes(t *testing.T) {
 	)
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
+		func(
+			_ string, ids []string, format string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, writer io.Writer,
+		) error {
 			staticCalled = true
 			staticFormat = format
 
@@ -149,7 +153,10 @@ func TestRunCommand_StaticOnly(t *testing.T) {
 	var historyCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, ids []string, _ string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 
 			return nil
@@ -173,7 +180,10 @@ func TestRunCommand_ProgressOutput_DefaultEnabled(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, ids []string, format string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -203,7 +213,7 @@ func TestRunCommand_ProgressOutput_Silent(t *testing.T) {
 	var historySilent bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static executor should not be called")
 
 			return nil
@@ -236,7 +246,7 @@ func TestRunCommand_ForwardsHistoryRuntimeOptions(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static executor should not be called")
 
 			return nil
@@ -268,7 +278,7 @@ func TestRunCommand_ForwardsCommitSelectionFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -302,7 +312,7 @@ func TestRunCommand_ForwardsProfilingFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -332,7 +342,7 @@ func TestRunCommand_ForwardsResourceTuningFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -372,7 +382,7 @@ func TestRunCommand_ForwardsCheckpointFlags(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -408,7 +418,7 @@ func TestRunCommand_CheckpointDefaultsPreserved(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -432,7 +442,10 @@ func TestRunCommand_ProgressOutput_Quiet(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, ids []string, format string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -462,7 +475,7 @@ func TestRunCommand_UnknownAnalyzer(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -483,7 +496,10 @@ func TestRunCommand_GlobStaticAnalyzers(t *testing.T) {
 	var historyCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, ids []string, format string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			require.Equal(t, []string{"static/complexity"}, ids)
 			require.Equal(t, analyze.FormatJSON, format)
 
@@ -515,7 +531,10 @@ func TestRunCommand_GlobAllAnalyzers(t *testing.T) {
 	)
 
 	command := newRunCommandWithDeps(
-		func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
+		func(
+			_ string, ids []string, format string, _ bool, _ bool, _ bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, writer io.Writer,
+		) error {
 			staticCalled = true
 			staticFormat = format
 
@@ -548,7 +567,7 @@ func TestRunCommand_GlobUnknownPattern(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -567,7 +586,7 @@ func TestRunCommand_GlobInvalidPattern(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -670,7 +689,7 @@ func TestRunCommand_ConvertInput_BinToJSON(t *testing.T) {
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -724,7 +743,7 @@ func TestRunCommand_ConvertInput_JSONToPlot(t *testing.T) {
 	require.NoError(t, os.WriteFile(inputPath, []byte(input), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -772,7 +791,7 @@ func TestRunCommand_ConvertInput_BinToPlot(t *testing.T) {
 	require.NoError(t, os.WriteFile(inputPath, raw.Bytes(), 0o600))
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static executor should not be called in conversion mode")
 
 			return nil
@@ -813,12 +832,12 @@ func TestRunCommand_MixedPlotRunsSeparatePhases(t *testing.T) {
 	outDir := t.TempDir()
 
 	command := newRunCommandWithAllDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			t.Fatal("static text executor should not be called for plot format")
 
 			return nil
 		},
-		func(_ string, ids []string, _ int, _ int64, dir string) error {
+		func(_ string, ids []string, _ int, _ int64, _ []string, _ pathpolicy.Options, dir string) error {
 			staticPlotCalled = true
 
 			require.Equal(t, []string{"static/complexity"}, ids)
@@ -869,7 +888,10 @@ func TestRunCommand_MixedUniversalFormatsRenderUnifiedModel(t *testing.T) {
 			)
 
 			command := newRunCommandWithDeps(
-				func(_ string, ids []string, format string, _ bool, _ bool, _ bool, _ int, _ int64, writer io.Writer) error {
+				func(
+					_ string, ids []string, format string, _ bool, _ bool, _ bool,
+					_ int, _ int64, _ []string, _ pathpolicy.Options, writer io.Writer,
+				) error {
 					staticFormat = format
 
 					require.Equal(t, []string{"static/complexity"}, ids)
@@ -1090,7 +1112,7 @@ func TestRunCommand_DebugTraceFlag_Accepted(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1115,7 +1137,7 @@ func TestRunCommand_CreatesRootSpan(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1157,7 +1179,7 @@ func TestRunCommand_ShutdownCalledOnExit(t *testing.T) {
 	var shutdownCalled bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1200,7 +1222,7 @@ func TestRunCommand_InitializesObservability(t *testing.T) {
 	}
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1289,7 +1311,7 @@ func TestRunCommand_RootSpanAttributes(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {
@@ -1330,8 +1352,6 @@ func TestRunCommand_RootSpanAttributes(t *testing.T) {
 	require.Contains(t, rootAttrs, "codefang.duration_class", "root span should have duration_class")
 }
 
-// FRD: specs/frds/FRD-20260311-static-memory-limit.md.
-
 func TestParseMemoryBudgetBytes_Valid(t *testing.T) {
 	t.Parallel()
 
@@ -1369,8 +1389,6 @@ func TestApplyStaticMemoryLimit_SetsAndRestores(t *testing.T) {
 	restore := applyStaticMemoryLimit(budgetBytes)
 	restore()
 }
-
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
 
 func TestApplyStaticBudgetConfig_ZeroBudget(t *testing.T) {
 	t.Parallel()
@@ -1412,7 +1430,48 @@ func TestApplyStaticBudgetConfig_ExplicitWorkersOverride(t *testing.T) {
 	assert.Positive(t, service.SpillThreshold)
 }
 
-// FRD: specs/frds/FRD-20260328-perfile-cli-flag.md.
+func TestApplyStaticLanguageFilter_EmptyInput_DisablesFilter(t *testing.T) {
+	t.Parallel()
+
+	service := analyze.NewStaticService(nil, nil)
+
+	err := applyStaticLanguageFilter(service, nil)
+	require.NoError(t, err)
+	assert.Nil(t, service.LanguageGlobs,
+		"empty input must disable the filter (nil LanguageGlobs)")
+}
+
+func TestApplyStaticLanguageFilter_AllKeyword_DisablesFilter(t *testing.T) {
+	t.Parallel()
+
+	service := analyze.NewStaticService(nil, nil)
+
+	err := applyStaticLanguageFilter(service, []string{"all"})
+	require.NoError(t, err)
+	assert.Nil(t, service.LanguageGlobs,
+		"'all' sentinel must disable the filter")
+}
+
+func TestApplyStaticLanguageFilter_KnownLanguage_PopulatesGlobs(t *testing.T) {
+	t.Parallel()
+
+	service := analyze.NewStaticService(nil, nil)
+
+	err := applyStaticLanguageFilter(service, []string{"go"})
+	require.NoError(t, err)
+	assert.Contains(t, service.LanguageGlobs, "*.go")
+}
+
+func TestApplyStaticLanguageFilter_UnknownLanguage_FailsFast(t *testing.T) {
+	t.Parallel()
+
+	service := analyze.NewStaticService(nil, nil)
+
+	err := applyStaticLanguageFilter(service, []string{"notalang"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "notalang",
+		"unknown language must surface at configure time for static-only runs")
+}
 
 func TestRunCommand_PerFileFlag_Propagated(t *testing.T) {
 	t.Parallel()
@@ -1420,7 +1479,10 @@ func TestRunCommand_PerFileFlag_Propagated(t *testing.T) {
 	var seenPerFile bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, perFile bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, _ []string, _ string, _ bool, _ bool, perFile bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			seenPerFile = perFile
 
 			return nil
@@ -1444,7 +1506,10 @@ func TestRunCommand_PerFileFlag_ShortAlias(t *testing.T) {
 	var seenPerFile bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, perFile bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, _ []string, _ string, _ bool, _ bool, perFile bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			seenPerFile = perFile
 
 			return nil
@@ -1468,7 +1533,10 @@ func TestRunCommand_PerFileFlag_DefaultFalse(t *testing.T) {
 	var seenPerFile bool
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, perFile bool, _ int, _ int64, _ io.Writer) error {
+		func(
+			_ string, _ []string, _ string, _ bool, _ bool, perFile bool,
+			_ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer,
+		) error {
 			seenPerFile = perFile
 
 			return nil
@@ -1486,15 +1554,13 @@ func TestRunCommand_PerFileFlag_DefaultFalse(t *testing.T) {
 	require.False(t, seenPerFile, "per-file must be false by default")
 }
 
-// FRD: specs/frds/FRD-20260328-cache-cli-flags.md.
-
 func TestRunCommand_CacheDirFlag_Propagated(t *testing.T) {
 	t.Parallel()
 
 	var seenOpts HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -1519,7 +1585,7 @@ func TestRunCommand_NoCacheFlag_Propagated(t *testing.T) {
 	var seenOpts HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {

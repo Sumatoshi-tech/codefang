@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260327-static-perfile-orchestration.md.
-
 package analyze
 
 import "path/filepath"

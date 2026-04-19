@@ -194,8 +194,6 @@ func TestImportsImplementsInterface(t *testing.T) {
 	var _ analyze.ReportSection = (*ReportSection)(nil)
 }
 
-// FRD: specs/frds/FRD-20260328-imports-perfile-location.md.
-
 func TestImportsPerFile_IssuesHaveLocation(t *testing.T) {
 	t.Parallel()
 

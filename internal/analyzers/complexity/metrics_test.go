@@ -118,8 +118,6 @@ func TestParseReportData_WithAssessments(t *testing.T) {
 	assert.Equal(t, "low", data.Functions[0].NestingAssessment)
 }
 
-// FRD: specs/frds/FRD-20260408-source-file-on-function-records.md.
-
 const testSourceFile = "pkg/auth/handler.go"
 
 func TestParseReportData_WithSourceFile(t *testing.T) {

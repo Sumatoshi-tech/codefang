@@ -6,8 +6,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/units"
 )
 
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
-
 // Static analysis cost model constants (empirically measured).
 const (
 	// StaticBaseOverhead is the fixed Go runtime + loaded analyzers overhead.

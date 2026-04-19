@@ -22,7 +22,6 @@ type JSONSection struct {
 }
 
 // JSONFileEntry represents one file's analysis results within a section.
-// FRD: specs/frds/FRD-20260327-json-perfile-types.md.
 type JSONFileEntry struct {
 	FilePath     string             `json:"file_path"`
 	ScoreLabel   string             `json:"score_label"`

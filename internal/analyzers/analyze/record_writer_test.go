@@ -1,7 +1,5 @@
 package analyze
 
-// FRD: specs/frds/FRD-20260303-write-slice-kind.md.
-
 import (
 	"encoding/gob"
 	"errors"

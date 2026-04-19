@@ -1,7 +1,5 @@
 package commands
 
-// FRD: specs/frds/FRD-20260228-plot-through-store.md.
-
 import (
 	"context"
 	"io"
@@ -12,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 )
 
 func TestRunCommand_ForwardsPlotOutputFlag(t *testing.T) {
@@ -20,7 +19,7 @@ func TestRunCommand_ForwardsPlotOutputFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -50,7 +49,7 @@ func TestRunCommand_ForwardsKeepStoreFlag(t *testing.T) {
 	var seenOptions HistoryRunOptions
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, opts HistoryRunOptions, _ io.Writer) error {
@@ -125,13 +124,11 @@ func TestRenderFromStore_CreatesOutputDir(t *testing.T) {
 	require.NoError(t, statErr, "index.html should exist in nested output dir")
 }
 
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
-
 func TestStaticPlot_RequiresOutputFlag(t *testing.T) {
 	t.Parallel()
 
 	command := newRunCommandWithDeps(
-		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ io.Writer) error {
+		func(_ string, _ []string, _ string, _ bool, _ bool, _ bool, _ int, _ int64, _ []string, _ pathpolicy.Options, _ io.Writer) error {
 			return nil
 		},
 		func(_ context.Context, _ string, _ []string, _ string, _ bool, _ HistoryRunOptions, _ io.Writer) error {

@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260327-perfile-retainer.md.
-
 package common
 
 import (

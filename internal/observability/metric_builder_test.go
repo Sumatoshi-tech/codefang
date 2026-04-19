@@ -1,7 +1,5 @@
 package observability
 
-// FRD: specs/frds/FRD-20260302-observability-dedup.md.
-
 import (
 	"errors"
 	"testing"

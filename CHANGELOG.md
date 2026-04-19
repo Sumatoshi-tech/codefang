@@ -5,6 +5,122 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased] — Repo hygiene & race fix
+
+### Fixed
+
+- **Race in `internal/framework.PipelineSampler`**:
+  `t1Captured` was a plain `bool` concurrently read by the sampler
+  goroutine (`sample`) and written by the caller (`CaptureT1`),
+  causing intermittent `DATA RACE` under `go test -race`. Converted
+  to `sync/atomic.Bool` with `CompareAndSwap` — at most one t1 heap
+  profile is captured regardless of which goroutine observes the
+  trigger first. Removed the unused `t0Captured` field. Full
+  `go test -race ./...` now green.
+
+### Chore
+
+- **Removed `// FRD: specs/frds/FRD-...md` comments from all `.go`
+  files.** `specs/` is gitignored, so those references broke for
+  anyone cloning the repo. Traceability now lives in FRDs and
+  PR descriptions instead of source code.
+
+---
+
+## [Unreleased] — Cross-phase defaults: vendor & generated excluded
+
+**Breaking change.** Default analysis output across both phases
+now **excludes vendor and generated files** — matching the
+convention of every mature multi-language analyser (eslint skips
+`node_modules/`, rubocop skips `vendor/`, pylint skips `.venv/`,
+scalafix skips `target/`, phpcs skips `vendor/`, GitHub Linguist
+excludes vendor/generated from its language breakdown). Users who
+want the pre-2026-04 behaviour back pass `--include-vendored
+--include-generated` in their invocation.
+
+### Flags (cross-phase)
+
+- `--include-vendored` (bool, default `false`) — re-include paths
+  detected as vendored by enry / Linguist. Covers `vendor/`,
+  `node_modules/`, `third_party/`, `testdata/`, `dist/`,
+  minified bundles, and more. Cross-language by construction.
+- `--include-generated` (bool, default `false`) — re-include
+  auto-generated files. Covers `*.pb.go`, `zz_generated_*.go`,
+  `*_pb2.py`, `*.min.js`, and content-header markers
+  (`DO NOT EDIT`, `Code generated`, `@generated`, …).
+- `--extra-excluded-prefixes` (strings, default `[]`) — additional
+  UNIX path prefixes to exclude, for ecosystems enry doesn't know
+  about (e.g. `.venv/`, `target/`, `.gradle/`).
+
+All three flags apply identically to both `-a 'static/*'` and `-a
+'history/*'` runs — one flag set, one meaning.
+
+### Deprecated
+
+- `--skip-blacklist` — now a no-op (the new default already excludes
+  vendor and generated). Cobra deprecation warning fires when the
+  flag is passed.
+- `--blacklisted-prefixes` — migrate to `--extra-excluded-prefixes`
+  (identical semantics). Cobra deprecation warning fires when the
+  flag is passed.
+
+Both will be removed in the next minor release.
+
+### Architecture
+
+New package `internal/analyzers/plumbing/pathpolicy` exposing a pure
+`Exclude(path, content, opts) bool` backed by enry.IsVendor +
+`pkg/pathfilter`'s content-aware generated-file detection. Both
+phases call the same helper — single source of truth, no
+phase-specific drift.
+
+### Measured impact (cross-language fixture, `-a static/complexity`)
+
+| Invocation                                        | Total Functions |
+| ------------------------------------------------- | --------------: |
+| *(defaults)*                                      | 1               |
+| `--include-vendored`                              | 4               |
+| `--include-vendored --include-generated`          | 5               |
+
+---
+
+## [Unreleased] — Cross-phase consistency for `--languages`
+
+**Motivation**: After the history-side push-down, `--languages` meant
+different things depending on `-a 'history/*'` vs `-a 'static/*'`. Static
+analysis silently ignored the flag — every UAST-supported file was parsed
+and fed to every requested static analyzer regardless of the user's
+preference. This release makes the flag cross-phase: one flag, one
+meaning, both phases narrowed.
+
+### Changes
+
+- **`StaticService.LanguageGlobs`** — new field on the static service,
+  populated from `--languages` via the existing
+  `internal/analyzers/plumbing/langpath` single source of truth. Empty
+  disables the filter (default behavior unchanged).
+- **Path-based walker hooks** — both `StaticService.streamFiles` (UAST
+  walker) and `StaticService.rawFilePhase` visit-check the basename
+  against the glob set via `matchesLanguageGlobs` before sending the
+  path downstream. Filtered files never reach the UAST parser or any
+  analyzer.
+- **Runtime wiring** — `runStaticAnalyzers` and `runStaticPlotAnalyzers`
+  build the globs via a shared `applyStaticLanguageFilter` helper.
+  Unknown language tokens fail fast on static-only runs with the same
+  error shape as the history side.
+- **Executor signatures** — `staticExecutor` and `staticPlotExecutor`
+  gain a `languages []string` parameter; test stubs updated
+  mechanically.
+
+### Non-goals
+
+- No content-aware post-pass on the static side (the UAST parser's
+  own language router is the final authority for matched files; a
+  second pass would duplicate work).
+- No changes to the history side.
+
+---
+
 ## [Unreleased] — Performance: `--languages` filter push-down into libgit2
 
 **Motivation**: The `--languages` flag used to be applied *after* libgit2 had

@@ -225,8 +225,6 @@ func TestStampSourceFile_NoCollections(t *testing.T) {
 	})
 }
 
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
-
 func TestStampSourceFile_TypedCollection(t *testing.T) {
 	t.Parallel()
 
@@ -283,8 +281,6 @@ func TestStampSourceFile_TypedCollection(t *testing.T) {
 	assert.Equal(t, "pkg/foo.go", maps[1]["_source_file"])
 }
 
-// FRD: specs/frds/FRD-20260311-cap-static-workers.md.
-
 func TestStaticService_ResolveMaxWorkers_DefaultCapsAtEight(t *testing.T) {
 	t.Parallel()
 
@@ -328,8 +324,6 @@ func TestStaticService_ResolveMaxWorkers_ExplicitOverride(t *testing.T) {
 
 	require.Equal(t, explicitWorkers, svc.ResolveMaxWorkers())
 }
-
-// FRD: specs/frds/FRD-20260311-static-malloc-trim.md.
 
 func TestStaticService_ResolveMallocTrimInterval_Default(t *testing.T) {
 	t.Parallel()
@@ -413,8 +407,6 @@ func TestStaticService_AnalyzeFolder_NoTrimWhenDisabled(t *testing.T) {
 	require.Zero(t, trimCalls.Load())
 }
 
-// FRD: specs/frds/FRD-20260311-summary-only-aggregation.md.
-
 func TestResolveAggregationMode_TextIsSummaryOnly(t *testing.T) {
 	t.Parallel()
 
@@ -469,8 +461,6 @@ func TestStaticService_SummaryOnly_MetricsPresent(t *testing.T) {
 	require.Contains(t, report, "total_complexity")
 }
 
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
-
 func TestStaticService_SpillThreshold_AppliedToAggregators(t *testing.T) {
 	t.Parallel()
 
@@ -498,8 +488,6 @@ func TestStaticService_SpillThreshold_AppliedToAggregators(t *testing.T) {
 	// SpillThresholdSetter interface compliance is verified at compile time below.
 	assert.Equal(t, customThreshold, svc.SpillThreshold)
 }
-
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
 
 func TestStaticService_ProgressFunc_CalledDuringAnalysis(t *testing.T) {
 	t.Parallel()
@@ -548,8 +536,6 @@ func TestStaticService_ProgressFunc_Nil_NoError(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 }
-
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
 
 func TestStaticService_FormatPlotPages_ProducesHTML(t *testing.T) {
 	t.Parallel()
@@ -630,8 +616,6 @@ func writeTestGoFile(t *testing.T, dir, name string) {
 	require.NoError(t, os.WriteFile(path, content, 0o600))
 }
 
-// FRD: specs/frds/FRD-20260327-static-perfile-orchestration.md.
-
 func TestStaticService_PerFile_FieldExists(t *testing.T) {
 	t.Parallel()
 
@@ -706,8 +690,6 @@ func TestStaticService_PerFile_DisabledReturnsNil(t *testing.T) {
 
 	assert.Nil(t, svc.PerFileResults(), "per-file results must be nil when PerFile is false")
 }
-
-// FRD: specs/frds/FRD-20260328-report-json-emission.md.
 
 func TestStaticService_FormatPlotPages_EmitsReportJSON(t *testing.T) {
 	t.Parallel()

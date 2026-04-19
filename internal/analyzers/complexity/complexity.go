@@ -86,7 +86,6 @@ type FunctionMetrics struct {
 
 // FunctionReportItem is a typed representation of a per-function complexity report item.
 // It includes assessment strings computed from thresholds, avoiding map[string]any allocation.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type FunctionReportItem struct {
 	Name                 string
 	CyclomaticComplexity int
@@ -297,7 +296,6 @@ func (c *Analyzer) buildEmptyResult(message string) analyze.Report {
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildDetailedFunctionsTable(
 	functionMetrics []FunctionMetrics,
 	config Config,
@@ -360,7 +358,6 @@ func (c *Analyzer) calculateAverageComplexity(totals map[string]int, functionCou
 }
 
 // buildResult constructs the final analysis result.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(
 	functionCount int,
 	avgComplexity float64,

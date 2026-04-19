@@ -1,7 +1,5 @@
 package common
 
-// FRD: specs/frds/FRD-20260311-spillable-data-collector.md.
-
 import (
 	"fmt"
 	"runtime"

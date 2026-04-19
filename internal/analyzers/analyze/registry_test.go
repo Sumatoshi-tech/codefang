@@ -164,7 +164,7 @@ func TestRegistry_SplitUnknown(t *testing.T) {
 }
 
 // complexityID is a stable fixture for the first registered static analyzer.
-// Used by ExpandPatterns tests — FRD: specs/frds/FRD-20260306-append-unique-ids-removal.md.
+// Used by ExpandPatterns tests.
 const complexityID = "static/complexity"
 
 func TestRegistry_ExpandPatterns_ExactMatch(t *testing.T) {

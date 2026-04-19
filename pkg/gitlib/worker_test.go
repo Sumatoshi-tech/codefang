@@ -302,8 +302,7 @@ func TestCGOBridge_BatchDiffBlobsInvalidHash(t *testing.T) {
 
 // TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob verifies that passing
 // a pathspec to the cgo bridge drops non-matching files at the libgit2
-// level — before they cross the cgo boundary. FRD:
-// specs/frds/FRD-20260419-pathspec-builder.md.
+// level — before they cross the cgo boundary.
 func TestCGOBridge_TreeDiffWithPathspec_FiltersByGlob(t *testing.T) {
 	t.Parallel()
 

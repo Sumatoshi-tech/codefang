@@ -1,4 +1,3 @@
-// FRD: specs/frds/FRD-20260302-typed-fact-accessors.md.
 package plumbing_test
 
 import (
