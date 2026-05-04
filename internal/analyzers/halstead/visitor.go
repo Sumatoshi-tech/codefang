@@ -16,7 +16,7 @@ type halsteadContext struct {
 type Visitor struct {
 	metrics         *MetricsCalculator
 	detector        *OperatorOperandDetector
-	functionMetrics map[string]*FunctionHalsteadMetrics
+	functionMetrics []*FunctionHalsteadMetrics
 	contexts        *common.ContextStack[*halsteadContext]
 	nodeStack       *common.ContextStack[*node.Node]
 }
@@ -24,11 +24,10 @@ type Visitor struct {
 // NewVisitor creates a new Visitor.
 func NewVisitor() *Visitor {
 	return &Visitor{
-		contexts:        common.NewContextStack[*halsteadContext](),
-		metrics:         NewMetricsCalculator(),
-		detector:        NewOperatorOperandDetector(),
-		functionMetrics: make(map[string]*FunctionHalsteadMetrics),
-		nodeStack:       common.NewContextStack[*node.Node](),
+		contexts:  common.NewContextStack[*halsteadContext](),
+		metrics:   NewMetricsCalculator(),
+		detector:  NewOperatorOperandDetector(),
+		nodeStack: common.NewContextStack[*node.Node](),
 	}
 }
 
@@ -132,7 +131,7 @@ func (v *Visitor) popContext() {
 	v.metrics.CalculateHalsteadMetrics(ctx.metrics)
 
 	// Store result.
-	v.functionMetrics[ctx.metrics.Name] = ctx.metrics
+	v.functionMetrics = append(v.functionMetrics, ctx.metrics)
 }
 
 func (v *Visitor) currentContext() *halsteadContext {
