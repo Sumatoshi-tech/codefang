@@ -98,6 +98,10 @@ type HistoryAnalyzer struct {
 	TrackFiles           bool
 	HibernationToDisk    bool
 	lastCommitTime       time.Time
+
+	// mismatch tracks src-mismatch reset events (rate-limited logging,
+	// per-chunk and cumulative counters). Surfaced via MismatchStats.
+	mismatch mismatchTracker
 }
 
 const (
@@ -164,6 +168,12 @@ func NewHistoryAnalyzer() *HistoryAnalyzer {
 	}
 
 	return ha
+}
+
+// MismatchStats returns cumulative src-mismatch counters for this analyzer.
+// See [MismatchStats] for the operational meaning of these numbers.
+func (b *HistoryAnalyzer) MismatchStats() MismatchStats {
+	return b.mismatch.snapshot()
 }
 
 // ListConfigurationOptions returns the configuration options for the analyzer.

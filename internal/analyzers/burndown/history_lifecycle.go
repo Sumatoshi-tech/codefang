@@ -2,6 +2,7 @@ package burndown
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
@@ -118,6 +119,8 @@ func (b *HistoryAnalyzer) mergeTicks(other *HistoryAnalyzer) {
 
 // Hibernate releases resources between processing phases.
 func (b *HistoryAnalyzer) Hibernate() error {
+	b.logChunkMismatchSummary()
+
 	err := b.ensureSpillDir()
 	if err != nil {
 		return fmt.Errorf("burndown spill dir: %w", err)
@@ -135,6 +138,24 @@ func (b *HistoryAnalyzer) Hibernate() error {
 	b.GlobalMu.Unlock()
 
 	return nil
+}
+
+// logChunkMismatchSummary emits a single line summarizing src-mismatch
+// resets recorded since the last chunk boundary, then re-baselines the
+// counter for the next chunk. Silent when no mismatches happened.
+func (b *HistoryAnalyzer) logChunkMismatchSummary() {
+	delta := b.mismatch.chunkDelta()
+	if delta == 0 {
+		b.mismatch.resetChunkBaseline()
+
+		return
+	}
+
+	stats := b.mismatch.snapshot()
+	log.Printf("burndown: chunk src-mismatch summary chunk_resets=%d cumulative_resets=%d cumulative_force_removes=%d",
+		delta, stats.Resets, stats.ForceRemoves)
+
+	b.mismatch.resetChunkBaseline()
 }
 
 // hibernateShard shrinks treap pools, spills to disk, and resets tracking maps.

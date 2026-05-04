@@ -133,7 +133,7 @@ func (b *HistoryAnalyzer) countDeletionLines(
 
 // forceRemoveFile handles treap/blob length mismatch by force-deleting the file tracking.
 func (b *HistoryAnalyzer) forceRemoveFile(shard *Shard, id PathID, name string, file *burndown.File) {
-	log.Printf("burndown: src mismatch for deletion %s (tracked=%d), force-removing", name, file.Len())
+	b.mismatch.recordForceRemove(name, file.Len())
 	file.Delete()
 
 	shard.filesByID[id] = nil
@@ -361,8 +361,7 @@ func (b *HistoryAnalyzer) resetAndReinsert(
 	shard *Shard, change *gitlib.Change, id PathID, author int,
 	cache map[gitlib.Hash]*pkgplumbing.CachedBlob,
 ) error {
-	log.Printf("burndown: src mismatch for %s (tracked=%d, diff_old=...), resetting",
-		change.To.Name, shard.filesByID[id].Len())
+	b.mismatch.recordReset(change.To.Name, shard.filesByID[id].Len())
 
 	shard.filesByID[id] = nil
 	b.removeActiveID(shard, id)

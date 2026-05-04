@@ -103,13 +103,14 @@ type HistoryRunOptions struct {
 	Head        bool
 	Since       string
 
-	Workers         int
-	BufferSize      int
-	CommitBatchSize int
-	BlobCacheSize   string
-	DiffCacheSize   int
-	BlobArenaSize   string
-	MemoryBudget    string
+	Workers             int
+	BufferSize          int
+	CommitBatchSize     int
+	BlobCacheSize       string
+	DiffCacheSize       int
+	BlobArenaSize       string
+	MemoryBudget        string
+	MaxChangesPerCommit int
 
 	Checkpoint      *bool
 	CheckpointDir   string
@@ -168,13 +169,14 @@ type RunCommand struct {
 	head        bool
 	since       string
 
-	workers         int
-	bufferSize      int
-	commitBatchSize int
-	blobCacheSize   string
-	diffCacheSize   int
-	blobArenaSize   string
-	memoryBudget    string
+	workers             int
+	bufferSize          int
+	commitBatchSize     int
+	blobCacheSize       string
+	diffCacheSize       int
+	blobArenaSize       string
+	memoryBudget        string
+	maxChangesPerCommit int
 
 	checkpointDir   string
 	clearCheckpoint bool
@@ -298,6 +300,11 @@ func newRunCommandWithAllDeps(
 	cmd.Flags().IntVar(&rc.diffCacheSize, "diff-cache-size", 0, "Max diff cache entries (0 = default 10000)")
 	cmd.Flags().StringVar(&rc.blobArenaSize, "blob-arena-size", "", "Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)")
 	cmd.Flags().StringVar(&rc.memoryBudget, "memory-budget", "", "Memory budget for auto-tuning (e.g., '512MB', '2GB')")
+	cmd.Flags().IntVar(&rc.maxChangesPerCommit, "max-changes-per-commit", 0,
+		"Skip commits whose tree diff exceeds this many changes (0 = default 10000). "+
+			"Commits over the cap are silently dropped from history, which can desync "+
+			"burndown's tracked state for affected files. Raise on monorepos with "+
+			"legitimate large commits (Pods updates, generated code dumps).")
 
 	rc.registerPersistenceFlags(cmd)
 
@@ -744,31 +751,32 @@ func (rc *RunCommand) renderCombinedDirect(
 
 func (rc *RunCommand) buildHistoryRunOptions(cmd *cobra.Command) HistoryRunOptions {
 	opts := HistoryRunOptions{
-		GCPercent:       rc.gogc,
-		BallastSize:     rc.ballastSize,
-		CPUProfile:      rc.cpuprofile,
-		HeapProfile:     rc.heapprofile,
-		Limit:           rc.limit,
-		FirstParent:     rc.firstParent,
-		Head:            rc.head,
-		Since:           rc.since,
-		Workers:         rc.workers,
-		BufferSize:      rc.bufferSize,
-		CommitBatchSize: rc.commitBatchSize,
-		BlobCacheSize:   rc.blobCacheSize,
-		DiffCacheSize:   rc.diffCacheSize,
-		BlobArenaSize:   rc.blobArenaSize,
-		MemoryBudget:    rc.memoryBudget,
-		CheckpointDir:   rc.checkpointDir,
-		ClearCheckpoint: rc.clearCheckpoint,
-		CacheDir:        rc.cacheDir,
-		NoCache:         rc.noCache,
-		DebugTrace:      rc.debugTrace,
-		NDJSON:          rc.ndjson,
-		ConfigFile:      rc.configFile,
-		PlotOutput:      rc.plotOutput,
-		KeepStore:       rc.keepStore,
-		TmpDir:          rc.tmpDir,
+		GCPercent:           rc.gogc,
+		BallastSize:         rc.ballastSize,
+		CPUProfile:          rc.cpuprofile,
+		HeapProfile:         rc.heapprofile,
+		Limit:               rc.limit,
+		FirstParent:         rc.firstParent,
+		Head:                rc.head,
+		Since:               rc.since,
+		Workers:             rc.workers,
+		BufferSize:          rc.bufferSize,
+		CommitBatchSize:     rc.commitBatchSize,
+		BlobCacheSize:       rc.blobCacheSize,
+		DiffCacheSize:       rc.diffCacheSize,
+		BlobArenaSize:       rc.blobArenaSize,
+		MemoryBudget:        rc.memoryBudget,
+		MaxChangesPerCommit: rc.maxChangesPerCommit,
+		CheckpointDir:       rc.checkpointDir,
+		ClearCheckpoint:     rc.clearCheckpoint,
+		CacheDir:            rc.cacheDir,
+		NoCache:             rc.noCache,
+		DebugTrace:          rc.debugTrace,
+		NDJSON:              rc.ndjson,
+		ConfigFile:          rc.configFile,
+		PlotOutput:          rc.plotOutput,
+		KeepStore:           rc.keepStore,
+		TmpDir:              rc.tmpDir,
 	}
 
 	opts.Checkpoint = parseBoolFlag(cmd, "checkpoint")
@@ -1331,15 +1339,16 @@ func configureAndSelect(
 
 func buildConfigParams(opts HistoryRunOptions, fileCfg *cfgpkg.Config) framework.ConfigParams {
 	params := framework.ConfigParams{
-		Workers:         opts.Workers,
-		BufferSize:      opts.BufferSize,
-		CommitBatchSize: opts.CommitBatchSize,
-		BlobCacheSize:   opts.BlobCacheSize,
-		DiffCacheSize:   opts.DiffCacheSize,
-		BlobArenaSize:   opts.BlobArenaSize,
-		MemoryBudget:    opts.MemoryBudget,
-		GCPercent:       opts.GCPercent,
-		BallastSize:     opts.BallastSize,
+		Workers:             opts.Workers,
+		BufferSize:          opts.BufferSize,
+		CommitBatchSize:     opts.CommitBatchSize,
+		BlobCacheSize:       opts.BlobCacheSize,
+		DiffCacheSize:       opts.DiffCacheSize,
+		BlobArenaSize:       opts.BlobArenaSize,
+		MemoryBudget:        opts.MemoryBudget,
+		GCPercent:           opts.GCPercent,
+		BallastSize:         opts.BallastSize,
+		MaxChangesPerCommit: opts.MaxChangesPerCommit,
 	}
 
 	if fileCfg != nil {
