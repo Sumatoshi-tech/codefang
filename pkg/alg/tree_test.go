@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260310-traverse-tree.md.
-
 package alg
 
 import (

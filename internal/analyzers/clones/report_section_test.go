@@ -45,6 +45,17 @@ func TestCloneSection_Score(t *testing.T) {
 	assert.InDelta(t, 0.7, s.Score(), 1e-9)
 }
 
+func TestCloneSection_Score_HighRatio(t *testing.T) {
+	t.Parallel()
+
+	// Clone ratio can exceed 1.0 (pairs grow quadratically).
+	// 93.6 pairs/function → score must clamp to 0.0, not go negative.
+	s := NewReportSection(analyze.Report{
+		keyCloneRatio: 93.6,
+	})
+	assert.InDelta(t, 0.0, s.Score(), 1e-9)
+}
+
 func TestCloneSection_StatusMessage(t *testing.T) {
 	t.Parallel()
 

@@ -59,7 +59,7 @@ func buildTopDevBarSeries(activity []ActivityData, topDevs []int, nameByID map[i
 	for _, devID := range topDevs {
 		data := make([]plotpage.SeriesData, len(activity))
 		for i, ad := range activity {
-			data[i] = ad.ByDeveloper[devID]
+			data[i] = commitsForDev(ad.ByDeveloper, devID)
 		}
 
 		name := nameByID[devID]
@@ -92,9 +92,9 @@ func buildOthersBarSeries(activity []ActivityData, topDevs []int) plotpage.BarSe
 	for i, ad := range activity {
 		total := 0
 
-		for devID, commits := range ad.ByDeveloper {
-			if !topDevsSet[devID] {
-				total += commits
+		for _, dc := range ad.ByDeveloper {
+			if !topDevsSet[dc.DevID] {
+				total += dc.Commits
 			}
 		}
 

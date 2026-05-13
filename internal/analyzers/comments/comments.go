@@ -609,7 +609,6 @@ func (c *Analyzer) buildEmptyResult() analyze.Report {
 }
 
 // buildResult builds the complete analysis result.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(commentDetails []CommentDetail, functions []*node.Node, metrics CommentMetrics) analyze.Report {
 	commentDetailsInterface := c.buildCommentDetailsInterface(commentDetails)
 	detailedCommentsTable := c.buildDetailedCommentsTable(commentDetails)
@@ -660,7 +659,6 @@ func (c *Analyzer) buildCommentDetailsInterface(commentDetails []CommentDetail) 
 }
 
 // buildDetailedCommentsTable builds the detailed comments table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []CommentReportItem {
 	items := make([]CommentReportItem, 0, len(commentDetails))
 	for _, detail := range commentDetails {
@@ -680,7 +678,6 @@ func (c *Analyzer) buildDetailedCommentsTable(commentDetails []CommentDetail) []
 }
 
 // convertCommentReportItems converts typed comment items to []map[string]any for serialization.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func convertCommentReportItems(items any, sourceFile string) []map[string]any {
 	typed, ok := items.([]CommentReportItem)
 	if !ok {
@@ -708,7 +705,6 @@ func convertCommentReportItems(items any, sourceFile string) []map[string]any {
 }
 
 // buildDetailedFunctionsTable builds the detailed functions table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics CommentMetrics) []FunctionReportItem {
 	items := make([]FunctionReportItem, 0, len(functions))
 	for _, function := range functions {
@@ -732,7 +728,6 @@ func (c *Analyzer) buildDetailedFunctionsTable(functions []*node.Node, metrics C
 }
 
 // convertFunctionReportItems converts typed function items to []map[string]any for serialization.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func convertFunctionReportItems(items any, sourceFile string) []map[string]any {
 	typed, ok := items.([]FunctionReportItem)
 	if !ok {

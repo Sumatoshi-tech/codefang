@@ -1,11 +1,5 @@
 package analyze_test
 
-// FRD: specs/frds/FRD-20260311-cap-static-workers.md.
-// FRD: specs/frds/FRD-20260311-static-malloc-trim.md.
-// FRD: specs/frds/FRD-20260311-static-memory-limit.md.
-// FRD: specs/frds/FRD-20260311-bounded-parser-pool.md.
-// FRD: specs/frds/FRD-20260311-eager-tree-release.md.
-
 import (
 	"context"
 	"fmt"
@@ -176,7 +170,7 @@ func BenchmarkStaticPeakParsers(b *testing.B) {
 	dir := setupHeavyBenchDir(b, benchPeakFileCount, benchPeakFunctionsPerFile)
 
 	b.Run("before-uncapped", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = runtime.NumCPU()
 		svc.MallocTrimInterval = -1
 
@@ -198,7 +192,7 @@ func BenchmarkStaticPeakParsers(b *testing.B) {
 	})
 
 	b.Run("after-capped", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchCappedWorkers
 		svc.MallocTrimInterval = -1
 
@@ -226,7 +220,7 @@ func BenchmarkStaticMallocTrim(b *testing.B) {
 	dir := setupHeavyBenchDir(b, benchMallocTrimFileCount, benchMallocTrimFunctionsPerFile)
 
 	b.Run("before-no-trim", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchCappedWorkers
 		svc.MallocTrimInterval = -1
 
@@ -249,7 +243,7 @@ func BenchmarkStaticMallocTrim(b *testing.B) {
 	})
 
 	b.Run("after-trim-enabled", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchCappedWorkers
 		svc.MallocTrimInterval = benchMallocTrimInterval
 		// NativeMemoryReleaseFn=nil uses real gitlib.ReleaseNativeMemory().
@@ -279,7 +273,7 @@ func BenchmarkStaticMemoryLimit(b *testing.B) {
 	dir := setupHeavyBenchDir(b, benchMemLimitFileCount, benchMemLimitFunctionsPerFile)
 
 	b.Run("before-no-limit", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchMemLimitWorkers
 		svc.MallocTrimInterval = -1
 
@@ -301,7 +295,7 @@ func BenchmarkStaticMemoryLimit(b *testing.B) {
 	})
 
 	b.Run("after-with-limit", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchMemLimitWorkers
 		svc.MallocTrimInterval = -1
 
@@ -333,7 +327,7 @@ func BenchmarkStaticParserPool(b *testing.B) {
 	dir := setupHeavyBenchDir(b, benchParserPoolFileCount, benchParserPoolFunctionsPerFile)
 
 	b.Run("before-workers-NumCPU", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = runtime.NumCPU()
 		svc.MallocTrimInterval = -1
 
@@ -350,7 +344,7 @@ func BenchmarkStaticParserPool(b *testing.B) {
 	})
 
 	b.Run("after-workers-4", func(b *testing.B) {
-		svc := analyze.NewStaticService(testStaticAnalyzers())
+		svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 		svc.MaxWorkers = benchCappedWorkers
 		svc.MallocTrimInterval = -1
 
@@ -379,7 +373,7 @@ func TestStaticPeakParsers_BoundedConcurrency(t *testing.T) {
 
 	dir := setupHeavyBenchDir(t, fileCount, benchPeakFunctionsPerFile)
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = maxWorkers
 
 	require.Equal(t, maxWorkers, svc.ResolveMaxWorkers())

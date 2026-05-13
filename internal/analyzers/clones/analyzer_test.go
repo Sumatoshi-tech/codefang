@@ -30,10 +30,17 @@ func buildFunctionNode(name string, childTypes []node.Type) *node.Node {
 		WithRoles([]node.Role{node.RoleFunction, node.RoleDeclaration}).
 		Build()
 
+	// Build nested subtrees so the total node count exceeds minFunctionNodes.
+	// Each child gets 2 sub-children to produce realistic AST depth.
 	children := make([]*node.Node, 0, len(childTypes))
 
-	for _, ct := range childTypes {
+	for i, ct := range childTypes {
 		child := node.NewBuilder().WithType(ct).Build()
+
+		sub1 := node.NewBuilder().WithType(childTypes[i%len(childTypes)]).Build()
+		sub2 := node.NewBuilder().WithType(childTypes[(i+1)%len(childTypes)]).Build()
+		child.Children = []*node.Node{sub1, sub2}
+
 		children = append(children, child)
 	}
 
@@ -407,9 +414,9 @@ func TestShingler_ExtractShingles_Valid(t *testing.T) {
 	shingles := s.ExtractShingles(fn)
 	require.NotNil(t, shingles)
 
-	// Function node itself + 8 children = 9 nodes.
-	// With k=5: 9 - 5 + 1 = 5 shingles.
-	assert.Len(t, shingles, defaultShingleSize)
+	// Function node + 8 children × 3 nodes each = 25 nodes.
+	// With k=5: 25 - 5 + 1 = 21 shingles.
+	assert.Len(t, shingles, 21)
 }
 
 // TestShingler_ExtractShingles_Deterministic verifies same tree produces same shingles.
@@ -450,13 +457,18 @@ func TestClonePairKey(t *testing.T) {
 	assert.Equal(t, key1, key2)
 }
 
-// TestComputeCloneRatio verifies ratio computation.
+// TestComputeCloneRatio verifies ratio = distinct cloned functions / total functions.
 func TestComputeCloneRatio(t *testing.T) {
 	t.Parallel()
 
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 0), testFloatDelta)
 	assert.InDelta(t, 0.0, computeCloneRatio(0, 10), testFloatDelta)
-	assert.InDelta(t, 0.5, computeCloneRatio(5, 10), testFloatDelta)
+
+	// 2 distinct cloned functions out of 10 → 0.2.
+	assert.InDelta(t, 0.2, computeCloneRatio(2, 10), testFloatDelta)
+
+	// 4 out of 4 → 1.0.
+	assert.InDelta(t, 1.0, computeCloneRatio(4, 4), testFloatDelta)
 }
 
 // TestCloneMessage verifies message selection.
@@ -801,10 +813,10 @@ func TestAggregator_RecomputedCloneRatio(t *testing.T) {
 	result := agg.GetResult()
 	assert.Equal(t, 3, result[keyTotalFunctions])
 
-	// 1 clone pair / 3 functions = 0.333...
+	// 1 clone pair → 2 distinct cloned functions out of 3 → 2/3 ≈ 0.667.
 	ratio, ok := result[keyCloneRatio].(float64)
 	require.True(t, ok)
-	assert.InDelta(t, 1.0/3.0, ratio, testFloatDelta)
+	assert.InDelta(t, 2.0/3.0, ratio, testFloatDelta)
 }
 
 // TestAggregator_NoDedupByFuncA verifies multiple pairs sharing func_a name all appear.
@@ -923,8 +935,6 @@ func TestExtractFuncName(t *testing.T) {
 		Build()
 	assert.Equal(t, string(node.UASTFunction), extractFuncName(fn3))
 }
-
-// FRD: specs/frds/FRD-20260311-clones-pair-cap.md.
 
 // TestAggregator_MaxClonePairs_Default verifies NewAggregator sets default cap.
 func TestAggregator_MaxClonePairs_Default(t *testing.T) {

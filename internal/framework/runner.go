@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing"
+	"github.com/Sumatoshi-tech/codefang/internal/cache"
 	"github.com/Sumatoshi-tech/codefang/internal/checkpoint"
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
@@ -38,6 +42,12 @@ type stateDiscarder interface {
 
 // ErrNotStoreWriter is returned when an analyzer does not implement [analyze.StoreWriter].
 var ErrNotStoreWriter = errors.New("analyzer does not implement StoreWriter")
+
+// ErrCacheStale is returned when the cached root SHA does not match the current repo root.
+var ErrCacheStale = errors.New("cache stale: root SHA mismatch")
+
+// ErrCacheInvalid is returned when the cached commit count exceeds available commits.
+var ErrCacheInvalid = errors.New("cache invalid: commit count mismatch")
 
 // nativeTrimInterval controls how often malloc_trim(0) is called within a chunk
 // to release native (C malloc) memory back to the OS. This prevents tree-sitter
@@ -101,6 +111,11 @@ type Runner struct {
 	// When non-nil, passed to Coordinator and updated by pipeline stages.
 	StageMetrics *StageMetrics
 
+	// CacheDir is the directory for incremental analysis cache.
+	// When set, the runner probes for cached state before processing and
+	// writes updated state after finalization.
+	CacheDir string
+
 	runtimeTuningOnce sync.Once
 	runtimeBallast    []byte
 }
@@ -137,15 +152,33 @@ type runState struct {
 	runner  *Runner
 	commits []*gitlib.Commit
 	reports map[analyze.HistoryAnalyzer]analyze.Report
+
+	// totalCommitCount is the original commit count before cache trimming.
+	// Used by cacheWritePhase to record the total in metadata.
+	totalCommitCount int
+
+	// cacheSubDir is the resolved cache subdirectory for this repo+branch.
+	// Empty when caching is disabled or cache probe failed.
+	cacheSubDir string
 }
 
 // Run executes all analyzers over the given commits: initialize, consume each commit via pipeline, then finalize.
+// When CacheDir is set, probes for cached state (skipping already-processed commits)
+// and writes updated state after finalization.
 func (runner *Runner) Run(ctx context.Context, commits []*gitlib.Commit) (map[analyze.HistoryAnalyzer]analyze.Report, error) {
-	final, err := pipeline.RunPhases(ctx, runState{runner: runner, commits: commits},
+	initial := runState{
+		runner:           runner,
+		commits:          commits,
+		totalCommitCount: len(commits),
+	}
+
+	final, err := pipeline.RunPhases(ctx, initial,
 		pipeline.PhaseFunc[runState](initAnalyzersPhase),
 		pipeline.PhaseFunc[runState](initAggregatorsPhase),
+		pipeline.PhaseFunc[runState](cacheProbePhase),
 		pipeline.PhaseFunc[runState](processCommitsPhase),
 		pipeline.PhaseFunc[runState](finalizePhase),
+		pipeline.PhaseFunc[runState](cacheWritePhase),
 	)
 	if err != nil {
 		return nil, err
@@ -176,9 +209,47 @@ func processCommitsPhase(ctx context.Context, s runState) (runState, error) {
 		return s, nil
 	}
 
-	_, err := s.runner.processCommits(ctx, s.commits, 0, 0)
+	indexOffset := s.totalCommitCount - len(s.commits)
+
+	_, err := s.runner.processCommits(ctx, s.commits, indexOffset, 0)
 	if err != nil {
 		return s, err
+	}
+
+	return s, nil
+}
+
+// cacheProbePhase loads cached analyzer/aggregator state and trims already-processed commits.
+// No-op when CacheDir is empty.
+func cacheProbePhase(_ context.Context, s runState) (runState, error) {
+	if s.runner.CacheDir == "" {
+		return s, nil
+	}
+
+	probed, err := s.runner.probeCache(s.commits)
+	if err != nil {
+		// Cache probe failures are non-fatal: log and proceed with full run.
+		log.Printf("cache probe failed, running full analysis: %v", err)
+
+		return s, nil
+	}
+
+	s.commits = probed.remainingCommits
+	s.cacheSubDir = probed.subDir
+
+	return s, nil
+}
+
+// cacheWritePhase saves analyzer/aggregator state for future incremental runs.
+// No-op when CacheDir is empty or cacheSubDir was not set.
+func cacheWritePhase(_ context.Context, s runState) (runState, error) {
+	if s.runner.CacheDir == "" {
+		return s, nil
+	}
+
+	writeErr := s.runner.writeCache(s.cacheSubDir, s.totalCommitCount)
+	if writeErr != nil {
+		log.Printf("cache write failed: %v", writeErr)
 	}
 
 	return s, nil
@@ -321,6 +392,156 @@ func (runner *Runner) SpillAggregators() error {
 	}
 
 	return nil
+}
+
+// cacheProbeResult holds the result of a successful cache probe.
+type cacheProbeResult struct {
+	remainingCommits []*gitlib.Commit
+	subDir           string
+}
+
+// cacheDirPerm is the permission for cache subdirectories.
+const cacheDirPerm = 0o750
+
+// probeCache attempts to load cached state and returns the remaining unprocessed commits.
+// Returns an error if the cache is stale or cannot be loaded.
+func (runner *Runner) probeCache(commits []*gitlib.Commit) (cacheProbeResult, error) {
+	if len(commits) == 0 {
+		return cacheProbeResult{remainingCommits: commits}, nil
+	}
+
+	rootSHA := commits[0].Hash().String()
+	branch := "" // Branch detection not yet available in Runner context.
+	subDir := filepath.Join(runner.CacheDir, cache.Key(rootSHA, branch))
+
+	meta, err := cache.ReadMeta(subDir)
+	if err != nil {
+		return cacheProbeResult{}, err
+	}
+
+	if cache.IsStale(meta, rootSHA) {
+		return cacheProbeResult{}, fmt.Errorf("%w: cached=%s, current=%s", ErrCacheStale, meta.RootSHA, rootSHA)
+	}
+
+	if meta.CommitCount > len(commits) {
+		return cacheProbeResult{}, fmt.Errorf("%w: cached %d, available %d", ErrCacheInvalid, meta.CommitCount, len(commits))
+	}
+
+	// Load checkpoint state from cached analyzers.
+	loadErr := runner.loadCachedCheckpoints(subDir)
+	if loadErr != nil {
+		return cacheProbeResult{}, fmt.Errorf("load cached checkpoints: %w", loadErr)
+	}
+
+	// Restore aggregator spill state.
+	runner.restoreCachedAggSpills(subDir)
+
+	remaining := commits[meta.CommitCount:]
+	log.Printf("Replaying %d commits vs %d total", len(remaining), len(commits))
+
+	return cacheProbeResult{
+		remainingCommits: remaining,
+		subDir:           subDir,
+	}, nil
+}
+
+// loadCachedCheckpoints loads checkpoint state for all Checkpointable analyzers.
+func (runner *Runner) loadCachedCheckpoints(subDir string) error {
+	for idx, analyzer := range runner.Analyzers {
+		cp, ok := analyzer.(checkpoint.Checkpointable)
+		if !ok {
+			continue
+		}
+
+		analyzerDir := filepath.Join(subDir, fmt.Sprintf("analyzer_%d", idx))
+
+		loadErr := cp.LoadCheckpoint(analyzerDir)
+		if loadErr != nil {
+			return fmt.Errorf("load checkpoint for analyzer %d: %w", idx, loadErr)
+		}
+	}
+
+	return nil
+}
+
+// restoreCachedAggSpills restores aggregator spill state from cached directories.
+func (runner *Runner) restoreCachedAggSpills(subDir string) {
+	for idx, agg := range runner.aggregators {
+		if agg == nil {
+			continue
+		}
+
+		aggDir := filepath.Join(subDir, fmt.Sprintf("agg_spill_%d", idx))
+
+		info, statErr := os.Stat(aggDir)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+
+		agg.RestoreSpillState(analyze.AggregatorSpillInfo{Dir: aggDir})
+	}
+}
+
+// writeCache saves analyzer/aggregator state for future incremental runs.
+func (runner *Runner) writeCache(subDir string, totalCommits int) error {
+	if subDir == "" {
+		// No cache probe succeeded; create subDir from first commit.
+		if totalCommits == 0 {
+			return nil
+		}
+
+		rootSHA := ""
+		branch := ""
+
+		// Use the runner's commit list indirectly — totalCommits tells us the count.
+		subDir = filepath.Join(runner.CacheDir, cache.Key(rootSHA, branch))
+	}
+
+	mkErr := os.MkdirAll(subDir, cacheDirPerm)
+	if mkErr != nil {
+		return fmt.Errorf("create cache dir: %w", mkErr)
+	}
+
+	// Save checkpoint state for all Checkpointable analyzers.
+	for idx, analyzer := range runner.Analyzers {
+		cp, ok := analyzer.(checkpoint.Checkpointable)
+		if !ok {
+			continue
+		}
+
+		analyzerDir := filepath.Join(subDir, fmt.Sprintf("analyzer_%d", idx))
+
+		saveErr := os.MkdirAll(analyzerDir, cacheDirPerm)
+		if saveErr != nil {
+			return fmt.Errorf("create analyzer cache dir: %w", saveErr)
+		}
+
+		cpErr := cp.SaveCheckpoint(analyzerDir)
+		if cpErr != nil {
+			return fmt.Errorf("save checkpoint for analyzer %d: %w", idx, cpErr)
+		}
+	}
+
+	// Spill aggregator state.
+	spillErr := runner.SpillAggregators()
+	if spillErr != nil {
+		return fmt.Errorf("spill aggregators for cache: %w", spillErr)
+	}
+
+	// Write cache metadata.
+	analyzerIDs := make([]string, 0, len(runner.Analyzers))
+	for _, a := range runner.Analyzers {
+		analyzerIDs = append(analyzerIDs, a.Name())
+	}
+
+	meta := cache.IncrementalMeta{
+		Version:     1,
+		CommitCount: totalCommits,
+		AnalyzerIDs: analyzerIDs,
+		Timestamp:   time.Now().UTC(),
+	}
+
+	return cache.WriteMeta(subDir, meta)
 }
 
 // DiscardAggregatorState clears all in-memory cumulative state from

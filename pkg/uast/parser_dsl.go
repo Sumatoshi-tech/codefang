@@ -506,8 +506,16 @@ func (ctx *parseContext) processChildrenBatch(
 		return ctx.processChildrenCursor(root, mappingRule, children)
 	}
 
+	// Snapshot child nodes before recursing. toCanonicalNode may indirectly
+	// re-enter processChildrenBatch, which calls ensureBatchChildren and
+	// reslices ctx.batchChildren over the same backing array — overwriting
+	// the entries we have not yet read.
+	siblings := make([]sitter.Node, written)
 	for idx := range written {
-		child := batchChildToNode(batchChildren[idx])
+		siblings[idx] = batchChildToNode(batchChildren[idx])
+	}
+
+	for _, child := range siblings {
 		if child.IsNull() || !child.IsNamed() {
 			return ctx.processChildrenCursor(root, mappingRule, children)
 		}

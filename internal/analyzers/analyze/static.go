@@ -15,9 +15,12 @@ import (
 	"sync/atomic"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/plotpage"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
+	"github.com/Sumatoshi-tech/codefang/internal/storage"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/meminfo"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast"
 	"github.com/Sumatoshi-tech/codefang/pkg/uast/pkg/node"
 )
@@ -69,7 +72,8 @@ type StaticRenderer interface {
 
 // StaticService provides a high-level interface for running static analysis.
 type StaticService struct {
-	Analyzers []StaticAnalyzer
+	UASTAnalyzers    []StaticAnalyzer
+	RawFileAnalyzers []RawFileAnalyzer
 
 	// MaxWorkers limits the number of concurrent file analysis goroutines.
 	// Zero means use min(runtime.NumCPU(), DefaultStaticMaxWorkers).
@@ -102,11 +106,51 @@ type StaticService struct {
 	// Renderer provides section-based output rendering.
 	// Must be set before calling FormatJSON, FormatText, FormatCompact, or RunAndFormat.
 	Renderer StaticRenderer
+
+	// PerFile enables per-file report retention in aggregators.
+	// When true, aggregators store per-file snapshots accessible via PerFileResults.
+	PerFile bool
+
+	// LanguageGlobs restricts the directory walk to files whose basename
+	// matches any of the given fnmatch-style globs (e.g. "*.go",
+	// "Dockerfile"). Built from --languages via langpath.Globs. Empty or
+	// nil disables the filter — default behavior.
+	LanguageGlobs []string
+
+	// PathPolicy carries vendor / generated / extra-prefix exclusion
+	// rules shared across phases. The zero value excludes
+	// enry.IsVendor and pathfilter-detected generated files by
+	// default.
+	PathPolicy pathpolicy.Options
+
+	// perFileResults is populated after AnalyzeFolder when PerFile is true.
+	// Keyed by analyzer name → file path → per-file report.
+	perFileResults map[string]map[string]Report
+
+	// analysisRootPath is the root path used in the last AnalyzeFolder call.
+	// Used by FormatJSON to make per-file paths relative.
+	analysisRootPath string
 }
 
 // NewStaticService creates a StaticService with the given analyzers.
-func NewStaticService(analyzers []StaticAnalyzer) *StaticService {
-	return &StaticService{Analyzers: analyzers}
+func NewStaticService(uastAnalyzers []StaticAnalyzer, rawAnalyzers []RawFileAnalyzer) *StaticService {
+	return &StaticService{UASTAnalyzers: uastAnalyzers, RawFileAnalyzers: rawAnalyzers}
+}
+
+// allFormattable returns a merged, deterministically-ordered slice of all analyzers
+// that satisfy FormattableAnalyzer (UAST first, then raw-file).
+func (svc *StaticService) allFormattable() []FormattableAnalyzer {
+	result := make([]FormattableAnalyzer, 0, len(svc.UASTAnalyzers)+len(svc.RawFileAnalyzers))
+
+	for _, a := range svc.UASTAnalyzers {
+		result = append(result, a)
+	}
+
+	for _, a := range svc.RawFileAnalyzers {
+		result = append(result, a)
+	}
+
+	return result
 }
 
 // ResolveMaxWorkers returns the effective worker count for parallel file analysis.
@@ -177,14 +221,111 @@ func (svc *StaticService) emitProgress(
 // Workers block naturally when the buffer is full, providing backpressure.
 const streamFilesBufSize = 100
 
+// analysisPipelineState threads shared state through pipeline phases.
+type analysisPipelineState struct {
+	rootPath       string
+	analyzersToRun []string
+	aggregators    map[string]ResultAggregator
+}
+
 // AnalyzeFolder runs static analyzers for supported files in a folder tree.
-// File discovery streams paths to workers via a channel, providing natural backpressure.
+// Executes raw-file and UAST phases sequentially via pipeline.RunPhases.
 func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, analyzerList []string) (map[string]Report, error) {
-	analyzersToRun := svc.resolveAnalyzerList(analyzerList)
-	aggregators := svc.initAggregators(analyzersToRun)
+	svc.analysisRootPath = rootPath
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	state := analysisPipelineState{
+		rootPath:       rootPath,
+		analyzersToRun: svc.resolveAnalyzerList(analyzerList),
+	}
+	state.aggregators = svc.initAggregators(state.analyzersToRun)
+
+	state, err := pipeline.RunPhases(ctx, state,
+		pipeline.PhaseFunc[analysisPipelineState](svc.rawFilePhase),
+		pipeline.PhaseFunc[analysisPipelineState](svc.uastPhase),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	results := buildFinalResults(state.aggregators)
+
+	if svc.PerFile {
+		svc.perFileResults = extractPerFileResults(state.aggregators)
+	}
+
+	return results, nil
+}
+
+// rawFilePhase walks ALL files and runs RawFileAnalyzers on file headers.
+func (svc *StaticService) rawFilePhase(ctx context.Context, state analysisPipelineState) (analysisPipelineState, error) {
+	if len(svc.RawFileAnalyzers) == 0 {
+		return state, nil
+	}
+
+	// Filter to only requested raw-file analyzers.
+	rawNames := svc.requestedRawFileAnalyzers(state.analyzersToRun)
+	if len(rawNames) == 0 {
+		return state, nil
+	}
+
+	var mu sync.Mutex
+
+	walkErr := filepath.WalkDir(state.rootPath, func(path string, entry os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		skip, skipErr := skipAllFilesEntry(entry, err)
+		if skip || skipErr != nil {
+			return skipErr
+		}
+
+		if !matchesLanguageGlobs(path, svc.LanguageGlobs) {
+			return nil
+		}
+
+		if pathpolicy.Exclude(path, nil, svc.PathPolicy) {
+			return nil
+		}
+
+		classifyFile(path, rawNames, state.aggregators, &mu, state.rootPath)
+
+		return nil
+	})
+	if walkErr != nil {
+		return state, fmt.Errorf("raw-file phase walk %s: %w", state.rootPath, walkErr)
+	}
+
+	return state, nil
+}
+
+// requestedRawFileAnalyzers returns RawFileAnalyzers whose names appear in the requested list.
+func (svc *StaticService) requestedRawFileAnalyzers(requested []string) []RawFileAnalyzer {
+	nameSet := make(map[string]struct{}, len(requested))
+	for _, n := range requested {
+		nameSet[n] = struct{}{}
+	}
+
+	var result []RawFileAnalyzer
+
+	for _, a := range svc.RawFileAnalyzers {
+		if _, ok := nameSet[a.Name()]; ok {
+			result = append(result, a)
+		}
+	}
+
+	return result
+}
+
+// uastPhase streams UAST-supported files and runs StaticAnalyzers in parallel.
+func (svc *StaticService) uastPhase(ctx context.Context, state analysisPipelineState) (analysisPipelineState, error) {
+	uastNames := svc.requestedUASTAnalyzers(state.analyzersToRun)
+	if len(uastNames) == 0 {
+		return state, nil
+	}
 
 	var fileCounter atomic.Int64
 
@@ -192,29 +333,46 @@ func (svc *StaticService) AnalyzeFolder(ctx context.Context, rootPath string, an
 	walkErrCh := make(chan error, 1)
 
 	go func() {
-		walkErrCh <- svc.streamFiles(ctx, rootPath, fileCh)
+		walkErrCh <- svc.streamFiles(ctx, state.rootPath, fileCh)
 	}()
 
-	poolErr := svc.analyzeFilesParallel(ctx, fileCh, analyzersToRun, aggregators, &fileCounter)
+	poolErr := svc.analyzeFilesParallel(ctx, fileCh, uastNames, state.aggregators, &fileCounter, state.rootPath)
 
 	walkErr := <-walkErrCh
 
 	if poolErr != nil {
-		return nil, poolErr
+		return state, poolErr
 	}
 
 	if walkErr != nil {
-		return nil, walkErr
+		return state, walkErr
 	}
 
-	results := buildFinalResults(aggregators)
+	svc.emitProgress(fileCounter.Load(), state.aggregators, ProgressPhaseComplete)
 
-	svc.emitProgress(fileCounter.Load(), aggregators, ProgressPhaseComplete)
-
-	return results, nil
+	return state, nil
 }
 
-// streamFiles walks the directory tree and sends supported file paths on fileCh.
+// requestedUASTAnalyzers returns names of UAST analyzers that appear in the requested list.
+func (svc *StaticService) requestedUASTAnalyzers(requested []string) []string {
+	nameSet := make(map[string]struct{}, len(svc.UASTAnalyzers))
+	for _, a := range svc.UASTAnalyzers {
+		nameSet[a.Name()] = struct{}{}
+	}
+
+	result := make([]string, 0, len(requested))
+
+	for _, name := range requested {
+		if _, ok := nameSet[name]; ok {
+			result = append(result, name)
+		}
+	}
+
+	return result
+}
+
+// runUASTAnalysis runs UAST-based analyzers with file streaming and parallel parsing.
+// streamFiles walks the directory tree and sends UAST-supported file paths on fileCh.
 // The channel is closed when the walk completes. Returns walk errors.
 func (svc *StaticService) streamFiles(ctx context.Context, rootPath string, fileCh chan<- string) error {
 	defer close(fileCh)
@@ -232,6 +390,14 @@ func (svc *StaticService) streamFiles(ctx context.Context, rootPath string, file
 		skip, skipErr := ShouldSkipFolderNode(path, entry, walkErr, parser)
 		if skip || skipErr != nil {
 			return skipErr
+		}
+
+		if !matchesLanguageGlobs(path, svc.LanguageGlobs) {
+			return nil
+		}
+
+		if pathpolicy.Exclude(path, nil, svc.PathPolicy) {
+			return nil
 		}
 
 		select {
@@ -266,6 +432,7 @@ func (svc *StaticService) analyzeFilesParallel(
 	analyzersToRun []string,
 	aggregators map[string]ResultAggregator,
 	fileCounter *atomic.Int64,
+	rootPath string,
 ) error {
 	var mu sync.Mutex
 
@@ -294,7 +461,8 @@ func (svc *StaticService) analyzeFilesParallel(
 				return analyzeErr
 			}
 
-			StampSourceFile(reportMap, filePath)
+			StampSourceFile(reportMap, filePath, rootPath)
+			StampLanguage(reportMap, parser.GetLanguage(filePath))
 
 			mu.Lock()
 			aggregateFolderAnalysis(reportMap, aggregators)
@@ -334,18 +502,51 @@ func acquireParser(ch chan *uast.Parser) (*uast.Parser, error) {
 }
 
 // StampSourceFile adds "_source_file" metadata to every collection item in each report.
-// This allows downstream consumers (e.g., plot generators) to group results by file/package.
+// Also sets SourceFileKey at the report top level for analyzers without collections (e.g., imports).
+// This allows downstream consumers (e.g., plot generators, per-file retention) to group results by file.
 // Handles both legacy []map[string]any collections and TypedCollection wrappers.
-func StampSourceFile(reports map[string]Report, filePath string) {
+// When rootPath is non-empty, the stamped path is made relative to it.
+func StampSourceFile(reports map[string]Report, filePath, rootPath string) {
+	stamped := MakeRelativePath(filePath, rootPath)
+	dir := filepath.Dir(stamped)
+
 	for _, report := range reports {
+		report[SourceFileKey] = stamped
+		report[DirectoryKey] = dir
+
 		for key, val := range report {
 			switch v := val.(type) {
 			case TypedCollection:
-				v.SourceFile = filePath
+				v.SourceFile = stamped
+				v.Directory = dir
 				report[key] = v
 			case []map[string]any:
 				for _, item := range v {
-					item[SourceFileKey] = filePath
+					item[SourceFileKey] = stamped
+					item[DirectoryKey] = dir
+				}
+			}
+		}
+	}
+}
+
+// StampLanguage adds "_language" metadata to every collection item in each report.
+func StampLanguage(reports map[string]Report, language string) {
+	if language == "" {
+		return
+	}
+
+	for _, report := range reports {
+		report[LanguageKey] = language
+
+		for key, val := range report {
+			switch v := val.(type) {
+			case TypedCollection:
+				v.Language = language
+				report[key] = v
+			case []map[string]any:
+				for _, item := range v {
+					item[LanguageKey] = language
 				}
 			}
 		}
@@ -393,20 +594,99 @@ func (svc *StaticService) analyzeFile(
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	uastNode, err := parser.Parse(ctx, path, content)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	uastNode, parseErr := parser.Parse(ctx, path, content)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, parseErr)
 	}
 
-	results, err := svc.runAnalyzers(ctx, uastNode, analyzersToRun)
+	results, runErr := svc.runAnalyzers(ctx, uastNode, analyzersToRun)
 
 	node.ReleaseTree(uastNode)
 
-	if err != nil {
-		return nil, fmt.Errorf("run analyzers for %s: %w", path, err)
+	if runErr != nil {
+		return nil, fmt.Errorf("run analyzers for %s: %w", path, runErr)
 	}
 
 	return results, nil
+}
+
+// contentHeaderSize is the max bytes read per file in the all-files pre-pass.
+// Enry needs only a prefix for binary/language detection.
+const contentHeaderSize = 8192
+
+// skipAllFilesEntry decides if a walk entry should be skipped in the raw-file phase.
+func skipAllFilesEntry(entry os.DirEntry, walkErr error) (bool, error) {
+	if walkErr != nil {
+		if errors.Is(walkErr, fs.ErrPermission) || errors.Is(walkErr, fs.ErrNotExist) {
+			if entry != nil && entry.IsDir() {
+				return true, filepath.SkipDir
+			}
+
+			return true, nil
+		}
+
+		return false, walkErr
+	}
+
+	if entry == nil {
+		return true, nil
+	}
+
+	if entry.IsDir() {
+		if entry.Name() == ".git" {
+			return true, filepath.SkipDir
+		}
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// classifyFile runs raw-file analyzers on a single file and aggregates results.
+func classifyFile(
+	path string,
+	analyzers []RawFileAnalyzer,
+	aggregators map[string]ResultAggregator,
+	mu *sync.Mutex,
+	rootPath string,
+) {
+	header := readFileHeader(path, contentHeaderSize)
+
+	for _, a := range analyzers {
+		report, analyzeErr := a.AnalyzeFileContent(path, header)
+		if analyzeErr != nil {
+			continue
+		}
+
+		report[SourceFileKey] = MakeRelativePath(path, rootPath)
+
+		mu.Lock()
+
+		if agg, ok := aggregators[a.Name()]; ok {
+			agg.Aggregate(map[string]Report{a.Name(): report})
+		}
+
+		mu.Unlock()
+	}
+}
+
+// readFileHeader reads up to limit bytes from a file. Returns nil on error.
+func readFileHeader(path string, limit int) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	buf := make([]byte, limit)
+
+	n, readErr := f.Read(buf)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil
+	}
+
+	return buf[:n]
 }
 
 func aggregateFolderAnalysis(results map[string]Report, aggregators map[string]ResultAggregator) {
@@ -425,9 +705,10 @@ func (svc *StaticService) resolveAnalyzerList(analyzerList []string) []string {
 		return analyzerList
 	}
 
-	names := make([]string, 0, len(svc.Analyzers))
+	all := svc.allFormattable()
+	names := make([]string, 0, len(all))
 
-	for _, analyzer := range svc.Analyzers {
+	for _, analyzer := range all {
 		names = append(names, analyzer.Name())
 	}
 
@@ -436,10 +717,11 @@ func (svc *StaticService) resolveAnalyzerList(analyzerList []string) []string {
 
 func (svc *StaticService) initAggregators(analyzersToRun []string) map[string]ResultAggregator {
 	aggregators := make(map[string]ResultAggregator)
+	byName := svc.analyzersByName()
 
 	for _, analyzerName := range analyzersToRun {
-		analyzer := svc.FindAnalyzer(analyzerName)
-		if analyzer == nil {
+		analyzer, found := byName[analyzerName]
+		if !found {
 			continue
 		}
 
@@ -451,6 +733,10 @@ func (svc *StaticService) initAggregators(analyzersToRun []string) map[string]Re
 
 		if setter, ok := agg.(SpillThresholdSetter); svc.SpillThreshold > 0 && ok {
 			setter.SetSpillThreshold(svc.SpillThreshold)
+		}
+
+		if pf, ok := agg.(PerFileModeEnabled); svc.PerFile && ok {
+			pf.SetPerFileMode(true)
 		}
 
 		aggregators[analyzerName] = agg
@@ -473,7 +759,7 @@ func buildFinalResults(aggregators map[string]ResultAggregator) map[string]Repor
 func (svc *StaticService) BuildSections(results map[string]Report) []ReportSection {
 	sections := make([]ReportSection, 0, len(results))
 
-	for _, currentAnalyzer := range svc.Analyzers {
+	for _, currentAnalyzer := range svc.allFormattable() {
 		report, found := results[currentAnalyzer.Name()]
 		if !found {
 			continue
@@ -488,30 +774,34 @@ func (svc *StaticService) BuildSections(results map[string]Report) []ReportSecti
 }
 
 func (svc *StaticService) runAnalyzers(ctx context.Context, uastNode *node.Node, analyzerList []string) (map[string]Report, error) {
-	factory := NewFactory(svc.Analyzers)
+	factory := NewFactory(svc.UASTAnalyzers)
 
 	return factory.RunAnalyzers(ctx, uastNode, analyzerList)
 }
 
-// FindAnalyzer finds an analyzer by name.
-func (svc *StaticService) FindAnalyzer(name string) StaticAnalyzer {
-	for _, analyzer := range svc.Analyzers {
-		if analyzer.Name() == name {
-			return analyzer
-		}
+// analyzersByName builds a name-to-analyzer lookup map from all formattable analyzers.
+func (svc *StaticService) analyzersByName() map[string]FormattableAnalyzer {
+	all := svc.allFormattable()
+	result := make(map[string]FormattableAnalyzer, len(all))
+
+	for _, a := range all {
+		result[a.Name()] = a
 	}
 
-	return nil
+	return result
 }
 
 // AnalyzerNamesByID resolves analyzer descriptor IDs to internal names.
 func (svc *StaticService) AnalyzerNamesByID(ids []string) ([]string, error) {
-	idToName := make(map[string]string, len(svc.Analyzers))
-	for _, analyzer := range svc.Analyzers {
+	all := svc.allFormattable()
+	idToName := make(map[string]string, len(all))
+
+	for _, analyzer := range all {
 		idToName[analyzer.Descriptor().ID] = analyzer.Name()
 	}
 
 	names := make([]string, 0, len(ids))
+
 	for _, id := range ids {
 		name, ok := idToName[id]
 		if !ok {
@@ -532,6 +822,10 @@ func (svc *StaticService) FormatJSON(results map[string]Report, writer io.Writer
 
 	sections := svc.BuildSections(results)
 	report := svc.Renderer.SectionsToJSON(sections)
+
+	if svc.PerFile {
+		report = svc.enrichWithPerFileData(report, sections)
+	}
 
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
@@ -574,6 +868,7 @@ func (svc *StaticService) FormatPerAnalyzer(
 	writer io.Writer,
 ) error {
 	isFirst := true
+	byName := svc.analyzersByName()
 
 	for _, analyzerName := range analyzerNames {
 		report, ok := results[analyzerName]
@@ -581,8 +876,8 @@ func (svc *StaticService) FormatPerAnalyzer(
 			continue
 		}
 
-		analyzer := svc.FindAnalyzer(analyzerName)
-		if analyzer == nil {
+		analyzer, found := byName[analyzerName]
+		if !found {
 			return fmt.Errorf("%w: %s", ErrUnknownAnalyzerID, analyzerName)
 		}
 
@@ -644,6 +939,7 @@ func (svc *StaticService) RenderPlotPages(
 	}
 
 	pages := make([]plotpage.PageMeta, 0, len(analyzerNames))
+	byName := svc.analyzersByName()
 
 	for _, name := range analyzerNames {
 		report, ok := results[name]
@@ -651,8 +947,8 @@ func (svc *StaticService) RenderPlotPages(
 			continue
 		}
 
-		analyzer := svc.FindAnalyzer(name)
-		if analyzer == nil {
+		analyzer, found := byName[name]
+		if !found {
 			continue
 		}
 
@@ -684,9 +980,15 @@ func (svc *StaticService) RenderPlotPages(
 	return pages, nil
 }
 
+// reportJSONFilename is the name of the machine-readable JSON report emitted alongside plot pages.
+const reportJSONFilename = "report.json"
+
+// reportJSONPerm is the file permission for report.json.
+const reportJSONPerm = 0o640
+
 // FormatPlotPages renders multi-page HTML plot output to outputDir.
 // Each analyzer gets its own HTML page plus an index page with navigation.
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
+// Also emits report.json with the raw analysis results for external dashboards.
 func (svc *StaticService) FormatPlotPages(
 	analyzerNames []string,
 	results map[string]Report,
@@ -697,13 +999,27 @@ func (svc *StaticService) FormatPlotPages(
 		return err
 	}
 
-	renderer := &plotpage.MultiPageRenderer{
+	mpRenderer := &plotpage.MultiPageRenderer{
 		OutputDir: outputDir,
 		Title:     plotPageTitle,
 		Theme:     plotpage.ThemeDark,
 	}
 
-	return renderer.RenderIndex(pages)
+	indexErr := mpRenderer.RenderIndex(pages)
+	if indexErr != nil {
+		return indexErr
+	}
+
+	return writeReportJSON(results, outputDir)
+}
+
+// writeReportJSON writes the analysis results as indented JSON to outputDir/report.json.
+func writeReportJSON(results map[string]Report, outputDir string) error {
+	reportPath := filepath.Join(outputDir, reportJSONFilename)
+
+	return storage.WriteAtomic(reportPath, reportJSONPerm, func(w io.Writer) error {
+		return textutil.WriteJSON(w, results, true)
+	})
 }
 
 // ResolveAggregationMode returns the aggregation mode for a given output format.

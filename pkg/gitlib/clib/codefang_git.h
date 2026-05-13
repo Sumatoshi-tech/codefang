@@ -141,6 +141,21 @@ int cf_tree_diff(
 );
 
 /*
+ * Compute diff between two trees with an optional pathspec pre-filter.
+ * pathspec points to an array of pathspec_n C strings; when pathspec_n
+ * is 0 or pathspec is NULL the call is equivalent to cf_tree_diff.
+ * Each pathspec entry is an fnmatch-style glob (e.g. "*.go", "Dockerfile").
+ */
+int cf_tree_diff_v2(
+    git_repository* repo,
+    git_oid* old_tree_oid,
+    git_oid* new_tree_oid,
+    const char** pathspec,
+    size_t pathspec_n,
+    cf_tree_diff_result* result
+);
+
+/*
  * Free tree diff result.
  */
 void cf_free_tree_diff_result(cf_tree_diff_result* result);

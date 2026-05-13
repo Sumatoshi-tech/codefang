@@ -117,21 +117,21 @@ func extractOperandName(target *node.Node) (string, bool) {
 
 // Metrics holds all Halstead complexity measures.
 type Metrics struct {
-	Functions               map[string]*FunctionHalsteadMetrics `json:"functions"`
-	EstimatedLength         float64                             `json:"estimated_length"`
-	EstimatedTotalOperators int64                               `json:"estimated_total_operators" yaml:"estimated_total_operators"`
-	EstimatedTotalOperands  int64                               `json:"estimated_total_operands"  yaml:"estimated_total_operands"`
-	TotalOperators          int                                 `json:"total_operators"`
-	TotalOperands           int                                 `json:"total_operands"`
-	Vocabulary              int                                 `json:"vocabulary"`
-	Length                  int                                 `json:"length"`
-	DistinctOperators       int                                 `json:"distinct_operators"`
-	Volume                  float64                             `json:"volume"`
-	Difficulty              float64                             `json:"difficulty"`
-	Effort                  float64                             `json:"effort"`
-	TimeToProgram           float64                             `json:"time_to_program"`
-	DeliveredBugs           float64                             `json:"delivered_bugs"`
-	DistinctOperands        int                                 `json:"distinct_operands"`
+	Functions               []*FunctionHalsteadMetrics `json:"functions"`
+	EstimatedLength         float64                    `json:"estimated_length"`
+	EstimatedTotalOperators int64                      `json:"estimated_total_operators" yaml:"estimated_total_operators"`
+	EstimatedTotalOperands  int64                      `json:"estimated_total_operands"  yaml:"estimated_total_operands"`
+	TotalOperators          int                        `json:"total_operators"`
+	TotalOperands           int                        `json:"total_operands"`
+	Vocabulary              int                        `json:"vocabulary"`
+	Length                  int                        `json:"length"`
+	DistinctOperators       int                        `json:"distinct_operators"`
+	Volume                  float64                    `json:"volume"`
+	Difficulty              float64                    `json:"difficulty"`
+	Effort                  float64                    `json:"effort"`
+	TimeToProgram           float64                    `json:"time_to_program"`
+	DeliveredBugs           float64                    `json:"delivered_bugs"`
+	DistinctOperands        int                        `json:"distinct_operands"`
 }
 
 // FunctionHalsteadMetrics contains Halstead metrics for a single function.
@@ -159,7 +159,6 @@ type FunctionHalsteadMetrics struct {
 
 // FunctionReportItem is a typed representation of a per-function halstead report item.
 // Includes assessment strings and operator/operand maps. Avoids map[string]any allocation.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type FunctionReportItem struct {
 	Operators               map[string]int
 	Operands                map[string]int
@@ -328,14 +327,13 @@ func (h *Analyzer) buildEmptyResult(message string) analyze.Report {
 }
 
 // calculateAllFunctionMetrics calculates metrics for all functions.
-func (h *Analyzer) calculateAllFunctionMetrics(functions []*node.Node) map[string]*FunctionHalsteadMetrics {
-	functionMetrics := make(map[string]*FunctionHalsteadMetrics)
+func (h *Analyzer) calculateAllFunctionMetrics(functions []*node.Node) []*FunctionHalsteadMetrics {
+	functionMetrics := make([]*FunctionHalsteadMetrics, 0, len(functions))
 
 	for _, fn := range functions {
-		funcName := h.getFunctionName(fn)
 		funcMetrics := h.calculateFunctionHalsteadMetrics(fn)
-		funcMetrics.Name = funcName
-		functionMetrics[funcName] = funcMetrics
+		funcMetrics.Name = h.getFunctionName(fn)
+		functionMetrics = append(functionMetrics, funcMetrics)
 	}
 
 	return functionMetrics
@@ -352,7 +350,7 @@ func (h *Analyzer) getFunctionName(fn *node.Node) string {
 }
 
 // calculateFileLevelMetrics calculates file-level metrics from function metrics.
-func (h *Analyzer) calculateFileLevelMetrics(functionMetrics map[string]*FunctionHalsteadMetrics) *Metrics {
+func (h *Analyzer) calculateFileLevelMetrics(functionMetrics []*FunctionHalsteadMetrics) *Metrics {
 	fileOperators := make(map[string]int)
 	fileOperands := make(map[string]int)
 
@@ -393,8 +391,7 @@ func (h *Analyzer) aggregateOperatorsAndOperandsFromMetrics(
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
-func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics map[string]*FunctionHalsteadMetrics) []FunctionReportItem {
+func (h *Analyzer) buildDetailedFunctionsTable(functionMetrics []*FunctionHalsteadMetrics) []FunctionReportItem {
 	items := make([]FunctionReportItem, 0, len(functionMetrics))
 
 	for _, fn := range functionMetrics {
@@ -468,7 +465,6 @@ func convertHalsteadFunctionItems(items any, sourceFile string) []map[string]any
 }
 
 // buildResult constructs the final analysis result.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (h *Analyzer) buildResult(
 	fileMetrics *Metrics, reportItems []FunctionReportItem, totalFunctions int, message string,
 ) analyze.Report {

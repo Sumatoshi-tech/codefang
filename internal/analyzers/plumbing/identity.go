@@ -23,6 +23,7 @@ type IdentityDetector struct {
 	ReversedPeopleDict []string
 	AuthorID           int
 	ExactSignatures    bool
+
 	// incrementalEmails and incrementalNames are used when building the dict incrementally
 	// during Consume() when commits aren't available during Configure().
 	incrementalEmails map[int][]string

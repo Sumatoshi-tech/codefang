@@ -142,6 +142,8 @@ history:
   "time_series": [
     {
       "tick": 0,
+      "start_time": "2024-01-15T10:30:00Z",
+      "end_time": "2024-01-16T08:45:00Z",
       "sentiment": 0.72,
       "comment_count": 12,
       "commit_count": 5,
@@ -149,6 +151,8 @@ history:
     },
     {
       "tick": 1,
+      "start_time": "2024-01-16T09:00:00Z",
+      "end_time": "2024-01-17T18:30:00Z",
       "sentiment": 0.35,
       "comment_count": 8,
       "commit_count": 3,

@@ -9,8 +9,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 )
 
-// FRD: specs/frds/FRD-20260302-build-commits-by-tick.md.
-
 // testTickData is a minimal tick data type for testing BuildCommitsByTick.
 type testTickData struct {
 	Commits map[string]int

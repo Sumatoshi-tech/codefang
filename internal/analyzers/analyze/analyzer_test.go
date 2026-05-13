@@ -374,8 +374,6 @@ func TestRunAnalyzers_Parallel(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260303-data-extraction-guard.md.
-
 func TestReportFunctionListWithFallback_PrimaryKeyFound(t *testing.T) {
 	t.Parallel()
 

@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FRD: specs/frds/FRD-20260310-writejson-helper.md.
-
 func TestWriteJSON_PrettyOutput(t *testing.T) {
 	t.Parallel()
 

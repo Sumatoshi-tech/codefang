@@ -88,7 +88,7 @@ func (s *stubHistoryAnalyzer) ReportFromTICKs(_ context.Context, _ []analyze.TIC
 func TestRegistry_AllStableOrder(t *testing.T) {
 	t.Parallel()
 
-	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), nil, defaultHistoryForRegistryTest())
 	if err != nil {
 		t.Fatalf("unexpected registry creation error: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestRegistry_AllStableOrder(t *testing.T) {
 func TestRegistry_IDsByMode(t *testing.T) {
 	t.Parallel()
 
-	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), nil, defaultHistoryForRegistryTest())
 	if err != nil {
 		t.Fatalf("unexpected registry creation error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRegistry_IDsByMode(t *testing.T) {
 func TestRegistry_Split(t *testing.T) {
 	t.Parallel()
 
-	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), nil, defaultHistoryForRegistryTest())
 	if err != nil {
 		t.Fatalf("unexpected registry creation error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestRegistry_Split(t *testing.T) {
 func TestRegistry_SplitUnknown(t *testing.T) {
 	t.Parallel()
 
-	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), nil, defaultHistoryForRegistryTest())
 	if err != nil {
 		t.Fatalf("unexpected registry creation error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestRegistry_SplitUnknown(t *testing.T) {
 }
 
 // complexityID is a stable fixture for the first registered static analyzer.
-// Used by ExpandPatterns tests — FRD: specs/frds/FRD-20260306-append-unique-ids-removal.md.
+// Used by ExpandPatterns tests.
 const complexityID = "static/complexity"
 
 func TestRegistry_ExpandPatterns_ExactMatch(t *testing.T) {
@@ -303,7 +303,7 @@ func TestRegistry_SelectedIDs_WithPatterns(t *testing.T) {
 func newTestRegistry(t *testing.T) *analyze.Registry {
 	t.Helper()
 
-	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), defaultHistoryForRegistryTest())
+	registry, err := analyze.NewRegistry(defaultStaticForRegistryTest(), nil, defaultHistoryForRegistryTest())
 	if err != nil {
 		t.Fatalf("failed to create registry: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -28,6 +29,13 @@ const (
 
 	// numRows is the number of rows per LSH band.
 	numRows = 8
+
+	// minFunctionNodes is the minimum number of AST nodes a function must have
+	// to be included in clone detection. Functions below this threshold are
+	// trivial (getters, setters, return-nil stubs) and produce false positives
+	// because their minimal AST structure hashes identically regardless of purpose.
+	// Empirical: getters ≈ 13-15 nodes, setters ≈ 19, real logic ≥ 25.
+	minFunctionNodes = 20
 
 	// analyzerName is the registered name of the clone detection analyzer.
 	analyzerName = "clones"
@@ -315,9 +323,9 @@ func (a *Analyzer) detectClones(functions []*node.Node) []ClonePair {
 	}
 
 	// Per-file detection: no cap (single-file scope, bounded by function count).
-	pairs, _ := findClonePairs(entries, idx, 0, a.cfgSimilarityType3)
+	result := findClonePairs(entries, idx, 0, a.cfgSimilarityType3)
 
-	return pairs
+	return result.pairs
 }
 
 // buildSignatures computes MinHash signatures for all functions.
@@ -325,6 +333,10 @@ func (a *Analyzer) buildSignatures(functions []*node.Node) []funcEntry {
 	entries := make([]funcEntry, 0, len(functions))
 
 	for _, fn := range functions {
+		if countNodes(fn) < minFunctionNodes {
+			continue
+		}
+
 		shingles := a.shingler.ExtractShingles(fn)
 		if len(shingles) == 0 {
 			continue
@@ -350,22 +362,86 @@ func (a *Analyzer) buildSignatures(functions []*node.Node) []funcEntry {
 	return entries
 }
 
-// extractFuncName extracts the function name from a node.
+// extractFuncName extracts a unique function name from a node.
+// For methods, qualifies with the receiver type (e.g., "Foo.DoWork") to avoid
+// collisions in the LSH index when different types share the same method name.
 func extractFuncName(fn *node.Node) string {
-	if name, ok := common.ExtractEntityName(fn); ok && name != "" {
-		return name
+	name, ok := common.ExtractEntityName(fn)
+	if !ok || name == "" {
+		if fn.Token != "" {
+			name = fn.Token
+		} else {
+			name = string(fn.Type)
+		}
 	}
 
-	if fn.Token != "" {
-		return fn.Token
+	if fn.Type == node.UASTMethod {
+		if recv := extractReceiverType(fn); recv != "" {
+			return recv + "." + name
+		}
 	}
 
-	return string(fn.Type)
+	return name
+}
+
+// extractReceiverType extracts the receiver type name from a Method node.
+// The UAST represents the receiver as the first Parameter child with a token
+// like "(f *Foo)" or "(f Foo)".
+func extractReceiverType(fn *node.Node) string {
+	for _, child := range fn.Children {
+		if !child.HasAnyRole(node.RoleParameter) {
+			continue
+		}
+
+		// The receiver parameter token contains the full "(name *Type)" text.
+		tok := child.Token
+		if tok == "" {
+			continue
+		}
+
+		// Extract the type name: strip parens, pointer star, and variable name.
+		// Strip parens, pointer star, and variable name to extract the type.
+		tok = strings.TrimPrefix(tok, "(")
+		tok = strings.TrimSuffix(tok, ")")
+		tok = strings.TrimSpace(tok)
+
+		// Split "f *Foo" into parts, take the last one (the type).
+		parts := strings.Fields(tok)
+		// Receiver has at least two parts: variable name and type.
+		const minReceiverParts = 2
+		if len(parts) < minReceiverParts {
+			continue
+		}
+
+		typeName := parts[len(parts)-1]
+		typeName = strings.TrimPrefix(typeName, "*")
+
+		if typeName != "" {
+			return typeName
+		}
+	}
+
+	return ""
+}
+
+// countNodes returns the total number of nodes in a subtree.
+func countNodes(n *node.Node) int {
+	if n == nil {
+		return 0
+	}
+
+	count := 1
+
+	for _, child := range n.Children {
+		count += countNodes(child)
+	}
+
+	return count
 }
 
 // buildReport constructs the analysis report.
 func (a *Analyzer) buildReport(totalFunctions int, pairs []ClonePair) analyze.Report {
-	cloneRatio := computeCloneRatio(len(pairs), totalFunctions)
+	cloneRatio := computeCloneRatio(countDistinctFuncs(pairs), totalFunctions)
 	message := cloneMessage(len(pairs))
 
 	pairsForReport := make([]map[string]any, 0, len(pairs))
@@ -380,12 +456,13 @@ func (a *Analyzer) buildReport(totalFunctions int, pairs []ClonePair) analyze.Re
 	}
 
 	return analyze.Report{
-		keyAnalyzerName:    analyzerName,
-		keyTotalFunctions:  totalFunctions,
-		keyTotalClonePairs: len(pairs),
-		keyCloneRatio:      cloneRatio,
-		keyClonePairs:      pairsForReport,
-		keyMessage:         message,
+		keyAnalyzerName:          analyzerName,
+		keyTotalFunctions:        totalFunctions,
+		keyTotalClonePairs:       len(pairs),
+		keyCloneRatio:            cloneRatio,
+		keyClonePairs:            pairsForReport,
+		keyCloneTypeDistribution: cloneTypeDistMap(categorizeClonePairs(pairs)),
+		keyMessage:               message,
 	}
 }
 
@@ -400,13 +477,26 @@ func buildEmptyReport(message string) analyze.Report {
 	})
 }
 
-// computeCloneRatio calculates the ratio of clone pairs to total functions.
-func computeCloneRatio(pairCount, totalFunctions int) float64 {
-	if totalFunctions == 0 {
+// countDistinctFuncs returns the number of unique function names across all pairs.
+func countDistinctFuncs(pairs []ClonePair) int {
+	unique := make(map[string]struct{}, len(pairs))
+
+	for idx := range pairs {
+		unique[pairs[idx].FuncA] = struct{}{}
+		unique[pairs[idx].FuncB] = struct{}{}
+	}
+
+	return len(unique)
+}
+
+// computeCloneRatio calculates the fraction of functions involved in at least one clone pair.
+// Returns a value in [0, 1]: 0 means no duplication, 1 means every function has a clone.
+func computeCloneRatio(clonedFuncs, totalFunctions int) float64 {
+	if totalFunctions == 0 || clonedFuncs == 0 {
 		return 0.0
 	}
 
-	return float64(pairCount) / float64(totalFunctions)
+	return float64(clonedFuncs) / float64(totalFunctions)
 }
 
 // cloneMessage returns a human-readable message based on clone pair count.

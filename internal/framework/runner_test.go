@@ -1212,8 +1212,6 @@ func registerGobTypes() {
 	gob.Register([]string{})
 }
 
-// FRD: specs/frds/FRD-20260228-runner-integration.md.
-
 func TestFinalizeToStore_NoAggregators(t *testing.T) {
 	t.Parallel()
 

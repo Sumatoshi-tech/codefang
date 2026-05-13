@@ -7,7 +7,6 @@ import (
 )
 
 // thresholdLabelerFixture returns a standard 4-bucket labeler for tests.
-// FRD: specs/frds/FRD-20260306-threshold-labeler.md.
 func thresholdLabelerFixture() ThresholdLabeler {
 	return ThresholdLabeler{
 		{Limit: 0.8, Label: "Excellent"},

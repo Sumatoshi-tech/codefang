@@ -186,8 +186,6 @@ func TestTimeSeriesPoint_Fields(t *testing.T) {
 	assert.InDelta(t, float64(testInputValue), point.Value, 0.001)
 }
 
-// FRD: specs/frds/FRD-20260303-risk-priority.md.
-
 func TestRiskPriority_AllLevels(t *testing.T) {
 	t.Parallel()
 

@@ -1,5 +1,3 @@
-// FRD: specs/frds/FRD-20260310-generic-safeconv.md.
-
 package safeconv
 
 import (

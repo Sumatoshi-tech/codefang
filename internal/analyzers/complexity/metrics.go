@@ -26,6 +26,9 @@ type ReportData struct {
 // FunctionData holds complexity data for a single function.
 type FunctionData struct {
 	Name                 string
+	SourceFile           string
+	Language             string
+	Directory            string
 	CyclomaticComplexity int
 	CognitiveComplexity  int
 	NestingDepth         int
@@ -100,6 +103,18 @@ func parseFunctionData(fn map[string]any) FunctionData {
 		fd.Name = name
 	}
 
+	if sf, ok := fn[analyze.SourceFileKey].(string); ok {
+		fd.SourceFile = sf
+	}
+
+	if lang, ok := fn[analyze.LanguageKey].(string); ok {
+		fd.Language = lang
+	}
+
+	if dir, ok := fn[analyze.DirectoryKey].(string); ok {
+		fd.Directory = dir
+	}
+
 	if v, ok := fn["cyclomatic_complexity"].(int); ok {
 		fd.CyclomaticComplexity = v
 	}
@@ -136,6 +151,9 @@ func parseFunctionData(fn map[string]any) FunctionData {
 // FunctionComplexityData contains detailed complexity for a function.
 type FunctionComplexityData struct {
 	Name                 string  `json:"name"                  yaml:"name"`
+	SourceFile           string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language             string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory            string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
 	CyclomaticComplexity int     `json:"cyclomatic_complexity" yaml:"cyclomatic_complexity"`
 	CognitiveComplexity  int     `json:"cognitive_complexity"  yaml:"cognitive_complexity"`
 	NestingDepth         int     `json:"nesting_depth"         yaml:"nesting_depth"`
@@ -154,6 +172,9 @@ const (
 // HighRiskFunctionData identifies functions needing refactoring attention.
 type HighRiskFunctionData struct {
 	Name                 string   `json:"name"                  yaml:"name"`
+	SourceFile           string   `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language             string   `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory            string   `json:"directory,omitempty"   yaml:"directory,omitempty"`
 	CyclomaticComplexity int      `json:"cyclomatic_complexity" yaml:"cyclomatic_complexity"`
 	CognitiveComplexity  int      `json:"cognitive_complexity"  yaml:"cognitive_complexity"`
 	RiskLevel            string   `json:"risk_level"            yaml:"risk_level"`
@@ -221,6 +242,9 @@ func (m *FunctionComplexityMetric) Compute(input *ReportData) []FunctionComplexi
 
 		result = append(result, FunctionComplexityData{
 			Name:                 fn.Name,
+			SourceFile:           fn.SourceFile,
+			Language:             fn.Language,
+			Directory:            fn.Directory,
 			CyclomaticComplexity: fn.CyclomaticComplexity,
 			CognitiveComplexity:  fn.CognitiveComplexity,
 			NestingDepth:         fn.NestingDepth,
@@ -351,6 +375,9 @@ func (m *HighRiskFunctionMetric) Compute(input *ReportData) []HighRiskFunctionDa
 
 		result = append(result, HighRiskFunctionData{
 			Name:                 fn.Name,
+			SourceFile:           fn.SourceFile,
+			Language:             fn.Language,
+			Directory:            fn.Directory,
 			CyclomaticComplexity: fn.CyclomaticComplexity,
 			CognitiveComplexity:  fn.CognitiveComplexity,
 			RiskLevel:            riskLevel,

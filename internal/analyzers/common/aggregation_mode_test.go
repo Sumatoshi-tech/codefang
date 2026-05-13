@@ -1,7 +1,5 @@
 package common
 
-// FRD: specs/frds/FRD-20260311-summary-only-aggregation.md.
-
 import (
 	"testing"
 
@@ -132,8 +130,6 @@ func TestAggregator_ImplementsAggregationModeAware(t *testing.T) {
 	var aware analyze.AggregationModeAware = agg
 	require.NotNil(t, aware)
 }
-
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
 
 func TestAggregator_EstimatedStateSize_Empty(t *testing.T) {
 	t.Parallel()

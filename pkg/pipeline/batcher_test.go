@@ -1,7 +1,5 @@
 package pipeline_test
 
-// FRD: specs/frds/FRD-20260302-composable-pipeline-patterns.md.
-
 import (
 	"testing"
 

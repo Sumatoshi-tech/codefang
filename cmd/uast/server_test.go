@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -66,7 +67,7 @@ string <- (string) => uast(
 	}
 
 	// Create test request.
-	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Create response recorder.
@@ -130,7 +131,7 @@ func TestHandleParseWithoutCustomUASTMaps(t *testing.T) {
 	}
 
 	// Create test request.
-	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Create response recorder.
@@ -193,7 +194,7 @@ func TestHandleParseWithInvalidUASTMaps(t *testing.T) {
 	}
 
 	// Create test request.
-	req := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/parse", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Create response recorder.
@@ -230,7 +231,7 @@ func TestUASTServer_MiddlewareWrapsRoutes(t *testing.T) {
 	tracer := noop.NewTracerProvider().Tracer("test")
 	handler := newServerMux(tracer)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/mappings", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/mappings", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	require.NotPanics(t, func() {

@@ -363,8 +363,6 @@ func TestUASTTraverser_matchesRoles(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260310-find-nodes-predicate.md.
-
 func TestUASTTraverser_FindNodes(t *testing.T) {
 	t.Parallel()
 

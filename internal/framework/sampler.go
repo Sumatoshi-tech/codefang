@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime/pprof"
+	"sync/atomic"
 	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/observability"
@@ -21,6 +22,10 @@ const kilo = 1000
 // PipelineSampler periodically logs comprehensive memory and pipeline metrics
 // during chunk processing. Implements playbook section 2.1: "lightweight
 // periodic sampler (always-on in debug builds).".
+//
+// t1Captured is atomic because the sampler goroutine (driven by its ticker)
+// and the caller goroutine (via CaptureT1) both race to capture the t1 peak
+// heap profile; CompareAndSwap guarantees exactly one wins.
 type PipelineSampler struct {
 	logger       *slog.Logger
 	metrics      *StageMetrics
@@ -29,8 +34,7 @@ type PipelineSampler struct {
 	chunkIndex   int
 	memBudget    int64
 	profileAtRSS int64 // RSS threshold (bytes) to trigger t1 heap profile.
-	t0Captured   bool
-	t1Captured   bool
+	t1Captured   atomic.Bool
 }
 
 // SamplerConfig configures the pipeline sampler.
@@ -68,7 +72,6 @@ func (s *PipelineSampler) Start(ctx context.Context) {
 	// Capture t0 heap profile (playbook step 2: "take snapshot at t0").
 	if s.dumpDir != "" {
 		s.captureProfile("t0")
-		s.t0Captured = true
 	}
 
 	go s.run(ctx)
@@ -141,19 +144,27 @@ func (s *PipelineSampler) sample(tick int) {
 	)
 
 	// Auto-capture t1 profile on RSS threshold (playbook step 2: "at or right after peak").
-	if s.profileAtRSS > 0 && !s.t1Captured && snap.RSS >= s.profileAtRSS {
+	// CompareAndSwap guarantees at most one capture across both the sampler
+	// goroutine and any concurrent CaptureT1 caller.
+	if s.profileAtRSS > 0 && snap.RSS >= s.profileAtRSS && s.t1Captured.CompareAndSwap(false, true) {
 		s.captureProfile("t1")
-		s.t1Captured = true
 	}
 }
 
 // CaptureT1 forces capture of the t1 (peak) heap profile. Call after the
 // chunk completes if the automatic RSS threshold wasn't hit.
+// Safe to call concurrently with the sampler goroutine — at most one capture
+// wins via CompareAndSwap.
 func (s *PipelineSampler) CaptureT1() {
-	if s.dumpDir != "" && !s.t1Captured {
-		s.captureProfile("t1")
-		s.t1Captured = true
+	if s.dumpDir == "" {
+		return
 	}
+
+	if !s.t1Captured.CompareAndSwap(false, true) {
+		return
+	}
+
+	s.captureProfile("t1")
 }
 
 func (s *PipelineSampler) captureProfile(label string) {

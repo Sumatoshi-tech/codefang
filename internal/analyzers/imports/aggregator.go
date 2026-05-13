@@ -3,10 +3,13 @@ package imports
 
 import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common"
 )
 
 // Aggregator aggregates import analysis results across multiple files.
 type Aggregator struct {
+	common.PerFileRetainer
+
 	allImports map[string]int // Import path -> count.
 	totalFiles int
 }
@@ -21,6 +24,7 @@ func NewAggregator() *Aggregator {
 // Aggregate combines results from multiple files.
 func (a *Aggregator) Aggregate(results map[string]analyze.Report) {
 	for _, report := range results {
+		a.Retain(report)
 		a.totalFiles++
 
 		if imports, ok := report["imports"].([]string); ok {

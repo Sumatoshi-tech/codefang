@@ -1,7 +1,5 @@
 package alg
 
-// FRD: specs/frds/FRD-20260310-iterator.md.
-
 import (
 	"errors"
 	"io"

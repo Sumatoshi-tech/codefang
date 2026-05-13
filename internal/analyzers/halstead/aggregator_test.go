@@ -317,8 +317,6 @@ func TestBuildEmptyHalsteadResult(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260311-halstead-dedup.md.
-
 func TestAggregator_DuplicateFuncNames_PreservedAcrossFiles(t *testing.T) {
 	t.Parallel()
 

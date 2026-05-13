@@ -24,15 +24,17 @@ var ErrInvalidUnifiedModel = errors.New("invalid unified model")
 
 // AnalyzerResult represents one analyzer report in canonical converted output.
 type AnalyzerResult struct {
-	ID     string       `json:"id"     yaml:"id"`
-	Mode   AnalyzerMode `json:"mode"   yaml:"mode"`
-	Report Report       `json:"report" yaml:"report"`
+	ID     string         `json:"id"               yaml:"id"`
+	Mode   AnalyzerMode   `json:"mode"             yaml:"mode"`
+	Schema AnalyzerSchema `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Report Report         `json:"report"           yaml:"report"`
 }
 
 // UnifiedModel is the canonical intermediate model for run output conversion.
 type UnifiedModel struct {
-	Version   string           `json:"version"   yaml:"version"`
-	Analyzers []AnalyzerResult `json:"analyzers" yaml:"analyzers"`
+	Version   string            `json:"version"            yaml:"version"`
+	Metadata  *AnalysisMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Analyzers []AnalyzerResult  `json:"analyzers"          yaml:"analyzers"`
 }
 
 // Validate ensures canonical model constraints are satisfied.
@@ -219,6 +221,7 @@ func DecodeCombinedBinaryReports(input []byte, ids []string, modes []AnalyzerMod
 		results[i] = AnalyzerResult{
 			ID:     ids[i],
 			Mode:   modes[i],
+			Schema: SchemaForAnalyzer(ids[i]),
 			Report: report,
 		}
 	}
@@ -321,6 +324,8 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 		return writeConvertedTimeSeries(model, FormatTimeSeries, writer)
 	case FormatTimeSeriesNDJSON:
 		return writeConvertedTimeSeries(model, FormatTimeSeriesNDJSON, writer)
+	case FormatNDJSON:
+		return writeConvertedNDJSON(model, writer)
 	case FormatPlot:
 		if plotRendererFn == nil {
 			return fmt.Errorf("%w: plot renderer not registered", ErrUnsupportedFormat)
@@ -330,6 +335,33 @@ func WriteConvertedOutput(model UnifiedModel, outputFormat string, writer io.Wri
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedFormat, outputFormat)
 	}
+}
+
+// writeConvertedNDJSON writes one compact JSON line per analyzer result.
+// If metadata is present, a metadata line is written first.
+func writeConvertedNDJSON(model UnifiedModel, writer io.Writer) error {
+	encoder := json.NewEncoder(writer)
+
+	if model.Metadata != nil {
+		metaLine := map[string]any{
+			"version":  model.Version,
+			"metadata": model.Metadata,
+		}
+
+		err := encoder.Encode(metaLine)
+		if err != nil {
+			return fmt.Errorf("encode ndjson metadata: %w", err)
+		}
+	}
+
+	for _, result := range model.Analyzers {
+		err := encoder.Encode(result)
+		if err != nil {
+			return fmt.Errorf("encode ndjson analyzer %s: %w", result.ID, err)
+		}
+	}
+
+	return nil
 }
 
 // writeConvertedTimeSeries builds merged timeseries from a unified model's

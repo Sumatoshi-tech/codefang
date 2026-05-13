@@ -99,14 +99,14 @@ func (a *Aggregator) GetResult() analyze.Report {
 		return buildEmptyReport(msgNoFunctions)
 	}
 
-	pairs, totalCount := a.detectGlobalClones()
+	result := a.detectGlobalClones()
 
-	cloneRatio := computeCloneRatio(totalCount, a.totalFunctions)
-	message := cloneMessage(totalCount)
+	cloneRatio := computeCloneRatio(len(result.clonedFunc), a.totalFunctions)
+	message := cloneMessage(result.totalCount)
 
-	pairsForReport := make([]map[string]any, 0, len(pairs))
+	pairsForReport := make([]map[string]any, 0, len(result.pairs))
 
-	for _, p := range pairs {
+	for _, p := range result.pairs {
 		pairsForReport = append(pairsForReport, map[string]any{
 			"func_a":     p.FuncA,
 			"func_b":     p.FuncB,
@@ -116,25 +116,25 @@ func (a *Aggregator) GetResult() analyze.Report {
 	}
 
 	return analyze.Report{
-		keyAnalyzerName:    analyzerName,
-		keyTotalFunctions:  a.totalFunctions,
-		keyTotalClonePairs: totalCount,
-		keyCloneRatio:      cloneRatio,
-		keyClonePairs:      pairsForReport,
-		keyMessage:         message,
+		keyAnalyzerName:          analyzerName,
+		keyTotalFunctions:        a.totalFunctions,
+		keyTotalClonePairs:       result.totalCount,
+		keyCloneRatio:            cloneRatio,
+		keyClonePairs:            pairsForReport,
+		keyCloneTypeDistribution: cloneTypeDistMap(result.typeDistribution),
+		keyMessage:               message,
 	}
 }
 
 // detectGlobalClones builds a single LSH index from all entries and finds clone pairs.
-// Returns the (possibly capped) pairs slice and the exact total count of all pairs found.
-func (a *Aggregator) detectGlobalClones() (pairs []ClonePair, totalCount int) {
+func (a *Aggregator) detectGlobalClones() clonePairResult {
 	if len(a.entries) == 0 {
-		return nil, 0
+		return clonePairResult{}
 	}
 
 	idx, err := lsh.New(a.NumBands, a.NumRows)
 	if err != nil {
-		return nil, 0
+		return clonePairResult{}
 	}
 
 	for _, entry := range a.entries {

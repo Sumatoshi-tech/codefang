@@ -203,8 +203,6 @@ func TestDeriveKnobs_HugeWorkerAllocation(t *testing.T) {
 	assert.LessOrEqual(t, cfg.Workers, runtime.NumCPU(), "workers capped at CPU count")
 }
 
-// FRD: specs/frds/FRD-20260310-allocate-proportionally.md.
-
 func TestAllocateProportionally_SingleWeight(t *testing.T) {
 	t.Parallel()
 

@@ -1,7 +1,5 @@
 package sigutil_test
 
-// FRD: specs/frds/FRD-20260302-signal-cleanup-guard.md.
-
 import (
 	"io"
 	"log/slog"

@@ -1,7 +1,5 @@
 package common
 
-// FRD: specs/frds/FRD-20260311-summary-only-aggregation.md.
-
 import (
 	"fmt"
 	"runtime"
@@ -41,8 +39,6 @@ func makeSyntheticReport(fileIndex, numFunctions int) analyze.Report {
 		"functions":            functions,
 	}
 }
-
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 
 // testFunctionMetrics is a typed struct for benchmark comparison.
 type testFunctionMetrics struct {
@@ -182,8 +178,6 @@ func BenchmarkTypedVsMapAccumulation(b *testing.B) {
 		b.ReportMetric(heapDelta, "heap-MiB")
 	})
 }
-
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
 
 // benchEstimatedSizeReportCount is the number of reports for size estimation benchmark.
 const benchEstimatedSizeReportCount = 10000

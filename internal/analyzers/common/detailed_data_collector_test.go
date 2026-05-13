@@ -9,8 +9,6 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 )
 
-// FRD: specs/frds/FRD-20260303-detailed-data-collector.md.
-
 func TestNewDetailedDataCollector(t *testing.T) {
 	t.Parallel()
 

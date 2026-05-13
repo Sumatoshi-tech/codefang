@@ -1,7 +1,5 @@
 package common
 
-// FRD: specs/frds/FRD-20260311-spillable-data-collector.md.
-
 import (
 	"testing"
 
@@ -284,8 +282,6 @@ func TestSpillableDataCollector_NoSpillMatchesSpill(t *testing.T) {
 	assert.Equal(t, noSpillData, withSpillData)
 }
 
-// FRD: specs/frds/FRD-20260311-halstead-dedup.md.
-
 func TestSpillableDataCollector_CompositeKeys_PreventsCrossFileOverwrite(t *testing.T) {
 	t.Parallel()
 
@@ -397,8 +393,6 @@ func TestSpillableDataCollector_CompositeKeys_GetIdentifierKey(t *testing.T) {
 	// GetIdentifierKey returns the last key (the primary sort key).
 	assert.Equal(t, "name", sdc.GetIdentifierKey())
 }
-
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
 
 func TestSpillableDataCollector_EstimatedBufferBytes_Empty(t *testing.T) {
 	t.Parallel()

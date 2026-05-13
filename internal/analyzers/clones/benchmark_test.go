@@ -1,7 +1,5 @@
 package clones
 
-// FRD: specs/frds/FRD-20260311-clones-pair-cap.md.
-
 import (
 	"fmt"
 	"runtime"

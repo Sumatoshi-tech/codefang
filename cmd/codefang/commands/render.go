@@ -3,8 +3,10 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,6 +28,8 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/sentiment"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/shotness"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/typos"
+	"github.com/Sumatoshi-tech/codefang/internal/storage"
+	"github.com/Sumatoshi-tech/codefang/pkg/textutil"
 )
 
 const (
@@ -135,7 +139,33 @@ func runRender(storeDir, outputDir string) error {
 		return fmt.Errorf("render index: %w", indexErr)
 	}
 
-	return nil
+	return writeRenderReportJSON(outputDir, analyzerIDs, pages)
+}
+
+// renderReportJSONFilename is the name of the machine-readable JSON report.
+const renderReportJSONFilename = "report.json"
+
+// renderReportJSONPerm is the file permission for report.json.
+const renderReportJSONPerm = 0o640
+
+// renderReportData is the JSON structure emitted by codefang render.
+type renderReportData struct {
+	AnalyzerIDs []string            `json:"analyzer_ids"`
+	Pages       []plotpage.PageMeta `json:"pages"`
+}
+
+// writeRenderReportJSON emits report.json alongside rendered HTML pages.
+func writeRenderReportJSON(outputDir string, analyzerIDs []string, pages []plotpage.PageMeta) error {
+	reportPath := filepath.Join(outputDir, renderReportJSONFilename)
+
+	data := renderReportData{
+		AnalyzerIDs: analyzerIDs,
+		Pages:       pages,
+	}
+
+	return storage.WriteAtomic(reportPath, renderReportJSONPerm, func(w io.Writer) error {
+		return textutil.WriteJSON(w, data, true)
+	})
 }
 
 func renderOneAnalyzer(

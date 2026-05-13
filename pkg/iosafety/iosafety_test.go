@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FRD: specs/frds/FRD-20260310-iosafety-promote.md.
-
 func TestResolvePath_EmptyPath(t *testing.T) {
 	t.Parallel()
 

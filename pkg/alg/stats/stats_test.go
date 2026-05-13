@@ -193,8 +193,6 @@ func TestMeanStdDev(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260303-to-percent.md.
-
 func TestToPercent(t *testing.T) {
 	t.Parallel()
 
@@ -251,8 +249,6 @@ func TestMean(t *testing.T) {
 	}
 }
 
-// FRD: specs/frds/FRD-20260310-exceeds-threshold.md.
-
 func TestExceedsThreshold(t *testing.T) {
 	t.Parallel()
 
@@ -285,8 +281,6 @@ func TestExceedsThreshold(t *testing.T) {
 		})
 	}
 }
-
-// FRD: specs/frds/FRD-20260303-distribution.md.
 
 func TestDistribution(t *testing.T) {
 	t.Parallel()

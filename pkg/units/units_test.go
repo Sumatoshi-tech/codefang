@@ -2,8 +2,6 @@ package units
 
 import "testing"
 
-// FRD: specs/frds/FRD-20260302-size-unit-constants.md.
-
 // Expected binary size multiplier values.
 const (
 	expectedKiB = 1024

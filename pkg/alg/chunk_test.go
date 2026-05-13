@@ -1,7 +1,5 @@
 package alg_test
 
-// FRD: specs/frds/FRD-20260302-chunk-pairs.md.
-
 import (
 	"testing"
 

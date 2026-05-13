@@ -94,9 +94,10 @@ func topDevsByContribution(data *DashboardData, n int) []DeveloperData {
 
 	for i, dev := range data.Metrics.Developers {
 		total := 0
+		langStats := devLanguageMap(dev)
 
 		for _, lang := range data.TopLanguages {
-			if stats, ok := dev.Languages[lang]; ok {
+			if stats, ok := langStats[lang]; ok {
 				total += stats.Added + stats.Removed
 			}
 		}
@@ -121,15 +122,27 @@ func topDevsByContribution(data *DashboardData, n int) []DeveloperData {
 // devContribution returns the total contribution (Added+Removed) for a developer
 // across the given languages.
 func devContribution(dev DeveloperData, langs []string) map[string]int {
+	langStats := devLanguageMap(dev)
 	result := make(map[string]int, len(langs))
 
 	for _, lang := range langs {
-		if stats, ok := dev.Languages[lang]; ok {
+		if stats, ok := langStats[lang]; ok {
 			result[lang] = stats.Added + stats.Removed
 		}
 	}
 
 	return result
+}
+
+// devLanguageMap builds a language-name lookup map from a developer's Languages slice.
+func devLanguageMap(dev DeveloperData) map[string]LanguageStatsEntry {
+	m := make(map[string]LanguageStatsEntry, len(dev.Languages))
+
+	for _, entry := range dev.Languages {
+		m[entry.Language] = entry
+	}
+
+	return m
 }
 
 // buildRadarData computes per-developer relative expertise profiles.

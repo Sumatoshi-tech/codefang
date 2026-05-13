@@ -148,7 +148,6 @@ func TestMergeAdditive(t *testing.T) {
 	})
 }
 
-// FRD: specs/frds/FRD-20260306-merge-nested-additive.md.
 func TestMergeNestedAdditive(t *testing.T) {
 	t.Parallel()
 
@@ -210,8 +209,6 @@ func TestMergeNestedAdditive(t *testing.T) {
 		assert.Equal(t, 4, dst["b"]["z"])
 	})
 }
-
-// FRD: specs/frds/FRD-20260310-estimate-map-size.md.
 
 func TestEstimateMapSize(t *testing.T) {
 	t.Parallel()

@@ -18,6 +18,7 @@ codefang run -a static/complexity --format text .
 | [JSON](#json) | `json` | `application/json` | Programmatic consumption, CI pipelines |
 | [YAML](#yaml) | `yaml` | `text/yaml` | Human-readable structured data, config integration |
 | [Compact](#compact) | `compact` | Plain text | Quick summaries, log ingestion |
+| [NDJSON](#ndjson) | `ndjson` | `application/x-ndjson` | Streaming DWH ingestion (ClickHouse, BigQuery) |
 | [Time Series](#time-series) | `timeseries` | `application/json` | Chronological analysis, dashboards |
 | [Plot](#plot) | `plot` | `text/html` | Interactive charts, reports, presentations |
 
@@ -72,60 +73,113 @@ codefang run -a static/complexity --format text -v .
 
 **Flag:** `--format json`
 
-Structured JSON output. This is the **default format**. Each analyzer produces
-a well-defined JSON schema. Static analyzers emit a single JSON object;
-history analyzers emit per-analyzer JSON objects.
+Structured JSON output. This is the **default format**. The output is wrapped
+in a versioned envelope with metadata, per-analyzer schema manifests, and
+reports. Each analyzer's report contains typed arrays of records with
+consistent identifiers (`source_file`, `language`, `directory` on function
+records; `start_time`/`end_time` on time-series ticks; split `name`/`email`
+on developer records).
 
 ```bash
-codefang run -a static/complexity --format json .
+codefang run --format json .
 ```
 
-??? example "Example Output"
+??? example "Example Output (Combined Static + History)"
 
     ```json
     {
-      "complexity": {
-        "files": [
-          {
-            "path": "internal/framework/runner.go",
-            "functions": [
+      "version": "codefang.run.v1",
+      "metadata": {
+        "repo_path": "/home/user/sources/myproject",
+        "repo_name": "myproject",
+        "analyzed_at": "2026-04-07T23:33:00Z",
+        "codefang_version": "0.1.0"
+      },
+      "analyzers": [
+        {
+          "id": "static/complexity",
+          "mode": "static",
+          "schema": {
+            "function_complexity": {
+              "type": "list",
+              "grain": "function",
+              "description": "Per-function cyclomatic and cognitive complexity"
+            },
+            "aggregate": {
+              "type": "aggregate",
+              "description": "Summary statistics"
+            }
+          },
+          "report": {
+            "function_complexity": [
               {
                 "name": "RunStreaming",
-                "complexity": 11,
-                "lines": 85,
-                "start_line": 42,
-                "end_line": 127
-              },
-              {
-                "name": "NewRunnerWithConfig",
-                "complexity": 3,
-                "lines": 22,
-                "start_line": 15,
-                "end_line": 37
+                "source_file": "internal/framework/runner.go",
+                "language": "go",
+                "directory": "internal/framework",
+                "cyclomatic_complexity": 11,
+                "cognitive_complexity": 15,
+                "nesting_depth": 3,
+                "lines_of_code": 85,
+                "complexity_density": 0.129,
+                "risk_level": "MEDIUM"
               }
             ],
-            "summary": {
-              "total_functions": 12,
-              "average_complexity": 4.2,
-              "max_complexity": 11
+            "aggregate": {
+              "total_functions": 312,
+              "average_complexity": 2.6,
+              "max_complexity": 11,
+              "health_score": 82.5
             }
           }
-        ],
-        "summary": {
-          "total_files": 47,
-          "total_functions": 312,
-          "average_complexity": 2.6,
-          "max_complexity": 11
+        },
+        {
+          "id": "history/sentiment",
+          "mode": "history",
+          "schema": {
+            "time_series": {
+              "type": "time_series",
+              "grain": "tick",
+              "description": "Per-tick sentiment scores"
+            }
+          },
+          "report": {
+            "time_series": [
+              {
+                "tick": 0,
+                "start_time": "2024-01-15T10:30:00Z",
+                "end_time": "2024-01-16T08:45:00Z",
+                "sentiment": 0.72,
+                "classification": "positive",
+                "comment_count": 5,
+                "commit_count": 12
+              }
+            ]
+          }
         }
-      }
+      ]
     }
     ```
+
+**Key output fields added for analytics/DWH consumption:**
+
+| Field | Present On | Description |
+|-------|-----------|-------------|
+| `source_file` | All function records | Relative file path (e.g., `"pkg/api/server.go"`) |
+| `language` | All function records | Detected language (e.g., `"go"`, `"python"`) |
+| `directory` | All function records | Parent directory (e.g., `"pkg/api"`) |
+| `start_time` | All time-series ticks | RFC 3339 tick start timestamp |
+| `end_time` | All time-series ticks | RFC 3339 tick end timestamp |
+| `email` | Developer records | Separated from name (no more pipe-delimited) |
+| `schema` | Each analyzer section | Field type, grain, and description metadata |
+| `metadata` | Top-level envelope | Repo name, analysis timestamp, version |
 
 !!! tip "When to Use"
 
     - CI/CD pipelines that parse results programmatically
-    - Feeding data into external tools or databases
+    - Loading into data warehouses (ClickHouse, BigQuery, Snowflake)
     - Cross-format conversion input (`--input`)
+    - Building BI dashboards from function-level metrics
 
 ---
 
@@ -203,6 +257,50 @@ codefang run -a 'static/*' --format compact .
     - Log aggregation systems that expect single-line records
     - Quick at-a-glance summaries in scripts
     - Embedding in commit messages or Slack notifications
+
+---
+
+## NDJSON
+
+**Flag:** `--format ndjson`
+
+Newline-delimited JSON. Each analyzer produces one compact JSON line. If
+metadata is present, a metadata line is emitted first. This format enables
+streaming ingestion into columnar DWH systems like ClickHouse, where each
+line can be parsed independently without buffering the entire file.
+
+```bash
+codefang run --format ndjson . > output.ndjson
+```
+
+??? example "Example Output"
+
+    ```
+    {"version":"codefang.run.v1","metadata":{"repo_name":"myproject","analyzed_at":"2026-04-07T23:33:00Z","codefang_version":"0.1.0"}}
+    {"id":"static/complexity","mode":"static","report":{"function_complexity":[...],"aggregate":{...}}}
+    {"id":"static/halstead","mode":"static","report":{"function_halstead":[...]}}
+    {"id":"history/sentiment","mode":"history","report":{"time_series":[...]}}
+    ```
+
+Each line is independently parseable JSON. The file can be processed with
+standard tools:
+
+```bash
+# Extract a single analyzer
+grep '"static/complexity"' output.ndjson | jq .report.aggregate
+
+# Count lines
+wc -l output.ndjson
+
+# Stream into ClickHouse
+cat output.ndjson | clickhouse-client --query "INSERT INTO codefang FORMAT JSONEachRow"
+```
+
+!!! tip "When to Use"
+
+    - Streaming ingestion into ClickHouse, BigQuery, or Kafka
+    - Processing large reports without loading the full file into memory
+    - Unix pipeline workflows (`grep`, `jq`, `wc`)
 
 ---
 
@@ -357,6 +455,7 @@ categories:
 | `compact` | :material-check: | -- | -- |
 | `json` | :material-check: | :material-check: | :material-check: |
 | `yaml` | :material-check: | :material-check: | :material-check: |
+| `ndjson` | :material-check: | :material-check: | :material-check: |
 | `plot` | :material-check: | :material-check: | :material-check: |
 | `timeseries` | -- | :material-check: | :material-check: |
 

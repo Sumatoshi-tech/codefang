@@ -70,7 +70,6 @@ type CommentConfig struct {
 }
 
 // CommentReportItem is a typed representation of a per-comment report item.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type CommentReportItem struct {
 	Comment    string
 	Placement  string
@@ -80,7 +79,6 @@ type CommentReportItem struct {
 }
 
 // FunctionReportItem is a typed representation of a per-function report item.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type FunctionReportItem struct {
 	Function   string
 	Type       string

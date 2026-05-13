@@ -1,7 +1,5 @@
 package lru_test
 
-// FRD: specs/frds/FRD-20260302-generic-lru-cache.md.
-
 import (
 	"testing"
 

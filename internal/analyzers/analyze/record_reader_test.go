@@ -1,7 +1,5 @@
 package analyze
 
-// FRD: specs/frds/FRD-20260302-record-reader.md.
-
 import (
 	"encoding/gob"
 	"testing"

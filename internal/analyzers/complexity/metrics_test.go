@@ -118,6 +118,42 @@ func TestParseReportData_WithAssessments(t *testing.T) {
 	assert.Equal(t, "low", data.Functions[0].NestingAssessment)
 }
 
+const testSourceFile = "pkg/auth/handler.go"
+
+func TestParseReportData_WithSourceFile(t *testing.T) {
+	t.Parallel()
+
+	report := analyze.Report{
+		"functions": []map[string]any{
+			{
+				"name":         testFunctionName,
+				"_source_file": testSourceFile,
+			},
+		},
+	}
+
+	data, err := ParseReportData(report)
+
+	require.NoError(t, err)
+	require.Len(t, data.Functions, 1)
+	assert.Equal(t, testSourceFile, data.Functions[0].SourceFile)
+}
+
+func TestFunctionComplexityMetric_Compute_SourceFile(t *testing.T) {
+	t.Parallel()
+
+	functions := []FunctionData{
+		{Name: testFunctionName, SourceFile: testSourceFile, CyclomaticComplexity: 5, LinesOfCode: testLinesOfCode},
+	}
+	metric := NewFunctionComplexityMetric()
+	input := makeTestReportData(functions)
+
+	result := metric.Compute(input)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, testSourceFile, result[0].SourceFile)
+}
+
 // Helper to create test ReportData with functions.
 func makeTestReportData(functions []FunctionData) *ReportData {
 	return &ReportData{

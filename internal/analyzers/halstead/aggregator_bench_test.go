@@ -1,7 +1,5 @@
 package halstead
 
-// FRD: specs/frds/FRD-20260311-halstead-dedup.md.
-
 import (
 	"fmt"
 	"testing"
