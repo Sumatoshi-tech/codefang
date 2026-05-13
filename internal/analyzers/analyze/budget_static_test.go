@@ -2,8 +2,6 @@
 
 package analyze_test
 
-// FRD: specs/frds/FRD-20260312-static-budget-integration-test.md.
-
 import (
 	"context"
 	"runtime/debug"
@@ -46,7 +44,7 @@ func TestStaticAnalyzers_MemoryBudget(t *testing.T) {
 
 	dir := setupHeavyBenchDir(t, budgetTestFileCount, budgetTestFunctionsPerFile)
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {} // Skip real malloc_trim in test.
 
 	// Apply budget-derived parameters.

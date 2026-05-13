@@ -15,12 +15,15 @@ import (
 
 // TicksSinceStart computes relative time ticks for each commit since the start.
 type TicksSinceStart struct {
-	tick0        *time.Time
-	commits      map[int][]gitlib.Hash
-	remote       string
-	TickSize     time.Duration
-	previousTick int
-	Tick         int
+	tick0         *time.Time
+	commits       map[int][]gitlib.Hash
+	remote        string
+	TickSize      time.Duration
+	previousTick  int
+	Tick          int
+	lastValidWhen time.Time           // Most recent in-window committer timestamp; substitution source.
+	tick0Set      bool                // tick0 has been seeded by an in-window commit.
+	anomalies     *timeAnomalyTracker // Shared across Fork() clones so aggregated counts survive forking.
 }
 
 const (
@@ -90,6 +93,12 @@ func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 	}
 
 	t.tick0 = &time.Time{}
+	t.tick0Set = false
+	t.lastValidWhen = time.Time{}
+
+	if t.anomalies == nil {
+		t.anomalies = &timeAnomalyTracker{}
+	}
 
 	t.previousTick = 0
 	if t.commits == nil || len(t.commits) > 0 {
@@ -104,14 +113,14 @@ func (t *TicksSinceStart) Initialize(_ *gitlib.Repository) error {
 // Consume processes a single commit with the provided dependency results.
 func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) (analyze.TC, error) {
 	commit := ac.Commit
-	index := ac.Index
+	when := t.sanitizeWhen(commit.Committer().When)
 
-	if index == 0 {
-		tick0 := commit.Committer().When
-		*t.tick0 = FloorTime(tick0, t.TickSize)
+	if !t.tick0Set {
+		*t.tick0 = FloorTime(when, t.TickSize)
+		t.tick0Set = true
 	}
 
-	tick := max(int(commit.Committer().When.Sub(*t.tick0)/t.TickSize), t.previousTick)
+	tick := max(int(when.Sub(*t.tick0)/t.TickSize), t.previousTick)
 
 	t.previousTick = tick
 
@@ -140,6 +149,58 @@ func (t *TicksSinceStart) Consume(_ context.Context, ac *analyze.Context) (analy
 	t.Tick = tick
 
 	return analyze.TC{}, nil
+}
+
+// sanitizeWhen clamps a committer timestamp into the sane analysis window
+// [minSaneCommitTime, [time.Now]()+maxClockSkew]. Out-of-window values are
+// substituted with the most recent in-window timestamp seen, falling back
+// to minSaneCommitTime on the first commit. Each substitution is counted
+// and surfaced via TimeAnomalies(); the warning log is rate-limited.
+//
+// In-window inputs pass through unchanged and update lastValidWhen so
+// future anomalies have a fresh substitution source.
+func (t *TicksSinceStart) sanitizeWhen(when time.Time) time.Time {
+	upperBound := time.Now().Add(maxClockSkew)
+
+	switch {
+	case when.Before(minSaneCommitTime):
+		replacement := t.substituteWhen()
+		t.anomalies.recordBeforeMin(when, replacement)
+
+		return replacement
+	case when.After(upperBound):
+		replacement := t.substituteWhen()
+		t.anomalies.recordAfterMax(when, replacement)
+
+		return replacement
+	}
+
+	t.lastValidWhen = when
+
+	return when
+}
+
+// substituteWhen picks a stand-in for an out-of-window committer time:
+// the most recent in-window value if we have one, otherwise the
+// minSaneCommitTime floor (so the bad commit collapses to tick 0 instead
+// of inflating the analysis period).
+func (t *TicksSinceStart) substituteWhen() time.Time {
+	if t.lastValidWhen.IsZero() {
+		return minSaneCommitTime
+	}
+
+	return t.lastValidWhen
+}
+
+// TimeAnomalies returns the cumulative count of committer-timestamp
+// anomalies clamped during this analyzer's run. See [TimeAnomalyStats]
+// for the operational meaning.
+func (t *TicksSinceStart) TimeAnomalies() TimeAnomalyStats {
+	if t.anomalies == nil {
+		return TimeAnomalyStats{}
+	}
+
+	return t.anomalies.snapshot()
 }
 
 // FloorTime rounds a timestamp down to the nearest tick boundary.

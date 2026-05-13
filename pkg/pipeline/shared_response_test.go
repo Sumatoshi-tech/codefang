@@ -1,7 +1,5 @@
 package pipeline_test
 
-// FRD: specs/frds/FRD-20260303-shared-response-move.md.
-
 import (
 	"context"
 	"errors"

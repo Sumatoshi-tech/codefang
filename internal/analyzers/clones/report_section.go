@@ -50,13 +50,18 @@ func NewReportSection(report analyze.Report) *ReportSection {
 }
 
 // computeScore converts clone ratio to a 0-1 score (lower ratio = higher score).
+// Clone ratio is pairs/functions which can exceed 1.0 (quadratic pair growth),
+// so we clamp to [0, 1] before inverting.
 func computeScore(cloneRatio float64) float64 {
-	score := 1.0 - cloneRatio
-	if score < 0 {
+	if cloneRatio >= 1.0 {
 		return 0.0
 	}
 
-	return score
+	if cloneRatio <= 0.0 {
+		return 1.0
+	}
+
+	return 1.0 - cloneRatio
 }
 
 // KeyMetrics returns ordered key metrics for display.
@@ -69,14 +74,12 @@ func (s *ReportSection) KeyMetrics() []analyze.Metric {
 }
 
 // Distribution returns clone type distribution data.
+// Uses the full-population distribution when available, falling back to the capped pairs array.
 func (s *ReportSection) Distribution() []analyze.DistributionItem {
-	pairs := extractClonePairs(s.report)
-	if len(pairs) == 0 {
+	counts, total := s.extractDistribution()
+	if total == 0 {
 		return nil
 	}
-
-	counts := categorizeClonePairs(pairs)
-	total := len(pairs)
 
 	return []analyze.DistributionItem{
 		{Label: distLabelType1, Percent: reportutil.Pct(counts.type1, total), Count: counts.type1},
@@ -85,11 +88,48 @@ func (s *ReportSection) Distribution() []analyze.DistributionItem {
 	}
 }
 
+func (s *ReportSection) extractDistribution() (counts cloneTypeCounts, total int) {
+	if dist, ok := s.report[keyCloneTypeDistribution].(map[string]int); ok {
+		counts = cloneTypeCounts{
+			type1: dist[CloneType1],
+			type2: dist[CloneType2],
+			type3: dist[CloneType3],
+		}
+
+		return counts, counts.type1 + counts.type2 + counts.type3
+	}
+
+	pairs := extractClonePairs(s.report)
+
+	return categorizeClonePairs(pairs), len(pairs)
+}
+
 // cloneTypeCounts holds counts per clone type.
 type cloneTypeCounts struct {
 	type1 int
 	type2 int
 	type3 int
+}
+
+// increment adds one to the counter for the given clone type.
+func (c *cloneTypeCounts) increment(cloneType string) {
+	switch cloneType {
+	case CloneType1:
+		c.type1++
+	case CloneType2:
+		c.type2++
+	case CloneType3:
+		c.type3++
+	}
+}
+
+// cloneTypeDistMap converts counts to a string-keyed map for JSON serialization.
+func cloneTypeDistMap(c cloneTypeCounts) map[string]int {
+	return map[string]int{
+		CloneType1: c.type1,
+		CloneType2: c.type2,
+		CloneType3: c.type3,
+	}
 }
 
 // categorizeClonePairs counts clone pairs by type.

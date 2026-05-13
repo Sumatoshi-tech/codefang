@@ -1,7 +1,5 @@
 package burndown
 
-// FRD: specs/frds/FRD-20260301-burndown-filehistory-store-writer.md.
-
 import (
 	"context"
 	"testing"

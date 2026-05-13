@@ -17,6 +17,7 @@ const msgGoodComplexity = "Good complexity - functions have reasonable complexit
 // Aggregator aggregates results from multiple complexity analyses.
 type Aggregator struct {
 	*common.Aggregator
+	common.PerFileRetainer
 	detailed      *common.DetailedDataCollector
 	maxComplexity int
 }
@@ -52,6 +53,10 @@ func (ca *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
 // Aggregate overrides the base Aggregate method to collect detailed functions
 // and track the true maximum complexity across all files.
 func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
+	for _, report := range results {
+		ca.Retain(report)
+	}
+
 	ca.detailed.CollectFromReports(results)
 	ca.trackMaxComplexity(results)
 	ca.Aggregator.Aggregate(results)

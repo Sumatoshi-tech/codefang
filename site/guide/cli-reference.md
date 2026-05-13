@@ -128,6 +128,103 @@ codefang run -a history/couples --limit 500 .
     The burndown analyzer automatically enables `--first-parent` when selected.
     This is required for correct line-tracking across merge commits.
 
+#### Language Filtering
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--languages` | `[]string` | `[all]` | Restrict analysis to the given Linguist languages; comma-separated. `all` (default) disables the filter. Applies to **both** history and static phases. |
+
+**History phase** — the filter is pushed down into libgit2's `pathspec`
+at the tree-diff stage, so non-matching files are skipped before the
+diff crosses the cgo boundary. On a polyglot repo a narrow filter can
+reduce wall time by 30–40 %. The Go-side language check still runs as
+the authoritative pass for content-disambiguated extensions (`.h`,
+`.pl`, `.m`, `.r`).
+
+**Static phase** — the filter is applied at the directory walker
+(`matchesLanguageGlobs`) before the UAST parser or raw-file analyzers
+see the file. It's path-based only: the parser's own language router
+remains the final authority for how a matched file is parsed (e.g. a
+`.h` under `--languages c++` is still parsed as C). Both phases read
+from the same `langpath.Globs` helper, so the flag value has one
+meaning across `-a 'static/*'`, `-a 'history/*'`, and `-a '*'` runs.
+
+Language names are [Linguist keys](https://github.com/github/linguist/blob/master/lib/linguist/languages.yml)
+and common aliases resolve automatically:
+
+```bash
+# Canonical names (any case, whitespace is trimmed)
+codefang run -a 'history/devs' --languages go,python,typescript .
+
+# Aliases resolve via enry
+codefang run -a 'history/devs' --languages golang,js,ts .
+
+# Unknown language fails fast at configure time instead of silently
+# returning an empty report:
+codefang run -a 'history/devs' --languages notalang .
+# → Error: failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang"
+```
+
+Filename-only languages (e.g. `Dockerfile`, `Makefile`) are also supported:
+
+```bash
+codefang run -a 'history/devs' --languages dockerfile .
+```
+
+See `specs/optimize-lang/PROPOSAL.md` for the architecture and acceptance-gate
+numbers.
+
+#### Vendor & Generated Exclusion
+
+By default, Codefang excludes **vendored dependencies** and **auto-generated
+files** from analysis. This matches the convention of every major
+single-language analyser (`go vet`, `eslint`, `ruff`, `rubocop`, `scalafix`,
+`phpcs`, …) — vendor/generated code is noise for a code-quality report.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--include-vendored` | `bool` | `false` | Re-include vendored dependencies (detected by enry / Linguist) in analysis. Cross-language: covers `vendor/`, `node_modules/`, `third_party/`, `testdata/`, minified bundles, and more. |
+| `--include-generated` | `bool` | `false` | Re-include auto-generated files in analysis. Covers `*.pb.go`, `zz_generated_*.go`, `*_pb2.py`, `*.min.js`, and any file whose first 512 bytes contain a generated-file marker (`DO NOT EDIT`, `Code generated`, etc.). |
+| `--extra-excluded-prefixes` | `[]string` | `[]` | Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. `".venv/,target/,build/"`). |
+
+All three flags apply **identically** to both static and history phases.
+
+```bash
+# default: your own code only
+codefang run -a '*' .
+
+# include vendored deps (node_modules/, vendor/, …)
+codefang run -a '*' --include-vendored .
+
+# restore pre-codefang-2026-04 behaviour (include everything)
+codefang run -a '*' --include-vendored --include-generated .
+
+# skip extras that enry doesn't know about (e.g. Python venv, Rust target/)
+codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
+```
+
+!!! warning "Breaking change in 2026-04"
+
+    Earlier versions of Codefang analysed vendored and generated files by
+    default (they needed the confusingly-named `--skip-blacklist=true` to be
+    excluded). Starting from 2026-04, defaults flip: vendor / generated
+    are **excluded by default**. To restore the old behaviour:
+
+    ```bash
+    codefang run ... --include-vendored --include-generated
+    ```
+
+    The deprecated `--skip-blacklist` and `--blacklisted-prefixes` flags
+    still work with a cobra deprecation warning and will be removed in
+    the next minor release. Map them to:
+
+    - `--skip-blacklist` → no-op (the new default already excludes)
+    - `--blacklisted-prefixes X,Y` → `--extra-excluded-prefixes X,Y`
+
+See `specs/exclude-vendored/PROPOSAL.md` for the full cross-phase design
+and `specs/frds/FRD-20260419-exclude-vendored.md` for implementation
+details.
+
 #### Pipeline Tuning Flags
 
 | Flag | Type | Default | Description |

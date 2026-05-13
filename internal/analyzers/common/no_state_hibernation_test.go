@@ -1,7 +1,5 @@
 package common_test
 
-// FRD: specs/frds/FRD-20260302-no-state-hibernation.md.
-
 import (
 	"testing"
 	"unsafe"

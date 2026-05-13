@@ -73,6 +73,7 @@ type ReportData struct {
 	EmotionsByTick map[int]float32
 	CommentsByTick map[int][]string
 	CommitsByTick  map[int][]gitlib.Hash
+	TickBounds     map[int]analyze.TickBounds
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
@@ -92,6 +93,10 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 		)
 	}
 
+	if v, ok := report["tick_bounds"].(map[int]analyze.TickBounds); ok {
+		data.TickBounds = v
+	}
+
 	if data.EmotionsByTick == nil {
 		data.EmotionsByTick = make(map[int]float32)
 	}
@@ -107,11 +112,13 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 
 // TimeSeriesData contains sentiment data for a time period.
 type TimeSeriesData struct {
-	Tick           int     `json:"tick"           yaml:"tick"`
-	Sentiment      float32 `json:"sentiment"      yaml:"sentiment"`
-	CommentCount   int     `json:"comment_count"  yaml:"comment_count"`
-	CommitCount    int     `json:"commit_count"   yaml:"commit_count"`
-	Classification string  `json:"classification" yaml:"classification"`
+	Tick           int     `json:"tick"                 yaml:"tick"`
+	StartTime      string  `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime        string  `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	Sentiment      float32 `json:"sentiment"            yaml:"sentiment"`
+	CommentCount   int     `json:"comment_count"        yaml:"comment_count"`
+	CommitCount    int     `json:"commit_count"         yaml:"commit_count"`
+	Classification string  `json:"classification"       yaml:"classification"`
 }
 
 // TrendData contains trend information.
@@ -260,13 +267,20 @@ func computeTimeSeriesWithOpts(input *ReportData, opts MetricOptions) []TimeSeri
 
 		classification := classifySentimentWithOpts(sentiment, opts)
 
-		result = append(result, TimeSeriesData{
+		entry := TimeSeriesData{
 			Tick:           tick,
 			Sentiment:      sentiment,
 			CommentCount:   commentCount,
 			CommitCount:    commitCount,
 			Classification: classification,
-		})
+		}
+
+		if bounds, ok := input.TickBounds[tick]; ok {
+			entry.StartTime = bounds.FormatStartTime()
+			entry.EndTime = bounds.FormatEndTime()
+		}
+
+		result = append(result, entry)
 	}
 
 	return result

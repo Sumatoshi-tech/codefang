@@ -6,6 +6,7 @@ package quality
 import (
 	"context"
 	"maps"
+	"time"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
@@ -75,6 +76,8 @@ type TickData struct {
 // tickAccumulator holds per-commit quality during aggregation.
 type tickAccumulator struct {
 	commitQuality map[string]*TickQuality
+	startTime     time.Time
+	endTime       time.Time
 }
 
 // qualityAvgTCSize is the estimated bytes of TC payload per commit (quality metrics).
@@ -298,8 +301,20 @@ func extractTC(tc analyze.TC, byTick map[int]*tickAccumulator) error {
 	if !ok {
 		acc = &tickAccumulator{
 			commitQuality: make(map[string]*TickQuality),
+			startTime:     tc.Timestamp,
+			endTime:       tc.Timestamp,
 		}
 		byTick[tc.Tick] = acc
+	}
+
+	if !tc.Timestamp.IsZero() {
+		if tc.Timestamp.Before(acc.startTime) || acc.startTime.IsZero() {
+			acc.startTime = tc.Timestamp
+		}
+
+		if tc.Timestamp.After(acc.endTime) {
+			acc.endTime = tc.Timestamp
+		}
 	}
 
 	acc.commitQuality[tc.CommitHash.String()] = tq
@@ -361,7 +376,9 @@ func buildTick(tick int, state *tickAccumulator) (analyze.TICK, error) {
 	}
 
 	return analyze.TICK{
-		Tick: tick,
+		Tick:      tick,
+		StartTime: state.startTime,
+		EndTime:   state.endTime,
 		Data: &TickData{
 			CommitQuality: state.commitQuality,
 		},
@@ -386,6 +403,7 @@ func ticksToReport(_ context.Context, ticks []analyze.TICK, commitsByTick map[in
 	return analyze.Report{
 		"commit_quality":  commitQuality,
 		"commits_by_tick": ct,
+		"tick_bounds":     analyze.BuildTickBounds(ticks),
 	}
 }
 

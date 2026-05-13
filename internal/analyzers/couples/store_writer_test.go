@@ -1,7 +1,5 @@
 package couples
 
-// FRD: specs/frds/FRD-20260228-couples-store-writer.md.
-
 import (
 	"context"
 	"sort"

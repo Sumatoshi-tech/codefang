@@ -15,6 +15,7 @@ const (
 // Aggregator aggregates Halstead analysis results.
 type Aggregator struct {
 	*common.Aggregator
+	common.PerFileRetainer
 	detailed *common.DetailedDataCollector
 }
 
@@ -48,6 +49,10 @@ func (ha *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
 
 // Aggregate overrides the base Aggregate method to collect detailed functions.
 func (ha *Aggregator) Aggregate(results map[string]analyze.Report) {
+	for _, report := range results {
+		ha.Retain(report)
+	}
+
 	ha.detailed.CollectFromReports(results)
 	ha.Aggregator.Aggregate(results)
 }

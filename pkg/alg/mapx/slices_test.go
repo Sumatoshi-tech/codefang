@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// FRD: specs/frds/FRD-20260303-sort-and-limit.md.
-
 func TestSortAndLimit(t *testing.T) {
 	t.Parallel()
 
@@ -66,8 +64,6 @@ func TestSortAndLimit(t *testing.T) {
 		assert.Equal(t, []int{3, 2, 1}, got)
 	})
 }
-
-// FRD: specs/frds/FRD-20260303-build-lookup-set.md.
 
 func TestBuildLookupSet(t *testing.T) {
 	t.Parallel()

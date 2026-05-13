@@ -1,7 +1,5 @@
 package interval
 
-// FRD: specs/frds/FRD-20260302-generic-interval-tree.md.
-
 import (
 	"testing"
 

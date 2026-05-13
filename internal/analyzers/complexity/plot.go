@@ -3,6 +3,7 @@ package complexity
 import (
 	"errors"
 	"io"
+	"path/filepath"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -157,11 +158,7 @@ func extractComplexityData(functions []map[string]any) (labels []string, cycloma
 	colors = make([]string, len(functions))
 
 	for i, fn := range functions {
-		if name, ok := fn["name"].(string); ok {
-			labels[i] = name
-		} else {
-			labels[i] = unknownName
-		}
+		labels[i] = formatPlotLabel(fn)
 
 		cyclomatic[i] = getCyclomaticValue(fn)
 		cognitive[i] = getCognitiveValue(fn)
@@ -169,6 +166,22 @@ func extractComplexityData(functions []map[string]any) (labels []string, cycloma
 	}
 
 	return labels, cyclomatic, cognitive, colors
+}
+
+// formatPlotLabel builds a chart label from function name and source file.
+// Shows "filename:func" when source_file is available, otherwise just the name.
+func formatPlotLabel(fn map[string]any) string {
+	name := reportutil.MapString(fn, "name")
+	if name == "" {
+		name = unknownName
+	}
+
+	sf := reportutil.MapString(fn, analyze.SourceFileKey)
+	if sf == "" {
+		return name
+	}
+
+	return filepath.Base(sf) + ":" + name
 }
 
 func getComplexityColor(complexity int) string {
@@ -277,16 +290,12 @@ func createComplexityScatterChart(functions []map[string]any, co *plotpage.Chart
 		cyclomatic := getCyclomaticValue(fn)
 		cognitive := getCognitiveValue(fn)
 		nesting := getNestingValue(fn)
-		name := unknownName
-
-		if n, ok := fn["name"].(string); ok {
-			name = n
-		}
+		label := formatPlotLabel(fn)
 
 		symbolSize := scatterSymbolSize + nesting*nestingMultiplier
 
 		scatterData[i] = opts.ScatterData{
-			Value:      []any{cyclomatic, cognitive, name},
+			Value:      []any{cyclomatic, cognitive, label},
 			SymbolSize: symbolSize,
 		}
 	}

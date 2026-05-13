@@ -182,8 +182,10 @@ func computeTickStats(tq *TickQuality) TickStats {
 
 // TimeSeriesEntry holds per-tick quality data for the time series output.
 type TimeSeriesEntry struct {
-	Tick  int       `json:"tick"  yaml:"tick"`
-	Stats TickStats `json:"stats" yaml:"stats"`
+	Tick      int       `json:"tick"                 yaml:"tick"`
+	StartTime string    `json:"start_time,omitempty" yaml:"start_time,omitempty"`
+	EndTime   string    `json:"end_time,omitempty"   yaml:"end_time,omitempty"`
+	Stats     TickStats `json:"stats"                yaml:"stats"`
 }
 
 // AggregateData contains overall summary statistics.
@@ -205,6 +207,7 @@ type AggregateData struct {
 // ReportData is the parsed input data for quality metrics computation.
 type ReportData struct {
 	TickQuality map[int]*TickQuality
+	TickBounds  map[int]analyze.TickBounds
 }
 
 // ParseReportData extracts ReportData from an analyzer report.
@@ -221,6 +224,10 @@ func ParseReportData(report analyze.Report) (*ReportData, error) {
 
 	if data.TickQuality == nil {
 		data.TickQuality = make(map[int]*TickQuality)
+	}
+
+	if v, ok := report["tick_bounds"].(map[int]analyze.TickBounds); ok {
+		data.TickBounds = v
 	}
 
 	return data, nil
@@ -260,7 +267,15 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 
 	for i, tick := range ticks {
 		ts := computeTickStats(input.TickQuality[tick])
-		timeSeries[i] = TimeSeriesEntry{Tick: tick, Stats: ts}
+
+		entry := TimeSeriesEntry{Tick: tick, Stats: ts}
+
+		if bounds, hasBounds := input.TickBounds[tick]; hasBounds {
+			entry.StartTime = bounds.FormatStartTime()
+			entry.EndTime = bounds.FormatEndTime()
+		}
+
+		timeSeries[i] = entry
 
 		complexityMedians[i] = ts.ComplexityMedian
 		complexityP95s[i] = ts.ComplexityP95
@@ -288,25 +303,31 @@ func ComputeAllMetrics(report analyze.Report) (*ComputedMetrics, error) {
 		globalMinCohesion = 0
 	}
 
-	complexityMedianMean := stats.Mean(complexityMedians)
-	complexityP95Mean := stats.Mean(complexityP95s)
-	halsteadMedianMean := stats.Mean(halsteadMedians)
-	commentMeanMean := stats.Mean(commentMeans)
-	cohesionMeanMean := stats.Mean(cohesionMeans)
-
 	return &ComputedMetrics{
 		TimeSeries: timeSeries,
-		Aggregate: AggregateData{
-			TotalTicks:            len(ticks),
-			TotalFilesAnalyzed:    totalFiles,
-			ComplexityMedianMean:  complexityMedianMean,
-			ComplexityP95Mean:     complexityP95Mean,
-			HalsteadVolMedianMean: halsteadMedianMean,
-			TotalDeliveredBugs:    totalBugs,
-			CommentScoreMeanMean:  commentMeanMean,
-			MinCommentScore:       globalMinComment,
-			CohesionMeanMean:      cohesionMeanMean,
-			MinCohesion:           globalMinCohesion,
-		},
+		Aggregate: computeAggregate(
+			len(ticks), totalFiles, totalBugs,
+			globalMinComment, globalMinCohesion,
+			complexityMedians, complexityP95s, halsteadMedians, commentMeans, cohesionMeans,
+		),
 	}, nil
+}
+
+func computeAggregate(
+	totalTicks, totalFiles int,
+	totalBugs, minComment, minCohesion float64,
+	complexityMedians, complexityP95s, halsteadMedians, commentMeans, cohesionMeans []float64,
+) AggregateData {
+	return AggregateData{
+		TotalTicks:            totalTicks,
+		TotalFilesAnalyzed:    totalFiles,
+		ComplexityMedianMean:  stats.Mean(complexityMedians),
+		ComplexityP95Mean:     stats.Mean(complexityP95s),
+		HalsteadVolMedianMean: stats.Mean(halsteadMedians),
+		TotalDeliveredBugs:    totalBugs,
+		CommentScoreMeanMean:  stats.Mean(commentMeans),
+		MinCommentScore:       minComment,
+		CohesionMeanMean:      stats.Mean(cohesionMeans),
+		MinCohesion:           minCohesion,
+	}
 }

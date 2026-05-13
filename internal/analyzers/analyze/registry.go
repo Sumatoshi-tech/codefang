@@ -44,11 +44,17 @@ var ErrInvalidAnalyzerMode = errors.New("invalid analyzer mode")
 var ErrInvalidAnalyzerGlob = errors.New("invalid analyzer glob")
 
 // NewRegistry creates a registry from analyzer descriptors.
-func NewRegistry(static []StaticAnalyzer, history []HistoryAnalyzer) (*Registry, error) {
-	ordered := make([]Descriptor, 0, len(static)+len(history))
-	index := make(map[string]Descriptor, len(static)+len(history))
+func NewRegistry(static []StaticAnalyzer, raw []RawFileAnalyzer, history []HistoryAnalyzer) (*Registry, error) {
+	totalCap := len(static) + len(raw) + len(history)
+	ordered := make([]Descriptor, 0, totalCap)
+	index := make(map[string]Descriptor, totalCap)
 
 	err := appendDescriptors(ModeStatic, static, index, &ordered)
+	if err != nil {
+		return nil, err
+	}
+
+	err = appendDescriptors(ModeStatic, raw, index, &ordered)
 	if err != nil {
 		return nil, err
 	}

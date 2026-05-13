@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/identity"
 	"github.com/Sumatoshi-tech/codefang/pkg/alg/hll"
 	"github.com/Sumatoshi-tech/codefang/pkg/metrics"
 )
@@ -74,10 +75,12 @@ type FileCouplingData struct {
 
 // DeveloperCouplingData contains coupling data for a developer pair.
 type DeveloperCouplingData struct {
-	Developer1  string  `json:"developer1"          yaml:"developer1"`
-	Developer2  string  `json:"developer2"          yaml:"developer2"`
-	SharedFiles int64   `json:"shared_file_changes" yaml:"shared_file_changes"`
-	Strength    float64 `json:"coupling_strength"   yaml:"coupling_strength"`
+	Developer1      string  `json:"developer1"                 yaml:"developer1"`
+	Developer1Email string  `json:"developer1_email,omitempty" yaml:"developer1_email,omitempty"`
+	Developer2      string  `json:"developer2"                 yaml:"developer2"`
+	Developer2Email string  `json:"developer2_email,omitempty" yaml:"developer2_email,omitempty"`
+	SharedFiles     int64   `json:"shared_file_changes"        yaml:"shared_file_changes"`
+	Strength        float64 `json:"coupling_strength"          yaml:"coupling_strength"`
 }
 
 // FileOwnershipData contains ownership information for a file.
@@ -207,7 +210,7 @@ func (m *DeveloperCouplingMetric) Compute(input *ReportData) []DeveloperCoupling
 }
 
 func computeDevCouplings(devIdx int, row map[int]int64, matrix []map[int]int64, names []string) []DeveloperCouplingData {
-	dev1 := getDevName(devIdx, names)
+	dev1Name, dev1Email := getDevNameAndEmail(devIdx, names)
 
 	var result []DeveloperCouplingData
 
@@ -221,16 +224,21 @@ func computeDevCouplings(devIdx int, row map[int]int64, matrix []map[int]int64, 
 			selfDev2 = matrix[j][j]
 		}
 
-		coupling := buildCouplingData(dev1, j, sharedChanges, row[devIdx], selfDev2, names)
+		dev2Name, dev2Email := getDevNameAndEmail(j, names)
+		coupling := buildCouplingData(
+			dev1Name, dev1Email, dev2Name, dev2Email,
+			sharedChanges, row[devIdx], selfDev2,
+		)
 		result = append(result, coupling)
 	}
 
 	return result
 }
 
-func buildCouplingData(dev1 string, dev2Idx int, sharedChanges, selfDev1, selfDev2 int64, names []string) DeveloperCouplingData {
-	dev2 := getDevName(dev2Idx, names)
-
+func buildCouplingData(
+	dev1Name, dev1Email, dev2Name, dev2Email string,
+	sharedChanges, selfDev1, selfDev2 int64,
+) DeveloperCouplingData {
 	// Coupling strength using code-maat formula:
 	// degree = shared_changes / average(self_dev1, self_dev2), capped at 1.0.
 	avgRevs := float64(selfDev1+selfDev2) / pairCount
@@ -241,19 +249,21 @@ func buildCouplingData(dev1 string, dev2Idx int, sharedChanges, selfDev1, selfDe
 	}
 
 	return DeveloperCouplingData{
-		Developer1:  dev1,
-		Developer2:  dev2,
-		SharedFiles: sharedChanges,
-		Strength:    strength,
+		Developer1:      dev1Name,
+		Developer1Email: dev1Email,
+		Developer2:      dev2Name,
+		Developer2Email: dev2Email,
+		SharedFiles:     sharedChanges,
+		Strength:        strength,
 	}
 }
 
-func getDevName(idx int, names []string) string {
+func getDevNameAndEmail(idx int, names []string) (name, email string) {
 	if idx < len(names) {
-		return names[idx]
+		return identity.SplitIdentity(names[idx])
 	}
 
-	return ""
+	return "", ""
 }
 
 // FileOwnershipMetric computes file ownership information.

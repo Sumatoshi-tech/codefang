@@ -1,6 +1,7 @@
 package observability_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +18,7 @@ func TestPrometheusHandler_ServesMetrics(t *testing.T) {
 	handler, err := observability.PrometheusHandler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -33,7 +34,7 @@ func TestPrometheusHandler_ContainsTargetInfo(t *testing.T) {
 	handler, err := observability.PrometheusHandler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)

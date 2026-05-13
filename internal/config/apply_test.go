@@ -1,4 +1,3 @@
-// FRD: specs/frds/FRD-20260302-config-loader-facts.md.
 package config_test
 
 import (

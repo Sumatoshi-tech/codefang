@@ -1,7 +1,5 @@
 package meminfo
 
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
-
 import (
 	"runtime"
 	"testing"

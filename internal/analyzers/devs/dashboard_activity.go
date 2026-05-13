@@ -69,7 +69,7 @@ func buildTopDevSeries(data *DashboardData, topDevs []int, nameByID map[int]stri
 	for _, devID := range topDevs {
 		seriesData := make([]plotpage.SeriesData, len(data.Metrics.Activity))
 		for i, ad := range data.Metrics.Activity {
-			seriesData[i] = ad.ByDeveloper[devID]
+			seriesData[i] = commitsForDev(ad.ByDeveloper, devID)
 		}
 
 		series = append(series, plotpage.LineSeries{
@@ -89,9 +89,9 @@ func buildOthersSeries(data *DashboardData, topDevs []int) plotpage.LineSeries {
 	for i, ad := range data.Metrics.Activity {
 		total := 0
 
-		for devID, commits := range ad.ByDeveloper {
-			if !slices.Contains(topDevs, devID) {
-				total += commits
+		for _, dc := range ad.ByDeveloper {
+			if !slices.Contains(topDevs, dc.DevID) {
+				total += dc.Commits
 			}
 		}
 
@@ -118,4 +118,15 @@ func getTopDevIDs(developers []DeveloperData, limit int) []int {
 	}
 
 	return ids
+}
+
+// commitsForDev finds the commit count for a specific developer ID in the activity array.
+func commitsForDev(entries []DeveloperCommits, devID int) int {
+	for _, dc := range entries {
+		if dc.DevID == devID {
+			return dc.Commits
+		}
+	}
+
+	return 0
 }

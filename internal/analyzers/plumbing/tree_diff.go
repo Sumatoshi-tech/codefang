@@ -13,6 +13,8 @@ import (
 	"github.com/src-d/enry/v2"
 
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/langpath"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/plumbing/pathpolicy"
 	"github.com/Sumatoshi-tech/codefang/pkg/gitlib"
 	"github.com/Sumatoshi-tech/codefang/pkg/pathfilter"
 	"github.com/Sumatoshi-tech/codefang/pkg/pipeline"
@@ -28,6 +30,16 @@ type TreeDiffAnalyzer struct {
 	pathFilter     *pathfilter.Filter
 	Changes        gitlib.Changes
 	previousCommit gitlib.Hash
+	// Pathspec holds pre-computed libgit2 pathspec globs derived from the
+	// configured --languages set via langpath.Globs. Empty when no language
+	// restriction applies.
+	Pathspec []string
+
+	// PathPolicy carries vendor / generated / extra-prefix exclusion
+	// rules shared with the static phase. The zero value excludes
+	// enry.IsVendor and pathfilter-detected generated files by
+	// default.
+	PathPolicy pathpolicy.Options
 }
 
 const (
@@ -39,7 +51,10 @@ const (
 	ConfigTreeDiffLanguages = "TreeDiff.LanguagesDetection"
 	// ConfigTreeDiffFilterRegexp is the configuration key for the file path filter regular expression.
 	ConfigTreeDiffFilterRegexp = "TreeDiff.FilteredRegexes"
-	allLanguages               = "all"
+	// ConfigTreeDiffPathPolicy is the fact key for the cross-phase vendor /
+	// generated / extra-prefix exclusion policy populated by the CLI.
+	ConfigTreeDiffPathPolicy = "TreeDiff.PathPolicy"
+	allLanguages             = "all"
 )
 
 // ErrInvalidSkipFiles indicates a type assertion failure for SkipFiles configuration.
@@ -111,6 +126,50 @@ func (t *TreeDiffAnalyzer) ListConfigurationOptions() []pipeline.ConfigurationOp
 	}
 }
 
+// applyLanguageConfig normalises the user-supplied language tokens into
+// the canonical Languages set and, when the set restricts by language,
+// pre-computes the libgit2 pathspec globs via langpath.Globs.
+//
+// Aliases (e.g. "golang" → "Go", "js" → "JavaScript") are resolved via
+// enry so that the Go-side filter keys match the canonical lowercase
+// name returned by enry.GetLanguage for detected files.
+func (t *TreeDiffAnalyzer) applyLanguageConfig(val []string) error {
+	t.Languages = map[string]bool{}
+
+	for _, lang := range val {
+		token := strings.TrimSpace(lang)
+		if strings.EqualFold(token, allLanguages) {
+			t.Languages[allLanguages] = true
+
+			continue
+		}
+
+		canonical, ok := enry.GetLanguageByAlias(token)
+		if !ok {
+			// langpath.Globs below will reject the same token with a
+			// richer error; fall through so the caller sees that error.
+			t.Languages[strings.ToLower(token)] = true
+
+			continue
+		}
+
+		t.Languages[strings.ToLower(canonical)] = true
+	}
+
+	globs, wantsAll, err := langpath.Globs(val)
+	if err != nil {
+		return fmt.Errorf("tree-diff pathspec: %w", err)
+	}
+
+	if wantsAll {
+		t.Pathspec = nil
+	} else {
+		t.Pathspec = globs
+	}
+
+	return nil
+}
+
 // Configure sets up the analyzer with the provided facts.
 func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 	if val, exists := facts[ConfigTreeDiffEnableBlacklist].(bool); exists && val {
@@ -123,10 +182,14 @@ func (t *TreeDiffAnalyzer) Configure(facts map[string]any) error {
 		t.pathFilter = pathfilter.New()
 	}
 
+	if val, exists := facts[ConfigTreeDiffPathPolicy].(pathpolicy.Options); exists {
+		t.PathPolicy = val
+	}
+
 	if val, exists := facts[ConfigTreeDiffLanguages].([]string); exists {
-		t.Languages = map[string]bool{}
-		for _, lang := range val {
-			t.Languages[strings.ToLower(strings.TrimSpace(lang))] = true
+		err := t.applyLanguageConfig(val)
+		if err != nil {
+			return err
 		}
 	} else if t.Languages == nil {
 		t.Languages = map[string]bool{}
@@ -236,6 +299,11 @@ func (t *TreeDiffAnalyzer) filterChanges(ctx context.Context, changes gitlib.Cha
 
 func (t *TreeDiffAnalyzer) shouldIncludeChange(ctx context.Context, change *gitlib.Change) bool {
 	name, hash := changeNameHash(change)
+
+	// Shared vendor / generated / extra-prefix exclusion policy.
+	if pathpolicy.Exclude(name, nil, t.PathPolicy) {
+		return false
+	}
 
 	// Check blacklist: user-specified prefixes + vendor/generated detection.
 	if len(t.SkipFiles) > 0 && t.isBlacklisted(name) {

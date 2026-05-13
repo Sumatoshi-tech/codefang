@@ -1,7 +1,5 @@
 package safeconv
 
-// FRD: specs/frds/FRD-20260302-safeconv-expansion.md.
-
 import (
 	"math"
 	"testing"

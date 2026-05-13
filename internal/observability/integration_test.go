@@ -132,7 +132,7 @@ func TestEndToEnd_MiddlewareProducesSpans(t *testing.T) {
 
 	mw := observability.HTTPMiddleware(tracer, discardLogger, inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/analyze", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	mw.ServeHTTP(rec, req)

@@ -168,7 +168,6 @@ func (c *Analyzer) calculateMetrics(functions []Function) map[string]float64 {
 }
 
 // buildResult constructs the final analysis result.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildResult(functions []Function, metrics map[string]float64) analyze.Report {
 	reportItems := c.buildDetailedFunctionsTable(functions)
 	message := c.getCohesionMessage(metrics["cohesion_score"])
@@ -188,7 +187,6 @@ func (c *Analyzer) buildResult(functions []Function, metrics map[string]float64)
 }
 
 // FunctionReportItem is a typed representation of a per-function cohesion report item.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 type FunctionReportItem struct {
 	Name               string
 	CohesionAssessment string
@@ -200,7 +198,6 @@ type FunctionReportItem struct {
 }
 
 // buildDetailedFunctionsTable creates the detailed functions table as typed structs.
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 func (c *Analyzer) buildDetailedFunctionsTable(functions []Function) []FunctionReportItem {
 	items := make([]FunctionReportItem, 0, len(functions))
 

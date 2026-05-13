@@ -1,4 +1,3 @@
-// FRD: specs/frds/FRD-20260302-identity-mixin.md.
 package common_test
 
 import (

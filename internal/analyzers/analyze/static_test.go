@@ -3,6 +3,7 @@ package analyze_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/analyze"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/cohesion"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/comments"
+	"github.com/Sumatoshi-tech/codefang/internal/analyzers/common/renderer"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/complexity"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/halstead"
 	"github.com/Sumatoshi-tech/codefang/internal/analyzers/imports"
@@ -134,7 +136,7 @@ func TestStaticService_AnalyzeFolder_SkipsPermissionDeniedDirectory(t *testing.T
 		require.NoError(t, os.Chmod(blockedDir, 0o750))
 	}()
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	results, err := svc.AnalyzeFolder(context.Background(), tmpDir, []string{"complexity"})
 	require.NoError(t, err)
 	require.Contains(t, results, "complexity")
@@ -186,14 +188,14 @@ func TestStampSourceFile(t *testing.T) {
 		},
 	}
 
-	analyze.StampSourceFile(reports, "/repo/pkg/auth/handler.go")
+	analyze.StampSourceFile(reports, "/repo/pkg/auth/handler.go", "/repo")
 
 	functions, ok := reports["cohesion"]["functions"].([]map[string]any)
 	require.True(t, ok)
 	require.Len(t, functions, 2)
 
 	for _, fn := range functions {
-		require.Equal(t, "/repo/pkg/auth/handler.go", fn["_source_file"])
+		require.Equal(t, "pkg/auth/handler.go", fn["_source_file"])
 	}
 }
 
@@ -203,7 +205,7 @@ func TestStampSourceFile_EmptyReport(t *testing.T) {
 	reports := map[string]analyze.Report{}
 
 	require.NotPanics(t, func() {
-		analyze.StampSourceFile(reports, "/some/path.go")
+		analyze.StampSourceFile(reports, "/some/path.go", "")
 	})
 }
 
@@ -219,11 +221,9 @@ func TestStampSourceFile_NoCollections(t *testing.T) {
 	}
 
 	require.NotPanics(t, func() {
-		analyze.StampSourceFile(reports, "/some/path.go")
+		analyze.StampSourceFile(reports, "/some/path.go", "")
 	})
 }
-
-// FRD: specs/frds/FRD-20260311-typed-report-items.md.
 
 func TestStampSourceFile_TypedCollection(t *testing.T) {
 	t.Parallel()
@@ -268,25 +268,23 @@ func TestStampSourceFile_TypedCollection(t *testing.T) {
 		},
 	}
 
-	analyze.StampSourceFile(reports, "/repo/pkg/foo.go")
+	analyze.StampSourceFile(reports, "/repo/pkg/foo.go", "/repo")
 
 	stamped, ok := reports["complexity"]["functions"].(analyze.TypedCollection)
 	require.True(t, ok)
-	assert.Equal(t, "/repo/pkg/foo.go", stamped.SourceFile)
+	assert.Equal(t, "pkg/foo.go", stamped.SourceFile)
 
 	// Verify converter produces maps with _source_file.
 	maps := stamped.ToMaps(stamped.Items, stamped.SourceFile)
 	require.Len(t, maps, 2)
-	assert.Equal(t, "/repo/pkg/foo.go", maps[0]["_source_file"])
-	assert.Equal(t, "/repo/pkg/foo.go", maps[1]["_source_file"])
+	assert.Equal(t, "pkg/foo.go", maps[0]["_source_file"])
+	assert.Equal(t, "pkg/foo.go", maps[1]["_source_file"])
 }
-
-// FRD: specs/frds/FRD-20260311-cap-static-workers.md.
 
 func TestStaticService_ResolveMaxWorkers_DefaultCapsAtEight(t *testing.T) {
 	t.Parallel()
 
-	svc := analyze.NewStaticService(nil)
+	svc := analyze.NewStaticService(nil, nil)
 	got := svc.ResolveMaxWorkers()
 
 	want := min(runtime.NumCPU(), analyze.DefaultStaticMaxWorkers)
@@ -308,7 +306,7 @@ func TestStaticService_AnalyzeFolder_RespectsMaxWorkers(t *testing.T) {
 		[]byte("package a\nfunc B() {}\n"), 0o600,
 	))
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = 1
 
 	results, err := svc.AnalyzeFolder(context.Background(), tmpDir, []string{"complexity"})
@@ -321,18 +319,16 @@ func TestStaticService_ResolveMaxWorkers_ExplicitOverride(t *testing.T) {
 
 	const explicitWorkers = 16
 
-	svc := analyze.NewStaticService(nil)
+	svc := analyze.NewStaticService(nil, nil)
 	svc.MaxWorkers = explicitWorkers
 
 	require.Equal(t, explicitWorkers, svc.ResolveMaxWorkers())
 }
 
-// FRD: specs/frds/FRD-20260311-static-malloc-trim.md.
-
 func TestStaticService_ResolveMallocTrimInterval_Default(t *testing.T) {
 	t.Parallel()
 
-	svc := analyze.NewStaticService(nil)
+	svc := analyze.NewStaticService(nil, nil)
 
 	require.Equal(t, analyze.DefaultMallocTrimInterval, svc.ResolveMallocTrimInterval())
 }
@@ -342,7 +338,7 @@ func TestStaticService_ResolveMallocTrimInterval_ExplicitOverride(t *testing.T) 
 
 	const customInterval = 100
 
-	svc := analyze.NewStaticService(nil)
+	svc := analyze.NewStaticService(nil, nil)
 	svc.MallocTrimInterval = customInterval
 
 	require.Equal(t, customInterval, svc.ResolveMallocTrimInterval())
@@ -351,7 +347,7 @@ func TestStaticService_ResolveMallocTrimInterval_ExplicitOverride(t *testing.T) 
 func TestStaticService_ResolveMallocTrimInterval_Disabled(t *testing.T) {
 	t.Parallel()
 
-	svc := analyze.NewStaticService(nil)
+	svc := analyze.NewStaticService(nil, nil)
 	svc.MallocTrimInterval = -1
 
 	require.Equal(t, -1, svc.ResolveMallocTrimInterval())
@@ -374,7 +370,7 @@ func TestStaticService_AnalyzeFolder_CallsMallocTrim(t *testing.T) {
 
 	var trimCalls atomic.Int64
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = 1
 	svc.MallocTrimInterval = trimInterval
 	svc.NativeMemoryReleaseFn = func() { trimCalls.Add(1) }
@@ -400,7 +396,7 @@ func TestStaticService_AnalyzeFolder_NoTrimWhenDisabled(t *testing.T) {
 
 	var trimCalls atomic.Int64
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = 1
 	svc.MallocTrimInterval = -1
 	svc.NativeMemoryReleaseFn = func() { trimCalls.Add(1) }
@@ -410,8 +406,6 @@ func TestStaticService_AnalyzeFolder_NoTrimWhenDisabled(t *testing.T) {
 
 	require.Zero(t, trimCalls.Load())
 }
-
-// FRD: specs/frds/FRD-20260311-summary-only-aggregation.md.
 
 func TestResolveAggregationMode_TextIsSummaryOnly(t *testing.T) {
 	t.Parallel()
@@ -451,7 +445,7 @@ func TestStaticService_SummaryOnly_MetricsPresent(t *testing.T) {
 		[]byte("package main\nfunc A() { x := 1; _ = x }\nfunc B() { y := 2; _ = y }\n"), 0o600,
 	))
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = 1
 	svc.MallocTrimInterval = -1
 	svc.AggregationMode = analyze.AggregationModeSummaryOnly
@@ -467,8 +461,6 @@ func TestStaticService_SummaryOnly_MetricsPresent(t *testing.T) {
 	require.Contains(t, report, "total_complexity")
 }
 
-// FRD: specs/frds/FRD-20260312-static-budget-tuning.md.
-
 func TestStaticService_SpillThreshold_AppliedToAggregators(t *testing.T) {
 	t.Parallel()
 
@@ -481,7 +473,7 @@ func TestStaticService_SpillThreshold_AppliedToAggregators(t *testing.T) {
 
 	const customThreshold = 5000
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.MaxWorkers = 1
 	svc.MallocTrimInterval = -1
 	svc.SpillThreshold = customThreshold
@@ -497,8 +489,6 @@ func TestStaticService_SpillThreshold_AppliedToAggregators(t *testing.T) {
 	assert.Equal(t, customThreshold, svc.SpillThreshold)
 }
 
-// FRD: specs/frds/FRD-20260312-static-rss-logging.md.
-
 func TestStaticService_ProgressFunc_CalledDuringAnalysis(t *testing.T) {
 	t.Parallel()
 
@@ -510,7 +500,7 @@ func TestStaticService_ProgressFunc_CalledDuringAnalysis(t *testing.T) {
 		writeTestGoFile(t, dir, fmt.Sprintf("file%d.go", i))
 	}
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {}
 	svc.ProgressInterval = 2
 
@@ -538,7 +528,7 @@ func TestStaticService_ProgressFunc_Nil_NoError(t *testing.T) {
 	dir := t.TempDir()
 	writeTestGoFile(t, dir, "file.go")
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {}
 
 	// ProgressFunc is nil — should not panic.
@@ -546,8 +536,6 @@ func TestStaticService_ProgressFunc_Nil_NoError(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 }
-
-// FRD: specs/frds/FRD-20260312-static-plot-multipage.md.
 
 func TestStaticService_FormatPlotPages_ProducesHTML(t *testing.T) {
 	t.Parallel()
@@ -559,7 +547,7 @@ func TestStaticService_FormatPlotPages_ProducesHTML(t *testing.T) {
 	dir := t.TempDir()
 	writeTestGoFile(t, dir, "main.go")
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {}
 	svc.AggregationMode = analyze.AggregationModeFull
 
@@ -591,7 +579,7 @@ func TestStaticService_FormatPlotPages_SkipsUnregisteredAnalyzers(t *testing.T) 
 	dir := t.TempDir()
 	writeTestGoFile(t, dir, "main.go")
 
-	svc := analyze.NewStaticService(testStaticAnalyzers())
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
 	svc.NativeMemoryReleaseFn = func() {}
 
 	results := map[string]analyze.Report{
@@ -626,4 +614,102 @@ func writeTestGoFile(t *testing.T, dir, name string) {
 	content := []byte("package main\n\nfunc F() { x := 1; _ = x }\n")
 
 	require.NoError(t, os.WriteFile(path, content, 0o600))
+}
+
+func TestStaticService_PerFile_FieldExists(t *testing.T) {
+	t.Parallel()
+
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
+	svc.PerFile = true
+
+	assert.True(t, svc.PerFile)
+}
+
+func TestStaticService_PerFile_AnalyzeFolderRetainsPerFileResults(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+	writeTestGoFile(t, dir, "b.go")
+	writeTestGoFile(t, dir, "c.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
+	svc.NativeMemoryReleaseFn = func() {}
+	svc.PerFile = true
+
+	results, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	_ = results
+
+	perFile := svc.PerFileResults()
+	require.NotNil(t, perFile, "per-file results must be present when PerFile=true")
+
+	// Each analyzer should have 3 per-file entries.
+	for analyzerName, fileResults := range perFile {
+		assert.Len(t, fileResults, 3,
+			"analyzer %s must have 3 per-file entries", analyzerName)
+	}
+}
+
+func TestStaticService_PerFile_FormatJSONIncludesFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+	writeTestGoFile(t, dir, "b.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
+	svc.NativeMemoryReleaseFn = func() {}
+	svc.Renderer = &renderer.DefaultStaticRenderer{}
+	svc.PerFile = true
+
+	results, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	require.NoError(t, svc.FormatJSON(results, &buf))
+
+	jsonStr := buf.String()
+	assert.Contains(t, jsonStr, `"files"`, "JSON must include files array")
+	assert.Contains(t, jsonStr, `"file_path"`, "files entries must have file_path")
+}
+
+func TestStaticService_PerFile_DisabledReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestGoFile(t, dir, "a.go")
+
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
+	svc.NativeMemoryReleaseFn = func() {}
+	// PerFile is false (default).
+
+	_, err := svc.AnalyzeFolder(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	assert.Nil(t, svc.PerFileResults(), "per-file results must be nil when PerFile is false")
+}
+
+func TestStaticService_FormatPlotPages_EmitsReportJSON(t *testing.T) {
+	t.Parallel()
+
+	svc := analyze.NewStaticService(testStaticAnalyzers(), nil)
+	svc.NativeMemoryReleaseFn = func() {}
+
+	results := map[string]analyze.Report{
+		"complexity": {"total_functions": 1},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), "plot-output")
+
+	require.NoError(t, svc.FormatPlotPages([]string{"complexity"}, results, outputDir))
+
+	reportPath := filepath.Join(outputDir, "report.json")
+	data, err := os.ReadFile(reportPath)
+	require.NoError(t, err, "report.json must exist after FormatPlotPages")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(data, &parsed), "report.json must be valid JSON")
+	assert.Contains(t, parsed, "complexity", "report.json must contain analyzer results")
 }

@@ -72,7 +72,7 @@ func TestVisitor_CMSSketchPopulated_LargeFunction(t *testing.T) {
 	traverser.Traverse(root)
 
 	// Retrieve function metrics.
-	funcMetrics, ok := visitor.functionMetrics[cmsTestFuncName]
+	funcMetrics, ok := findFunctionMetrics(visitor.functionMetrics, cmsTestFuncName)
 
 	require.True(t, ok, "function metrics must exist")
 	require.NotNil(t, funcMetrics.OperatorSketch, "OperatorSketch should be populated for large function")
@@ -93,7 +93,7 @@ func TestVisitor_CMSNotUsed_SmallFunction(t *testing.T) {
 	traverser.RegisterVisitor(visitor)
 	traverser.Traverse(root)
 
-	funcMetrics, ok := visitor.functionMetrics[cmsTestFuncName]
+	funcMetrics, ok := findFunctionMetrics(visitor.functionMetrics, cmsTestFuncName)
 
 	require.True(t, ok, "function metrics must exist")
 
@@ -112,7 +112,7 @@ func TestVisitor_CMSTotalMatchesExact(t *testing.T) {
 	traverser.RegisterVisitor(visitor)
 	traverser.Traverse(root)
 
-	funcMetrics, ok := visitor.functionMetrics[cmsTestFuncName]
+	funcMetrics, ok := findFunctionMetrics(visitor.functionMetrics, cmsTestFuncName)
 
 	require.True(t, ok, "function metrics must exist")
 
@@ -136,7 +136,7 @@ func TestVisitor_EstimatedFields_Populated(t *testing.T) {
 	traverser.RegisterVisitor(visitor)
 	traverser.Traverse(root)
 
-	funcMetrics, ok := visitor.functionMetrics[cmsTestFuncName]
+	funcMetrics, ok := findFunctionMetrics(visitor.functionMetrics, cmsTestFuncName)
 
 	require.True(t, ok, "function metrics must exist")
 	assert.Positive(t, funcMetrics.EstimatedTotalOperators,
@@ -155,7 +155,7 @@ func TestVisitor_DerivedMetrics_CMSPath(t *testing.T) {
 	traverser.RegisterVisitor(visitor)
 	traverser.Traverse(root)
 
-	funcMetrics, ok := visitor.functionMetrics[cmsTestFuncName]
+	funcMetrics, ok := findFunctionMetrics(visitor.functionMetrics, cmsTestFuncName)
 
 	require.True(t, ok, "function metrics must exist")
 
@@ -333,4 +333,17 @@ func sumMapHelper(m map[string]int) int {
 	}
 
 	return sum
+}
+
+// findFunctionMetrics returns the first metrics entry whose Name matches.
+//
+//nolint:unparam // tests pass cmsTestFuncName today; keep signature generic for future callers.
+func findFunctionMetrics(metrics []*FunctionHalsteadMetrics, name string) (*FunctionHalsteadMetrics, bool) {
+	for _, m := range metrics {
+		if m.Name == name {
+			return m, true
+		}
+	}
+
+	return nil, false
 }

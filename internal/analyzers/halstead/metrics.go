@@ -32,6 +32,9 @@ type ReportData struct {
 // FunctionData holds Halstead data for a single function.
 type FunctionData struct {
 	Name              string
+	SourceFile        string
+	Language          string
+	Directory         string
 	Volume            float64
 	Difficulty        float64
 	Effort            float64
@@ -130,11 +133,31 @@ func parseReportFunctions(report analyze.Report) []FunctionData {
 
 func parseFunctionData(fn map[string]any) FunctionData {
 	fd := FunctionData{}
+	parseFuncIdentity(&fd, fn)
+	parseFuncHalsteadMetrics(&fd, fn)
 
+	return fd
+}
+
+func parseFuncIdentity(fd *FunctionData, fn map[string]any) {
 	if name, ok := fn["name"].(string); ok {
 		fd.Name = name
 	}
 
+	if sf, ok := fn[analyze.SourceFileKey].(string); ok {
+		fd.SourceFile = sf
+	}
+
+	if lang, ok := fn[analyze.LanguageKey].(string); ok {
+		fd.Language = lang
+	}
+
+	if dir, ok := fn[analyze.DirectoryKey].(string); ok {
+		fd.Directory = dir
+	}
+}
+
+func parseFuncHalsteadMetrics(fd *FunctionData, fn map[string]any) {
 	if v, ok := fn["volume"].(float64); ok {
 		fd.Volume = v
 	}
@@ -182,21 +205,22 @@ func parseFunctionData(fn map[string]any) FunctionData {
 	if v, ok := fn["estimated_length"].(float64); ok {
 		fd.EstimatedLength = v
 	}
-
-	return fd
 }
 
 // --- Output Data Types ---.
 
 // FunctionHalsteadData contains Halstead metrics for a function.
 type FunctionHalsteadData struct {
-	Name            string  `json:"name"             yaml:"name"`
-	Volume          float64 `json:"volume"           yaml:"volume"`
-	Difficulty      float64 `json:"difficulty"       yaml:"difficulty"`
-	Effort          float64 `json:"effort"           yaml:"effort"`
-	TimeToProgram   float64 `json:"time_to_program"  yaml:"time_to_program"`
-	DeliveredBugs   float64 `json:"delivered_bugs"   yaml:"delivered_bugs"`
-	ComplexityLevel string  `json:"complexity_level" yaml:"complexity_level"`
+	Name            string  `json:"name"                  yaml:"name"`
+	SourceFile      string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language        string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory       string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	Volume          float64 `json:"volume"                yaml:"volume"`
+	Difficulty      float64 `json:"difficulty"            yaml:"difficulty"`
+	Effort          float64 `json:"effort"                yaml:"effort"`
+	TimeToProgram   float64 `json:"time_to_program"       yaml:"time_to_program"`
+	DeliveredBugs   float64 `json:"delivered_bugs"        yaml:"delivered_bugs"`
+	ComplexityLevel string  `json:"complexity_level"      yaml:"complexity_level"`
 }
 
 // EffortDistributionData contains effort distribution counts.
@@ -209,12 +233,15 @@ type EffortDistributionData struct {
 
 // HighEffortFunctionData identifies functions with high effort.
 type HighEffortFunctionData struct {
-	Name          string  `json:"name"            yaml:"name"`
-	Volume        float64 `json:"volume"          yaml:"volume"`
-	Effort        float64 `json:"effort"          yaml:"effort"`
-	TimeToProgram float64 `json:"time_to_program" yaml:"time_to_program"`
-	DeliveredBugs float64 `json:"delivered_bugs"  yaml:"delivered_bugs"`
-	RiskLevel     string  `json:"risk_level"      yaml:"risk_level"`
+	Name          string  `json:"name"                  yaml:"name"`
+	SourceFile    string  `json:"source_file,omitempty" yaml:"source_file,omitempty"`
+	Language      string  `json:"language,omitempty"    yaml:"language,omitempty"`
+	Directory     string  `json:"directory,omitempty"   yaml:"directory,omitempty"`
+	Volume        float64 `json:"volume"                yaml:"volume"`
+	Effort        float64 `json:"effort"                yaml:"effort"`
+	TimeToProgram float64 `json:"time_to_program"       yaml:"time_to_program"`
+	DeliveredBugs float64 `json:"delivered_bugs"        yaml:"delivered_bugs"`
+	RiskLevel     string  `json:"risk_level"            yaml:"risk_level"`
 }
 
 // AggregateData contains summary statistics.
@@ -303,6 +330,9 @@ func (m *FunctionHalsteadMetric) Compute(input *ReportData) []FunctionHalsteadDa
 
 		result = append(result, FunctionHalsteadData{
 			Name:            fn.Name,
+			SourceFile:      fn.SourceFile,
+			Language:        fn.Language,
+			Directory:       fn.Directory,
 			Volume:          fn.Volume,
 			Difficulty:      fn.Difficulty,
 			Effort:          fn.Effort,
@@ -405,6 +435,7 @@ func (m *HighEffortFunctionMetric) Compute(input *ReportData) []HighEffortFuncti
 
 		result = append(result, HighEffortFunctionData{
 			Name:          fn.Name,
+			SourceFile:    fn.SourceFile,
 			Volume:        fn.Volume,
 			Effort:        fn.Effort,
 			TimeToProgram: fn.TimeToProgram,

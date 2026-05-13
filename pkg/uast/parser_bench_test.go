@@ -1,7 +1,5 @@
 package uast_test
 
-// FRD: specs/frds/FRD-20260311-eager-tree-release.md.
-
 import (
 	"context"
 	"fmt"

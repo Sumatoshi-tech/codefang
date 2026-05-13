@@ -7,8 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FRD: specs/frds/FRD-20260310-signal-on-drain.md.
-
 const forwardTestItems = 3
 
 func TestSignalOnDrain_ForwardsAllItems(t *testing.T) {

@@ -1,7 +1,5 @@
 package anomaly
 
-// FRD: specs/frds/FRD-20260301-anomaly-enrich-from-store.md.
-
 import (
 	"testing"
 

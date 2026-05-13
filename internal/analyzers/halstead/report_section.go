@@ -160,6 +160,7 @@ func (s *ReportSection) halsteadIssues(limit int) []analyze.Issue {
 		bugs := reportutil.GetFloat64(fn, KeyFuncBugs)
 		issues = append(issues, analyze.Issue{
 			Name:     name,
+			Location: reportutil.MapString(fn, analyze.SourceFileKey),
 			Value:    formatIssueValue(effort, volume, bugs),
 			Severity: severityForFunction(effort, bugs),
 		})

@@ -38,7 +38,9 @@ type DevTick struct {
 // It groups all per-commit developer data within one time bucket.
 type TickDevData struct {
 	// DevData maps commit hash hex to per-commit developer statistics.
-	DevData map[string]*CommitDevData
+	DevData   map[string]*CommitDevData
+	startTime time.Time
+	endTime   time.Time
 }
 
 // Configuration option keys for the devs analyzer.
@@ -350,8 +352,22 @@ func extractTC(tc analyze.TC, byTick map[int]*TickDevData) error {
 
 	state, ok := byTick[tc.Tick]
 	if !ok || state == nil {
-		state = &TickDevData{DevData: make(map[string]*CommitDevData)}
+		state = &TickDevData{
+			DevData:   make(map[string]*CommitDevData),
+			startTime: tc.Timestamp,
+			endTime:   tc.Timestamp,
+		}
 		byTick[tc.Tick] = state
+	}
+
+	if !tc.Timestamp.IsZero() {
+		if tc.Timestamp.Before(state.startTime) || state.startTime.IsZero() {
+			state.startTime = tc.Timestamp
+		}
+
+		if tc.Timestamp.After(state.endTime) {
+			state.endTime = tc.Timestamp
+		}
 	}
 
 	state.DevData[tc.CommitHash.String()] = cdd
@@ -404,8 +420,10 @@ func buildTick(tick int, state *TickDevData) (analyze.TICK, error) {
 	}
 
 	return analyze.TICK{
-		Tick: tick,
-		Data: state,
+		Tick:      tick,
+		StartTime: state.startTime,
+		EndTime:   state.endTime,
+		Data:      state,
 	}, nil
 }
 
@@ -500,5 +518,6 @@ func ticksToReport(
 		"CommitsByTick":      commitsByTick,
 		"ReversedPeopleDict": names,
 		"TickSize":           tickSize,
+		"tick_bounds":        analyze.BuildTickBounds(ticks),
 	}
 }

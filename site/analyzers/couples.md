@@ -110,7 +110,9 @@ The couples analyzer provides a `ReportSection` for use in combined reports:
       "developer_coupling": [
         {
           "developer1": "alice",
+          "developer1_email": "alice@example.com",
           "developer2": "bob",
+          "developer2_email": "bob@example.com",
           "shared_file_changes": 234,
           "coupling_strength": 0.65
         }

@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// FRD: specs/frds/FRD-20260310-worker-pool.md.
-
 var errWorker = errors.New("worker failed")
 
 func TestWorkerPool_EmptyItems(t *testing.T) {
@@ -234,8 +232,6 @@ func TestWorkerPool_ErrorCancelsContext(t *testing.T) {
 	err := pool.Run(context.Background(), []int{0, 1, 2})
 	assert.ErrorIs(t, err, errWorker)
 }
-
-// FRD: specs/frds/FRD-20260311-streaming-file-discovery.md.
 
 func TestWorkerPool_RunChan_EmptyChannel(t *testing.T) {
 	t.Parallel()

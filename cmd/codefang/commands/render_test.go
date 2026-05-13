@@ -1,7 +1,5 @@
 package commands
 
-// FRD: specs/frds/FRD-20260228-render-command.md.
-
 import (
 	"os"
 	"path/filepath"

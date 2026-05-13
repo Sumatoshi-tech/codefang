@@ -503,6 +503,7 @@ func ticksToReport(
 		"anomalies":       anomalies,
 		"threshold":       threshold,
 		"window_size":     window,
+		"tick_bounds":     analyze.BuildTickBounds(ticks),
 	}
 }
 

@@ -1,7 +1,5 @@
 package common_test
 
-// FRD: specs/frds/FRD-20260302-checkpoint-helper.md.
-
 import (
 	"testing"
 

@@ -15,6 +15,7 @@ const (
 // Aggregator aggregates results from multiple comment analyses.
 type Aggregator struct {
 	*common.Aggregator
+	common.PerFileRetainer
 	detailed *common.DetailedDataCollector
 }
 
@@ -52,6 +53,10 @@ func (ca *Aggregator) SetAggregationMode(mode analyze.AggregationMode) {
 
 // Aggregate overrides the base Aggregate method to collect detailed comments and functions.
 func (ca *Aggregator) Aggregate(results map[string]analyze.Report) {
+	for _, report := range results {
+		ca.Retain(report)
+	}
+
 	ca.detailed.CollectFromReports(results)
 	ca.Aggregator.Aggregate(results)
 }
