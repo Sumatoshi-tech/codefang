@@ -1,4 +1,4 @@
-# Data Analytics & DWH Integration
+# Data analytics & DWH integration
 
 Codefang produces richly structured JSON output designed for loading into
 columnar data warehouses (ClickHouse, Greenplum, BigQuery, Snowflake) and
@@ -7,7 +7,7 @@ repository analysis to production dashboards.
 
 ---
 
-## Quick Start
+## Quick start
 
 Analyze a repository and produce DWH-ready output:
 
@@ -24,7 +24,7 @@ codefang run --format json --per-file --limit 5000 /path/to/repo > report.json
 
 ---
 
-## Output Format Selection
+## Output format selection
 
 | Repo Size | Recommended Format | Reason |
 |-----------|-------------------|--------|
@@ -33,7 +33,7 @@ codefang run --format json --per-file --limit 5000 /path/to/repo > report.json
 | 10K-50K files | `ndjson` | JSON gets multi-GB; NDJSON streams |
 | 50K+ files | `ndjson` + `--limit` | Bound history for practical runtimes |
 
-### JSON Format
+### JSON format
 
 ```bash
 codefang run --format json --per-file /repo > report.json
@@ -60,7 +60,7 @@ Produces a single JSON object with versioned envelope:
 }
 ```
 
-### NDJSON Format
+### NDJSON format
 
 ```bash
 codefang run --format ndjson --per-file /repo > report.ndjson
@@ -89,7 +89,7 @@ cat report.ndjson | clickhouse-client --query "INSERT INTO codefang_raw FORMAT J
 
 ---
 
-## Memory Budget
+## Memory budget
 
 **Always set `--memory-budget`** for repos with history analysis. Without it,
 the streaming pipeline uses a conservative 2GB default that may OOM on large
@@ -117,7 +117,7 @@ codefang run --format ndjson --per-file --memory-budget 8GB ~/sources/kubernetes
 
 ---
 
-## Commit Limiting
+## Commit limiting
 
 Use `--limit N` to analyze only the most recent N commits. This is useful for:
 
@@ -138,7 +138,7 @@ codefang run --format json --per-file --memory-budget 8GB /repo > full.json
 
 ---
 
-## Key Fields for Analytics
+## Key fields for analytics
 
 Every function-level record includes fields designed for DWH joins and
 aggregation:
@@ -156,7 +156,7 @@ aggregation:
 
 ---
 
-## Schema Manifest
+## Schema manifest
 
 Every analyzer section includes a `schema` field describing its output:
 
@@ -196,7 +196,7 @@ for analyzer in data['analyzers']:
 
 ---
 
-## Star Schema Design
+## Star schema design
 
 ### Dimensions
 
@@ -237,7 +237,7 @@ CREATE TABLE dim_tick (
 ) ENGINE = MergeTree() ORDER BY (repo_id, tick);
 ```
 
-### Fact Tables
+### Fact tables
 
 ```sql
 -- Static analysis facts (per-function grain)
@@ -291,7 +291,7 @@ ORDER BY (repo_id, file1, file2);
 
 ---
 
-## ETL Pipeline
+## ETL pipeline
 
 ### Python (with dbt or standalone)
 
@@ -326,7 +326,7 @@ coupling = analyzers['history/couples']['file_coupling']
 # Each has: file1, file2, co_changes, coupling_strength
 ```
 
-### ClickHouse Direct Load
+### ClickHouse direct load
 
 ```bash
 # Extract function complexity from NDJSON
@@ -342,12 +342,12 @@ grep '"history/sentiment"' report.ndjson \
 
 ---
 
-## Recommended Analyzer Selection
+## Recommended analyzer selection
 
 Not all 17 analyzers are needed for every use case. Select based on your
 dashboard needs:
 
-### Code Quality Dashboard
+### Code quality dashboard
 
 ```bash
 codefang run \
@@ -359,7 +359,7 @@ codefang run \
 **Produces**: Function-level metrics, quality trend over time.
 **Row count**: ~200K functions + ~4K tick entries for a medium repo.
 
-### Developer Analytics Dashboard
+### Developer analytics dashboard
 
 ```bash
 codefang run \
@@ -370,7 +370,7 @@ codefang run \
 **Produces**: Developer profiles, coupling networks, sentiment trends.
 **Row count**: ~500 developers + ~5K coupling pairs + ~4K ticks.
 
-### File Health Dashboard
+### File health dashboard
 
 ```bash
 codefang run \
@@ -382,7 +382,7 @@ codefang run \
 **Produces**: Per-file complexity, churn hotspots, coupling networks.
 **Row count**: ~30K files + ~100K coupling pairs.
 
-### Full Analysis (Everything)
+### Full analysis (everything)
 
 ```bash
 codefang run --format ndjson --per-file --memory-budget 8GB /repo
@@ -392,9 +392,9 @@ codefang run --format ndjson --per-file --memory-budget 8GB /repo
 
 ---
 
-## Performance Tuning
+## Performance tuning
 
-### Static Analysis Workers
+### Static analysis workers
 
 Control parallelism for the UAST parsing phase:
 
@@ -405,7 +405,7 @@ codefang run --static-workers 16 --format json /repo
 
 More workers = faster static phase but higher peak memory.
 
-### History Analysis
+### History analysis
 
 The streaming pipeline auto-tunes chunk sizes based on `--memory-budget`.
 No manual tuning needed. Key parameters:
@@ -429,13 +429,13 @@ codefang run --since 6m --first-parent --format json /repo
 
 ---
 
-## Incremental Analysis & Checkpointing
+## Incremental analysis & checkpointing
 
 Codefang supports two persistence mechanisms for long-running analysis:
 **incremental caching** (skip already-processed commits) and **checkpointing**
 (crash recovery).
 
-### Incremental Cache
+### Incremental cache
 
 The incremental cache stores analysis results keyed by repository root SHA and
 branch. On subsequent runs, only new commits since the last cached position
@@ -474,7 +474,7 @@ rewrite), the cache is automatically invalidated.
     Each daily run only processes the new commits since yesterday,
     cutting analysis time from hours to minutes.
 
-### Checkpointing (Crash Recovery)
+### Checkpointing (crash recovery)
 
 For very long runs (e.g., full kubernetes at ~3 hours), checkpointing saves
 progress periodically so a crash doesn't lose all work.
@@ -517,7 +517,7 @@ The checkpoint stores:
     For DWH pipelines, you want **both**: `--cache-dir` for incremental loads and
     `--checkpoint` for resilience.
 
-### Production Pipeline Example
+### Production pipeline example
 
 A daily cron job that incrementally analyzes a repository:
 
@@ -552,7 +552,7 @@ cat "$OUTPUT_DIR/report-$(date +%Y%m%d).ndjson" \
   | clickhouse-client --query "INSERT INTO codefang_raw FORMAT JSONEachRow"
 ```
 
-### Advanced Tuning for History Pipeline
+### Advanced tuning for history pipeline
 
 Fine-tune the history streaming pipeline for specific hardware:
 
@@ -582,7 +582,7 @@ codefang run \
 
 ---
 
-## Row Count Estimates
+## Row count estimates
 
 Use these to plan DWH capacity:
 
@@ -599,7 +599,7 @@ Compressed in ClickHouse: ~200MB.
 
 ---
 
-## Materialized Views
+## Materialized views
 
 Pre-aggregate for common dashboard queries:
 
@@ -633,7 +633,7 @@ GROUP BY repo_id, week;
 
 ## Troubleshooting
 
-### OOM Kills
+### OOM kills
 
 **Symptom**: Process killed during history analysis.
 **Fix**: Set `--memory-budget` explicitly.
@@ -646,7 +646,7 @@ free -h
 codefang run --memory-budget 4GB --format ndjson /repo
 ```
 
-### Empty History Analyzers
+### Empty history analyzers
 
 Some analyzers require specific conditions:
 
@@ -656,7 +656,7 @@ Some analyzers require specific conditions:
 | `history/imports` | Requires UAST-enabled pipeline mode |
 | `history/typos` | Requires UAST-enabled pipeline mode |
 
-### Large File Coupling Tables
+### Large file coupling tables
 
 `file_coupling` can produce millions of rows for large repos. Filter in your
 ETL:
@@ -675,7 +675,7 @@ ORDER BY coupling_strength DESC
 LIMIT 1000;
 ```
 
-### Missing Language/Directory on Some Records
+### Missing language/directory on some records
 
 The `language` and `directory` fields are populated by the UAST parser. If a
 file's language is not supported by the parser, these fields will be empty.

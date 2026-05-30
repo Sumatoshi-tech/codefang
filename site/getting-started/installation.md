@@ -23,7 +23,7 @@ Before you begin, make sure the following tools are available on your system:
 
 ---
 
-## Install from Source (Recommended)
+## Install from source (recommended)
 
 The fastest way to get both binaries:
 
@@ -45,7 +45,7 @@ export PATH="$(go env GOPATH)/bin:$PATH"
 
 ---
 
-## Build from Source
+## Build from source
 
 For contributors or when you need a custom build:
 
@@ -78,7 +78,7 @@ graph LR
 3. **Go build** -- Both binaries are compiled with version/commit metadata
    injected via `-ldflags`.
 
-### Building libgit2 Separately
+### Building libgit2 separately
 
 If you only need to rebuild the native library:
 
@@ -119,7 +119,7 @@ docker run --rm -v "$(pwd):/repo" codefang run -a history/burndown --format yaml
 
 ---
 
-## Verify Installation
+## Verify installation
 
 After installing, confirm both binaries are working:
 
@@ -150,7 +150,7 @@ echo "$HOME/.local/bin"
 
 ---
 
-## Platform Notes
+## Platform notes
 
 ### Linux
 
@@ -199,7 +199,7 @@ distribution and follow the Linux instructions above.
 
 ---
 
-## Next Steps
+## Next steps
 
 With both binaries installed, head to the [Quick Start](quickstart.md) guide
 to run your first analysis.

@@ -1,4 +1,4 @@
-# Quick Start
+# Quick start
 
 This page shows the fastest path to useful results. In five minutes you will
 parse code, run static analysis, and mine Git history.
@@ -9,7 +9,7 @@ parse code, run static analysis, and mine Git history.
 
 ---
 
-## 1. Parse Source Code into a UAST
+## 1. Parse source code into a UAST
 
 Start by parsing a single file into a Universal Abstract Syntax Tree:
 
@@ -53,7 +53,7 @@ cat main.go | uast parse -            # read from stdin
 
 ---
 
-## 2. Static Analysis
+## 2. Static analysis
 
 Run structural analysis on a folder. The `codefang run` command with
 `static/*` analyzers walks the directory, parses every supported file, and
@@ -86,7 +86,7 @@ codefang run -a static/complexity --format text .
 
 ---
 
-## 3. History Analysis -- Burndown
+## 3. History analysis -- burndown
 
 Analyze how code ages and survives over your repository's lifetime:
 
@@ -118,7 +118,7 @@ column shows how many of those lines survive into subsequent windows.
 
 ---
 
-## 4. Developer Analysis
+## 4. Developer analysis
 
 See per-developer contribution statistics with a single commit snapshot:
 
@@ -150,7 +150,7 @@ codefang run -a history/devs --head --format yaml .
 
 ---
 
-## 5. Run Everything at Once
+## 5. Run everything at once
 
 Use glob patterns to run all history analyzers (or all analyzers) in a single
 invocation:
@@ -183,7 +183,7 @@ invocation:
 
 ---
 
-## 6. Interactive HTML Plots
+## 6. Interactive HTML plots
 
 Generate a self-contained HTML report with interactive charts:
 
@@ -202,7 +202,7 @@ xdg-open burndown.html  # Linux
 
 ---
 
-## 7. Pipe into AI (MCP Integration)
+## 7. Pipe into AI (MCP integration)
 
 Codefang ships a built-in **Model Context Protocol** server so AI agents can
 query analysis results programmatically:
@@ -225,7 +225,7 @@ other MCP-compatible clients can connect to. See the
 
 ---
 
-## What's Next?
+## What's next?
 
 | Goal | Page |
 |------|------|

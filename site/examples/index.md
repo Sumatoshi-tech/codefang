@@ -2,7 +2,7 @@
 
 All examples below are generated from the [Kubernetes](https://github.com/kubernetes/kubernetes) repository — one of the largest open-source Go projects with 135k+ commits and thousands of contributors.
 
-## History Analyzers
+## History analyzers
 
 ### Burndown
 
@@ -65,7 +65,7 @@ See the [Couples analyzer docs](../analyzers/couples.md) for configuration optio
 
 ---
 
-### File History
+### File history
 
 The file history chart shows the most frequently modified files across the repository's entire commit history.
 
@@ -95,7 +95,7 @@ See the [File History analyzer docs](../analyzers/file-history.md) for configura
 
 ---
 
-### Anomaly Detection
+### Anomaly detection
 
 The anomaly chart detects unusual patterns in commit activity — spikes or drops that deviate significantly from the repository's normal rhythm.
 
@@ -123,7 +123,7 @@ See the [Anomaly Detection analyzer docs](../analyzers/anomaly.md) for configura
 
 ---
 
-### Imports (History)
+### Imports (history)
 
 The imports history chart tracks how import dependencies evolve over the repository's commit history.
 
@@ -296,7 +296,7 @@ codefang run -a history/quality --format plot /path/to/repo > quality.html
 
 ---
 
-## Static Analyzers
+## Static analyzers
 
 ### Complexity
 
@@ -433,7 +433,7 @@ See the [Comments analyzer docs](../analyzers/comments.md) for configuration opt
 
 ---
 
-### Imports (Static)
+### Imports (static)
 
 The static imports charts show the most used import packages and their categorization across the codebase.
 

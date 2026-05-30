@@ -12,7 +12,7 @@ and production-ready when enabled.
 
 ---
 
-## Quick Start
+## Quick start
 
 By default, observability uses no-op providers with zero export overhead. To
 enable telemetry export, set the OTLP endpoint:
@@ -32,7 +32,7 @@ This forces 100% trace sampling and prints the `trace_id` on completion.
 
 ---
 
-## Local Development Stack
+## Local development stack
 
 A pre-configured OTel stack (Jaeger + OTel Collector + Prometheus) is available
 via Docker Compose:
@@ -53,7 +53,7 @@ make otel-down     # Stop the stack
 
 ## Configuration
 
-### Environment Variables
+### Environment variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -63,13 +63,13 @@ make otel-down     # Stop the stack
 | `OTEL_TRACES_SAMPLER` | Sampler type (see [Sampling](#sampling)) | (uses config) |
 | `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (ratio for ratio-based samplers) | `1.0` |
 
-### CLI Flags
+### CLI flags
 
 | Flag | Description |
 |------|-------------|
 | `--debug-trace` | Force 100% sampling, enable debug logging |
 
-### MCP Mode
+### MCP mode
 
 The MCP server (`codefang mcp`) uses JSON-structured logs on stderr by default.
 When `--debug` is enabled, debug-level logging and full trace sampling are
@@ -79,7 +79,7 @@ activated:
 codefang mcp --debug
 ```
 
-### No-Op Mode
+### No-op mode
 
 When `OTEL_EXPORTER_OTLP_ENDPOINT` is empty (the default), the SDK returns
 no-op tracer and meter providers:
@@ -90,7 +90,7 @@ no-op tracer and meter providers:
 
 ---
 
-## Span Hierarchy
+## Span hierarchy
 
 The entire analysis pipeline is instrumented with hierarchical spans:
 
@@ -131,7 +131,7 @@ codefang.run                              (CLI entry point)
     +-- codefang.uast.changes
 ```
 
-### Span Attributes
+### Span attributes
 
 | Span | Key Attributes |
 |------|---------------|
@@ -161,11 +161,11 @@ Pipeline cache statistics are also recorded on the analysis span:
 
 ---
 
-## RED Metrics
+## RED metrics
 
 When connected to an OTLP collector, the following metrics are exported:
 
-### Core RED Metrics
+### Core RED metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
@@ -174,7 +174,7 @@ When connected to an OTLP collector, the following metrics are exported:
 | `codefang.errors.total` | Counter | `{error}` | Total number of errors (labeled by `op`) |
 | `codefang.inflight.requests` | UpDownCounter | `{request}` | Currently in-flight requests (labeled by `op`) |
 
-### Analysis Metrics
+### Analysis metrics
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
@@ -184,7 +184,7 @@ When connected to an OTLP collector, the following metrics are exported:
 | `codefang.analysis.cache.hits.total` | Counter | `{hit}` | Cache hits (labeled by `cache`: `blob` or `diff`) |
 | `codefang.analysis.cache.misses.total` | Counter | `{miss}` | Cache misses (labeled by `cache`: `blob` or `diff`) |
 
-### Histogram Buckets
+### Histogram buckets
 
 Duration histograms use these bucket boundaries (in seconds), covering
 sub-second static checks through multi-minute history pipelines:
@@ -204,7 +204,7 @@ Trace sampling is configurable with the following precedence (highest first):
 3. **`Config.SampleRatio`**: Ratio-based sampling via config file.
 4. **Default**: `ParentBased(AlwaysOn)` -- samples all root spans, respects parent decisions.
 
-### Supported Sampler Values
+### Supported sampler values
 
 | `OTEL_TRACES_SAMPLER` | Description |
 |------------------------|-------------|
@@ -215,7 +215,7 @@ Trace sampling is configurable with the following precedence (highest first):
 | `parentbased_always_off` | Parent-based with always-off root sampler |
 | `parentbased_traceidratio` | Parent-based with ratio root sampler |
 
-### Example: 10% Sampling
+### Example: 10% sampling
 
 ```bash
 export OTEL_TRACES_SAMPLER=traceidratio
@@ -223,7 +223,7 @@ export OTEL_TRACES_SAMPLER_ARG=0.1
 codefang run -a history/burndown .
 ```
 
-### Production Recommendation
+### Production recommendation
 
 Use `parentbased_traceidratio` with a low ratio (1-5%) to limit trace volume
 while preserving distributed context propagation:
@@ -233,7 +233,7 @@ export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.01
 ```
 
-### Tail Sampling (Collector-Side)
+### Tail sampling (collector-side)
 
 Head-based sampling decides at trace start whether to sample. This means slow
 or errored traces may be dropped. **Tail sampling** defers the decision until
@@ -288,13 +288,13 @@ representative sample of normal traffic.
 
 ---
 
-## Attribute Filter
+## Attribute filter
 
 All exported spans pass through an `AttributeFilter` span processor that
 enforces an allow-list of attribute key prefixes. This prevents PII and
 high-cardinality data from reaching the collector.
 
-### Allowed Prefixes
+### Allowed prefixes
 
 | Prefix | Covers |
 |--------|--------|
@@ -311,7 +311,7 @@ high-cardinality data from reaching the collector.
 | `runner.` | Runner attributes |
 | `cache` | Cache statistics |
 
-### Blocked Keys
+### Blocked keys
 
 | Pattern | Reason |
 |---------|--------|
@@ -326,7 +326,7 @@ development.
 
 ---
 
-## HTTP Middleware
+## HTTP middleware
 
 The `observability.HTTPMiddleware` wraps HTTP handlers with:
 
@@ -342,12 +342,12 @@ that send a `traceparent` header have their traces continued by Codefang.
 
 ---
 
-## Health Checks
+## Health checks
 
 For server mode deployments (Kubernetes), the observability package provides
 HTTP handlers:
 
-### Liveness Probe
+### Liveness probe
 
 ```
 GET /healthz  ->  HTTP 200  {"status": "ok"}
@@ -355,7 +355,7 @@ GET /healthz  ->  HTTP 200  {"status": "ok"}
 
 Always returns 200. Use as a Kubernetes liveness probe.
 
-### Readiness Probe
+### Readiness probe
 
 ```
 GET /readyz   ->  HTTP 200  {"status": "ok"}
@@ -370,7 +370,7 @@ mux.Handle("/healthz", observability.HealthHandler())
 mux.Handle("/readyz", observability.ReadyHandler(dbCheck, cacheCheck))
 ```
 
-### Prometheus Metrics Endpoint
+### Prometheus metrics endpoint
 
 ```
 GET /metrics  ->  Prometheus exposition format
@@ -387,7 +387,7 @@ mux.Handle("/metrics", metricsHandler)
 
 ---
 
-## Structured Logging
+## Structured logging
 
 All framework-level log messages use `log/slog` with instance loggers (not
 the global `slog.Default()`). The `TracingHandler` automatically injects
@@ -401,7 +401,7 @@ trace context into every log record:
 | `mode` | Operating mode (`cli`, `mcp`) |
 | `env` | Deployment environment |
 
-### Log Modes
+### Log modes
 
 | Mode | Handler | Use case |
 |------|---------|----------|
@@ -409,7 +409,7 @@ trace context into every log record:
 | MCP | `slog.JSONHandler` | Machine-parseable structured logs |
 | Debug | Level `DEBUG` | Verbose output for troubleshooting |
 
-### Linter Enforcement
+### Linter enforcement
 
 The following linters enforce observability correctness in `.golangci.yml`:
 
@@ -421,12 +421,12 @@ The following linters enforce observability correctness in `.golangci.yml`:
 
 ---
 
-## Deep Context Propagation
+## Deep context propagation
 
 All hot-path `context.Background()` calls have been eliminated. Context flows
 end-to-end from the CLI entry point through every layer:
 
-### Propagation Path
+### Propagation path
 
 ```
 CLI (codefang.run)
@@ -452,7 +452,7 @@ CLI (codefang.run)
                           +-> parser.Parse(ctx)
 ```
 
-### Key Interfaces
+### Key interfaces
 
 The `Consume` method on history analyzers accepts context:
 
@@ -482,7 +482,7 @@ func TreeDiff(ctx context.Context, repo *Repository, oldTree, newTree *Tree) (Ch
 
 ---
 
-## Integration Points Summary
+## Integration points summary
 
 | Component | Tracing | Metrics | Logging |
 |-----------|---------|---------|---------|

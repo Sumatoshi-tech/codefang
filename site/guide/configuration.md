@@ -6,9 +6,9 @@ and they merge with a well-defined priority order.
 
 ---
 
-## Configuration Sources
+## Configuration sources
 
-### Search Order
+### Search order
 
 When no explicit `--config` flag is provided, Codefang searches for a
 `.codefang.yaml` file in the following locations (first match wins):
@@ -18,7 +18,7 @@ When no explicit `--config` flag is provided, Codefang searches for a
 | 1 | Current working directory (`./.codefang.yaml`) |
 | 2 | User home directory (`$HOME/.codefang.yaml`) |
 
-### Merge Priority
+### Merge priority
 
 When the same setting is specified in multiple sources, the highest-priority
 source wins:
@@ -33,7 +33,7 @@ CLI flags  >  Environment variables  >  Config file  >  Compiled defaults
     `--workers 8`. The effective value is **8** because CLI flags have the
     highest priority.
 
-### Explicit Config Path
+### Explicit config path
 
 Use `--config` to point at a specific file:
 
@@ -43,7 +43,7 @@ codefang run -a 'history/*' --config /etc/codefang/production.yaml .
 
 ---
 
-## Environment Variables
+## Environment variables
 
 All configuration keys can be set via environment variables using the
 `CODEFANG_` prefix. Nested keys use `_` as a separator.
@@ -65,7 +65,7 @@ codefang run -a 'history/*' .
 
 ---
 
-## Full Configuration Reference
+## Full configuration reference
 
 Below is the complete `.codefang.yaml` file with all fields set to their
 compiled defaults:
@@ -189,7 +189,7 @@ checkpoint:
 
 ---
 
-## Section Reference
+## Section reference
 
 ### `analyzers`
 
@@ -432,7 +432,7 @@ Controls checkpoint and resume behavior for long-running history analyses.
 
 ---
 
-## Minimal Examples
+## Minimal examples
 
 === "CI / Headless"
 

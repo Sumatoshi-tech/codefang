@@ -27,7 +27,7 @@ This is a **reincarnation**. We took the core philosophy, stripped out the obsol
 
 ---
 
-## 2. Historical Context
+## 2. Historical context
 
 Once upon a time, there was a company called **source{d}**. They pioneered "Mining Software Repositories" on a massive scale. Their crown jewel was `hercules`, a tool that could chew through git logs faster than you can say `git blame`.
 
@@ -58,7 +58,7 @@ go install github.com/Sumatoshi-tech/codefang/cmd/codefang@latest
 go install github.com/Sumatoshi-tech/codefang/cmd/uast@latest
 ```
 
-### Let's Flex
+### Let's flex
 
 Codefang follows the UNIX philosophy: small tools, joined by pipes.
 
@@ -90,11 +90,11 @@ codefang history -a devs --head .
 
 ---
 
-## 4. Architecture & Design Decisions
+## 4. Architecture & design decisions
 
 We made a few bold choices in the rewrite.
 
-### The Split: `uast` vs `codefang`
+### The split: `uast` vs `codefang`
 
 The original `hercules` was a monolith. We split it in two:
 
@@ -105,13 +105,13 @@ The original `hercules` was a monolith. We split it in two:
 
 Most linters are language-specific. `eslint` for JS, `golangci-lint` for Go. Codefang uses a **Universal** AST. This means we can write a single "Complexity Analyzer" and it immediately works for Python, Go, and TypeScript.
 
-### Pluggable Analysis
+### Pluggable analysis
 
 Analyzers are modular. You want to measure "Sentiment of Code Comments"? There's an analyzer for that (`sentiment`). You want to find "Typos in Variable Names"? There's one for that (`typos`).
 
 ---
 
-## 5. Codefang as an AI Agent Tool
+## 5. Codefang as an AI agent tool
 
 Don't just use AI to write code. Use Codefang to verify it. By giving `codefang` and `uast` to your AI agent as tools (via MCP or shell), you create a self-correcting quality loop.
 
@@ -136,6 +136,40 @@ Don't just use AI to write code. Use Codefang to verify it. By giving `codefang`
 *   **Scenario:** "Make this look like the rest of the project."
 *   **Action:** Agent analyzes `cohesion` and `comments` metrics of existing high-quality files to set a baseline.
 *   **Result:** Agent generates code that matches the *structural* quality standards of your specific repo, not just generic language syntax.
+
+---
+
+## 6. Maintainers
+
+The dumbbells don't rack themselves. This project is kept in fighting shape by:
+
+- **Dmytro Gajewski**
+
+---
+
+## 7. Contributing
+
+Spotted a bug? Want to teach Codefang a new trick? PRs are very welcome.
+
+Read the [Contributing guide](CONTRIBUTING.md) before you start—it covers the build, the test gauntlet, commit conventions, and how to open a PR that gets merged instead of bounced.
+
+---
+
+## 8. Support
+
+Got a question, hit a wall, or think something's broken? The [Support guide](SUPPORT.md) points you to the right door—usage questions and bug reports go to GitHub Issues (discussions are off), and security holes go somewhere private. No more shouting into the void.
+
+---
+
+## 9. Security
+
+Found a hole? Don't shout it from the rooftops. Report it privately through GitHub's "Report a vulnerability" button on the repository's Security tab. The [Security policy](SECURITY.md) has the full drill—what to include, what to expect, and why public issues are off-limits for vulnerabilities.
+
+---
+
+## 10. License
+
+Codefang is released under the [Apache-2.0](LICENSE) license. Use it, fork it, ship it—just keep the notice intact.
 
 ---
 

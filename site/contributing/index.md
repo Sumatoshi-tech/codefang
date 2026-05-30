@@ -14,18 +14,18 @@ development environment to submitting a pull request.
 
 ---
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| **Go** | 1.24+ | Primary language |
+| **Go** | 1.26+ | Primary language |
 | **CMake** | 3.14+ | Building vendored libgit2 |
 | **Python 3** | 3.10+ | Benchmark scripts, code generation |
 | **Git** | 2.30+ | Version control |
 
-### Fork, Clone, and Build
+### Fork, clone, and build
 
 1. **Fork** the repository on GitHub.
 
@@ -54,7 +54,7 @@ development environment to submitting a pull request.
 
 ---
 
-## Development Workflow
+## Development workflow
 
 Codefang follows a test-driven, branch-based workflow. Here is the recommended
 sequence for every change:
@@ -69,7 +69,7 @@ graph LR
     F --> G[Open pull request]
 ```
 
-### 1. Create a Feature Branch
+### 1. Create a feature branch
 
 Always branch from `main`:
 
@@ -79,7 +79,7 @@ git pull origin main
 git checkout -b feat/my-new-feature
 ```
 
-### 2. Write Tests First (TDD)
+### 2. Write tests first (TDD)
 
 Write failing tests that describe the expected behavior **before** writing
 implementation code. Codefang uses table-driven tests extensively:
@@ -106,19 +106,19 @@ func TestMyFeature(t *testing.T) {
 }
 ```
 
-### 3. Implement Changes
+### 3. Implement changes
 
 Write the minimal code to make the tests pass. Keep functions focused and
 interfaces small.
 
-### 4. Run Linting and Dead Code Analysis
+### 4. Run linting and dead code analysis
 
 ```bash
 make lint
 make deadcode
 ```
 
-### 5. Run Tests (with Race Detector)
+### 5. Run tests (with race detector)
 
 ```bash
 make test
@@ -128,18 +128,18 @@ make test
     The test suite runs with the Go race detector enabled in CI. Ensure your
     code is free of data races before pushing.
 
-### 6. Update Documentation
+### 6. Update documentation
 
 If your change affects user-facing behavior, CLI flags, configuration options,
 or analyzer output, update the relevant documentation under `site/`.
 
 ---
 
-## Code Standards
+## Code standards
 
-### Language and Style
+### Language and style
 
-- **Go 1.24+** -- use modern language features where they improve clarity.
+- **Go 1.26+** -- use modern language features where they improve clarity.
 - Write **idiomatic Go** -- follow [Effective Go](https://go.dev/doc/effective_go)
   and the [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments).
 - Run `make fmt` before committing.
@@ -150,7 +150,7 @@ or analyzer output, update the relevant documentation under `site/`.
 - Name test cases descriptively (e.g., `"empty repository returns zero commits"`).
 - Place test helpers in the same package with a `_test.go` suffix.
 
-### Context Propagation
+### Context propagation
 
 - Pass `context.Context` as the first parameter through all public APIs.
 - **Never** use `context.Background()` in hot paths -- propagate the caller's
@@ -167,7 +167,7 @@ func Analyze(repo *Repository) (Result, error) {
 }
 ```
 
-### Structured Logging
+### Structured logging
 
 Use `log/slog` for all logging. Include relevant key-value pairs:
 
@@ -179,7 +179,7 @@ slog.InfoContext(ctx, "analysis complete",
 )
 ```
 
-### Functional Options
+### Functional options
 
 Use the functional options pattern for constructors with optional configuration:
 
@@ -199,14 +199,14 @@ func NewRunner(opts ...Option) *Runner {
 }
 ```
 
-### Interface Design
+### Interface design
 
 - Keep interfaces **small** -- aim for a maximum of **5 methods**.
 - Define interfaces at the **consumer** site, not the producer.
 - Prefer standard library interfaces (`io.Reader`, `io.Writer`, `fmt.Stringer`)
   when they fit.
 
-### Error Handling
+### Error handling
 
 Wrap errors with context using `fmt.Errorf` and the `%w` verb:
 
@@ -222,7 +222,7 @@ if err != nil {
 
 ---
 
-## Commit Conventions
+## Commit conventions
 
 Codefang uses [Conventional Commits](https://www.conventionalcommits.org/) to
 produce clean changelogs and enable automated versioning.
@@ -261,9 +261,9 @@ produce clean changelogs and enable automated versioning.
 
 ---
 
-## Pull Request Process
+## Pull request process
 
-### Before Opening a PR
+### Before opening a PR
 
 - [ ] All tests pass locally (`make test`)
 - [ ] Linting is clean (`make lint`)
@@ -271,7 +271,7 @@ produce clean changelogs and enable automated versioning.
 - [ ] Commit messages follow conventional commits
 - [ ] Documentation is updated if needed
 
-### PR Description Template
+### PR description template
 
 When opening a pull request, include:
 
@@ -286,7 +286,7 @@ When opening a pull request, include:
 
 ---
 
-## Make Targets Reference
+## Make targets reference
 
 The project `Makefile` provides a comprehensive set of targets for development:
 
@@ -324,7 +324,7 @@ The project `Makefile` provides a comprehensive set of targets for development:
 
 ---
 
-## Reporting Bugs
+## Reporting bugs
 
 Found a bug? Please [open a GitHub Issue](https://github.com/Sumatoshi-tech/codefang/issues/new)
 with the following information:
@@ -343,7 +343,7 @@ with the following information:
 
 ---
 
-## Feature Requests
+## Feature requests
 
 Have an idea for a new analyzer, output format, or integration? We welcome
 feature requests. Please [open a GitHub Issue](https://github.com/Sumatoshi-tech/codefang/issues/new)
@@ -357,7 +357,7 @@ and include:
 
 ---
 
-## Thank You
+## Thank you
 
 Every contribution, no matter how small, helps make Codefang a better tool.
 Thank you for being part of the community.

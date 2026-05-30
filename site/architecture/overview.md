@@ -3,13 +3,13 @@ title: Architecture Overview
 description: System architecture, package structure, and data flow for the Codefang analysis platform.
 ---
 
-# Architecture Overview
+# Architecture overview
 
 Codefang follows the **Unix philosophy**: small, focused tools joined by pipes.
 The project ships two binaries that can be used independently or composed
 together in pipelines, CI systems, and AI agent workflows.
 
-## Two Binaries
+## Two binaries
 
 | Binary | Purpose | Entry point |
 |--------|---------|-------------|
@@ -35,16 +35,16 @@ uast parse main.go | codefang run -a static/* --format json
 
 ---
 
-## Package Structure
+## Package structure
 
-### CLI Layer
+### CLI layer
 
 | Package | Description |
 |---------|-------------|
 | `cmd/codefang/` | CLI entry point for the analyzer. Cobra commands for `run`, `mcp`, etc. |
 | `cmd/uast/` | CLI entry point for the UAST parser. Commands: `parse`, `query`, `diff`, `explore`, `server`. |
 
-### Core Libraries
+### Core libraries
 
 | Package | Description |
 |---------|-------------|
@@ -70,7 +70,7 @@ uast parse main.go | codefang run -a static/* --format json
 
 ### Analyzers (`internal/analyzers/`)
 
-#### Shared Components (`plumbing/`)
+#### Shared components (`plumbing/`)
 
 The plumbing package provides the shared pipeline components that all history
 analyzers depend on. These run as "core" analyzers in the pipeline before any
@@ -87,7 +87,7 @@ leaf analyzers consume their output.
 | `LinesStatsCalculator` | `line_stats.go` | Computes per-commit line addition/deletion stats |
 | `UASTChangesAnalyzer` | `uast.go` | Parses UAST for changed files |
 
-#### Static Analyzers (`analyze/`)
+#### Static analyzers (`analyze/`)
 
 | Analyzer | ID | Description |
 |----------|----|-------------|
@@ -101,7 +101,7 @@ The `analyze/` package also contains the static analysis service, analyzer
 registry, factory, output formatting (JSON, text, compact, YAML, plot, binary,
 timeseries), and cross-format conversion logic.
 
-#### History Analyzers
+#### History analyzers
 
 | Analyzer | ID | Description |
 |----------|----|-------------|
@@ -118,7 +118,7 @@ timeseries), and cross-format conversion logic.
 
 ---
 
-## Data Flow
+## Data flow
 
 The following diagram shows how data flows through the system during a
 combined static + history analysis run.
@@ -193,7 +193,7 @@ flowchart TD
 
 ---
 
-## Two Analysis Modes
+## Two analysis modes
 
 Codefang operates in two distinct modes that can run independently or be
 combined in a single `codefang run` invocation.
@@ -230,7 +230,7 @@ flowchart LR
     MERGE --> OUT["JSON / Text / YAML / Plot / TimeSeries"]
 ```
 
-### Static Mode
+### Static mode
 
 1. Reads source files from the filesystem.
 2. Parses each file into a UAST using Tree-sitter with DSL-based mappings.
@@ -239,7 +239,7 @@ flowchart LR
 
 Static analysis is fast, parallelized across files, and requires no Git history.
 
-### History Mode
+### History mode
 
 1. Opens the Git repository via libgit2 (supports both normal and bare repos).
 2. Loads the commit history (optionally filtered by `--limit`, `--since`, `--first-parent`).
@@ -249,7 +249,7 @@ Static analysis is fast, parallelized across files, and requires no Git history.
 6. For large repositories, the **streaming pipeline** splits commits into memory-bounded chunks with hibernate/boot cycles and optional double-buffered pipelining. The `BaseHistoryAnalyzer` manages state serialization transparently.
 7. **Checkpointing** after each chunk enables crash recovery.
 
-### Combined Mode
+### Combined mode
 
 When both static and history analyzers are selected, Codefang runs both phases
 sequentially, encodes each phase to an internal binary format, then decodes and
@@ -257,7 +257,7 @@ merges the results into a single output document in the requested format.
 
 ---
 
-## Pipeline Architecture
+## Pipeline architecture
 
 The history analysis pipeline is built around a **Runner** that coordinates
 the full lifecycle:
@@ -280,7 +280,7 @@ The **Runner** supports two execution strategies:
 
 ---
 
-## Configuration Layers
+## Configuration layers
 
 Configuration follows a clear priority chain:
 

@@ -53,7 +53,7 @@ analysis of entire repositories. One tool, one config, complete understanding.
 
 ---
 
-## Key Metrics
+## Key metrics
 
 <div class="grid" markdown>
 
@@ -96,7 +96,7 @@ analysis of entire repositories. One tool, one config, complete understanding.
 
 ---
 
-## Quick Install
+## Quick install
 
 === "Go Install"
 
@@ -130,7 +130,7 @@ uast --version
 
 ---
 
-## Quick Example
+## Quick example
 
 ```
 $ codefang run -a static/complexity,static/halstead --format text .
@@ -163,9 +163,9 @@ codefang (v2):
 
 ---
 
-## Analyzers at a Glance
+## Analyzers at a glance
 
-### Static Analyzers
+### Static analyzers
 
 | Analyzer | Description | Key Metric |
 |----------|-------------|------------|
@@ -175,7 +175,7 @@ codefang (v2):
 | `comments` | Comment density and documentation ratios | Density % |
 | `imports` | Import/dependency graph analysis | Coupling score |
 
-### History Analyzers
+### History analyzers
 
 | Analyzer | Description | Key Metric |
 |----------|-------------|------------|
@@ -190,7 +190,7 @@ codefang (v2):
 
 ---
 
-## Explore the Docs
+## Explore the docs
 
 <div class="grid cards" markdown>
 

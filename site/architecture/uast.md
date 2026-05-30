@@ -3,7 +3,7 @@ title: UAST System
 description: Deep dive into the Universal Abstract Syntax Tree parser, Tree-sitter integration, DSL mapping engine, and CLI tools.
 ---
 
-# UAST System
+# UAST system
 
 The **Universal Abstract Syntax Tree** (UAST) is Codefang's language-agnostic
 code representation. It normalizes the wildly different ASTs produced by
@@ -46,7 +46,7 @@ Example UAST node for a Go function:
 
 ---
 
-## Tree-sitter Under the Hood
+## Tree-sitter under the hood
 
 Codefang uses [Tree-sitter](https://tree-sitter.github.io/) as the parsing
 backend. Tree-sitter provides:
@@ -67,14 +67,14 @@ flowchart LR
     DSL --> UAST["Universal AST<br/><em>normalized nodes</em>"]
 ```
 
-### Language Detection
+### Language detection
 
 File language is detected using the [go-enry](https://github.com/go-enry/go-enry)
 library, which uses filename, extension, and content heuristics (the same
 algorithm as GitHub's Linguist). You can override detection with the
 `--language` / `-l` flag.
 
-### Performance Optimizations
+### Performance optimizations
 
 The UAST parser includes several performance optimizations for high-throughput
 analysis:
@@ -90,13 +90,13 @@ analysis:
 
 ---
 
-## DSL Mapping Engine
+## DSL mapping engine
 
 The DSL (Domain-Specific Language) is how Tree-sitter's language-specific
 concrete syntax tree nodes are mapped to universal UAST node types. Each
 language has a `.uast` mapping file that declares the transformation rules.
 
-### DSL Syntax Overview
+### DSL syntax overview
 
 A mapping file consists of:
 
@@ -117,7 +117,7 @@ function_declaration <- (function_declaration
 )
 ```
 
-### Rule Anatomy
+### Rule anatomy
 
 Each rule has four parts:
 
@@ -131,7 +131,7 @@ Each rule has four parts:
 | `tree-sitter-pattern` | A Tree-sitter query pattern with named captures (`@name`, `@body`) |
 | `uast-spec` | The UAST node specification: type, token, roles, props, children |
 
-### UAST Spec Fields
+### UAST spec fields
 
 | Field | Description | Example |
 |-------|-------------|---------|
@@ -141,7 +141,7 @@ Each rule has four parts:
 | `props` | Key-value properties | `name: "@name", visibility: "public"` |
 | `children` | Child capture reference | `"@body"` |
 
-### Token Sources
+### Token sources
 
 | Source | Description |
 |--------|-------------|
@@ -189,12 +189,12 @@ them. Inheritance is resolved recursively.
 
 ---
 
-## Role System
+## Role system
 
 UAST roles classify what a node **does** semantically, independent of language
 syntax. A single node can have multiple roles.
 
-### Common Roles
+### Common roles
 
 | Role | Description | Examples |
 |------|-------------|---------|
@@ -220,11 +220,11 @@ syntax. A single node can have multiple roles.
 
 ---
 
-## Writing Custom Mappings
+## Writing custom mappings
 
 To add or customize language mappings:
 
-### Step 1: Create a Mapping File
+### Step 1: create a mapping file
 
 Create a `.uast` file for your language:
 
@@ -276,7 +276,7 @@ line_comment <- (line_comment) => uast(
 )
 ```
 
-### Step 2: Test with the UAST CLI
+### Step 2: test with the UAST CLI
 
 ```bash
 # Parse a file with your custom mapping
@@ -289,13 +289,13 @@ uast explore main.rs
 uast query -e 'filter(.type == "Function")' main.rs
 ```
 
-### Step 3: Iterate
+### Step 3: iterate
 
 Use `uast explore` to inspect the Tree-sitter CST and discover which node
 types and field names are available for your target language. Then write
 mapping rules to convert them to UAST types.
 
-### Pre-compiled Mappings
+### Pre-compiled mappings
 
 For production performance, language mappings are pre-compiled into the binary.
 The DSL is parsed once at startup and the resulting `PatternMatcher` caches
@@ -307,7 +307,7 @@ allocation.
 
 ---
 
-## UAST CLI Commands
+## UAST CLI commands
 
 The `uast` binary provides five commands for working with Universal ASTs.
 
@@ -391,7 +391,7 @@ language mappings, with full OpenTelemetry instrumentation.
 
 ---
 
-## Architecture Diagram
+## Architecture diagram
 
 ```mermaid
 flowchart TB
@@ -444,7 +444,7 @@ flowchart TB
 
 ---
 
-## Integration with Analyzers
+## Integration with analyzers
 
 The UAST system is used by both static and history analyzers:
 

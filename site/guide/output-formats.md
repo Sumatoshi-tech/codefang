@@ -1,4 +1,4 @@
-# Output Formats
+# Output formats
 
 Codefang supports six output formats. Each is suited to a different use case,
 from human review to CI pipelines to interactive exploration. Select a format
@@ -10,7 +10,7 @@ codefang run -a static/complexity --format text .
 
 ---
 
-## Format Overview
+## Format overview
 
 | Format | Flag Value | Content Type | Best For |
 |--------|-----------|--------------|----------|
@@ -304,7 +304,7 @@ cat output.ndjson | clickhouse-client --query "INSERT INTO codefang FORMAT JSONE
 
 ---
 
-## Time Series
+## Time series
 
 **Flag:** `--format timeseries`
 
@@ -444,7 +444,7 @@ open ./report/index.html
 
 ---
 
-## Format Comparison
+## Format comparison
 
 The following table summarizes which formats are available for which analyzer
 categories:
@@ -477,7 +477,7 @@ categories:
 
 ---
 
-## Cross-Format Conversion
+## Cross-format conversion
 
 You can convert a previously generated report to a different format without
 re-running analysis. First, generate a binary (or JSON) report, then convert:

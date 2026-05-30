@@ -1,0 +1,44 @@
+# Codefang
+
+> Codefang is a comprehensive code analysis platform that understands your code deeply — not just as text, but as structure (AST) and history (Git) — for tracking technical debt, analyzing developer churn, and feeding context to AI agents.
+
+Codefang is a spiritual successor to source{d}'s `hercules`, rebuilt on a modern engine. It splits into two binaries: `uast` (the parser, turning source into a Universal Abstract Syntax Tree across 60+ languages via Tree-sitter) and `codefang` (the analyzer, consuming UASTs for static analysis or Git repositories for history mining). Analyzers are pluggable, and the tool is designed to be AI-agent ready through an MCP server and a UNIX-pipe-friendly CLI.
+
+## README
+
+- [README](https://raw.githubusercontent.com/Sumatoshi-tech/codefang/main/README.md): project entry point — what Codefang is, why it exists, install, and a quickstart.
+
+## Tutorial
+
+- [Quick start](https://sumatoshi-tech.github.io/codefang/getting-started/quickstart/): install the binaries and run your first static and history analyses end to end.
+
+## How-to
+
+- [How to analyze a monorepo](https://sumatoshi-tech.github.io/codefang/how-to/analyze-a-monorepo/): scope analysis to subprojects within a single large repository.
+- [How to run Codefang in CI](https://sumatoshi-tech.github.io/codefang/how-to/run-in-ci/): wire Codefang into a continuous-integration pipeline.
+- [How to read a burndown chart](https://sumatoshi-tech.github.io/codefang/how-to/read-a-burndown-chart/): interpret the survival-over-time output of the burndown analyzer.
+- [How to analyze a bare repository](https://sumatoshi-tech.github.io/codefang/how-to/analyze-a-bare-repo/): run history analysis against a bare Git clone with no working tree.
+- [How to attach an MCP client](https://sumatoshi-tech.github.io/codefang/how-to/attach-an-mcp-client/): connect an AI agent to Codefang through the MCP server.
+
+## Reference
+
+- [Analyzers](https://sumatoshi-tech.github.io/codefang/analyzers/): reference index of every static and history analyzer with configuration keys and output schemas.
+- [CLI reference](https://sumatoshi-tech.github.io/codefang/guide/cli-reference/): complete `codefang` and `uast` command, flag, and subcommand reference.
+
+## Explanation
+
+- [Understanding complexity metrics](https://sumatoshi-tech.github.io/codefang/explanation/complexity/): the mental model behind cyclomatic and cognitive complexity.
+- [Understanding cohesion metrics](https://sumatoshi-tech.github.io/codefang/explanation/cohesion/): how Codefang measures structural cohesion.
+- [Understanding Halstead metrics](https://sumatoshi-tech.github.io/codefang/explanation/halstead/): the operator/operand model behind Halstead volume and difficulty.
+- [Understanding documentation coverage](https://sumatoshi-tech.github.io/codefang/explanation/comments/): how comment-coverage scoring works and what it does not measure.
+- [Understanding import and dependency analysis](https://sumatoshi-tech.github.io/codefang/explanation/imports/): how the import graph is built and read.
+- [Understanding clone detection](https://sumatoshi-tech.github.io/codefang/explanation/clones/): the approach to finding duplicated code structure.
+- [Understanding code burndown](https://sumatoshi-tech.github.io/codefang/explanation/burndown/): the model of code survival and decay over history.
+- [Understanding developer analysis](https://sumatoshi-tech.github.io/codefang/explanation/developers/): how authorship and developer churn are attributed.
+- [Understanding file and developer coupling](https://sumatoshi-tech.github.io/codefang/explanation/couples/): how co-change coupling between files and developers is derived.
+- [Understanding file history analysis](https://sumatoshi-tech.github.io/codefang/explanation/file-history/): the model for per-file lifecycle over time.
+- [Understanding code quality over time](https://sumatoshi-tech.github.io/codefang/explanation/quality/): how quality trends are tracked across history.
+- [Understanding comment sentiment analysis](https://sumatoshi-tech.github.io/codefang/explanation/sentiment/): how sentiment in code comments is scored and interpreted.
+- [Understanding structural hotness](https://sumatoshi-tech.github.io/codefang/explanation/shotness/): how structurally hot (frequently changed) code is identified.
+- [Understanding typo detection](https://sumatoshi-tech.github.io/codefang/explanation/typos/): how typos in identifiers and comments are flagged.
+- [Understanding temporal anomaly detection](https://sumatoshi-tech.github.io/codefang/explanation/anomaly/): how anomalous spikes in repository activity are detected.

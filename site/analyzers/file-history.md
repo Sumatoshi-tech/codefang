@@ -1,48 +1,17 @@
-# File History Analyzer
+# File history analyzer reference
 
-The file history analyzer tracks the **lifecycle of every file** through Git history, recording which commits touched each file, which developers modified it, and aggregating line statistics per contributor. It supports rename detection to maintain continuity across file moves.
+The file history analyzer tracks the **lifecycle of every file** through Git
+history, recording which commits touched each file, which developers modified
+it, and aggregating line statistics per contributor.
 
----
-
-## Quick Start
-
-```bash
-codefang run -a history/file-history .
-```
-
----
-
-## What It Measures
-
-### Per-File Commit History
-
-For each file present in the repository at HEAD, the analyzer records the ordered list of commits that created, modified, or deleted it.
-
-### Per-File Contributor Breakdown
-
-For each file, a map of developer IDs to line statistics (added, removed, changed). This shows who contributed what to each file.
-
-### Code Hotspots
-
-Files with high commit counts are flagged as hotspots with risk levels:
-
-!!! warning "Hotspot risk levels"
-    - **CRITICAL**: >= 50 commits
-    - **HIGH**: >= 30 commits
-    - **MEDIUM**: >= 15 commits
-    - Files below 15 commits are not flagged
-
-### File Churn
-
-A composite score combining commit frequency and line change volume. High-churn files may indicate instability or areas of active development.
-
-### Rename Support
-
-When Git detects a file rename (e.g., `old/path.go` to `new/path.go`), the analyzer transfers the full history from the old path to the new path, maintaining a continuous record.
+For the conceptual model — what the lifecycle data means and how hotspots and
+churn are derived — see
+[Understanding file history analysis](../explanation/file-history.md). To run
+it, see the [Quick start](../getting-started/quickstart.md).
 
 ---
 
-## Configuration Options
+## Configuration options
 
 The file history analyzer has no additional configuration options.
 
@@ -52,7 +21,7 @@ The file history analyzer has no additional configuration options.
 
 ---
 
-## Example Output
+## Example output
 
 === "JSON"
 
@@ -131,20 +100,7 @@ The file history analyzer has no additional configuration options.
 
 ---
 
-## Use Cases
+## See also
 
-- **Hotspot identification**: Find the files that change most often. These are the highest-risk files for bugs and the best candidates for extra test coverage and code review scrutiny.
-- **Code ownership mapping**: Determine who is the primary contributor for each file to establish code ownership.
-- **Onboarding guides**: New team members can see which files each developer owns to know who to ask about specific code.
-- **Refactoring ROI**: Identify files with both high churn and many contributors -- refactoring these produces the largest payoff.
-- **Risk assessment**: Files with a single contributor and high commit counts are both hot and concentrated -- a bus factor risk.
-
----
-
-## Limitations
-
-- **HEAD-only output**: Only files present at HEAD are included in the final output. Files that were deleted before the last commit are tracked during analysis but excluded from results.
-- **Merge handling**: Merge commits are processed only once to avoid double-counting. Non-merge context changes in merge commits are skipped.
-- **Rename detection**: Depends on Git's rename detection heuristics. If a file is both renamed and heavily modified in the same commit, Git may not detect the rename.
-- **Churn score formula**: The churn score is `commit_count + (added + removed + changed) / 100`. This is a simple heuristic, not a rigorous statistical measure.
-- **No time-series**: Unlike the burndown analyzer, file history does not produce time-series data. It provides aggregate per-file statistics only.
+- [Understanding file history analysis](../explanation/file-history.md) — the mental model, hotspots, churn, and limitations.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
