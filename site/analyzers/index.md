@@ -6,7 +6,7 @@ Codefang ships two families of analyzers that extract quantitative insights from
 
 ---
 
-## Static Analyzers
+## Static analyzers
 
 Static analyzers parse source files into a UAST and compute metrics in a single pass. They require no repository history and can run on individual files or entire directory trees.
 
@@ -19,7 +19,7 @@ Static analyzers parse source files into a UAST and compute metrics in a single 
 | [Imports](imports.md) | `imports` | Import and dependency analysis |
 | [Clones](clones.md) | `clones` | Cross-file duplicate function detection via MinHash + LSH |
 
-### Running Static Analyzers
+### Running static analyzers
 
 Pipe a UAST through `codefang analyze`:
 
@@ -36,7 +36,7 @@ codefang analyze -a complexity ./src/
 
 ---
 
-## History Analyzers
+## History analyzers
 
 History analyzers iterate over Git commits (oldest to newest) and accumulate statistics about how files, developers, and code structure change over time. They require a Git repository.
 
@@ -52,7 +52,7 @@ History analyzers iterate over Git commits (oldest to newest) and accumulate sta
 | [Typos](typos.md) | `history/typos` | Typo detection dataset builder |
 | [Anomaly](anomaly.md) | `history/anomaly` | Z-score temporal anomaly detection |
 
-### Running History Analyzers
+### Running history analyzers
 
 Use `codefang run` with the `-a` flag:
 
@@ -69,7 +69,7 @@ codefang run -a 'history/*' .
 
 ---
 
-## Glob Patterns
+## Glob patterns
 
 You can select analyzers using glob patterns with the `-a` flag:
 
@@ -86,7 +86,7 @@ codefang run -a '*' .
 
 ---
 
-## Output Formats
+## Output formats
 
 All analyzers support multiple output formats via the `-f` flag:
 

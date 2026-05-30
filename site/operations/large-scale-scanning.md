@@ -1,4 +1,4 @@
-# Large-Scale Repository Scanning
+# Large-scale repository scanning
 
 This guide covers using Codefang to periodically scan large heterogeneous
 codebases — thousands of repositories — and feed results into a data warehouse
@@ -26,7 +26,7 @@ graph LR
 The streaming pipeline, checkpointing, and bounded-memory execution make each
 individual run safe on large repositories without manual tuning.
 
-## Bare Repository Support
+## Bare repository support
 
 Codefang uses libgit2 which opens both normal and bare repositories
 transparently. No cloning is required.
@@ -43,11 +43,11 @@ This is relevant for:
 - **Gitolite mirrors** — bare repos by convention
 - **`git clone --bare`** mirrors
 
-### GitLab Backup Layout
+### GitLab backup layout
 
 GitLab backup tarballs contain bare repositories at predictable paths:
 
-```
+```text
 backup.tar
 ├── repositories/
 │   └── @hashed/
@@ -69,7 +69,7 @@ find /data/extract/repositories -name "*.git" \
   -type d > /tmp/repo_paths.txt
 ```
 
-## Output Format for DWH Ingestion
+## Output format for DWH ingestion
 
 Use `--format json` for structured output suitable for data warehouse loading:
 
@@ -81,7 +81,7 @@ codefang run /path/to/repo -a history/* --format json --silent
     The `--silent` flag suppresses progress output on stderr, keeping stdout
     clean for piping.
 
-### Adding Metadata
+### Adding metadata
 
 Wrap the output with repository metadata using `jq` before uploading:
 
@@ -91,7 +91,7 @@ codefang run "$REPO_PATH" -a history/* --format json --silent \
        '{repo: $repo, scan_date: $date, results: .}'
 ```
 
-### TimeSeries Format
+### TimeSeries format
 
 For time-series analytics, use `--format timeseries` to merge all analyzer
 outputs into a single chronologically-ordered JSON array:
@@ -103,7 +103,7 @@ codefang run /path/to/repo -a history/devs,history/burndown \
 
 ## Orchestration
 
-### GNU Parallel (Simple)
+### GNU parallel (simple)
 
 For a flat list of repository paths:
 
@@ -128,7 +128,7 @@ cat "$REPOS" | parallel -j 8 --joblog /tmp/codefang-jobs.log '
 This produces `s3://analytics/codefang/2025-01-15/repo-name.json`, partitioned
 by date.
 
-### Kubernetes Jobs
+### Kubernetes jobs
 
 For large fleets (thousands of repos), use Kubernetes Jobs or Argo Workflows:
 
@@ -183,7 +183,7 @@ spec:
     - **Parallelism**: 50-100 concurrent pods is typical for 60k repositories
     - **Scheduling**: use a CronJob or Argo CronWorkflow for periodic scans
 
-## Memory Budget and Streaming
+## Memory budget and streaming
 
 The `--memory-budget` flag controls how Codefang splits a repository's commit
 history into chunks. See [Streaming Pipeline](../architecture/streaming-pipeline.md)
@@ -198,7 +198,7 @@ for details.
 
 When unset, the budget defaults to 50% of system memory (capped at 4 GiB).
 
-## Incremental Scanning with `--since`
+## Incremental scanning with `--since`
 
 For periodic scans, use `--since` to analyze only new commits since the last
 run:
@@ -220,7 +220,7 @@ codefang run /path/to/repo -a history/* --format json --since 2025-01-01T00:00:0
 | Date only | `2025-01-01` | Midnight UTC on that date |
 | RFC3339 | `2025-01-01T00:00:00Z` | Exact timestamp |
 
-## Checkpointing and Crash Recovery
+## Checkpointing and crash recovery
 
 Checkpointing is enabled by default. After each fully processed chunk, the
 pipeline saves analyzer state to disk. If a run is interrupted (OOM kill, pod
@@ -239,7 +239,7 @@ codefang run /path/to/repo \
 !!! tip "Kubernetes"
     Mount the checkpoint directory on a PVC to survive pod restarts.
 
-## DWH Loading
+## DWH loading
 
 ### Amazon Athena
 
@@ -286,12 +286,12 @@ devs_df = df.select("repo", explode("results.devs.authors").alias("author"))
 devs_df.write.partitionBy("scan_date").parquet("s3://warehouse/codefang/devs/")
 ```
 
-## Static Analysis Memory Monitoring
+## Static analysis memory monitoring
 
 The static analysis phase logs progress events at regular intervals (every
 1000 files). By default, only phase and file count are shown:
 
-```
+```text
 static: processing files=1000
 static: processing files=2000
 static: complete   files=5432
@@ -299,7 +299,7 @@ static: complete   files=5432
 
 With `--verbose`, RSS and aggregator buffer sizes are included:
 
-```
+```text
 static: processing files=1000 RSS=245MiB agg=12MiB
 static: processing files=2000 RSS=312MiB agg=18MiB
 static: complete   files=5432 RSS=280MiB agg=6MiB
@@ -340,7 +340,7 @@ codefang run /path/to/repo -a history/* --format json --silent
 | `codefang.errors.total` | Track failure rate across the fleet |
 | `codefang.cache.hits` / `codefang.cache.misses` | Tune cache sizes |
 
-## Sizing Estimates
+## Sizing estimates
 
 | Parameter | Typical Value |
 |-----------|---------------|

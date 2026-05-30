@@ -1,0 +1,32 @@
+# lychee link-checker ignore list (one regex per line).
+# Reference: https://github.com/lycheeverse/lychee#ignoring-links
+# Patterns here are known-unreachable or context-dependent links that would
+# otherwise produce false negatives in CI.
+
+# Localhost / loopback endpoints used in MCP and observability examples.
+^https?://localhost
+^https?://127\.0\.0\.1
+^https?://0\.0\.0\.0
+^https?://\[::1\]
+
+# Private / link-local address ranges from large-scale-scanning examples.
+^https?://10\.
+^https?://192\.168\.
+^https?://172\.(1[6-9]|2[0-9]|3[01])\.
+
+# Example/placeholder hosts.
+example\.com
+example\.org
+your-org
+<.*>
+
+# The project's own GitHub Pages site is built and published by this same
+# workflow; on a PR the new pages may 404 until deploy completes.
+sumatoshi-tech\.github\.io
+
+# pkg.go.dev rate-limits aggressive crawlers and 404s modules until first fetch.
+pkg\.go\.dev
+
+# mailto and tel links — checked separately via --exclude-mail in the job.
+^mailto:
+^tel:

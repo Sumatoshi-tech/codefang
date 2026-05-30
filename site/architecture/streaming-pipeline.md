@@ -3,7 +3,7 @@ title: Streaming Pipeline
 description: Chunk-based streaming execution for analyzing large repositories with bounded memory, including double-buffered pipelining and checkpoint recovery.
 ---
 
-# Streaming Pipeline
+# Streaming pipeline
 
 Large Git repositories (tens or hundreds of thousands of commits) can easily
 exhaust available memory if all analyzer state is accumulated in a single pass.
@@ -13,7 +13,7 @@ memory-bounded **chunks**, processing each chunk independently with
 
 ---
 
-## The Problem
+## The problem
 
 History analyzers accumulate state as they process commits. For example:
 
@@ -26,7 +26,7 @@ of memory. Many CI environments and containers are limited to 2-8 GiB.
 
 ---
 
-## The Solution: Chunk-Based Processing
+## The solution: chunk-based processing
 
 The streaming pipeline:
 
@@ -77,7 +77,7 @@ flowchart LR
 
 ---
 
-## The Planner
+## The planner
 
 The `streaming.Planner` calculates optimal chunk boundaries. It lives in
 `internal/streaming/planner.go`.
@@ -98,11 +98,11 @@ The `streaming.Planner` calculates optimal chunk boundaries. It lives in
 | `AggStatePercent` | 30% | Fraction of remaining budget for aggregator spill budget |
 | `ChunkMemPercent` | 10% | Fraction of remaining budget for in-flight data |
 
-### Budget Decomposition: P + W + A + S
+### Budget decomposition: P + W + A + S
 
 The scheduler decomposes the memory budget into four explicit regions:
 
-```
+```text
 B = P + W + A + S
 
 usable    = budget * 0.95              (S = 5% slack for GC headroom)
@@ -116,11 +116,11 @@ The `ComputeSchedule()` function in `internal/streaming/planner.go` performs thi
 decomposition and returns a `Schedule` containing chunk boundaries, chunk size,
 buffering factor, and the aggregator spill budget.
 
-### Chunk Size Calculation
+### Chunk size calculation
 
 The planner determines chunk size from the **working state** portion of the budget:
 
-```
+```text
 growth     = working_state_per_commit * 1.5  (safety margin)
 chunk_size = clamp(workState / growth, MinChunkSize, MaxChunkSize)
 ```
@@ -130,7 +130,7 @@ Where:
 - **`workState`** is 60% of the remaining budget after pipeline overhead and slack.
 - **`working_state_per_commit`** is the sum of all selected leaf analyzers' declared `WorkingStateSize()` values. Each leaf analyzer declares `WorkingStateSize()` (analyzer-internal data structures) and `AvgTCSize()` (per-commit TC payload). Only `WorkingStateSize()` drives chunk sizing; `AvgTCSize()` is used separately for aggregator budget estimation.
 
-### Memory Sizing Methods
+### Memory sizing methods
 
 Each `HistoryAnalyzer` declares two per-commit memory estimates:
 
@@ -151,7 +151,7 @@ analyzers. Plumbing analyzers return 0 for both and are excluded from the sum.
 For a 10,000-commit repo with 4 GiB budget, 400 MiB pipeline overhead, and
 1.5 MiB/commit working state growth:
 
-```
+```text
 usable     = 4 GiB * 0.95          = 3,891 MiB
 remaining  = 3,891 - 400           = 3,491 MiB
 workState  = 3,491 * 0.60          = 2,095 MiB
@@ -163,7 +163,7 @@ chunks     = ceil(10,000 / 931)    = 11 chunks
 
 ---
 
-## Buffered Chunk Pipelining
+## Buffered chunk pipelining
 
 When the memory budget is sufficient and multiple chunks are needed, the
 pipeline enables **buffered pipelining** to overlap the pipeline stage
@@ -171,7 +171,7 @@ of upcoming chunks with the analyzer consumption stage of the current chunk.
 The scheduler determines the **buffering factor** (1, 2, or 3) based on
 the memory budget.
 
-### The Insight
+### The insight
 
 Processing a chunk has two phases:
 
@@ -182,14 +182,14 @@ Processing a chunk has two phases:
 
 These two phases use different resources and can overlap.
 
-### Buffering Factor Selection
+### Buffering factor selection
 
 The `ComputeSchedule()` function iterates buffering factors from `MaxBuffering`
 (default 3) down to 1, selecting the highest factor where `ChunkSize >=
 MinChunkSize`. Only the working state region (60% of remaining budget) is
 divided among buffering slots; the aggregator spill budget is unaffected.
 
-```
+```go
 for bf = maxBuffering; bf >= 1; bf-- {
     chunkSize = workState / (bf * effectiveGrowth)
     if chunkSize >= MinChunkSize {
@@ -206,9 +206,9 @@ for bf = maxBuffering; bf >= 1; bf-- {
 | 512 MiB | 1 | Single buffering (budget too tight) |
 | Unlimited (0) | 3 | Maximum parallelism |
 
-### How Double-Buffering Works
+### How double-buffering works
 
-```
+```text
                     Time ───────────────────────────────────────────>
 
 Chunk 1:  |==== Pipeline ====|==== Consume ====|
@@ -226,7 +226,7 @@ Chunk 3:                                        |==== Pipeline ====|==== Consume
    available -- analyzers can consume it immediately without waiting for I/O.
 4. The pattern repeats for subsequent chunks.
 
-### How Triple-Buffering Works
+### How triple-buffering works
 
 With `BufferingFactor >= 3`, the scheduler produces smaller chunks (workState
 divided by 3), and the prefetch loop naturally overlaps more pipeline phases.
@@ -234,13 +234,13 @@ The existing double-buffer loop handles triple-buffering semantics: at each
 iteration it prefetches the next chunk, so with more (smaller) chunks, the
 overlap covers a larger fraction of total processing time.
 
-### Memory Budget Split
+### Memory budget split
 
 The scheduler handles the memory budget split through the buffering factor
 iteration. With `BufferingFactor = N`, the working state region is divided
 among N concurrent slots:
 
-```
+```text
 workState     = remaining * 0.60
 chunkSize     = workState / (N * effectiveGrowth)
 ```
@@ -248,7 +248,7 @@ chunkSize     = workState / (N * effectiveGrowth)
 This results in smaller chunk sizes (more chunks), but the pipeline overlap
 compensates by eliminating I/O wait time between chunks.
 
-### Activation Conditions
+### Activation conditions
 
 The scheduler automatically selects the buffering factor. The pipeline uses
 double-buffered processing when `BufferingFactor >= 2` and falls back to
@@ -257,13 +257,13 @@ always uses single-buffering since it cannot prefetch.
 
 ---
 
-## Three-Metric Adaptive Feedback
+## Three-metric adaptive feedback
 
 After each chunk, the `AdaptivePlanner` examines three independent metrics and
 re-plans remaining chunks if any metric diverges from its prediction by more
 than 25%.
 
-### Tracked Metrics
+### Tracked metrics
 
 | Metric | Source | Purpose |
 |--------|--------|---------|
@@ -275,7 +275,7 @@ Each metric is tracked by its own exponential moving average (EMA) with
 `alpha = 0.3` (~3-chunk half-life). The `ReplanObservation` struct carries
 all three per-commit observations to `Replan()`.
 
-### Replan Logic
+### Replan logic
 
 1. Update all three EMAs with the chunk's observations (clamped to 1 KiB floor).
 2. Compute the predicted effective growth rate: `declared * 1.5` (safety margin).
@@ -294,7 +294,7 @@ all three per-commit observations to `Replan()`.
 
 ---
 
-## Hibernate / Boot Cycles
+## Hibernate / boot cycles
 
 Between chunks, the pipeline calls `Hibernate()` on all hibernatable analyzers,
 then `Boot()` to restore them for the next chunk.
@@ -322,7 +322,7 @@ checkpoint to disk. If the process is interrupted (OOM kill, pod eviction,
 timeout), the next run with `--resume` automatically restarts from the last
 completed chunk.
 
-### Checkpoint Contents
+### Checkpoint contents
 
 | Field | Description |
 |-------|-------------|
@@ -341,7 +341,7 @@ On resume, aggregators are recreated and pointed at their saved spill
 directories so that TCs accumulated before the interruption are preserved.
 This ensures resumed runs produce identical output to uninterrupted runs.
 
-### Checkpointable Interface
+### Checkpointable interface
 
 ```go
 type Checkpointable interface {
@@ -355,7 +355,7 @@ type Checkpointable interface {
     implement `Checkpointable`. If any analyzer lacks support, checkpointing
     is disabled with a warning.
 
-### CLI Flags
+### CLI flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -364,7 +364,7 @@ type Checkpointable interface {
 | `--checkpoint-dir` | `~/.codefang/checkpoints` | Checkpoint storage directory |
 | `--clear-checkpoint` | `false` | Clear existing checkpoint before run |
 
-### Crash Recovery Flow
+### Crash recovery flow
 
 ```mermaid
 flowchart TD
@@ -384,12 +384,12 @@ flowchart TD
 
 ---
 
-## Full Pipeline Timeline
+## Full pipeline timeline
 
 The following diagram shows the complete lifecycle of a streaming analysis
 run with buffered pipelining (double-buffer shown) and checkpointing:
 
-```
+```text
 Time ──────────────────────────────────────────────────────────────────────>
 
 Phase:     INIT        CHUNK 1                    CHUNK 2                    CHUNK 3         FINALIZE
@@ -422,9 +422,9 @@ Hibernate:                      [hib][boot]              [hib][boot]
 
 ---
 
-## Configuration Recommendations
+## Configuration recommendations
 
-### Memory Budget by Repository Size
+### Memory budget by repository size
 
 | Repository Size | Recommended `--memory-budget` | Expected Chunks |
 |-----------------|-------------------------------|-----------------|
@@ -433,7 +433,7 @@ Hibernate:                      [hib][boot]              [hib][boot]
 | 10k -- 100k commits | `4GiB` -- `8GiB` | 10 -- 100+ |
 | 100k+ commits | `8GiB` | Many, checkpointing essential |
 
-### Tuning Tips
+### Tuning tips
 
 !!! tip "Let the planner decide"
     In most cases, setting `--memory-budget` is sufficient. The planner
@@ -452,7 +452,7 @@ Hibernate:                      [hib][boot]              [hib][boot]
   scheduler automatically selects double or triple buffering when the budget
   allows.
 
-### Reference Benchmarks
+### Reference benchmarks
 
 Measured on the kubernetes repository (56K first-parent commits, burndown
 analyzer, `--memory-budget 4GB`):

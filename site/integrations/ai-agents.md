@@ -3,7 +3,7 @@ title: AI Agent Integration
 description: Patterns and workflows for using Codefang with AI coding agents for self-correcting generation, architectural context, and risk-aware refactoring.
 ---
 
-# Using Codefang with AI Agents
+# Using Codefang with AI agents
 
 Codefang's MCP server and CLI tools enable powerful integration with AI coding
 agents. Rather than treating code analysis as a one-off check, agents can use
@@ -14,7 +14,7 @@ This guide covers proven patterns for agent-assisted development with Codefang.
 
 ---
 
-## Integration Methods
+## Integration methods
 
 | Method | Best For | Setup |
 |--------|----------|-------|
@@ -28,12 +28,12 @@ See the [MCP Server guide](mcp.md) for setup instructions.
 
 ---
 
-## Pattern 1: Self-Correcting Code Generation
+## Pattern 1: self-correcting code generation
 
 **Goal**: Generate code, check its quality, and automatically fix issues in a
 feedback loop.
 
-### How It Works
+### How it works
 
 ```mermaid
 flowchart TD
@@ -49,7 +49,7 @@ flowchart TD
     CHECK -->|Yes| DONE
 ```
 
-### Agent Workflow
+### Agent workflow
 
 1. The agent generates code for the requested feature.
 2. It calls `codefang_analyze` with the generated code.
@@ -60,16 +60,16 @@ flowchart TD
 4. If any metric is out of bounds, the agent refactors and re-analyzes.
 5. The loop repeats until all metrics pass.
 
-### Example Agent Prompt
+### Example agent prompt
 
-```
+```text
 Generate a Go function that parses CSV files with configurable delimiters
 and header handling. After generating the code, use codefang_analyze to
 check complexity. If any function has cyclomatic complexity > 10, refactor
 it into smaller functions and re-check.
 ```
 
-### What the Agent Sees
+### What the agent sees
 
 ```json
 // Agent calls codefang_analyze with the generated code
@@ -88,11 +88,11 @@ exactly which functions need attention.
 
 ---
 
-## Pattern 2: Architectural Context Injection
+## Pattern 2: architectural context injection
 
 **Goal**: Help the agent understand existing code structure before making changes.
 
-### How It Works
+### How it works
 
 Before modifying a codebase, the agent parses key files to understand the
 architecture -- function signatures, class hierarchies, import graphs, and
@@ -109,7 +109,7 @@ flowchart LR
     TASK --> PARSE --> CONTEXT --> PLAN --> IMPLEMENT
 ```
 
-### Agent Workflow
+### Agent workflow
 
 1. Agent receives a task like "Add caching to the database layer."
 2. It calls `uast_parse` on the relevant source files.
@@ -121,7 +121,7 @@ flowchart LR
 4. With this structural understanding, it plans and implements changes that
    are consistent with the existing codebase.
 
-### Example: Understanding Module Structure
+### Example: understanding module structure
 
 ```json
 {
@@ -139,11 +139,11 @@ surface without reading every line.
 
 ---
 
-## Pattern 3: Risk-Aware Refactoring
+## Pattern 3: risk-aware refactoring
 
 **Goal**: Understand file coupling and change risk before refactoring.
 
-### How It Works
+### How it works
 
 Before making structural changes, the agent runs `codefang_history` with the
 `couples` analyzer to understand which files tend to change together. This
@@ -164,7 +164,7 @@ flowchart TD
     PROCEED --> VERIFY
 ```
 
-### Agent Workflow
+### Agent workflow
 
 1. Agent plans to refactor `pkg/database/queries.go`.
 2. It calls `codefang_history` with the `couples` analyzer.
@@ -191,18 +191,18 @@ to identify blast radius.
 
 ---
 
-## Pattern 4: Style Enforcement
+## Pattern 4: style enforcement
 
 **Goal**: Establish and enforce code style baselines using cohesion and comment
 density metrics.
 
-### How It Works
+### How it works
 
 1. Analyze the existing codebase to establish baseline metrics.
 2. When generating new code, ensure it meets or exceeds the baseline.
 3. Flag deviations for review.
 
-### Agent Workflow
+### Agent workflow
 
 ```mermaid
 flowchart LR
@@ -218,7 +218,7 @@ flowchart LR
     PASS -->|Yes| ACCEPT
 ```
 
-### Baseline Metrics
+### Baseline metrics
 
 | Metric | Source | Typical Baseline |
 |--------|--------|-----------------|
@@ -227,9 +227,9 @@ flowchart LR
 | Cohesion score | `static/cohesion` | > 0.5 (LCOM4) |
 | Halstead difficulty | `static/halstead` | < 30 per function |
 
-### Example Agent Prompt
+### Example agent prompt
 
-```
+```text
 Before writing new code for this module, analyze the existing files in
 pkg/handlers/ using codefang_analyze to understand the current code style
 baselines. Then generate the new handler following the same patterns --
@@ -238,16 +238,16 @@ matching comment density, complexity levels, and cohesion scores.
 
 ---
 
-## Pattern 5: Developer Onboarding Context
+## Pattern 5: developer onboarding context
 
 **Goal**: Help agents understand team dynamics and code ownership.
 
-### How It Works
+### How it works
 
 The `devs` and `file-history` analyzers reveal who owns which parts of the
 codebase, how active different areas are, and what languages are used where.
 
-### Agent Workflow
+### Agent workflow
 
 1. Agent needs to modify an unfamiliar module.
 2. It calls `codefang_history` with `devs` and `file-history` analyzers.
@@ -273,12 +273,12 @@ codebase, how active different areas are, and what languages are used where.
 
 ---
 
-## Pattern 6: Anomaly Detection in Generated Code
+## Pattern 6: anomaly detection in generated code
 
 **Goal**: Use temporal anomaly detection to flag unusual patterns in ongoing
 development.
 
-### Agent Workflow
+### Agent workflow
 
 1. After a sprint of AI-assisted development, run `codefang_history` with
    the `anomaly` analyzer.
@@ -299,9 +299,9 @@ development.
 
 ---
 
-## MCP Integration Best Practices
+## MCP integration best practices
 
-### Tool Selection
+### Tool selection
 
 | Task | Recommended Tool | Analyzers |
 |------|-----------------|-----------|
@@ -314,7 +314,7 @@ development.
 | Find function hotspots | `codefang_history` | `shotness` |
 | Audit imports | `codefang_analyze` | `imports` |
 
-### Performance Tips
+### Performance tips
 
 - **Limit history depth**: Use the `limit` parameter (default: 1000) to avoid
   analyzing the entire history when recent context is sufficient.
@@ -325,11 +325,11 @@ development.
 - **Cache UAST results**: If analyzing multiple aspects of the same file,
   parse once and reuse the UAST tree.
 
-### Error Recovery
+### Error recovery
 
 Agents should handle common errors gracefully:
 
-```
+```text
 1. If codefang_analyze returns an error for unsupported language,
    fall back to basic heuristic analysis.
 2. If codefang_history fails (not a git repo), skip history-based
@@ -340,11 +340,11 @@ Agents should handle common errors gracefully:
 
 ---
 
-## End-to-End Example: Feature Implementation
+## End-to-end example: feature implementation
 
 Here is a complete agent workflow for implementing a new feature:
 
-```
+```text
 1. UNDERSTAND: Parse existing code with uast_parse to understand structure
 2. ASSESS: Run codefang_history (couples, devs) to understand change risk
 3. PLAN: Use architectural context to plan the implementation

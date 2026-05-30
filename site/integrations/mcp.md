@@ -3,7 +3,7 @@ title: MCP Server
 description: Model Context Protocol server for AI agent integration, exposing Codefang analysis tools over stdio transport.
 ---
 
-# MCP Server
+# MCP server
 
 Codefang includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/)
 (MCP) server that exposes its analysis capabilities as tools that AI agents
@@ -26,7 +26,7 @@ MCP-compatible agent can use without manual setup.
 
 ---
 
-## Quick Start
+## Quick start
 
 Start the MCP server:
 
@@ -38,7 +38,7 @@ The server communicates over **stdio** (stdin/stdout) using JSON-RPC, which is
 the standard MCP transport for local tool use. Agents connect by launching
 the process and reading/writing to its stdio streams.
 
-### Debug Mode
+### Debug mode
 
 Enable debug logging to stderr for troubleshooting:
 
@@ -53,7 +53,7 @@ Debug mode enables:
 
 ---
 
-## Available Tools
+## Available tools
 
 The MCP server exposes three tools:
 
@@ -65,7 +65,7 @@ The MCP server exposes three tools:
 
 ---
 
-## Tool Reference
+## Tool reference
 
 ### `codefang_analyze`
 
@@ -80,7 +80,7 @@ metrics.
 | `language` | string | **Yes** | -- | Programming language (e.g., `go`, `python`, `javascript`) |
 | `analyzers` | string[] | No | all | List of analyzer names to run |
 
-#### Available Analyzers
+#### Available analyzers
 
 | Analyzer | Description |
 |----------|-------------|
@@ -148,7 +148,7 @@ returns analyzer-specific results.
 | `since` | string | No | -- | Only analyze commits after this time (e.g., `24h`, `2024-01-01`, RFC3339) |
 | `first_parent` | boolean | No | `false` | Follow only the first parent of merge commits |
 
-#### Available Analyzers
+#### Available analyzers
 
 | Analyzer | Description |
 |----------|-------------|
@@ -177,9 +177,9 @@ returns analyzer-specific results.
 
 ---
 
-## Agent Configuration
+## Agent configuration
 
-### Claude Code
+### Claude code
 
 Add Codefang as an MCP server in your Claude Code settings:
 
@@ -241,7 +241,7 @@ Add Codefang as an MCP server in your Claude Code settings:
     }
     ```
 
-### Generic MCP Client
+### Generic MCP client
 
 Any MCP-compatible client can connect by launching the process:
 
@@ -255,7 +255,7 @@ Clients call `tools/call` with the tool name and arguments.
 
 ---
 
-## Error Handling
+## Error handling
 
 The MCP server returns structured errors for common failure modes:
 

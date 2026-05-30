@@ -1,0 +1,2974 @@
+# Codefang — llms-full.txt
+
+> Full-text concatenation of the documents indexed in llms.txt, in the same order. Each document is preceded by a "# File: <path>" separator. Generated from the repository sources; do not edit by hand.
+
+
+---
+
+# File: README.md
+
+# Codefang
+
+<p align="center">
+  <img src="assets/uast.png" alt="Codefang Logo" width="250">
+</p>
+
+[![CI](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml/badge.svg)](https://github.com/Sumatoshi-tech/codefang/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Sumatoshi-tech/codefang.svg)](https://pkg.go.dev/github.com/Sumatoshi-tech/codefang)
+
+**The heavy lifter for your codebase.**
+
+Codefang is a comprehensive code analysis platform that understands your code deeply—not just as text, but as structure (AST) and history (Git). Whether you're tracking technical debt, analyzing developer churn, or feeding context to an AI, Codefang does the heavy lifting so you don't have to.
+
+---
+
+## 1. Preface
+
+For detailed technical documentation, architectural decisions, and algorithm deep-dives, please visit our **[Documentation](https://sumatoshi-tech.github.io/codefang/)**.
+
+So, you've stumbled upon Codefang. You might be thinking, *"Wait, didn't `src-d` build something like this years ago?"*
+
+Yes, they did. And it was glorious. But like many great empires, `src-d` faded into the annals of history, and the original `hercules` was left gathering dust in the digital attic.
+
+**This is not that project.**
+
+This is a **reincarnation**. We took the core philosophy, stripped out the obsolete parts, and rebuilt it with a modern engine. It's not a drop-in replacement; it's a spiritual successor with a gym membership and a PhD in Abstract Syntax Trees.
+
+---
+
+## 2. Historical context
+
+Once upon a time, there was a company called **source{d}**. They pioneered "Mining Software Repositories" on a massive scale. Their crown jewel was `hercules`, a tool that could chew through git logs faster than you can say `git blame`.
+
+It gave us insights like:
+- **Burndown Charts**: How much code from 2015 is still surviving today?
+- **Coupling**: If I change `A.go`, does `B.go` always change with it?
+
+When `src-d` ceased operations, the tool became abandonware. But the need to understand code didn't go away.
+
+We revived the project with a new mission: **Combine history with structure.**
+The old `hercules` was great at Git history. Codefang adds **UAST (Universal Abstract Syntax Tree)** powers, allowing it to understand the *meaning* of the code across 60+ languages, not just the diffs.
+
+---
+
+## 3. Quickstart
+
+Enough history class. Let's see some muscles.
+
+### Installation
+
+You'll need Go installed. Then, just grab the binaries:
+
+```sh
+# The brain: Code analysis and history mining
+go install github.com/Sumatoshi-tech/codefang/cmd/codefang@latest
+
+# The eyes: Universal parser (supports 60+ languages)
+go install github.com/Sumatoshi-tech/codefang/cmd/uast@latest
+```
+
+### Let's flex
+
+Codefang follows the UNIX philosophy: small tools, joined by pipes.
+
+**1. Analyze complexity (Static Analysis):**
+Parse your code and pipe it into the analyzer.
+
+```sh
+# How messy is my main.go?
+uast parse main.go | codefang analyze -a complexity
+
+# ...or my entire codebase?
+uast parse **/*.go | codefang analyze -a complexity
+```
+
+**2. Analyze history (Git Forensics):**
+See who knows what, and how code is aging.
+
+```sh
+# Generate a burndown chart (lines surviving over time)
+codefang history -a burndown .
+```
+
+**3. Find the experts:**
+Who actually wrote the code that's running in production?
+
+```sh
+codefang history -a devs --head .
+```
+
+---
+
+## 4. Architecture & design decisions
+
+We made a few bold choices in the rewrite.
+
+### The split: `uast` vs `codefang`
+
+The original `hercules` was a monolith. We split it in two:
+
+1.  **`uast` (The Parser)**: This tool focuses on one thing—turning source code into a standardized tree structure. It uses **Tree-sitter** under the hood to support practically every language you care about (Go, Python, JS, Rust, C++, Java, and even COBOL... probably).
+2.  **`codefang` (The Analyzer)**: This tool consumes the data. It takes UASTs for static analysis or Git repositories for history analysis.
+
+### Why UAST?
+
+Most linters are language-specific. `eslint` for JS, `golangci-lint` for Go. Codefang uses a **Universal** AST. This means we can write a single "Complexity Analyzer" and it immediately works for Python, Go, and TypeScript.
+
+### Pluggable analysis
+
+Analyzers are modular. You want to measure "Sentiment of Code Comments"? There's an analyzer for that (`sentiment`). You want to find "Typos in Variable Names"? There's one for that (`typos`).
+
+---
+
+## 5. Codefang as an AI agent tool
+
+Don't just use AI to write code. Use Codefang to verify it. By giving `codefang` and `uast` to your AI agent as tools (via MCP or shell), you create a self-correcting quality loop.
+
+**1. The Self-Correcting Coder**
+*   **Scenario:** Agent generates a new function or refactors a file.
+*   **Action:** Agent runs `codefang analyze -a complexity` on the new code.
+*   **Outcome:** If complexity scores are high (e.g., > 15), the agent self-reflects: *"This is too complex. I need to simplify logic before showing it to the user."*
+*   **Result:** Clean, maintainable code *before* it even hits the PR.
+
+**2. Architectural Context Injection**
+*   **Scenario:** You ask the agent about a high-level architectural change.
+*   **Problem:** "Context Window Exceeded" or the agent hallucinates file relationships.
+*   **Solution:** Agent runs `uast parse` to get the AST structure or `codefang analyze -a imports` to map the dependency graph. It learns the system architecture without reading every single line of text.
+
+**3. Risk-Aware Refactoring**
+*   **Scenario:** Agent is asked to refactor a legacy module.
+*   **Action:** Agent runs `codefang history -a couples`.
+*   **Insight:** *"Warning: Changing `User.go` usually breaks `Billing.go` 80% of the time."*
+*   **Result:** Agent proactively checks related files for regressions, preventing bugs that a simple text-based analysis would miss.
+
+**4. Style & Consistency Enforcement**
+*   **Scenario:** "Make this look like the rest of the project."
+*   **Action:** Agent analyzes `cohesion` and `comments` metrics of existing high-quality files to set a baseline.
+*   **Result:** Agent generates code that matches the *structural* quality standards of your specific repo, not just generic language syntax.
+
+---
+
+## 6. Maintainers
+
+The dumbbells don't rack themselves. This project is kept in fighting shape by:
+
+- **Dmytro Gajewski**
+
+---
+
+## 7. Contributing
+
+Spotted a bug? Want to teach Codefang a new trick? PRs are very welcome.
+
+Read the [Contributing guide](CONTRIBUTING.md) before you start—it covers the build, the test gauntlet, commit conventions, and how to open a PR that gets merged instead of bounced.
+
+---
+
+## 8. License
+
+Codefang is released under the [Apache-2.0](LICENSE) license. Use it, fork it, ship it—just keep the notice intact.
+
+---
+
+### Ready to lift?
+
+Check out the [full documentation](https://sumatoshi-tech.github.io/codefang/) for deep dives, or just start piping commands and see what breaks.
+
+*Happy Mining!*
+
+
+---
+
+# File: site/getting-started/quickstart.md
+
+# Quick start
+
+This page shows the fastest path to useful results. In five minutes you will
+parse code, run static analysis, and mine Git history.
+
+!!! tip "Prerequisites"
+    Make sure both `codefang` and `uast` are installed.
+    See [Installation](installation.md) if you have not set them up yet.
+
+---
+
+## 1. Parse source code into a UAST
+
+Start by parsing a single file into a Universal Abstract Syntax Tree:
+
+```bash
+uast parse main.go
+```
+
+??? example "Expected output (truncated)"
+
+    ```json
+    {
+      "language": "go",
+      "file": "main.go",
+      "root": {
+        "type": "SourceFile",
+        "roles": ["File"],
+        "children": [
+          {
+            "type": "PackageClause",
+            "roles": ["Package", "Declaration"],
+            "props": { "name": "main" }
+          },
+          {
+            "type": "FunctionDeclaration",
+            "roles": ["Function", "Declaration"],
+            "props": { "name": "main" },
+            "children": [ "..." ]
+          }
+        ]
+      }
+    }
+    ```
+
+You can parse entire directories, force a language, or read from stdin:
+
+```bash
+uast parse --all                      # every source file in the codebase
+uast parse -l python script.sh        # force Python language detection
+cat main.go | uast parse -            # read from stdin
+```
+
+---
+
+## 2. Static analysis
+
+Run structural analysis on a folder. The `codefang run` command with
+`static/*` analyzers walks the directory, parses every supported file, and
+computes metrics:
+
+```bash
+codefang run -a static/complexity --format text .
+```
+
+??? example "Expected output"
+
+    ```
+    Codefang -- Code Analysis Report
+    ===============================
+
+    static/complexity:
+      internal/framework/runner.go
+        Function RunPipeline        -- Cyclomatic: 12  Cognitive: 8
+        Function initWorkers        -- Cyclomatic: 4   Cognitive: 3
+      cmd/codefang/commands/run.go
+        Function run                -- Cyclomatic: 9   Cognitive: 7
+    ```
+
+!!! tip "Multiple static analyzers"
+    Combine several analyzers in one pass:
+
+    ```bash
+    codefang run -a static/complexity,static/halstead,static/cohesion --format text .
+    ```
+
+---
+
+## 3. History analysis -- burndown
+
+Analyze how code ages and survives over your repository's lifetime:
+
+```bash
+codefang run -a history/burndown --format yaml .
+```
+
+??? example "Expected output (truncated)"
+
+    ```yaml
+    burndown:
+      granularity: 30
+      sampling: 30
+      project:
+        - [0, 1200, 1100, 980, 920, 870]
+        - [0, 0, 320, 290, 270, 250]
+        - [0, 0, 0, 180, 160, 140]
+      ticks:
+        - "2024-01-15"
+        - "2024-02-14"
+        - "2024-03-15"
+        - "2024-04-14"
+        - "2024-05-14"
+        - "2024-06-13"
+    ```
+
+Each row in `project` represents lines added in a given time window; each
+column shows how many of those lines survive into subsequent windows.
+
+---
+
+## 4. Developer analysis
+
+See per-developer contribution statistics with a single commit snapshot:
+
+```bash
+codefang run -a history/devs --head --format yaml .
+```
+
+??? example "Expected output (truncated)"
+
+    ```yaml
+    devs:
+      developers:
+        - name: "Alice"
+          commits: 142
+          added: 12400
+          removed: 3200
+          changed: 8900
+        - name: "Bob"
+          commits: 87
+          added: 6300
+          removed: 1800
+          changed: 4100
+    ```
+
+!!! info "The `--head` flag"
+    `--head` tells the history pipeline to analyze only the HEAD commit's
+    state rather than walking the full history. It is much faster and useful
+    for snapshot metrics like developer totals.
+
+---
+
+## 5. Run everything at once
+
+Use glob patterns to run all history analyzers (or all analyzers) in a single
+invocation:
+
+=== "All history analyzers"
+
+    ```bash
+    codefang run -a "history/*" --format json .
+    ```
+
+=== "All static analyzers"
+
+    ```bash
+    codefang run -a "static/*" --format json .
+    ```
+
+=== "Everything"
+
+    ```bash
+    codefang run -a "*" --format json .
+    ```
+
+!!! tip "JSON output for scripting"
+    JSON is the default format and the most machine-friendly. Pipe it into
+    `jq` for quick exploration:
+
+    ```bash
+    codefang run -a history/burndown --format json . | jq '.burndown.ticks'
+    ```
+
+---
+
+## 6. Interactive HTML plots
+
+Generate a self-contained HTML report with interactive charts:
+
+```bash
+codefang run -a history/burndown,history/devs --format plot .
+```
+
+This writes an HTML page to **stdout**. Redirect it to a file and open in your
+browser:
+
+```bash
+codefang run -a history/burndown --format plot . > burndown.html
+open burndown.html   # macOS
+xdg-open burndown.html  # Linux
+```
+
+---
+
+## 7. Pipe into AI (MCP integration)
+
+Codefang ships a built-in **Model Context Protocol** server so AI agents can
+query analysis results programmatically:
+
+```bash
+codefang mcp serve
+```
+
+This starts a JSON-RPC server that tools like Claude Desktop, Cursor, and
+other MCP-compatible clients can connect to. See the
+[MCP Integration](../integrations/mcp.md) guide for configuration details.
+
+!!! note "AI-ready output"
+    Any `--format json` output can also be fed directly to an LLM for
+    summarization or code review:
+
+    ```bash
+    codefang run -a static/complexity --format json . | llm "summarize the complexity hotspots"
+    ```
+
+---
+
+## What's next?
+
+| Goal | Page |
+|------|------|
+| Understand static vs. history analysis in depth | [First Analysis](first-analysis.md) |
+| Learn every CLI flag | [CLI Reference](../guide/cli-reference.md) |
+| Tune output formats | [Output Formats](../guide/output-formats.md) |
+| Configure via `.codefang.yaml` | [Configuration](../guide/configuration.md) |
+| Set up CI/CD pipelines | [Docker & GitHub Actions](../integrations/docker-and-actions.md) |
+
+
+---
+
+# File: site/how-to/analyze-a-monorepo.md
+
+# How to analyze a monorepo
+
+<!-- Template: Good Docs Project how-to (CC-BY 4.0) — https://github.com/thegooddocsproject/templates -->
+
+## Goal
+
+Run Codefang against a single large repository that holds many languages and
+services, and get a clean per-service report without drowning in vendored or
+generated noise.
+
+## Prerequisites
+
+- `codefang` and `uast` installed. See [Installation](../getting-started/installation.md).
+- A monorepo checked out locally, with full Git history (history analyzers need
+  every commit, not a shallow clone).
+- `jq` if you want to post-process the JSON output.
+
+## Steps
+
+1. Run static analysis across the whole tree first. By default Codefang already
+   excludes vendored dependencies (`vendor/`, `node_modules/`, `third_party/`,
+   `testdata/`) and generated files, so the report covers your own code only:
+
+   ```bash
+   codefang run -a 'static/*' --format json --silent .
+   ```
+
+2. Narrow a noisy polyglot repo to the languages you care about. The
+   `--languages` filter applies to both the static and history phases and skips
+   non-matching files before they are parsed:
+
+   ```bash
+   codefang run -a 'static/*' --languages go,typescript,python --format json .
+   ```
+
+3. Scope a run to a single service directory instead of the whole repo by
+   passing its path (or `--path`):
+
+   ```bash
+   codefang run -a 'static/complexity,static/cohesion' --format json ./services/api
+   ```
+
+4. Add extra exclusion prefixes for tooling directories that Linguist's
+   heuristics do not catch, such as a Python virtualenv or a Rust target dir:
+
+   ```bash
+   codefang run -a '*' --extra-excluded-prefixes '.venv/,target/,build/' --format json .
+   ```
+
+5. Constrain memory on a large monorepo so the streaming pipeline auto-tunes
+   worker count and spill thresholds rather than consuming all available RAM:
+
+   ```bash
+   codefang run -a 'history/*' --memory-budget 4GB --workers 4 --format json --silent .
+   ```
+
+6. If you need only a subset of the history, limit the commit range with
+   `--since` or `--limit` to keep the run bounded:
+
+   ```bash
+   codefang run -a 'history/devs' --since 2025-01-01 --format json .
+   ```
+
+## Result
+
+You have a JSON report scoped to your own source code (vendored and generated
+files excluded) and, when you narrow by `--languages` or path, scoped to the
+service you care about. Confirm the scope by inspecting the report — for
+example, count the files Codefang actually analyzed:
+
+```bash
+codefang run -a 'static/complexity' --languages go --format json . | jq '.["static/complexity"] | length'
+```
+
+## See also
+
+- [How to run Codefang in CI](run-in-ci.md)
+- [Large-scale repository scanning](../operations/large-scale-scanning.md)
+- [CLI reference](../guide/cli-reference.md)
+
+
+---
+
+# File: site/how-to/run-in-ci.md
+
+# How to run Codefang in CI
+
+<!-- Template: Good Docs Project how-to (CC-BY 4.0) — https://github.com/thegooddocsproject/templates -->
+
+## Goal
+
+Add Codefang to a continuous-integration pipeline so every push and pull request
+runs code analysis automatically, and optionally fail the build when analysis
+detects issues.
+
+## Prerequisites
+
+- A repository hosted on GitHub (this guide uses the published GitHub Action).
+- Permission to add workflow files under `.github/workflows/`.
+- For history analyzers, the checkout step must fetch full history
+  (`fetch-depth: 0`); a shallow clone only sees the most recent commits.
+
+## Steps
+
+1. Create `.github/workflows/codefang.yml` and add the action with the
+   analyzers you want. Static analysis works on a shallow clone:
+
+   ```yaml
+   name: Code Quality
+   on: [push, pull_request]
+
+   jobs:
+     analyze:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+
+         - name: Run Codefang
+           id: codefang
+           uses: Sumatoshi-tech/codefang@main
+           with:
+             analyzers: "static/*"
+             format: "json"
+   ```
+
+2. Turn the run into a quality gate by setting `fail-on-error: "true"`. The step
+   fails the workflow when analysis detects issues:
+
+   ```yaml
+         - name: Run Codefang
+           uses: Sumatoshi-tech/codefang@main
+           with:
+             analyzers: "static/complexity,static/comments"
+             fail-on-error: "true"
+   ```
+
+3. For history analyzers, fetch the full Git history in the checkout step,
+   otherwise the analysis only sees the shallow clone:
+
+   ```yaml
+         - uses: actions/checkout@v4
+           with:
+             fetch-depth: 0
+
+         - name: Run Codefang History
+           uses: Sumatoshi-tech/codefang@main
+           with:
+             analyzers: "history/burndown,history/devs"
+             format: "json"
+   ```
+
+4. Read the action outputs in a later step. `pass` is `true` when analysis
+   completed without errors, and `report` holds the full report content:
+
+   ```yaml
+         - name: Check results
+           run: |
+             echo "Pass: ${{ steps.codefang.outputs.pass }}"
+             echo "${{ steps.codefang.outputs.report }}"
+   ```
+
+5. If a large repository runs out of memory in CI, constrain it with a memory
+   budget by running the binary directly inside the job, or in Docker:
+
+   ```bash
+   docker run --rm -v "$(pwd):/workspace:ro" \
+     codefang run -a 'history/*' --memory-budget 2GiB --format json --silent /workspace
+   ```
+
+## Result
+
+Open the Actions tab after a push. The Codefang job runs, prints the report, and
+— when `fail-on-error` is set — marks the check red if analysis detected issues.
+A green check with a populated `report` output confirms the pipeline works.
+
+## See also
+
+- [Docker & GitHub Actions reference](../integrations/docker-and-actions.md)
+- [How to analyze a monorepo](analyze-a-monorepo.md)
+- [Output formats](../guide/output-formats.md)
+
+
+---
+
+# File: site/how-to/read-a-burndown-chart.md
+
+# How to read a burndown chart
+
+<!-- Template: Good Docs Project how-to (CC-BY 4.0) — https://github.com/thegooddocsproject/templates -->
+
+## Goal
+
+Generate a code-survival burndown for a repository and interpret the result so
+you can see how much code from each era still survives at the latest sample.
+
+## Prerequisites
+
+- `codefang` installed and a Git repository checked out with full history.
+- A web browser to view the interactive HTML chart.
+- `jq` if you want to inspect the raw matrix.
+
+## Steps
+
+1. Run the burndown analyzer and write the YAML output so you can read the raw
+   matrix:
+
+   ```bash
+   codefang run -a history/burndown --format yaml .
+   ```
+
+2. Read the `project` matrix. Each row is a sampling point in time; each value
+   in a row is the number of lines, created in a given age band, that still
+   survive at that sample. As you read down the rows, watch a band's values
+   shrink — that is code being rewritten or deleted over time:
+
+   ```yaml
+   burndown:
+     granularity: 30
+     sampling: 30
+     project:
+       - [0, 1200, 1100, 980, 920, 870]
+       - [0, 0, 320, 290, 270, 250]
+     ticks:
+       - "2024-01-15"
+       - "2024-02-14"
+   ```
+
+3. Use `ticks` to map matrix positions back to calendar dates. The `granularity`
+   key is the width of each age band (in ticks) and `sampling` is how often a
+   snapshot is taken; the default tick is a 24-hour window.
+
+4. Add a per-developer breakdown to see whose code survives, by enabling
+   developer tracking:
+
+   ```bash
+   codefang run -a history/burndown --burndown-people --format yaml .
+   ```
+
+5. Generate the interactive stacked-area chart and open it in a browser. This is
+   the visual form of the same matrix:
+
+   ```bash
+   codefang run -a history/burndown --format plot . > burndown.html
+   xdg-open burndown.html   # Linux
+   open burndown.html       # macOS
+   ```
+
+6. Extract just the tick axis for scripting or a custom plot:
+
+   ```bash
+   codefang run -a history/burndown --format json . | jq '.burndown.ticks'
+   ```
+
+## Result
+
+You can point at any value in the chart or matrix and state what it means: "this
+many lines, written around this date, still survive at this later date." A
+declining survival curve signals churn; a flat top band signals stable,
+long-lived code.
+
+## See also
+
+- [Understanding code burndown](../explanation/burndown.md) — the mental model.
+- [Burndown reference](../analyzers/burndown.md) — configuration keys and output schema.
+- [How to run Codefang in CI](run-in-ci.md)
+
+
+---
+
+# File: site/how-to/analyze-a-bare-repo.md
+
+# How to analyze a bare repository
+
+<!-- Template: Good Docs Project how-to (CC-BY 4.0) — https://github.com/thegooddocsproject/templates -->
+
+## Goal
+
+Run history analysis directly against a bare Git repository — such as a GitLab
+backup, a Gitolite mirror, or a `git clone --bare` mirror — without first
+checking out a working tree.
+
+## Prerequisites
+
+- `codefang` installed.
+- A bare repository on disk (a directory ending in `.git` with no working tree).
+- For GitLab backups, enough disk space to extract the `repositories/` tree.
+
+## Steps
+
+1. Point `codefang run` directly at the bare repository path. Codefang uses
+   libgit2, which opens bare and non-bare repositories transparently, so no
+   clone or checkout is required:
+
+   ```bash
+   codefang run /data/backups/repositories/@hashed/ab/cd/abcdef.git \
+     -a 'history/*' --format json --silent
+   ```
+
+2. To scan a GitLab backup, extract the repositories tree from the tarball:
+
+   ```bash
+   tar xf backup.tar -C /data/extract repositories/
+   ```
+
+3. Build a list of real project repos, skipping wiki and design repos:
+
+   ```bash
+   find /data/extract/repositories -name "*.git" \
+     ! -name "*.wiki.git" \
+     ! -name "*.design.git" \
+     -type d > /tmp/repo_paths.txt
+   ```
+
+4. Run a single bare repo with a memory budget so the streaming pipeline stays
+   bounded on large histories:
+
+   ```bash
+   codefang run /data/extract/repositories/@hashed/ab/cd/abcdef.git \
+     -a 'history/*' --memory-budget 4GiB --workers 4 --format json --silent
+   ```
+
+5. For periodic scans, analyze only new commits with `--since` rather than
+   re-walking the whole history each run:
+
+   ```bash
+   codefang run /data/extract/repositories/@hashed/ab/cd/abcdef.git \
+     -a 'history/*' --since 168h --format json --silent
+   ```
+
+## Result
+
+You get the same history report you would get from a normal working clone —
+burndown, developers, couples, and more — produced straight from the bare repo
+with no checkout. A non-empty JSON report on stdout confirms the bare repo was
+opened and analyzed.
+
+## See also
+
+- [Large-scale repository scanning](../operations/large-scale-scanning.md)
+- [How to analyze a monorepo](analyze-a-monorepo.md)
+- [CLI reference](../guide/cli-reference.md)
+
+
+---
+
+# File: site/how-to/attach-an-mcp-client.md
+
+# How to attach an MCP client
+
+<!-- Template: Good Docs Project how-to (CC-BY 4.0) — https://github.com/thegooddocsproject/templates -->
+
+## Goal
+
+Connect an AI agent to Codefang over the Model Context Protocol (MCP) so the
+agent can run code analysis as a tool.
+
+## Prerequisites
+
+- `codefang` installed and on your `PATH`.
+- An MCP-compatible client (for example, Claude Code or another agent that
+  launches MCP servers over stdio).
+- For the `codefang_history` tool, an absolute path to a local Git repository.
+
+## Steps
+
+1. Confirm the MCP server starts. It communicates over stdio using JSON-RPC, the
+   standard transport for local MCP tool use:
+
+   ```bash
+   codefang mcp
+   ```
+
+   Press `Ctrl-C` to stop it — the agent will launch its own copy.
+
+2. Register Codefang as an MCP server in your client. For Claude Code, add it to
+   `~/.claude/settings.json` (user scope) or `.claude/settings.json` (project
+   scope):
+
+   ```json
+   {
+     "mcpServers": {
+       "codefang": {
+         "command": "codefang",
+         "args": ["mcp"],
+         "env": {}
+       }
+     }
+   }
+   ```
+
+3. Restart the client so it picks up the new server. The agent then discovers
+   three tools via the standard MCP `tools/list` method: `codefang_analyze`
+   (static analysis on inline code), `uast_parse` (parse source into a UAST),
+   and `codefang_history` (history analysis on a local repo).
+
+4. Ask the agent to run history analysis. The `codefang_history` tool requires
+   an absolute `repo_path`; a relative path is rejected:
+
+   ```json
+   {
+     "name": "codefang_history",
+     "arguments": {
+       "repo_path": "/home/user/projects/myapp",
+       "analyzers": ["burndown", "devs"],
+       "limit": 500
+     }
+   }
+   ```
+
+5. If a call misbehaves, enable debug logging to stderr by adding the `--debug`
+   argument to the server registration:
+
+   ```json
+   {
+     "mcpServers": {
+       "codefang": {
+         "command": "codefang",
+         "args": ["mcp", "--debug"],
+         "env": {}
+       }
+     }
+   }
+   ```
+
+## Result
+
+The agent lists the three Codefang tools and returns structured analysis when it
+calls them. A successful `codefang_analyze` or `codefang_history` call that comes
+back without `isError: true` confirms the client is attached.
+
+## See also
+
+- [MCP server reference](../integrations/mcp.md)
+- [AI agents](../integrations/ai-agents.md)
+- [How to read a burndown chart](read-a-burndown-chart.md)
+
+
+---
+
+# File: site/analyzers/index.md
+
+# Analyzers
+
+Codefang ships two families of analyzers that extract quantitative insights from your codebase.
+
+**Static analyzers** operate on source code via UAST (Universal Abstract Syntax Tree) and evaluate structural properties of the code as it exists right now. **History analyzers** walk Git commit history and track how the codebase evolves over time.
+
+---
+
+## Static analyzers
+
+Static analyzers parse source files into a UAST and compute metrics in a single pass. They require no repository history and can run on individual files or entire directory trees.
+
+| Analyzer | ID | Description |
+|---|---|---|
+| [Complexity](complexity.md) | `complexity` | Cyclomatic complexity, cognitive complexity, nesting depth |
+| [Cohesion](cohesion.md) | `cohesion` | LCOM4 class cohesion, method-field usage graphs |
+| [Halstead](halstead.md) | `halstead` | Program length, vocabulary, volume, difficulty, effort |
+| [Comments](comments.md) | `comments` | Documentation coverage, comment placement quality |
+| [Imports](imports.md) | `imports` | Import and dependency analysis |
+| [Clones](clones.md) | `clones` | Cross-file duplicate function detection via MinHash + LSH |
+
+### Running static analyzers
+
+Pipe a UAST through `codefang analyze`:
+
+```bash
+# Single file, single analyzer
+uast parse main.go | codefang analyze -a complexity
+
+# Single file, all static analyzers
+uast parse main.go | codefang analyze
+
+# Entire directory tree
+codefang analyze -a complexity ./src/
+```
+
+---
+
+## History analyzers
+
+History analyzers iterate over Git commits (oldest to newest) and accumulate statistics about how files, developers, and code structure change over time. They require a Git repository.
+
+| Analyzer | ID | Description |
+|---|---|---|
+| [Burndown](burndown.md) | `history/burndown` | Code survival over time, line ownership tracking |
+| [Developers](developers.md) | `history/devs` | Developer activity, language breakdown, bus factor |
+| [Couples](couples.md) | `history/couples` | File coupling, co-change patterns |
+| [File History](file-history.md) | `history/file-history` | Per-file lifecycle and modification tracking |
+| [Quality](quality.md) | `history/quality` | Complexity, Halstead, comment, and cohesion metrics over time |
+| [Sentiment](sentiment.md) | `history/sentiment` | Comment sentiment analysis over time |
+| [Shotness](shotness.md) | `history/shotness` | Structural hotspots (function-level change tracking) |
+| [Typos](typos.md) | `history/typos` | Typo detection dataset builder |
+| [Anomaly](anomaly.md) | `history/anomaly` | Z-score temporal anomaly detection |
+
+### Running history analyzers
+
+Use `codefang run` with the `-a` flag:
+
+```bash
+# Single analyzer
+codefang run -a history/burndown .
+
+# Multiple analyzers
+codefang run -a history/devs -a history/couples .
+
+# All history analyzers
+codefang run -a 'history/*' .
+```
+
+---
+
+## Glob patterns
+
+You can select analyzers using glob patterns with the `-a` flag:
+
+```bash
+# All static analyzers
+codefang analyze -a 'static/*' ./src/
+
+# All history analyzers
+codefang run -a 'history/*' .
+
+# All analyzers (both static and history)
+codefang run -a '*' .
+```
+
+---
+
+## Output formats
+
+All analyzers support multiple output formats via the `-f` flag:
+
+=== "JSON"
+
+    ```bash
+    codefang run -a history/devs -f json .
+    ```
+
+=== "YAML"
+
+    ```bash
+    codefang run -a history/devs -f yaml .
+    ```
+
+=== "Plot"
+
+    ```bash
+    codefang run -a history/burndown -f plot .
+    ```
+
+=== "Binary"
+
+    ```bash
+    codefang run -a history/burndown -f binary .
+    ```
+
+!!! tip "Combining analyzers"
+    When running multiple history analyzers together, they share the same commit walk, making combined runs significantly faster than running each analyzer separately.
+
+
+---
+
+# File: site/guide/cli-reference.md
+
+# CLI reference
+
+Codefang ships two binaries: **`codefang`**, the analyzer engine, and **`uast`**, the
+Universal Abstract Syntax Tree parser. This page is the exhaustive reference for
+every command, sub-command, and flag.
+
+---
+
+## `codefang`
+
+The main analysis binary. It runs static and history analyzers against source
+code and Git repositories.
+
+### `codefang run`
+
+The primary entry point. Runs selected static and/or history analyzers on a
+codebase or repository.
+
+```bash
+codefang run [path] [flags]
+```
+
+If `path` is omitted the current directory (or the value of `--path`) is used.
+
+#### Analyzer selection
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--analyzers` | `-a` | `[]string` | `nil` | Analyzer IDs or glob patterns. Comma-separated. |
+
+Analyzer IDs follow a `<category>/<name>` convention. Globs are supported:
+
+```bash
+# Single analyzer
+codefang run -a static/complexity .
+
+# All static analyzers
+codefang run -a 'static/*' .
+
+# All history analyzers
+codefang run -a 'history/*' .
+
+# Multiple specific analyzers
+codefang run -a static/complexity,history/burndown,history/devs .
+
+# Everything
+codefang run -a '*' .
+```
+
+??? info "Available Analyzer IDs"
+
+    **Static analyzers:**
+    `static/complexity`, `static/comments`, `static/halstead`,
+    `static/cohesion`, `static/imports`
+
+    **History analyzers:**
+    `history/anomaly`, `history/burndown`, `history/couples`,
+    `history/devs`, `history/file-history`, `history/imports`,
+    `history/quality`, `history/sentiment`, `history/shotness`,
+    `history/typos`
+
+#### Output flags
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--format` | | `string` | `json` | Output format: `json`, `text`, `compact`, `yaml`, `plot`, `bin`, `timeseries` |
+| `--verbose` | `-v` | `bool` | `false` | Enable detailed output (RSS/memory stats in progress logs, full static report details) |
+| `--silent` | | `bool` | `false` | Suppress progress output on stderr |
+| `--no-color` | | `bool` | `false` | Disable colored static output |
+
+```bash
+# Human-readable table
+codefang run -a 'static/*' --format text .
+
+# Interactive HTML charts
+codefang run -a 'history/*' --format plot .
+
+# Unified time-series JSON
+codefang run -a 'history/devs,history/sentiment' --format timeseries .
+```
+
+#### Path & input flags
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--path` | `-p` | `string` | `.` | Folder or repository path to analyze |
+| `--input` | | `string` | `""` | Input report path for cross-format conversion |
+| `--input-format` | | `string` | `auto` | Input format: `auto`, `json`, `bin` |
+
+!!! tip "Format Conversion"
+
+    Use `--input` to convert a previously generated report to a different
+    format without re-running analysis:
+
+    ```bash
+    codefang run -a 'history/*' --format bin . > report.bin
+    codefang run -a 'history/*' --input report.bin --format plot
+    ```
+
+#### Git history flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | `int` | `0` | Maximum commits to analyze (`0` = no limit) |
+| `--since` | `string` | `""` | Only analyze commits after this time |
+| `--first-parent` | `bool` | `false` | Follow only first parent of merge commits |
+| `--head` | `bool` | `false` | Analyze only HEAD commit |
+
+The `--since` flag accepts multiple formats:
+
+- **Go duration**: `24h`, `168h`, `720h`
+- **Date**: `2025-01-01`
+- **RFC 3339**: `2025-01-01T00:00:00Z`
+
+```bash
+# Last 7 days only
+codefang run -a history/devs --since 168h .
+
+# Since a specific date
+codefang run -a history/burndown --since 2025-01-01 .
+
+# Only the latest 500 commits
+codefang run -a history/couples --limit 500 .
+```
+
+!!! note "Burndown and `--first-parent`"
+
+    The burndown analyzer automatically enables `--first-parent` when selected.
+    This is required for correct line-tracking across merge commits.
+
+#### Language filtering
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--languages` | `[]string` | `[all]` | Restrict analysis to the given Linguist languages; comma-separated. `all` (default) disables the filter. Applies to **both** history and static phases. |
+
+**History phase** — the filter is pushed down into libgit2's `pathspec`
+at the tree-diff stage, so non-matching files are skipped before the
+diff crosses the cgo boundary. On a polyglot repo a narrow filter can
+reduce wall time by 30–40 %. The Go-side language check still runs as
+the authoritative pass for content-disambiguated extensions (`.h`,
+`.pl`, `.m`, `.r`).
+
+**Static phase** — the filter is applied at the directory walker
+(`matchesLanguageGlobs`) before the UAST parser or raw-file analyzers
+see the file. It's path-based only: the parser's own language router
+remains the final authority for how a matched file is parsed (e.g. a
+`.h` under `--languages c++` is still parsed as C). Both phases read
+from the same `langpath.Globs` helper, so the flag value has one
+meaning across `-a 'static/*'`, `-a 'history/*'`, and `-a '*'` runs.
+
+Language names are [Linguist keys](https://github.com/github/linguist/blob/master/lib/linguist/languages.yml)
+and common aliases resolve automatically:
+
+```bash
+# Canonical names (any case, whitespace is trimmed)
+codefang run -a 'history/devs' --languages go,python,typescript .
+
+# Aliases resolve via enry
+codefang run -a 'history/devs' --languages golang,js,ts .
+
+# Unknown language fails fast at configure time instead of silently
+# returning an empty report:
+codefang run -a 'history/devs' --languages notalang .
+# → Error: failed to configure TreeDiff: tree-diff pathspec: unknown language: "notalang"
+```
+
+Filename-only languages (e.g. `Dockerfile`, `Makefile`) are also supported:
+
+```bash
+codefang run -a 'history/devs' --languages dockerfile .
+```
+
+See `specs/optimize-lang/PROPOSAL.md` for the architecture and acceptance-gate
+numbers.
+
+#### Vendor & generated exclusion
+
+By default, Codefang excludes **vendored dependencies** and **auto-generated
+files** from analysis. This matches the convention of every major
+single-language analyser (`go vet`, `eslint`, `ruff`, `rubocop`, `scalafix`,
+`phpcs`, …) — vendor/generated code is noise for a code-quality report.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--include-vendored` | `bool` | `false` | Re-include vendored dependencies (detected by enry / Linguist) in analysis. Cross-language: covers `vendor/`, `node_modules/`, `third_party/`, `testdata/`, minified bundles, and more. |
+| `--include-generated` | `bool` | `false` | Re-include auto-generated files in analysis. Covers `*.pb.go`, `zz_generated_*.go`, `*_pb2.py`, `*.min.js`, and any file whose first 512 bytes contain a generated-file marker (`DO NOT EDIT`, `Code generated`, etc.). |
+| `--extra-excluded-prefixes` | `[]string` | `[]` | Additional UNIX path prefixes to exclude on top of enry heuristics (e.g. `".venv/,target/,build/"`). |
+
+All three flags apply **identically** to both static and history phases.
+
+```bash
+# default: your own code only
+codefang run -a '*' .
+
+# include vendored deps (node_modules/, vendor/, …)
+codefang run -a '*' --include-vendored .
+
+# restore pre-codefang-2026-04 behaviour (include everything)
+codefang run -a '*' --include-vendored --include-generated .
+
+# skip extras that enry doesn't know about (e.g. Python venv, Rust target/)
+codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
+```
+
+!!! warning "Breaking change in 2026-04"
+
+    Earlier versions of Codefang analysed vendored and generated files by
+    default (they needed the confusingly-named `--skip-blacklist=true` to be
+    excluded). Starting from 2026-04, defaults flip: vendor / generated
+    are **excluded by default**. To restore the old behaviour:
+
+    ```bash
+    codefang run ... --include-vendored --include-generated
+    ```
+
+    The deprecated `--skip-blacklist` and `--blacklisted-prefixes` flags
+    still work with a cobra deprecation warning and will be removed in
+    the next minor release. Map them to:
+
+    - `--skip-blacklist` → no-op (the new default already excludes)
+    - `--blacklisted-prefixes X,Y` → `--extra-excluded-prefixes X,Y`
+
+See `specs/exclude-vendored/PROPOSAL.md` for the full cross-phase design
+and `specs/frds/FRD-20260419-exclude-vendored.md` for implementation
+details.
+
+#### Pipeline tuning flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--workers` | `int` | `0` | Parallel workers (`0` = CPU count via `GOMAXPROCS`) |
+| `--buffer-size` | `int` | `0` | Internal pipeline channel size (`0` = `workers * 2`) |
+| `--commit-batch-size` | `int` | `0` | Commits per processing batch (`0` = default 100) |
+| `--blob-cache-size` | `string` | `""` | Max blob cache size (e.g. `256MB`, `1GB`; empty = 1 GB) |
+| `--diff-cache-size` | `int` | `0` | Max diff cache entries (`0` = default 10000) |
+| `--blob-arena-size` | `string` | `""` | Memory arena for blob loading (e.g. `4MB`; empty = 4 MB) |
+| `--memory-budget` | `string` | `""` | Memory budget for auto-tuning (e.g. `512MB`, `2GB`). Applies to both history and static phases — auto-derives worker count, spill thresholds, and Go memory limit |
+
+```bash
+# Large repository with constrained memory
+codefang run -a 'history/*' --workers 4 --memory-budget 2GB .
+
+# Static analysis with memory budget (auto-tunes workers and spill thresholds)
+codefang run -a 'static/*' --memory-budget 512MB .
+
+# High-throughput with large caches
+codefang run -a 'history/*' --blob-cache-size 2GB --diff-cache-size 50000 .
+```
+
+#### GC tuning flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--gogc` | `int` | `0` | GC target percentage (`0` = Go default 100) |
+| `--ballast-size` | `string` | `"0"` | GC ballast allocation (`0` = disabled) |
+
+#### Checkpoint & resume flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--checkpoint` | `bool` | `true` | Enable checkpointing for crash recovery |
+| `--checkpoint-dir` | `string` | `""` | Checkpoint directory (default: `~/.codefang/checkpoints`) |
+| `--resume` | `bool` | `true` | Resume from checkpoint if available |
+| `--clear-checkpoint` | `bool` | `false` | Clear existing checkpoint before run |
+
+```bash
+# Disable checkpointing entirely
+codefang run -a history/burndown --checkpoint=false .
+
+# Resume a previously interrupted run
+codefang run -a 'history/*' --resume .
+
+# Start fresh, clearing old checkpoint data
+codefang run -a 'history/*' --clear-checkpoint .
+```
+
+#### Profiling & debug flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--profile` | `bool` | `false` | Start pprof HTTP server on `localhost:6060` and memory watchdog (heap dumps on RSS spikes) |
+| `--cpuprofile` | `string` | `""` | Write CPU profile to file |
+| `--heapprofile` | `string` | `""` | Write heap profile to file |
+| `--debug-trace` | `bool` | `false` | Enable 100% OpenTelemetry trace sampling |
+
+`--profile` is a **global flag** (available on all subcommands). It enables:
+
+- A pprof HTTP server on `localhost:6060` for live heap/goroutine/CPU inspection
+- A memory watchdog that logs RSS every 2s and dumps heap profiles to `/tmp` when RSS exceeds 4 GiB
+
+```bash
+# CPU profile a large run
+codefang run -a 'history/*' --cpuprofile cpu.prof .
+
+# Live pprof + memory watchdog
+codefang run -a 'static/*' --profile --path ~/sources/kubernetes
+
+# Full debug tracing
+codefang run -a 'history/*' --debug-trace .
+```
+
+---
+
+### `codefang mcp`
+
+Start a Model Context Protocol (MCP) server on stdio transport. This exposes
+Codefang analysis capabilities as tools that AI agents can discover and invoke.
+
+```bash
+codefang mcp [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--debug` | `bool` | `false` | Enable debug logging to stderr |
+
+The MCP server exposes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| `codefang_analyze` | Static code analysis (complexity, cohesion, halstead, comments, imports) |
+| `codefang_history` | Git history analysis (burndown, couples, devs, sentiment, etc.) |
+| `uast_parse` | Parse source code into Universal AST |
+
+```bash
+# Start MCP server for agent integration
+codefang mcp
+
+# With debug logging
+codefang mcp --debug
+```
+
+---
+
+## `uast`
+
+The UAST binary parses source files into a Universal Abstract Syntax Tree and
+provides querying, diffing, and exploration utilities.
+
+### `uast parse`
+
+Parse one or more source files into UAST format.
+
+```bash
+uast parse [files...] [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--language` | `-l` | `string` | `""` | Force language detection override |
+| `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
+| `--format` | `-f` | `string` | `json` | Output format: `json`, `compact`, `tree` |
+| `--progress` | `-p` | `bool` | `false` | Show progress for multiple files |
+| `--all` | | `bool` | `false` | Parse all source files in the codebase recursively |
+
+```bash
+# Parse a single file
+uast parse main.go
+
+# Parse all Go files with progress
+uast parse -p *.go
+
+# Force language detection
+uast parse -l go main.c
+
+# Read from stdin
+cat main.go | uast parse -
+
+# Save to file
+uast parse -o output.json main.go
+
+# Parse entire codebase
+uast parse --all
+```
+
+---
+
+### `uast query`
+
+Query UAST nodes using the functional DSL.
+
+```bash
+uast query <expression> [files...] [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--input` | `-i` | `string` | `""` | Input file (UAST JSON or source code) |
+| `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
+| `--format` | `-f` | `string` | `json` | Output format: `json`, `compact`, `count` |
+| `--interactive` | `-t` | `bool` | `false` | Interactive query mode |
+
+```bash
+# Find all functions
+uast query "filter(.type == 'Function')" main.go
+
+# Find exported items
+uast query "filter(.roles has 'Exported')" *.go
+
+# Count all nodes
+uast query "reduce(count)" main.go
+
+# Query from piped UAST JSON
+uast parse main.go | uast query "filter(.type == 'Call')" -
+
+# Count format
+uast query -f count "filter(.type == 'Function')" main.go
+
+# Interactive mode
+uast query -t main.go
+```
+
+??? info "DSL Syntax Reference"
+
+    | Expression | Description |
+    |-----------|-------------|
+    | `filter(.type == "Function")` | Filter by node type |
+    | `filter(.type == "Call")` | Find function calls |
+    | `filter(.type == "Identifier")` | Find identifiers |
+    | `filter(.type == "Literal")` | Find literal values |
+    | `filter(.roles has "Exported")` | Filter by role annotation |
+    | `reduce(count)` | Count matching nodes |
+
+---
+
+### `uast diff`
+
+Compare two files at the UAST structural level and report changes.
+
+```bash
+uast diff <file1> <file2> [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
+| `--format` | `-f` | `string` | `unified` | Output format: `unified`, `summary`, `json` |
+
+```bash
+# Unified diff output (default)
+uast diff old.go new.go
+
+# Summary of change types
+uast diff -f summary old.go new.go
+
+# Machine-readable JSON
+uast diff -f json old.go new.go
+
+# Save to file
+uast diff -o changes.json -f json old.go new.go
+```
+
+---
+
+### `uast explore`
+
+Start an interactive session for exploring the UAST structure of a file.
+
+```bash
+uast explore [file] [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--language` | `-l` | `string` | `""` | Force language detection override |
+
+```bash
+uast explore main.go
+```
+
+Available interactive commands:
+
+| Command | Description |
+|---------|-------------|
+| `tree` | Show AST tree structure |
+| `stats` | Show node type statistics |
+| `find <type>` | Find nodes by type |
+| `query <dsl>` | Execute a DSL query |
+| `help` | Show available commands |
+| `quit` | Exit exploration |
+
+---
+
+### `uast server`
+
+Start an HTTP development server that provides UAST parsing and querying
+via a REST API.
+
+```bash
+uast server [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--port` | `-p` | `string` | `8080` | Port to listen on |
+| `--static` | `-s` | `string` | `""` | Directory to serve static files from |
+
+```bash
+# Start on default port
+uast server
+
+# Custom port with static file serving
+uast server -p 3000 -s ./web
+```
+
+**API Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/parse` | Parse source code to UAST |
+| `POST` | `/api/query` | Query a UAST with DSL expression |
+| `GET` | `/api/mappings` | List available language mappings |
+| `GET` | `/api/mappings/<name>` | Get a specific language mapping |
+
+---
+
+### `uast analyze`
+
+Quick analysis shortcut that parses and analyzes source files in one step.
+
+```bash
+uast analyze [files...] [flags]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--output` | `-o` | `string` | `""` | Output file (default: stdout) |
+| `--format` | `-f` | `string` | `text` | Output format: `text`, `json`, `html` |
+
+```bash
+# Analyze a single file
+uast analyze main.go
+
+# Analyze all Go files as JSON
+uast analyze -f json *.go
+
+# Generate an HTML report
+uast analyze -o report.html -f html *.go
+```
+
+
+---
+
+# File: site/explanation/complexity.md
+
+# Understanding complexity metrics
+
+This page explains the mental model behind the complexity analyzer: what
+each metric means, why the analyzer measures three dimensions, and how
+cyclomatic and cognitive complexity differ. For configuration keys and the
+output schema, see the [Complexity reference](../analyzers/complexity.md).
+
+---
+
+## What it measures
+
+The complexity analyzer measures three dimensions of code complexity from
+source code: **cyclomatic complexity**, **cognitive complexity**, and
+**nesting depth**. It operates on the UAST representation of your source
+files.
+
+### Cyclomatic complexity (McCabe, 1976)
+
+Counts the number of linearly independent paths through a function's control flow graph.
+
+For Go code, the analyzer follows the same practical counting model used by `gocyclo`:
+
+- Base score is `1`
+- `if`, `for` / `range` add `+1`
+- Non-default `case` adds `+1`
+- Each `&&` and `||` adds `+1`
+- `default` case does **not** add complexity
+
+!!! info "Interpretation"
+    - **1-10**: Simple, low risk
+    - **11-20**: Moderate complexity
+    - **21-50**: High complexity, consider refactoring
+    - **51+**: Very high risk, untestable
+
+### Cognitive complexity (SonarSource, 2017)
+
+Measures how difficult code is for a human to read and understand. Unlike cyclomatic complexity, it penalizes nested structures more heavily and rewards linear sequences of logic.
+
+Key differences from cyclomatic complexity:
+
+- Nesting increments add to the score (deeper nesting = higher penalty)
+- `else if` adds structural complexity, but avoids extra nesting penalty vs deeply nested `if`
+- Logical operator sequences account for readability, not just path count
+- Direct recursion adds a penalty
+
+### Nesting depth
+
+Tracks the maximum depth of nested control structures within each function. Deep nesting is a strong signal for refactoring.
+
+---
+
+## Validation against golden implementations
+
+The complexity analyzer is continuously validated against battle-tested Go references:
+
+- **Cyclomatic parity target:** `gocyclo` (v0.6.0)
+- **Cognitive parity target:** `gocognit` (v1.2.1)
+
+For stabilization, we run a controlled methodology sample through both references and `codefang`, then align discrepancies until parity is reached.
+
+---
+
+## Use cases
+
+- **Code review gates**: Reject pull requests where any function exceeds a cyclomatic complexity threshold.
+- **Refactoring prioritization**: Sort functions by cognitive complexity to find the hardest-to-understand code.
+- **Technical debt tracking**: Monitor complexity trends across releases.
+- **Test planning**: Functions with high cyclomatic complexity need more test cases for full path coverage.
+
+---
+
+## Limitations
+
+- **Language coverage**: Only languages supported by the UAST parser are analyzed. Unsupported files are silently skipped.
+- **Generated code**: The analyzer does not distinguish hand-written code from generated code. Consider excluding generated directories.
+- **Macros and metaprogramming**: Complexity within macros or template metaprogramming may not be fully captured, since the UAST represents the source as written, not as expanded.
+- **Cognitive complexity model**: The cognitive complexity scoring follows the SonarSource specification. Other tools may use slightly different weightings.
+
+---
+
+## See also
+
+- [Complexity reference](../analyzers/complexity.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/cohesion.md
+
+# Understanding cohesion metrics
+
+This page explains the mental model behind the cohesion analyzer: what
+LCOM-HS measures, how the variable-sharing ratio captures communicational
+cohesion, and how to read the scores. For configuration keys and the output
+schema, see the [Cohesion reference](../analyzers/cohesion.md).
+
+---
+
+## What it measures
+
+The cohesion analyzer computes **LCOM-HS (Henderson-Sellers)** and **variable
+sharing ratio** metrics to identify files and modules with low internal
+cohesion. Low cohesion indicates functions that are poorly related to each
+other — a strong signal for refactoring.
+
+### LCOM-HS (lack of cohesion of methods — Henderson-Sellers)
+
+LCOM-HS is the industry-standard cohesion metric used by NDepend, JArchitect, and CppDepend.
+
+**Formula:**
+
+```
+LCOM = 1 - sum(mA) / (m × a)
+```
+
+Where:
+
+- `m` = number of functions in the file
+- `a` = number of distinct variables across all functions
+- `mA` = for each variable, the count of functions that reference it
+- `sum(mA)` = sum of access counts across all variables
+
+**Range:** 0.0 (perfect cohesion) to 1.0 (no cohesion).
+
+!!! info "Interpretation"
+    - **LCOM ≤ 0.3** (green): Excellent cohesion — functions share most variables.
+    - **LCOM ≤ 0.6** (yellow): Moderate cohesion — some functions may be loosely related.
+    - **LCOM > 0.6** (red): Poor cohesion — functions share few variables and may belong in separate files.
+
+### Cohesion score
+
+A convenience inversion of LCOM-HS: `cohesion_score = 1.0 - LCOM`. Higher is better.
+
+| Cohesion Score | Assessment |
+|---|---|
+| ≥ 0.7 | Excellent |
+| ≥ 0.4 | Good |
+| ≥ 0.3 | Fair |
+| < 0.3 | Poor |
+
+### Function-level cohesion (variable sharing ratio)
+
+For each function, the analyzer computes what fraction of its variables are shared with at least one other function in the same file. This measures **communicational cohesion** (Yourdon-Constantine level 5).
+
+**Formula:**
+
+```
+function_cohesion = shared_vars / total_unique_vars
+```
+
+Where:
+
+- `shared_vars` = variables in this function that also appear in at least one other function
+- `total_unique_vars` = total distinct variables in this function
+- Functions with no variables receive a score of 1.0 (trivial, no penalty)
+
+**Range:** 0.0 (completely isolated function) to 1.0 (all variables shared).
+
+| Function Cohesion | Assessment |
+|---|---|
+| ≥ 0.6 | Excellent — function shares most variables with the module |
+| ≥ 0.4 | Good — reasonable sharing with room for improvement |
+| ≥ 0.3 | Fair — consider refactoring |
+| < 0.3 | Poor — function is isolated from the module |
+
+---
+
+## Use cases
+
+- **Refactoring targets**: Find functions with low sharing ratio that do unrelated work and should be split.
+- **Architecture reviews**: Validate that files follow the Single Responsibility Principle by checking LCOM-HS scores.
+- **Code quality tracking**: Monitor cohesion trends over time to catch degradation.
+- **Code review**: Use per-function cohesion scores to identify newly added functions that lack cohesion with existing code.
+
+---
+
+## Methodology references
+
+- **LCOM-HS**: Henderson-Sellers, B. (1996). *Object-Oriented Metrics: Measures of Complexity*. Prentice Hall. The Henderson-Sellers variant normalizes LCOM to [0, 1] and is the variant used by NDepend, JArchitect, and CppDepend.
+- **Variable Sharing Ratio**: Measures communicational cohesion per the Yourdon-Constantine classification. A function that shares all its variables with other functions in the module exhibits high communicational cohesion.
+
+---
+
+## Limitations
+
+- **Language scope**: Works with any language supported by the UAST. Best results with languages that have explicit variable declarations and function definitions.
+- **Accessor methods**: Simple getters/setters may inflate cohesion since each touches only one shared field.
+- **Variable naming**: The analyzer uses lexical variable names. Different variables with the same name across functions will be counted as shared.
+- **Single-function files**: Files with only one function always receive perfect cohesion (LCOM = 0.0, cohesion = 1.0) since there are no other functions to compare against.
+- **Trivial functions**: Functions with no variables receive a cohesion score of 1.0 to avoid penalizing simple utility functions.
+
+---
+
+## See also
+
+- [Cohesion reference](../analyzers/cohesion.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/halstead.md
+
+# Understanding Halstead metrics
+
+This page explains the mental model behind the Halstead analyzer: what
+operators and operands are, which derived metrics matter most, and how the
+counting policy keeps results stable across languages. For configuration keys
+and the output schema, see the [Halstead reference](../analyzers/halstead.md).
+
+---
+
+## What it measures
+
+The Halstead analyzer computes **Halstead complexity metrics** (1977) based on
+operator and operand counts extracted from the UAST. These metrics provide an
+objective, quantitative assessment of program size and complexity.
+
+The Halstead model treats a program as a sequence of **operators** (keywords, symbols, function calls) and **operands** (variables, literals, constants). From these counts, it derives:
+
+| Metric | Formula | Description |
+|---|---|---|
+| **n1** | -- | Number of distinct operators |
+| **n2** | -- | Number of distinct operands |
+| **N1** | -- | Total number of operators |
+| **N2** | -- | Total number of operands |
+| **Vocabulary** (n) | n1 + n2 | Distinct tokens used |
+| **Length** (N) | N1 + N2 | Total tokens in the program |
+| **Volume** (V) | N * log2(n) | Information content in bits |
+| **Difficulty** (D) | (n1/2) * (N2/n2) | Error proneness |
+| **Effort** (E) | D * V | Mental effort to implement |
+| **Time** (T) | E / 18 | Estimated implementation time (seconds) |
+| **Bugs** (B) | V / 3000 | Estimated delivered bugs |
+
+!!! info "Key insight"
+    **Volume** measures the size of the implementation. **Difficulty** captures how error-prone it is. Their product, **Effort**, is the best single number for comparing overall complexity.
+
+### Counting policy
+
+Codefang computes Halstead metrics from UAST with a lexical-first policy:
+
+- Counts lexical operands (`Identifier`, `Literal`, `Field`) and operator nodes/roles.
+- Excludes structural wrappers and declaration-only artifacts from operand counts.
+- Uses explicit operator properties when available, then token extraction fallback.
+
+This improves stability across languages and avoids pseudo-operands like structural `Parameter` nodes.
+
+---
+
+## Use cases
+
+- **Effort estimation**: Use the Effort metric to compare the relative complexity of different modules or features.
+- **Bug prediction**: The Bugs metric provides a rough upper bound on expected defects. Modules with high estimated bugs warrant more thorough testing.
+- **Code review guidance**: Functions with high Difficulty scores are more error-prone and deserve extra scrutiny.
+- **Language comparison**: Halstead metrics allow cross-language comparisons since they are based on abstract operator/operand counts.
+
+---
+
+## Limitations
+
+- **Cross-tool variance**: Language-specific tools (for example, Python- or ESTree-only analyzers) can differ in tokenization and counting policy. Compare trends within one toolchain rather than mixing absolute numbers across tools.
+- **Operator classification**: UAST-based classification targets cross-language consistency, not byte-for-byte parity with each language parser.
+- **Estimation accuracy**: The Bugs and Time formulas are empirical approximations from the 1970s. Treat them as relative indicators, not precise predictions.
+- **Macro expansion**: Halstead metrics count tokens as written, not as expanded. Heavy use of macros or code generation can skew results.
+- **Comments excluded**: Comments and whitespace are excluded from Halstead counts (by design).
+
+---
+
+## See also
+
+- [Halstead reference](../analyzers/halstead.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/comments.md
+
+# Understanding documentation coverage
+
+This page explains the mental model behind the comments analyzer: what
+documentation coverage means, how the analyzer distinguishes comment types,
+and what a healthy comment density looks like. For configuration keys and the
+output schema, see the [Comments reference](../analyzers/comments.md).
+
+---
+
+## What it measures
+
+The comments analyzer evaluates **documentation coverage** by examining comment
+presence, placement, and density across your source code. It identifies
+functions and classes that lack documentation and measures overall
+documentation quality.
+
+### Documentation coverage
+
+The percentage of public functions, methods, and classes that have an associated documentation comment. A comment is "associated" when it immediately precedes the declaration.
+
+### Comment placement quality
+
+Not all comments are equally useful. The analyzer distinguishes:
+
+- **Doc comments**: Comments immediately before a function/class declaration
+- **Inline comments**: Comments within function bodies
+- **Orphan comments**: Comments not associated with any code structure
+
+### Comment density
+
+The ratio of comment lines to total lines of code. Provides a quick overall measure of how well-documented a file is.
+
+!!! info "Healthy ratios"
+    A comment density between **15-30%** is generally considered healthy. Below 10% suggests under-documentation; above 40% may indicate stale or redundant comments.
+
+---
+
+## Use cases
+
+- **Documentation enforcement**: Require minimum documentation coverage in CI/CD pipelines.
+- **Onboarding assessment**: Measure how well-documented a codebase is before new team members join.
+- **API surface quality**: Ensure all exported/public functions have doc comments.
+- **Stale comment detection**: Identify files with unusually high comment density that may contain outdated comments.
+
+---
+
+## Limitations
+
+- **Comment quality**: The analyzer measures comment *presence* and *placement*, not comment *quality*. A comment saying `// do the thing` counts the same as a thorough description.
+- **Language conventions**: Documentation comment conventions vary by language (e.g., `///` in Rust, `"""` in Python, `//` in Go). The UAST normalizes these, but edge cases in less common languages may be missed.
+- **Auto-generated docs**: Comments generated by tools (e.g., protobuf stubs) are counted the same as hand-written documentation.
+- **Multilingual comments**: Comment text is not analyzed for language quality or correctness.
+
+---
+
+## See also
+
+- [Comments reference](../analyzers/comments.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/imports.md
+
+# Understanding import and dependency analysis
+
+This page explains the mental model behind the imports analyzer: what it
+measures in static and history modes, and how the history-mode aggregation
+pipeline works. For configuration keys and the output schema, see the
+[Imports reference](../analyzers/imports.md).
+
+---
+
+## What it measures
+
+The imports analyzer extracts **import and dependency information** from source
+code using UAST parsing. It operates in both static mode (single-file analysis)
+and history mode (tracking import usage per developer over time).
+
+### Static mode
+
+- **Import list**: All imports/dependencies declared in each file
+- **Language detection**: Automatically detects the language and normalizes import paths
+- **Dependency graph**: Maps which files depend on which packages
+
+### History mode
+
+Tracks import usage across Git history, producing a per-developer, per-language, per-tick breakdown of which dependencies each developer introduces or modifies. This reveals:
+
+- **Dependency adoption timeline**: When new libraries were introduced
+- **Developer expertise signals**: Which developers work with which dependencies
+- **Technology spread**: How quickly new dependencies propagate across the team
+
+---
+
+## Architecture (history mode)
+
+The imports history analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` extracts imports from changed files via parallel UAST parsing and returns them as `TC{Data: []ImportEntry}`. Each `ImportEntry` carries a language and import path. The analyzer retains no per-commit state; only the UAST parser is kept as working state.
+2. **Aggregation phase**: An `imports.Aggregator` collects TCs into a 4-level `Map` (author -> language -> import -> tick -> count) using `SpillStore[Map]`. The `AuthorID` and `Tick` from each TC index the entries correctly.
+3. **Serialization phase**: `SerializeTICKs()` merges all tick data back into the full `Map` with metadata (`author_index`, `tick_size`), then delegates to `Serialize()` for JSON, YAML, binary, or HTML plot output.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
+## Use cases
+
+- **Dependency auditing**: List all third-party dependencies used in a project.
+- **Developer profiling**: Understand which developers work with which frameworks and libraries.
+- **Technology adoption tracking**: Monitor when and how quickly new dependencies spread across the team.
+- **License compliance**: Extract the full dependency list for license scanning pipelines.
+- **Architecture enforcement**: Detect unauthorized imports from forbidden packages.
+
+---
+
+## Limitations
+
+- **Language support**: Only languages with UAST parser support are analyzed. Unsupported file types are silently skipped.
+- **Dynamic imports**: Runtime or dynamic imports (e.g., Python's `importlib.import_module()`, JavaScript's `import()`) are not detected since they are not present in the static UAST.
+- **Transitive dependencies**: Only direct imports are reported. The analyzer does not resolve transitive dependency trees.
+- **File size threshold**: Files exceeding `MaxFileSize` (default 1 MB) are skipped to avoid excessive memory usage during parallel extraction.
+- **History mode overhead**: History mode creates a UAST parser per fork, which increases memory usage. Tune `Goroutines` based on available memory.
+
+---
+
+## See also
+
+- [Imports reference](../analyzers/imports.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/clones.md
+
+# Understanding clone detection
+
+This page explains the mental model behind the clone detection analyzer: what
+a clone pair is, the clone-type taxonomy, and why the two-stage MinHash + LSH
+design keeps cross-file detection fast. For configuration keys and the output
+schema, see the [Clones reference](../analyzers/clones.md).
+
+---
+
+## What it measures
+
+The clone detection analyzer finds **duplicate and near-duplicate functions**
+across your entire codebase using MinHash signatures and Locality-Sensitive
+Hashing (LSH). It operates on the UAST representation and detects clones
+**cross-file** — not just within a single file.
+
+### Clone pairs
+
+A clone pair is two functions whose AST structure is similar enough to be considered duplicated code. Each pair includes a **similarity score** (0.0–1.0) and a **clone type** classification.
+
+### Clone types
+
+| Type | Similarity | Description |
+|---|---|---|
+| **Type-1 (Exact)** | = 1.0 | Identical AST structure and tokens |
+| **Type-2 (Renamed)** | &ge; 0.8 | Identical structure, different variable/function names |
+| **Type-3 (Near-miss)** | &ge; 0.5 | Similar but modified structure |
+
+### Clone ratio
+
+The ratio of detected clone pairs to total functions, computed globally across all files:
+
+```
+clone_ratio = total_clone_pairs / total_functions
+```
+
+!!! info "Interpretation"
+    - **0.0** (green): No duplication detected
+    - **&le; 0.1** (yellow): Low duplication — few clone pairs
+    - **&le; 0.3** (red): Moderate duplication — consider refactoring
+    - **> 0.3**: High duplication — significant refactoring recommended
+
+---
+
+## Methodology
+
+### Stage 1: per-file signature extraction
+
+For each source file, the analyzer:
+
+1. **Parses** the file into a UAST and finds all function/method nodes.
+2. **Shingles** each function by performing a pre-order traversal of the AST subtree and extracting sliding windows of `k` consecutive node types (k=5 by default). For example, a function with nodes `[Function, Block, Assignment, Identifier, Call, Return]` produces shingles like `Function|Block|Assignment|Identifier|Call` and `Block|Assignment|Identifier|Call|Return`.
+3. **MinHash** compresses each function's shingle set into a fixed-size signature of 128 hash values. Two functions with identical structure produce identical signatures; similar functions produce similar signatures.
+
+Signatures are exported per-file along with function names. At this stage, no clone detection occurs — comparison is deferred to the aggregation stage.
+
+### Stage 2: cross-file clone detection
+
+After all files have been processed, the aggregator:
+
+1. **Qualifies** function names with their source file path (`path/to/file.go::FuncName`) so that same-named functions across files are distinguishable.
+2. **Builds a global LSH index** (16 bands, 8 rows per band) from all collected signatures. LSH hashes each signature's bands into buckets — functions whose signatures share any bucket are candidate clones.
+3. **Queries** the LSH index for each function, retrieves candidates above the similarity threshold (0.5), computes exact Jaccard similarity from the full MinHash signatures, and classifies each pair by clone type.
+4. **Computes metrics** globally: `clone_ratio = total_pairs / total_functions`.
+
+This two-stage design means clone detection works across file boundaries. A controller duplicated in `pkg/a/handler.go` and `pkg/b/handler.go` is detected even though each file is parsed independently.
+
+### Why MinHash + LSH?
+
+Pairwise comparison of N functions is O(N&sup2;). For a project with 100K functions this is infeasible. MinHash compresses each function into a 1 KB signature (128 hashes &times; 8 bytes), and LSH reduces candidate pair generation to near-linear time by only comparing functions that hash into the same bucket. The combination provides probabilistic guarantees on recall while keeping the analysis fast.
+
+---
+
+## Use cases
+
+- **Refactoring targets**: Identify exact and near-duplicate functions that should be consolidated into shared utilities.
+- **Code review gates**: Flag pull requests that introduce new clone pairs, especially Type-1 (exact) duplicates.
+- **Copy-paste detection**: Find controllers, handlers, or boilerplate that were copy-pasted across packages instead of being extracted.
+- **Technical debt tracking**: Monitor clone ratio over time to ensure duplication does not grow unbounded.
+- **Cross-team coordination**: Detect when multiple teams independently implement the same logic in different packages.
+
+---
+
+## Methodology references
+
+- **MinHash**: Broder, A. Z. (1997). *On the resemblance and containment of documents*. Proceedings of the Compression and Complexity of Sequences. MinHash estimates Jaccard similarity between sets using compact fixed-size signatures.
+- **LSH (Locality-Sensitive Hashing)**: Indyk, P. & Motwani, R. (1998). *Approximate nearest neighbors: towards removing the curse of dimensionality*. STOC. Banded LSH reduces candidate pair generation from O(N&sup2;) to near-linear time.
+- **AST-based clone detection**: Jiang, L. et al. (2007). *DECKARD: Scalable and accurate tree-based detection of code clones*. ICSE. Tree-based shingling captures structural similarity independent of identifier names.
+- **Clone taxonomy**: Roy, C. K. & Cordy, J. R. (2007). *A survey on software clone detection research*. The Type-1/Type-2/Type-3 classification follows the standard clone taxonomy.
+
+---
+
+## Limitations
+
+- **Language scope**: Works with any language supported by the UAST parser. Unsupported files are silently skipped.
+- **Structural only**: Detection is based on AST node types, not token values. Two functions with identical structure but completely different semantics (e.g., add vs multiply with the same nesting shape) may appear as clones.
+- **Minimum function size**: Functions smaller than the shingle window (5 AST nodes) produce no shingles and are excluded from clone detection. They are still counted in `total_functions`.
+- **Probabilistic recall**: LSH is a probabilistic algorithm. Clone pairs with similarity just above the threshold (0.5) may occasionally be missed. High-similarity pairs (Type-1 and Type-2) have near-perfect recall.
+- **Generated code**: The analyzer does not distinguish hand-written code from generated code. Consider excluding generated directories.
+- **No Type-4 clones**: Semantic clones (different structure, same behavior) are not detected. The analyzer operates purely on syntactic structure.
+
+---
+
+## See also
+
+- [Clones reference](../analyzers/clones.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run your first analysis.
+
+
+---
+
+# File: site/explanation/burndown.md
+
+# Understanding code burndown
+
+This page explains the mental model behind the burndown analyzer: what code
+survival means, the per-file and per-developer breakdowns, and how the
+line-tracking algorithm works. For configuration keys and the output schema,
+see the [Burndown reference](../analyzers/burndown.md).
+
+---
+
+## What it measures
+
+The burndown analyzer tracks **code survival over time** by following every
+line of code through Git history. It produces burndown charts showing how code
+written at different points in time persists, is modified, or is deleted.
+Optionally, it tracks per-file and per-developer breakdowns.
+
+### Global code survival
+
+A time-series matrix where each row is a sampling point and each column is an age band. The value at `[sample][band]` is the number of lines that were last edited during that band and still survive at that sample point.
+
+This matrix produces the classic **burndown chart**: stacked area plots showing how much code from each era remains.
+
+### Per-file burndown
+
+When `--burndown-files` is enabled, the analyzer produces a separate survival matrix for each file, enabling file-level burndown charts.
+
+### Per-developer burndown
+
+When `--burndown-people` is enabled, the analyzer tracks which developer last edited each line. This reveals:
+
+- **Developer survival rates**: How much of each developer's code persists
+- **Interaction matrix**: Which developers modify each other's code
+
+### File ownership
+
+When both `--burndown-files` and `--burndown-people` are enabled, the analyzer computes per-file ownership by iterating the live line segments in each file's internal tree. Each segment stores a packed `[author|tick]` value, from which the author ID is extracted to produce a `file -> author -> line_count` mapping.
+
+!!! note "Ownership requires developer tracking"
+    File ownership data is only available when `--burndown-people` is enabled. Without developer tracking, no author information is stored in the line segments, so file ownership will be empty.
+
+!!! warning "Memory usage"
+    Per-file and per-developer tracking significantly increases memory usage. For repositories with more than 100k commits, consider enabling hibernation (on by default).
+
+---
+
+## How it works
+
+### Algorithm overview
+
+1. **Commit traversal**: Commits are processed sequentially in topological order. For each commit, the analyzer diffs the parent tree against the current tree to find inserted, deleted, and modified lines.
+
+2. **Line tracking**: Each line in every file is tracked using an augmented balanced binary tree (treap). Each tree node stores a contiguous range of lines with a packed value encoding `[author_id | creation_tick]`. When lines are inserted or deleted, the tree is split and merged to maintain the correct line-to-value mapping.
+
+3. **Sparse history accumulation**: At each commit, the analyzer records deltas in a sparse history structure: `map[currentTick]map[creationTick]lineCountDelta`. This captures how many lines created at `creationTick` are alive at `currentTick`.
+
+4. **Tick aggregation**: Sparse deltas from individual commits are accumulated into tick-level snapshots by a streaming aggregator. At each sampling boundary, the aggregator emits a `TickResult` containing the full sparse history state.
+
+5. **Dense matrix conversion**: The sparse history is converted to a dense matrix (`DenseHistory`) via `groupSparseHistory()`. This involves:
+    - **Tick normalization**: Map arbitrary tick values to sorted indices
+    - **Granularity grouping**: Collapse adjacent creation ticks into age bands of width `granularity`
+    - **Forward-fill**: For each age band, carry forward the last known value across sampling gaps to produce a complete matrix
+
+6. **Metrics computation**: The dense matrix is used to compute aggregate statistics (survival rate, peak lines, current lines), per-developer survival, and the interaction matrix.
+
+### Key parameters
+
+- **Granularity** controls the width of each age band (in ticks). Higher values produce fewer, wider bands.
+- **Sampling** controls how frequently snapshots are taken (in ticks). Higher values reduce the number of data points.
+- **Tick size** defaults to a 24-hour window. All commits within the same day share one tick.
+
+---
+
+## Use cases
+
+- **Project health monitoring**: Track the overall code survival rate. A declining rate may indicate churn or instability.
+- **Developer contribution analysis**: Understand whose code persists and who rewrites existing code.
+- **Code age visualization**: Generate burndown charts showing how much ancient code remains in the codebase.
+- **Refactoring impact**: Measure how much code a refactoring effort actually replaced.
+- **Team dynamics**: The interaction matrix reveals collaboration patterns -- who reviews and modifies whose code.
+
+---
+
+## Limitations
+
+- **Sequential processing**: Burndown tracks cumulative per-line state across all commits and must process commits sequentially. It cannot be parallelized across commits (though per-file processing within a commit is parallelized via goroutines).
+- **Memory intensive**: Every line in every file is tracked throughout history. Large repositories (100k+ commits, 10k+ files) can require several GB of RAM. Use hibernation options to manage memory.
+- **Binary files excluded**: Binary files are automatically skipped since they cannot be meaningfully diff'd line-by-line.
+- **Rename tracking**: File renames are tracked using Git's rename detection. If Git does not detect a rename (e.g., content changed significantly), the file appears as a deletion + insertion.
+- **Tick resolution**: The default 24-hour tick means that all commits within the same day share one tick. Sub-day granularity is not supported.
+- **File ownership without developer tracking**: File ownership data requires `--burndown-people`. Without it, the `file_survival` array will have empty ownership maps.
+
+---
+
+## See also
+
+- [Burndown reference](../analyzers/burndown.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/developers.md
+
+# Understanding developer analysis
+
+This page explains the mental model behind the developers analyzer: what
+per-developer statistics it computes, how the bus factor is derived, and how
+the aggregation pipeline is structured. For configuration keys and the output
+schema, see the [Developers reference](../analyzers/developers.md).
+
+---
+
+## What it measures
+
+The developers analyzer computes **per-developer contribution statistics**
+across Git history, including commit counts, line changes, language breakdown,
+bus factor risk, and activity time series.
+
+### Developer statistics
+
+For each developer (identified by the identity detector):
+
+- **Commits**: Total number of commits
+- **Lines added / removed / changed**: Aggregate line statistics
+- **Net lines**: `added - removed`, showing net contribution
+- **Languages**: Breakdown of line changes per programming language
+- **Active period**: First and last ticks of activity, number of active ticks
+
+### Language statistics
+
+Aggregated across all developers:
+
+- **Total lines per language**: Lines added (for backward compatibility)
+- **Total contribution per language**: Lines added + removed, used for bus factor and ownership calculations
+- **Contributors per language**: Which developers contribute to each language, measured by total contribution (added + removed)
+
+### Bus factor
+
+Knowledge concentration risk per language, following the [CHAOSS Contributor Absence Factor](https://chaoss.community/kb/metric-bus-factor/) methodology.
+
+For each language, the analyzer computes:
+
+- **Bus factor number**: The smallest number of contributors responsible for 50% of total contributions (added + removed). This is the CHAOSS standard metric.
+- **Total contributors**: Number of unique contributors to that language.
+- **Primary/secondary owner**: The top two contributors and their ownership percentages.
+- **Risk level**: Based on primary owner concentration.
+
+!!! danger "Risk levels"
+    - **CRITICAL** (>= 90%): A single developer owns nearly all the code
+    - **HIGH** (>= 80%): Very concentrated ownership
+    - **MEDIUM** (>= 60%): Moderate concentration
+    - **LOW** (< 60%): Healthy distribution
+
+A **project-level bus factor** is also computed across all developers and all languages, reported in the aggregate section.
+
+### Activity time series
+
+Per-tick commit counts broken down by developer. Shows contribution velocity over time.
+
+### Code churn (line velocity)
+
+Per-tick lines added and removed. This measures raw line velocity — the volume of code changes over time. High values may indicate refactoring, feature development, or instability.
+
+!!! note "Terminology"
+    In academic literature, "code churn" specifically refers to recently-written code that is quickly rewritten. This analyzer measures the broader concept of line velocity (total additions and removals per time period).
+
+---
+
+## Architecture
+
+The developers analyzer is built on the **BaseHistoryAnalyzer** and **GenericAggregator** foundations:
+
+1. **Consume phase**: `Consume()` extracts author ID, line stats, and language breakdown, delegating state storage to the generic aggregator framework. The analyzer retains minimal internal state.
+2. **Aggregation phase**: The `GenericAggregator` automatically handles per-commit memory spilling and per-tick grouping using pure function hooks (`extractTC`, `mergeState`, `buildTick`), eliminating custom state management boilerplate.
+3. **Metrics & UI phase**: A pure function pipeline (`ComputeAllMetrics`) generates the output structures for JSON, YAML, and text, while declarative chart builders (`plotpage.BuildBarChart`, `plotpage.BuildLineChart`) render the HTML visualizations.
+
+This unified approach significantly reduces boilerplate while maintaining full support for streaming output, decoupled aggregation, and budget-aware memory spilling.
+
+---
+
+## Use cases
+
+- **Team assessment**: Understand who contributes what, in which languages, and when.
+- **Bus factor analysis**: Identify languages or components where a single developer departure would create critical knowledge gaps. The CHAOSS bus factor number tells you how many people need to leave before 50% of knowledge is lost.
+- **Activity monitoring**: Track developer engagement over time. Declining activity may signal burnout or attrition risk.
+- **Language migration tracking**: Monitor the adoption of a new language by watching language statistics over time.
+- **Onboarding evaluation**: Measure how quickly new team members ramp up by comparing their activity curves.
+- **Code churn analysis**: Detect periods of high line velocity that may correlate with instability or deadline pressure.
+
+---
+
+## Limitations
+
+- **Identity resolution**: Developer identity is determined by the identity detector (email-based by default). Multiple email addresses for the same person will appear as separate developers unless a mailmap is configured.
+- **Merge commits**: By default, merge commits are processed only once (first encounter). Trivial merges are skipped unless `ConsiderEmptyCommits` is enabled.
+- **Line attribution**: Lines are attributed to the commit author, not the committer. In workflows with heavy rebasing, this may differ from expectations.
+- **Contribution measurement**: Contributions are measured as lines added + lines removed. This gives fair credit to refactoring work but does not distinguish between code complexity or quality.
+- **Active developer threshold**: "Active developers" are those with commits in the most recent 90-day window (when tick size is known). Falls back to the recent 30% of the analysis period when tick size is unavailable. This threshold is not configurable.
+
+---
+
+## See also
+
+- [Developers reference](../analyzers/developers.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run developer analysis.
+
+
+---
+
+# File: site/explanation/couples.md
+
+# Understanding file and developer coupling
+
+This page explains the mental model behind the couples analyzer: what file and
+developer coupling mean, how coupling strength is computed, and how the
+aggregation pipeline is structured. For configuration keys and the output
+schema, see the [Couples reference](../analyzers/couples.md).
+
+---
+
+## What it measures
+
+The couples analyzer identifies **file coupling** and **developer coupling** by
+analyzing co-change patterns across Git history. Files that frequently change
+together are likely coupled; developers who frequently touch the same files are
+collaborating (or competing).
+
+### File coupling
+
+A square matrix where each cell `[i][j]` counts the number of commits in which files `i` and `j` both appeared. High co-change counts indicate tight coupling between files.
+
+**Coupling strength** is computed using the code-maat formula:
+
+```
+strength = co_changes / average(revisions_file1, revisions_file2)
+```
+
+Where `revisions_fileN` is the diagonal element of the file matrix (the file's self-change count). The result is capped at 1.0. This normalizes coupling by the average activity of both files, so a pair of files that change together 10 times out of 20 average revisions scores 50%.
+
+!!! info "Changeset size filter"
+    Commits touching more than **1000 files** are excluded from coupling analysis. Mass changes (e.g., formatting, license updates, dependency bumps) produce noise rather than meaningful coupling signal.
+
+### Developer coupling
+
+A matrix where each cell `[i][j]` counts the number of times developers `i` and `j` committed to the same file. Developer coupling strength uses the same code-maat formula normalized by each developer's individual commit activity.
+
+### File ownership
+
+For each tracked file, the analyzer reports its line count and the number of distinct contributors. Single-owner files are flagged as bus-factor risks.
+
+### Rename tracking
+
+The analyzer tracks file renames to avoid counting a renamed file as both a deletion and an insertion, which would break coupling chains.
+
+---
+
+## Use cases
+
+- **Architecture analysis**: Highly coupled file pairs that span package boundaries may indicate architectural violations.
+- **Dependency discovery**: Find implicit dependencies that are not captured by import statements. If two files always change together, they are coupled even without explicit imports.
+- **Module boundary validation**: Files within the same module should be more coupled than files across modules. Cross-module coupling is a design smell.
+- **Team topology**: Developer coupling reveals who collaborates with whom. This can inform team structure decisions.
+- **Change impact prediction**: When modifying a file, the coupling matrix predicts which other files are likely to need changes.
+- **Bus factor assessment**: File ownership data identifies single-owner files that represent knowledge concentration risks.
+
+---
+
+## Architecture
+
+The couples analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: Each commit produces a `TC{Data: *CommitData}` containing the coupling context (list of co-changed files), per-file author touch counts (always 1 per file per commit), rename pairs, and whether the author's commit count was incremented. Commits exceeding `CouplesMaximumMeaningfulContextSize` (1000 files) are skipped, producing an empty coupling context.
+
+2. **Aggregation phase**: The `Aggregator` accumulates the file co-occurrence matrix using `SpillStore[map[string]int]`, along with per-person file touch counts (`people`), commit counts (`peopleCommits`), and rename tracking. When memory pressure exceeds `SpillBudget`, the file coupling matrix is spilled to disk via gob encoding. `Collect()` merges spilled data using additive merge semantics.
+
+3. **Serialization phase**: `ticksToReport()` reconstructs the full report (PeopleMatrix, PeopleFiles, Files, FilesLines, FilesMatrix, ReversedPeopleDict) from aggregated TICKs, then `ComputeAllMetrics()` produces the final typed output for any format (text, plot, JSON, YAML, binary).
+
+**Working state** (`merges`, `seenFiles`) stays in the analyzer for merge-mode dedup across commits. **Accumulated output** (file couplings, people maps, renames) is owned entirely by the aggregator.
+
+---
+
+## Methodology
+
+The coupling strength formula follows the **code-maat** academic standard (Adam Tornhill, "Your Code as a Crime Scene"):
+
+```
+degree = shared_revisions / average(revisions_A, revisions_B)
+```
+
+This measures what fraction of a file pair's average activity is shared. A coupling strength of 80% means the pair changes together in 80% of their average revision count.
+
+The aggregate `avg_coupling_strength` is the mean of all per-pair coupling strengths (not the mean of raw co-change counts).
+
+**Highly coupled pairs** are those with 10 or more co-changes (raw count threshold).
+
+---
+
+## Limitations
+
+- **Large commits excluded**: Commits touching more than 1000 files are skipped to avoid noise from mass changes (formatting, license headers, dependency updates).
+- **No temporal decay**: All commits are weighted equally. A coupling from long ago counts the same as a recent one. Consider filtering by date range for recent coupling analysis.
+- **Merge commits**: Merge commits are processed only once (first encounter) to avoid double-counting changes that appear in multiple branches.
+- **File deletions**: Deleted files are included in the coupling matrix during the analysis window but may not appear in the final output if they no longer exist at HEAD.
+
+---
+
+## See also
+
+- [Couples reference](../analyzers/couples.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/file-history.md
+
+# Understanding file history analysis
+
+This page explains the mental model behind the file history analyzer: what
+per-file lifecycle data it records, how hotspots and churn are derived, and how
+rename detection maintains continuity. For configuration keys and the output
+schema, see the [File history reference](../analyzers/file-history.md).
+
+---
+
+## What it measures
+
+The file history analyzer tracks the **lifecycle of every file** through Git
+history, recording which commits touched each file, which developers modified
+it, and aggregating line statistics per contributor. It supports rename
+detection to maintain continuity across file moves.
+
+### Per-file commit history
+
+For each file present in the repository at HEAD, the analyzer records the ordered list of commits that created, modified, or deleted it.
+
+### Per-file contributor breakdown
+
+For each file, a map of developer IDs to line statistics (added, removed, changed). This shows who contributed what to each file.
+
+### Code hotspots
+
+Files with high commit counts are flagged as hotspots with risk levels:
+
+!!! warning "Hotspot risk levels"
+    - **CRITICAL**: >= 50 commits
+    - **HIGH**: >= 30 commits
+    - **MEDIUM**: >= 15 commits
+    - Files below 15 commits are not flagged
+
+### File churn
+
+A composite score combining commit frequency and line change volume. High-churn files may indicate instability or areas of active development.
+
+### Rename support
+
+When Git detects a file rename (e.g., `old/path.go` to `new/path.go`), the analyzer transfers the full history from the old path to the new path, maintaining a continuous record.
+
+---
+
+## Use cases
+
+- **Hotspot identification**: Find the files that change most often. These are the highest-risk files for bugs and the best candidates for extra test coverage and code review scrutiny.
+- **Code ownership mapping**: Determine who is the primary contributor for each file to establish code ownership.
+- **Onboarding guides**: New team members can see which files each developer owns to know who to ask about specific code.
+- **Refactoring ROI**: Identify files with both high churn and many contributors -- refactoring these produces the largest payoff.
+- **Risk assessment**: Files with a single contributor and high commit counts are both hot and concentrated -- a bus factor risk.
+
+---
+
+## Limitations
+
+- **HEAD-only output**: Only files present at HEAD are included in the final output. Files that were deleted before the last commit are tracked during analysis but excluded from results.
+- **Merge handling**: Merge commits are processed only once to avoid double-counting. Non-merge context changes in merge commits are skipped.
+- **Rename detection**: Depends on Git's rename detection heuristics. If a file is both renamed and heavily modified in the same commit, Git may not detect the rename.
+- **Churn score formula**: The churn score is `commit_count + (added + removed + changed) / 100`. This is a simple heuristic, not a rigorous statistical measure.
+- **No time-series**: Unlike the burndown analyzer, file history does not produce time-series data. It provides aggregate per-file statistics only.
+
+---
+
+## See also
+
+- [File history reference](../analyzers/file-history.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/quality.md
+
+# Understanding code quality over time
+
+This page explains the mental model behind the code quality analyzer: which
+static metrics it tracks per commit and how it aggregates them per tick. For
+configuration keys and the output schema, see the
+[Quality reference](../analyzers/quality.md).
+
+---
+
+## What it measures
+
+The code quality analyzer tracks **complexity, Halstead metrics, comment
+quality, and cohesion** across Git history. For each commit, it runs four
+static analyzers on UAST-parsed changed files and produces per-file quality
+metrics.
+
+### Per-file metrics
+
+For each changed file in a commit, the analyzer computes:
+
+| Category | Metrics |
+|---|---|
+| **Complexity** | Cyclomatic complexity, cognitive complexity, max single-function complexity, function count |
+| **Halstead** | Volume, effort, delivered bugs |
+| **Comments** | Overall comment score, documentation coverage |
+| **Cohesion** | Cohesion score |
+
+### Statistical aggregation
+
+Per-tick statistics are computed from per-file arrays:
+
+- **Mean, median, P95, max** for complexity and Halstead volume
+- **Sum** for delivered bugs and Halstead volume
+- **Min** for comment score and cohesion (worst-case tracking)
+- **Total** files analyzed and functions counted
+
+---
+
+## Architecture
+
+The quality analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` runs four static analyzers (complexity, Halstead, comments, cohesion) on each changed file's UAST, returning per-file metrics as a `TC{Data: *TickQuality}`. The analyzer retains no per-commit state.
+2. **Aggregation phase**: A `quality.Aggregator` collects TCs, merges `TickQuality` data by time bucket (tick), and produces `TICK` results.
+3. **Serialization phase**: `SerializeTICKs()` converts aggregated TICKs into JSON, YAML, binary, or HTML plot output via `ComputeAllMetrics()`.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
+## See also
+
+- [Quality reference](../analyzers/quality.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/sentiment.md
+
+# Understanding comment sentiment analysis
+
+This page explains the mental model behind the sentiment analyzer: how it
+extracts and filters comments, how VADER and the multilingual lexicon score
+them, and the software-engineering domain adjustments that keep technical
+language from skewing the result. For configuration keys and the output schema,
+see the [Sentiment reference](../analyzers/sentiment.md).
+
+---
+
+## What it measures
+
+The sentiment analyzer classifies **comment sentiment** across Git history. For
+each commit, it extracts new or changed comments via UAST parsing, filters out
+noise, and classifies the remaining comments as positive, negative, or neutral.
+This reveals how developer sentiment evolves over time.
+
+### Per-commit comment extraction
+
+For each commit, the analyzer:
+
+1. Computes the UAST diff between the old and new file versions
+2. Extracts comment nodes from the new UAST
+3. Merges adjacent comment lines into single blocks
+4. Filters out noise (short comments, license headers, function signatures)
+5. Returns the filtered comments as a `TC` payload (`sentiment.CommitResult`)
+
+### Comment filtering
+
+Comments are filtered using several heuristics:
+
+- **Minimum length**: Comments shorter than the threshold are skipped
+- **Letter ratio**: At least 60% of characters must be Unicode letters (filters out commented-out code)
+- **First character**: Must start with a Unicode letter or digit (supports all scripts)
+- **License detection**: Comments matching license/copyright patterns (including UK "licence" spelling) are excluded
+- **Function name removal**: Inline function references like `doThing()` are stripped before analysis
+
+### Multilingual support
+
+The analyzer supports comments in any language that uses Unicode letters:
+
+- **CJK**: Chinese, Japanese, Korean
+- **Cyrillic**: Russian, Ukrainian, etc.
+- **Arabic**: Right-to-left scripts
+- **Latin**: English, French, German, Spanish, etc.
+- All other Unicode letter scripts
+
+Comment filtering uses Unicode-aware regex patterns (`\p{L}` for letters, `\p{N}` for digits) rather than ASCII-only ranges, ensuring comments in non-English languages are not silently dropped.
+
+!!! info "Multilingual sentiment scoring"
+    Sentiment scoring uses VADER's English lexicon as the base, extended with **93,000+ multilingual word entries** from the Chen-Skiena lexicon dataset (ACL 2014) covering **32 languages**. Non-ASCII words from the dataset are injected into VADER's lexicon at startup, enabling basic sentiment scoring for comments in Russian, Chinese, Japanese, Korean, Arabic, and 27 other languages. VADER's grammatical rules (negation, intensifiers) still operate on English syntax, so scoring accuracy for non-English comments is lower than for English — but significantly better than no coverage.
+
+### Sentiment classification
+
+Filtered comments are classified as positive, negative, or neutral using **VADER** (Valence Aware Dictionary and sEntiment Reasoner) via the [GoVader](https://github.com/jonreiter/govader) library, enhanced with **software engineering domain adjustments**.
+
+#### VADER base scoring
+
+VADER is a lexicon and rule-based sentiment analyzer designed for social media and short text. It handles negations, intensifiers, and punctuation. The compound score (-1 to 1) is mapped to our [0, 1] range.
+
+#### Multilingual lexicon extension
+
+At startup, the analyzer injects ~93,000 multilingual word entries from the [Chen-Skiena lexicon dataset](https://aclanthology.org/P14-2063/) (ACL 2014) into VADER's lexicon. This covers 32 languages:
+
+| Language Family | Languages |
+|---|---|
+| **Slavic** | Russian, Ukrainian, Polish, Czech, Slovak, Croatian, Bulgarian |
+| **CJK** | Chinese, Japanese, Korean |
+| **Romance** | Spanish, French, Portuguese, Italian, Romanian |
+| **Germanic** | German, Dutch, Swedish, Danish, Norwegian, Finnish |
+| **Other** | Arabic, Hebrew, Hindi, Thai, Turkish, Greek, Hungarian, Indonesian, Malay, Vietnamese, Persian |
+
+Only non-ASCII words are injected to avoid overriding VADER's curated English entries. Words receive binary valence: +1.5 (positive) or -1.5 (negative), which is the mid-range of VADER's scale.
+
+To regenerate lexicons from updated source data:
+
+```bash
+go run tools/lexgen/lexgen.go -pos pos_words.txt -neg neg_words.txt \
+  -o internal/analyzers/sentiment/lexicons/lexicon_data.gen.go
+```
+
+#### SE-domain adjustments
+
+VADER frequently misclassifies technical terms that sound negative in natural language but are neutral in software engineering. The analyzer applies domain-specific adjustments:
+
+**Neutralized terms** (pushed toward neutral):
+`kill`, `abort`, `fatal`, `terminate`, `dead`, `destroy`, `panic`, `deprecated`, `obsolete`, `execute`, `exploit`, `conflict`, `revert`, `reject`, `critical`
+
+**Genuinely negative in SE** (pushed toward negative):
+`hack`, `hacky`, `kludge`, `workaround`, `spaghetti`, `nightmare`, `technical debt`
+
+#### Comment length weighting
+
+Longer comments carry more weight in the sentiment score, as they tend to contain more meaningful sentiment signal. Weight is capped at 3x the average to prevent a single long comment from dominating.
+
+#### Trend analysis
+
+Sentiment trend is computed using **linear regression** (least squares) rather than a simple first-to-last comparison. This makes the trend robust to outliers and intermediate noise.
+
+---
+
+## SE-domain lexicon
+
+The following terms have special handling in the sentiment scorer:
+
+### Technical terms neutralized (not negative)
+
+These terms are common in SE but trigger VADER's negative scoring:
+
+| Term | Context |
+|---|---|
+| `kill` | Process management |
+| `abort` | Transaction/operation cancellation |
+| `fatal` | Error severity levels |
+| `terminate` | Process/thread lifecycle |
+| `panic` | Error handling (Go, Rust) |
+| `deprecated` | API lifecycle |
+| `execute` | Command/query execution |
+| `conflict` | Merge conflicts |
+| `critical` | Severity levels |
+
+### Terms with genuine negative sentiment
+
+These terms indicate real frustration or code quality issues:
+
+| Term | Indication |
+|---|---|
+| `hack` / `hacky` | Quick-and-dirty solutions |
+| `kludge` | Inelegant fixes |
+| `workaround` | Avoiding root cause |
+| `spaghetti` | Poor code structure |
+| `nightmare` | Maintenance difficulty |
+| `technical debt` | Accumulated shortcuts |
+
+---
+
+## Use cases
+
+- **Team morale tracking**: Monitor sentiment trends over time. A sustained drop in sentiment may correlate with deadline pressure, technical debt accumulation, or team issues.
+- **Code quality signals**: Negative sentiment spikes often correspond to periods of rushed development, workarounds, or "hack" implementations.
+- **Post-mortem analysis**: After incidents, examine whether comment sentiment degraded in the lead-up to the problem.
+- **Documentation quality**: Projects with predominantly neutral or positive comments tend to have better documentation culture.
+- **Technical debt detection**: Comments containing terms like "hack", "workaround", "kludge" are flagged as genuinely negative in SE context.
+
+---
+
+## Limitations
+
+- **Non-English scoring accuracy**: While 32 languages have lexicon coverage via the Chen-Skiena dataset, VADER's grammatical rules (negation handling, intensifiers, punctuation effects) are English-specific. Non-English comments get word-level sentiment from the lexicon but miss syntactic nuances.
+- **UAST dependency**: Requires UAST parsing support for the target language. Files in unsupported languages are skipped.
+- **Sarcasm**: Sarcasm, irony, and context-dependent meaning can mislead the classifier. Comments like "great, another production outage" may be scored as positive.
+- **Comment extraction**: Only comments that appear in the UAST are analyzed. Preprocessor directives, build file comments, and non-code files are excluded.
+- **CPU intensive**: The sentiment analyzer performs UAST parsing for every modified file in every commit. For large repositories, this is significantly slower than non-UAST analyzers. It benefits from parallel execution via the framework's worker pool.
+- **Minimum length filter**: The default minimum of 20 characters filters out many short but potentially meaningful comments (e.g., `// FIXME`, `// HACK`). Lower `MinLength` to capture these, at the cost of more noise.
+
+---
+
+## See also
+
+- [Sentiment reference](../analyzers/sentiment.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/shotness.md
+
+# Understanding structural hotness
+
+This page explains the mental model behind the shotness analyzer: what
+node-level change frequency and coupling mean, how coupling strength is
+computed, and how the aggregation pipeline is structured. For configuration
+keys and the output schema, see the
+[Shotness reference](../analyzers/shotness.md).
+
+---
+
+## What it measures
+
+The shotness analyzer measures **structural hotness** -- the change frequency of
+individual code entities (functions, methods, classes) across Git history.
+Unlike the couples analyzer which operates at file granularity, shotness
+operates at the UAST node level, providing fine-grained co-change analysis.
+
+### Node change frequency
+
+For each code entity matched by the DSL query (functions by default), the analyzer counts how many commits modified lines within that entity's span. Entities that change frequently are "hot" -- they are likely volatile, complex, or central to the system.
+
+### Node co-change coupling
+
+When two code entities are modified in the same commit, their coupling counter is incremented. This produces a fine-grained coupling matrix at the function level, which is more precise than file-level coupling from the couples analyzer.
+
+### Coupling strength
+
+Coupling strength is normalized to a 0-1 scale using the formula:
+
+```
+strength(A, B) = co_changes(A, B) / max(co_changes(A, B), changes(A), changes(B))
+```
+
+This ensures the result is always in [0, 1] and provides a meaningful confidence metric. A strength of 1.0 means functions always change together; 0.5 means they co-change half the time relative to the most active function.
+
+### Risk classification
+
+Nodes are classified into risk levels based on absolute change counts:
+
+| Risk Level | Threshold | Meaning |
+|---|---|---|
+| **HIGH** | ≥ 20 changes | Requires immediate attention and robust test coverage |
+| **MEDIUM** | ≥ 10 changes | Should be monitored and potentially refactored |
+| **LOW** | < 10 changes | Normal change frequency |
+
+### How it works
+
+For each commit:
+
+1. Parse the before and after versions of each changed file into UAST
+2. Apply the `dsl_struct` query to select target nodes (e.g., functions)
+3. Apply the `dsl_name` query to extract the name of each node
+4. Map diff hunks to nodes using line-range overlaps
+5. Emit a per-commit TC (Transient Commit result) with touched node deltas and coupling pairs
+
+After all commits are processed, the Aggregator accumulates TCs into a final report with sorted nodes and a sparse co-change matrix.
+
+### Architecture
+
+The shotness analyzer follows the **TC/Aggregator** pattern:
+
+- **Consume phase**: Per-commit processing builds working state (`nodes`, `files` maps for deletion/rename tracking) and emits a `TC{Data: *CommitData}` with node touch deltas and coupling pairs.
+- **Aggregation phase**: The `Aggregator` accumulates node counts and coupling matrices from the TC stream. It supports disk-backed spilling via `SpillStore` for memory-bounded operation.
+- **Serialization phase**: `SerializeTICKs()` converts aggregated tick data into the `Nodes`/`Counters` report consumed by `ComputeAllMetrics()` and plot generation.
+
+The `nodes` map remains in the analyzer as working state because `handleDeletion`, `handleInsertion`, `handleModification`, and `applyRename` read and mutate it during `Consume()`. The aggregator maintains its own separate accumulation of counts and couplings.
+
+---
+
+## Use cases
+
+- **Function-level hotspot detection**: Find the most frequently changed functions in the codebase. These are the highest-risk points for bugs.
+- **Fine-grained coupling analysis**: Discover which functions always change together. This reveals implicit dependencies that file-level coupling misses.
+- **Refactoring prioritization**: Functions that are both hot (high change count) and coupled (always change with others) are the best refactoring candidates.
+- **Architecture validation**: Functions from different packages that are highly coupled may indicate a leaking abstraction.
+- **Test prioritization**: Focus testing resources on the hottest functions.
+
+---
+
+## Interpreting results
+
+### Reading the coupling strength
+
+| Strength | Interpretation |
+|---|---|
+| 0.8 - 1.0 | Very tight coupling. Functions almost always change together. Consider merging or extracting shared logic. |
+| 0.5 - 0.8 | Moderate coupling. There is a significant shared dependency. Review if coupling is intentional. |
+| 0.2 - 0.5 | Loose coupling. Occasional co-changes, likely due to shared APIs or data structures. |
+| < 0.2 | Minimal coupling. Co-changes are incidental. |
+
+### Actionable insights
+
+1. **High hotness + High coupling**: Core function that drives many changes. Candidate for splitting or stabilizing the interface.
+2. **High hotness + Low coupling**: Frequently bugfixed isolated function. Needs better tests and potentially a redesign.
+3. **Low hotness + High coupling**: Stable function that always changes with others. Check if coupling is necessary or indicates a design smell.
+
+---
+
+## Limitations
+
+- **UAST required**: Only languages with UAST parser support are analyzed. Files in unsupported languages are skipped entirely.
+- **CPU intensive**: The analyzer performs UAST parsing on both the before and after versions of every changed file in every commit. This makes it one of the most expensive analyzers. It benefits from parallel execution.
+- **Name collisions**: If two functions in different files have the same name, they are tracked as distinct nodes (the file path is part of the key). However, if a file is renamed, the analyzer updates all associated nodes.
+- **Shallow extraction within a file**: When multiple structural nodes in the same file share the same extracted name (e.g., nested functions with identical names), only one is tracked. The last one encountered wins. Qualified paths (e.g., `OuterClass.innerMethod`) are not built.
+- **DSL limitations**: The DSL query must match nodes that have position information (`Pos` field) in the UAST. Nodes without position data cannot be mapped to diff hunks.
+- **Large functions**: A change anywhere within a function's line range counts as a change to that function. Very large functions (hundreds of lines) will have inflated change counts.
+
+---
+
+## See also
+
+- [Shotness reference](../analyzers/shotness.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/typos.md
+
+# Understanding typo detection
+
+This page explains the mental model behind the typos analyzer: how it detects
+typo-fix identifier pairs, what Levenshtein distance measures, and how the
+aggregation pipeline is structured. For configuration keys and the output
+schema, see the [Typos reference](../analyzers/typos.md).
+
+---
+
+## What it measures
+
+The typos analyzer detects **typo-fix identifier pairs** from source code in
+commit diffs using Levenshtein distance. It builds a dataset of probable typos
+and their corrections by analyzing UAST identifier changes across Git history.
+
+### Typo-fix pair detection
+
+For each commit, the analyzer:
+
+1. Computes the diff between the old and new versions of each changed file
+2. Identifies delete/insert hunk pairs of equal size (same number of lines)
+3. Compares corresponding lines using **Levenshtein distance**
+4. For line pairs within the distance threshold, extracts UAST identifiers from the old and new versions
+5. If exactly one identifier changed between the two versions, it records a typo-fix pair
+
+### Levenshtein distance
+
+The Levenshtein distance is the minimum number of single-character edits (insertions, deletions, substitutions) needed to transform one string into another. A small distance between the old and new line suggests a typo fix rather than a semantic change.
+
+!!! info "Example"
+    - `recieve` to `receive` -- distance 2 (transposed characters)
+    - `lenght` to `length` -- distance 2 (transposed characters)
+    - `calcualte` to `calculate` -- distance 2 (transposed characters)
+
+---
+
+## Architecture
+
+The typos analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` computes diffs, identifies line pairs within Levenshtein distance, and extracts UAST identifier changes. Per-commit typos are returned as `TC{Data: []Typo}`. The analyzer retains no per-commit state; only the `lcontext` (Levenshtein context) is kept as working state.
+2. **Aggregation phase**: A `typos.Aggregator` collects TCs into a `SliceSpillStore[Typo]`. `FlushTick()` deduplicates typos by `wrong|correct` key (keeping the first occurrence), returning a `TickData` with the unique set.
+3. **Serialization phase**: `SerializeTICKs()` assembles all tick data into an `analyze.Report{"typos": allTypos}`, then delegates to `ComputeAllMetrics()` for JSON, YAML, binary, or HTML plot output.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
+## Use cases
+
+- **Typo dataset building**: Build a corpus of real-world typos and their corrections from your project's history. This can train spell-checking tools or IDE plugins.
+- **Code quality auditing**: Identify patterns of common misspellings in your codebase to add to a linting dictionary.
+- **API consistency**: Detect identifier typos that may cause confusion (e.g., `getUserByNmae` vs `getUserByName`).
+- **Automated fix suggestions**: Use the typo dataset to build automated correction rules for CI pipelines.
+- **Research**: Academic research on developer typo patterns and their prevalence across different languages.
+
+---
+
+## Limitations
+
+- **UAST required**: Only languages with UAST parser support are analyzed. Identifiers in unsupported languages are not extracted.
+- **Single-identifier changes only**: The analyzer only records a typo when exactly one identifier changes between the old and new lines. Multi-identifier changes are skipped to avoid false positives.
+- **Equal-length hunks only**: Only delete/insert hunk pairs with the same number of lines are considered. A typo fix that also adds or removes lines will be missed.
+- **False positives**: Intentional identifier renames with small Levenshtein distance (e.g., `idx` to `jdx`) will be reported as typos.
+- **Deduplication**: Typo pairs are deduplicated by the `wrong|correct` key. The same typo fixed in multiple commits is reported only once.
+- **CPU intensive**: Like all UAST-based analyzers, the typos analyzer parses both file versions for every changed file in every commit.
+
+---
+
+## See also
+
+- [Typos reference](../analyzers/typos.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.
+
+
+---
+
+# File: site/explanation/anomaly.md
+
+# Understanding temporal anomaly detection
+
+This page explains the mental model behind the anomaly analyzer: how Z-score
+analysis over a sliding window flags unusual activity, which metrics it tracks,
+and how the aggregation pipeline is structured. For configuration keys and the
+output schema, see the [Anomaly reference](../analyzers/anomaly.md).
+
+---
+
+## What it measures
+
+The anomaly analyzer performs **temporal anomaly detection** using Z-score
+analysis over a sliding window of per-tick commit metrics. It detects sudden
+quality degradation -- unusual spikes in churn, file changes, or other metrics
+that deviate significantly from the historical baseline.
+
+### Z-score analysis
+
+For each time tick, the analyzer computes Z-scores for six metrics using a trailing sliding window:
+
+| Metric | Description |
+|---|---|
+| **Net churn** | `lines_added - lines_removed` |
+| **Files changed** | Number of files modified in the tick |
+| **Lines added** | Total lines added across all commits in the tick |
+| **Lines removed** | Total lines removed across all commits in the tick |
+| **Language diversity** | Number of distinct programming languages modified |
+| **Author count** | Number of distinct developers active in the tick |
+
+A Z-score measures how many standard deviations a value is from the rolling mean. When any metric's absolute Z-score exceeds the threshold, the tick is flagged as anomalous.
+
+!!! info "Z-score interpretation"
+    - **|Z| < 2.0**: Within normal variation
+    - **|Z| 2.0 - 3.0**: Unusual, worth investigating
+    - **|Z| > 3.0**: Highly anomalous, likely a significant event
+
+### Sliding window
+
+The Z-score is computed against a trailing window of the previous N ticks (default 20). This means the "normal" baseline adapts to gradual trends, and only sudden deviations are flagged.
+
+### Anomaly records
+
+Each detected anomaly includes:
+
+- **Tick index**: When it occurred
+- **Z-scores**: Per-metric Z-scores showing which dimension is anomalous
+- **Max absolute Z-score**: The highest Z-score across all metrics (used for severity ranking)
+- **Raw metrics**: The actual values for that tick
+- **Files**: List of files changed in the anomalous tick
+
+Anomalies are sorted by severity (highest absolute Z-score first).
+
+---
+
+## Architecture
+
+The anomaly analyzer follows the **TC/Aggregator pattern**:
+
+1. **Consume phase**: For each commit, `Consume()` extracts file changes, line stats, language diversity, and author ID, returning per-commit metrics as a `TC{Data: *CommitAnomalyData}`. The analyzer retains no per-commit state.
+2. **Aggregation phase**: An `anomaly.Aggregator` collects TCs, merges `CommitAnomalyData` into per-tick `TickMetrics` (aggregating files, lines, languages, and unique authors), and produces `TICK` results.
+3. **Z-score detection**: `ticksToReport()` runs sliding-window Z-score analysis on six dimensions over the aggregated tick metrics to detect anomalies.
+4. **Serialization phase**: `SerializeTICKs()` converts aggregated TICKs into JSON, YAML, binary, or HTML plot output via `ComputeAllMetrics()`.
+
+This separation enables streaming output, budget-aware memory spilling, and decoupled aggregation.
+
+---
+
+## Use cases
+
+- **Quality gates**: Flag releases or sprints that contain anomalous commit patterns as higher risk.
+- **Incident correlation**: Overlay anomaly timelines with production incident timelines to find patterns.
+- **Process monitoring**: Detect process breakdowns -- e.g., a sudden spike in single-author commits to many files may indicate bypassed code review.
+- **Onboarding safety**: Monitor anomaly rates during onboarding periods. New developers may produce unusual patterns.
+- **Seasonal pattern detection**: Over long time periods, the analyzer reveals cyclical patterns (release crunches, holiday slowdowns).
+- **Multi-metric alerts**: Unlike simple threshold alerts on individual metrics, the Z-score approach adapts to the repository's natural variance.
+
+---
+
+## Limitations
+
+- **Cold start**: The first `window_size` ticks have no or limited history for Z-score computation. Anomalies during this period are less reliable.
+- **Gradual drift**: Z-scores detect sudden deviations, not gradual trends. A slow but steady increase in churn will update the rolling mean and never trigger an anomaly.
+- **Zero-variance sentinel**: When the window has zero standard deviation (all values identical) and the current value differs, a sentinel Z-score of 100 is assigned. This ensures detection but may inflate severity rankings.
+- **Tick granularity**: Metrics are aggregated per tick (default 24-hour window). Sub-tick anomalies are not detected.
+- **Not causal**: The analyzer detects statistical anomalies, not root causes. Investigation is required to determine whether an anomaly represents a real problem.
+- **Multi-dimensional**: An anomaly is flagged when *any* single metric exceeds the threshold. This means false positive rates increase with the number of metrics (currently six).
+
+---
+
+## See also
+
+- [Anomaly reference](../analyzers/anomaly.md) — configuration keys and output schema.
+- [Quick start](../getting-started/quickstart.md) — run history analysis.

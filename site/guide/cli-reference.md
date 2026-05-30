@@ -1,4 +1,4 @@
-# CLI Reference
+# CLI reference
 
 Codefang ships two binaries: **`codefang`**, the analyzer engine, and **`uast`**, the
 Universal Abstract Syntax Tree parser. This page is the exhaustive reference for
@@ -22,7 +22,7 @@ codefang run [path] [flags]
 
 If `path` is omitted the current directory (or the value of `--path`) is used.
 
-#### Analyzer Selection
+#### Analyzer selection
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
@@ -59,7 +59,7 @@ codefang run -a '*' .
     `history/quality`, `history/sentiment`, `history/shotness`,
     `history/typos`
 
-#### Output Flags
+#### Output flags
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
@@ -79,7 +79,7 @@ codefang run -a 'history/*' --format plot .
 codefang run -a 'history/devs,history/sentiment' --format timeseries .
 ```
 
-#### Path & Input Flags
+#### Path & input flags
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
@@ -97,7 +97,7 @@ codefang run -a 'history/devs,history/sentiment' --format timeseries .
     codefang run -a 'history/*' --input report.bin --format plot
     ```
 
-#### Git History Flags
+#### Git history flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -128,7 +128,7 @@ codefang run -a history/couples --limit 500 .
     The burndown analyzer automatically enables `--first-parent` when selected.
     This is required for correct line-tracking across merge commits.
 
-#### Language Filtering
+#### Language filtering
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -174,7 +174,7 @@ codefang run -a 'history/devs' --languages dockerfile .
 See `specs/optimize-lang/PROPOSAL.md` for the architecture and acceptance-gate
 numbers.
 
-#### Vendor & Generated Exclusion
+#### Vendor & generated exclusion
 
 By default, Codefang excludes **vendored dependencies** and **auto-generated
 files** from analysis. This matches the convention of every major
@@ -196,7 +196,7 @@ codefang run -a '*' .
 # include vendored deps (node_modules/, vendor/, …)
 codefang run -a '*' --include-vendored .
 
-# restore pre-codefang-2026-04 behaviour (include everything)
+# restore pre-codefang-2026-04 behavior (include everything)
 codefang run -a '*' --include-vendored --include-generated .
 
 # skip extras that enry doesn't know about (e.g. Python venv, Rust target/)
@@ -208,7 +208,7 @@ codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
     Earlier versions of Codefang analysed vendored and generated files by
     default (they needed the confusingly-named `--skip-blacklist=true` to be
     excluded). Starting from 2026-04, defaults flip: vendor / generated
-    are **excluded by default**. To restore the old behaviour:
+    are **excluded by default**. To restore the old behavior:
 
     ```bash
     codefang run ... --include-vendored --include-generated
@@ -225,7 +225,7 @@ See `specs/exclude-vendored/PROPOSAL.md` for the full cross-phase design
 and `specs/frds/FRD-20260419-exclude-vendored.md` for implementation
 details.
 
-#### Pipeline Tuning Flags
+#### Pipeline tuning flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -248,14 +248,14 @@ codefang run -a 'static/*' --memory-budget 512MB .
 codefang run -a 'history/*' --blob-cache-size 2GB --diff-cache-size 50000 .
 ```
 
-#### GC Tuning Flags
+#### GC tuning flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--gogc` | `int` | `0` | GC target percentage (`0` = Go default 100) |
 | `--ballast-size` | `string` | `"0"` | GC ballast allocation (`0` = disabled) |
 
-#### Checkpoint & Resume Flags
+#### Checkpoint & resume flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -275,7 +275,7 @@ codefang run -a 'history/*' --resume .
 codefang run -a 'history/*' --clear-checkpoint .
 ```
 
-#### Profiling & Debug Flags
+#### Profiling & debug flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
