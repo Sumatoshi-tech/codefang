@@ -3,7 +3,7 @@ title: Docker & GitHub Actions
 description: Running Codefang in Docker containers and GitHub Actions CI pipelines for automated code quality checks.
 ---
 
-# Docker & GitHub Actions
+# Docker & GitHub actions
 
 Codefang ships a multi-stage Dockerfile and a GitHub Actions `action.yml`
 for automated code quality checks in CI pipelines.
@@ -12,7 +12,7 @@ for automated code quality checks in CI pipelines.
 
 ## Docker
 
-### Building the Image
+### Building the image
 
 Using the Makefile:
 
@@ -27,7 +27,7 @@ Or directly with Docker:
 docker build -t codefang .
 ```
 
-#### Build Arguments
+#### Build arguments
 
 Embed version metadata into the binary at build time:
 
@@ -39,9 +39,9 @@ docker build \
   -t codefang:v1.0.0 .
 ```
 
-### Running in a Container
+### Running in a container
 
-#### Static Analysis
+#### Static analysis
 
 Analyze a local directory (read-only mount):
 
@@ -51,7 +51,7 @@ docker run --rm \
   codefang run -a static/* --format json --silent /workspace
 ```
 
-#### History Analysis
+#### History analysis
 
 Analyze a Git repository's commit history:
 
@@ -61,7 +61,7 @@ docker run --rm \
   codefang run -a history/burndown --format json --silent /workspace
 ```
 
-#### Combined Analysis
+#### Combined analysis
 
 Run both static and history analyzers in one pass:
 
@@ -71,7 +71,7 @@ docker run --rm \
   codefang run -a static/*,history/devs --format json --silent /workspace
 ```
 
-#### Custom Configuration
+#### Custom configuration
 
 Mount a config file into the container:
 
@@ -83,7 +83,7 @@ docker run --rm \
     --format json --silent /workspace
 ```
 
-#### With Observability
+#### With observability
 
 Export traces to an OTLP collector:
 
@@ -106,7 +106,7 @@ docker run --rm \
   codefang parse /workspace/main.go
 ```
 
-### Testing the Docker Image
+### Testing the Docker image
 
 ```bash
 make docker-test
@@ -115,7 +115,7 @@ make docker-test
 This builds the image and runs a static complexity analysis on the Codefang
 source tree inside the container.
 
-### Image Details
+### Image details
 
 | Property | Value |
 |----------|-------|
@@ -135,9 +135,9 @@ source tree inside the container.
 
 ---
 
-## GitHub Actions
+## GitHub actions
 
-### Quick Start
+### Quick start
 
 Add Codefang to any workflow:
 
@@ -170,7 +170,7 @@ jobs:
     History analyzers require full Git history. Set `fetch-depth: 0` in the
     checkout step, or history analysis will only see the shallow clone commits.
 
-### Action Inputs
+### Action inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
@@ -180,7 +180,7 @@ jobs:
 | `format` | Output format: `json`, `text`, `compact`, `yaml`, `timeseries` | `json` |
 | `fail-on-error` | Fail the workflow step if analysis detects issues | `false` |
 
-### Action Outputs
+### Action outputs
 
 | Output | Description |
 |--------|-------------|
@@ -189,9 +189,9 @@ jobs:
 
 ---
 
-### Example Workflows
+### Example workflows
 
-#### Static Analysis with Quality Gate
+#### Static analysis with quality gate
 
 Fail the CI pipeline if static analysis detects issues:
 
@@ -212,7 +212,7 @@ jobs:
           fail-on-error: "true"
 ```
 
-#### History Analysis on Push
+#### History analysis on push
 
 Run history analysis on every push to main:
 
@@ -244,7 +244,7 @@ jobs:
           path: report.json
 ```
 
-#### Post Results as PR Comment
+#### Post results as PR comment
 
 Annotate pull requests with analysis results:
 
@@ -282,7 +282,7 @@ jobs:
             })
 ```
 
-#### All Analyzers with Custom Config
+#### All analyzers with custom config
 
 Run the full analyzer suite with a project config file:
 
@@ -308,7 +308,7 @@ jobs:
           format: "json"
 ```
 
-#### Complexity Trend Tracking
+#### Complexity trend tracking
 
 Track complexity over time by uploading JSON reports as artifacts:
 
@@ -342,7 +342,7 @@ jobs:
           retention-days: 90
 ```
 
-#### Scheduled Fleet Scan
+#### Scheduled fleet scan
 
 Run nightly analysis across multiple paths:
 
@@ -375,7 +375,7 @@ jobs:
 
 ## Troubleshooting
 
-### Common Issues
+### Common issues
 
 !!! failure "Error: repository path does not exist"
     The checkout step did not run, or the `path` input points to a
@@ -390,7 +390,7 @@ jobs:
     memory usage. The streaming pipeline will automatically chunk the
     commit history.
 
-### Self-Test Workflow
+### Self-test workflow
 
 The repository includes `.github/workflows/action-test.yml` which validates
 the Docker build and action functionality on every change to the Dockerfile,

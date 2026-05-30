@@ -1,4 +1,4 @@
-# Your First Analysis
+# Your first analysis
 
 This guide walks you through a complete analysis of a real Go project,
 explains the two analysis modes, shows you how to interpret results, and
@@ -6,7 +6,7 @@ covers every output format.
 
 ---
 
-## Two Modes of Analysis
+## Two modes of analysis
 
 Codefang has two fundamentally different analysis engines. Understanding when
 to use each one is key to getting the most out of the tool.
@@ -72,7 +72,7 @@ to use each one is key to getting the most out of the tool.
 
 ---
 
-## Step-by-Step: Analyzing a Go Project
+## Step-by-step: analyzing a Go project
 
 Let's analyze the Codefang repository itself. Clone it if you have not
 already:
@@ -82,7 +82,7 @@ git clone https://github.com/Sumatoshi-tech/codefang.git
 cd codefang
 ```
 
-### Step 1 -- Static Complexity Analysis
+### Step 1 -- static complexity analysis
 
 Start with a complexity scan to find the most complex functions:
 
@@ -113,7 +113,7 @@ codefang run -a static/complexity --format text .
 candidates for refactoring. Cognitive complexity captures nesting depth and
 control-flow breaks that make code hard for humans to understand.
 
-### Step 2 -- Halstead Metrics
+### Step 2 -- Halstead metrics
 
 Measure the information-theoretic complexity of your modules:
 
@@ -137,7 +137,7 @@ codefang run -a static/halstead --format text .
 code. The *estimated bugs* metric (Volume / 3000) gives a rough defect
 prediction.
 
-### Step 3 -- Burndown History
+### Step 3 -- burndown history
 
 Now switch to history analysis. The burndown analyzer shows how code ages:
 
@@ -150,7 +150,7 @@ codefang run -a history/burndown --format yaml .
     repositories, use `--limit 1000` to cap the number of commits or
     `--since 24h` to restrict the time window.
 
-### Step 4 -- Combine Static and History
+### Step 4 -- combine static and history
 
 Run both engines in a single invocation:
 
@@ -163,12 +163,12 @@ groups, runs each pipeline, and merges the output.
 
 ---
 
-## Understanding Output Formats
+## Understanding output formats
 
 The `--format` flag controls how results are rendered. Every analyzer supports
 the universal formats; some also support format-specific extras.
 
-### Universal Formats
+### Universal formats
 
 | Format | Flag | Description | Best for |
 |--------|------|-------------|----------|
@@ -178,14 +178,14 @@ the universal formats; some also support format-specific extras.
 | **Binary** | `--format bin` | Compact binary encoding | Storage, conversion |
 | **Time Series** | `--format timeseries` | Merged JSON array keyed by commit | Trend analysis |
 
-### Static-Only Formats
+### Static-only formats
 
 | Format | Flag | Description | Best for |
 |--------|------|-------------|----------|
 | **Text** | `--format text` | Pretty-printed report with headers | Terminal reading |
 | **Compact** | `--format compact` | One line per analyzer per file | Grep-friendly scanning |
 
-### Format Examples
+### Format examples
 
 === "JSON (default)"
 
@@ -289,7 +289,7 @@ the universal formats; some also support format-specific extras.
 
 ---
 
-## Configuration File
+## Configuration file
 
 Instead of passing flags every time, create a `.codefang.yaml` file in your
 repository root (or `$HOME`):
@@ -337,7 +337,7 @@ checkpoint:
 
 ---
 
-## Useful Flags for History Analysis
+## Useful flags for history analysis
 
 | Flag | Example | Description |
 |------|---------|-------------|
@@ -352,7 +352,7 @@ checkpoint:
 
 ---
 
-## Converting Between Formats
+## Converting between formats
 
 You can convert an existing report to a different format without re-running
 the analysis:
@@ -375,7 +375,7 @@ codefang run --input report.bin --format plot > dashboard.html
 
 ---
 
-## Next Steps
+## Next steps
 
 You now know how to run both analysis engines, interpret their output, and
 control the output format. Continue exploring:

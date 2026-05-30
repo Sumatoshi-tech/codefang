@@ -1,0 +1,40 @@
+// markdownlint-cli2 configuration for codefang docs.
+// Rule reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+// Tuned for the existing site/ + root *.md + docs/adr/ corpus so the first CI run
+// is signal, not a wall of false positives.
+{
+  "default": true,
+
+  // MD013 line-length: docs use long prose lines and wide tables/links.
+  // Disable the hard wrap requirement rather than enforce an arbitrary column.
+  "MD013": false,
+
+  // MD033 inline HTML: analyzer pages and the README use raw HTML
+  // (<p align="center">, <img>, admonition blocks, grid cards).
+  "MD033": false,
+
+  // MD041 first-line-h1: MkDocs pages sometimes open with front matter or
+  // an attr_list/admonition block instead of a top-level heading.
+  "MD041": false,
+
+  // MD024 duplicate headings: Keep a Changelog repeats Added/Changed/Fixed
+  // across versions, and ADRs repeat section names. Allow when not siblings.
+  "MD024": { "siblings_only": true },
+
+  // MD046 code-block-style: allow both fenced and indented blocks.
+  "MD046": false,
+
+  // MD007 unordered-list indentation: MkDocs material renders 4-space nesting.
+  "MD007": { "indent": 4 },
+
+  // MD036 emphasis-as-heading: the README uses bold lead-ins as pseudo-headings.
+  "MD036": false,
+
+  // MD034 bare URLs: badges and reference links occasionally use bare URLs.
+  "MD034": false,
+
+  // MD025 single-title: MkDocs Material pages carry a YAML front-matter
+  // `title:` (for nav/browser title) AND a rendered `# H1`. Both are
+  // intentional, so don't treat the front-matter title as a second H1.
+  "MD025": { "front_matter_title": "" }
+}

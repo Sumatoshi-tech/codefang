@@ -11,7 +11,13 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - '**/*.md'
       - 'mkdocs.yml'
+      - '.markdownlint.jsonc'
+      - '.vale.ini'
+      - 'cspell.json'
+      - '.lycheeignore'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -68,3 +74,115 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  markdownlint:
+    name: Lint Markdown (markdownlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          # Scope to the documentation surface only. Harness/spec markdown
+          # (.agents/**, .claude/**, specs/**, AGENTS.md, …) is not user-facing
+          # documentation and is not gated by the doc-quality rules.
+          globs: |
+            site/**/*.md
+            docs/**/*.md
+            README.md
+            CONTRIBUTING.md
+            CODE_OF_CONDUCT.md
+            SECURITY.md
+            SUPPORT.md
+            GOVERNANCE.md
+            THIRD_PARTY_NOTICES.md
+            CHANGELOG.md.proposed.md
+
+  vale:
+    name: Prose style (Vale, advisory)
+    runs-on: ubuntu-latest
+    # Advisory for the first iteration: surface findings without blocking the
+    # workflow until the R-STYLE-02 sentence-case migration lands.
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Vale (Microsoft + Google packs)
+        uses: errata-ai/vale-action@reviewdog
+        # Step-level continue-on-error keeps this advisory check GREEN even when
+        # Vale/reviewdog exits non-zero (it does so on any error-level finding,
+        # independent of fail_on_error). Job-level continue-on-error only unblocks
+        # the run; it does not flip the reported check conclusion to success.
+        continue-on-error: true
+        with:
+          fail_on_error: false
+          reporter: github-pr-check
+          files: '["site", "README.md", "CONTRIBUTING.md", "docs"]'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cspell:
+    name: Spell check (cspell, advisory)
+    runs-on: ubuntu-latest
+    # Advisory for the first iteration: project jargon is seeded in cspell.json,
+    # but the dictionary is still maturing, so do not block the workflow yet.
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run cspell
+        uses: streetsidesoftware/cspell-action@v6
+        # Advisory check: keep it green even if a new term is not yet in the
+        # dictionary. The dictionary is currently clean over the doc surface.
+        continue-on-error: true
+        with:
+          config: cspell.json
+          files: |
+            site/**/*.md
+            docs/**/*.md
+            README.md
+            CONTRIBUTING.md
+            CODE_OF_CONDUCT.md
+            SECURITY.md
+            SUPPORT.md
+            GOVERNANCE.md
+            THIRD_PARTY_NOTICES.md
+            CHANGELOG.md.proposed.md
+          incremental_files_only: false
+
+  lychee:
+    name: Check links (lychee)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run lychee link checker
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # NB: mailto:/tel: links are excluded by default in current lychee
+          # (and via .lycheeignore); the old --exclude-mail flag was removed
+          # upstream and now errors out, so it is intentionally omitted.
+          args: >-
+            --no-progress
+            --verbose
+            --max-concurrency 8
+            'site/**/*.md'
+            'docs/**/*.md'
+            'README.md'
+            'CONTRIBUTING.md'
+            'CODE_OF_CONDUCT.md'
+            'SECURITY.md'
+            'SUPPORT.md'
+            'GOVERNANCE.md'
+            'THIRD_PARTY_NOTICES.md'
+            'CHANGELOG.md.proposed.md'
+            'llms.txt'
+            'llms-full.txt'
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -102,46 +102,80 @@ extra_css:
 
 nav:
   - Home: index.md
-  - Getting Started:
+  - Getting started:
       - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
-      - First Analysis: getting-started/first-analysis.md
-  - User Guide:
-      - CLI Reference: guide/cli-reference.md
+      - Quick start: getting-started/quickstart.md
+      - First analysis: getting-started/first-analysis.md
+  - User guide:
+      - CLI reference: guide/cli-reference.md
       - Configuration: guide/configuration.md
-      - Output Formats: guide/output-formats.md
+      - Output formats: guide/output-formats.md
+  - How to:
+      - Analyze a monorepo: how-to/analyze-a-monorepo.md
+      - Run in CI: how-to/run-in-ci.md
+      - Read a burndown chart: how-to/read-a-burndown-chart.md
+      - Analyze a bare repository: how-to/analyze-a-bare-repo.md
+      - Attach an MCP client: how-to/attach-an-mcp-client.md
   - Analyzers:
       - Overview: analyzers/index.md
-      - Static Analyzers:
+      - Static analyzers:
           - Complexity: analyzers/complexity.md
           - Cohesion: analyzers/cohesion.md
           - Halstead: analyzers/halstead.md
           - Comments: analyzers/comments.md
-          - Imports (Static): analyzers/imports.md
-      - History Analyzers:
+          - Imports (static): analyzers/imports.md
+          - Clones: analyzers/clones.md
+      - History analyzers:
           - Burndown: analyzers/burndown.md
           - Developers: analyzers/developers.md
           - Couples: analyzers/couples.md
-          - File History: analyzers/file-history.md
+          - File history: analyzers/file-history.md
           - Quality: analyzers/quality.md
           - Sentiment: analyzers/sentiment.md
           - Shotness: analyzers/shotness.md
           - Typos: analyzers/typos.md
-          - Anomaly Detection: analyzers/anomaly.md
+          - Anomaly detection: analyzers/anomaly.md
+  - Reference:
+      - Glossary: glossary.md
   - Examples:
-      - Kubernetes Analysis: examples/index.md
+      - Kubernetes analysis: examples/index.md
   - Architecture:
       - Overview: architecture/overview.md
-      - UAST System: architecture/uast.md
-      - Streaming Pipeline: architecture/streaming-pipeline.md
+      - UAST system: architecture/uast.md
+      - Streaming pipeline: architecture/streaming-pipeline.md
+  - Explanation:
+      - Static analyzers:
+          - Complexity metrics: explanation/complexity.md
+          - Cohesion metrics: explanation/cohesion.md
+          - Halstead metrics: explanation/halstead.md
+          - Documentation coverage: explanation/comments.md
+          - Import analysis: explanation/imports.md
+          - Clone detection: explanation/clones.md
+      - History analyzers:
+          - Code burndown: explanation/burndown.md
+          - Developer analysis: explanation/developers.md
+          - File and developer coupling: explanation/couples.md
+          - File history analysis: explanation/file-history.md
+          - Code quality over time: explanation/quality.md
+          - Comment sentiment: explanation/sentiment.md
+          - Structural hotness: explanation/shotness.md
+          - Typo detection: explanation/typos.md
+          - Temporal anomaly detection: explanation/anomaly.md
   - Integrations:
-      - MCP Server: integrations/mcp.md
-      - Docker & GitHub Actions: integrations/docker-and-actions.md
-      - AI Agents: integrations/ai-agents.md
+      - MCP server: integrations/mcp.md
+      - Docker & GitHub actions: integrations/docker-and-actions.md
+      - AI agents: integrations/ai-agents.md
   - Operations:
       - Observability: operations/observability.md
-      - Large-Scale Scanning: operations/large-scale-scanning.md
+      - Large-scale scanning: operations/large-scale-scanning.md
+  - ADRs:
+      - Record architecture decisions: adr/0001-record-architecture-decisions.md
+      - Two-binary split (UAST + Codefang): adr/0002-two-binary-split-uast-codefang.md
+      - libgit2 via cgo: adr/0003-libgit2-via-cgo.md
+  - Release notes:
+      - Overview: release-notes/index.md
+      - Upcoming release: release-notes/unreleased.md
   - Contributing:
-      - How to Contribute: contributing/index.md
-      - Code of Conduct: contributing/code-of-conduct.md
+      - How to contribute: contributing/index.md
+      - Code of conduct: contributing/code-of-conduct.md
       - Changelog: contributing/changelog.md
