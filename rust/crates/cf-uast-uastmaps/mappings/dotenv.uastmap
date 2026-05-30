@@ -1,0 +1,93 @@
+[language "dotenv", extensions: ".env"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+variable <- (variable) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+value <- (value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_literal <- (string_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string_interpolated <- (string_interpolated) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+raw_value <- (raw_value) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bool <- (bool) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+url <- (url) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+interpolated_variable <- (interpolated_variable) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Reference"
+)
+
+shell_command <- (shell_command) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)

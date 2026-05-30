@@ -1,0 +1,79 @@
+[language "git_config", extensions: ".gitconfig"]
+
+config <- (config) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+section <- (section) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+section_header <- (section_header) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+section_name <- (section_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+subsection_name <- (subsection_name) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+variable <- (variable) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+name <- (name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+shell_command <- (shell_command) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)

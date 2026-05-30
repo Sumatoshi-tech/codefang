@@ -1,0 +1,15 @@
+[package]
+name = "cf-meminfo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+# Page size lookup via sysconf(_SC_PAGESIZE), matching Go's os.Getpagesize().
+# Only needed on Linux, where read_rss_bytes actually reads /proc/self/statm.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

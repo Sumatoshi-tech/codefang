@@ -1,0 +1,37 @@
+# cf-uast — aggregate UAST parser facade (port of Go package `pkg/uast`).
+#
+# Port target: specs/rust-rewrite/DESIGN.md §1 (tier 1-2) and §5. This crate is
+# the facade over the already-split sibling crates:
+#
+#   * cf-uast-node     — the Node/Positions tree + byte-sorted ToMap (DESIGN §2.2)
+#   * cf-uast-mapping  — the mapping DSL parser + native tree-sitter compiler
+#   * cf-uast-uastmaps — the regenerated embedded `.uastmap` tables (replaces the
+#                        2.7 MB generated embedded_mappings.gen.go; build.rs port)
+#   * cf-alg-bloom     — generic bloom filter (NOTE: the loader keeps its OWN
+#                        512-bit FNV-1a double-hash bloom for byte-exact parity
+#                        with Go's `bloomHashes`; see src/loader.rs).
+#
+# It deliberately does NOT depend on cf-framework so the `uast` binary stays the
+# first end-to-end-shippable artifact (DESIGN §1.1).
+#
+# Per DESIGN rule (1) any MACHINE-format report bytes (e.g. `uast parse --format
+# json`) route through cf-gojson via cf-uast-node's `encode_compact`/`to_go_value`
+# — never serde_json.
+[package]
+name = "cf-uast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Aggregate UAST parser facade: tree-sitter parse to UAST over many languages, lazy loader + bloom, parser pool (port of Go pkg/uast)."
+
+[dependencies]
+cf-uast-node = { path = "../cf-uast-node" }
+cf-uast-mapping = { path = "../cf-uast-mapping" }
+cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
+# tree-sitter is pinned in the workspace; the per-language grammar crates are
+# integrated centrally (see crate todos / externalCrates) and wired by
+# `languages.rs`'s `get_language` dispatch.
+tree-sitter = { workspace = true }

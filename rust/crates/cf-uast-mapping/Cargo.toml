@@ -1,0 +1,20 @@
+[package]
+name = "cf-uast-mapping"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Native tree-sitter query/capture compiler (pattern_matcher.rs). Pinned to the
+# workspace version (0.22). tree-sitter 0.22's QueryCursor::matches returns a
+# `streaming_iterator::StreamingIterator`, so the matcher also needs the
+# streaming-iterator crate (the same 0.1.x crate tree-sitter itself depends on).
+tree-sitter = { workspace = true }
+streaming-iterator = "0.1"
+# Input parsing of node-types.json (grammar_analysis.rs). This is INPUT decoding,
+# not machine-format report OUTPUT, so serde_json is acceptable here per DESIGN
+# §2 (report output must still route through cf-gojson/cf-goyaml).
+serde_json = { workspace = true }

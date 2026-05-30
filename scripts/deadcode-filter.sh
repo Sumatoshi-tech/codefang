@@ -1,11 +1,11 @@
 #!/bin/bash
 # deadcode-filter.sh - Filter deadcode output using whitelist
 #
-# Whitelist format: "unreachable func: <qualified_name>"
-# where qualified_name is exactly what deadcode prints after "unreachable func: "
+# Whitelist format: exact qualified function names as printed by deadcode.
+# One entry per line. Lines starting with # are comments.
 # Examples:
-#   mockReportSection.SectionTitle
-#   Allocator.Size
+#   SomeType.MethodName
+#   UnusedHelper
 #   Pretty
 
 set -e
@@ -14,13 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 WHITELIST_FILE="$ROOT_DIR/.deadcode-whitelist"
 
-# Set up CGO environment for libgit2
-export PKG_CONFIG_PATH="$ROOT_DIR/third_party/libgit2/install/lib64/pkgconfig:$ROOT_DIR/third_party/libgit2/install/lib/pkgconfig:$PKG_CONFIG_PATH"
-export CGO_CFLAGS="-I$ROOT_DIR/third_party/libgit2/install/include"
-export CGO_LDFLAGS="-L$ROOT_DIR/third_party/libgit2/install/lib64 -L$ROOT_DIR/third_party/libgit2/install/lib -lgit2 -lz -lssl -lcrypto -lpthread"
+# Set up CGO environment
 
 # Run deadcode analysis and capture output
-# Try to find deadcode in common locations
 DEADCODE_CMD="deadcode"
 if ! command -v deadcode &> /dev/null; then
 	if [ -f ~/go/bin/deadcode ]; then
@@ -38,7 +34,7 @@ fi
 
 # Build associative array of whitelisted function names for O(1) lookup.
 # Each entry is the exact qualified name as printed by deadcode
-# (e.g. "mockReportSection.SectionTitle", "Pretty").
+# (e.g. "SomeType.MethodName", "Pretty").
 declare -A WHITELIST_SET
 WHITELIST_COUNT=0
 while IFS= read -r whitelist_line; do

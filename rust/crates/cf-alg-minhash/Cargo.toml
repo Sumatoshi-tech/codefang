@@ -1,0 +1,15 @@
+[package]
+name = "cf-alg-minhash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "MinHash similarity signatures (Splitmix64 seeds, deterministic). Used by alg/lsh and clone detection. Port of the Go pkg/alg/minhash package."
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+cf-alg-hashutil = { path = "../cf-alg-hashutil" }

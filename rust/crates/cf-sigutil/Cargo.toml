@@ -1,0 +1,15 @@
+[package]
+name = "cf-sigutil"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# OS signal handling: registers SIGINT/SIGTERM handlers. signal-hook is the
+# idiomatic Rust equivalent of Go's os/signal.Notify. Pinned here directly;
+# add to [workspace.dependencies] centrally (see externalCrates in the port
+# report) when integrating.
+signal-hook = "0.3"

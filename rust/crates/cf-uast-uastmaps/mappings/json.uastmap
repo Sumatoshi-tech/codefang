@@ -1,0 +1,76 @@
+[language "json", extensions: ".json"]
+
+document <- (document) => uast(
+    type: "File"
+)
+
+object <- (object) => uast(
+    token: "self",
+    type: "Dict",
+    roles: "Literal",
+    children: "pair"
+)
+
+array <- (array) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal",
+    children: "_value"
+)
+
+pair <- (pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value",
+    children: "_value", "string"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal",
+    children: "string_content", "escape_sequence"
+)
+
+string_content <- (string_content) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+number <- (number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null <- (null) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+_value <- (_value) => uast(
+    type: "Synthetic"
+)

@@ -1,0 +1,29 @@
+[package]
+name = "cf-renderer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Report renderer dispatch: JSON model structs (score-last fields), terminal SectionRenderer, executive summary, and metrics output. Ported from the Go internal/analyzers/common/renderer package."
+
+[dependencies]
+# Machine-format report bytes (json/yaml/...) MUST route through the shared
+# Go-byte-compatible serialization crates from the design (DESIGN.md §1.1, §2.3:
+# cf-gojson / cf-goyaml), NEVER serde_json/serde_yaml, so output stays
+# byte-identical with Go. Those crates are still scaffolds in this workspace, so
+# the encoder lives in this crate's `gocompat` module (same GoValue/Encoder API
+# shape) and is intentionally not yet wired. Re-add and delete `gocompat` once
+# cf-gojson / cf-goyaml expose their encoders:
+#   cf-gojson = { path = "../cf-gojson" }
+#   cf-goyaml = { path = "../cf-goyaml" }
+#
+# The Go renderer also depends on internal/analyzers/analyze (ReportSection,
+# Issue, Metric, DistributionItem, severity/score constants, UnifiedModel) and
+# internal/analyzers/common/terminal (Config, colors, layout helpers). Those
+# Rust crates (cf-analyze, cf-terminal) are still scaffolds, so the minimal
+# interfaces are defined in this crate's `analyze` and `terminal` modules and
+# will be replaced by path deps once those crates land:
+#   cf-analyze  = { path = "../cf-analyze" }
+#   cf-terminal = { path = "../cf-terminal" }

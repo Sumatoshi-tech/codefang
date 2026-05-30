@@ -1,0 +1,19 @@
+[package]
+name = "codefang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "codefang"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+git2 = { workspace = true }
+cf-version = { path = "../../crates/cf-version" }
+cf-gojson = { path = "../../crates/cf-gojson" }
+cf-reportutil = { path = "../../crates/cf-reportutil" }

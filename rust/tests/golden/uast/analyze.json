@@ -1,0 +1,44 @@
+[
+  {
+    "file": "/home/dmitriy/sources/kubernetes/staging/src/k8s.io/apimachinery/pkg/util/sets/byte.go",
+    "total_nodes": 493,
+    "leaf_nodes": 235,
+    "leaf_ratio": 0.4766734279918864,
+    "max_depth": 11,
+    "avg_depth": 4.616632860040568,
+    "max_children": 67,
+    "avg_branching": 1.9069767441860466,
+    "type_diversity": 13,
+    "types": {
+      "Block": 18,
+      "Call": 48,
+      "Comment": 47,
+      "File": 1,
+      "Function": 2,
+      "Identifier": 180,
+      "List": 72,
+      "Method": 16,
+      "Package": 1,
+      "Parameter": 68,
+      "Return": 18,
+      "Slice": 2,
+      "Synthetic": 20
+    },
+    "roles": {
+      "Body": 18,
+      "Call": 48,
+      "Comment": 47,
+      "Declaration": 18,
+      "Function": 18,
+      "Member": 16,
+      "Module": 1,
+      "Name": 180,
+      "Parameter": 68,
+      "Return": 18,
+      "Type": 54
+    },
+    "role_coverage": 0.8073022312373225,
+    "pos_coverage": 1,
+    "synthetic_nodes": 20
+  }
+]

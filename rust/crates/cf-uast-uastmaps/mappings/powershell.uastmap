@@ -1,0 +1,83 @@
+[language "powershell", extensions: ".ps1", ".psm1", ".psd1"]
+
+program <- (program) => uast(type: "File")
+
+command <- (command) => uast(type: "Call", roles: "Call")
+command_name <- (command_name) => uast(type: "Identifier", roles: "Call", "Name")
+command_elements <- (command_elements) => uast(type: "List", roles: "Argument")
+command_parameter <- (command_parameter) => uast(type: "Identifier", roles: "Argument")
+
+function_statement <- (function_statement) => uast(type: "Function", roles: "Function", "Declaration")
+function_name <- (function_name) => uast(type: "Identifier", roles: "Name")
+param_block <- (param_block) => uast(type: "Block", roles: "Parameter")
+parameter_list <- (parameter_list) => uast(type: "Block", roles: "Parameter")
+script_parameter <- (script_parameter) => uast(type: "Parameter", roles: "Parameter")
+script_parameter_default <- (script_parameter_default) => uast(type: "Literal", roles: "Literal")
+
+class_statement <- (class_statement) => uast(type: "Class", roles: "Declaration")
+class_property_definition <- (class_property_definition) => uast(type: "Variable", roles: "Variable", "Declaration")
+class_method_definition <- (class_method_definition) => uast(type: "Function", roles: "Function", "Declaration")
+class_method_parameter <- (class_method_parameter) => uast(type: "Parameter", roles: "Parameter")
+class_method_parameter_list <- (class_method_parameter_list) => uast(type: "Block", roles: "Parameter")
+
+script_block <- (script_block) => uast(type: "Block", roles: "Body")
+script_block_body <- (script_block_body) => uast(type: "Block", roles: "Body")
+statement_block <- (statement_block) => uast(type: "Block", roles: "Body")
+statement_list <- (statement_list) => uast(type: "Block", roles: "Body")
+
+if_statement <- (if_statement) => uast(type: "If", roles: "Branch")
+else_clause <- (else_clause) => uast(type: "If", roles: "Branch")
+
+foreach_statement <- (foreach_statement) => uast(type: "Loop", roles: "Loop")
+while_statement <- (while_statement) => uast(type: "Loop", roles: "Loop")
+while_condition <- (while_condition) => uast(type: "Block", roles: "Condition")
+
+flow_control_statement <- (flow_control_statement) => uast(type: "Break", roles: "Break")
+
+pipeline <- (pipeline) => uast(type: "Call", roles: "Call")
+
+assignment_expression <- (assignment_expression) => uast(type: "Assignment", roles: "Assignment")
+left_assignment_expression <- (left_assignment_expression) => uast(type: "Assignment", roles: "Assignment")
+assignement_operator <- (assignement_operator) => uast(type: "Identifier", roles: "Operator")
+
+comparison_expression <- (comparison_expression) => uast(type: "BinaryOp", roles: "Operator")
+comparison_operator <- (comparison_operator) => uast(type: "Identifier", roles: "Operator")
+logical_expression <- (logical_expression) => uast(type: "BinaryOp", roles: "Operator")
+additive_expression <- (additive_expression) => uast(type: "BinaryOp", roles: "Operator")
+multiplicative_expression <- (multiplicative_expression) => uast(type: "BinaryOp", roles: "Operator")
+bitwise_expression <- (bitwise_expression) => uast(type: "BinaryOp", roles: "Operator")
+format_expression <- (format_expression) => uast(type: "BinaryOp", roles: "Operator")
+range_expression <- (range_expression) => uast(type: "BinaryOp", roles: "Operator")
+unary_expression <- (unary_expression) => uast(type: "UnaryOp", roles: "Operator")
+
+variable <- (variable) => uast(type: "Identifier", roles: "Variable")
+simple_name <- (simple_name) => uast(type: "Identifier", roles: "Name")
+generic_token <- (generic_token) => uast(type: "Identifier", roles: "Name")
+
+member_access <- (member_access) => uast(type: "Field", roles: "Member")
+member_name <- (member_name) => uast(type: "Identifier", roles: "Name")
+
+array_expression <- (array_expression) => uast(type: "List", roles: "Literal")
+array_literal_expression <- (array_literal_expression) => uast(type: "List", roles: "Literal")
+
+hash_literal_expression <- (hash_literal_expression) => uast(type: "Dict", roles: "Literal")
+hash_literal_body <- (hash_literal_body) => uast(type: "Dict", roles: "Literal")
+hash_entry <- (hash_entry) => uast(type: "KeyValue", roles: "Key", "Value")
+key_expression <- (key_expression) => uast(type: "Identifier", roles: "Key")
+
+integer_literal <- (integer_literal) => uast(type: "Literal", roles: "Literal")
+decimal_integer_literal <- (decimal_integer_literal) => uast(type: "Literal", roles: "Literal")
+string_literal <- (string_literal) => uast(type: "Literal", roles: "Literal")
+expandable_string_literal <- (expandable_string_literal) => uast(type: "Literal", roles: "Literal")
+
+sub_expression <- (sub_expression) => uast(type: "Call", roles: "Call")
+
+type_literal <- (type_literal) => uast(type: "TypeAnnotation", roles: "Type")
+type_spec <- (type_spec) => uast(type: "TypeAnnotation", roles: "Type")
+type_identifier <- (type_identifier) => uast(type: "Identifier", roles: "Type")
+type_name <- (type_name) => uast(type: "Identifier", roles: "Type")
+
+attribute_list <- (attribute_list) => uast(type: "Attribute", roles: "Annotation")
+attribute <- (attribute) => uast(type: "Attribute", roles: "Annotation")
+
+comment <- (comment) => uast(type: "Comment", roles: "Comment")

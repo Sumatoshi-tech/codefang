@@ -1,0 +1,22 @@
+[package]
+name = "cf-sentiment-lexicons"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Embedded multilingual sentiment lexicon (Chen & Skiena 2014) for codefang's sentiment analyzer. Port of internal/analyzers/sentiment/lexicons."
+build = "build.rs"
+
+# This crate exposes lookup tables only; it performs NO machine-report
+# serialization, so it does not depend on cf-gojson/cf-goyaml (DESIGN §1, §2.6).
+# Report bytes are produced by the consumer (cf-sentiment), which routes through
+# the go-compat encoders.
+[dependencies]
+
+[dev-dependencies]
+
+[lints.rust]
+# The generated data module is large; allow it without per-item docs.
+missing_docs = "allow"

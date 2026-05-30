@@ -1,0 +1,22 @@
+codefang (v2):
+  version: 0
+  hash: <unknown>
+history/burndown:
+aggregate:
+    total_current_lines: 112539
+    total_peak_lines: 112539
+    overall_survival_rate: 1
+    analysis_period_days: 0
+    num_bands: 1
+    num_samples: 1
+    tracked_files: 0
+    tracked_developers: 0
+global_survival:
+    - sample_index: 0
+      total_lines: 112539
+      survival_rate: 1
+      band_breakdown:
+        - 112539
+file_survival: []
+developer_survival: []
+interactions: []

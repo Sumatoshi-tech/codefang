@@ -1,0 +1,25 @@
+# cf-pipeline — Rust port of Go package `pkg/pipeline`.
+#
+# Generic processing-pipeline / WorkerPool / ConfigurationOption abstraction.
+# Imported widely (framework, analyzers, mcp, cmd). Tier-0 foundation crate.
+#
+# This crate emits NO machine-format report bytes, so it does NOT depend on
+# cf-gojson / cf-goyaml. See specs/rust-rewrite/DESIGN.md §1.
+[package]
+name = "cf-pipeline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+# crossbeam-channel reproduces Go's buffered/unbuffered channel semantics
+# (bounded MPMC, blocking send/recv, close-on-drop) far more faithfully than
+# std::sync::mpsc, which cannot model Go's "range over a buffered channel that
+# multiple receivers drain concurrently".
+crossbeam-channel = "0.5"

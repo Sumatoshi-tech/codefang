@@ -1,0 +1,7 @@
+<div class="text-center">
+    <p class="text-sm text-stone-500 dark:text-stone-400">{{ label }}</p>
+    <p class="text-2xl font-semibold text-stone-900 dark:text-stone-50">{{ value }}</p>
+{% if trend %}
+    <p class="text-sm {{ trend_class }}">{{ trend }}</p>
+{% endif %}
+</div>

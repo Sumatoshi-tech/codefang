@@ -1,0 +1,246 @@
+[language "markdown_inline", extensions: ".md", ".markdown"]
+
+atx_heading <- (atx_heading) => uast(
+    type: "Synthetic",
+    children: "inline"
+)
+
+backslash_escape <- (backslash_escape) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+block_quote <- (block_quote) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+code_fence_content <- (code_fence_content) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+document <- (document) => uast(
+    type: "Synthetic"
+)
+
+fenced_code_block <- (fenced_code_block) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+html_block <- (html_block) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+indented_code_block <- (indented_code_block) => uast(
+    token: "self",
+    roles: "Body",
+    type: "Block",
+    roles: "Body"
+)
+
+info_string <- (info_string) => uast(
+    type: "Synthetic"
+)
+
+inline <- (inline) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+language <- (language) => uast(
+    type: "Synthetic"
+)
+
+link_destination <- (link_destination) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+link_label <- (link_label) => uast(
+    type: "Synthetic"
+)
+
+link_reference_definition <- (link_reference_definition) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+link_title <- (link_title) => uast(
+    type: "Synthetic"
+)
+
+list <- (list) => uast(
+    token: "self",
+    type: "List"
+)
+
+list_item <- (list_item) => uast(
+    type: "List"
+)
+
+list_marker_dot <- (list_marker_dot) => uast(
+    token: "self",
+    type: "List"
+)
+
+list_marker_minus <- (list_marker_minus) => uast(
+    type: "List"
+)
+
+list_marker_parenthesis <- (list_marker_parenthesis) => uast(
+    token: "self",
+    type: "List"
+)
+
+list_marker_plus <- (list_marker_plus) => uast(
+    type: "List"
+)
+
+list_marker_star <- (list_marker_star) => uast(
+    token: "self",
+    type: "List"
+)
+
+paragraph <- (paragraph) => uast(
+    type: "Synthetic"
+)
+
+pipe_table <- (pipe_table) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pipe_table_cell <- (pipe_table_cell) => uast(
+    type: "Synthetic"
+)
+
+pipe_table_delimiter_cell <- (pipe_table_delimiter_cell) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pipe_table_delimiter_row <- (pipe_table_delimiter_row) => uast(
+    type: "Synthetic"
+)
+
+pipe_table_header <- (pipe_table_header) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pipe_table_row <- (pipe_table_row) => uast(
+    type: "Synthetic"
+)
+
+section <- (section) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+setext_heading <- (setext_heading) => uast(
+    type: "Set",
+    children: "paragraph"
+)
+
+task_list_marker_checked <- (task_list_marker_checked) => uast(
+    token: "self",
+    type: "List"
+)
+
+task_list_marker_unchecked <- (task_list_marker_unchecked) => uast(
+    type: "List"
+)
+
+thematic_break <- (thematic_break) => uast(
+    token: "self",
+    type: "Break",
+    roles: "Break"
+)
+
+_ <- (_) => uast(
+    type: "Synthetic"
+)
+
+atx_h1_marker <- (atx_h1_marker) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+atx_h2_marker <- (atx_h2_marker) => uast(
+    type: "Synthetic"
+)
+
+atx_h3_marker <- (atx_h3_marker) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+atx_h4_marker <- (atx_h4_marker) => uast(
+    type: "Synthetic"
+)
+
+atx_h5_marker <- (atx_h5_marker) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+atx_h6_marker <- (atx_h6_marker) => uast(
+    type: "Synthetic"
+)
+
+block_continuation <- (block_continuation) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+
+block_quote_marker <- (block_quote_marker) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+entity_reference <- (entity_reference) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+fenced_code_block_delimiter <- (fenced_code_block_delimiter) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+minus_metadata <- (minus_metadata) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+numeric_character_reference <- (numeric_character_reference) => uast(
+    type: "Synthetic"
+)
+
+pipe_table_align_left <- (pipe_table_align_left) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pipe_table_align_right <- (pipe_table_align_right) => uast(
+    type: "Synthetic"
+)
+
+plus_metadata <- (plus_metadata) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+setext_h1_underline <- (setext_h1_underline) => uast(
+    type: "Set"
+)
+
+setext_h2_underline <- (setext_h2_underline) => uast(
+    token: "self",
+    type: "Set"
+)

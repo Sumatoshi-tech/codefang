@@ -1,0 +1,13 @@
+[package]
+name = "cf-alg-interval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Augmented interval tree (port of Go pkg/alg/interval). Pure data structure
+# consumed by the burndown analyzer; it emits no machine-format report bytes, so
+# per DESIGN §1 it does NOT depend on cf-gojson / cf-goyaml. Zero dependencies.
+[dependencies]

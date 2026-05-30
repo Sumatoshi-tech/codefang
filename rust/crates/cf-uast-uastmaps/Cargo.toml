@@ -1,0 +1,21 @@
+# cf-uast-uastmaps — embedded per-language .uastmap mapping tables (generated).
+#
+# Port of the Go "uastmaps" data module: pkg/uast/uastmaps (68 *.uastmap files)
+# plus the generated pkg/uast/embedded_mappings.gen.go. The mappings/*.uastmap
+# files are vendored byte-for-byte from pkg/uast/uastmaps. build.rs is the Rust
+# port of tools/uastmapsgen/gen_uastmaps.py: it regenerates the embedded table at
+# build time (include_str! == //go:embed analogue) rather than hand-translating
+# the ~2.7 MB generated artifact. See DESIGN.md §5 and rule (6).
+[package]
+name = "cf-uast-uastmaps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+
+[build-dependencies]

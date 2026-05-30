@@ -1,0 +1,401 @@
+[language "proto", extensions: ".proto"]
+
+source_file <- (source_file) => uast(
+    type: "File"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+syntax <- (syntax) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+edition <- (edition) => uast(
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+
+package <- (package) => uast(
+    type: "Module",
+    roles: "Module", "Declaration"
+)
+
+import <- (import) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+message <- (message) => uast(
+    type: "Struct",
+    roles: "Struct", "Declaration"
+)
+
+message_name <- (message_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+message_body <- (message_body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+field <- (field) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+field_number <- (field_number) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+field_option <- (field_option) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+field_options <- (field_options) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+map_field <- (map_field) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+oneof <- (oneof) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+oneof_field <- (oneof_field) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+enum <- (enum) => uast(
+    type: "Enum",
+    roles: "Enum", "Declaration"
+)
+
+enum_name <- (enum_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+enum_body <- (enum_body) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+enum_field <- (enum_field) => uast(
+    type: "EnumMember",
+    roles: "Member"
+)
+
+enum_value_option <- (enum_value_option) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+service <- (service) => uast(
+    type: "Interface",
+    roles: "Interface", "Declaration"
+)
+
+service_name <- (service_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+rpc <- (rpc) => uast(
+    type: "Method",
+    roles: "Method", "Declaration"
+)
+
+rpc_name <- (rpc_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+option <- (option) => uast(
+    type: "Property",
+    roles: "Member"
+)
+
+extend <- (extend) => uast(
+    type: "Struct",
+    roles: "Struct"
+)
+
+extensions <- (extensions) => uast(
+    type: "Synthetic"
+)
+
+reserved <- (reserved) => uast(
+    type: "Synthetic"
+)
+
+reserved_field_names <- (reserved_field_names) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+ranges <- (ranges) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+range <- (range) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+identifier <- (identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+full_ident <- (full_ident) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+message_or_enum_type <- (message_or_enum_type) => uast(
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+type <- (type) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+key_type <- (key_type) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+constant <- (constant) => uast(
+    type: "Literal",
+    roles: "Literal"
+)
+
+int_lit <- (int_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+decimal_lit <- (decimal_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+octal_lit <- (octal_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+hex_lit <- (hex_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float_lit <- (float_lit) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+bool <- (bool) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+true <- (true) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+false <- (false) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+block_lit <- (block_lit) => uast(
+    type: "Block",
+    roles: "Body"
+)
+
+empty_statement <- (empty_statement) => uast(
+    type: "Synthetic"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+reserved_identifier <- (reserved_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+returns <- (returns) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+stream <- (stream) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+optional <- (optional) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+repeated <- (repeated) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+required <- (required) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+public <- (public) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+weak <- (weak) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+to <- (to) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+max <- (max) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+map <- (map) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+int32 <- (int32) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+int64 <- (int64) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+uint32 <- (uint32) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+uint64 <- (uint64) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+sint32 <- (sint32) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+sint64 <- (sint64) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+fixed32 <- (fixed32) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+fixed64 <- (fixed64) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+sfixed32 <- (sfixed32) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+sfixed64 <- (sfixed64) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+double <- (double) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)
+
+bytes <- (bytes) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name", "Type"
+)

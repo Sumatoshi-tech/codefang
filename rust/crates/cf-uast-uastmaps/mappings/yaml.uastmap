@@ -1,0 +1,213 @@
+[language "yaml", extensions: ".yaml", ".yml"]
+
+stream <- (stream) => uast(
+    token: "self",
+    type: "File"
+)
+
+document <- (document) => uast(
+    type: "Synthetic"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+block_mapping <- (block_mapping) => uast(
+    type: "Dict",
+    roles: "Literal",
+    children: "block_mapping_pair"
+)
+
+block_mapping_pair <- (block_mapping_pair) => uast(
+    token: "self",
+    type: "KeyValue",
+    roles: "Key", "Value",
+    children: "flow_node", "block_node"
+)
+
+flow_mapping <- (flow_mapping) => uast(
+    type: "Dict",
+    roles: "Literal",
+    children: "flow_pair"
+)
+
+flow_pair <- (flow_pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value",
+    children: "flow_node"
+)
+
+block_sequence <- (block_sequence) => uast(
+    type: "List",
+    roles: "Literal",
+    children: "block_sequence_item"
+)
+
+block_sequence_item <- (block_sequence_item) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "flow_node", "block_node"
+)
+
+flow_sequence <- (flow_sequence) => uast(
+    token: "self",
+    type: "List",
+    roles: "Literal",
+    children: "flow_node"
+)
+
+block_node <- (block_node) => uast(
+    type: "Synthetic",
+    children: "block_mapping", "block_sequence", "flow_node"
+)
+
+flow_node <- (flow_node) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "plain_scalar", "double_quote_scalar", "single_quote_scalar", "flow_mapping", "flow_sequence", "alias"
+)
+
+plain_scalar <- (plain_scalar) => uast(
+    type: "Synthetic",
+    children: "string_scalar", "integer_scalar", "float_scalar", "boolean_scalar", "null_scalar"
+)
+
+string_scalar <- (string_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer_scalar <- (integer_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float_scalar <- (float_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean_scalar <- (boolean_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+null_scalar <- (null_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+timestamp_scalar <- (timestamp_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+double_quote_scalar <- (double_quote_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal",
+    children: "escape_sequence"
+)
+
+single_quote_scalar <- (single_quote_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+block_scalar <- (block_scalar) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    type: "Synthetic"
+)
+
+alias <- (alias) => uast(
+    type: "Identifier",
+    roles: "Reference",
+    children: "alias_name"
+)
+
+alias_name <- (alias_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+anchor <- (anchor) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name",
+    children: "anchor_name"
+)
+
+anchor_name <- (anchor_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+tag <- (tag) => uast(
+    token: "self",
+    type: "Attribute",
+    roles: "Attribute"
+)
+
+tag_handle <- (tag_handle) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+tag_prefix <- (tag_prefix) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+yaml_directive <- (yaml_directive) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "yaml_version"
+)
+
+yaml_version <- (yaml_version) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+tag_directive <- (tag_directive) => uast(
+    type: "Synthetic",
+    children: "tag_handle", "tag_prefix"
+)
+
+reserved_directive <- (reserved_directive) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "directive_name", "directive_parameter"
+)
+
+directive_name <- (directive_name) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+directive_parameter <- (directive_parameter) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

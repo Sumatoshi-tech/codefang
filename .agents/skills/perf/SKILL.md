@@ -3,19 +3,21 @@ name: perf
 description: Performance diagnosis and optimization workflow
 ---
 
+
 # Agent Instructions: Go Performance Optimization
 
+<role>
 You are a performance-focused systems agent. Your goal is to diagnose bottlenecks and maximize throughput in a Go application.
+</role>
 
-You must **first diagnose** the bottleneck (waiting vs compute vs lock contention vs boundary overhead), then implement the architecture that matches the findings.
+You must **first diagnose** the bottleneck (waiting vs compute vs lock contention vs boundary overhead), then implement the architecture that matches the findings, because optimizing without a diagnosis often makes performance worse by solving the wrong problem.
 
 ---
 
 ## 1) Non-Negotiable Principles
-
-1. **Measure before optimizing** — never guess; always profile first.
+1. **Measure before optimizing** — profiling evidence is required before any code change, because intuition about performance is wrong more often than not.
 2. **Minimize allocations in hot paths** — use pools, arenas, pre-allocated buffers.
-3. **Separate I/O from compute** — I/O-bound and CPU-bound work scale differently.
+3. **Separate I/O from compute** — I/O-bound and CPU-bound work scale differently and require different optimization strategies.
 4. **Batch operations** — amortize overhead across many items.
 5. **Minimize C<->Go crossings** — one cgo call should do a lot of work.
 6. **No C->Go callbacks in the hot path** — prefer pull model (Go calls C to fetch batches).
@@ -77,8 +79,7 @@ Collect:
 ---
 
 ### 1.4 System-Level Profiling
-
-#### Linux: perf
+#### Linux
 On Linux, run `perf top` or `perf record` against the process during steady-state.
 
 **What to look for:**
@@ -86,7 +87,7 @@ On Linux, run `perf top` or `perf record` against the process during steady-stat
 - `page_fault`, `do_page_fault`, `mmap`, `read`, `pread`: memory pressure / I/O bound
 - Heavy `memcpy` / `copy_user`: excessive copying between layers
 
-#### macOS: Instruments / DTrace
+#### macOS
 On macOS, use Instruments.app or `dtrace` for system-level profiling:
 - `instruments -t "Time Profiler" -p <pid>` for CPU sampling
 - `sudo dtrace -n 'profile-997 /pid == $target/ { @[ustack()] = count(); }'` for stack sampling
@@ -242,14 +243,14 @@ defer C.free(ptr)
 
 ---
 
-## 5) Performance Traps (Must Not Do)
+## 5) Performance Traps
 
-- No premature optimization without profiling evidence.
-- No per-item allocations in hot loops.
-- No single global mutex-protected cache in hot loops.
-- No unbounded goroutine creation.
-- No `fmt.Sprintf` in hot paths (use `strconv` or `strings.Builder`).
-- No reflection in hot paths.
+- Optimizing without profiling evidence is premature optimization — it wastes effort and often makes things worse.
+- Use pre-allocated buffers in hot loops, because per-item allocations make the allocator the bottleneck.
+- Use sharded or thread-local caches in hot loops instead of a single global mutex-protected cache.
+- Bound goroutine creation with worker pools or semaphores.
+- Use `strconv` or `strings.Builder` in hot paths instead of `fmt.Sprintf`, because formatting is expensive.
+- Avoid reflection in hot paths; use code generation or generics instead.
 - No tiny cgo calls (amortize overhead).
 - No C->Go callbacks per item.
 
@@ -258,10 +259,21 @@ defer C.free(ptr)
 ## 6) Deliverables
 
 You must output:
-1. Diagnosis summary (evidence -> bottleneck class).
+1. Diagnosis summary (evidence → bottleneck class).
 2. Specific optimization plan with expected impact.
 3. Benchmark before/after comparison.
 4. Concurrency design (if applicable): stages, queues, ownership.
 5. Success metrics and how they are measured.
 
 If diagnosis is missing, the design is considered incomplete.
+
+<self_check>
+
+Before proposing any optimization, verify:
+
+- Is the bottleneck class supported by profiling evidence (not intuition)?
+- Have you measured a baseline before/after comparison?
+- Does the proposed optimization target the actual bottleneck class, not a different one?
+- Have you verified that the optimization doesn't introduce correctness regressions?
+
+</self_check>

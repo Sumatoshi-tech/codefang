@@ -1,0 +1,17 @@
+[package]
+name = "cf-uast-spec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+# Test-only: assert the embedded schema/example parse as valid JSON and have the
+# expected top-level keys (guards against truncation/corruption of the embed).
+# NOT used on any output/report-serialization path. Inherited from the workspace
+# so the version stays pinned in lockstep with the rest of the tree.
+serde_json.workspace = true

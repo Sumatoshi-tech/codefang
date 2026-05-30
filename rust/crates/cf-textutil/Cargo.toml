@@ -1,0 +1,19 @@
+[package]
+name = "cf-textutil"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Byte-level text utilities and the canonical Go-compatible WriteJSON writer for codefang reports."
+
+[dependencies]
+# Report serialization routes through a shared Go-byte-compatible encoder,
+# NEVER serde_json, so MACHINE-format report bytes stay byte-identical with Go.
+# The design's encoder is the tier-0 crate `cf-gojson` (DESIGN.md §1.1
+# "cf-textutil wraps cf-gojson", §2.3). While `cf-gojson` is still a scaffold,
+# the encoder lives in this crate's `gocompat` module (identical API), so this
+# dependency is intentionally not yet wired. Re-add it and delete `gocompat`
+# once `cf-gojson` exposes `Encoder`/`GoValue`/`EncodeError`:
+#   cf-gojson = { path = "../cf-gojson" }

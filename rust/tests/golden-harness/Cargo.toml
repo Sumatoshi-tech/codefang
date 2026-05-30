@@ -1,0 +1,22 @@
+[package]
+name = "golden-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Hosts the golden-diff integration test (tests/golden_diff.rs). Depending on the
+# two binaries makes `cargo test -p golden-harness` build them first; the test
+# then locates them in the target directory (no unstable bindeps needed).
+[dependencies]
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+codefang = { path = "../../bins/codefang" }
+uast = { path = "../../bins/uast" }
+
+[lib]
+path = "src/lib.rs"

@@ -1,0 +1,30 @@
+[package]
+name = "cf-anomaly"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# cf-anomaly — temporal anomaly detection (trailing-window Z-scores).
+# Ports internal/analyzers/anomaly (Go id: history/anomaly). Also used by the
+# quality and sentiment analyzers via the cross-analyzer enrichment path.
+#
+# Report serialization routes exclusively through cf-gojson / cf-goyaml so the
+# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match Go's
+# encoding/json + yaml.v3 byte-for-byte. See specs/rust-rewrite/DESIGN.md §2.
+
+[dependencies]
+# Mean/stddev/z-score helpers (pkg/alg/stats). Every float that reaches a
+# machine report is produced here, so arithmetic mirrors Go operation-for-op.
+cf-alg-stats = { path = "../cf-alg-stats" }
+# Go encoding/json-byte-compatible encoder (DESIGN §2.2). NEVER serde_json.
+# YAML output (DESIGN §2.4) routes the SAME GoValue tree through cf-goyaml once
+# that crate lands; the report types expose `to_go_value()` for both paths.
+cf-gojson = { path = "../cf-gojson" }
+
+[lints.clippy]
+pedantic = "warn"
+
+[dev-dependencies]

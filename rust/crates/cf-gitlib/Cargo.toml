@@ -1,0 +1,29 @@
+[package]
+name = "cf-gitlib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Git repository access layer over libgit2 (Rust port of Go pkg/gitlib). Per-thread !Send/!Sync repository handles, RAII Drop replaces Free(), batch blob/diff worker. Built on the git2 crate with vendored libgit2 for byte-identical object/diff/hash semantics with git2go."
+
+[dependencies]
+# KEEP libgit2. git2 + vendored-libgit2 pins libgit2 to match git2go's
+# diff/blob/hash semantics (third_party/libgit2 submodule is the pin source).
+# Per-thread !Send/!Sync Repository, RAII Drop replaces Free(). See DESIGN §3.
+git2 = { workspace = true }
+# Byte text helpers (IsBinary / CountLines) shared with the Go pkg/textutil.
+cf-textutil = { path = "../cf-textutil" }
+# Overflow-checked numeric conversions (Go pkg/safeconv MustUintToInt / MustIntToUint).
+cf-safeconv = { path = "../cf-safeconv" }
+# Pull-based iterator contract + CollectN (Go pkg/alg iter.go), used by LoadCommits.
+cf-alg = { path = "../cf-alg" }
+
+[lints.clippy]
+# Hash<->Oid byte copies and libgit2 size_t<->i64 conversions are deliberate,
+# centralized, and verified by unit tests; silence the pedantic cast lints.
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"

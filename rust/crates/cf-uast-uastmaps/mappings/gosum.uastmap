@@ -1,0 +1,76 @@
+[language "gosum", files: "go.sum"]
+
+checksum <- (checksum) => uast(
+    type: "Synthetic"
+)
+
+checksum_database <- (checksum_database) => uast(
+    type: "File"
+)
+
+checksum_value <- (checksum_value) => uast(
+    type: "Synthetic"
+)
+
+version <- (version) => uast(
+    token: "self",
+    type: "Synthetic",
+    children: "alpha", "beta", "dev", "hex_number", "module_version", "number", "number_with_decimal", "pre", "rc"
+)
+
+alpha <- (alpha) => uast(
+    type: "Synthetic"
+)
+
+beta <- (beta) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+dev <- (dev) => uast(
+    type: "Synthetic"
+)
+
+hash <- (hash) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+hash_version <- (hash_version) => uast(
+    type: "Synthetic"
+)
+
+hex_number <- (hex_number) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+module_path <- (module_path) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+
+module_version <- (module_version) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+number <- (number) => uast(
+    type: "Synthetic"
+)
+
+number_with_decimal <- (number_with_decimal) => uast(
+    token: "self",
+    type: "Synthetic"
+)
+
+pre <- (pre) => uast(
+    type: "Synthetic"
+)
+
+rc <- (rc) => uast(
+    token: "self",
+    type: "Synthetic"
+)

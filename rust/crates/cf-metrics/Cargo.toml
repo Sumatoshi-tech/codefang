@@ -1,0 +1,34 @@
+# cf-metrics — Rust port of Go package pkg/metrics.
+#
+# Lightweight metrics primitives reused across analyzers: the Metric trait,
+# MetricMeta metadata helper, TimeSeriesPoint / RiskResult report types,
+# RiskLevel + risk_priority ordering, and a name-keyed Registry.
+#
+# The report-bearing types (TimeSeriesPoint, RiskResult) appear in MACHINE-format
+# output. Per DESIGN.md §2, machine-format bytes (json/yaml/ndjson/timeseries/
+# compact/bin) MUST be emitted by the shared cf-gojson / cf-goyaml byte-compat
+# crates, never by serde defaults. cf-gojson is not yet ported, so this crate
+# carries no serde dependency: instead the report types implement GoSerialize,
+# lowering to a local placeholder GoValue tree (declaration-ordered, omitempty
+# honored) that mirrors the cf-gojson surface in DESIGN.md §2.2. When cf-gojson
+# lands, the local GoValue is replaced by cf_gojson::GoValue and this crate gains
+# a cf-gojson dependency. Pure std; zero external crates.
+[package]
+name = "cf-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Lightweight metrics primitives (Metric trait, RiskLevel/RiskResult, TimeSeriesPoint, Registry). Port of Go pkg/metrics; used by many analyzers."
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+
+[dev-dependencies]
+
+[lib]
+doctest = false

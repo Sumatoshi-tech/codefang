@@ -1,0 +1,15 @@
+[package]
+name = "cf-persist"
+version = "0.1.0"
+edition = "2021"
+description = "Persistence / serialization codecs ported from the Go `persist` package: a Go-compatible JSON codec (HTML escaping, optional indent, trailing newline) and a Go-specific binary (gob-equivalent) codec."
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }

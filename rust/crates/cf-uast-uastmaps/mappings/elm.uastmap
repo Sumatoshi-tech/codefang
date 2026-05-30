@@ -1,0 +1,236 @@
+[language "elm", extensions: ".elm"]
+file <- (file) => uast(
+    type: "File"
+)
+module_declaration <- (module_declaration) => uast(
+    token: "self",
+    type: "Module",
+    roles: "Module"
+)
+import_clause <- (import_clause) => uast(
+    token: "self",
+    type: "Import",
+    roles: "Import"
+)
+lower_case_identifier <- (lower_case_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+upper_case_identifier <- (upper_case_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+upper_case_qid <- (upper_case_qid) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+value_qid <- (value_qid) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+number_literal <- (number_literal) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+number_constant_expr <- (number_constant_expr) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+char_constant_expr <- (char_constant_expr) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+string_constant_expr <- (string_constant_expr) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+unit_expr <- (unit_expr) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+value_declaration <- (value_declaration) => uast(
+    token: "self",
+    type: "Variable",
+    roles: "Variable", "Declaration"
+)
+function_declaration_left <- (function_declaration_left) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+anonymous_function_expr <- (anonymous_function_expr) => uast(
+    token: "self",
+    type: "Lambda",
+    roles: "Lambda"
+)
+function_call_expr <- (function_call_expr) => uast(
+    token: "self",
+    type: "Call",
+    roles: "Call"
+)
+if_else_expr <- (if_else_expr) => uast(
+    token: "self",
+    type: "If",
+    roles: "Condition"
+)
+case_of_expr <- (case_of_expr) => uast(
+    token: "self",
+    type: "Switch",
+    roles: "Condition"
+)
+case_of_branch <- (case_of_branch) => uast(
+    token: "self",
+    type: "Case",
+    roles: "Branch"
+)
+let_in_expr <- (let_in_expr) => uast(
+    token: "self",
+    type: "Block",
+    roles: "Body"
+)
+bin_op_expr <- (bin_op_expr) => uast(
+    token: "self",
+    type: "BinaryOp",
+    roles: "Operator"
+)
+negate_expr <- (negate_expr) => uast(
+    token: "self",
+    type: "UnaryOp",
+    roles: "Operator"
+)
+list_expr <- (list_expr) => uast(
+    token: "self",
+    type: "List"
+)
+tuple_expr <- (tuple_expr) => uast(
+    token: "self",
+    type: "Tuple"
+)
+record_expr <- (record_expr) => uast(
+    token: "self",
+    type: "Dict"
+)
+field <- (field) => uast(
+    token: "self",
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+field_access_expr <- (field_access_expr) => uast(
+    token: "self",
+    type: "MemberAccess",
+    roles: "Member"
+)
+type_declaration <- (type_declaration) => uast(
+    token: "self",
+    type: "TypeDeclaration",
+    roles: "Type", "Declaration"
+)
+type_alias_declaration <- (type_alias_declaration) => uast(
+    token: "self",
+    type: "TypeDeclaration",
+    roles: "Type", "Declaration"
+)
+type_annotation <- (type_annotation) => uast(
+    token: "self",
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+type_expression <- (type_expression) => uast(
+    token: "self",
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+type_ref <- (type_ref) => uast(
+    token: "self",
+    type: "TypeAnnotation",
+    roles: "Type"
+)
+union_variant <- (union_variant) => uast(
+    token: "self",
+    type: "EnumMember",
+    roles: "Member"
+)
+pattern <- (pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+lower_pattern <- (lower_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+anything_pattern <- (anything_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+cons_pattern <- (cons_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+list_pattern <- (list_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+tuple_pattern <- (tuple_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+record_pattern <- (record_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+union_pattern <- (union_pattern) => uast(
+    token: "self",
+    type: "Pattern",
+    roles: "Pattern"
+)
+operator <- (operator) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+operator_identifier <- (operator_identifier) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Operator"
+)
+exposing_list <- (exposing_list) => uast(
+    token: "self",
+    type: "List",
+    roles: "Export"
+)
+line_comment <- (line_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+block_comment <- (block_comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+port_annotation <- (port_annotation) => uast(
+    token: "self",
+    type: "Function",
+    roles: "Function", "Declaration"
+)
+value_expr <- (value_expr) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Reference"
+)

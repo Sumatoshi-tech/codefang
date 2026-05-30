@@ -1,0 +1,54 @@
+[language "r", extensions: ".r", ".R", ".rmd", ".Rmd"]
+
+program <- (program) => uast(type: "File")
+
+call <- (call) => uast(type: "Call", roles: "Call")
+arguments <- (arguments) => uast(type: "List", roles: "Argument")
+argument <- (argument) => uast(type: "Identifier", roles: "Argument")
+
+function_definition <- (function_definition) => uast(type: "Function", roles: "Function", "Declaration")
+parameters <- (parameters) => uast(type: "Block", roles: "Parameter")
+parameter <- (parameter) => uast(type: "Parameter", roles: "Parameter")
+
+braced_expression <- (braced_expression) => uast(type: "Block", roles: "Body")
+
+if_statement <- (if_statement) => uast(type: "If", roles: "Branch")
+
+for_statement <- (for_statement) => uast(type: "Loop", roles: "Loop")
+while_statement <- (while_statement) => uast(type: "Loop", roles: "Loop")
+repeat_statement <- (repeat_statement) => uast(type: "Loop", roles: "Loop")
+
+break <- (break) => uast(type: "Break", roles: "Break")
+next <- (next) => uast(type: "Continue", roles: "Continue")
+
+return <- (return) => uast(type: "Return", roles: "Return")
+
+binary_operator <- (binary_operator) => uast(type: "BinaryOp", roles: "Operator")
+unary_operator <- (unary_operator) => uast(type: "UnaryOp", roles: "Operator")
+
+identifier <- (identifier) => uast(type: "Identifier", roles: "Name")
+
+float <- (float) => uast(type: "Literal", roles: "Literal")
+integer <- (integer) => uast(type: "Literal", roles: "Literal")
+complex <- (complex) => uast(type: "Literal", roles: "Literal")
+string <- (string) => uast(type: "Literal", roles: "Literal")
+string_content <- (string_content) => uast(type: "Literal", roles: "Literal")
+
+true <- (true) => uast(type: "Literal", roles: "Literal")
+false <- (false) => uast(type: "Literal", roles: "Literal")
+null <- (null) => uast(type: "Literal", roles: "Literal")
+na <- (na) => uast(type: "Literal", roles: "Literal")
+inf <- (inf) => uast(type: "Literal", roles: "Literal")
+nan <- (nan) => uast(type: "Literal", roles: "Literal")
+
+comment <- (comment) => uast(type: "Comment", roles: "Comment")
+
+comma <- (comma) => uast(type: "Identifier", roles: "Name")
+
+subset <- (subset) => uast(type: "Index", roles: "Index")
+subset2 <- (subset2) => uast(type: "Index", roles: "Index")
+
+extract_operator <- (extract_operator) => uast(type: "Field", roles: "Member")
+
+formula <- (formula) => uast(type: "BinaryOp", roles: "Operator")
+special <- (special) => uast(type: "Identifier", roles: "Operator")

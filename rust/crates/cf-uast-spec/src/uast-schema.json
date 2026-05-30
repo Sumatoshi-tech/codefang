@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unified Abstract Syntax Tree (UAST) Schema",
+  "description": "JSON schema for the Unified Abstract Syntax Tree (UAST) format as specified in SPEC.md",
+  "type": "object",
+  "definitions": {
+    "Positions": {
+      "type": "object",
+      "description": "Position information for a UAST node",
+      "properties": {
+        "start_line": {
+          "type": "integer",
+          "description": "Starting line number (1-indexed)"
+        },
+        "start_col": {
+          "type": "integer",
+          "description": "Starting column number (1-indexed)"
+        },
+        "start_offset": {
+          "type": "integer",
+          "description": "Starting byte offset"
+        },
+        "end_line": {
+          "type": "integer",
+          "description": "Ending line number (1-indexed)"
+        },
+        "end_col": {
+          "type": "integer",
+          "description": "Ending column number (1-indexed)"
+        },
+        "end_offset": {
+          "type": "integer",
+          "description": "Ending byte offset"
+        }
+      },
+      "required": [
+        "start_line",
+        "start_col",
+        "start_offset",
+        "end_line",
+        "end_col",
+        "end_offset"
+      ],
+      "additionalProperties": false
+    },
+    "Role": {
+      "type": "string",
+      "description": "Canonical UAST role",
+      "enum": [
+        "Function",
+        "Declaration",
+        "Name",
+        "Reference",
+        "Assignment",
+        "Call",
+        "Parameter",
+        "Argument",
+        "Condition",
+        "Body",
+        "Exported",
+        "Public",
+        "Private",
+        "Static",
+        "Constant",
+        "Mutable",
+        "Getter",
+        "Setter",
+        "Loop",
+        "Branch",
+        "Import",
+        "Doc",
+        "Comment",
+        "Attribute",
+        "Annotation",
+        "Operator",
+        "Index",
+        "Key",
+        "Value",
+        "Type",
+        "Interface",
+        "Class",
+        "Struct",
+        "Literal",
+        "Variable",
+        "Enum",
+        "Member",
+        "Module",
+        "Lambda",
+        "Try",
+        "Catch",
+        "Finally",
+        "Throw",
+        "Await",
+        "Generator",
+        "Yield",
+        "Spread",
+        "Pattern",
+        "Match",
+        "Return",
+        "Break",
+        "Continue"
+      ]
+    },
+    "NodeType": {
+      "type": "string",
+      "description": "Canonical UAST node type. 'Loop' is used for all loop constructs (for, while, do-while, etc.), with kind specified in props or roles. 'Synthetic' is allowed as a fallback for unmapped nodes.",
+      "enum": [
+        "File",
+        "Function",
+        "FunctionDecl",
+        "Method",
+        "Class",
+        "Interface",
+        "Struct",
+        "Enum",
+        "EnumMember",
+        "Variable",
+        "Parameter",
+        "Block",
+        "Loop",
+        "If",
+        "Switch",
+        "Case",
+        "Return",
+        "Break",
+        "Continue",
+        "Assignment",
+        "Call",
+        "Identifier",
+        "Literal",
+        "BinaryOp",
+        "UnaryOp",
+        "Import",
+        "Package",
+        "Attribute",
+        "Comment",
+        "DocString",
+        "TypeAnnotation",
+        "Field",
+        "Property",
+        "Getter",
+        "Setter",
+        "Lambda",
+        "Try",
+        "Catch",
+        "Finally",
+        "Throw",
+        "Module",
+        "Namespace",
+        "Decorator",
+        "Spread",
+        "Tuple",
+        "List",
+        "Dict",
+        "Set",
+        "KeyValue",
+        "Index",
+        "Slice",
+        "Cast",
+        "Await",
+        "Yield",
+        "Generator",
+        "Comprehension",
+        "Pattern",
+        "Match",
+        "Synthetic"
+      ]
+    }
+  },
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier for the node (used for diffing and identity comparison)"
+    },
+    "type": {
+      "$ref": "#/definitions/NodeType",
+      "description": "Canonical, language-agnostic type identifier"
+    },
+    "token": {
+      "type": "string",
+      "description": "Surface text for leaf nodes; empty for non-leaf nodes"
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Role"
+      },
+      "description": "List of orthogonal syntactic or semantic labels"
+    },
+    "pos": {
+      "$ref": "#/definitions/Positions",
+      "description": "Position information in the source code"
+    },
+    "props": {
+      "type": "object",
+      "description": "Arbitrary key-value pairs for language-specific or extra data",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "$ref": "#"
+      },
+      "description": "Ordered list of child nodes"
+    }
+  },
+  "required": ["type"],
+  "additionalProperties": false
+}

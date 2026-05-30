@@ -1,0 +1,28 @@
+[package]
+name = "cf-plumbing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Core git plumbing shared types, dependency/fact keys, and fact accessors bridging cf-gitlib to cf-identity (Rust port of Go internal/plumbing)."
+
+[dependencies]
+# Identity fact-key constants (FactIdentityDetector{ReversedPeopleDict,PeopleCount})
+# are owned by cf-identity, which already exports them; re-exported from here so
+# the Go `identity.*` references resolve to a single source of truth.
+cf-identity = { path = "../cf-identity" }
+#
+# `serde` is OPTIONAL and feature-gated; it only mirrors the Go `json`/`yaml`
+# struct tags on `LineStats` for downstream convenience. Per DESIGN, machine
+# report bytes route through cf-gojson/cf-goyaml, never raw serde — and this
+# crate emits no report bytes at all.
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+# Enables serde derives on the shared `LineStats` type (declaration-order
+# preserving) for downstream callers; report serialization still flows through
+# cf-gojson/cf-goyaml, never these derives.
+serde = ["dep:serde"]

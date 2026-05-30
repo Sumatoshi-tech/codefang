@@ -1,0 +1,23 @@
+[package]
+name = "uast"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "uast"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+tree-sitter = { workspace = true }
+cf-version = { path = "../../crates/cf-version" }
+cf-gojson = { path = "../../crates/cf-gojson" }
+
+[features]
+# Long-tail tree-sitter grammars are feature-gated (DESIGN §5). Default set is
+# empty in the scaffold; grammar crates / vendored C are wired per-language.
+default = []

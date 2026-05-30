@@ -1,0 +1,81 @@
+{
+  "type": "Function",
+  "roles": ["Function", "Declaration"],
+  "props": {
+    "name": "add"
+  },
+  "children": [
+    {
+      "type": "Identifier",
+      "token": "add",
+      "roles": ["Name"]
+    },
+    {
+      "type": "Parameter",
+      "roles": ["Parameter"],
+      "props": {
+        "name": "a"
+      },
+      "children": [
+        {
+          "type": "Identifier",
+          "token": "a",
+          "roles": ["Name"]
+        }
+      ]
+    },
+    {
+      "type": "Parameter",
+      "roles": ["Parameter"],
+      "props": {
+        "name": "b"
+      },
+      "children": [
+        {
+          "type": "Identifier",
+          "token": "b",
+          "roles": ["Name"]
+        }
+      ]
+    },
+    {
+      "type": "Block",
+      "roles": ["Body"],
+      "children": [
+        {
+          "type": "Loop",
+          "props": {
+            "kind": "for"
+          },
+          "children": [
+            {
+              "type": "Return",
+              "roles": ["Return"],
+              "children": [
+                {
+                  "type": "BinaryOp",
+                  "roles": ["Operator"],
+                  "props": {
+                    "operator": "+"
+                  },
+                  "children": [
+                    {
+                      "type": "Identifier",
+                      "token": "a",
+                      "roles": ["Name"]
+                    },
+                    {
+                      "type": "Identifier",
+                      "token": "b",
+                      "roles": ["Name"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+} 

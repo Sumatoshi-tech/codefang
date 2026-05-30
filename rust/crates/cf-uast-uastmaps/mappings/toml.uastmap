@@ -1,0 +1,107 @@
+[language "toml", extensions: ".toml"]
+
+document <- (document) => uast(
+    type: "File"
+)
+
+table <- (table) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+inline_table <- (inline_table) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+table_array_element <- (table_array_element) => uast(
+    type: "Dict",
+    roles: "Literal"
+)
+
+pair <- (pair) => uast(
+    type: "KeyValue",
+    roles: "Key", "Value"
+)
+
+array <- (array) => uast(
+    type: "List",
+    roles: "Literal"
+)
+
+bare_key <- (bare_key) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+quoted_key <- (quoted_key) => uast(
+    token: "self",
+    type: "Identifier",
+    roles: "Name"
+)
+
+dotted_key <- (dotted_key) => uast(
+    type: "Identifier",
+    roles: "Name"
+)
+
+string <- (string) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+integer <- (integer) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+float <- (float) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+boolean <- (boolean) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+local_date <- (local_date) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+local_time <- (local_time) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+local_date_time <- (local_date_time) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+offset_date_time <- (offset_date_time) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)
+
+comment <- (comment) => uast(
+    token: "self",
+    type: "Comment",
+    roles: "Comment"
+)
+
+escape_sequence <- (escape_sequence) => uast(
+    token: "self",
+    type: "Literal",
+    roles: "Literal"
+)

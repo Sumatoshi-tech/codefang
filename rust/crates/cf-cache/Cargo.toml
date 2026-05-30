@@ -1,0 +1,41 @@
+[package]
+name = "cf-cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Analysis cache (UAST/blob caching keyed by git) — Rust port of the Go internal/cache package. Cross-commit LRU blob cache (over cf-alg-lru) with an FNV-128a Bloom pre-filter and size-aware cost-based eviction, plus the incremental-analysis metadata (cache.json) read/write/key/staleness helpers. Does NOT depend on the framework."
+
+[dependencies]
+# Generic thread-safe LRU (Go pkg/alg/lru): size-based + cost-sampling eviction,
+# Bloom pre-filter, value cloning on insert. Mirrors the Go import one-to-one.
+cf-alg-lru = { path = "../cf-alg-lru" }
+# Atomic cache.json write (Go internal/storage WriteAtomic): temp sibling, fsync,
+# chmod, rename. No machine-report bytes emitted by this crate.
+cf-storage = { path = "../cf-storage" }
+# Canonical Go-byte-compatible JSON writer (Go pkg/textutil WriteJSON via
+# cf-gojson). The cache.json metadata bytes must match Go's
+# textutil.WriteJSON(meta, pretty=true) output exactly; we route through this,
+# never raw serde_json, per the rewrite design.
+cf-textutil = { path = "../cf-textutil" }
+# SHA-256 cache-key derivation (Go crypto/sha256 + encoding/hex). Util only —
+# never used for machine report output.
+sha2 = { workspace = true }
+# IncrementalMeta PARSING only (ReadMeta -> json.Unmarshal). Writing goes through
+# cf-textutil/cf-gojson for byte identity; serde_json is used solely to decode the
+# on-disk cache.json (a Go-produced internal artifact), never to encode output.
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+# Hash<->byte copies and the i64<->usize size bookkeeping mirror the Go source's
+# integer model exactly; silence the pedantic cast lints.
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
