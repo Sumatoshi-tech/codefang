@@ -85,12 +85,20 @@ jobs:
       - name: Run markdownlint-cli2
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:
+          # Scope to the documentation surface only. Harness/spec markdown
+          # (.agents/**, .claude/**, specs/**, AGENTS.md, …) is not user-facing
+          # documentation and is not gated by the doc-quality rules.
           globs: |
-            **/*.md
-            !build/**
-            !vendor/**
-            !third_party/**
-            !node_modules/**
+            site/**/*.md
+            docs/**/*.md
+            README.md
+            CONTRIBUTING.md
+            CODE_OF_CONDUCT.md
+            SECURITY.md
+            SUPPORT.md
+            GOVERNANCE.md
+            THIRD_PARTY_NOTICES.md
+            CHANGELOG.md.proposed.md
 
   vale:
     name: Prose style (Vale, advisory)
@@ -104,6 +112,11 @@ jobs:
 
       - name: Run Vale (Microsoft + Google packs)
         uses: errata-ai/vale-action@reviewdog
+        # Step-level continue-on-error keeps this advisory check GREEN even when
+        # Vale/reviewdog exits non-zero (it does so on any error-level finding,
+        # independent of fail_on_error). Job-level continue-on-error only unblocks
+        # the run; it does not flip the reported check conclusion to success.
+        continue-on-error: true
         with:
           fail_on_error: false
           reporter: github-pr-check
@@ -123,9 +136,22 @@ jobs:
 
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@v6
+        # Advisory check: keep it green even if a new term is not yet in the
+        # dictionary. The dictionary is currently clean over the doc surface.
+        continue-on-error: true
         with:
           config: cspell.json
-          files: '**/*.md'
+          files: |
+            site/**/*.md
+            docs/**/*.md
+            README.md
+            CONTRIBUTING.md
+            CODE_OF_CONDUCT.md
+            SECURITY.md
+            SUPPORT.md
+            GOVERNANCE.md
+            THIRD_PARTY_NOTICES.md
+            CHANGELOG.md.proposed.md
           incremental_files_only: false
 
   lychee:
@@ -143,7 +169,18 @@ jobs:
             --verbose
             --max-concurrency 8
             --exclude-mail
-            './**/*.md'
+            'site/**/*.md'
+            'docs/**/*.md'
+            'README.md'
+            'CONTRIBUTING.md'
+            'CODE_OF_CONDUCT.md'
+            'SECURITY.md'
+            'SUPPORT.md'
+            'GOVERNANCE.md'
+            'THIRD_PARTY_NOTICES.md'
+            'CHANGELOG.md.proposed.md'
+            'llms.txt'
+            'llms-full.txt'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -47,7 +47,7 @@ This is relevant for:
 
 GitLab backup tarballs contain bare repositories at predictable paths:
 
-```
+```text
 backup.tar
 ├── repositories/
 │   └── @hashed/
@@ -291,7 +291,7 @@ devs_df.write.partitionBy("scan_date").parquet("s3://warehouse/codefang/devs/")
 The static analysis phase logs progress events at regular intervals (every
 1000 files). By default, only phase and file count are shown:
 
-```
+```text
 static: processing files=1000
 static: processing files=2000
 static: complete   files=5432
@@ -299,7 +299,7 @@ static: complete   files=5432
 
 With `--verbose`, RSS and aggregator buffer sizes are included:
 
-```
+```text
 static: processing files=1000 RSS=245MiB agg=12MiB
 static: processing files=2000 RSS=312MiB agg=18MiB
 static: complete   files=5432 RSS=280MiB agg=6MiB

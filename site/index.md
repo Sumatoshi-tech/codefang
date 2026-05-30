@@ -41,7 +41,7 @@ The heavy lifter for your codebase — deep code analysis through structure and 
 
 <hr class="cf-separator">
 
-```
+```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Codefang Overview                                              Score: 10/10 ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -83,7 +83,7 @@ analysis of entire repositories. One tool, one config, complete understanding.
 
 ## Distribution
 
-```
+```text
   Capabilities
   ──────────────────────────────────────────────────────────────────────────────
   UAST Parsing         ████████████████████  60+ languages via Tree-sitter
@@ -132,7 +132,7 @@ uast --version
 
 ## Quick example
 
-```
+```text
 $ codefang run -a static/complexity,static/halstead --format text .
 
 codefang (v2):
@@ -194,7 +194,7 @@ codefang (v2):
 
 <div class="grid cards" markdown>
 
--   :material-rocket-launch:{ .lg .middle } __Getting Started__
+- :material-rocket-launch:{ .lg .middle } **Getting Started**
 
     ---
 
@@ -202,7 +202,7 @@ codefang (v2):
     [Quick Start](getting-started/quickstart.md) ·
     [First Analysis](getting-started/first-analysis.md)
 
--   :material-book-open-variant:{ .lg .middle } __User Guide__
+- :material-book-open-variant:{ .lg .middle } **User Guide**
 
     ---
 
@@ -210,7 +210,7 @@ codefang (v2):
     [Configuration](guide/configuration.md) ·
     [Output Formats](guide/output-formats.md)
 
--   :material-cog-outline:{ .lg .middle } __Architecture__
+- :material-cog-outline:{ .lg .middle } **Architecture**
 
     ---
 
@@ -218,7 +218,7 @@ codefang (v2):
     [UAST System](architecture/uast.md) ·
     [Streaming Pipeline](architecture/streaming-pipeline.md)
 
--   :material-puzzle-outline:{ .lg .middle } __Integrations__
+- :material-puzzle-outline:{ .lg .middle } **Integrations**
 
     ---
 
@@ -226,14 +226,14 @@ codefang (v2):
     [Docker & Actions](integrations/docker-and-actions.md) ·
     [AI Agents](integrations/ai-agents.md)
 
--   :material-telescope:{ .lg .middle } __Operations__
+- :material-telescope:{ .lg .middle } **Operations**
 
     ---
 
     [Observability](operations/observability.md) ·
     [Large-Scale Scanning](operations/large-scale-scanning.md)
 
--   :material-account-group:{ .lg .middle } __Contributing__
+- :material-account-group:{ .lg .middle } **Contributing**
 
     ---
 

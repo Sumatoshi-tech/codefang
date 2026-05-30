@@ -100,7 +100,7 @@ The plot uses semantic colors (green = positive, yellow = neutral, red = negativ
 
 The terminal renderer provides a colored, Unicode-rich summary:
 
-```
+```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ SENTIMENT ANALYSIS                                       💬 ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛

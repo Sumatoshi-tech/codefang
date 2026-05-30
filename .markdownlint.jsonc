@@ -31,5 +31,10 @@
   "MD036": false,
 
   // MD034 bare URLs: badges and reference links occasionally use bare URLs.
-  "MD034": false
+  "MD034": false,
+
+  // MD025 single-title: MkDocs Material pages carry a YAML front-matter
+  // `title:` (for nav/browser title) AND a rendered `# H1`. Both are
+  // intentional, so don't treat the front-matter title as a second H1.
+  "MD025": { "front_matter_title": "" }
 }

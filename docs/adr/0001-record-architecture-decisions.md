@@ -8,7 +8,7 @@
 
 ## Context and problem statement
 
-Codefang is a reincarnation of the abandoned `hercules` tool, rebuilt with a modern engine. The rewrite made several significant choices — a two-binary split, a Tree-sitter-backed Universal Abstract Syntax Tree, libgit2 via cgo, a streaming pipeline, MkDocs Material for docs, and the Apache-2.0 licence. These decisions currently live only as prose scattered across the README and `site/architecture/`, or as feature-scoped FRDs under `specs/frds/`. New contributors cannot see *why* a choice was made, what was considered, or whether a past decision still holds. How should the project capture architecturally significant decisions so the reasoning survives the people who made it?
+Codefang is a reincarnation of the abandoned `hercules` tool, rebuilt with a modern engine. The rewrite made several significant choices — a two-binary split, a Tree-sitter-backed Universal Abstract Syntax Tree, libgit2 via cgo, a streaming pipeline, MkDocs Material for docs, and the Apache-2.0 license. These decisions currently live only as prose scattered across the README and `site/architecture/`, or as feature-scoped FRDs under `specs/frds/`. New contributors cannot see *why* a choice was made, what was considered, or whether a past decision still holds. How should the project capture architecturally significant decisions so the reasoning survives the people who made it?
 
 ## Decision drivers
 

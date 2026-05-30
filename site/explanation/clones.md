@@ -30,7 +30,7 @@ A clone pair is two functions whose AST structure is similar enough to be consid
 
 The ratio of detected clone pairs to total functions, computed globally across all files:
 
-```
+```text
 clone_ratio = total_clone_pairs / total_functions
 ```
 

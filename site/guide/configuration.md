@@ -23,7 +23,7 @@ When no explicit `--config` flag is provided, Codefang searches for a
 When the same setting is specified in multiple sources, the highest-priority
 source wins:
 
-```
+```text
 CLI flags  >  Environment variables  >  Config file  >  Compiled defaults
 ```
 

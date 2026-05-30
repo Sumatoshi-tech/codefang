@@ -103,7 +103,7 @@ A mapping file consists of:
 1. A **language declaration** with name and file extensions.
 2. One or more **mapping rules** that match Tree-sitter node types and produce UAST nodes.
 
-```
+```text
 language go [.go]
 
 function_declaration <- (function_declaration
@@ -121,7 +121,7 @@ function_declaration <- (function_declaration
 
 Each rule has four parts:
 
-```
+```text
 <rule_name> <- (<tree-sitter-pattern>) => uast(<uast-spec>)
 ```
 
@@ -155,7 +155,7 @@ Each rule has four parts:
 
 Rules can include conditions that filter matches:
 
-```
+```text
 public_method <- (method_declaration
     name: (identifier) @name
 ) where (visibility == "public") => uast(
@@ -172,7 +172,7 @@ child types against string literals.
 
 Rules can extend other rules to avoid duplication:
 
-```
+```text
 base_function <- (function_declaration) => uast(
     type: "Function",
     roles: "Declaration", "Function"
@@ -228,7 +228,7 @@ To add or customize language mappings:
 
 Create a `.uast` file for your language:
 
-```
+```text
 language rust [.rs]
 
 fn_item <- (function_item

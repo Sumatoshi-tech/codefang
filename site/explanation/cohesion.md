@@ -20,7 +20,7 @@ LCOM-HS is the industry-standard cohesion metric used by NDepend, JArchitect, an
 
 **Formula:**
 
-```
+```text
 LCOM = 1 - sum(mA) / (m × a)
 ```
 
@@ -55,7 +55,7 @@ For each function, the analyzer computes what fraction of its variables are shar
 
 **Formula:**
 
-```
+```text
 function_cohesion = shared_vars / total_unique_vars
 ```
 

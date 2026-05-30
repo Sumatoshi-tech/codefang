@@ -102,7 +102,7 @@ The `streaming.Planner` calculates optimal chunk boundaries. It lives in
 
 The scheduler decomposes the memory budget into four explicit regions:
 
-```
+```text
 B = P + W + A + S
 
 usable    = budget * 0.95              (S = 5% slack for GC headroom)
@@ -120,7 +120,7 @@ buffering factor, and the aggregator spill budget.
 
 The planner determines chunk size from the **working state** portion of the budget:
 
-```
+```text
 growth     = working_state_per_commit * 1.5  (safety margin)
 chunk_size = clamp(workState / growth, MinChunkSize, MaxChunkSize)
 ```
@@ -151,7 +151,7 @@ analyzers. Plumbing analyzers return 0 for both and are excluded from the sum.
 For a 10,000-commit repo with 4 GiB budget, 400 MiB pipeline overhead, and
 1.5 MiB/commit working state growth:
 
-```
+```text
 usable     = 4 GiB * 0.95          = 3,891 MiB
 remaining  = 3,891 - 400           = 3,491 MiB
 workState  = 3,491 * 0.60          = 2,095 MiB
@@ -189,7 +189,7 @@ The `ComputeSchedule()` function iterates buffering factors from `MaxBuffering`
 MinChunkSize`. Only the working state region (60% of remaining budget) is
 divided among buffering slots; the aggregator spill budget is unaffected.
 
-```
+```go
 for bf = maxBuffering; bf >= 1; bf-- {
     chunkSize = workState / (bf * effectiveGrowth)
     if chunkSize >= MinChunkSize {
@@ -208,7 +208,7 @@ for bf = maxBuffering; bf >= 1; bf-- {
 
 ### How double-buffering works
 
-```
+```text
                     Time ───────────────────────────────────────────>
 
 Chunk 1:  |==== Pipeline ====|==== Consume ====|
@@ -240,7 +240,7 @@ The scheduler handles the memory budget split through the buffering factor
 iteration. With `BufferingFactor = N`, the working state region is divided
 among N concurrent slots:
 
-```
+```text
 workState     = remaining * 0.60
 chunkSize     = workState / (N * effectiveGrowth)
 ```
@@ -389,7 +389,7 @@ flowchart TD
 The following diagram shows the complete lifecycle of a streaming analysis
 run with buffered pipelining (double-buffer shown) and checkpointing:
 
-```
+```text
 Time ──────────────────────────────────────────────────────────────────────>
 
 Phase:     INIT        CHUNK 1                    CHUNK 2                    CHUNK 3         FINALIZE

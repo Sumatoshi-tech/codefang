@@ -27,7 +27,7 @@ When two code entities are modified in the same commit, their coupling counter i
 
 Coupling strength is normalized to a 0-1 scale using the formula:
 
-```
+```text
 strength(A, B) = co_changes(A, B) / max(co_changes(A, B), changes(A), changes(B))
 ```
 

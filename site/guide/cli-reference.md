@@ -196,7 +196,7 @@ codefang run -a '*' .
 # include vendored deps (node_modules/, vendor/, …)
 codefang run -a '*' --include-vendored .
 
-# restore pre-codefang-2026-04 behaviour (include everything)
+# restore pre-codefang-2026-04 behavior (include everything)
 codefang run -a '*' --include-vendored --include-generated .
 
 # skip extras that enry doesn't know about (e.g. Python venv, Rust target/)
@@ -208,7 +208,7 @@ codefang run -a '*' --extra-excluded-prefixes '.venv/,target/' .
     Earlier versions of Codefang analysed vendored and generated files by
     default (they needed the confusingly-named `--skip-blacklist=true` to be
     excluded). Starting from 2026-04, defaults flip: vendor / generated
-    are **excluded by default**. To restore the old behaviour:
+    are **excluded by default**. To restore the old behavior:
 
     ```bash
     codefang run ... --include-vendored --include-generated

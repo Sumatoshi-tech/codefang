@@ -62,7 +62,7 @@ flowchart TD
 
 ### Example agent prompt
 
-```
+```text
 Generate a Go function that parses CSV files with configurable delimiters
 and header handling. After generating the code, use codefang_analyze to
 check complexity. If any function has cyclomatic complexity > 10, refactor
@@ -229,7 +229,7 @@ flowchart LR
 
 ### Example agent prompt
 
-```
+```text
 Before writing new code for this module, analyze the existing files in
 pkg/handlers/ using codefang_analyze to understand the current code style
 baselines. Then generate the new handler following the same patterns --
@@ -329,7 +329,7 @@ development.
 
 Agents should handle common errors gracefully:
 
-```
+```text
 1. If codefang_analyze returns an error for unsupported language,
    fall back to basic heuristic analysis.
 2. If codefang_history fails (not a git repo), skip history-based
@@ -344,7 +344,7 @@ Agents should handle common errors gracefully:
 
 Here is a complete agent workflow for implementing a new feature:
 
-```
+```text
 1. UNDERSTAND: Parse existing code with uast_parse to understand structure
 2. ASSESS: Run codefang_history (couples, devs) to understand change risk
 3. PLAN: Use architectural context to plan the implementation

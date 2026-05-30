@@ -262,7 +262,7 @@ merges the results into a single output document in the requested format.
 The history analysis pipeline is built around a **Runner** that coordinates
 the full lifecycle:
 
-```
+```text
 Initialize --> ProcessChunk (x N) --> FinalizeWithAggregators
 ```
 
@@ -284,7 +284,7 @@ The **Runner** supports two execution strategies:
 
 Configuration follows a clear priority chain:
 
-```
+```text
 CLI flags  >  Environment variables  >  .codefang.yaml  >  Compiled defaults
 ```
 

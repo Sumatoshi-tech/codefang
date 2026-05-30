@@ -239,7 +239,7 @@ produce clean changelogs and enable automated versioning.
 
 **Format:**
 
-```
+```text
 <type>(<optional scope>): <description>
 
 <optional body>

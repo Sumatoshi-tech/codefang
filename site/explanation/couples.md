@@ -20,7 +20,7 @@ A square matrix where each cell `[i][j]` counts the number of commits in which f
 
 **Coupling strength** is computed using the code-maat formula:
 
-```
+```text
 strength = co_changes / average(revisions_file1, revisions_file2)
 ```
 
@@ -72,7 +72,7 @@ The couples analyzer follows the **TC/Aggregator pattern**:
 
 The coupling strength formula follows the **code-maat** academic standard (Adam Tornhill, "Your Code as a Crime Scene"):
 
-```
+```text
 degree = shared_revisions / average(revisions_A, revisions_B)
 ```
 

@@ -115,8 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sentiment, and devs `ParseReportData` paths; formalized shotness shallow
   extraction; and integrated VADER (GoVader) for real sentiment analysis.
 - Default analysis output across both phases now excludes vendor and generated
-  files, matching the convention of mature multi-language analysers. Pass
-  `--include-vendored --include-generated` to restore the previous behaviour.
+  files, matching the convention of mature multi-language analyzers. Pass
+  `--include-vendored --include-generated` to restore the previous behavior.
   **Breaking change.**
 - Made `--languages` cross-phase. Static analysis previously ignored the flag;
   it now narrows both static and history phases through a single

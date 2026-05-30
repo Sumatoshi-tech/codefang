@@ -2,7 +2,7 @@
 
 Codefang is licensed under [Apache-2.0](LICENSE). It reuses or bundles content
 from the projects below. This file names each borrowed component and points to
-its upstream licence; it does not reproduce the full licence texts. Consult the
+its upstream license; it does not reproduce the full license texts. Consult the
 linked upstream sources for the authoritative terms.
 
 The full dependency graph (the MIT / Apache-2.0 / BSD Go modules pulled in via
@@ -12,7 +12,7 @@ warrants an explicit notice.
 
 ## Borrowed content
 
-| Component | What it is | Upstream licence | Link |
+| Component | What it is | Upstream license | Link |
 | --- | --- | --- | --- |
 | Contributor Covenant 2.1 | Text adapted into our [code of conduct](site/contributing/code-of-conduct.md) | CC-BY-4.0 | <https://www.contributor-covenant.org/version/2/1/code_of_conduct.html> |
 | Tree-sitter grammars | Per-language parser grammars consumed via `go-sitter-forest` (one module per language in `go.mod`) | Per-grammar (mostly MIT / Apache-2.0) | <https://github.com/alexaandru/go-sitter-forest> |
@@ -23,7 +23,7 @@ warrants an explicit notice.
 
 - The Tree-sitter grammars are a category: each language grammar listed in
   `go.mod` under `github.com/alexaandru/go-sitter-forest/*` carries its own
-  upstream licence. See the linked aggregator for the per-grammar provenance.
+  upstream license. See the linked aggregator for the per-grammar provenance.
 - libgit2 ships under GPL-2.0 **with a linking exception** that permits linking
   the compiled library into other programs and distributing those combinations
   without restriction. The exception and full text live in

@@ -30,12 +30,12 @@ we can reproduce, the faster we can fix.
 ## I found a security vulnerability
 
 **Do not open a public issue.** Security holes go through the private channel so we
-can patch before they get weaponised. See [SECURITY.md](SECURITY.md) for the full
+can patch before they get weaponized. See [SECURITY.md](SECURITY.md) for the full
 drill—it routes you to GitHub's private vulnerability reporting (Security Advisories),
 not the public Issues tracker.
 
 ## What to expect
 
 This project is maintained on a best-effort basis. We triage questions and bug reports
-as time allows, and we prioritise reproducible reports. Be kind, be patient, and bring
+as time allows, and we prioritize reproducible reports. Be kind, be patient, and bring
 details—that's how the dumbbells get racked.

@@ -94,7 +94,7 @@ no-op tracer and meter providers:
 
 The entire analysis pipeline is instrumented with hierarchical spans:
 
-```
+```text
 codefang.run                              (CLI entry point)
 |
 +-- codefang.init                         (analyzer + repo initialization)
@@ -189,7 +189,7 @@ When connected to an OTLP collector, the following metrics are exported:
 Duration histograms use these bucket boundaries (in seconds), covering
 sub-second static checks through multi-minute history pipelines:
 
-```
+```text
 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600
 ```
 
@@ -349,7 +349,7 @@ HTTP handlers:
 
 ### Liveness probe
 
-```
+```text
 GET /healthz  ->  HTTP 200  {"status": "ok"}
 ```
 
@@ -357,7 +357,7 @@ Always returns 200. Use as a Kubernetes liveness probe.
 
 ### Readiness probe
 
-```
+```text
 GET /readyz   ->  HTTP 200  {"status": "ok"}
               ->  HTTP 503  {"status": "unavailable"}
 ```
@@ -372,7 +372,7 @@ mux.Handle("/readyz", observability.ReadyHandler(dbCheck, cacheCheck))
 
 ### Prometheus metrics endpoint
 
-```
+```text
 GET /metrics  ->  Prometheus exposition format
 ```
 
@@ -428,7 +428,7 @@ end-to-end from the CLI entry point through every layer:
 
 ### Propagation path
 
-```
+```text
 CLI (codefang.run)
  |
  +-> framework.RunStreaming(ctx)

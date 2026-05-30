@@ -3,7 +3,7 @@
 # Security policy
 
 Found a way to make Codefang misbehave that goes beyond a normal bug? We want to
-hear about it privately first, so we can fix it before it gets weaponised.
+hear about it privately first, so we can fix it before it gets weaponized.
 
 ## Supported versions
 

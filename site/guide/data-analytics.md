@@ -68,7 +68,7 @@ codefang run --format ndjson --per-file /repo > report.ndjson
 
 One JSON line per analyzer. First line is metadata:
 
-```
+```json
 {"version":"codefang.run.v1","metadata":{"repo_name":"myproject",...}}
 {"id":"static/complexity","mode":"static","report":{...}}
 {"id":"history/sentiment","mode":"history","report":{...}}

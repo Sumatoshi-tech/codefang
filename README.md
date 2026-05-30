@@ -32,6 +32,7 @@ This is a **reincarnation**. We took the core philosophy, stripped out the obsol
 Once upon a time, there was a company called **source{d}**. They pioneered "Mining Software Repositories" on a massive scale. Their crown jewel was `hercules`, a tool that could chew through git logs faster than you can say `git blame`.
 
 It gave us insights like:
+
 - **Burndown Charts**: How much code from 2015 is still surviving today?
 - **Coupling**: If I change `A.go`, does `B.go` always change with it?
 
@@ -98,8 +99,8 @@ We made a few bold choices in the rewrite.
 
 The original `hercules` was a monolith. We split it in two:
 
-1.  **`uast` (The Parser)**: This tool focuses on one thing—turning source code into a standardized tree structure. It uses **Tree-sitter** under the hood to support practically every language you care about (Go, Python, JS, Rust, C++, Java, and even COBOL... probably).
-2.  **`codefang` (The Analyzer)**: This tool consumes the data. It takes UASTs for static analysis or Git repositories for history analysis.
+1. **`uast` (The Parser)**: This tool focuses on one thing—turning source code into a standardized tree structure. It uses **Tree-sitter** under the hood to support practically every language you care about (Go, Python, JS, Rust, C++, Java, and even COBOL... probably).
+2. **`codefang` (The Analyzer)**: This tool consumes the data. It takes UASTs for static analysis or Git repositories for history analysis.
 
 ### Why UAST?
 
@@ -116,26 +117,30 @@ Analyzers are modular. You want to measure "Sentiment of Code Comments"? There's
 Don't just use AI to write code. Use Codefang to verify it. By giving `codefang` and `uast` to your AI agent as tools (via MCP or shell), you create a self-correcting quality loop.
 
 **1. The Self-Correcting Coder**
-*   **Scenario:** Agent generates a new function or refactors a file.
-*   **Action:** Agent runs `codefang analyze -a complexity` on the new code.
-*   **Outcome:** If complexity scores are high (e.g., > 15), the agent self-reflects: *"This is too complex. I need to simplify logic before showing it to the user."*
-*   **Result:** Clean, maintainable code *before* it even hits the PR.
+
+- **Scenario:** Agent generates a new function or refactors a file.
+- **Action:** Agent runs `codefang analyze -a complexity` on the new code.
+- **Outcome:** If complexity scores are high (e.g., > 15), the agent self-reflects: *"This is too complex. I need to simplify logic before showing it to the user."*
+- **Result:** Clean, maintainable code *before* it even hits the PR.
 
 **2. Architectural Context Injection**
-*   **Scenario:** You ask the agent about a high-level architectural change.
-*   **Problem:** "Context Window Exceeded" or the agent hallucinates file relationships.
-*   **Solution:** Agent runs `uast parse` to get the AST structure or `codefang analyze -a imports` to map the dependency graph. It learns the system architecture without reading every single line of text.
+
+- **Scenario:** You ask the agent about a high-level architectural change.
+- **Problem:** "Context Window Exceeded" or the agent hallucinates file relationships.
+- **Solution:** Agent runs `uast parse` to get the AST structure or `codefang analyze -a imports` to map the dependency graph. It learns the system architecture without reading every single line of text.
 
 **3. Risk-Aware Refactoring**
-*   **Scenario:** Agent is asked to refactor a legacy module.
-*   **Action:** Agent runs `codefang history -a couples`.
-*   **Insight:** *"Warning: Changing `User.go` usually breaks `Billing.go` 80% of the time."*
-*   **Result:** Agent proactively checks related files for regressions, preventing bugs that a simple text-based analysis would miss.
+
+- **Scenario:** Agent is asked to refactor a legacy module.
+- **Action:** Agent runs `codefang history -a couples`.
+- **Insight:** *"Warning: Changing `User.go` usually breaks `Billing.go` 80% of the time."*
+- **Result:** Agent proactively checks related files for regressions, preventing bugs that a simple text-based analysis would miss.
 
 **4. Style & Consistency Enforcement**
-*   **Scenario:** "Make this look like the rest of the project."
-*   **Action:** Agent analyzes `cohesion` and `comments` metrics of existing high-quality files to set a baseline.
-*   **Result:** Agent generates code that matches the *structural* quality standards of your specific repo, not just generic language syntax.
+
+- **Scenario:** "Make this look like the rest of the project."
+- **Action:** Agent analyzes `cohesion` and `comments` metrics of existing high-quality files to set a baseline.
+- **Result:** Agent generates code that matches the *structural* quality standards of your specific repo, not just generic language syntax.
 
 ---
 
