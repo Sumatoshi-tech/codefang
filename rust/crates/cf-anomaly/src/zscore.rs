@@ -1,65 +1,72 @@
 //! Trailing-window Z-score computation.
 //!
 //! Port of `ComputeZScores` in `internal/analyzers/anomaly/zscore.go`. For each
-//! index `i`, the Z-score is computed relative to the trailing window ending at
-//! (and including) `i`: `values[max(0, i-window+1) ..= i]`.
+//! index `i`, the Z-score is computed relative to the trailing window of values
+//! **before** `i`: `values[max(0, i-window) .. i]` (exclusive of `i`), exactly as
+//! Go does.
 //!
-//! Edge rules mirror Go exactly:
-//! * fewer than [`MIN_SAMPLES_FOR_Z_SCORE`] samples in the trailing window → `0`;
+//! Edge rules mirror Go verbatim:
+//! * the window for `i == 0` is empty → Z-score `0`;
 //! * zero standard deviation and the value equals the mean → `0`;
-//! * zero standard deviation but the value differs → [`Z_SCORE_SENTINEL_HIGH`]
-//!   (an unbounded-spike marker).
+//! * zero standard deviation but the value differs → the signed sentinel
+//!   `copysign(`[`Z_SCORE_MAX_SENTINEL`]`, diff)` (so it may be `-100.0`).
 
-use cf_alg_stats::mean_std_dev;
+use cf_alg_stats::{mean_std_dev, Z_SCORE_MAX_SENTINEL};
 
-/// Minimum trailing-window samples before a Z-score is meaningful.
-///
-/// Mirrors Go `minSamplesForZScore`.
-pub const MIN_SAMPLES_FOR_Z_SCORE: usize = 3;
-
-/// Sentinel Z-score for a zero-variance trailing window whose current value
-/// differs from the window mean. Mirrors Go `zScoreSentinelHigh` (`100.0`) and
-/// `cf_alg_stats`'s `ZSCORE_MAX_SENTINEL`.
-pub const Z_SCORE_SENTINEL_HIGH: f64 = 100.0;
+/// Sentinel magnitude for a zero-variance trailing window whose current value
+/// differs from the window mean. Re-exported from `cf_alg_stats` (Go
+/// `stats.ZScoreMaxSentinel` = `100.0`); the emitted value is signed via
+/// `copysign`, matching Go.
+pub use cf_alg_stats::Z_SCORE_MAX_SENTINEL as Z_SCORE_SENTINEL;
 
 /// Returns, for each index `i`, the trailing-window Z-score of `values[i]`.
 ///
-/// Mirrors Go `ComputeZScores`. The window start is `max(0, i - window + 1)`; the
-/// population mean/std come from [`cf_alg_stats::mean_std_dev`]; the edge rules
-/// above are applied verbatim.
+/// Mirrors Go `ComputeZScores` operation-for-operation:
+/// * `window` is clamped up to `1` when `< 1`;
+/// * the window is `values[max(0, i-window) .. i]` (**exclusive** of `i`);
+/// * an empty window (`i == 0`) yields `0`;
+/// * mean/std come from [`cf_alg_stats::mean_std_dev`];
+/// * zero-std yields `0` when the value equals the mean, else
+///   `copysign(Z_SCORE_MAX_SENTINEL, value - mean)`.
 #[must_use]
 pub fn compute_z_scores(values: &[f64], window: usize) -> Vec<f64> {
-    let n = values.len();
-    let mut result = vec![0.0_f64; n];
-    if n == 0 {
-        return result;
+    let count = values.len();
+    if count == 0 {
+        return Vec::new();
     }
 
-    for i in 0..n {
-        // Go: start := i - window + 1; if start < 0 { start = 0 }.
-        // (i + 1).saturating_sub(window) == max(0, i - window + 1) for usize.
-        let start = (i + 1).saturating_sub(window);
-        let window_vals = &values[start..=i];
+    // Go: if window < 1 { window = 1 }. usize is >= 0, so only 0 needs clamping.
+    let window = window.max(1);
 
-        if window_vals.len() < MIN_SAMPLES_FOR_Z_SCORE {
-            result[i] = 0.0;
+    let mut scores = vec![0.0_f64; count];
+
+    for i in 0..count {
+        // Go: start := max(0, i-window). `i.saturating_sub(window)` == max(0, i-window).
+        let start = i.saturating_sub(window);
+        let window_slice = &values[start..i]; // EXCLUSIVE of i, matching Go.
+
+        if window_slice.is_empty() {
+            scores[i] = 0.0;
             continue;
         }
 
-        let (mean, std) = mean_std_dev(window_vals);
-        if std == 0.0 {
-            result[i] = if (values[i] - mean).abs() > 0.0 {
-                Z_SCORE_SENTINEL_HIGH
-            } else {
+        let (mean, stddev) = mean_std_dev(window_slice);
+
+        if stddev == 0.0 {
+            let diff = values[i] - mean;
+            scores[i] = if diff == 0.0 {
                 0.0
+            } else {
+                // Go: math.Copysign(stats.ZScoreMaxSentinel, diff).
+                Z_SCORE_MAX_SENTINEL.copysign(diff)
             };
             continue;
         }
 
-        result[i] = (values[i] - mean) / std;
+        scores[i] = (values[i] - mean) / stddev;
     }
 
-    result
+    scores
 }
 
 #[cfg(test)]
@@ -68,38 +75,50 @@ mod tests {
 
     #[test]
     fn empty_input() {
+        // Go returns nil; we return an empty Vec (same length: 0).
         assert!(compute_z_scores(&[], 5).is_empty());
     }
 
     #[test]
-    fn below_min_samples_is_zero() {
-        // Mirrors Go TestComputeZScores_WindowOfOne: a window never reaching the
-        // 3-sample minimum yields all zeros.
-        let z = compute_z_scores(&[10.0, 20.0, 30.0], 1);
-        assert_eq!(z, vec![0.0, 0.0, 0.0]);
+    fn first_index_window_is_empty_zero() {
+        // i == 0 has an empty trailing window -> 0.
+        let z = compute_z_scores(&[10.0, 20.0, 30.0], 3);
+        assert_eq!(z[0], 0.0);
     }
 
     #[test]
     fn zero_stddev_equal_is_zero() {
-        // Mirrors Go TestComputeZScores_ZeroStdDev: flat history, value equals
-        // the mean -> z 0 once enough samples accumulate.
-        let z = compute_z_scores(&[5.0, 5.0, 5.0, 5.0], 4);
+        // Mirrors Go TestComputeZScores_ZeroStdDev: flat trailing window, value
+        // equals the mean -> 0.
+        let z = compute_z_scores(&[5.0, 5.0, 5.0, 5.0], 3);
         assert_eq!(z, vec![0.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]
-    fn zero_stddev_with_diff_uses_sentinel() {
+    fn zero_stddev_with_diff_uses_signed_sentinel() {
         // Mirrors Go TestComputeZScores_SentinelOnZeroStdDevWithDiff: a flat
-        // trailing window then a differing value -> sentinel 100.0.
-        let z = compute_z_scores(&[1.0, 1.0, 1.0, 9.0], 4);
-        assert_eq!(z[3], Z_SCORE_SENTINEL_HIGH);
+        // trailing window then a larger value -> +sentinel.
+        let z = compute_z_scores(&[1.0, 1.0, 1.0, 9.0], 3);
+        assert_eq!(z[3], Z_SCORE_MAX_SENTINEL);
+        // A smaller value than a flat window -> -sentinel (copysign).
+        let z2 = compute_z_scores(&[9.0, 9.0, 9.0, 1.0], 3);
+        assert_eq!(z2[3], -Z_SCORE_MAX_SENTINEL);
     }
 
     #[test]
-    fn basic_spike_positive() {
-        // Mirrors Go TestComputeZScores_BasicSpike: a spike after varied history
-        // yields a large positive (finite) z-score.
-        let z = compute_z_scores(&[1.0, 2.0, 3.0, 2.0, 50.0], 5);
+    fn basic_spike_finite_positive() {
+        // Trailing window excludes i; a spike after varied history gives a large
+        // finite positive z-score.
+        let z = compute_z_scores(&[1.0, 2.0, 3.0, 2.0, 50.0], 4);
         assert!(z[4] > 1.0, "spike z-score should be large positive, got {}", z[4]);
+    }
+
+    #[test]
+    fn window_clamped_to_one() {
+        // window 0 clamps to 1: each i sees exactly the single prior value, which
+        // has zero variance, so any change yields the signed sentinel.
+        let z = compute_z_scores(&[1.0, 2.0], 0);
+        assert_eq!(z[0], 0.0);
+        assert_eq!(z[1], Z_SCORE_MAX_SENTINEL);
     }
 }

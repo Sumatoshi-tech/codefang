@@ -499,7 +499,7 @@ mod tests {
             net_churn: 7,
             ..Default::default()
         };
-        let json = Encoder::marshal().encode(&cm.to_go_value());
+        let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         // No `files`/`languages` keys when empty; integer fields present.
         assert_eq!(
             json,
@@ -521,7 +521,7 @@ mod tests {
             languages,
             author_id: 42,
         };
-        let json = Encoder::marshal().encode(&cm.to_go_value());
+        let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         // "Go" < "Python" by UTF-8 byte order.
         assert_eq!(
             json,
@@ -536,7 +536,7 @@ mod tests {
             max_abs_z_score: 5.0,
             ..Default::default()
         };
-        let json = Encoder::marshal().encode(&rec.to_go_value());
+        let json = Encoder::marshal().encode_to_string(&rec.to_go_value());
         // `files` has no omitempty => `null` for an empty slice.
         assert!(json.contains(r#""files":null"#), "got: {json}");
     }
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn computed_metrics_omits_empty_external_sections() {
         let cm = ComputedMetrics::default();
-        let json = Encoder::marshal().encode(&cm.to_go_value());
+        let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         assert!(!json.contains("external_anomalies"), "got: {json}");
         assert!(!json.contains("external_summaries"), "got: {json}");
         // anomalies/time_series are always present as `[]`.
@@ -558,7 +558,7 @@ mod tests {
             threshold: 2.0,
             ..Default::default()
         };
-        let json = Encoder::marshal().encode(&agg.to_go_value());
+        let json = Encoder::marshal().encode_to_string(&agg.to_go_value());
         // Go renders float32(2.0) -> 2 through the json float encoder.
         assert!(json.contains(r#""threshold":2"#), "got: {json}");
     }
