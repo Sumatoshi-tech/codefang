@@ -187,6 +187,8 @@ mod tests {
 
     #[test]
     fn count_is_sixty_eight() {
+        // 68 languages, matching the 68 `.uastmap` data files in
+        // `pkg/uast/uastmaps` and the 68 keys of `languages.go`'s `languageFuncs`.
         assert_eq!(len(), 68);
         assert_eq!(EMBEDDED_MAPPING_COUNT, 68);
         assert_eq!(EXPECTED.len(), 68);

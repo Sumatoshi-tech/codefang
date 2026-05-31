@@ -284,6 +284,6 @@ mod tests {
 
         let changes = detect_changes(Some(&a), Some(&b));
         assert_eq!(changes[0].change_type, ChangeType::Modified);
-        assert!(changes[0].before.as_ref().map(|x| x.r#type.as_str()) == Some("File"));
+        assert!(changes[0].before.as_ref().map(|x| x.node_type.as_str()) == Some("File"));
     }
 }

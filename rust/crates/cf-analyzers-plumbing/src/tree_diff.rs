@@ -7,7 +7,7 @@
 //! every file is reported as an insert (Go's `treeForFirstCommit`).
 
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
-use crate::git_model::{Change, ChangeEntry, Changes, Commit, Hash};
+use crate::git_model::{Change, ChangeEntry, Changes, Hash};
 
 /// Source of trees and tree diffs, decoupling the provider from libgit2.
 ///

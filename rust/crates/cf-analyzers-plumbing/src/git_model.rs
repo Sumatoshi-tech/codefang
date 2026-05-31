@@ -16,7 +16,7 @@
 ///
 /// Wrapped in a newtype so it can be used as a `HashMap` key (the blob cache is
 /// keyed by hash) and rendered identically to go-git (`%x`, 40 lowercase hex).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Hash(pub [u8; 20]);
 
 impl Hash {
@@ -123,9 +123,9 @@ pub struct Signature {
 /// The minimal commit modelled here, mirroring gitlib's `Commit`.
 ///
 /// Only the fields the plumbing providers consult are modelled: the author
-/// signature ([`IdentityDetector`](crate::identity_detector::IdentityDetector)
+/// signature ([`crate::identity_detector::IdentityDetector`]
 /// reads `Author()`) and the committer signature
-/// ([`TicksSinceStart`](crate::ticks::TicksSinceStart) reads
+/// ([`crate::ticks::TicksSinceStart`] reads
 /// `Committer().When`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commit {

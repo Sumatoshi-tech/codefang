@@ -39,7 +39,7 @@ const CACHE_KEY_SEPARATOR: &str = ":";
 ///
 /// Field order is significant: it matches the Go struct declaration order, which
 /// governs the emitted JSON key order (see [`to_govalue`]).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IncrementalMeta {
     /// Cache format version.
     #[serde(rename = "version")]
@@ -64,36 +64,30 @@ pub struct IncrementalMeta {
     pub timestamp: String,
 }
 
-impl Default for IncrementalMeta {
-    fn default() -> Self {
-        Self {
-            version: 0,
-            head_sha: String::new(),
-            branch: String::new(),
-            root_sha: String::new(),
-            commit_count: 0,
-            analyzer_ids: Vec::new(),
-            timestamp: String::new(),
-        }
-    }
-}
-
 impl IncrementalMeta {
     /// Builds the Go-compatible [`GoValue`] for this metadata, with fields in
     /// struct declaration order (struct-origin object, NOT byte-sorted) so the
     /// emitted JSON key order matches Go's `encoding/json` for this struct.
     fn to_govalue(&self) -> GoValue {
-        GoValue::object([
-            ("version", GoValue::Int(self.version)),
-            ("head_sha", GoValue::str(&self.head_sha)),
-            ("branch", GoValue::str(&self.branch)),
-            ("root_sha", GoValue::str(&self.root_sha)),
-            ("commit_count", GoValue::Int(self.commit_count)),
+        // STRUCT-origin object: emit fields in Go struct DECLARATION order, NOT
+        // byte-sorted. Go's `encoding/json` sorts keys only for `map[string]X`;
+        // a struct (`IncrementalMeta`) emits fields in source order. We therefore
+        // construct the `GoValue::Object` variant DIRECTLY (which preserves the
+        // given order) rather than via `GoValue::object(...)`, whose helper
+        // byte-sorts keys for the map-origin case. This is the dual-mode `GoMap`
+        // distinction from DESIGN.md §2.2 expressed with the encoder's current
+        // surface.
+        GoValue::Object(vec![
+            ("version".to_string(), GoValue::Int(self.version)),
+            ("head_sha".to_string(), GoValue::str(&self.head_sha)),
+            ("branch".to_string(), GoValue::str(&self.branch)),
+            ("root_sha".to_string(), GoValue::str(&self.root_sha)),
+            ("commit_count".to_string(), GoValue::Int(self.commit_count)),
             (
-                "analyzer_ids",
-                GoValue::Array(self.analyzer_ids.iter().map(|s| GoValue::str(s)).collect()),
+                "analyzer_ids".to_string(),
+                GoValue::Array(self.analyzer_ids.iter().map(GoValue::str).collect()),
             ),
-            ("timestamp", GoValue::str(&self.timestamp)),
+            ("timestamp".to_string(), GoValue::str(&self.timestamp)),
         ])
     }
 }
@@ -313,7 +307,9 @@ mod tests {
 
     // Byte-identity of the on-disk cache.json vs Go's
     // textutil.WriteJSON(meta, pretty=true): 2-space indent, space after colon,
-    // empty array collapsed, struct field declaration order, trailing newline.
+    // empty array collapsed, struct field DECLARATION order, trailing newline.
+    // `to_govalue` builds the struct-origin object in declaration order (not the
+    // byte-sorted map-origin helper), so this golden matches Go exactly.
     #[test]
     fn cache_json_byte_layout() {
         let dir = tempdir().unwrap();

@@ -153,9 +153,9 @@ impl IdentityDetector {
         let reader = BufReader::new(file);
         let mut dict: HashMap<String, i64> = HashMap::new();
         let mut reverse: Vec<String> = Vec::new();
-        let mut size: i64 = 0;
-        for line in reader.lines() {
+        for (size, line) in reader.lines().enumerate() {
             let line = line?;
+            let size = size as i64;
             // Go uses bufio.Scanner which strips the trailing newline only;
             // it does NOT trim other whitespace, and processes every line
             // (including blank ones). Mirror that: split on '|' directly.
@@ -164,7 +164,6 @@ impl IdentityDetector {
                 dict.insert(id.to_lowercase(), size);
             }
             reverse.push(ids[0].to_string());
-            size += 1;
         }
         reverse.push(AUTHOR_MISSING_NAME.to_string());
         self.people_dict = dict;
@@ -189,11 +188,10 @@ impl IdentityDetector {
         let mut size: i64 = 0;
         for c in commits {
             let sig = format!("{} <{}>", c.author.name, c.author.email).to_lowercase();
-            dict.entry(sig).or_insert_with(|| {
-                let id = size;
+            if let std::collections::hash_map::Entry::Vacant(slot) = dict.entry(sig) {
+                slot.insert(size);
                 size += 1;
-                id
-            });
+            }
         }
         let mut reverse = vec![String::new(); size as usize];
         for (key, &val) in &dict {

@@ -1,5 +1,5 @@
 //! Minimal Go `encoding/json`-byte-compatible encoder, shaped after the
-//! design's tier-0 `cf-gojson` crate (DESIGN.md §2.2).
+//! design's tier-0 `cf-gojson` crate (DESIGN.md sec 2.2).
 //!
 //! Per the design, machine-format report bytes must be byte-identical to Go's
 //! `encoding/json`, which differs from `serde_json` on four points: map-key
@@ -46,7 +46,7 @@ pub enum GoValue {
     Map(BTreeMap<String, GoValue>),
 }
 
-/// Encoder configuration mirroring `cf-gojson::Encoder` (DESIGN.md §2.2).
+/// Encoder configuration mirroring `cf-gojson::Encoder` (DESIGN.md sec 2.2).
 #[derive(Debug, Clone)]
 pub struct Encoder {
     /// `None` = compact (`json.Marshal`); `Some("  ")` = `SetIndent("", "  ")`.
@@ -239,10 +239,38 @@ mod tests {
 
     #[test]
     fn html_escaping_on_by_default() {
+        // Go encoding/json escapes <, > and & by default (DESIGN.md 2.1):
+        // '<' -> <, '>' -> >, '&' -> &. The default Encoder has
+        // escape_html=true, so the output must contain the escaped forms, NOT
+        // the raw characters.
         let enc = Encoder::default();
         assert_eq!(
             enc.encode(&GoValue::Str("a<b>&c".to_string())),
+            "\"a\\u003cb\\u003e\\u0026c\""
+        );
+    }
+
+    #[test]
+    fn html_escaping_can_be_disabled() {
+        // SetEscapeHTML(false) leaves <, >, & untouched.
+        let enc = Encoder {
+            indent: None,
+            escape_html: false,
+            trailing_newline: false,
+        };
+        assert_eq!(
+            enc.encode(&GoValue::Str("a<b>&c".to_string())),
             r#""a<b>&c""#
+        );
+    }
+
+    #[test]
+    fn unicode_line_separators_escaped_when_html_on() {
+        // Go escapes U+2028/U+2029 to \u2028/\u2029 when HTML-escaping is on.
+        let enc = Encoder::default();
+        assert_eq!(
+            enc.encode(&GoValue::Str("a\u{2028}b\u{2029}c".to_string())),
+            "\"a\\u2028b\\u2029c\""
         );
     }
 

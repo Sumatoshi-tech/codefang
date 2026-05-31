@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
 use crate::blob_cache::CachedBlob;
 use crate::git_model::{Action, Change, Changes, Hash};
-use crate::uast_iface::{AllowAllPathFilter, Node, PathFilter, SharedParser, SharedPathFilter};
+use crate::uast_iface::{AllowAllPathFilter, Node, SharedParser, SharedPathFilter};
 use std::sync::Arc;
 
 /// Maximum blob size (bytes) for UAST parsing, mirroring Go's

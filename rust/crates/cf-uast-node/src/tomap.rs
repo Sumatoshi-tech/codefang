@@ -158,20 +158,16 @@ mod tests {
         n.id = vec![0xde, 0xad];
         n.add_child(Node::with_token("Identifier", "x"));
         let json = Encoder::marshal().encode_to_string(&n.to_map());
-        let keys: Vec<&str> = ["children", "id", "pos", "props", "roles", "token", "type"]
-            .iter()
-            .copied()
-            .collect();
-        // Verify each top-level key appears in byte-sorted order.
-        let mut last = 0usize;
-        for k in keys {
-            let needle = format!("\"{}\":", k);
-            let pos = json.find(&needle).unwrap_or_else(|| panic!("missing {k}"));
-            assert!(pos >= last, "key {k} out of order");
-            last = pos;
-        }
-        // id is hex-encoded from raw bytes.
-        assert!(json.contains(r#""id":"dead""#));
+
+        // Assert the exact byte-sorted output (the byte-identity goal). Top-level
+        // keys emit in raw-UTF-8 byte order: children, id, pos, props, roles,
+        // token, type; `id` is hex-encoded (`fmt.Sprintf("%x", id)`); the nested
+        // position map's keys are byte-sorted too. Using exact bytes (rather than
+        // a substring scan) avoids false matches from the child node's own `pos`.
+        assert_eq!(
+            json,
+            r#"{"children":[{"pos":{"end_col":0,"end_line":0,"end_offset":0,"start_col":0,"start_line":0,"start_offset":0},"roles":[],"token":"x","type":"Identifier"}],"id":"dead","pos":{"end_col":0,"end_line":0,"end_offset":0,"start_col":0,"start_line":0,"start_offset":0},"props":{"lang":"go"},"roles":["Name"],"token":"foo","type":"Function"}"#
+        );
     }
 
     #[test]

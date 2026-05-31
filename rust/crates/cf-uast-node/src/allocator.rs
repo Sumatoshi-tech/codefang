@@ -8,7 +8,7 @@
 //! on return. It is intentionally not `Sync` (single-threaded use, like Go's
 //! "Not safe for concurrent use").
 
-use crate::node::{Node, Positions, Type};
+use crate::node::{Node, Positions, Role, Type};
 use std::collections::HashMap;
 
 /// A per-worker free-list allocator for [`Node`] and [`Positions`].

@@ -52,9 +52,9 @@ mod types;
 // planned `cf-gojson` API and will be replaced by it (see `gojson.rs`).
 pub use gojson::{GoMap, GoValue};
 
-pub use allocator::Allocator;
+pub use allocator::{release_tree, Allocator};
 pub use classifier::is_literal_type;
-pub use node::{release_tree, Builder, Node, Positions, Role, Type};
+pub use node::{Builder, Node, Positions, Role, Type};
 
 // Re-export the UAST type and role string constants at the crate root, mirroring
 // the Go package's flat `node.UASTFunction` / `node.RoleName` access pattern.

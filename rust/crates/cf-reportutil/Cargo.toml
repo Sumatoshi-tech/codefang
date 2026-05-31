@@ -2,9 +2,19 @@
 name = "cf-reportutil"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
-repository.workspace = true
-publish.workspace = true
+description = "Shared report formatting helpers and the CodeFang Binary (CFB1) envelope, ported from the Go internal/analyzers/common/reportutil package."
 
 [dependencies]
+# CFB1 payloads embed Go `encoding/json.Marshal` bytes exactly. Per DESIGN.md
+# §2.2/§2.5 all MACHINE serialization MUST flow through cf-gojson (never raw
+# serde). The envelope marshals its payload with the json.Marshal config
+# (compact, escape_html, no trailing newline).
+cf-gojson = { workspace = true }
+# GetInt / GetFloat64 cross-type numeric coercion delegates to safeconv, exactly
+# like the Go originals (safeconv.ToInt / safeconv.ToFloat64). The CFB1 length
+# header uses safeconv.MustIntToUint32 -> must_int_to_uint32.
+cf-safeconv = { workspace = true }
+# The 8-byte CFB1 header's LE u32 length uses `u32::to_le_bytes` directly
+# (DESIGN.md §3 maps `encoding/binary` LE u32 to `u32::to_le_bytes` or byteorder);
+# no extra dependency needed.

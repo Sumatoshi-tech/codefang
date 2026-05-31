@@ -136,7 +136,7 @@ fn planner_low_growth_rate_hits_max_cap() {
     };
     let chunks = p.plan();
     let chunk_size = chunks[0].end - chunks[0].start;
-    assert_eq!(chunk_size, MAX_CHUNK_SIZE);
+    assert_eq!(chunk_size as i64, MAX_CHUNK_SIZE);
 }
 
 // --- PlanFrom ---

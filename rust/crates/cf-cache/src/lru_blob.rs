@@ -212,7 +212,7 @@ mod tests {
         assert!(c.get(&h2).is_some());
 
         // Re-access h2 so h1 becomes LRU.
-        c.get(&h2);
+        let _ = c.get(&h2);
         c.put(h3, Some(blob.clone()));
 
         assert!(c.get(&h1).is_none(), "hash1 should be evicted");
@@ -286,8 +286,8 @@ mod tests {
         let c = LruBlobCache::new(1024);
         let (h1, h2) = (make_test_hash(1), make_test_hash(2));
         c.put(h1, Some(make_test_blob(b"hello")));
-        c.get(&h1); // hit
-        c.get(&h2); // miss
+        let _ = c.get(&h1); // hit
+        let _ = c.get(&h2); // miss
 
         let s = c.stats();
         assert_eq!(s.hits, 1);
@@ -373,7 +373,7 @@ mod tests {
         let c = LruBlobCache::new(CACHE_SIZE);
 
         for i in 0..PROBE {
-            c.get(&make_test_hash_u16(i as u16));
+            let _ = c.get(&make_test_hash_u16(i as u16));
         }
         let s = c.stats();
         assert_eq!(s.misses, PROBE as i64);
@@ -435,7 +435,7 @@ mod tests {
 
         c.put(h1, Some(blob40.clone()));
         c.put(h2, Some(blob40.clone()));
-        c.get(&h2); // make h1 LRU
+        let _ = c.get(&h2); // make h1 LRU
         c.put(h3, Some(blob40)); // evicts h1
 
         assert!(c.get(&h1).is_none(), "evicted key should return nil");
@@ -457,7 +457,7 @@ mod tests {
                 for i in 0..OPERATIONS {
                     let hash = make_test_hash(((g * OPERATIONS + i) % 256) as u8);
                     c.put(hash, Some(make_test_blob(b"data")));
-                    c.get(&hash);
+                    let _ = c.get(&hash);
                 }
             }));
         }

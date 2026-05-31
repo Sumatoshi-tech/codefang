@@ -40,8 +40,17 @@ tree-sitter = "0.22"
 
 # Harness / build-script only — NEVER used for machine report output.
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+
+# Data-parallelism for pipeline stages (used by cf-framework). Registered here so
+# `rayon = { workspace = true }` members resolve to one pinned version.
+rayon = "1"
+
+# Internal crates referenced via `{ workspace = true }` by dependent crates.
+# Registered here so path/version resolve once for the whole workspace.
+cf-gojson = { path = "crates/cf-gojson" }
+cf-safeconv = { path = "crates/cf-safeconv" }
 
 [profile.release]
 overflow-checks = true

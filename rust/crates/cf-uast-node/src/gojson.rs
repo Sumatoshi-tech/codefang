@@ -179,14 +179,17 @@ mod tests {
 
     #[test]
     fn html_escaping_on() {
+        // Go's encoding/json escapes `<`, `>`, `&` as `<`, `>`,
+        // `&` by default (DESIGN §2.2 — HTML escaping ON). The escaped bytes
+        // are the byte-correct output, not the literal characters.
         let s = Encoder::marshal().encode_to_string(&GoValue::Str("a<b>&c".into()));
-        assert_eq!(s, r#""a<b>&c""#);
+        assert_eq!(s, r#""a\u003cb\u003e\u0026c""#);
     }
 
     #[test]
     fn control_and_shortcut_escapes() {
         let s = Encoder::marshal().encode_to_string(&GoValue::Str("a\nb\t\u{0001}".into()));
-        assert_eq!(s, r#""a\nb\t""#);
+        assert_eq!(s, r#""a\nb\t\u0001""#);
     }
 
     #[test]

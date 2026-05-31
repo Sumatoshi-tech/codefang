@@ -154,6 +154,14 @@ version = "0.0.0"
 [[package]]
 name = "cf-analyze"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+ "cf-goyaml",
+ "cf-pipeline",
+ "cf-reportutil",
+ "cf-version",
+ "serde_json",
+]
 
 [[package]]
 name = "cf-analyzer-burndown"
@@ -162,6 +170,9 @@ version = "0.0.0"
 [[package]]
 name = "cf-analyzers-common"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+]
 
 [[package]]
 name = "cf-analyzers-plumbing"
@@ -219,6 +230,15 @@ version = "0.0.0"
 [[package]]
 name = "cf-cohesion"
 version = "0.0.0"
+dependencies = [
+ "cf-alg-bloom",
+ "cf-analyze",
+ "cf-analyzers-common",
+ "cf-gojson",
+ "cf-goyaml",
+ "cf-reportutil",
+ "cf-uast-node",
+]
 
 [[package]]
 name = "cf-commands"
@@ -260,6 +280,9 @@ version = "0.0.0"
 [[package]]
 name = "cf-framework"
 version = "0.0.0"
+dependencies = [
+ "cf-safeconv",
+]
 
 [[package]]
 name = "cf-gitlib"
@@ -282,6 +305,15 @@ version = "0.0.0"
 [[package]]
 name = "cf-halstead"
 version = "0.0.0"
+dependencies = [
+ "cf-alg-cms",
+ "cf-alg-mapx",
+ "cf-gojson",
+ "cf-goyaml",
+ "cf-metrics",
+ "cf-reportutil",
+ "cf-uast-node",
+]
 
 [[package]]
 name = "cf-identity"
@@ -305,6 +337,11 @@ version = "0.0.0"
 [[package]]
 name = "cf-mcp"
 version = "0.0.0"
+dependencies = [
+ "cf-uast-node",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cf-meminfo"
@@ -380,6 +417,10 @@ version = "0.0.0"
 [[package]]
 name = "cf-reportutil"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+ "cf-safeconv",
+]
 
 [[package]]
 name = "cf-safeconv"
@@ -1177,6 +1218,7 @@ version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",

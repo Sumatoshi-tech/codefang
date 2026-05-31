@@ -6,5 +6,34 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "MCP (Model Context Protocol) server exposing Codefang analysis as tools. Port of the Go internal/mcp package. Gated behind the non-default `mcp` feature; not shipped by default (the Go `mcp` command is build-ignored)."
+
+# The Go `mcp` command carries `//go:build ignore` and is NOT added to the
+# codefang binary. We mirror that: the entire crate body is behind the
+# non-default `mcp` feature. With the feature OFF the crate compiles to an
+# empty shell, so it never participates in the default workspace build and
+# `cf-commands` must opt in explicitly. See DESIGN.md §1 and §3.
+[features]
+default = []
+mcp = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
+# The canonical UAST node tree + the Go-`encoding/json`-compatible value model
+# (GoValue / GoMap). At port time `cf-gojson` is still a bare scaffold, so the
+# only implemented Go-byte-compatible value model in the workspace lives inside
+# `cf-uast-node` (re-exported as cf_uast_node::{GoMap, GoValue}); cf-mcp reuses
+# it for both the UAST tree (`uast_parse`) and report serialization. When
+# `cf-gojson` lands, switch the `gojson` shim + these imports to it (DESIGN rule
+# 5 / §2.2). This is a non-optional dep so the report-serialization path exists
+# even in tests; it pulls in no async/MCP machinery.
+cf-uast-node = { path = "../cf-uast-node" }
+
+# Tool input deserialization + the JSON-RPC transport envelope. serde here is
+# ONLY for decoding inbound tool arguments and building the (non-binding) JSON-RPC
+# envelope — it is NEVER used to encode the machine-format report payload, which
+# flows through the Go-compatible encoder in `gojson.rs`. See DESIGN.md §2.
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+serde_json = "1"

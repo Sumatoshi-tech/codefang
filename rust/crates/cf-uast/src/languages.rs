@@ -23,9 +23,9 @@
 /// The complete set of language names with embedded `.uastmap` mappings, in the
 /// same order as Go's `languageFuncs` map literal (`languages.go`).
 ///
-/// This is the authoritative dispatch key set. Note it includes `zig` (the 69th
-/// entry in Go's `languageFuncs`); the embedded `.uastmap` table
-/// (`cf-uast-uastmaps`) carries the matching 68 data files plus `zig`.
+/// This is the authoritative dispatch key set: the 68 keys of Go's
+/// `languageFuncs` (`languages.go`), one per embedded `.uastmap` data file in
+/// `cf-uast-uastmaps` (the two sets are identical).
 pub const SUPPORTED_LANGUAGES: &[&str] = &[
     "ansible",
     "bash",
@@ -133,13 +133,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn supported_set_has_69_entries() {
-        // 68 data languages + zig (Go's languageFuncs has 69 entries).
-        assert_eq!(SUPPORTED_LANGUAGES.len(), 69);
+    fn supported_set_has_68_entries() {
+        // Go's `languageFuncs` map literal has exactly 68 keys, one per embedded
+        // `.uastmap` data file.
+        assert_eq!(SUPPORTED_LANGUAGES.len(), 68);
     }
 
     #[test]
-    fn supported_set_matches_embedded_table_plus_zig() {
+    fn supported_set_matches_embedded_table() {
         // Every embedded `.uastmap` language must be a recognized dispatch key.
         for lang in cf_uast_uastmaps::supported_languages() {
             assert!(

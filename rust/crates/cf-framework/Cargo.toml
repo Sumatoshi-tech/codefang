@@ -1,3 +1,16 @@
+# cf-framework — port of Go `internal/framework`.
+#
+# The CENTRAL analysis framework: Item/analyzer interfaces, pipeline
+# orchestration, plugin registry, DAG execution, streaming + UAST pipeline
+# integration, and budget hooks. See specs/rust-rewrite/DESIGN.md (tier 3-5).
+#
+# This is a high-tier crate: its concrete pipeline stages depend on the
+# not-yet-ported cf-gitlib / cf-cache / cf-uast / cf-plumbing / cf-analyze
+# crates. The modules ported here are the dependency-light ones whose Go source
+# is self-contained (config, coordinator memory model, stage metrics, diff cache
+# keying, commit streamer, sampler config, profiling, budget hooks). For the
+# blocked stages, minimal trait interfaces are defined in `interfaces` so the
+# rest of the crate compiles; see crate-level docs + the port todos.
 [package]
 name = "cf-framework"
 version.workspace = true
@@ -8,3 +21,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Saturating numeric conversions (Go pkg/safeconv parity). Already ported.
+# Used by coordinator.rs (memory-limit casts) and config.rs (size parsing).
+cf-safeconv = { path = "../cf-safeconv" }

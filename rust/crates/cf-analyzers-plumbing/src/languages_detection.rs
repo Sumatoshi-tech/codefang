@@ -2,7 +2,8 @@
 //!
 //! Port of `internal/analyzers/plumbing/languages.go`.
 //!
-//! Produces a map from blob [`Hash`] to detected language name. Detection is a
+//! Produces a map from blob [`struct@Hash`] to detected
+//! language name. Detection is a
 //! two-stage process exactly mirroring the Go code:
 //! 1. a binary guard (`CountLines` returning `ErrBinary` -> `""`);
 //! 2. a fast-path extension table ([`language_by_extension`]) ported verbatim

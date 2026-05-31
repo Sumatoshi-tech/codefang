@@ -3,13 +3,13 @@
 //! Port of `internal/analyzers/plumbing/blob_cache.go`.
 //!
 //! The provider reads `"changes"` and `"commit"` and produces `"blob_cache"`,
-//! a map from blob [`Hash`](crate::git_model::Hash) to [`CachedBlob`] holding
+//! a map from blob [`struct@Hash`] to [`CachedBlob`] holding
 //! the raw bytes of every blob touched by the commit.
 
 use std::collections::HashMap;
 
 use crate::analyzer::{dep, Analyzer, AnalyzerError, ValueMap};
-use crate::git_model::{Action, Change, Changes, Hash};
+use crate::git_model::{Action, Changes, Hash};
 
 /// Sentinel error indicating a blob is binary, mirroring Go's `ErrorBinary`
 /// (`var ErrorBinary = fmt.Errorf("binary")`).
@@ -224,6 +224,7 @@ impl<S: BlobSource> Analyzer for BlobCache<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git_model::Change;
 
     // Port of TestCachedBlob_CountLines (blob_cache_test.go).
     #[test]
@@ -240,11 +241,11 @@ mod tests {
             let b = CachedBlob::new(data.clone());
             match b.count_lines() {
                 Ok(got) => {
-                    assert!(!want_err, "{name}: expected error, got Ok({got})");
+                    assert!(!*want_err, "{name}: expected error, got Ok({got})");
                     assert_eq!(got, *want, "{name}: line count mismatch");
                 }
                 Err(_) => {
-                    assert!(want_err, "{name}: unexpected error");
+                    assert!(*want_err, "{name}: unexpected error");
                 }
             }
         }
