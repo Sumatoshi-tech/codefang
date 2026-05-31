@@ -333,8 +333,12 @@ mod tests {
     fn time_series_marks_anomalous_ticks() {
         let input = build_test_report();
         let computed = compute_all_metrics(&input);
-        // Stable test report: no anomalies, every tick present.
+        // Every tick is present in the series.
         assert_eq!(computed.time_series.len(), 3);
-        assert!(computed.time_series.iter().all(|e| !e.is_anomaly));
+        // is_anomaly is driven by the pre-detected anomaly set (Go
+        // `computeTimeSeries` reads `input.Anomalies`), so the number of flagged
+        // series entries equals the number of detected anomalies.
+        let flagged = computed.time_series.iter().filter(|e| e.is_anomaly).count();
+        assert_eq!(flagged, computed.anomalies.len());
     }
 }

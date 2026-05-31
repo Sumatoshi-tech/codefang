@@ -117,6 +117,26 @@ pub fn banner(name: &str) -> String {
     banner_with(name, VERSION, COMMIT, DATE)
 }
 
+/// Returns the `codefang version` line, byte-identical to Go
+/// `fmt.Fprintf(os.Stdout, "codefang %s (commit: %s, built: %s)\n", …)`
+/// (cmd/codefang/main.go) — the banner plus a trailing newline.
+#[must_use]
+pub fn codefang_version_line() -> String {
+    let mut s = banner("codefang");
+    s.push('\n');
+    s
+}
+
+/// Returns the `uast version` line, byte-identical to Go
+/// `fmt.Fprintf(os.Stdout, "uast %s (commit: %s, built: %s)\n", …)`
+/// (cmd/uast/main.go) — the banner plus a trailing newline.
+#[must_use]
+pub fn uast_version_line() -> String {
+    let mut s = banner("uast");
+    s.push('\n');
+    s
+}
+
 /// Render the version banner from explicit fields. Exposed for testing and for
 /// callers that need to format a banner from values not baked into this crate.
 ///
