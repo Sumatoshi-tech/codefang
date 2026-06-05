@@ -1,0 +1,295 @@
+{
+  "overall_score_label": "Info",
+  "sections": [
+    {
+      "title": "IMPORTS",
+      "score_label": "Info",
+      "status": "Found 7 unique imports",
+      "metrics": [
+        {
+          "label": "Unique Imports",
+          "value": "7"
+        },
+        {
+          "label": "Total Files",
+          "value": "10"
+        }
+      ],
+      "issues": [
+        {
+          "name": "reflect",
+          "location": "",
+          "value": "2",
+          "severity": "info"
+        },
+        {
+          "name": "testing",
+          "location": "",
+          "value": "2",
+          "severity": "info"
+        },
+        {
+          "name": "slices",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "k8s.io/apimachinery/pkg/util/sets",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "fmt",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "math/rand",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        },
+        {
+          "name": "cmp",
+          "location": "",
+          "value": "1",
+          "severity": "info"
+        }
+      ],
+      "files": [
+        {
+          "file_path": "int64.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "set_test.go",
+          "score_label": "Info",
+          "status": "Found 4 unique imports",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "4"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [
+            {
+              "name": "fmt",
+              "location": "set_test.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "math/rand",
+              "location": "set_test.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "reflect",
+              "location": "set_test.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "testing",
+              "location": "set_test.go",
+              "value": "1",
+              "severity": "info"
+            }
+          ],
+          "score": -1
+        },
+        {
+          "file_path": "string.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "byte.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "doc.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "empty.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "set.go",
+          "score_label": "Info",
+          "status": "Found 2 unique imports",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "2"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [
+            {
+              "name": "cmp",
+              "location": "set.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "slices",
+              "location": "set.go",
+              "value": "1",
+              "severity": "info"
+            }
+          ],
+          "score": -1
+        },
+        {
+          "file_path": "set_generic_test.go",
+          "score_label": "Info",
+          "status": "Found 3 unique imports",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "3"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [
+            {
+              "name": "k8s.io/apimachinery/pkg/util/sets",
+              "location": "set_generic_test.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "reflect",
+              "location": "set_generic_test.go",
+              "value": "1",
+              "severity": "info"
+            },
+            {
+              "name": "testing",
+              "location": "set_generic_test.go",
+              "value": "1",
+              "severity": "info"
+            }
+          ],
+          "score": -1
+        },
+        {
+          "file_path": "int.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        },
+        {
+          "file_path": "int32.go",
+          "score_label": "Info",
+          "status": "No import data available",
+          "metrics": [
+            {
+              "label": "Unique Imports",
+              "value": "0"
+            },
+            {
+              "label": "Total Files",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": -1
+        }
+      ],
+      "score": -1
+    }
+  ],
+  "overall_score": -1
+}

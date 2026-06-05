@@ -152,6 +152,33 @@ pub struct AggregatorOptions {
     pub max_parallel: usize,
 }
 
+/// Facts key for the global temporary directory override. Port of Go
+/// `ConfigTmpDir` (`aggregator.go:79`). When set, analyzers use this directory
+/// for spill and hibernation files instead of the system temp dir.
+pub const CONFIG_TMP_DIR: &str = "TmpDir";
+
+/// On-disk spill state of an [`Aggregator`]. Port of Go `AggregatorSpillInfo`
+/// (`aggregator.go:69`). Used by the checkpoint system to save and restore
+/// spill directories.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AggregatorSpillInfo {
+    /// `dir` — directory containing spill files. Empty if no spills occurred.
+    pub dir: String,
+    /// `count` — number of spill files written.
+    pub count: i64,
+}
+
+/// Extracts and clears per-commit data between chunks during streaming
+/// timeseries NDJSON output. Port of Go `CommitStatsDrainer`
+/// (`aggregator.go:57`). Aggregators that store per-commit summary data
+/// implement this to enable per-chunk flushing.
+pub trait CommitStatsDrainer {
+    /// Returns per-commit summary data and per-tick commit ordering, then clears
+    /// these maps from the aggregator. Cumulative state remains intact. Port of
+    /// Go `DrainCommitStats`.
+    fn drain_commit_stats(&mut self) -> (Report, Vec<(Tick, Vec<String>)>);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

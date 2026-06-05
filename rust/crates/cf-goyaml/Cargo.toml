@@ -8,3 +8,4 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+cf-gojson = { path = "../cf-gojson" }

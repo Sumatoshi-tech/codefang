@@ -45,7 +45,7 @@ pub fn report_function_list<'a>(report: &'a Report, key: &str) -> Option<Vec<&'a
     };
     let mut result: Vec<&GoMap> = Vec::with_capacity(arr.len());
     for item in arr {
-        if let GoValue::Object(m) = item {
+        if let GoValue::Map(m) = item {
             result.push(m);
         }
     }

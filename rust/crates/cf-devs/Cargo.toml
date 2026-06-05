@@ -5,6 +5,39 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = false
+
+# cf-devs — developer activity / per-developer line statistics with
+# HyperLogLog developer-cardinality estimation.
+#
+# Ports internal/analyzers/devs (Go id: history/devs, Sequential). The analyzer
+# computes per-developer commit / lines-added / lines-removed / lines-changed
+# statistics through time, per-language breakdowns, CHAOSS bus-factor risk,
+# per-tick activity and churn time-series, and an aggregate summary that uses an
+# HLL sketch for total/active developer cardinality. Merge semantics are purely
+# additive and NO wall-clock (time.Now) is read during scoring.
+#
+# Report serialization routes exclusively through cf-gojson / cf-goyaml so the
+# machine-format bytes (json/yaml/ndjson/timeseries/compact/bin) match Go's
+# encoding/json + yaml.v3 byte-for-byte. See specs/rust-rewrite/DESIGN.md §2.
 
 [dependencies]
+# Go encoding/json-byte-compatible encoder (DESIGN §2.2). NEVER serde_json for
+# output. The report types expose `to_go_value()` building a GoValue tree that
+# both the JSON (cf-gojson) and YAML (cf-goyaml) paths consume.
+cf-gojson = { path = "../cf-gojson" }
+# HyperLogLog cardinality sketch (pkg/alg/hll). p=14 → 16384 registers; the
+# estimate is an integer in machine output so this must be bit-identical to Go.
+cf-alg-hll = { path = "../cf-alg-hll" }
+# Mean/stddev/percent helpers (pkg/alg/stats). `to_percent` produces the
+# primary/secondary percentage floats that reach the report.
+cf-alg-stats = { path = "../cf-alg-stats" }
+# Identity helpers (AuthorMissing sentinel, AuthorMissingName, split_identity).
+cf-identity = { path = "../cf-identity" }
+# MetricMeta + risk level/priority enums (pkg/metrics).
+cf-metrics = { path = "../cf-metrics" }
+
+[lints.clippy]
+pedantic = "warn"
+
+[dev-dependencies]

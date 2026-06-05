@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = false
 
 [dependencies]
+# Byte-identity report serialization. NEVER serde_json for output. See DESIGN §2.
+cf-gojson = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

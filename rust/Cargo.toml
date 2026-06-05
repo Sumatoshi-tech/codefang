@@ -13,6 +13,12 @@ members = [
     "bins/*",
     "tests/golden-harness",
 ]
+# crates/analyzers is a nesting directory (it holds sub-crates), not a leaf crate
+# with its own Cargo.toml, so the crates/* glob must not treat it as a member.
+exclude = [
+    "crates/analyzers",
+    "crates/cf-govader",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -43,9 +49,17 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 
+# Test-only — temp dirs/files for the cf-iosafety port's dev-dependency tests.
+# Never a runtime dependency of any library.
+tempfile = "3"
+
 # Data-parallelism for pipeline stages (used by cf-framework). Registered here so
 # `rayon = { workspace = true }` members resolve to one pinned version.
 rayon = "1"
+
+# OS signal handling — idiomatic Rust equivalent of Go's os/signal.Notify.
+# Used by cf-sigutil to register SIGINT/SIGTERM handlers.
+signal-hook = "0.3"
 
 # Internal crates referenced via `{ workspace = true }` by dependent crates.
 # Registered here so path/version resolve once for the whole workspace.

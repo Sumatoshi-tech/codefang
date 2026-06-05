@@ -77,18 +77,22 @@ impl IncrementalMeta {
         // byte-sorts keys for the map-origin case. This is the dual-mode `GoMap`
         // distinction from DESIGN.md §2.2 expressed with the encoder's current
         // surface.
-        GoValue::Object(vec![
-            ("version".to_string(), GoValue::Int(self.version)),
-            ("head_sha".to_string(), GoValue::str(&self.head_sha)),
-            ("branch".to_string(), GoValue::str(&self.branch)),
-            ("root_sha".to_string(), GoValue::str(&self.root_sha)),
-            ("commit_count".to_string(), GoValue::Int(self.commit_count)),
-            (
-                "analyzer_ids".to_string(),
-                GoValue::Array(self.analyzer_ids.iter().map(GoValue::str).collect()),
+        // STRUCT-origin map: `new_struct()` preserves insertion (declaration)
+        // order on encode, unlike `GoMap::from_map`, which byte-sorts keys.
+        let mut m = cf_textutil::GoMap::new_struct();
+        m.push("version", GoValue::Int(self.version));
+        m.push("head_sha", GoValue::Str(self.head_sha.clone()));
+        m.push("branch", GoValue::Str(self.branch.clone()));
+        m.push("root_sha", GoValue::Str(self.root_sha.clone()));
+        m.push("commit_count", GoValue::Int(self.commit_count));
+        m.push(
+            "analyzer_ids",
+            GoValue::Array(
+                self.analyzer_ids.iter().map(|s| GoValue::Str(s.clone())).collect(),
             ),
-            ("timestamp".to_string(), GoValue::str(&self.timestamp)),
-        ])
+        );
+        m.push("timestamp", GoValue::Str(self.timestamp.clone()));
+        GoValue::Object(m)
     }
 }
 

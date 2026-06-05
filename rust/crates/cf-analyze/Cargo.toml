@@ -20,6 +20,12 @@ cf-reportutil = { path = "../cf-reportutil" }
 cf-pipeline = { path = "../cf-pipeline" }
 # AnalysisMetadata.codefang_version source (Go pkg/version).
 cf-version = { path = "../cf-version" }
+# mapx helpers: unique() (registry.rs) and build_lookup_set() (timeseries.rs).
+cf-alg-mapx = { path = "../cf-alg-mapx" }
+# Node trait parameter for the interfaces.rs analyzer hierarchy.
+cf-uast-node = { path = "../cf-uast-node" }
+# Sentinel error derive for error.rs (AnalyzeError).
+thiserror = "1"
 
 [dev-dependencies]
 # Tests only: serde_json is used SOLELY to PARSE machine output back into a value

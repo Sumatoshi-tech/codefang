@@ -1,0 +1,4009 @@
+total_functions: 141
+total_clone_pairs: 1154
+clone_ratio: 0.75177304964539
+clone_type_distribution:
+    Type-1: 385
+    Type-2: 308
+    Type-3: 461
+clone_pairs:
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::NewByte
+      func_b: int64.go::NewInt64
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::NewByte
+      func_b: string.go::NewString
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::ByteKeySet
+      func_b: int.go::IntKeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::ByteKeySet
+      func_b: int32.go::Int32KeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::ByteKeySet
+      func_b: int64.go::Int64KeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::ByteKeySet
+      func_b: string.go::StringKeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::Int64KeySet
+      func_b: string.go::StringKeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int64.go::NewInt64
+      func_b: string.go::NewString
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.PopAny
+      func_b: string.go::String.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.PopAny
+      func_b: int64.go::Int64.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.UnsortedList
+      func_b: string.go::String.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.UnsortedList
+      func_b: int64.go::Int64.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int32.go::Int32.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::IntKeySet
+      func_b: int32.go::Int32KeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Clone
+      func_b: string.go::String.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Clone
+      func_b: int64.go::Int64.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::IntKeySet
+      func_b: string.go::StringKeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::IntKeySet
+      func_b: int64.go::Int64KeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::NewInt
+      func_b: int32.go::NewInt32
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::NewInt
+      func_b: string.go::NewString
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::NewInt
+      func_b: int64.go::NewInt64
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.PopAny
+      func_b: string.go::String.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.PopAny
+      func_b: int64.go::Int64.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.PopAny
+      func_b: int32.go::Int32.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.PopAny
+      func_b: int.go::Int.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.UnsortedList
+      func_b: string.go::String.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.UnsortedList
+      func_b: int64.go::Int64.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.UnsortedList
+      func_b: int32.go::Int32.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.UnsortedList
+      func_b: int.go::Int.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: int32.go::Int32.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: byte.go::Byte.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.Has
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: int.go::Int.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Delete
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32KeySet
+      func_b: string.go::StringKeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32KeySet
+      func_b: int64.go::Int64KeySet
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::NewInt32
+      func_b: string.go::NewString
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::NewInt32
+      func_b: int64.go::NewInt64
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.PopAny
+      func_b: string.go::String.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.PopAny
+      func_b: int64.go::Int64.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.PopAny
+      func_b: int32.go::Int32.PopAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.UnsortedList
+      func_b: int64.go::Int64.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.UnsortedList
+      func_b: int32.go::Int32.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.UnsortedList
+      func_b: string.go::String.UnsortedList
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: byte.go::Byte.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Clone
+      func_b: int32.go::Int32.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Clone
+      func_b: int64.go::Int64.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Clone
+      func_b: string.go::String.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Clone
+      func_b: int.go::Int.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: byte.go::Byte.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: byte.go::Byte.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.HasAll
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.HasAny
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: byte.go::Byte.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: int.go::Int.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: byte.go::Byte.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: byte.go::Byte.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::NewByte
+      func_b: int.go::NewInt
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: byte.go::Byte.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Insert
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::NewByte
+      func_b: int32.go::NewInt32
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Difference
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Union
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Intersection
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 1
+      clone_type: Type-1
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.Equal
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Clone
+      func_b: string.go::String.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Clone
+      func_b: int64.go::Int64.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int.go::Int.Clone
+      func_b: int32.go::Int32.Clone
+      similarity: 1
+      clone_type: Type-1
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Has
+      func_b: string.go::String.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: byte.go::Byte.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: byte.go::Byte.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int.go::Int.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int.go::Int.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.Has
+      similarity: 0.890625
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int.go::Int.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Has
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int32.go::Int32.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Has
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Has
+      func_b: byte.go::Byte.Equal
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Has
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.Has
+      similarity: 0.8359375
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Union
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Intersection
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.Difference
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Insert
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Delete
+      similarity: 0.828125
+      clone_type: Type-2
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int.go::Int.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int.go::Int.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.Equal
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.7890625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int32.go::Int32.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int.go::Int.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAny
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAny
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.HasAll
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.HasAll
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAny
+      func_b: int32.go::Int32.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int32.go::Int32.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int.go::Int.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.Insert
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.HasAll
+      func_b: int64.go::Int64.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: string.go::String.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int.go::Int.HasAll
+      func_b: int32.go::Int32.Delete
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.HasAny
+      similarity: 0.734375
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Difference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Intersection
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Difference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Intersection
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.SymmetricDifference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.SymmetricDifference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int.go::Int.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: int32.go::Int32.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int32.go::Int32.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Union
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Union
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int.go::Int.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.IsSuperset
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Intersection
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: int32.go::Int32.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int32.go::Int32.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int.go::Int.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Equal
+      func_b: int32.go::Int32.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: byte.go::Byte.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.Equal
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: string.go::String.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.IsSuperset
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.IsSuperset
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.Intersection
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: string.go::String.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: string.go::String.SymmetricDifference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.Union
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Union
+      func_b: byte.go::Byte.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Equal
+      func_b: int64.go::Int64.Difference
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Difference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int.go::Int.IsSuperset
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: int.go::Int.SymmetricDifference
+      func_b: int64.go::Int64.Equal
+      similarity: 0.7265625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int.go::Int.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: byte.go::Byte.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: string.go::String.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: byte.go::Byte.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: int64.go::Int64.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: int.go::Int.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Has
+      func_b: int32.go::Int32.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Delete
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Delete
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Insert
+      func_b: int.go::Int.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Insert
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int64.go::Int64.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: string.go::String.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int.go::Int.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int.go::Int.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int.go::Int.Insert
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: byte.go::Byte.Has
+      func_b: int32.go::Int32.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Insert
+      func_b: int32.go::Int32.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.Delete
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Has
+      func_b: string.go::String.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int64.go::Int64.Delete
+      func_b: string.go::String.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Has
+      func_b: int64.go::Int64.Insert
+      similarity: 0.6640625
+      clone_type: Type-3
+    - func_a: int32.go::Int32.Delete
+      func_b: int64.go::Int64.Has
+      similarity: 0.6640625
+      clone_type: Type-3
+message: High duplication - significant refactoring recommended

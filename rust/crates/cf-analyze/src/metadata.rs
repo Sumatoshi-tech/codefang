@@ -35,6 +35,55 @@ pub struct AnalysisMetadata {
     pub codefang_version: String,
 }
 
+/// An injectable wall clock. The default ([`SystemClock`]) mirrors Go
+/// `time.Now().UTC().Format(time.RFC3339)`; tests/golden runs substitute a fixed
+/// clock so the `analyzed_at` envelope field is reproducible (DESIGN §2.8).
+pub trait Clock {
+    /// Returns the current time as Go-compatible RFC3339 UTC
+    /// (`YYYY-MM-DDTHH:MM:SSZ`).
+    fn now_rfc3339_utc(&self) -> String;
+}
+
+/// The production [`Clock`]: reads the resolved current time (honoring the
+/// pinned clock and `CODEFANG_NOW`/`SOURCE_DATE_EPOCH` overrides) and formats it
+/// as Go-compatible RFC3339 UTC.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now_rfc3339_utc(&self) -> String {
+        format_rfc3339_utc(clock_now_unix_secs())
+    }
+}
+
+impl AnalysisMetadata {
+    /// Creates metadata for `repo_path`, stamping `analyzed_at` from the supplied
+    /// [`Clock`]. Equivalent to [`new_analysis_metadata`] but with the time
+    /// source injected (used by tests/golden runs for determinism).
+    pub fn with_clock(repo_path: &str, clock: &dyn Clock) -> Self {
+        AnalysisMetadata {
+            repo_path: repo_path.to_string(),
+            repo_name: base_name(repo_path),
+            analyzed_at: clock.now_rfc3339_utc(),
+            codefang_version: cf_version::VERSION.to_string(),
+        }
+    }
+
+    /// Builds the wrapper [`cf_gojson::GoValue`] in Go struct declaration order
+    /// (`repo_path`, `repo_name`, `analyzed_at`, `codefang_version`), matching the
+    /// `json:"..."` tags. Struct-origin so fields keep declaration order.
+    #[must_use]
+    pub fn to_go_value(&self) -> cf_gojson::GoValue {
+        use cf_gojson::{GoMap, GoValue, MapOrigin};
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.insert("repo_path", GoValue::Str(self.repo_path.clone()));
+        m.insert("repo_name", GoValue::Str(self.repo_name.clone()));
+        m.insert("analyzed_at", GoValue::Str(self.analyzed_at.clone()));
+        m.insert("codefang_version", GoValue::Str(self.codefang_version.clone()));
+        GoValue::Map(m)
+    }
+}
+
 /// Creates metadata for the given repository path. Port of Go
 /// `NewAnalysisMetadata`.
 ///

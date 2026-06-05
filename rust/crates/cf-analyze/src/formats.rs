@@ -4,7 +4,30 @@
 //! alias and the exact `unsupported format: <fmt>` wording are byte-identity
 //! relevant (they appear in CLI error output), so they are reproduced verbatim.
 
-use crate::error::AnalyzeError;
+/// Error raised when a requested output format is not supported.
+///
+/// Mirrors the Go `fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)` wording
+/// (`formats.go`). The `Display` impl reproduces `unsupported format: <fmt>`
+/// byte-for-byte (it appears in CLI error output).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormatError {
+    /// The format string is not in the supported set. Carries the original
+    /// (un-normalized) format string, matching Go's `%s` argument.
+    Unsupported {
+        /// The offending format string, verbatim as supplied.
+        format: String,
+    },
+}
+
+impl std::fmt::Display for FormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported { format } => write!(f, "unsupported format: {format}"),
+        }
+    }
+}
+
+impl std::error::Error for FormatError {}
 
 /// `bin` — short CLI alias for binary output. Go `FormatBinAlias`.
 pub const FORMAT_BIN_ALIAS: &str = "bin";
@@ -68,24 +91,28 @@ pub fn static_output_formats() -> [&'static str; 6] {
 /// `ValidateFormat`. Returns the normalized format or
 /// [`AnalyzeError::UnsupportedFormat`] carrying the **original** (un-normalized)
 /// format string, matching Go's `fmt.Errorf("%w: %s", ..., format)`.
-pub fn validate_format(format: &str, supported: &[&str]) -> Result<String, AnalyzeError> {
+pub fn validate_format(format: &str, supported: &[&str]) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     for candidate in supported {
         if normalized == normalize_format(candidate) {
             return Ok(normalized);
         }
     }
-    Err(AnalyzeError::UnsupportedFormat(format.to_string()))
+    Err(FormatError::Unsupported {
+        format: format.to_string(),
+    })
 }
 
 /// Validates `format` against the universal contract. Port of Go
 /// `ValidateUniversalFormat`.
-pub fn validate_universal_format(format: &str) -> Result<String, AnalyzeError> {
+pub fn validate_universal_format(format: &str) -> Result<String, FormatError> {
     let normalized = normalize_format(format);
     if universal_formats().contains(&normalized.as_str()) {
         return Ok(normalized);
     }
-    Err(AnalyzeError::UnsupportedFormat(format.to_string()))
+    Err(FormatError::Unsupported {
+        format: format.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -107,7 +134,7 @@ mod tests {
     fn validate_format_valid_and_invalid() {
         assert!(validate_format("json", &["json", "yaml"]).is_ok());
         let err = validate_format("xml", &["json", "yaml"]).unwrap_err();
-        assert!(matches!(err, AnalyzeError::UnsupportedFormat(_)));
+        assert!(matches!(err, FormatError::Unsupported { .. }));
     }
 
     // Port of TestValidateUniversalFormat.

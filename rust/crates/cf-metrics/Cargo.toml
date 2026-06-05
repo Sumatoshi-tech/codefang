@@ -5,14 +5,12 @@
 # RiskLevel + risk_priority ordering, and a name-keyed Registry.
 #
 # The report-bearing types (TimeSeriesPoint, RiskResult) appear in MACHINE-format
-# output. Per DESIGN.md §2, machine-format bytes (json/yaml/ndjson/timeseries/
-# compact/bin) MUST be emitted by the shared cf-gojson / cf-goyaml byte-compat
-# crates, never by serde defaults. cf-gojson is not yet ported, so this crate
-# carries no serde dependency: instead the report types implement GoSerialize,
-# lowering to a local placeholder GoValue tree (declaration-ordered, omitempty
-# honored) that mirrors the cf-gojson surface in DESIGN.md §2.2. When cf-gojson
-# lands, the local GoValue is replaced by cf_gojson::GoValue and this crate gains
-# a cf-gojson dependency. Pure std; zero external crates.
+# output. Per DESIGN.md §1 rule (1) / §3, machine-format bytes (json/yaml/ndjson/
+# timeseries/compact/bin) MUST be emitted by the shared cf-gojson / cf-goyaml
+# byte-compat crates, never by serde defaults. This crate therefore carries no
+# serde dependency: the report types implement GoSerialize, lowering to the shared
+# cf_gojson::GoValue tree (struct-origin GoMap = declaration order, omitempty
+# honored), which the cf-gojson marshaller turns into byte-identical output.
 [package]
 name = "cf-metrics"
 version.workspace = true
@@ -27,6 +25,7 @@ description = "Lightweight metrics primitives (Metric trait, RiskLevel/RiskResul
 unsafe_code = "forbid"
 
 [dependencies]
+cf-gojson = { path = "../cf-gojson" }
 
 [dev-dependencies]
 

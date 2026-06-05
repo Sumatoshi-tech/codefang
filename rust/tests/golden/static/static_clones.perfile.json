@@ -1,0 +1,6046 @@
+{
+  "overall_score_label": "2/10",
+  "sections": [
+    {
+      "title": "CLONE DETECTION",
+      "score_label": "2/10",
+      "status": "High duplication - significant refactoring recommended",
+      "metrics": [
+        {
+          "label": "Total Functions",
+          "value": "141"
+        },
+        {
+          "label": "Clone Pairs",
+          "value": "1154"
+        },
+        {
+          "label": "Clone Ratio",
+          "value": "0.8"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Type-1 (Exact)",
+          "percent": 0.33362218370883884,
+          "count": 385
+        },
+        {
+          "label": "Type-2 (Renamed)",
+          "percent": 0.2668977469670711,
+          "count": 308
+        },
+        {
+          "label": "Type-3 (Near-miss)",
+          "percent": 0.39948006932409014,
+          "count": 461
+        }
+      ],
+      "issues": [
+        {
+          "name": "byte.go::Byte.Clone \u003c-\u003e int64.go::Int64.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::NewByte \u003c-\u003e int64.go::NewInt64",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::NewByte \u003c-\u003e string.go::NewString",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::ByteKeySet \u003c-\u003e int32.go::Int32KeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::ByteKeySet \u003c-\u003e int64.go::Int64KeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::ByteKeySet \u003c-\u003e string.go::StringKeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::ByteKeySet \u003c-\u003e int.go::IntKeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64KeySet \u003c-\u003e string.go::StringKeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::NewInt64 \u003c-\u003e string.go::NewString",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.PopAny \u003c-\u003e string.go::String.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.PopAny \u003c-\u003e int64.go::Int64.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.UnsortedList \u003c-\u003e string.go::String.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.UnsortedList \u003c-\u003e int64.go::Int64.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Clone \u003c-\u003e string.go::String.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Clone \u003c-\u003e int64.go::Int64.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.UnsortedList \u003c-\u003e string.go::String.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.UnsortedList \u003c-\u003e int.go::Int.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.UnsortedList \u003c-\u003e int32.go::Int32.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.UnsortedList \u003c-\u003e int64.go::Int64.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.PopAny \u003c-\u003e int.go::Int.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.PopAny \u003c-\u003e int32.go::Int32.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.PopAny \u003c-\u003e int64.go::Int64.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.PopAny \u003c-\u003e string.go::String.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::NewInt \u003c-\u003e int32.go::NewInt32",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::NewInt \u003c-\u003e int64.go::NewInt64",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::NewInt \u003c-\u003e string.go::NewString",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::IntKeySet \u003c-\u003e int32.go::Int32KeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e byte.go::Byte.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32KeySet \u003c-\u003e string.go::StringKeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32KeySet \u003c-\u003e int64.go::Int64KeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::NewInt32 \u003c-\u003e string.go::NewString",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::NewInt32 \u003c-\u003e int64.go::NewInt64",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.PopAny \u003c-\u003e string.go::String.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.PopAny \u003c-\u003e int64.go::Int64.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.PopAny \u003c-\u003e int32.go::Int32.PopAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.UnsortedList \u003c-\u003e string.go::String.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.UnsortedList \u003c-\u003e int64.go::Int64.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.UnsortedList \u003c-\u003e int32.go::Int32.UnsortedList",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::IntKeySet \u003c-\u003e int64.go::Int64KeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::IntKeySet \u003c-\u003e string.go::StringKeySet",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Clone \u003c-\u003e int.go::Int.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Clone \u003c-\u003e int32.go::Int32.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Clone \u003c-\u003e string.go::String.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e byte.go::Byte.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e byte.go::Byte.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e byte.go::Byte.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e byte.go::Byte.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e byte.go::Byte.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Clone \u003c-\u003e string.go::String.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Clone \u003c-\u003e int64.go::Int64.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e byte.go::Byte.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Clone \u003c-\u003e int32.go::Int32.Clone",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::NewByte \u003c-\u003e int32.go::NewInt32",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Union",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Difference",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::NewByte \u003c-\u003e int.go::NewInt",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.Equal",
+          "location": "Type-1",
+          "value": "1.0",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e byte.go::Byte.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e byte.go::Byte.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Has \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-2",
+          "value": "0.9",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Has \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.Equal",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.Has",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Insert",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.Difference",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-2",
+          "value": "0.8",
+          "severity": "poor"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.8",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAll \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAny \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.HasAny \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAll \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.HasAll \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.HasAny \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.HasAll",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.HasAny",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Equal \u003c-\u003e int.go::Int.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.IsSuperset \u003c-\u003e int32.go::Int32.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Intersection \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Difference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Union \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Difference \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.SymmetricDifference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.SymmetricDifference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Equal \u003c-\u003e int32.go::Int32.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.SymmetricDifference \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int32.go::Int32.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Union \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Difference \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Intersection \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Union \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int32.go::Int32.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e byte.go::Byte.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int64.go::Int64.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.IsSuperset \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e int.go::Int.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e byte.go::Byte.Equal",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Intersection \u003c-\u003e string.go::String.IsSuperset",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e string.go::String.Intersection",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.Union",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e int64.go::Int64.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Equal \u003c-\u003e string.go::String.Difference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.IsSuperset \u003c-\u003e int.go::Int.SymmetricDifference",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int.go::Int.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Has \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e byte.go::Byte.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int.go::Int.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Insert \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Insert \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Delete \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int.go::Int.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int.go::Int.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int.go::Int.Insert \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Delete \u003c-\u003e byte.go::Byte.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e string.go::String.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int64.go::Int64.Delete \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Has \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Insert \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int32.go::Int32.Delete",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int.go::Int.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "byte.go::Byte.Has \u003c-\u003e int64.go::Int64.Insert",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int64.go::Int64.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e int32.go::Int32.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        },
+        {
+          "name": "int32.go::Int32.Delete \u003c-\u003e string.go::String.Has",
+          "location": "Type-3",
+          "value": "0.7",
+          "severity": "fair"
+        }
+      ],
+      "files": [],
+      "score": 0.24822695035460995
+    }
+  ],
+  "overall_score": 0.24822695035460995
+}

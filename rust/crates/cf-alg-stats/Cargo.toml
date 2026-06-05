@@ -6,5 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "Core statistical functions (mean, stddev, percentile, clamp, EMA), ported from pkg/alg/stats."
 
 [dependencies]

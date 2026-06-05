@@ -1,0 +1,1472 @@
+function_complexity:
+    - name: BenchmarkStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 17
+      cognitive_complexity: 52
+      nesting_depth: 3
+      lines_of_code: 71
+      complexity_density: 0.23943661971830985
+      risk_level: CRITICAL
+    - name: TestSet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      nesting_depth: 1
+      lines_of_code: 37
+      complexity_density: 0.2702702702702703
+      risk_level: HIGH
+    - name: TestSetEquals
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      nesting_depth: 1
+      lines_of_code: 53
+      complexity_density: 0.18867924528301888
+      risk_level: HIGH
+    - name: TestStringSetEquals
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      nesting_depth: 1
+      lines_of_code: 53
+      complexity_density: 0.18867924528301888
+      risk_level: HIGH
+    - name: TestStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      nesting_depth: 1
+      lines_of_code: 37
+      complexity_density: 0.2702702702702703
+      risk_level: HIGH
+    - name: TestSetDeleteMultiples
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 6
+      cognitive_complexity: 5
+      nesting_depth: 1
+      lines_of_code: 22
+      complexity_density: 0.2727272727272727
+      risk_level: MEDIUM
+    - name: TestSetDifference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 6
+      cognitive_complexity: 5
+      nesting_depth: 1
+      lines_of_code: 18
+      complexity_density: 0.3333333333333333
+      risk_level: MEDIUM
+    - name: TestNewEmptySet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 6
+      cognitive_complexity: 4
+      nesting_depth: 1
+      lines_of_code: 13
+      complexity_density: 0.46153846153846156
+      risk_level: MEDIUM
+    - name: TestStringSetDifference
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 6
+      cognitive_complexity: 5
+      nesting_depth: 1
+      lines_of_code: 18
+      complexity_density: 0.3333333333333333
+      risk_level: MEDIUM
+    - name: TestStringSetDeleteMultiples
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 6
+      cognitive_complexity: 5
+      nesting_depth: 1
+      lines_of_code: 22
+      complexity_density: 0.2727272727272727
+      risk_level: MEDIUM
+    - name: TestNewSet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 5
+      cognitive_complexity: 3
+      nesting_depth: 1
+      lines_of_code: 9
+      complexity_density: 0.5555555555555556
+      risk_level: MEDIUM
+    - name: TestNewStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 5
+      cognitive_complexity: 3
+      nesting_depth: 1
+      lines_of_code: 9
+      complexity_density: 0.5555555555555556
+      risk_level: MEDIUM
+    - name: TestSetClearWithSharedReference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 3
+      nesting_depth: 1
+      lines_of_code: 16
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: Intersection
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 5
+      nesting_depth: 2
+      lines_of_code: 17
+      complexity_density: 0.23529411764705882
+      risk_level: LOW
+    - name: makeString
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 4
+      nesting_depth: 2
+      lines_of_code: 11
+      complexity_density: 0.36363636363636365
+      risk_level: LOW
+    - name: TestStringUnion
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 5
+      nesting_depth: 2
+      lines_of_code: 39
+      complexity_density: 0.10256410256410256
+      risk_level: LOW
+    - name: TestStringIntersection
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 5
+      nesting_depth: 2
+      lines_of_code: 44
+      complexity_density: 0.09090909090909091
+      risk_level: LOW
+    - name: TestIntersection
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 5
+      nesting_depth: 2
+      lines_of_code: 44
+      complexity_density: 0.09090909090909091
+      risk_level: LOW
+    - name: TestUnion
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 5
+      nesting_depth: 2
+      lines_of_code: 39
+      complexity_density: 0.10256410256410256
+      risk_level: LOW
+    - name: TestSetClearInSeparateFunction
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 4
+      cognitive_complexity: 3
+      nesting_depth: 1
+      lines_of_code: 15
+      complexity_density: 0.26666666666666666
+      risk_level: LOW
+    - name: TestStringSetHasAny
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 11
+      complexity_density: 0.2727272727272727
+      risk_level: LOW
+    - name: BenchmarkListLarge
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 9
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: TestSetClear
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 12
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: TestSetHasAny
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 11
+      complexity_density: 0.2727272727272727
+      risk_level: LOW
+    - name: TestSetSymmetricDifference
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 12
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: Difference
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 3
+      nesting_depth: 2
+      lines_of_code: 9
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAll
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 3
+      nesting_depth: 2
+      lines_of_code: 8
+      complexity_density: 0.375
+      risk_level: LOW
+    - name: HasAny
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 3
+      nesting_depth: 2
+      lines_of_code: 8
+      complexity_density: 0.375
+      risk_level: LOW
+    - name: TestStringSetSymmetricDifference
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 2
+      nesting_depth: 1
+      lines_of_code: 12
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 3
+      cognitive_complexity: 3
+      nesting_depth: 2
+      lines_of_code: 8
+      complexity_density: 0.375
+      risk_level: LOW
+    - name: Union
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 7
+      complexity_density: 0.2857142857142857
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 7
+      complexity_density: 0.2857142857142857
+      risk_level: LOW
+    - name: PopAny
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 8
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: KeySet
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 7
+      complexity_density: 0.2857142857142857
+      risk_level: LOW
+    - name: Insert
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 6
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 6
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 7
+      complexity_density: 0.2857142857142857
+      risk_level: LOW
+    - name: TestStringSetList
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 6
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: TestSortedList
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 6
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: TestKeySet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 7
+      complexity_density: 0.2857142857142857
+      risk_level: LOW
+    - name: BenchmarkListSmall
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 2
+      cognitive_complexity: 1
+      nesting_depth: 1
+      lines_of_code: 6
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: New
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 5
+      complexity_density: 0.2
+      risk_level: LOW
+    - name: HasAny
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Insert
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Int32KeySet
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Intersection
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Len
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: NewInt32
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: PopAny
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Union
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 1
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Difference
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Equal
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAll
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAny
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Insert
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Int64KeySet
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Intersection
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Len
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: NewInt64
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: PopAny
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Union
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: int64.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Equal
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Difference
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 1
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 1
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Union
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: PopAny
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: NewInt
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Len
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clear
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 4
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: Equal
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 4
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: Insert
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Len
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 5
+      complexity_density: 0.2
+      risk_level: LOW
+    - name: HasAll
+      source_file: int32.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: cast
+      source_file: set.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 1
+      complexity_density: 1
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Intersection
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: IntKeySet
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Insert
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAny
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAll
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Equal
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Difference
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: int.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 1
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Union
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: PopAny
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: NewByte
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: clearSetAndAdd
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 4
+      complexity_density: 0.25
+      risk_level: LOW
+    - name: Len
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Intersection
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Insert
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAny
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAll
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Equal
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Difference
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: ByteKeySet
+      source_file: byte.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: List
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 1
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Clone
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Delete
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Difference
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Equal
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Has
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAll
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: HasAny
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Insert
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Intersection
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: IsSuperset
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Len
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: NewString
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: PopAny
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: StringKeySet
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: SymmetricDifference
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: Union
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+    - name: UnsortedList
+      source_file: string.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 1
+      cognitive_complexity: 0
+      nesting_depth: 0
+      lines_of_code: 3
+      complexity_density: 0.3333333333333333
+      risk_level: LOW
+distribution:
+    complex: 1
+    moderate: 9
+    simple: 131
+high_risk_functions:
+    - name: BenchmarkStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 17
+      cognitive_complexity: 52
+      risk_level: CRITICAL
+      issues:
+        - High cyclomatic complexity
+        - High cognitive complexity
+    - name: TestSet
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      risk_level: HIGH
+      issues:
+        - High cyclomatic complexity
+    - name: TestSetEquals
+      source_file: set_generic_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      risk_level: HIGH
+      issues:
+        - High cyclomatic complexity
+    - name: TestStringSet
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      risk_level: HIGH
+      issues:
+        - High cyclomatic complexity
+    - name: TestStringSetEquals
+      source_file: set_test.go
+      language: go
+      directory: .
+      cyclomatic_complexity: 10
+      cognitive_complexity: 9
+      risk_level: HIGH
+      issues:
+        - High cyclomatic complexity
+aggregate:
+    total_functions: 141
+    average_complexity: 1.9929078014184398
+    max_complexity: 17
+    total_complexity: 281
+    cognitive_complexity: 0
+    nesting_depth: 0
+    decision_points: 140
+    health_score: 90.0709219858156
+    message: Good complexity - functions have reasonable complexity

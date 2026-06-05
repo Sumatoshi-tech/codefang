@@ -26,5 +26,7 @@ cf-uast-node = { path = "../cf-uast-node" }
 cf-metrics = { path = "../cf-metrics" }
 # map-slice sort/limit helper (mapx.SortAndLimit) used by report_section/plot.
 cf-alg-mapx = { path = "../cf-alg-mapx" }
+# CLI builder API (cobra-parity command/flag wiring). See DESIGN §4.
+clap = { workspace = true }
 
 [dev-dependencies]

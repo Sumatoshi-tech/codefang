@@ -42,17 +42,25 @@ pub mod base_history;
 pub mod commits_by_tick;
 pub mod conversion;
 pub mod descriptor;
+pub mod error;
 pub mod formats;
+pub mod glob;
 pub mod history;
+pub mod interfaces;
+pub mod json_parse;
 pub mod metadata;
+pub mod registry;
+pub mod report;
 pub mod schema_registry;
 pub mod streaming_sink;
 pub mod tc;
+pub mod thresholds;
 pub mod typed_collection;
 pub mod timeseries;
 
 pub use aggregation_mode::{AggregationMode, AggregationModeAware};
-pub use aggregator::{
+pub use aggregator::GenericAggregator;
+pub use interfaces::{
     Aggregator, AggregatorOptions, AggregatorSpillInfo, CommitStatsDrainer, CONFIG_TMP_DIR,
 };
 pub use analyzer::{

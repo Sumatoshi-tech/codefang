@@ -18,8 +18,8 @@ File: /home/dmitriy/sources/kubernetes/staging/src/k8s.io/apimachinery/pkg/util/
     Call                 48
     Comment              47
     Synthetic            20
-    Return               18
     Block                18
+    Return               18
     Method               16
     Slice                2
     Function             2

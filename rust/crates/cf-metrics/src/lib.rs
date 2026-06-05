@@ -14,72 +14,32 @@
 //!
 //! The data types in this crate ([`TimeSeriesPoint`], [`RiskResult`]) appear in
 //! MACHINE-format reports. Per the Rust-rewrite design (`specs/rust-rewrite/DESIGN.md`
-//! section 2), machine-format bytes (json, yaml, ndjson, timeseries, compact, bin)
-//! must be produced by the shared `cf-gojson` / `cf-goyaml` Go-compatibility crates,
-//! **not** by raw `serde_json` / `serde_yaml` defaults.
+//! rule (1) / section 3), machine-format bytes (json, yaml, ndjson, timeseries,
+//! compact, bin) must be produced by the shared `cf-gojson` / `cf-goyaml`
+//! Go-compatibility crates, **not** by raw `serde_json` / `serde_yaml` defaults.
 //!
-//! `cf-gojson` is not yet ported, so this crate deliberately carries **no** serde
-//! dependency. Instead, the report-bearing types implement [`GoSerialize`], lowering
-//! themselves into a [`GoValue`] tree whose object fields are emitted in **Go struct
-//! declaration order** and whose `omitempty` fields are dropped when empty/zero —
-//! exactly the shape the `cf-gojson` encoder expects. The [`GoValue`] enum defined
-//! here is a placeholder mirroring the `cf-gojson` surface documented in the design;
-//! when `cf-gojson` is integrated it is expected to be replaced by an import of
-//! `cf_gojson::GoValue` and the report types' [`GoSerialize`] impls re-targeted at
-//! it unchanged.
+//! This crate therefore carries **no** serde dependency. Instead the report-bearing
+//! types implement [`GoSerialize`], lowering themselves into the shared
+//! [`cf_gojson::GoValue`] tree. Each is built as a **struct-origin** [`GoMap`]
+//! ([`MapOrigin::Struct`]), so its fields are emitted in **Go struct declaration
+//! order** — never byte-sorted — and `omitempty` fields are dropped (not `push`ed)
+//! when empty/zero, exactly as Go's `encoding/json` does. The resulting `GoValue`
+//! is then encoded by `cf_gojson::{marshal, marshal_indent, Encoder}` (and the
+//! `cf-goyaml` emitter) to obtain byte-identical output.
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
 
-/// Minimal Go-compatible value tree (placeholder for `cf_gojson::GoValue`).
-///
-/// This mirrors the `GoValue` surface described in `specs/rust-rewrite/DESIGN.md`
-/// section 2.2 for the `cf-gojson` crate. It exists so that report-bearing types in
-/// this crate can declare a *declaration-ordered* serialization shape now, decoupled
-/// from `serde`'s defaults. When `cf-gojson` is integrated this type is expected to
-/// be replaced by `cf_gojson::GoValue`.
-///
-/// The variants intentionally distinguish integers from floats so that integer
-/// values never pass through the float-formatting path (matching Go's
-/// `encoding/json`, which renders integers and `float64` differently).
-#[derive(Debug, Clone, PartialEq)]
-pub enum GoValue {
-    /// JSON `null`.
-    Null,
-    /// JSON boolean.
-    Bool(bool),
-    /// Signed integer (never formatted as a float).
-    Int(i64),
-    /// Unsigned integer (never formatted as a float).
-    Uint(u64),
-    /// IEEE-754 double, to be rendered with Go's `strconv` `'g'/-1` rules by the
-    /// downstream encoder.
-    Float(f64),
-    /// UTF-8 string.
-    Str(String),
-    /// Ordered array.
-    Array(Vec<GoValue>),
-    /// Ordered object.
-    ///
-    /// Order is significant. Struct-origin objects (built by [`GoSerialize`] impls
-    /// in this crate) preserve Go field **declaration order**; map-origin objects
-    /// must be byte-sorted by key at encode time by the encoder. Construction here
-    /// always uses declaration order, since every type in this crate is a struct.
-    Object(Vec<(String, GoValue)>),
-}
-
-impl Default for GoValue {
-    /// Defaults to [`GoValue::Null`].
-    fn default() -> Self {
-        GoValue::Null
-    }
-}
+pub use cf_gojson::{GoMap, GoValue, MapOrigin};
 
 /// Types that can lower themselves into a [`GoValue`] for Go-compatible encoding.
 ///
-/// Implementors produce struct fields in **Go declaration order** and honor
-/// `omitempty` by omitting the corresponding entry when the value is empty/zero.
+/// Implementors build a **struct-origin** [`GoMap`] ([`MapOrigin::Struct`]) and
+/// `push` fields in **Go declaration order**, honoring `omitempty` by skipping the
+/// corresponding `push` when the value is empty/zero. The returned [`GoValue`] is
+/// then encoded by the shared `cf-gojson` marshallers (and `cf-goyaml`) to produce
+/// byte-identical machine output.
 pub trait GoSerialize {
     /// Lower `self` into a [`GoValue`] with declaration-ordered fields.
     fn to_go_value(&self) -> GoValue;
@@ -131,11 +91,11 @@ pub struct TimeSeriesPoint {
 
 impl GoSerialize for TimeSeriesPoint {
     fn to_go_value(&self) -> GoValue {
-        // Go declaration order: tick, value.
-        GoValue::Object(vec![
-            (TICK_FIELD.to_string(), GoValue::Int(self.tick)),
-            (VALUE_FIELD.to_string(), GoValue::Float(self.value)),
-        ])
+        // Struct-origin map: Go declaration order tick, value (never byte-sorted).
+        let mut m = GoMap::new_struct();
+        m.push(TICK_FIELD, GoValue::Int(self.tick));
+        m.push(VALUE_FIELD, GoValue::Float(self.value));
+        GoValue::Map(m)
     }
 }
 
@@ -273,21 +233,19 @@ impl RiskResult {
 
 impl GoSerialize for RiskResult {
     fn to_go_value(&self) -> GoValue {
-        // Go declaration order: value, risk_level, threshold (omitempty),
-        // message (omitempty).
-        let mut fields: Vec<(String, GoValue)> = Vec::with_capacity(4);
-        fields.push((VALUE_FIELD.to_string(), self.value.clone()));
-        fields.push((
-            RISK_LEVEL_FIELD.to_string(),
-            GoValue::Str(self.level.0.clone()),
-        ));
+        // Struct-origin map: Go declaration order value, risk_level,
+        // threshold (omitempty), message (omitempty). omitempty fields are simply
+        // not pushed when zero/empty, matching Go's encoding/json behavior.
+        let mut m = GoMap::new_struct();
+        m.push(VALUE_FIELD, self.value.clone());
+        m.push(RISK_LEVEL_FIELD, GoValue::Str(self.level.0.clone()));
         if self.threshold != 0.0 {
-            fields.push((THRESHOLD_FIELD.to_string(), GoValue::Float(self.threshold)));
+            m.push(THRESHOLD_FIELD, GoValue::Float(self.threshold));
         }
         if !self.message.is_empty() {
-            fields.push((MESSAGE_FIELD.to_string(), GoValue::Str(self.message.clone())));
+            m.push(MESSAGE_FIELD, GoValue::Str(self.message.clone()));
         }
-        GoValue::Object(fields)
+        GoValue::Map(m)
     }
 }
 

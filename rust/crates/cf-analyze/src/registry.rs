@@ -91,7 +91,7 @@ impl Registry {
             let ids = self.resolve_pattern(raw.trim())?;
             selected.extend(ids);
         }
-        Ok(unique(&selected))
+        Ok(unique(Some(&selected)).unwrap_or_default())
     }
 
     /// Returns IDs for the patterns, or all IDs when none are specified. Port of
@@ -128,7 +128,7 @@ impl Registry {
         for d in &self.ordered {
             let is_match = path_match(pattern, &d.id).map_err(|e| AnalyzeError::InvalidAnalyzerGlob {
                 pattern: pattern.to_string(),
-                source: e.to_string(),
+                cause: e.to_string(),
             })?;
             if is_match {
                 matched.push(d.id.clone());

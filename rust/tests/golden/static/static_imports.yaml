@@ -1,0 +1,34 @@
+import_list:
+    - path: cmp
+      category: external
+      is_external: true
+    - path: k8s.io/apimachinery/pkg/util/sets
+      category: external
+      is_external: true
+    - path: reflect
+      category: external
+      is_external: true
+    - path: slices
+      category: external
+      is_external: true
+    - path: testing
+      category: external
+      is_external: true
+    - path: fmt
+      category: stdlib
+      is_external: false
+    - path: math/rand
+      category: stdlib
+      is_external: false
+categories:
+    - category: external
+      count: 5
+    - category: stdlib
+      count: 2
+dependencies: []
+aggregate:
+    total_imports: 7
+    external_imports: 5
+    internal_imports: 2
+    unique_packages: 7
+    external_ratio: 0.7142857142857143

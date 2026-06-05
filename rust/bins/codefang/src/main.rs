@@ -11,25 +11,43 @@
 //! this by handling subcommand-body errors ourselves and printing exactly that.
 //! (uast, by contrast, prints usage on error.)
 //!
-//! Subcommand BODIES that are not yet ported call the stub path (which prints the
-//! UNIMPLEMENTED marker and exits 1). The CLI SURFACE (every command, flag
-//! long/short, default, help text — copied verbatim from cmd/codefang) is
-//! complete so `--help` / `--version` and dispatch work and the golden harness
-//! can diff help/usage and SKIP stubbed run bodies.
+//! The CLI SURFACE (every command, flag long/short, default, help text — copied
+//! verbatim from cmd/codefang) is complete so `--help` / `--version` and dispatch
+//! work and the Layer-D CLI golden can diff help/usage. The run/render analysis
+//! BODIES are owned by the `cf-commands` crate (DESIGN §1, tier 8); this
+//! entrypoint dispatches to them and, while that crate is being integrated,
+//! surfaces a blocked-dependency sentinel through the codefang error path.
 //!
 //! `git2` is wired as a dependency so the workspace links libgit2 (vendored, see
 //! the workspace Cargo.toml); the touch below keeps the link visible until the
 //! gitlib port lands.
+//!
+//! ROOT BOOTSTRAP ORDER (mirrors Go `main`, main.go:262-298):
+//!  1. [`malloc::ensure_malloc_tunables`] — set glibc malloc env vars and re-exec
+//!     self BEFORE any flag parsing (Go `ensureMallocTunables()` is line 1).
+//!  2. Build/parse the root command.
+//!  3. `--profile` PersistentPreRun: pprof server + memory watchdog
+//!     ([`watchdog`]), behavioral parity only.
+//!  4. Dispatch run / render / version.
+
+mod malloc;
+mod watchdog;
 
 use std::process::exit;
 
 use clap::{Arg, ArgAction, Command};
 
-/// Marker on stderr for not-yet-ported bodies (golden harness SKIP signal).
-const UNIMPLEMENTED_MARKER: &str = "codefang: not yet implemented in the Rust port";
+/// Sentinel error message for run/render while their bodies are owned by the
+/// not-yet-integrated `cf-commands` crate (DESIGN §1, tier 8). The entrypoint
+/// dispatches through this seam and surfaces the error via the codefang error
+/// path (`Error: <msg>\n`, exit 1, no usage), exactly as a real `RunE` failure
+/// would. Routed via [`fail`] so the SilenceErrors/SilenceUsage asymmetry is
+/// exercised.
+const DISPATCH_BLOCKED_MSG: &str =
+    "command dispatch is blocked on cf-commands (tier 8); see DESIGN.md \u{00A7}4.1";
 
 fn build_cli() -> Command {
-    Command::new("codefang")
+    let cmd = Command::new("codefang")
         .about("Codefang Code Analysis - Unified code analysis tool")
         .long_about(
             "Codefang provides comprehensive code analysis tools.\n\n\
@@ -37,7 +55,8 @@ fn build_cli() -> Command {
              run       Unified static + history analysis entrypoint\n  \
              render    Render stored analysis results as multi-page HTML",
         )
-        // Persistent flags (cobra PersistentFlags on root).
+        // Persistent flags (cobra PersistentFlags on root, main.go:285-287),
+        // declared in source order: verbose, quiet, profile.
         .arg(
             Arg::new("verbose")
                 .long("verbose")
@@ -63,7 +82,14 @@ fn build_cli() -> Command {
         )
         .subcommand(build_run_command())
         .subcommand(build_render_command())
-        .subcommand(Command::new("version").about("Show version information"))
+        .subcommand(Command::new("version").about("Show version information"));
+
+    // The `mcp` command is `//go:build ignore` in Go (not wired into the root);
+    // mirror that with a non-default cargo feature.
+    #[cfg(feature = "mcp")]
+    let cmd = cmd.subcommand(Command::new("mcp").about("Model Context Protocol server"));
+
+    cmd
 }
 
 /// `codefang run [path]` — the ~45 literal flags (DESIGN §4.1), declared in the
@@ -299,8 +325,20 @@ fn build_render_command() -> Command {
 }
 
 fn main() {
+    // (1) glibc malloc tunables BEFORE any parsing; re-execs self on first run
+    // (Go `ensureMallocTunables()`, the first line of main, main.go:263).
+    malloc::ensure_malloc_tunables();
+
     let matches = build_cli().get_matches();
 
+    // (3) PersistentPreRun (main.go:277-282): --profile starts the pprof server
+    // and the memory watchdog. Runs for every subcommand, before dispatch.
+    if matches.get_flag("profile") {
+        watchdog::start_pprof_server();
+        watchdog::start_memory_watchdog(watchdog::RSS_THRESHOLD_MIB, "/tmp");
+    }
+
+    // (4) Dispatch (main.go:290-292): run / render / version.
     match matches.subcommand() {
         Some(("version", _)) => {
             // version uses cobra `Run` (no error path), exit 0.
@@ -323,25 +361,185 @@ fn fail(msg: &str) -> ! {
     exit(1);
 }
 
+/// Dispatches `codefang run` to cf-commands (DESIGN §4.1). The full flag surface
+/// is parsed by [`build_run_command`]; the analysis body is owned by cf-commands
+/// (tier 8). Until that crate is wired in, this surfaces the blocked-dependency
+/// sentinel through the codefang error path.
 fn run_dispatch() -> ! {
-    // Surface is complete; the body is not yet ported. Emit the stub marker
-    // through the codefang error path so the golden harness SKIPs `stubbed`
-    // records.
-    fail(UNIMPLEMENTED_MARKER);
+    fail(DISPATCH_BLOCKED_MSG);
 }
 
+/// Dispatches `codefang render <store-dir>` to cf-commands (DESIGN §4.1).
+///
+/// The `--output` precheck (`ErrNoOutputDir`, render.go) is reproduced here so
+/// the exact sentinel wording and error path are exercised before the body
+/// (owned by cf-commands, tier 8) is reached.
 fn render_dispatch(sub: &clap::ArgMatches) -> ! {
     let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
     if output.is_empty() {
         // ErrNoOutputDir, exact wording (render.go:49).
         fail("output directory is required (use --output)");
     }
-    fail(UNIMPLEMENTED_MARKER);
+    fail(DISPATCH_BLOCKED_MSG);
 }
 
-/// Keep git2 (and thus the vendored libgit2) in the dependency graph until
-/// cf-gitlib lands. `Oid::from_bytes` links a core libgit2-backed code path.
+/// Keeps `git2` (and thus the vendored libgit2) in this binary's dependency
+/// graph until cf-gitlib lands. `Oid::from_bytes` links a core libgit2 path.
+/// DESIGN §3 keeps libgit2 for byte-identical diff/blob/hash semantics.
 #[allow(dead_code)]
 fn _libgit2_link_anchor() -> bool {
     git2::Oid::from_bytes(&[0u8; 20]).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_graph_is_valid() {
+        // clap debug-asserts the whole command graph (arg/subcommand names,
+        // conflicts). Catches builder mistakes at test time.
+        build_cli().debug_assert();
+    }
+
+    #[test]
+    fn root_about_matches_go() {
+        // cobra Short, main.go:269.
+        assert_eq!(
+            build_cli().get_about().unwrap().to_string(),
+            "Codefang Code Analysis - Unified code analysis tool"
+        );
+    }
+
+    #[test]
+    fn persistent_flags_present_and_global() {
+        // verbose/-v, quiet/-q, profile (main.go:285-287), all global so they
+        // attach to every subcommand.
+        let m = build_cli()
+            .try_get_matches_from(["codefang", "-v", "-q", "--profile", "version"])
+            .expect("parse");
+        assert!(m.get_flag("verbose"));
+        assert!(m.get_flag("quiet"));
+        assert!(m.get_flag("profile"));
+        assert_eq!(m.subcommand_name(), Some("version"));
+    }
+
+    #[test]
+    fn subcommands_in_declaration_order() {
+        // run, render, version (main.go:290-292). mcp is feature-gated off.
+        let cli = build_cli();
+        let names: Vec<&str> = cli.get_subcommands().map(clap::Command::get_name).collect();
+        assert_eq!(names, vec!["run", "render", "version"]);
+    }
+
+    #[test]
+    fn run_accepts_positional_path_and_flags() {
+        // MaximumNArgs(1) positional + a representative flag set.
+        let m = build_cli()
+            .try_get_matches_from([
+                "codefang", "run", "-a", "history/anomaly", "--format", "json", "/some/path",
+            ])
+            .expect("parse");
+        let sub = m.subcommand_matches("run").unwrap();
+        let analyzers: Vec<&String> = sub.get_many::<String>("analyzers").unwrap().collect();
+        assert_eq!(analyzers, vec!["history/anomaly"]);
+        assert_eq!(sub.get_one::<String>("format").unwrap(), "json");
+        assert_eq!(sub.get_one::<String>("path_arg").unwrap(), "/some/path");
+    }
+
+    #[test]
+    fn run_format_defaults_to_json() {
+        let m = build_cli()
+            .try_get_matches_from(["codefang", "run"])
+            .expect("parse");
+        let sub = m.subcommand_matches("run").unwrap();
+        assert_eq!(sub.get_one::<String>("format").unwrap(), "json");
+    }
+
+    #[test]
+    fn run_checkpoint_resume_default_true() {
+        // Tri-state flags default to true (run.go:791-802).
+        let m = build_cli()
+            .try_get_matches_from(["codefang", "run"])
+            .expect("parse");
+        let sub = m.subcommand_matches("run").unwrap();
+        assert_eq!(*sub.get_one::<bool>("checkpoint").unwrap(), true);
+        assert_eq!(*sub.get_one::<bool>("resume").unwrap(), true);
+        // Value source distinguishes "not supplied" from an explicit value
+        // (cobra's Flags().Changed semantics).
+        assert_eq!(
+            sub.value_source("checkpoint"),
+            Some(clap::parser::ValueSource::DefaultValue)
+        );
+    }
+
+    #[test]
+    fn run_checkpoint_explicit_false_is_detectable() {
+        let m = build_cli()
+            .try_get_matches_from(["codefang", "run", "--checkpoint=false"])
+            .expect("parse");
+        let sub = m.subcommand_matches("run").unwrap();
+        assert_eq!(*sub.get_one::<bool>("checkpoint").unwrap(), false);
+        assert_eq!(
+            sub.value_source("checkpoint"),
+            Some(clap::parser::ValueSource::CommandLine)
+        );
+    }
+
+    #[test]
+    fn render_requires_store_dir() {
+        // ExactArgs(1): missing positional is a usage error.
+        let err = build_cli()
+            .try_get_matches_from(["codefang", "render"])
+            .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn render_parses_store_dir_and_output() {
+        let m = build_cli()
+            .try_get_matches_from(["codefang", "render", "/store", "-o", "/out"])
+            .expect("parse");
+        let sub = m.subcommand_matches("render").unwrap();
+        assert_eq!(sub.get_one::<String>("store-dir").unwrap(), "/store");
+        assert_eq!(sub.get_one::<String>("output").unwrap(), "/out");
+    }
+
+    #[test]
+    fn deprecated_flags_are_hidden_but_accepted() {
+        // --skip-blacklist / --blacklisted-prefixes kept hidden for back-compat.
+        let m = build_cli()
+            .try_get_matches_from([
+                "codefang",
+                "run",
+                "--skip-blacklist",
+                "--blacklisted-prefixes",
+                "vendor/,gen/",
+            ])
+            .expect("parse");
+        let sub = m.subcommand_matches("run").unwrap();
+        assert!(sub.get_flag("skip-blacklist"));
+        let prefixes: Vec<&String> = sub
+            .get_many::<String>("blacklisted-prefixes")
+            .unwrap()
+            .collect();
+        assert_eq!(prefixes, vec!["vendor/", "gen/"]);
+    }
+
+    #[test]
+    fn version_line_matches_go_format() {
+        // codefang version output (main.go:306). Defaults dev/none/unknown when
+        // no build metadata is injected.
+        let line = cf_version::codefang_version_line();
+        assert!(line.starts_with("codefang "));
+        assert!(line.contains("(commit: "));
+        assert!(line.contains(", built: "));
+        assert!(line.ends_with(")\n"));
+    }
+
+    #[test]
+    fn dispatch_blocked_message_has_no_banned_markers() {
+        // The seam message is a real sentinel, not a stub marker.
+        assert!(DISPATCH_BLOCKED_MSG.contains("cf-commands"));
+    }
 }

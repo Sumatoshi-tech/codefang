@@ -53,12 +53,12 @@ pub enum AnalyzeError {
     },
 
     /// `invalid analyzer glob`. Go: `ErrInvalidAnalyzerGlob`.
-    #[error("invalid analyzer glob {pattern:?}: {source}")]
+    #[error("invalid analyzer glob {pattern:?}: {cause}")]
     InvalidAnalyzerGlob {
         /// The malformed glob pattern.
         pattern: String,
         /// Underlying match error.
-        source: String,
+        cause: String,
     },
 
     /// `unsupported format`. Go: `ErrUnsupportedFormat`.

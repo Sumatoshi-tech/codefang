@@ -25,6 +25,36 @@ use cf_gojson::{Encoder, GoMap, GoValue};
 /// Schema version for unified time-series output. Go `TimeSeriesModelVersion`.
 pub const TIMESERIES_MODEL_VERSION: &str = "codefang.timeseries.v1";
 
+/// Errors raised while building or serializing the merged time-series.
+///
+/// The serialization functions currently surface plain [`io::Error`]s; this
+/// enum is the typed error the public API exposes for callers that build a
+/// time-series from malformed per-analyzer data.
+#[derive(Debug)]
+pub enum TimeSeriesError {
+    /// An underlying write/encode failure, preserving the I/O error message.
+    Io(String),
+    /// The supplied per-analyzer data could not be merged into a time-series.
+    InvalidData(String),
+}
+
+impl std::fmt::Display for TimeSeriesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(msg) => write!(f, "{msg}"),
+            Self::InvalidData(msg) => write!(f, "invalid time-series data: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for TimeSeriesError {}
+
+impl From<io::Error> for TimeSeriesError {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e.to_string())
+    }
+}
+
 /// Fallback tick duration in hours. Go `defaultTickSizeHours`.
 const DEFAULT_TICK_SIZE_HOURS: f64 = 24.0;
 
@@ -159,7 +189,7 @@ fn assemble_commits(active: &[AnalyzerData], commit_meta: &[CommitMeta]) -> Vec<
             commit_hashes.push(hash.clone());
         }
     }
-    let commit_set = build_lookup_set(&commit_hashes);
+    let commit_set = build_lookup_set(Some(&commit_hashes)).unwrap_or_default();
 
     let ordered = order_commits_by_meta(commit_meta, &commit_set);
     let mut commits = Vec::with_capacity(ordered.len());

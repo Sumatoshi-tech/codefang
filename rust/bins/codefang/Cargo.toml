@@ -11,9 +11,23 @@ publish.workspace = true
 name = "codefang"
 path = "src/main.rs"
 
+[features]
+default = []
+# The `mcp` command (cmd/codefang/commands/mcp.go) carries `//go:build ignore`
+# in Go and is NOT wired into the root command. Mirror that: feature-gated, off
+# by default. See DESIGN.md §4.1.
+mcp = []
+# `--profile` pprof HTTP server (localhost:6060). The memory watchdog is always
+# available; this feature is reserved for the pprof HTTP endpoints (behavioral
+# parity only, never machine output bytes).
+profile = []
+
 [dependencies]
 clap = { workspace = true }
+# KEEP libgit2 (vendored via git2). The entrypoint links a core libgit2 path so
+# the binary anchors the vendored build; per-thread Repository usage lands with
+# cf-gitlib. See DESIGN §3.
 git2 = { workspace = true }
+# Build/version metadata — `codefang version` reproduces the Go output via the
+# ldflags-equivalent constants populated by cf-version's build.rs. See DESIGN §4.1.
 cf-version = { path = "../../crates/cf-version" }
-cf-gojson = { path = "../../crates/cf-gojson" }
-cf-reportutil = { path = "../../crates/cf-reportutil" }

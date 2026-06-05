@@ -971,6 +971,27 @@ mod tests {
         assert_eq!(tree.len(), 0);
     }
 
+    /// Behavioural port of `TestMaxHighMaintenance`. The Go test reaches into
+    /// the private `tree.root.maxHigh` field directly; the Rust API does not
+    /// expose internal node state, so we assert the *observable* consequence of
+    /// correct `max_high` maintenance instead: pruning must not drop a still
+    /// reachable interval after the widest one is deleted.
+    #[test]
+    fn max_high_maintenance() {
+        let mut tree: Tree<u32, u32> = Tree::new();
+        tree.insert(10, 60, 1);
+        tree.insert(30, 40, 2);
+
+        // Both intervals are reachable while [10,60] dominates max_high.
+        assert_eq!(sorted_values(tree.query_point(35)), vec![1, 2]);
+
+        // Deleting the wide interval must shrink max_high so the remaining
+        // [30,40] is still found and a point only covered by [10,60] is not.
+        assert!(tree.delete(10, 60, &1));
+        assert_eq!(sorted_values(tree.query_point(35)), vec![2]);
+        assert!(tree.query_point(55).is_empty());
+    }
+
     /// Covers signed endpoints crossing zero (extends the Go int64 coverage).
     #[test]
     fn signed_endpoints() {

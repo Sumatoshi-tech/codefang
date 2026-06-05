@@ -1,0 +1,914 @@
+{
+  "overall_score_label": "6/10",
+  "sections": [
+    {
+      "title": "COMMENTS",
+      "score_label": "6/10",
+      "status": "Fair comment quality - consider improving placement",
+      "metrics": [
+        {
+          "label": "Total Comments",
+          "value": "301"
+        },
+        {
+          "label": "Good Comments",
+          "value": "250"
+        },
+        {
+          "label": "Bad Comments",
+          "value": "51"
+        },
+        {
+          "label": "Doc Coverage",
+          "value": "70.0%"
+        },
+        {
+          "label": "Good Ratio",
+          "value": "58.8%"
+        },
+        {
+          "label": "Total Functions",
+          "value": "147"
+        }
+      ],
+      "distribution": [
+        {
+          "label": "Documented",
+          "percent": 0.7619047619047619,
+          "count": 112
+        },
+        {
+          "label": "Undocumented",
+          "percent": 0.23809523809523808,
+          "count": 35
+        }
+      ],
+      "issues": [
+        {
+          "name": "BenchmarkListLarge",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "BenchmarkListSmall",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "BenchmarkStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestIntersection",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestKeySet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewEmptySet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewSet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestNewStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSet",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClear",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClearInSeparateFunction",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetClearWithSharedReference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetDeleteMultiples",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetDifference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetEquals",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetHasAny",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSetSymmetricDifference",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestSortedList",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringIntersection",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSet",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetDeleteMultiples",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetDifference",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetEquals",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetHasAny",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetList",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringSetSymmetricDifference",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestStringUnion",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "TestUnion",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "clearSetAndAdd",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "makeString",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+          "location": "set_generic_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        },
+        {
+          "name": "struct {\n\t\tsize         int\n\t\tminStringLen int\n\t\tmaxStringLen int\n\t}",
+          "location": "set_test.go",
+          "value": "undocumented",
+          "severity": "poor"
+        }
+      ],
+      "files": [
+        {
+          "file_path": "doc.go",
+          "score_label": "0/10",
+          "status": "Poor comment quality - significant improvement needed",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "3"
+            },
+            {
+              "label": "Good Comments",
+              "value": "0"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "3"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "0.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "0.0%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "0"
+            }
+          ],
+          "issues": [],
+          "score": 0
+        },
+        {
+          "file_path": "empty.go",
+          "score_label": "7/10",
+          "status": "Good comment quality with room for improvement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "3"
+            },
+            {
+              "label": "Good Comments",
+              "value": "2"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "1"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "66.7%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "1"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 1
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.6666666666666666
+        },
+        {
+          "file_path": "int32.go",
+          "score_label": "9/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "47"
+            },
+            {
+              "label": "Good Comments",
+              "value": "40"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "7"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "85.1%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "18"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.851063829787234
+        },
+        {
+          "file_path": "int64.go",
+          "score_label": "9/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "47"
+            },
+            {
+              "label": "Good Comments",
+              "value": "40"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "7"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "85.1%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "18"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.851063829787234
+        },
+        {
+          "file_path": "set.go",
+          "score_label": "10/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "50"
+            },
+            {
+              "label": "Good Comments",
+              "value": "48"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "2"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "96.0%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "21"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 21
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.96
+        },
+        {
+          "file_path": "set_test.go",
+          "score_label": "0/10",
+          "status": "Poor comment quality - significant improvement needed",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "5"
+            },
+            {
+              "label": "Good Comments",
+              "value": "0"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "5"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "0.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "0.0%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "15"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Undocumented",
+              "percent": 1,
+              "count": 15
+            }
+          ],
+          "issues": [
+            {
+              "name": "BenchmarkStringSet",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestNewStringSet",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringIntersection",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSet",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetDeleteMultiples",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetDifference",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetEquals",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetHasAny",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetList",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringSetSymmetricDifference",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestStringUnion",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "makeString",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "struct {\n\t\ts1       String\n\t\ts2       String\n\t\texpected String\n\t}",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "struct {\n\t\tsize         int\n\t\tminStringLen int\n\t\tmaxStringLen int\n\t}",
+              "location": "set_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            }
+          ],
+          "score": 0
+        },
+        {
+          "file_path": "string.go",
+          "score_label": "9/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "47"
+            },
+            {
+              "label": "Good Comments",
+              "value": "40"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "7"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "85.1%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "18"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.851063829787234
+        },
+        {
+          "file_path": "int.go",
+          "score_label": "9/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "47"
+            },
+            {
+              "label": "Good Comments",
+              "value": "40"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "7"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "85.1%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "18"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.851063829787234
+        },
+        {
+          "file_path": "set_generic_test.go",
+          "score_label": "0/10",
+          "status": "Poor comment quality - significant improvement needed",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "5"
+            },
+            {
+              "label": "Good Comments",
+              "value": "0"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "5"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "0.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "0.0%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "20"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 0,
+              "count": 0
+            },
+            {
+              "label": "Undocumented",
+              "percent": 1,
+              "count": 20
+            }
+          ],
+          "issues": [
+            {
+              "name": "BenchmarkListLarge",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "BenchmarkListSmall",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestIntersection",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestKeySet",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestNewEmptySet",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestNewSet",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSet",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetClear",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetClearInSeparateFunction",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetClearWithSharedReference",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetDeleteMultiples",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetDifference",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetEquals",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetHasAny",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSetSymmetricDifference",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestSortedList",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "TestUnion",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "clearSetAndAdd",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            },
+            {
+              "name": "struct {\n\t\ts1       sets.Set[string]\n\t\ts2       sets.Set[string]\n\t\texpected sets.Set[string]\n\t}",
+              "location": "set_generic_test.go",
+              "value": "undocumented",
+              "severity": "poor"
+            }
+          ],
+          "score": 0
+        },
+        {
+          "file_path": "byte.go",
+          "score_label": "9/10",
+          "status": "Excellent comment quality and placement",
+          "metrics": [
+            {
+              "label": "Total Comments",
+              "value": "47"
+            },
+            {
+              "label": "Good Comments",
+              "value": "40"
+            },
+            {
+              "label": "Bad Comments",
+              "value": "7"
+            },
+            {
+              "label": "Doc Coverage",
+              "value": "100.0%"
+            },
+            {
+              "label": "Good Ratio",
+              "value": "85.1%"
+            },
+            {
+              "label": "Total Functions",
+              "value": "18"
+            }
+          ],
+          "distribution": [
+            {
+              "label": "Documented",
+              "percent": 1,
+              "count": 18
+            },
+            {
+              "label": "Undocumented",
+              "percent": 0,
+              "count": 0
+            }
+          ],
+          "issues": [],
+          "score": 0.851063829787234
+        }
+      ],
+      "score": 0.5881985815602837
+    }
+  ],
+  "overall_score": 0.5881985815602837
+}

@@ -1,0 +1,14 @@
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ HALSTEAD                                                         Score: 3/10 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  Summary: Moderate Halstead complexity - acceptable
+
+  Key Metrics
+  ────────────────────────────────────────────────────────────────────────────
+  Total Functions     141         Distinct Operators (n1)54          
+  Distinct Operands (n2)41          Total Operators (N1)96          
+  Total Operands (N2) 209         Vocabulary          95          
+  Volume              2243.6      Difficulty          132.6       
+  Effort              714652.1    Est. Bugs           0.7         

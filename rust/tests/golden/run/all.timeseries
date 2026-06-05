@@ -1,6 +1,0 @@
-{
-  "version": "codefang.timeseries.v1",
-  "tick_size_hours": 24,
-  "analyzers": [],
-  "commits": []
-}

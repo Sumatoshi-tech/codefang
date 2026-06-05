@@ -413,5 +413,30 @@ mod tests {
         // mix_hash(x, 0) == mix64(x) because base ^ 0 == base and the finalizer
         // body is identical.
         assert_eq!(mix_hash(0xDEAD_BEEF, 0), mix64(0xDEAD_BEEF));
+        // mix_hash(0xDEADBEEF, 0) cross-checked against the Go oracle.
+        assert_eq!(mix_hash(0xDEAD_BEEF, 0), 0x4e06_2702_ec92_9eea);
+    }
+
+    // Pin the first three GenerateSeeds outputs for both advance functions
+    // against the Go oracle (`GenerateSeeds(3, Mix64)` / `(3, Splitmix64)`),
+    // anchoring byte-identity of the seed sequences that feed CMS/HLL/MinHash.
+    #[test]
+    fn generate_seeds_known_answers() {
+        assert_eq!(
+            generate_seeds(3, mix64),
+            alloc::vec![
+                0xe94c_59ad_4451_b240,
+                0x6175_4e88_6771_1e40,
+                0xd53e_8f44_adca_7204,
+            ],
+        );
+        assert_eq!(
+            generate_seeds(3, splitmix64),
+            alloc::vec![
+                0x35f5_76a4_e31c_f92b,
+                0x2e17_4aef_7f65_35dc,
+                0x850a_219a_9d90_f1cd,
+            ],
+        );
     }
 }

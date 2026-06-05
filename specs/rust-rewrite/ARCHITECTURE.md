@@ -1,335 +1,623 @@
-# codefang Rust Rewrite — Architecture Map
+# Codefang Go → Rust Architecture Map
 
-> Source of truth for porting **github.com/Sumatoshi-tech/codefang** (Go 1.26) to Rust.
-> Goal: behavioral and (where required) byte-for-byte parity for two binaries — `codefang` and `uast`.
-> Derived from 8 parallel discovery investigations, cross-checked against source. Last verified: 2026-05-30.
+This document is the authoritative architecture reference for porting **codefang** (Go,
+module `github.com/Sumatoshi-tech/codefang`) to Rust with **byte-identical report output**
+on the reference corpus (`~/sources/kubernetes`). It consolidates discovery across the CLI
+surface, report serialization, analyzer inventory, libgit2/git2go usage, tree-sitter usage,
+third-party dependencies, the build/CGO/libgit2 linkage, and the internal package layering,
+and ends with the consolidated byte-identity risk register and the topological port order.
 
----
-
-## 0. Top-level facts
-
-- **Module:** `github.com/Sumatoshi-tech/codefang`, `go 1.26`. A nested module exists at `pkg/uast` (own `go.mod`).
-- **Two binaries:** `codefang` (`cmd/codefang`) and `uast` (`cmd/uast`). Both are `spf13/cobra` roots; config via `spf13/viper`. Rust port must produce BOTH with distinct command trees.
-- **Git backend:** libgit2 1.5.0, vendored as a git submodule at `third_party/libgit2`, **statically linked via cgo** through `github.com/libgit2/git2go/v34 v34.0.0` PLUS a hand-written C shim in `pkg/gitlib/clib`. No go-git anywhere.
-- **Parsing:** tree-sitter via `github.com/alexaandru/go-tree-sitter-bare v1.11.0` (runtime) + 69 `go-sitter-forest/<lang>` grammar submodules. A `.uastmap` PEG DSL maps tree-sitter CST → project UAST.
-- **No Rust exists yet** in this checkout (no `crates/`, no `Cargo.toml`).
+The Go project keeps **libgit2** (via git2go/v34). The Rust port keeps libgit2 too (via the
+`git2` crate with `vendored-libgit2`). Nothing in machine report output may use
+`serde_json`/`serde_yaml`: Go-byte-compatible encoders (`cf-gojson`, `cf-goyaml`) are the only
+serializers allowed on the report path.
 
 ---
 
-## 1. Binary / CLI trees
+## 1. Binaries & CLI Tree
 
-### 1.1 `codefang` (entrypoint `cmd/codefang/main.go`)
+Two cobra binaries are built from `cmd/`:
 
-- **Root:** `Use "codefang"`, Short `"Codefang Code Analysis - Unified code analysis tool"`. Sets `SilenceUsage=true` and `SilenceErrors=true`. On any `Execute` error prints `Error: %v\n` to **STDERR** and `os.Exit(1)`. Subcommands wired in `main.go`: **run, render, version**. (`mcp.go` has `//go:build ignore` and is NOT added — **do not port** the `mcp` command, or gate it behind a disabled feature.)
-- **Persistent root flags:**
-  - `--verbose`/`-v` bool (false) — "enable detailed output"
-  - `--quiet`/`-q` bool (false) — "suppress output"
-  - `--profile` bool (false) — "enable pprof server (localhost:6060) and memory watchdog"
-- **PersistentPreRun:** if `--profile`, start pprof HTTP on `localhost:6060` + memory watchdog (writes `/tmp/maps_baseline.txt` etc).
-- **Startup side effect (BEFORE arg parse):** `ensureMallocTunables()` — if `MALLOC_ARENA_MAX` is unset, sets `MALLOC_ARENA_MAX=2`, `MALLOC_MMAP_THRESHOLD_=32768`, `MALLOC_TRIM_THRESHOLD_=16384`, `MALLOC_MMAP_MAX_=65536`, then `syscall.Exec` re-execs the process. Rust should reproduce (set env + `exec` self) for memory-behavior parity, or document as intentionally dropped.
+- **`codefang`** — `cmd/codefang/main.go` (`Use: "codefang"`)
+- **`uast`** — `cmd/uast/main.go` (`Use: "uast"`)
 
-#### `codefang version`
-`Run` (not `RunE`, always exit 0). Prints to STDOUT: `codefang %s (commit: %s, built: %s)\n` from `pkg/version` (Version/Commit/Date; defaults `dev`/`none`/`unknown`, ldflags-injected). No flags.
+Both, on `rootCmd.Execute()` error: `fmt.Fprintf(os.Stderr, "Error: %v\n", err)` then
+`os.Exit(1)`. `codefang` root sets `SilenceUsage=true` + `SilenceErrors=true` (cobra prints
+nothing; main.go prints). `uast` root does **not** set those (default cobra usage/error
+printing on flag-parse errors).
 
-#### `codefang run [path]`
-- Short `"Run static and history analyzers"`; Long `"Run selected static and history analyzers."`. `Args = cobra.MaximumNArgs(1)` (optional positional path overrides `--path`). `RunE`.
-- **Literal flags** (long/short type default — help):
-  - `--analyzers`/`-a` []string nil — "Analyzer IDs or glob patterns (example: static/complexity,history/*,*)"
-  - `--format` string "json" — "Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact"
-  - `--ndjson` bool false — "With --format timeseries: emit one JSON line per commit (NDJSON)"
-  - `--input` string "" — "Input report path for cross-format conversion"
-  - `--input-format` string "auto" — "Input format: auto, json, bin"
-  - `--gogc` int 0 — "GC percent for history pipeline (0 = auto, >0 = exact)"
-  - `--ballast-size` string "0" — "Optional GC ballast size for history pipeline (0 = disabled)"
-  - `--silent` bool false — "Disable progress output"
-  - `--no-color` bool false — "Disable colored static output"
-  - `--path`/`-p` string "." — "Folder/repository path to analyze"
-  - `--debug-trace` bool false — "Enable 100% trace sampling for debugging"
-  - `--cpuprofile` string "" / `--heapprofile` string ""
-  - `--limit` int 0 — "Limit number of commits to analyze (0 = no limit)"
-  - `--first-parent` bool false / `--head` bool false
-  - `--since` string "" — "Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)"
-  - `--workers` int 0 / `--static-workers` int 0
-  - `--include-vendored` bool false / `--include-generated` bool false (multi-sentence help — copy verbatim)
-  - `--extra-excluded-prefixes` []string nil
-  - `--per-file`/`-F` bool false
-  - `--buffer-size` int 0 / `--commit-batch-size` int 0
-  - `--blob-cache-size` string "" / `--diff-cache-size` int 0 / `--blob-arena-size` string "" / `--memory-budget` string ""
-  - `--max-changes-per-commit` int 0 (multi-sentence help — copy verbatim)
-  - `--checkpoint` bool **true** (tri-state via `Changed()`) / `--checkpoint-dir` string "" / `--resume` bool **true** (tri-state) / `--clear-checkpoint` bool false
-  - `--cache-dir` string "" / `--no-cache` bool false
-  - `--config` string "" — "Configuration file path (default: .codefang.yaml in CWD or $HOME)"
-  - `--list-analyzers` bool false — prints to STDOUT, exit 0
-  - `--diagnostics-addr` string ""
-  - `--output`/`-o` string "" — "Output directory for plot HTML files (required with --format plot)"
-  - `--keep-store` bool false / `--tmp-dir` string ""
-- **Dynamic per-analyzer flags:** `registerAnalyzerFlags()` iterates every analyzer's `ListConfigurationOptions()` and registers one flag per option (Bool/Int/String/StringSlice/Float64/Path). Includes `--languages` ([]string). Exact names/defaults/help come from `internal/analyzers/*/*.go` — **must be dumped at runtime** (`codefang run --help`) for byte-identity. Two are deprecated via `MarkDeprecated`:
-  - `--skip-blacklist` → "use --include-vendored=false and --include-generated=false (the new defaults). See CHANGELOG for migration."
-  - `--blacklisted-prefixes` → "use --extra-excluded-prefixes; the old flag name is preserved for back-compat but will be removed in the next minor release."
-- **Tri-state flags:** `--checkpoint` and `--resume` (both default true) are read via `Flags().Changed(name)` so file/config defaults apply only when the CLI flag was NOT supplied. In Rust use `Option<bool>`/value-source detection, not a plain bool.
-- **I/O discipline:** results → STDOUT (`cmd.OutOrStdout`); progress → STDERR prefixed `progress: ` (suppressed by `--silent` or `--quiet`). Static verbose progress uses Go std `log` (STDERR). Errors bubble to root → STDERR + exit 1.
-- **Sentinel errors:** `ErrNoAnalyzersSelected` (lists: anomaly, burndown, couples, devs, file-history, imports, quality, sentiment, shotness, typos), `ErrUnknownAnalyzer`, `ErrRepositoryLoad` ("failed to load repository"), `ErrPlotOutputRequired` ("--output flag is required when --format plot").
+Process-level: `codefang` `ensureMallocTunables()` re-execs the process with
+`MALLOC_ARENA_MAX=2`, `MALLOC_MMAP_THRESHOLD_=32768`, `MALLOC_TRIM_THRESHOLD_=16384`,
+`MALLOC_MMAP_MAX_=65536` when `MALLOC_ARENA_MAX` is unset. This affects memory only, not CLI
+surface — replicate (glibc/Linux) or skip.
 
-#### `codefang render <store-dir>`
-- Short `"Render stored analysis results as multi-page HTML"`. `Args = cobra.ExactArgs(1)`.
-- Flag: `--output`/`-o` string "" — "output directory for HTML files".
-- `RunE` returns `ErrNoOutputDir` ("output directory is required (use --output)") if `-o` empty. Other sentinels: `ErrEmptyStore` ("no analyzer data found in store"), `ErrNoSectionRenderer` ("no section renderer registered").
-- Writes HTML files + `report.json` (mode 0640) into the output dir; warnings via `slog`. Errors → STDERR + exit 1.
+### 1.1 `codefang` root
 
-### 1.2 `uast` (entrypoint `cmd/uast/main.go`)
+PersistentFlags (inherited by all subcommands):
 
-- **Root:** `Use "uast"`, Short `"UAST (Universal Abstract Syntax Tree) parser and analyzer"`. On `Execute` error prints `Error: %v\n` to STDERR + `os.Exit(1)`. **DOES NOT set `SilenceErrors`/`SilenceUsage`** → cobra also prints usage+error (asymmetry vs `codefang`; must replicate).
-- **Persistent flags:** `--config` string "" ("config file (default is $HOME/.uast.yaml)"), `--verbose`/`-v` bool false, `--quiet`/`-q` bool false.
-- **Subcommands:** parse, diff, query, explore, analyze, completion, version, validate, mapping, lsp, server.
+| flag | short | type | default | help |
+|------|-------|------|---------|------|
+| `--verbose` | `-v` | bool | false | enable detailed output |
+| `--quiet` | `-q` | bool | false | suppress output |
+| `--profile` | | bool | false | enable pprof server (localhost:6060) and memory watchdog |
 
-| Command | Args | Flags | Output / notes |
-|---|---|---|---|
-| `version` | — | — | STDOUT `uast %s (commit: %s, built: %s)\n`; exit 0 |
-| `parse [files...]` | variadic | `--language`/`-l` "", `--output`/`-o` "", `--format`/`-f` "json" (json,compact,tree,none), `--progress`/`-p` false, `--all` false, `--workers`/`-w` 0 | STDOUT or `-o`; progress to STDERR. Sentinels `ErrUnsupportedParseFmt`, `ErrNoSourceFiles`; reads stdin if no files |
-| `diff file1 file2` | ExactArgs(2) | `--output`/`-o` "", `--format`/`-f` "unified" (unified,summary,json) | `ErrUnsupportedFileType`, `ErrUnsupportedDiffFmt` |
-| `query [query] [files...]` | manual: `ErrQueryExprRequired` if 0 args | `--input`/`-i` "", `--output`/`-o` "", `--format`/`-f` "json" (json,compact,count), `--interactive`/`-t` false | stdin if no files & no `--input`. `ErrUnsupportedQFmt` |
-| `explore [file]` | manual: `ErrNoFileSpecified` | `--language`/`-l` "" | REPL → STDOUT. `ErrUnsupportedExploreFile` |
-| `analyze [files...]` | manual: `ErrNoFilesSpecified` | `--output`/`-o` "", `--format`/`-f` "text" (text,json,html) | `ErrUnsupportedAnaFmt` |
-| `completion [shell]` | ExactArgs(1) | — | bash/zsh/fish/powershell → STDOUT. `ErrUnsupportedShell` |
-| `validate <file.json\|->` | ExactArgs(1) | `--schema` "pkg/uast/spec/uast-schema.json", `--color` false, `--no-color` false | **Special exit codes** (see below) |
-| `mapping` | variadic (extra = inputs for `--show-treesitter`) | `--node-types` "", `--mapping` "", `--format` "text" (text,json), `--coverage` false, `--generate` false, `--show-treesitter` false, `--language` "", `--extensions` "" | `ErrNodeTypesRequired`, `ErrNoInputFiles`, `ErrNoRootNode`, `ErrUnsupportedLanguage` |
-| `lsp` | — | — | LSP over stdio (`lsp.NewServer().Run()`) |
-| `server` | — | `Run` not `RunE`; `--port`/`-p` "8080", `--static`/`-s` "" | HTTP on `:PORT`; slog→STDERR. Routes: `POST /api/parse`, `POST /api/query`, `GET /api/mappings`, `GET /api/mappings/<name>` |
+Subcommands registered: `run`, `render`, `version`. Cobra auto-adds `-h/--help`,
+`completion`, `help`. **`mcp` is NOT shipped** — `cmd/codefang/commands/mcp.go` begins with
+`//go:build ignore` and is never `AddCommand`'d. Do not port it.
 
-**`uast validate` exit codes (via `os.Exit`, not cobra):** valid → 0; validation FAILED → 1; bad JSON / schema read / open / engine error → 2 (`exitCodeValidationFailure`). `--no-color` wins over `--color`. Result text + compliance % to STDOUT (colored); decode/open/schema errors to STDERR.
+`version` prints to STDOUT: `codefang %s (commit: %s, built: %s)\n`
+(`version.Version`/`Commit`/`Date`; defaults `dev`/`none`/`unknown`).
 
-### 1.3 Config resolution (`internal/config`)
+### 1.2 `codefang run [path]`
 
-- viper: file name `.codefang` (yaml), searched CWD then `$HOME` (or explicit `--config`). Missing file is NOT an error.
-- Env override: prefix `CODEFANG_`, nested `.`→`_` (e.g. `CODEFANG_PIPELINE_WORKERS`, `CODEFANG_HISTORY_BURNDOWN_GRANULARITY`), `AutomaticEnv`.
-- **Precedence:** CLI flags > env > file > defaults. Rust port must mirror exactly (use clap + a layered config crate).
-- Top-level keys: `analyzers` ([]string), `pipeline`, `history`, `checkpoint`. (Full default tables are in `internal/config/defaults.go` / `loader.go`; e.g. `pipeline.workers=0`, `pipeline.uast_parse_timeout="10s"`, `history.burndown.granularity=30`, `checkpoint.enabled=true`.)
-- **Doc caveat:** sentiment key authoritative form is `low_sentiment_risk_threshold` (the shipped `.codefang.yaml` comment shows `low_sentiment_risk_thresh` — implement the long form).
+`Args=cobra.MaximumNArgs(1)` (optional positional path, redundant with `--path/-p`).
+`--list-analyzers` prints analyzer IDs to STDOUT and returns. `--format plot` requires
+`--output` else error `--output flag is required when --format plot`.
 
----
+**Static flags** (long, short, type, default, help):
 
-## 2. Report formats & exact serialization rules
-
-> There is **NO** `internal/output`, `internal/visualization`, or `internal/report` package. The real machinery lives in `pkg/textutil`, `internal/analyzers/common/{renderer,formatter,plotpage,terminal,reportutil}`, `internal/analyzers/analyze/*`, `pkg/persist`. **No CSV, no Markdown** report format exists.
-
-### 2.1 The canonical JSON writer — `pkg/textutil/textutil.go::WriteJSON`
-```go
-enc := json.NewEncoder(w); if pretty { enc.SetIndent("", "  ") }; enc.Encode(v)
 ```
-- **No `SetEscapeHTML(false)` anywhere** → Go default HTML escaping is **ON** (`<`,`>`,`&` → `< > &`).
-- `Encode` appends exactly **one** trailing `\n`.
-- `pretty=true` → 2-space indent; `pretty=false` → compact single line + trailing `\n`.
-- Used by `codefang render` `report.json` (pretty), and `uast parse` (`json`=pretty, `compact`=compact).
+--analyzers           -a  []string  nil       Analyzer IDs or glob patterns (example: static/complexity,history/*,*)
+--format                  string    "json"    Output format: json, yaml, plot, bin, timeseries, ndjson, text, compact
+--ndjson                  bool      false      With --format timeseries: emit one JSON line per commit (NDJSON)
+--input                   string    ""         Input report path for cross-format conversion
+--input-format            string    "auto"     Input format: auto, json, bin
+--gogc                    int       0          GC percent for history pipeline (0 = auto, >0 = exact)
+--ballast-size            string    "0"        Optional GC ballast size for history pipeline (0 = disabled)
+--silent                  bool      false      Disable progress output
+--no-color                bool      false      Disable colored static output
+--path                -p  string    "."        Folder/repository path to analyze
+--debug-trace             bool      false      Enable 100% trace sampling for debugging
+--cpuprofile              string    ""         Write CPU profile to file
+--heapprofile             string    ""         Write heap profile to file
+--limit                   int       0          Limit number of commits to analyze (0 = no limit)
+--first-parent            bool      false      Follow only first parent of merge commits
+--head                    bool      false      Analyze only HEAD commit
+--since                   string    ""         Only analyze commits after this time (e.g., '24h', '2024-01-01', RFC3339)
+--workers                 int       0          Number of parallel workers (0 = use CPU count)
+--static-workers          int       0          Number of parallel static analysis workers (0 = min(CPU count, 8))
+--per-file            -F  bool      false      Include per-file breakdowns and summary statistics in static output
+--buffer-size             int       0          Size of internal pipeline channels (0 = workers*2)
+--commit-batch-size       int       0          Commits per processing batch (0 = default 100)
+--blob-cache-size         string    ""         Max blob cache size (e.g., '256MB', '1GB'; empty = default 1GB)
+--diff-cache-size         int       0          Max diff cache entries (0 = default 10000)
+--blob-arena-size         string    ""         Memory arena size for blob loading (e.g., '4MB'; empty = default 4MB)
+--memory-budget           string    ""         Memory budget for auto-tuning (e.g., '512MB', '2GB')
+--max-changes-per-commit  int       0          Skip commits whose tree diff exceeds this many changes (0 = default 10000)
+--config                  string    ""         Configuration file path (default: .codefang.yaml in CWD or $HOME)
+--list-analyzers          bool      false      List all available analyzer IDs and exit
+--diagnostics-addr        string    ""         Start diagnostics HTTP server (health/metrics) at this address (e.g., :6060)
+--output              -o  string    ""         Output directory for plot HTML files (required with --format plot)
+--keep-store              bool      false      Keep temp ReportStore directory after rendering (with --format plot)
+--tmp-dir                 string    ""         Directory for temporary spill files (default: system temp)
+```
 
-> **Rust:** serde_json defaults to NO HTML escaping and NO trailing newline. The port must enable HTML-style escaping globally for report JSON, add `\n` where Go uses `Encode`/`Marshal`-yaml, and sort map keys.
+**Exclusion flags** (`registerExclusionFlags`):
 
-### 2.2 The five JSON site configurations (all escape ON; differ in indent/newline)
-| Site | Indent | Trailing `\n` |
-|---|---|---|
-| `textutil.WriteJSON(pretty=true)` (render report.json, conversion JSON `conversion.go:305`, persist `JSONCodec`) | 2-space | yes |
-| `textutil.WriteJSON(pretty=false)` (uast parse compact) | none | yes |
-| `RenderMetricsJSON` = `json.Marshal` (`metrics_output.go:38`) | none | **no** |
-| reportutil binary payload = `json.Marshal` (`binary.go:31`) | none | **no** |
-| conversion NDJSON (`conversion.go:342-365`) | none | one `\n` per record |
+```
+--include-vendored          bool      false   Re-include vendored dependencies (enry/Linguist) in analysis
+--include-generated         bool      false   Re-include auto-generated files in analysis
+--extra-excluded-prefixes   []string  nil     Additional UNIX path prefixes to exclude on top of enry heuristics
+```
 
-A single global serializer cannot serve all sites — select indent/newline per emission site.
+**Persistence flags** (`registerPersistenceFlags`) — note `--checkpoint`/`--resume` default **TRUE**:
 
-### 2.3 Field ordering & map sorting
-- **Structs:** Go declaration order via `json`/`yaml` tags. In `renderer/json.go`, `score`/`overall_score` are declared **LAST** so serialize last. Rust = serde struct field order (keep score fields last).
-- **Maps:** alphabetical — Go's json/yaml runtime always sorts map keys, plus explicit `sort.Strings`/`mapx.SortedKeys`/`sort.Slice`. Rust = `BTreeMap` or pre-sort.
+```
+--checkpoint          bool    true    Enable checkpointing for crash recovery
+--checkpoint-dir      string  ""      Checkpoint directory (default: ~/.codefang/checkpoints)
+--resume              bool    true    Resume from checkpoint if available
+--clear-checkpoint    bool    false   Clear existing checkpoint before run
+--cache-dir           string  ""      Incremental analysis cache directory
+--no-cache            bool    false   Force full re-analysis, overwriting any existing cache
+```
 
-### 2.4 omitempty vs initialized-empty-slice nuance (`renderer/json.go`)
-- `JSONSection.Files` (`*[]...,omitempty`) and `Distribution` (`,omitempty`) are set to **non-nil empty slices** (`make([]...,0)`) → emit `[]`, NOT omitted.
-- Analyzer fields with `,omitempty` (source_file, language, directory, metadata, schema, clone_type_distribution, external_anomalies/summaries, files, languages) DO drop when empty.
-- `timeseries.MergedCommitData.Analyzers` is `json:"-"` → always excluded.
-- Rust: emit `[]` for initialized-empty cases; skip for omitempty-empty; skip `json:"-"`.
+**Dynamic analyzer flags** (`registerAnalyzerFlags`) — one flag per analyzer
+`ConfigurationOption`. Type map: Bool→bool, Int→int, String/Path→string, Strings→[]string,
+Float→float64. All long-only. Several defaults are host-derived (`runtime.NumCPU()`,
+`max(NumCPU/divisor,1)`); compute identically at runtime and preserve 0-sentinels:
 
-### 2.5 YAML — `gopkg.in/yaml.v3` (config is INPUT-only; report YAML is OUTPUT)
-- `RenderMetricsYAML` (`metrics_output.go:52`) and conversion YAML (`conversion.go:315`) use `yaml.Marshal`: 2-space indent, no `---`, alphabetical map keys, yaml.v3 scalar quoting (numbers/bools/null/yes/no/on/off quoted; single vs double quote selection), 80-col folding, single trailing `\n`. **No Rust YAML crate reproduces yaml.v3's emitter byte-for-byte** — hardest text format.
+```
+--granularity                      int      30                      How many time ticks there are in a single band.
+--sampling                         int      30                      How frequently to record the state in time ticks.
+--burndown-files                   bool     false                   Record detailed statistics per each file.
+--burndown-people                  bool     false                   Record detailed statistics per each developer.
+--burndown-hibernation-threshold   int      1000                    Min allocated memory in each branch to be compressed.
+--burndown-hibernation-disk        bool     true                    Save hibernated state to disk (no-op default).
+--burndown-hibernation-dir         string   ""                      Temporary directory for hibernated state.
+--burndown-debug                   bool     false                   Validate the trees at each step.
+--burndown-goroutines              int      NumCPU                  Goroutines for parallel processing.
+--anomaly-threshold                float64  DefaultAnomalyThreshold Z-score threshold for anomaly detection.
+--anomaly-window                   int      DefaultAnomalyWindow    Sliding window size in ticks.
+--no-diff-cleanup                  bool     false                   Do not apply heuristics to improve diffs.
+--no-diff-whitespace               bool     false                   Ignore whitespace when computing diffs.
+--diff-timeout                     int      <default>               Max ms a single diff calculation may elapse.
+--diff-goroutines                  int      NumCPU                  Goroutines for diff calculation.
+--empty-commits                    bool     false                   Take empty commits (trivial merges) into account.
+--anonymize                        bool     false                   Anonymize developer names (Developer-A, ...).
+--typos-max-distance               int      4                       Max Levenshtein distance for a typo-fix pair.
+--people-dict                      string   ""                      Path to developer->name|email associations.
+--exact-signatures                 bool     false                   Disable separate name/email matching.
+--tick-size                        int      <default>               How long each 'tick' represents in hours.
+--shotness-dsl-struct              string   filter(.roles has "Function")  UAST DSL to filter nodes.
+--shotness-dsl-name                string   .props.name             UAST DSL to determine node names.
+--fail-on-missing-submodules       bool     false                   (blob_cache)
+--blob-cache-goroutines            int      NumCPU                  Goroutines for parallel blob loading.
+--min-comment-len                  int      20                      Min comment length to analyze.
+--sentiment-gap                    float64  0.5                     Sentiment value threshold.
+--uast-changes-goroutines          int      max(NumCPU/divisor,1)   Goroutines for parallel UAST parsing.
+--whitelist                        string   ""                      Whitelist regexp for files to analyze.
+--languages                        []string ["all"]                 Languages to analyze ("all" disables filter).
+--skip-blacklist          [DEPRECATED] bool false                   (deprecated; see below)
+--blacklisted-prefixes    [DEPRECATED] []string <defaults>          (deprecated; see below)
+```
 
-### 2.6 Terminal text (hand-rolled + go-pretty)
-- `renderer/renderer.go` `SectionRenderer`: 2-space indent, `terminal.DrawHeader/DrawSeparator/DrawPercentBar`, 2-column metrics `PadRight(label,20)+PadRight(value,12)`, issues `PadRight(name,25)/(location,35)`. Parts joined by `\n`. **Padding uses BYTE length (`len`)**, not rune/display width — Rust must use byte length to match alignment.
-- `formatter.go` generic table: `go-pretty/v6` `table.StyleLight` with `SeparateRows/SeparateColumns/DrawBorder/SeparateHeader` all FALSE; cells `fmt %v`; keys alphabetical; `table.Render()` has **no trailing newline**.
-- ANSI color from `fatih/color` via `internal/analyzers/common/terminal`. Disabled on non-TTY / `NO_COLOR` / `--no-color` → piped output is plain.
-- Float/percent verbs: `%.2f`, `%.3f`, `%.1f%%` (percent = `x*100`), `%v`. Reproduce Go fmt rounding and Go shortest-float for encoded numbers.
+Deprecated (`MarkDeprecated`, still accepted, hidden):
+- `skip-blacklist` → "use --include-vendored=false and --include-generated=false (the new defaults). See CHANGELOG for migration."
+- `blacklisted-prefixes` → "use --extra-excluded-prefixes; the old flag name is preserved for back-compat but will be removed in the next minor release."
 
-### 2.7 HTML report (`internal/analyzers/common/plotpage`)
-- Project's OWN `html/template` (`//go:embed templates/*.html`), funcMap `{odd}`, composes `header.html`/`section.html`/`scripts.html`/`page.html`. go-echarts v2.6.7 builds per-chart `<div>+<script>` fragments embedded via `template.HTML` after `extractChartContent`/`removeStyleTags`. `LogoDataURI` = `data:image/png;base64,` + embedded PNG.
-- Go `html/template` contextual auto-escaping applies to plain interpolations; `template.HTML`/`template.CSS`/`template.URL`-typed values emitted unescaped.
-- **Byte identity is impractical** — requires reproducing both the template files (whitespace, attribute order) AND go-echarts fragment output (generated element IDs, embedded option JSON float/key formatting, `echarts.min.js`). Treat numeric series as the parity surface; chart HTML as out-of-scope unless tests pin it.
+STDOUT vs STDERR: report output → `cmd.OutOrStdout()` (STDOUT); `--list-analyzers` → STDOUT;
+progress/log lines via std `log` → STDERR; `--silent` disables progress; `--format plot` writes
+HTML to `--output` dir. SIGINT/SIGTERM via `signal.NotifyContext`.
 
-### 2.8 Durable / binary
-- `pkg/persist/codec.go`: `JSONCodec` (escape ON, optional 2-space indent, trailing `\n`); `GobCodec` (`encoding/gob` — Go-specific, **not byte-portable**; determine whether any durable report uses gob vs JSON).
-- `reportutil/binary.go`: 8-byte header — magic `CFB1` in bytes[0:4], `binary.LittleEndian` uint32 payload length in bytes[4:8], then compact `json.Marshal` payload (escape ON, no newline). Envelopes concatenated and decoded sequentially.
+### 1.3 `codefang render <store-dir>`
 
----
+`Args=cobra.ExactArgs(1)`. Single flag `--output/-o string ""` "output directory for HTML files".
+Empty `--output` → error `output directory is required (use --output)`. Other errors:
+`no analyzer data found in store`, `no section renderer registered`. Creates dir (0o750),
+writes HTML pages + `report.json` (0o640) `{analyzer_ids, pages}`. Skipped analyzers → slog Warn
+(STDERR) "skipping analyzer".
 
-## 3. Analyzer inventory (`internal/analyzers/*`)
+### 1.4 `uast` root
 
-### 3.1 Interfaces & families
-- **Base `Analyzer`** (`analyze/analyzer.go:78`): `Name()`, `Flag()`, `Descriptor()`, `ListConfigurationOptions()`, `Configure(facts)`.
-- **STATIC family:** `StaticAnalyzer` (`Analyze(root *node.Node)`), `RawFileAnalyzer` (`AnalyzeFileContent(path, content)`), both embed `FormattableAnalyzer` (`Thresholds`, `CreateAggregator`, `FormatReport{,JSON,YAML,Plot,Binary}`). Optional `VisitorProvider`.
-- **HISTORY family:** `HistoryAnalyzer` (`history.go:80`): `Initialize/Consume/WorkingStateSize/AvgTCSize/NewAggregator/SerializeTICKs/ReportFromTICKs/Fork/Merge/Serialize`. `Context` carries Time, Commit, Index, IsMerge, Changes, BlobCache, FileDiffs, UASTChanges, UASTSpillPath. Most leaves embed `BaseHistoryAnalyzer[M]` (`base_history.go:419`; `Name()=Desc.ID`, `Flag()`=part after `history/`). Companions: `StoreWriter`, `DirectStoreWriter`, `Parallelizable`. Flush via `FlushableAnalyzer` (`framework/streaming.go:669`).
-- **Execution:** static analyzers fan out via `pipeline.WorkerPool` into a name-keyed map under mutex; history analyzers Fork→Consume→Merge (additive) then aggregate TCs into TICKs → Report. Burndown shards per-file work across internal goroutines (fnv `getShardIndex`).
-- **Registration** (`cmd/codefang/commands/run.go:919` `NewRegistry`): static UAST = clones, complexity, comments, halstead, cohesion, imports; raw-file = composition; history = anomaly, burndown, couples, devs, filehistory, imports(history), quality, sentiment, shotness, typos. Two name namespaces: legacy `Name()` (e.g. "Couples","TemporalAnomaly") vs descriptor ID (e.g. "history/couples","history/anomaly").
+PersistentFlags: `--config string ""` "config file (default is $HOME/.uast.yaml)" (no short);
+`--verbose/-v bool false`; `--quiet/-q bool false`. Subcommands: `parse`, `diff`, `query`,
+`explore`, `analyze`, `completion`, `version`, `validate`, `mapping`, `lsp`, `server`.
+`version` → STDOUT `uast %s (commit: %s, built: %s)\n`.
 
-### 3.2 Per-analyzer summary
-| Analyzer | Family | ID / Name() | Category | Key algorithm | Determinism note |
-|---|---|---|---|---|---|
-| complexity | static UAST | complexity | AST/structure | cyclomatic + cognitive + nesting | sorted (`sort.Slice`) → deterministic |
-| cohesion | static UAST | cohesion | AST/structure | LCOM-HS + Bloom shared-var | **function-table order nondeterministic** (map range, no sort); scalars stable |
-| comments | static UAST | comments | AST/structure | comment-block grouping (sorted by line) | deterministic |
-| halstead | static UAST | halstead | AST/structure | Halstead metrics; CMS for >=1000-token fns | **per-function table order nondeterministic** (map range, no sort); scalars stable |
-| clones | static UAST | static/clones | AST/structure | MinHash(128)+LSH(16×8) | fixed seeds → reproducible (fixture-tested) |
-| imports | static UAST | imports | AST/structure | import extraction, dedup | deterministic |
-| composition | raw-file | static/composition | language-stats | enry file classification | deterministic per file |
-| imports/history | history | history/imports | git-history | 4-level author→lang→import→tick map | additive merge → order-independent |
-| quality | history | history/quality | technical-debt | composes complexity+halstead+comments+cohesion per commit (scalars only) | hash-keyed maps → order-independent |
-| typos | history | history/typos | quality | Levenshtein (default dist 4), single-id subs | dedup by Wrong\|Correct → deterministic |
-| sentiment | history | history/sentiment | sentiment | VADER (govader) + multilingual lexicon + SE neutralizers | uses commit time, not now; commutative |
-| devs | history (seq) | history/devs | developer/churn | per-author line stats + HLL | additive merge; **no time.Now in scoring** |
-| couples | history | history/couples (Couples) | churn/coupling | file & dev co-change matrices + Bloom + HLL | sorted indices → safe |
-| file_history | history | history/file-history | churn | path→hashes + per-dev LineStats | **per-file Hashes slice order nondeterministic** |
-| burndown | history (seq) | history/burndown | churn/git-history | per-line last-edit tick via sharded treaps | shard merge index-keyed → deterministic |
-| shotness | history | history/shotness (Shotness) | AST+git-history | co-change of DSL-selected entities | additive merge → order-independent |
-| anomaly | history | history/anomaly (TemporalAnomaly) | statistical | trailing-window Z-scores | ticks sorted → deterministic |
+| subcommand | args | flags / behavior |
+|------------|------|------------------|
+| `parse [files...]` | 0+ (0 → stdin) | `-l/--language ""`, `-o/--output ""`, `-f/--format "json"` (json/compact/tree/none), `-p/--progress false`, `--all false`, `-w/--workers 0`. `tree` falls through to `unsupported format` (preserve buggy behavior). |
+| `diff file1 file2` | ExactArgs(2) | `-o/--output ""`, `-f/--format "unified"` (unified/summary/json). |
+| `query [query] [files...]` | 1 query + 0+ files (0 → `query expression required`) | `-i/--input ""`, `-o/--output ""`, `-f/--format "json"` (json/compact/count), `-t/--interactive false`. NOTE `-i`=input, `-t`=interactive. |
+| `explore [file]` | optional (empty → `no file specified for exploration`) | `-l/--language ""`. REPL prompt `explore> `. |
+| `analyze [files...]` | 0+ (0 → `no files specified for analysis`) | `-o/--output ""`, `-f/--format "text"` (text/json/html). |
+| `validate <file.json\|->` | ExactArgs(1) | `--schema "pkg/uast/spec/uast-schema.json"` (default/empty → embedded), `--color false`, `--no-color false`. **Exit codes: 2** on IO/JSON/schema-load/validate-engine error; **1** parsed-but-invalid; **0** valid. |
+| `mapping` | positional = input files | `--node-types ""`, `--mapping ""`, `--format "text"` (text/json), `--coverage false`, `--generate false`, `--show-treesitter false`, `--language ""`, `--extensions ""`. |
+| `completion [shell]` | ExactArgs(1) | bash/zsh/fish/powershell → STDOUT; unknown → `unsupported shell: <s>`. |
+| `lsp` | none | stdio LSP server for `.uastmap`/query DSL. |
+| `server` | none | `-p/--port "8080"`, `-s/--static ""`. HTTP: POST /api/parse, POST /api/query, GET /api/mappings, GET /api/mappings/<name>. |
 
-**Plumbing providers** (`internal/analyzers/plumbing/`): BlobCache, FileDiff (native C diff), IdentityDetector, **LanguagesDetection** (enry, language-stats provider), LinesStats, **TicksSinceStart** (`ticks.go:163` uses `now+maxClockSkew` future-commit guard), TreeDiff, UASTChanges. Static-mode language stats: `analyze/static_language.go`.
+### 1.5 Exit codes
 
----
+- `0` success (both binaries).
+- `1` generic error (both, via `os.Exit(1)` on Execute error); also `uast validate` parsed-but-invalid.
+- `2` `uast validate` load/JSON/schema-load/validate-engine failures. clap default error exit is 2; success 0; use explicit `process::exit` to mirror validate's 2/1/0.
 
-## 4. git2go / libgit2 usage (→ Rust `git2` crate)
+### 1.6 Config (`.codefang.yaml`)
 
-All libgit2 access is concentrated in `pkg/gitlib/` (there is **no `pkg/git/`**). 10 production files import `git2go`. Cross-package consumer: `internal/analyzers/plumbing/blob_cache.go` opens a fresh handle per goroutine via `gitlib.OpenRepository(repo.Path())`.
+Loaded via viper (`internal/config/loader.go`): env prefix `CODEFANG_`, nested keys `.`→`_`,
+`AutomaticEnv`. Search when `--config` empty: CWD then `$HOME`, config name `codefang`, yaml only.
+Missing file is **not** an error. Precedence: **CLI flag > env > file > default**.
 
-| Concern | Go (git2go) | Rust (git2) mapping |
-|---|---|---|
-| open / HEAD / lookup | `OpenRepository`, `Head()+Target()+Free()`, `LookupCommit/Blob/Tree` | `Repository::open`, `repo.head()?.target()`, `find_commit/blob/tree`. **Delete all `.Free()`** (Drop) |
-| revwalk | `repo.Walk()`, `Push`, `Sorting(SortTime\|Topological\|Reverse)`, `SimplifyFirstParent()`, `walk.Iterate(func(*Commit) bool)` | `repo.revwalk()`, `push/push_head`, `set_sorting(Sort::…)`, `simplify_first_parent()`. **Revwalk yields `Result<Oid>` (pull)** not Commit — look up commit + convert bool-return to break |
-| commit meta | `Id/Author/Committer/Message/ParentCount/Parent/ParentId/TreeId/Tree` | same names. **`Signature.When` is `time.Time` vs git2 `git2::Time`** (secs+offset) — reimplement `--since` filter on raw seconds |
-| tree | `Tree.Id/EntryCount/EntryByIndex/EntryByPath`, `TreeEntry.Name/Id/Type`; hand-rolled `walkTree` | `Tree::len/get/get_path`, `TreeEntry::name()/id/kind`. **Entry borrows Tree** — copy name/oid/kind eagerly; prefer `Tree::walk` |
-| diff | `DefaultDiffOptions`+`DiffTreeToTree`; `diff.ForEach(fileCb→hunkCb, DiffDetail)` | `DiffOptions::new()`+`diff_tree_to_tree(Option<&Tree>,…)` (nil→None, clean). **`Diff::foreach` takes FOUR separate FnMut callbacks** — the nested-closure-returns-closure pattern needs RefCell/restructure |
-| delta classify | 11-variant `git2go.Delta*` consts | `git2::Delta::{Added,Deleted,Modified,Renamed,Copied,…}` (casing differs: `Delta::Typechange`). Rename/copy needs `DiffFindOptions::find_similar` |
-| blob | `blob.Contents()` (GC-owned, safe after Free) | `blob.content()` → `&[u8]` borrowed. **`cached_blob` pattern (free blob, keep bytes) is ILLEGAL** — `.to_vec()` eagerly everywhere |
-| OID↔Hash | `*git2go.Oid` ptr/array; `HashFromOid`/`ToOid`; SHA-1 only (HashSize=20) | `git2::Oid` is Copy (Eq/Hash/Ord); `Oid::from_bytes/as_bytes/from_str` |
-| worker | per-goroutine repo, `runtime.LockOSThread`, channel of requests | `Repository` is `!Send+!Sync` — **no `Arc<Repository>`**; open by path inside each thread |
-| cgo bridge | reflection into git2go's unexported `ptr`; custom clib batch ops (`cf_batch_load_blobs[_arena]`, `cf_tree_diff_v2`, `cf_batch_diff_blobs`); `cf_configure_memory` | `Repository::raw()` replaces reflection; clib reuse needs `libgit2-sys`+`build.rs`+unsafe, OR rewrite in safe git2 (CGO-overhead motivation evaporates). **Biggest reimplementation decision.** `malloc_trim` has no crate API |
-
----
-
-## 5. tree-sitter usage (→ Rust `tree-sitter` + grammar crates)
-
-- Code lives in `pkg/uast/` (+ `pkg/uast/pkg/{node,mapping,spec}`, `pkg/uast/lsp`). Two deps: `go-tree-sitter-bare v1.11.0` (runtime, imported `sitter`) and 69 `go-sitter-forest/<lang>` grammar submodules.
-- **Native S-expression queries ARE used:** `pattern_matcher.go` uses `sitter.NewQuery` + `QueryCursor.Matches` + `query.CaptureNameForID`. **TreeCursor IS used:** `parser_dsl.go` `GoToFirstChild/GoToNextSibling`. (These correct two earlier discovery errors.)
-- **Parser creation:** `GetLanguage(name)` → `languageFuncs[name]` → `sitter.NewLanguage(fn())`, memoized in `sync.Map`. `DSLParser` keeps a `sync.Pool` of `*sitter.Parser` and calls `ParseString(ctx, nil, content)`.
-- **Registry / abstraction:** `languages.go` (name→grammar table), `types.go` (`LanguageParser` interface), `loader.go` (lazy DSL parser init + 512-bit FNV-1a bloom for negative extension lookups), `parser.go` (facade over `//go:embed uastmaps/*.uastmap`). Mappings precompiled into 2.7 MB `embedded_mappings.gen.go`.
-- **AST walk:** `toCanonicalNode` recursion; `<8` named children → `NamedChild(idx)`, `>=8` → CGO batch helper, fallback TreeCursor. Aggressive unsafe reads of the C `TSNode`/`SubtreeHeapData` layout (linux/amd64). **All of this is a Go-FFI perf workaround — the Rust native API makes it unnecessary.**
-- **DSL = two layers:** tree-sitter queries (node-level capture) AND a PEG `.uastmap` rule engine (`mapping.peg`) with `Rule{Name, Extends, Pattern, Conditions, UASTSpec{Type, Token, Roles[], Props, Children}}`, inheritance resolved/merged at runtime. **The Rust port must re-implement this PEG DSL + rule engine + UAST node model** — tree-sitter does not provide it.
-- **Pipeline safeguards** (`internal/analyzers/plumbing/uast.go`): 256 KiB blob cap, 10 s per-file parse timeout (pathological inputs make tree-sitter allocate native memory unbounded), tree pooling.
-
-**The 69 supported languages** (authoritative, from `languages.go`; gated by presence of a `.uastmap` file):
-ansible, bash, c, c_sharp, clojure, cmake, commonlisp, cpp, crystal, css, csv, dart, dockerfile, dotenv, elixir, elm, fish, fortran, git_config, gitattributes, gitignore, go, gosum, gotmpl, gowork, graphql, groovy, haskell, hcl, helm, html, ini, java, javascript, json, kotlin, latex, lua, make, markdown, markdown_inline, nim, nim_format_string, perl, php, powershell, properties, proto, proxima, prql, psv, python, r, rego, ruby, rust, rust_with_rstml, scala, sql, ssh_config, swift, tcl, toml, tsx, typescript, xml, yaml, zig.
-
-Crate availability: mainstream langs map to official `tree-sitter-*` crates (typescript covers tsx+typescript; tree-sitter-md covers markdown+markdown_inline; c_sharp→tree-sitter-c-sharp). Several forest grammars lack first-party Rust crates and need community crates or vendored C: ansible, crystal, csv, dotenv, git_config, gitattributes, gitignore, gosum, gotmpl, gowork, helm, ini, nim, nim_format_string, properties, proxima, prql, psv, rego, rust_with_rstml, ssh_config, tcl. **Verify each on crates.io before committing to full parity.**
-
----
-
-## 6. Non-trivial dependency usage (→ Rust crates)
-
-| Go dep (exact pin) | Use | Report-byte impact | Rust mapping / risk |
-|---|---|---|---|
-| **`github.com/src-d/enry/v2 v2.1.0`** (FROZEN 2019 fork, NOT modern go-enry) | language detection + IsVendor/IsBinary/IsImage/IsDocumentation/IsConfiguration/IsDotFile + GetLanguage/GetLanguageByAlias/GetLanguageExtensions + `data.LanguagesByFilename` | **YES — drives which files are counted & language labels** | Reproduce THIS fork's `languages.yml` tables, alias/extension maps, vendor/generated regexes, resolution order, and canonical language-name strings byte-for-byte. Content heuristics use **Oniguruma** (`src-d/go-oniguruma`) — match Oniguruma, not Rust `regex`. **Do NOT use modern go-enry or hyperpolyglot.** |
-| **`github.com/jonreiter/govader v0.0.0-20250429093935-f6505c8d03cc`** | VADER sentiment in `sentiment/scorer.go` (WIRED into reports) | **YES — compound/pos/neg/neu floats serialize** | Reproduce the bundled `vader_lexicon` snapshot at that commit, booster/negation/punctuation/ALL-CAPS/'but'-clause logic, `compound = x/sqrt(x*x+15)`. Mirror govader, not Python VADER. |
-| `go-echarts/v2 v2.6.7` | dashboard charts (`devs/dashboard_*`, render) | chart JSON/HTML only | option-JSON + HTML scaffolding heavy surface; usually out-of-scope for byte-identity (match numeric series) |
-| `jedib0t/go-pretty/v6 v6.6.7` | human-format tables | table text bytes | port StyleLight column/padding/border; comfy-table/tabled differ |
-| `dustin/go-humanize v1.0.1` | number/byte/time strings | output strings only | match thresholds/suffixes/relative-phrase tables; **only used in `internal/framework/config.go`, NOT report serializers** |
-| `pierrec/lz4/v4 v4.1.22` | — | **NONE — zero imports** | do NOT add a Rust lz4 dep |
-| `prometheus/client_golang v1.23.2` + `go.opentelemetry.io/otel v1.40.0` | telemetry (~34 files) | none | `tracing`+`opentelemetry`+`opentelemetry-otlp`; behavioral parity only |
-| `tliron/glsp v0.2.2` | LSP server (`uast lsp`) | none (JSON-RPC) | `tower-lsp`/`lsp-server`; behavioral parity |
-| `spf13/cobra v1.9.1` + `spf13/viper v1.21.0` | CLI + config | help text only | clap + figment/config; replicate flag>env>file>default precedence |
-| `xeipuuv/gojsonschema v1.2.0` | JSON-schema validation (`uast validate`) | error strings if emitted | `jsonschema` crate; reproduce draft-04 error wording if surfaced |
-| `sergi/go-diff v1.4.0` (`diffmatchpatch`) | UAST/tree diff, `uast diff` | diff-output bytes | faithful diff-match-patch port + same `DiffCleanupSemantic` call order |
-| `fatih/color v1.18.0` | TTY ANSI | TTY only | `owo-colors`/`colored`; replicate NO_COLOR/isatty gating |
-
-**Serialization substrate** (where all byte-identity lands): Go `encoding/json` (2-space, HTML-escape default, map keys sorted, struct decl order, shortest-float) + `gopkg.in/yaml.v3`. serde_json/serde_yaml must replicate ordering + escaping + float formatting.
-
----
-
-## 7. Build / CGO / libgit2
-
-- **Source of truth: `Makefile`.** `make`/`make all`/`make build` build BOTH binaries into `build/bin/` (GOBIN). Every compile/test/lint target exports:
-  ```
-  CGO_ENABLED=1
-  CGO_CFLAGS=-I$(CURDIR)/third_party/libgit2/install/include
-  CGO_LDFLAGS=-L.../install/lib64 -L.../install/lib -lgit2 -lpthread
-  PKG_CONFIG_PATH=.../install/lib64/pkgconfig:.../install/lib/pkgconfig
-  ```
-- **libgit2 is 1.5.0** (`version.h` + `libgit2.pc`; SOVERSION 1.5). `git describe` of the submodule (`v0.16.0-12722-gfbea439d`) is **misleading** — pin the gitlink commit `fbea439d4b6fc91c6b619d01b85ab3b7746e4c19` or libgit2 1.5.x. git2go v34.0.0 targets the 1.5 ABI.
-- **cmake options (must match for parity):** `-DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DBUILD_CLI=OFF -DUSE_SSH=OFF -DUSE_HTTPS=OFF -DUSE_BUNDLED_ZLIB=ON -DCMAKE_BUILD_TYPE=Release`. Static linking needs `-lpthread` AND `-lrt` (`Libs.private: -lrt`).
-- **Go links libgit2 two ways:** git2go v34 binding + a hand-written CGO C shim (`pkg/gitlib/clib/{utils,blob_ops,diff_ops}.c` + `codefang_git.h` via `cgo_bridge.go`). `cf_configure_memory` tunes libgit2 mwindow/cache limits and glibc malloc arenas.
-- **Rust:** point a `git2`/`libgit2-sys` system/pre-built build at `third_party/libgit2/install` (force system mode — the crate would otherwise vendor a different libgit2 and enable https/ssh). A new ADR should supersede `docs/adr/0003-libgit2-via-cgo.md` recording the `git2`-crate decision and the fate of the clib batching layer.
-- **Release:** `.goreleaser.yml` sets only `CGO_ENABLED=1` (no libgit2 flags, no `make libgit2` hook) → relies on ambient env. Docker builds fully-static on Alpine/musl.
-- **Fresh checkout caveat:** `make libgit2` does NOT run `git submodule update --init` — a clean clone must do that first.
-
----
-
-## 8. Internal package layering (verified DAG, 0 cycles)
-
-Built from `go list .Imports` (non-test, default build). Tarjan SCC + DFS back-edge detection report **0 cycles**.
-
-**KEY DAG fact:** `internal/framework` DOES import `internal/analyzers/{analyze,common,plumbing}` in non-test files (`runner.go`, `streaming.go`, `uast_pipeline.go`), but `internal/analyzers/analyze` does **NOT** import framework. Ordering: `analyze` (low) → `common,plumbing` → `framework` (high). **The Rust port must keep `analyze` a LOWER crate than `framework`** — inverting creates a real cycle.
-
-Layering: domain/leaf utilities → adapters (gitlib, uast, cache, plumbing, streaming, checkpoint, common/*) → analysis core (`analyze` → `common`/`plumbing`) → framework → analyzer plugins → composites (composition, quality) → application roots (mcp, cmd/uast, cmd/codefang/commands, cmd/codefang).
-
-> **Note:** `cmd/uast` only needs the UAST stack + observability + pipeline, so although the longest-path layering places it at tier 7 it can be ported as early as after tier 2 (independent of framework/analyzers).
-
-See the companion module list (StructuredOutput / port-order JSON) for per-package tier, Rust crate name, deps, purpose, and LOC.
+Top-level keys: `analyzers []string`; `pipeline.*` (workers, memory_budget, blob_cache_size,
+diff_cache_size, blob_arena_size, commit_batch_size, gogc, ballast_size, memory_limit,
+worker_timeout, uast_spill_threshold=32, intra_commit_parallel_threshold=4,
+max_intra_commit_workers=4, max_uast_blob_size=262144, uast_parse_timeout="10s",
+max_changes_per_commit=10000, max_diff_batch_size=1000, memory_budget_ratio=50,
+memory_budget_cap="2GiB", memory_limit_ratio=75, uast_spill_trim_interval=16,
+native_trim_interval=10, max_streaming_buffering=3, drain_prefetch_timeout="30s",
+sampler_interval="2s", worker_ratio=100, uast_worker_ratio=40, leaf_worker_divisor=3,
+min_leaf_workers=4, buffer_size_multiplier=2, budget_limit_ratio=95,
+system_ram_limit_ratio=90, diff_job_buffer_multiplier=10, static_max_workers=8,
+malloc_trim_interval=50, static_memory_limit_ratio=90);
+`history.burndown` (granularity=30, sampling=30, track_files=false, track_people=false,
+hibernation_threshold=1000, hibernation_to_disk=true, hibernation_directory, debug=false,
+goroutines=0); `history.couples`, `history.devs`, `history.file_history`, `history.imports`,
+`history.sentiment`, `history.clones`, `history.shotness` (dsl_struct, dsl_name),
+`history.typos` (max_distance=4); `checkpoint` (enabled=true, dir, resume=true, clear_prev=false).
+(Full per-key default tree is in `internal/config/loader.go`.)
 
 ---
 
-## 9. Consolidated byte-identity risk list
+## 2. Report Formats & Serialization Rules
 
-**Serialization core**
-1. **JSON HTML escaping is ON everywhere** (no `SetEscapeHTML(false)` exists). serde_json defaults OFF → mismatches every `<`,`>`,`&`. Enable HTML-style escaping globally for report JSON.
-2. **Trailing-newline divergence per site:** `json.Encoder.Encode` + `yaml.Marshal` add one `\n`; `json.Marshal` + go-pretty `Render()` add none. Track per emission site.
-3. **Field/key ordering split:** structs = Go declaration order (score fields LAST in `renderer/json.go`); maps = alphabetical (Go runtime sort + explicit sorts). Use serde struct order + BTreeMap/pre-sort.
-4. **omitempty vs initialized-empty `[]`:** `JSONSection.Files`/`Distribution` emit `[]`; other omitempty fields drop; `Analyzers` is `json:"-"`.
-5. **yaml.v3 emitter** (block style, scalar quoting, folding, key order) — no Rust crate matches byte-for-byte.
-6. **Float/percent formatting** — Go `%.2f/%.3f/%.1f%%`, Go shortest-float in encoded numbers, `%v` reflection format. Reproduce Go rounding + shortest-float (watch `-0`/large-exponent edges).
-7. **go-pretty StyleLight** column width / padding / no trailing newline — Rust table crates differ.
-8. **HTML report** — project templates + go-echarts v2.6.7 fragments + contextual auto-escaping + base64 logo. Effectively impractical; scope to numeric series.
-9. **Terminal padding uses BYTE length** (`len`), not display width — Rust must use byte length.
-10. **ANSI color** — match fatih/color ESC codes and NO_COLOR/isatty/`--no-color` gating; non-TTY stays plain.
-11. **`encoding/gob`** (persist `GobCodec`) — not byte-portable; determine if any durable report uses it.
-12. **Binary `CFB1` envelope** — magic bytes[0:4], LE uint32 length bytes[4:8], compact escaped JSON payload, concatenated.
+Five concrete output families dispatched by `--format`: `json`, `yaml`,
+`plot` (HTML/echarts), `bin`, `timeseries` (+`ndjson`), `ndjson`, `text`, `compact`.
+**No markdown and no CSV output anywhere.** `go-humanize` is input-parsing only.
 
-**Dependency fidelity**
-13. **enry = src-d/enry/v2 v2.1.0** (frozen fork) — port its exact data tables, vendor/generated regexes, Oniguruma content semantics, and canonical language-name strings. Drift shifts every count.
-14. **govader at commit f6505c8d03cc** — exact lexicon snapshot + algorithm + `compound = x/sqrt(x*x+15)`; serialize floats via Go shortest round-trip.
-15. **sergi/go-diff** — Myers+bisect + `DiffCleanupSemantic/Efficiency` + `DiffPrettyText/Delta` formatting in identical call order.
-16. **go-humanize / go-pretty / go-echarts** strings — match verbatim where they reach output (humanize only in framework config, not report serializers).
-17. **viper precedence** (flag > env > config > default) + `CODEFANG_` env mapping — replicate exactly; affects analysis params and thus contents.
-18. **gojsonschema draft-04** error wording if surfaced; else pass/fail parity.
-19. **pierrec/lz4 unused** — add nothing.
+### 2.1 Serialization paths (each is load-bearing & distinct)
 
-**Analyzer determinism (already nondeterministic in Go — match the Go behavior or normalize)**
-20. **`analyze/metadata.go:23` `AnalyzedAt = time.Now()`** — report envelope is never byte-identical run-to-run unless excluded/normalized.
-21. **`plumbing/ticks.go:163` `now+maxClockSkew` future-commit guard** — tick assignment is now-dependent ONLY for repos with future-dated commits.
-22. **halstead & cohesion per-function tables** — map-range, no sort → order nondeterministic; scalars stable.
-23. **file_history `FileHistory.Hashes`** — appended in Fork/Merge order → per-file commit-hash slice order nondeterministic unless sorted downstream.
-24. **NOT a risk (verified):** alg sketches use deterministic fixed seeds (minhash Splitmix64, cms Mix64+fnv, lsh fnv); no `math/rand` in analyzers. Additive/commutative merges and explicitly-sorted outputs are output-stable.
+| path | call site | encoder | indent | trailing `\n` | escapeHTML |
+|------|-----------|---------|--------|---------------|------------|
+| Static JSON | `analyze/static.go:818` `FormatJSON` | `json.NewEncoder + SetIndent("","  ") + Encode` | 2-space | yes (Encode) | yes (default) |
+| History per-analyzer JSON | `analyze/base_history.go:156` | `json.Marshal` | **compact** | **no** | yes |
+| History YAML | same | `yaml.Marshal` (yaml.v3) | 2-space | yaml's own | n/a |
+| History binary | same | `reportutil.EncodeBinaryEnvelope` | — | — | yes (payload) |
+| Conversion / combined | `analyze/conversion.go:302` | `json.NewEncoder + SetIndent("","  ") + Encode` | 2-space | yes | yes |
+| Timeseries | `analyze/timeseries.go:154` | `json.NewEncoder + SetIndent` | 2-space | yes | yes |
+| Timeseries NDJSON | `analyze/timeseries.go:167` | `json.NewEncoder` no indent | none | per-line | yes |
+| NDJSON streaming | `analyze/streaming_sink.go:33` | `json.NewEncoder` no indent | none | per-line | yes |
+| Generic reporter JSON | `common/reporter.go:76` | `json.MarshalIndent("","  ")` | 2-space | **no** | yes |
 
-**CLI surface**
-25. **uast vs codefang error asymmetry** — uast shows cobra usage on error; codefang suppresses (prints only `Error: %v`).
-26. **uast validate exit codes 0/1/2** via `os.Exit`; `--no-color` wins over `--color`.
-27. **Dynamic per-analyzer `run` flags** — names/defaults/help only fully knowable by dumping `codefang run --help` at runtime; cobra vs clap `--help` rendering differs (custom help templates needed for true byte-identity).
-28. **Deprecated `--skip-blacklist` / `--blacklisted-prefixes`** — keep hidden/deprecated with exact messages.
-29. **Multi-line Long descriptions and multi-sentence flag help** (`--max-changes-per-commit`, `--include-generated`, the `static/complexity,history/*,*` example) — copy verbatim.
-30. **codefang malloc re-exec** (set `MALLOC_*` + `syscall.Exec` self before parse) — reproduce for memory parity or document as dropped.
+`SetEscapeHTML(false)` is **never** called anywhere → every JSON output escapes `<`, `>`, `&`
+as `<`, `>`, `&`. (This is exactly why the port uses `cf-gojson`, not serde_json.)
 
-**Build / git**
-31. **libgit2 must be 1.5.0** (don't trust `git describe`); cmake options must match; force `git2` system/pre-built mode (no vendored-libgit2, no https/ssh).
-32. **blob content lifetime** — git2 `content()` borrows; the Go free-blob-keep-bytes pattern is illegal — `.to_vec()` eagerly.
-33. **`Repository` is `!Send+!Sync`** — open by path per thread; no `Arc<Repository>`.
-34. **`diff.foreach` four-callback model** + return-code semantics (which files/hunks are visited) — wrong return silently corrupts per-file stats.
-35. **Signature time** — git2 `git2::Time` (secs+offset) vs Go `time.Time`; reimplement `--since` on raw seconds (timezone off-by-one silently changes the cutoff).
+### 2.2 Field order & map key ordering
+
+- JSON field order = **Go struct declaration order**, NOT json-tag-alphabetical. Source-of-truth
+  structs: `renderer/json.go`, `conversion.go`, `timeseries.go`, `streaming_sink.go`.
+  e.g. `JSONSection.score` is emitted last despite its tag.
+- `JSONReport{overall_score_label, sections, overall_score}`;
+  `JSONSection{title, score_label, status, metrics, distribution(omitempty), issues, files(*[],omitempty), score}`;
+  `JSONMetric{label,value}`; `JSONDistribution{label, percent, count}`;
+  `JSONIssue{name,location,value,severity}`. `distribution,omitempty` omits empty slices;
+  `files` is a pointer to distinguish empty-array from omitted.
+- `map[string]any` serialization: `encoding/json` sorts string keys alphabetically.
+  `MetricSet.ToJSON` (`computed_metrics.go`) and `MergedCommitData.MarshalJSON`
+  (`timeseries.go`) emit maps → use sorted keys (BTreeMap). `MergedCommitData` merges fixed meta
+  keys `hash/timestamp/author/tick` INTO the same map, so they get alphabetized among analyzer keys.
+- `UnifiedModel` tags (`conversion.go:27-37`): `AnalyzerResult{id,mode,schema(omitempty),report}`;
+  `UnifiedModel{version,metadata(omitempty),analyzers}`.
+
+### 2.3 Float / number / int formatting
+
+- JSON numbers: Go `strconv` shortest round-trip float64. Rust `ryu`/cf-gojson must match
+  (verify exponent/`.0` edge cases on real data).
+- Text: `fmt %.1f`/`%.2f`/`%.3f` round-half-to-even (Rust `format!` matches).
+- `reportutil`: `FormatInt=strconv.Itoa`, `FormatFloat="%.1f"`, `FormatPercent="%.1f%%"` of `v*100`.
+- Terminal mixed rounding: `FormatScore=int(math.Round(score*10))` (round) vs
+  `DrawPercentBar=int(percent*100)` (truncate). Match per-call.
+- burndown `text.go` custom comma grouping (`1,234,567`) via recursive `formatInt64`/`formatUint64`;
+  `reportutil` has NO comma grouping.
+
+### 2.4 Text / table / terminal
+
+- Only go-pretty usage: `common/formatter.go:213` — `table.StyleLight`, `SeparateRows`/`SeparateColumns`/
+  `DrawBorder`/`SeparateHeader`=false, header/row/footer, `Render()`. Gated by `text` format + `ShowTables`.
+  Reproduce StyleLight glyphs, auto-width, `%v` value formatting.
+- `terminal/box.go` DrawHeader heavy box `┏━┓┃┗┛`; `DrawSeparator` repeats `─`. Padding/truncation
+  use **byte len()**, not rune count — Rust must use `.len()` (bytes).
+- ANSI: `terminal/color.go` `\033[3xm ... \033[0m` unless NoColor (`NO_COLOR` env or `--no-color`);
+  width from `COLUMNS` env else 80. Env-dependent text bytes.
+- `renderer/renderer.go` fixed column widths (`MetricLabelWidth=20`), `strings.Join('\n')`.
+
+### 2.5 Binary envelope
+
+`reportutil/binary.go:30`: `'CFB1'` magic + **little-endian** `uint32` length + `json.Marshal`
+payload (compact, escapeHTML on). Combined runs concatenate envelopes.
+
+### 2.6 Plot/HTML (template-port-required, likely out of byte-scope)
+
+`plotpage/*` + `html/template` (`page.html`/`header.html`/`section.html`/`scripts.html`) +
+go-echarts/v2. `extractChartContent` string-slices echarts full-page HTML between
+`<div class="container">` and `</body>`, rewrites class, strips `<style>`. `components.go`
+Table injects cells as `template.HTML` (raw), Text uses `HTMLEscapeString`; `reportTable`
+sorts keys, json.Marshal values, truncates at 500 chars. Byte-reproducing this requires porting
+templates + go-echarts verbatim — flag as template-port-required.
+
+---
+
+## 3. Analyzer Inventory
+
+Core contracts: `analyze/analyzer.go` (`Analyzer`: Name/Flag/Descriptor/Configure/
+ListConfigurationOptions; sub-interfaces `StaticAnalyzer.Analyze(root *node.Node)`,
+`RawFileAnalyzer.AnalyzeFileContent(path, content)`), `analyze/history.go` (`HistoryAnalyzer`:
+Initialize/Consume/Fork/Merge/NewAggregator/ReportFromTICKs/Serialize),
+`analyze/base_history.go` (`BaseHistoryAnalyzer[M]`: Name=Descriptor.ID, Flag=segment after
+`history/`). Output schemas centrally declared in `analyze/schema_registry.go`.
+
+### 3.1 Plumbing / core (8) — infrastructure, not reportable leaves
+
+| Name | path | role |
+|------|------|------|
+| `TreeDiff` | plumbing/tree_diff.go:70 | per-commit added/modified/deleted changes; feeds everything |
+| `IdentityDetector` | plumbing/identity.go:43 | author/committer → canonical dev IDs |
+| `TicksSinceStart` | plumbing/ticks.go:37 | bucket commits into time ticks |
+| `BlobCache` | plumbing/blob_cache.go:37 | hash→blob cache; goroutine fan-out keyed by hash |
+| `FileDiff` | plumbing/file_diff.go:50 | per-file line diffs (native diff); goroutine fan-out |
+| `LinesStats` | plumbing/line_stats.go:30 | lines added/removed/changed |
+| `LanguagesDetection` | plumbing/languages.go:259 | per-file language via enry |
+| `UASTChanges` | plumbing/uast.go:49 | parse+diff changed files to UAST changes; goroutine, spill-to-disk |
+
+### 3.2 Static UAST analyzers (6)
+
+| Name | Flag | ID | output keys |
+|------|------|----|-------------|
+| clones | clone-detection | static/clones | clone_pairs, clone_type_distribution, total_functions, total_clone_pairs, clone_ratio |
+| complexity | complexity-analysis | static/complexity | function_complexity, distribution, high_risk_functions, aggregate |
+| comments | comments-analysis | static/comments | comment_quality, function_documentation, undocumented_functions, aggregate |
+| halstead | halstead-analysis | static/halstead | function_halstead, distribution, high_effort_functions, aggregate |
+| cohesion | cohesion-analysis | static/cohesion | function_cohesion, distribution, low_cohesion_functions, aggregate (LCOM-HS) |
+| imports | imports-analysis | static/imports | import_list, dependencies, categories, aggregate |
+
+### 3.3 Static raw-file analyzer (1)
+
+| Name | Flag | ID | output keys |
+|------|------|----|-------------|
+| composition | composition | static/composition | breakdown, percentages, total_files (enry classify all files) |
+
+### 3.4 History leaf analyzers (11)
+
+| Name | ID | inputs | output keys |
+|------|----|--------|-------------|
+| TemporalAnomaly | history/anomaly | TreeDiff, Ticks, LineStats, Languages, Identity | anomalies, time_series, aggregate |
+| burndown | history/burndown | BlobCache, Ticks, Identity, FileDiff, TreeDiff | global_survival, file_survival, developer_survival, aggregate (goroutine fan-out at history.go:599; StoreWriter chunked) |
+| Couples | history/couples | Identity, TreeDiff | file_coupling, developer_coupling, file_ownership, aggregate |
+| devs | history/devs | Identity, TreeDiff, Ticks, Languages, LineStats | developers, languages, busfactor, activity, churn, aggregate (6 sort sites; heavy map-order risk) |
+| FileHistoryAnalysis | history/file-history | Identity, TreeDiff, LineStats, BlobCache | file_churn, file_contributors, hotspots, composition, composition_ts, aggregate |
+| ImportsPerDeveloper | history/imports | UAST, Identity, Ticks | import_list, dependencies, categories, aggregate |
+| quality | history/quality | UAST, Ticks | time_series, aggregate (runs static analyzers per-commit) |
+| sentiment | history/sentiment | UAST, Ticks | time_series, trend, low_sentiment_periods, aggregate |
+| Shotness | history/shotness | FileDiff, UAST | node_hotness, node_coupling, hotspot_nodes, aggregate (DSL-configurable) |
+| typos | history/typos | UAST, BlobCache, FileDiff | typos |
+
+Wiring: `cmd/codefang/commands/run.go:1988` `buildPipeline()` builds core plumbing + a `Leaves`
+map; `defaultHistoryLeaves()` ranges the map (nondeterministic registration order → must sort by
+ID before execution/output); `defaultUASTAnalyzers()` lists the 6 static; `defaultRawFileAnalyzers()`
+lists composition. `Factory.maxParallel = runtime.NumCPU()`; merge order must be deterministic.
+
+No `math/rand`/`crypto/rand` in any analyzer. `time.Now()` only in metadata
+(`analyze/metadata.go:23` `AnalyzedAt` RFC3339 — normalize/exclude from parity) and tick clock-skew
+guards (not in payloads).
+
+---
+
+## 4. git2go / libgit2 Usage
+
+All git2go (`github.com/libgit2/git2go/v34`) usage is centralized in `pkg/gitlib` (no other
+production package imports it). The rest of the codebase consumes domain types
+(Repository, Commit, Tree, TreeEntry, Blob, Diff, RevWalk, Hash, Signature). Rust mirror:
+`rust/crates/cf-gitlib`.
+
+| Go op | site | git2 mapping |
+|-------|------|--------------|
+| OpenRepository | repository.go:19 | `Repository::open` |
+| Head + Target OID | repository.go:42 | `repo.head()?.target()` |
+| LookupCommit/Blob/Tree | repository.go:53/63/73 | `find_commit`/`find_blob`/`find_tree` |
+| Walk | repository.go:83 | `repo.revwalk()` |
+| Log: push + sort + first-parent | repository.go:99 | `push(oid)`, `set_sorting(TIME\|TOPOLOGICAL\|REVERSE)`, `simplify_first_parent()` |
+| DiffTreeToTree | repository.go:168 | `diff_tree_to_tree(Option<&Tree>, Option<&Tree>, Option<&mut DiffOptions>)` |
+| RevparseSingle + AsCommit (ResolveTime) | helpers.go:81 | `revparse_single(spec)?.peel_to_commit()` |
+| Commit metadata (Id/Author/Committer/Message/Parent*/Tree*) | commit.go:45+ | `commit.id()`/`author()`/`committer()`/`message()`/`parent*()`/`tree*()` |
+| RevWalk Next/Iterate | commit.go:201, revwalk.go:47 | `Revwalk: Iterator<Item=Result<Oid>>`; bool-continue callback → loop |
+| Tree traversal (EntryByIndex/Path, TreeEntry Name/Id/Type) | tree.go:18+ | `tree.get(i)`/`get_path()`; `TreeEntry::name/id/kind()` (kind is Option) |
+| Blob Id/Size/Contents | blob.go:17+ | `blob.id/size/content()->&[u8]` (must `.to_vec()`) |
+| Diff NumDeltas/Delta/Stats/ForEach | diff.go:16+ | `diff.deltas()`/`get_delta(i)`/`stats()`/`foreach(file,binary,hunk,line)` |
+| Delta-status → ChangeAction | changes.go:71 | `git2::Delta::{Added,Deleted,Modified,Renamed,Copied,...}` |
+| Hash↔Oid | hash.go:57 | `Oid::from_bytes`/`oid.as_bytes()` (Go uses raw `[20]byte`; git2 Oid opaque) |
+
+**Awkward paths the Rust port changes:**
+- `cgo_bridge.go:87` extracts the raw `git_repository*` via **reflection** on git2go's private
+  `ptr` field and feeds a custom C shim (`clib/*.c`: `cf_batch_load_blobs`, `cf_tree_diff_v2`,
+  `cf_batch_diff_blobs`). The Rust port **drops the entire C-shim batch path** in favor of
+  ordinary per-thread git2 lookups (`cf-gitlib/src/batch.rs`); `codefang_git.h`/`blob_ops.c`/
+  `diff_ops.c` are NOT ported.
+- `worker.go:104` `runtime.LockOSThread()` pins all CGO calls to one OS thread. Removed in Rust
+  (no cgo crossing; each thread opens its own git2 handle; Repository is !Send/!Sync per-handle).
+- Lifetime/borrow: git2 Commit/Tree/Blob/Revwalk borrow `'repo`; RAII Drop replaces `Free()`.
+- Signature time: git2go `When` is `time.Time`; git2 `when()` is `git2::Time` (epoch+offset) —
+  `commit.rs:341 time_before` reimplements the comparison.
+
+---
+
+## 5. Tree-sitter Usage
+
+Source → language-agnostic **UAST**. Engine accessed via go-tree-sitter-bare (CGO binding to
+libtree-sitter) + go-sitter-forest (**68** per-language grammar modules, each
+`GetLanguage() unsafe.Pointer`).
+
+Flow: `pkg/uast/languages.go` maps name → forest fn, wraps with `sitter.NewLanguage` (sync.Map
+cache); `DSLParser` (`parser_dsl.go`) pools a `sitter.Parser`, `ParseString` → `*Tree`, walks
+recursively converting each tree-sitter node into a canonical `node.Node` via a mapping rule from a
+per-language `.uastmap` DSL. Tree-sitter S-expression **queries/captures** are used only when a
+rule has a `Pattern` (`pkg/mapping/pattern_matcher.go`: `NewQuery` → `QueryCursor.Matches` → first
+match, `@capture` via `CaptureNameForID` + `Node.Content`).
+
+A second, unrelated DSL `FindDSL` (e.g. `filter(.roles has "Function")`) queries the **produced
+UAST** (shotness, uast server/query) — NOT tree-sitter. Rust equivalent: `cf-uast-node/src/dsl/`.
+
+The Go port reads tree-sitter internal struct fields via `unsafe` to cut CGO crossings
+(`cgo_helpers.go`, `cgo_named_children_batch.c`, etc.) — a Go-only optimization; the Rust port
+uses the safe `tree-sitter` crate API (`Node::start_byte/start_position/kind_id/named_child`) and
+does **not** replicate the unsafe layout.
+
+Rust state: `cf-uast/src/languages.rs` enumerates the exact 68 names (`SUPPORTED_LANGUAGES`,
+asserted == 68) but `get_language` currently returns `None` pending grammar-crate wiring.
+`cf-uast-mapping` depends on `tree-sitter` 0.22 + `streaming-iterator` 0.1 (QueryCursor::matches
+returns a StreamingIterator). `cf-uast-uastmaps/build.rs` regenerates the embedded mappings
+(replacing Go's `embedded_mappings.gen.go`).
+
+**The 68 languages** (all must have a pinned grammar): ansible, bash, c, c_sharp, clojure, cmake,
+commonlisp, cpp, crystal, css, csv, dart, dockerfile, dotenv, elixir, elm, fish, fortran,
+git_config, gitattributes, gitignore, go, gosum, gotmpl, gowork, graphql, groovy, haskell, hcl,
+helm, html, ini, java, javascript, json, kotlin, latex, lua, make, markdown, markdown_inline, nim,
+nim_format_string, perl, php, powershell, properties, proto, proxima, prql, psv, python, r, rego,
+ruby, rust, rust_with_rstml, scala, sql, ssh_config, swift, tcl, toml, tsx, typescript, xml, yaml,
+zig. Several (ansible, helm, gotmpl, proxima, nim_format_string, gosum, gowork, csv, psv, dotenv,
+ssh_config, git_config, gitattributes, gitignore, properties, prql, rego) lack a maintained
+upstream Rust crate → likely vendor the go-sitter-forest C sources via `cc`, at the same grammar
+revision.
+
+`.uastmap` DSL: header `[language "go", extensions: ".go"]` then
+`name <- (ts_pattern) => uast(type:..., token:..., roles:..., props:..., children:..., extends:...)`,
+parsed by a PEG grammar into `[]mapping.Rule`. Token specs: `self`, `text`, `@capture`,
+`child:<type>`, `descendant:<type>`, `fields.<name>`. Conditions: `field == "v"` / `!=`.
+
+---
+
+## 6. Third-party Dependency Usage
+
+**Byte-critical (report-affecting):**
+
+- **src-d/enry v2.1.0** — file classification & language labels. Sites: `IsVendor`
+  (pathfilter.go:44, classify.go:52, tree_diff, pathpolicy.go:36), `IsBinary`/`IsImage`
+  (classify.go:44/48), `IsDocumentation`/`IsConfiguration`/`IsDotFile` (classify.go:64/68/72),
+  `GetLanguage` (languages.go:355 content sniff), `GetLanguageByAlias` (tree_diff.go:147,
+  langpath.go:60), `GetLanguageExtensions` (langpath.go:65). Decides which files are analyzed and
+  their labels → must reproduce enry's vendor regexes, generated/binary/image/doc/config/dotfile
+  heuristics, linguist languages.yml (extensions/filenames/aliases/interpreters/classifier
+  order/tie-breaks), and content classifier exactly. Codebase also has its own extension fast-path
+  (`languages.go:350`) that must stay consistent with enry data. Data is dumpable via
+  `tools/enrydump`.
+- **sergi/go-diff v1.4.0 (diffmatchpatch)** — delta engine. `file_diff.go:291-297` /
+  `diff_pipeline.go:449-452`: `dmp.New`; `DiffTimeout`; `DiffLinesToRunes`; `DiffMainRunes(...,false)`;
+  `DiffCleanupMerge(DiffCleanupSemanticLossless(diffs))`. Consumers: line_stats (added/removed/
+  changed), burndown (line ownership/age), typos, shotness. Reproduce Myers line-mode +
+  CleanupSemanticLossless + CleanupMerge + DiffTimeout semantics + DiffLinesToRunes hashing +
+  whitespace stripping.
+- **jonreiter/govader** — only the sentiment analyzer. `scorer.go`:
+  `NewSentimentIntensityAnalyzer`, mutates Lexicon (non-ASCII multilingual), `PolarityScores().Compound`.
+  Then repo layers: `vaderCompoundToScore=(compound+1)/2` clamped [0,1] as **float32**;
+  `injectMultilingualLexicons`; `seDomainNeutralizers`/`seNegativeTerms` with `neutralizerWeight=0.8`;
+  length weighting `commentWeightWithMax` with `maxWeightRatio=3.0`. Requires exact VADER lexicon
+  valences, booster/negation lists, punctuation/caps amplifiers, compound normalization (alpha=15).
+  → Rust `cf-govader` + `cf-sentiment` + `cf-sentiment-lexicons`.
+
+**Output-conditional / non-report:**
+
+- **go-pretty v6** — one borderless `StyleLight` table (formatter.go) in text format.
+- **go-echarts v2.6.7** — HTML chart pages (byte-identity only if HTML compared).
+- **go-humanize v1.0.1** — `ParseBytes` for config/flag byte sizes only (no humanized output).
+- **fatih/color v1.18.0** — `uast validate` colored stdout only.
+- **xeipuuv/gojsonschema v1.2.0** — `uast validate` (draft-04) compliance % + error strings.
+- **cobra v1.9.1 / viper v1.21.0** — CLI tree + config loader (→ clap builder API + custom loader).
+- **tliron/glsp v0.2.2** — UAST mapping-DSL LSP server (→ tower-lsp/lsp-server if in scope).
+- **prometheus/client_golang v1.23.2 + opentelemetry v1.40.0** — telemetry only, no report bytes.
+- **pierrec/lz4 v4.1.22** — **UNUSED** (zero `.go` references; `persist/codec.go` uses only
+  gob+json). Skip in the port.
+
+---
+
+## 7. Build / CGO / libgit2 Linkage
+
+Go 1.26 CGO project linking a **vendored, statically-built libgit2** (git2go/v34 v34.0.0).
+
+- libgit2 is a git submodule at `third_party/libgit2` (url libgit2.git), submodule commit
+  `fbea439d4b6fc91c6b619d01b85ab3b7746e4c19` but the **checked-out tree reports version 1.5.0**
+  (`version.h`/`CMakeLists.txt`/`libgit2.pc`). **1.5.0 is what is compiled/linked.**
+- Built via CMake into `third_party/libgit2/install/lib64/libgit2.a` (+ `pkgconfig/libgit2.pc`)
+  with: `BUILD_SHARED_LIBS=OFF`, `USE_SSH=OFF`, `USE_HTTPS=OFF`, `USE_BUNDLED_ZLIB=ON`,
+  `BUILD_TESTS=OFF`, `BUILD_CLI=OFF`, `CMAKE_BUILD_TYPE=Release`.
+- Go build env (Makefile, repeated across targets):
+  `PKG_CONFIG_PATH=.../install/lib64/pkgconfig:.../install/lib/pkgconfig`,
+  `CGO_CFLAGS=-I.../install/include`,
+  `CGO_LDFLAGS=-L.../install/lib64 -L.../install/lib -lgit2 -lpthread`, `CGO_ENABLED=1`.
+  `libgit2.pc` `Libs.private: -lrt`. `STATIC=1`/Dockerfile add `-extldflags=-static`.
+- Binaries → `build/bin/{codefang,uast}`. LDFLAGS inject
+  `-X .../pkg/version.{Version,Commit,Date}`. Dockerfile: golang:1.26-alpine, `make libgit2`,
+  cc-wrap shim (`-include stdint.h`, ansible grammar workaround), fully-static build, final
+  alpine:3.21. GoReleaser does **not** set the libgit2 CGO flags (relies on env/CI).
+
+**Rust linkage:** `git2 = { version = "0.19", features = ["vendored-libgit2"] }`. The vendored
+libgit2 must match the **1.5.0** ABI/diff/blob/hash/walk semantics. Link line includes git2 +
+pthread/rt (bundled zlib inside the archive). git2go/v34 targets libgit2 1.5.x, so the Rust git2
+crate must bind the same 1.5.0 behavior.
+
+---
+
+## 8. Internal Package Layering & Topological Port Order
+
+68 internal Go packages, no import cycles. Layering: leaf utilities (`pkg/alg/*`, `pkg/safeconv`,
+`pkg/textutil`, ...) → infra/adapters (`pkg/gitlib`, `pkg/uast*`, caches, storage) → domain
+(`internal/analyzers/analyze` SPI hub + concrete analyzers + plumbing) → orchestration
+(`internal/framework`) → CLI (`cmd/*`).
+
+**Key hub:** `internal/analyzers/analyze` (3885 LOC, the analyzer interface) imported by every
+concrete analyzer and by `internal/framework`. Port right after gitlib + uast + alg utilities.
+
+**Note:** `internal/framework` (Tier 5) depends on cache/checkpoint/observability/plumbing/streaming
++ analyze/common/plumbing but NOT on concrete analyzers (registration happens in
+`cmd/codefang/commands`), so it sits **below** the analyzers in topo order.
+
+Heavy LOC: pkg/uast 132558 (mostly generated grammar+tests), sentiment/lexicons 94118 (embedded —
+copy verbatim), framework 5197, uast/pkg/node 4112, burndown 3993, analyze 3885.
+
+The full per-module table (name, goPath, Rust crate, tier, internal deps, purpose, LOC) is returned
+as the structured JSON artifact accompanying this document and is the canonical port-ordering
+record. Summary of tiers (leaf → root):
+
+- **Tier 0** (no internal deps): pkg/alg, alg/bloom, alg/internal/hashutil, alg/interval,
+  alg/levenshtein, alg/mapx, alg/stats, iosafety, meminfo, metrics, pathfilter, persist, pipeline,
+  safeconv, sigutil, textutil, units, version, uast/lsp, uast/pkg/mapping, uast/pkg/node,
+  uast/pkg/spec, internal/config, internal/identity, internal/observability, internal/storage,
+  common/plotpage, common/spillstore, common/terminal, plumbing/langpath, sentiment/lexicons.
+- **Tier 1**: alg/cms, alg/hll, alg/lru, alg/minhash, internal/burndown, internal/checkpoint,
+  internal/plumbing, internal/streaming, common/reportutil, plumbing/pathpolicy.
+- **Tier 2**: alg/lsh, pkg/gitlib.
+- **Tier 3**: pkg/uast, internal/cache.
+- **Tier 4**: analyze (SPI hub), analyzers/plumbing.
+- **Tier 5**: analyzers/common, analyzers/common/renderer, internal/framework.
+- **Tier 6**: anomaly, burndown, clones, cohesion, comments, complexity, couples, devs,
+  file_history, halstead, imports, shotness, typos, internal/budget.
+- **Tier 7**: composition (→file_history), sentiment (→anomaly), quality (→complexity/halstead/
+  comments/cohesion/anomaly).
+- **Tier 8**: cmd/codefang/commands, cmd/uast.
+- **Tier 9**: cmd/codefang.
+
+---
+
+## 9. Consolidated Byte-Identity Risk Register
+
+### 9.1 CLI surface
+1. `codefang mcp` is excluded (`//go:build ignore`) — do NOT add it; help/usage must match.
+2. version strings exact: `codefang %s (commit: %s, built: %s)\n` / `uast %s (commit: %s, built: %s)\n` (defaults dev/none/unknown); match ldflags-injected values.
+3. Top-level error `Error: %v\n` → STDERR + exit 1. `codefang` silences cobra usage/errors; `uast` does NOT (default usage on flag-parse errors).
+4. `uast validate` exit codes 2/1/0 (non-trivial) — use explicit `process::exit`.
+5. `run` analyzer flags are DYNAMIC; runtime-derived defaults (NumCPU etc.) must be computed identically; 0-sentinels (0=auto) preserved.
+6. `--checkpoint`/`--resume`/`burndown-hibernation-disk` default TRUE.
+7. Short-flag collisions: run `-F/-o/-p/-a`; uast query `-i`=input `-t`=interactive; server `-p`/`-s`; parse `-w`/`-p`.
+8. Deprecated `skip-blacklist`/`blacklisted-prefixes` still accepted (hidden) with exact deprecation messages.
+9. Config env mapping `CODEFANG_*` with `.`→`_`, AutomaticEnv; search CWD then $HOME, name `codefang`, yaml only; precedence CLI > env > file > default.
+10. `parse --format tree` is accepted in help but errors `unsupported format` (preserve buggy behavior).
+11. `ensureMallocTunables()` re-exec (decide replicate vs skip).
+
+### 9.2 Serialization
+12. `SetEscapeHTML` default true everywhere; no `SetEscapeHTML(false)` exists → escape `<`,`>`,`&` as `<`/`>`/`&`. serde_json escapes none by default → use cf-gojson.
+13. Two JSON whitespace regimes: indented-encoder-with-trailing-`\n` (static/conversion/timeseries) vs compact-no-newline (history base) vs indented-no-newline (reporter). Match per call site.
+14. JSON field order = Go struct declaration order, not tag-alphabetical.
+15. `map[string]any` → alphabetical key sort (BTreeMap); `MergedCommitData` merges meta keys into the same alphabetized map.
+16. yaml.v3 indent/trailing-newline/quoting/map-ordering vs any Rust YAML crate — use cf-goyaml.
+17. go-pretty StyleLight glyphs/padding + disabled options must be exact.
+18. go-echarts/v2 + html/template + extractChartContent string-slicing — effectively unreproducible without verbatim port (HTML out-of-scope or template-port-required).
+19. Float JSON shortest round-trip edge cases (exponent/`.0`) — verify on real data.
+20. Mixed int humanization: FormatScore round vs DrawPercentBar truncate; burndown comma grouping vs none.
+21. String width/truncation uses byte len(), not rune count.
+22. Env-dependent text: `COLUMNS` (default 80), `NO_COLOR`/`--no-color`.
+23. Binary envelope: `CFB1` + little-endian u32 length + compact escapeHTML-on payload; concatenated.
+
+### 9.3 Analyzers / determinism
+24. Go map iteration is randomized; most emit sites sort explicitly — replicate exact sort keys & tie-breaks (devs 6, couples, file_history 4, shotness, sentiment 3, complexity 2, ...).
+25. Goroutine fan-out result ordering (burndown history.go:599, plumbing file_diff/uast/blob_cache, clones aggregator, static.go) must reassemble by index/path, not completion order.
+26. Parallel analyzer execution / Fork-Merge must be deterministic regardless of worker/CPU count.
+27. Registration order: `defaultHistoryLeaves()` ranges a map → sort by descriptor ID before execution/output.
+28. `time.Now()` metadata `AnalyzedAt` (RFC3339) — normalize/exclude from parity comparison.
+29. Float computation (complexity/halstead/cohesion/quality/anomaly) must match Go formatting/rounding.
+30. enry classification must match exactly (which files kept/dropped, labels).
+
+### 9.4 git / libgit2
+31. Signature time: git2go `time.Time` vs git2 `git2::Time` (epoch+offset) — reproduce author/committer time exactly (burndown/devs/file-history timestamps).
+32. Revwalk sorting `TIME|TOPOLOGICAL(+REVERSE)` exact — visitation order feeds burndown (reordering → negative burndown).
+33. cgo `TreeDiffWithPathspec` filters submodule(0o160000)/tree(0o040000) modes + pathspec pre-filter; plain `DiffTreeToTree` does NOT. Reproduce whichever path each analyzer used.
+34. `DefaultDiffOptions` (git2go) vs `DiffOptions::new()` (git2) defaults may differ (rename detection, context lines, include_unmodified) — verify so delta classification matches.
+35. Binary/line-count: Go splits between C shim (`blob_ops.c` is_binary/line_count) and `pkg/textutil` (IsBinary/CountLines, trailing-newline handling) — pick one consistent impl matching the reference reports.
+
+### 9.5 tree-sitter / UAST
+36. Each Rust grammar pinned to the exact go-sitter-forest v1.9.x grammar revision (node kinds/spans).
+37. tree-sitter C runtime version must match (parser ABI/tree shape).
+38. Node type-string selection (kind vs grammar symbol, aliased/anonymous nodes) must match Go's symbolNames path.
+39. Positions: Go emits 1-based line/column (`+1`) with 0-based byte offsets — replicate the `+1`.
+40. Query matching takes only the FIRST match and first capture per name.
+41. ~17 of 68 languages lack upstream Rust crates → vendor C sources at the same revision.
+42. `rust` and `rust_with_rstml` are distinct grammars — provide both.
+43. Unmapped-node handling (collapse/Synthetic/`lang:type` when IncludeUnmapped) and empty-file skip must match (tree shape).
+
+### 9.6 dependencies / build
+44. enry v2.1.0 exact data + heuristics (§6).
+45. diffmatchpatch exact passes + DiffTimeout (§6).
+46. govader exact lexicon + repo layering + float32 rounding (§6).
+47. probabilistic structures (bloom/cms/hll/minhash/lsh + hashutil seeds) must use identical seeds/mixing constants.
+48. `pkg/alg/mapx` sorted-key extraction — impose identical sort order (Rust HashMap iteration nondeterministic).
+49. `pkg/safeconv` truncation/rounding feeds metric values.
+50. framework scheduling/streaming-chunk boundaries (streaming/budget) can affect aggregation order/checkpoint state — deterministic chunking.
+51. libgit2 1.5.0 vendored archive (BUILD_SHARED_LIBS=OFF, USE_BUNDLED_ZLIB=ON, ...) — link the same behavior.
+52. sentiment/lexicons (94k LOC embedded) copied verbatim, not regenerated.

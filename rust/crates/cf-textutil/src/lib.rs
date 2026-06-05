@@ -30,13 +30,21 @@
 //! API identical to the planned `cf-gojson` surface, so the migration is a
 //! one-line `use` swap once `cf-gojson` is implemented.
 
-pub mod gocompat;
+/// Compatibility alias for the shared Go-byte-compatible encoder.
+///
+/// Historically `cf-textutil` carried an in-crate `gocompat` encoder while
+/// `cf-gojson` was still a scaffold. `cf-gojson` is now the implemented tier-0
+/// encoder, so `gocompat` is a thin re-export of its surface to keep the
+/// migration a one-line `use` swap for downstream call sites.
+pub mod gocompat {
+    pub use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
+}
 pub mod json;
 pub mod text;
 
 #[doc(inline)]
-pub use gocompat::{EncodeError, Encoder, GoValue};
+pub use gocompat::{Encoder, GoMap, GoValue};
 #[doc(inline)]
-pub use json::{marshal_json, write_json, JsonError, JSON_INDENT};
+pub use json::{marshal_json, write_json, EncodeError, JsonError, JSON_INDENT};
 #[doc(inline)]
 pub use text::{count_lines, is_binary, BINARY_SNIFF_LENGTH};

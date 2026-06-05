@@ -6,5 +6,68 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "Analyzer-registration + clap command construction for codefang (Go cmd/codefang/commands port): the run/render/version command tree and dynamic per-analyzer flags."
+
+# cf-commands is the tier-8 analyzer-registration + clap command-construction
+# aggregation point (DESIGN §1 tier 8, §4). It mirrors Go's
+# cmd/codefang/commands package: builds the run/render/version clap commands,
+# registers every analyzer and its dynamic per-analyzer flags, and routes all
+# report serialization through the shared go-compat crates (never raw serde).
+#
+# Dependency reality: the runtime execution path (the run/render handlers) needs
+# sibling crates that are still scaffolds in this tree (cf-gitlib and the 16
+# analyzer crates) plus cf-analyze (which currently does not compile). Those are
+# declared optional behind the `runtime` feature so the self-contained parts of
+# this crate -- the format-validation logic, the version command, and the full
+# clap command tree with every literal and dynamic flag -- build and test
+# against the already-compiling cf-version and cf-pipeline crates. See the
+# crate-level rustdoc and the workflow notes for the remaining wiring.
+
+[features]
+# Default builds only the parts that do NOT depend on unported sibling crates:
+# the clap command tree, format validation, and the version command.
+default = []
+
+# `runtime` pulls in the execution crates so the run/render handlers can
+# actually drive analysis. Enable once the analyzer + git tiers compile.
+runtime = [
+    "dep:cf-analyze",
+    "dep:cf-framework",
+    "dep:cf-gitlib",
+    "dep:cf-config",
+    "dep:cf-checkpoint",
+    "dep:cf-budget",
+    "dep:cf-observability",
+    "dep:cf-pathpolicy",
+    "dep:cf-langpath",
+    "dep:cf-plotpage",
+    "dep:cf-storage",
+    "dep:cf-textutil",
+]
+
+# The Go `mcp` command is //go:build ignore and NOT shipped by default
+# (DESIGN §4.1). Mirror it as a non-default feature.
+mcp = ["dep:cf-mcp"]
 
 [dependencies]
+clap = { workspace = true }
+
+# Real, compiling sibling crates depended on unconditionally.
+cf-version = { path = "../cf-version" }
+cf-pipeline = { path = "../cf-pipeline" }
+
+# Scaffold / not-yet-compiling sibling crates -- optional, gated behind the
+# `runtime` / `mcp` features.
+cf-analyze = { path = "../cf-analyze", optional = true }
+cf-framework = { path = "../cf-framework", optional = true }
+cf-gitlib = { path = "../cf-gitlib", optional = true }
+cf-config = { path = "../cf-config", optional = true }
+cf-checkpoint = { path = "../cf-checkpoint", optional = true }
+cf-budget = { path = "../cf-budget", optional = true }
+cf-observability = { path = "../cf-observability", optional = true }
+cf-pathpolicy = { path = "../cf-pathpolicy", optional = true }
+cf-langpath = { path = "../cf-langpath", optional = true }
+cf-plotpage = { path = "../cf-plotpage", optional = true }
+cf-storage = { path = "../cf-storage", optional = true }
+cf-textutil = { path = "../cf-textutil", optional = true }
+cf-mcp = { path = "../cf-mcp", optional = true }

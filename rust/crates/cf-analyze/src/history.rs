@@ -20,7 +20,7 @@ use std::io::Write;
 
 use cf_pipeline::ConfigurationOption;
 
-use crate::aggregator::{Aggregator, AggregatorOptions};
+use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::analyzer::{Analyzer, Report};
 use crate::descriptor::Descriptor;
 use crate::tc::{Tc, Tick};

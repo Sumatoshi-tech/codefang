@@ -16,7 +16,7 @@ use std::io::Write;
 
 use cf_pipeline::ConfigurationOption;
 
-use crate::aggregator::{Aggregator, AggregatorOptions};
+use crate::interfaces::{Aggregator, AggregatorOptions};
 use crate::descriptor::Descriptor;
 use crate::formats::{FormatError, FORMAT_BINARY, FORMAT_JSON, FORMAT_PLOT, FORMAT_TEXT, FORMAT_YAML};
 use crate::history::AnalyzerError;

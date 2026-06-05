@@ -1,0 +1,312 @@
+//! File classifier.
+//!
+//! Ported from Go `internal/analyzers/file_history/classify.go`, whose
+//! `(*Classifier).Classify` is a fixed-priority cascade over `src-d/enry`
+//! predicates plus `pkg/pathfilter` generated-file checks:
+//!
+//! ```text
+//! // first match wins:
+//! if len(content) > 0 && enry.IsBinary(content):    Binary
+//! if enry.IsImage(path):                            Image
+//! if enry.IsVendor(path):                           Vendor
+//! if filter.IsGeneratedPath(path):                  Generated
+//! if len(content) > 0 && filter.IsGeneratedContent: Generated
+//! if enry.IsDocumentation(path):                    Documentation
+//! if enry.IsConfiguration(path):                    Configuration
+//! if enry.IsDotFile(path):                          DotFile
+//! else:                                             Source
+//! ```
+//!
+//! The branch ORDER is load-bearing (a file matching several predicates is
+//! classified by the first matching branch), so the Rust port preserves the
+//! exact sequence.
+//!
+//! # Data parity (DESIGN rule 7)
+//!
+//! enry's `IsVendor` / `IsDocumentation` predicates are driven by generated
+//! regex tables (`src-d/enry/v2/data/{vendor,documentation}.go`), and the
+//! generated-file rules come from `pkg/pathfilter`. For full byte-identity on a
+//! real corpus those tables should be sourced from the workspace's already-
+//! vendored copies — `cf-pathfilter` (which vendors enry's `vendor.go` regexes
+//! via its `build.rs`, and ports the pathfilter generated rules) and
+//! `cf-langpath` (which ships the enry v2.1.0 extension TSV). See the crate
+//! `todos`. The predicates below reproduce enry's algorithms and the
+//! high-frequency data subset exercised by the ported Go tests; widening the
+//! embedded tables changes only the data slices these functions consult, not
+//! their structure.
+//!
+//! The fully-data-exact predicates here are the ones enry implements *without* a
+//! data table: [`enry::is_image`] (4 hard-coded extensions), [`enry::is_dotfile`]
+//! (`filepath.Base(filepath.Clean(path))` dot-prefix), [`enry::is_binary`]
+//! (8000-byte NUL sniff), and [`enry::is_configuration`] (extension → one of
+//! `{INI, JSON, TOML, YAML, XML}`).
+
+use crate::category::Category;
+
+/// Classifies files into categories using enry heuristics.
+///
+/// Zero-sized, like the Go `Classifier` (whose only field is a `*pathfilter`).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Classifier;
+
+impl Classifier {
+    /// Creates a new file classifier.
+    #[must_use]
+    pub fn new() -> Self {
+        Classifier
+    }
+
+    /// Determines the category of a file from its path and content.
+    ///
+    /// Mirrors Go `(*Classifier).Classify` branch-for-branch, including the
+    /// `len(content) > 0` guards on the binary and generated-content checks
+    /// (so an empty/`nil` content never triggers Binary or content-Generated).
+    #[must_use]
+    // The cascade is deliberately kept branch-for-branch identical to Go's
+    // `(*Classifier).Classify`; two arms both yield `Category::Generated`
+    // (generated-by-path then generated-by-content), which clippy flags but is
+    // load-bearing for parity and readability.
+    #[allow(clippy::if_same_then_else)]
+    pub fn classify(&self, path: &str, content: &[u8]) -> Category {
+        if !content.is_empty() && enry::is_binary(content) {
+            Category::Binary
+        } else if enry::is_image(path) {
+            Category::Image
+        } else if enry::is_vendor(path) {
+            Category::Vendor
+        } else if pathfilter::is_generated_path(path) {
+            Category::Generated
+        } else if !content.is_empty() && pathfilter::is_generated_content(content) {
+            Category::Generated
+        } else if enry::is_documentation(path) {
+            Category::Documentation
+        } else if enry::is_configuration(path) {
+            Category::Configuration
+        } else if enry::is_dotfile(path) {
+            Category::DotFile
+        } else {
+            Category::Source
+        }
+    }
+}
+
+/// Returns the final path element of `path` after cleaning, equivalent to Go's
+/// `filepath.Base(filepath.Clean(path))` for the `/`-separated inputs this
+/// classifier sees on its Linux golden target.
+fn base_clean(path: &str) -> &str {
+    if path.is_empty() {
+        return ".";
+    }
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/";
+    }
+    match trimmed.rfind('/') {
+        Some(idx) => &trimmed[idx + 1..],
+        None => trimmed,
+    }
+}
+
+/// Returns the lowercase file extension including the leading dot, equivalent to
+/// Go's `filepath.Ext` (the suffix from the final dot in the base name). Returns
+/// an empty string when there is no dot in the base name.
+fn ext_lower(path: &str) -> String {
+    let base = base_clean(path);
+    match base.rfind('.') {
+        Some(idx) => base[idx..].to_ascii_lowercase(),
+        None => String::new(),
+    }
+}
+
+/// Port of the subset of `src-d/enry` v2.1.0 predicates used by the classifier.
+mod enry {
+    use super::{base_clean, ext_lower};
+
+    /// `enry.IsBinary` — content is detected as binary.
+    ///
+    /// Exact port: read up to `sniffLen` (8000) bytes and return true iff a NUL
+    /// byte appears in that window (git's binary detection).
+    pub fn is_binary(content: &[u8]) -> bool {
+        const SNIFF_LEN: usize = 8000;
+        let window = &content[..content.len().min(SNIFF_LEN)];
+        window.contains(&0u8)
+    }
+
+    /// `enry.IsImage` — exact port: extension is exactly `.png`, `.jpg`,
+    /// `.jpeg`, or `.gif` (case-sensitive in Go via `filepath.Ext`; we lower-case
+    /// first, which only widens to upper-case variants and never misclassifies a
+    /// non-image, keeping the ported test cases identical).
+    pub fn is_image(path: &str) -> bool {
+        matches!(ext_lower(path).as_str(), ".png" | ".jpg" | ".jpeg" | ".gif")
+    }
+
+    /// `enry.IsDotFile` — exact port: `filepath.Base(filepath.Clean(path))`
+    /// starts with `.` and is not exactly `.`.
+    pub fn is_dotfile(path: &str) -> bool {
+        let base = base_clean(path);
+        base.starts_with('.') && base != "."
+    }
+
+    /// `enry.IsConfiguration` — exact port of the *algorithm*: the file's
+    /// language (by extension) must be one of enry's `ConfigurationLanguages`
+    /// (`{INI, JSON, TOML, YAML, XML}`).
+    ///
+    /// enry resolves the language via its full extension table; here the mapping
+    /// is restricted to the extensions that resolve to a *configuration*
+    /// language (the only ones that matter for this predicate), taken from the
+    /// enry v2.1.0 data:
+    ///
+    /// * YAML — `.yml`, `.yaml`, plus the well-known YAML config filenames
+    ///   enry maps (e.g. `.golangci.yml`).
+    /// * JSON — `.json`
+    /// * TOML — `.toml`
+    /// * INI  — `.ini`, `.cfg`, `.prefs`, `.pro`, `.properties`
+    /// * XML  — `.xml`, and the many XML-family extensions; the common ones are
+    ///   listed.
+    ///
+    /// Extensions resolving to a non-config language (or to none, e.g.
+    /// `.editorconfig`) return `false`, so such files fall through to the
+    /// DotFile / Source branches exactly as in Go.
+    pub fn is_configuration(path: &str) -> bool {
+        const CONFIG_EXTS: &[&str] = &[
+            // YAML
+            ".yml", ".yaml",
+            // JSON
+            ".json",
+            // TOML
+            ".toml",
+            // INI
+            ".ini", ".cfg", ".prefs", ".properties",
+            // XML
+            ".xml", ".xsd", ".xsl", ".plist", ".csproj", ".props",
+        ];
+        let ext = ext_lower(path);
+        CONFIG_EXTS.contains(&ext.as_str())
+    }
+
+    /// `enry.IsVendor` — path matches a vendoring convention.
+    ///
+    /// enry tests the path against `data.VendorMatchers` (compiled regexes). The
+    /// high-frequency conventions are reproduced here; the full regex list is a
+    /// vendoring follow-up that should reuse `cf-pathfilter::is_vendor`.
+    pub fn is_vendor(path: &str) -> bool {
+        const VENDOR_PREFIXES: [&str; 8] = [
+            "vendor/",
+            "node_modules/",
+            "third_party/",
+            "third-party/",
+            "Godeps/",
+            "bower_components/",
+            ".git/",
+            "extern/",
+        ];
+        const VENDOR_SEGMENTS: [&str; 8] = [
+            "/vendor/",
+            "/node_modules/",
+            "/third_party/",
+            "/third-party/",
+            "/Godeps/",
+            "/bower_components/",
+            "/.git/",
+            "/extern/",
+        ];
+        if VENDOR_PREFIXES.iter().any(|p| path.starts_with(p)) {
+            return true;
+        }
+        if VENDOR_SEGMENTS.iter().any(|s| path.contains(s)) {
+            return true;
+        }
+        path == "vendor" || path == "node_modules"
+    }
+
+    /// `enry.IsDocumentation` — path matches a documentation convention.
+    ///
+    /// enry checks `data.DocumentationMatchers` (regexes), which cover both
+    /// documentation directories (e.g. a `docs/` segment) and prose extensions.
+    /// The high-frequency rules are reproduced here.
+    pub fn is_documentation(path: &str) -> bool {
+        const DOC_EXTS: [&str; 6] = [".md", ".markdown", ".rst", ".adoc", ".txt", ".org"];
+        const DOC_DIR_SEGMENTS: [&str; 4] = ["docs/", "/docs/", "doc/", "/doc/"];
+        let lower = path.to_ascii_lowercase();
+        if DOC_EXTS.iter().any(|ext| lower.ends_with(ext)) {
+            return true;
+        }
+        DOC_DIR_SEGMENTS.iter().any(|seg| lower.starts_with(seg) || lower.contains(seg))
+    }
+}
+
+/// Port of the `pkg/pathfilter` generated-file checks (`IsGeneratedPath` /
+/// `IsGeneratedContent`), mirroring the rules `cf-pathfilter` already vendors
+/// (`DEFAULT_SUFFIXES`, `DEFAULT_FILENAME_PREFIXES`, `GENERATED_MARKERS`).
+mod pathfilter {
+    use super::base_clean;
+
+    /// File suffixes indicating generated code. Mirrors `cf-pathfilter`'s
+    /// `DEFAULT_SUFFIXES` (Go `defaultSuffixes`).
+    const DEFAULT_SUFFIXES: &[&str] = &[
+        ".pb.go",
+        ".pb.gw.go",
+        ".generated.go",
+        ".deepcopy.go",
+        "_string.go",
+        "_enumer.go",
+        "_easyjson.go",
+        "_pb2.py",
+        "_pb2_grpc.py",
+        ".pb.cc",
+        ".pb.h",
+        ".grpc.pb.cc",
+        ".grpc.pb.h",
+        ".min.js",
+        ".min.css",
+        ".bundle.js",
+    ];
+
+    /// Filename prefixes (matched against the base name) indicating generated
+    /// code. Mirrors `cf-pathfilter`'s `DEFAULT_FILENAME_PREFIXES`.
+    const DEFAULT_FILENAME_PREFIXES: &[&str] = &["zz_generated", "mock_", "fake_", "wire_gen"];
+
+    /// Byte markers found near the top of generated files. Mirrors
+    /// `cf-pathfilter`'s `GENERATED_MARKERS`.
+    const GENERATED_MARKERS: &[&[u8]] = &[
+        b"DO NOT EDIT",
+        b"Code generated",
+        b"AUTO-GENERATED",
+        b"auto-generated",
+        b"Autogenerated",
+        b"@generated",
+    ];
+
+    /// How many header bytes to scan for a generated marker. Mirrors
+    /// `cf-pathfilter`'s `GENERATED_MARKER_SCAN_LIMIT`.
+    const GENERATED_MARKER_SCAN_LIMIT: usize = 512;
+
+    /// `pathfilter.IsGeneratedPath` — the path's name matches a generated suffix
+    /// or filename prefix.
+    pub fn is_generated_path(path: &str) -> bool {
+        let lower = path.to_ascii_lowercase();
+        if DEFAULT_SUFFIXES.iter().any(|s| lower.ends_with(s)) {
+            return true;
+        }
+        let base = base_clean(path);
+        DEFAULT_FILENAME_PREFIXES.iter().any(|p| base.starts_with(p))
+    }
+
+    /// `pathfilter.IsGeneratedContent` — a generated marker appears within the
+    /// first [`GENERATED_MARKER_SCAN_LIMIT`] bytes of `content`.
+    pub fn is_generated_content(content: &[u8]) -> bool {
+        let window = &content[..content.len().min(GENERATED_MARKER_SCAN_LIMIT)];
+        GENERATED_MARKERS.iter().any(|m| contains_subslice(window, m))
+    }
+
+    /// Returns whether `haystack` contains `needle` as a contiguous subslice.
+    fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        if needle.len() > haystack.len() {
+            return false;
+        }
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+}
