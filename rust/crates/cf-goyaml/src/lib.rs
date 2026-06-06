@@ -1,213 +1,49 @@
-//! `cf-goyaml` — YAML emitter for the codefang Rust rewrite.
+//! `cf-goyaml` — a byte-faithful `gopkg.in/yaml.v3` block emitter over
+//! [`cf_gojson::GoValue`].
 //!
-//! Port target documented in specs/rust-rewrite/DESIGN.md §1. A fully
-//! byte-faithful `gopkg.in/yaml.v3` emitter is ROADMAP Step 4 and is not yet
-//! implemented; the [`marshal`] function below produces plausible block-style
-//! YAML (2-space indent, byte-sorted map keys) so that crates such as
-//! `cf-analyze` link and produce machine-readable output.
+//! This reproduces `yaml.Marshal` (yaml.v3 v3.0.1) output byte-for-byte for the
+//! value shapes codefang reports use:
+//!
+//! * 2..9-space block indent (default **4**, as yaml.v3 `Marshal` sets), with
+//!   yaml.v3's exact indent-rounding and "skip the `- `" rule;
+//! * **no** leading `---` and a single trailing `\n`;
+//! * map keys in [`GoMap::encode_order`] order — struct-origin keeps declaration
+//!   order, map-origin byte-sorts (matching yaml.v3, which sorts `map[string]…`);
+//! * yaml.v3 scalar quoting: plain unless the value would *resolve* to a non-`str`
+//!   tag (numbers / bools / null / yes-no-on-off / timestamps / base-60), then
+//!   double-quoted; structural-indicator strings fall back to single quotes;
+//! * the emitter's plain/single/double-quoted writers including 80-column folding
+//!   and `\xNN`/`\uNNNN` escaping;
+//! * floats via `strconv.FormatFloat(f, 'g', -1, 64)` (NOT json `'g'`).
+//!
+//! The port follows yaml.v3's `emitterc.go` / `encode.go` / `resolve.go`
+//! state machine closely; the public entry point is [`marshal`].
 #![allow(dead_code)]
 
-use cf_gojson::{GoValue, ftoa};
+use cf_gojson::GoValue;
+
+mod emitter;
+mod float;
+mod resolve;
+mod scalar;
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-goyaml";
 
-/// Serializes a [`GoValue`] to block-style YAML bytes.
-///
-/// This is an intentionally minimal emitter (ROADMAP Step 4 covers the
-/// byte-faithful `gopkg.in/yaml.v3` port). It produces:
-///
-/// * 2-space block indentation,
-/// * map keys in the encoder's byte-sorted order (via
-///   [`GoValue::encode_order`] semantics through [`cf_gojson`]),
-/// * `key: value` for scalar map values and nested blocks for compound values,
-/// * `- ` list items,
-/// * `{}` / `[]` for empty maps/sequences.
-///
-/// It never panics and is safe to call on any `GoValue`.
+/// Serializes a [`GoValue`] to `gopkg.in/yaml.v3` block YAML, byte-identical to
+/// `yaml.Marshal` with the default 4-space indent.
+#[must_use]
 pub fn marshal(value: &GoValue) -> Vec<u8> {
-    let mut out = String::new();
-    emit_document(value, &mut out);
-    out.into_bytes()
+    marshal_indent(value, 4)
 }
 
-fn emit_document(value: &GoValue, out: &mut String) {
-    match value {
-        GoValue::Map(m) if m.len() > 0 => emit_mapping(value, 0, out),
-        GoValue::Array(items) if !items.is_empty() => emit_sequence(items, 0, out),
-        other => {
-            out.push_str(&scalar(other));
-            out.push('\n');
-        }
-    }
-}
-
-/// Emits the entries of a mapping at `indent` columns.
-fn emit_mapping(value: &GoValue, indent: usize, out: &mut String) {
-    let GoValue::Map(m) = value else { return };
-    let pad = " ".repeat(indent);
-    for (k, v) in m.encode_order() {
-        out.push_str(&pad);
-        out.push_str(&yaml_key(k));
-        out.push(':');
-        match v {
-            GoValue::Map(inner) if inner.len() > 0 => {
-                out.push('\n');
-                emit_mapping(v, indent + 2, out);
-            }
-            GoValue::Array(items) if !items.is_empty() => {
-                out.push('\n');
-                emit_sequence(items, indent, out);
-            }
-            GoValue::Map(_) => {
-                out.push_str(" {}\n");
-            }
-            GoValue::Array(_) => {
-                out.push_str(" []\n");
-            }
-            scalar_value => {
-                out.push(' ');
-                out.push_str(&scalar(scalar_value));
-                out.push('\n');
-            }
-        }
-    }
-}
-
-/// Emits a sequence at `indent` columns. List dashes align with the parent key
-/// indentation, matching `gopkg.in/yaml.v3`'s default block style.
-fn emit_sequence(items: &[GoValue], indent: usize, out: &mut String) {
-    let pad = " ".repeat(indent);
-    for item in items {
-        match item {
-            GoValue::Map(inner) if inner.len() > 0 => {
-                // First key on the dash line, remaining keys block-indented.
-                let mut block = String::new();
-                emit_mapping(item, indent + 2, &mut block);
-                push_sequence_block(&pad, &block, out);
-            }
-            GoValue::Array(nested) if !nested.is_empty() => {
-                let mut block = String::new();
-                emit_sequence(nested, indent + 2, &mut block);
-                push_sequence_block(&pad, &block, out);
-            }
-            GoValue::Map(_) => {
-                out.push_str(&pad);
-                out.push_str("- {}\n");
-            }
-            GoValue::Array(_) => {
-                out.push_str(&pad);
-                out.push_str("- []\n");
-            }
-            scalar_value => {
-                out.push_str(&pad);
-                out.push_str("- ");
-                out.push_str(&scalar(scalar_value));
-                out.push('\n');
-            }
-        }
-    }
-}
-
-/// Splices a pre-rendered block under a `- ` dash, putting the first line on the
-/// dash line and aligning the rest.
-fn push_sequence_block(pad: &str, block: &str, out: &mut String) {
-    let mut lines = block.lines();
-    if let Some(first) = lines.next() {
-        out.push_str(pad);
-        out.push_str("- ");
-        // `first` already carries (indent+2) spaces of padding; strip the two
-        // that the dash replaces.
-        out.push_str(first.trim_start());
-        out.push('\n');
-        for line in lines {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-}
-
-/// Renders a scalar `GoValue` to its inline YAML representation.
-fn scalar(value: &GoValue) -> String {
-    match value {
-        GoValue::Null => "null".to_string(),
-        GoValue::Bool(b) => {
-            if *b {
-                "true".to_string()
-            } else {
-                "false".to_string()
-            }
-        }
-        GoValue::Int(i) => i.to_string(),
-        GoValue::Uint(u) => u.to_string(),
-        GoValue::Float(f) => ftoa::format_float_g(*f),
-        GoValue::Str(s) => yaml_string(s),
-        // Compound values are handled by the block emitters; reaching here means
-        // an empty container used in scalar position.
-        GoValue::Array(_) => "[]".to_string(),
-        GoValue::Map(_) => "{}".to_string(),
-    }
-}
-
-/// Quotes a mapping key when plain-scalar rules would be ambiguous.
-fn yaml_key(key: &str) -> String {
-    yaml_string(key)
-}
-
-/// Renders a string as a YAML scalar, quoting when needed.
-fn yaml_string(s: &str) -> String {
-    if needs_quoting(s) {
-        let mut q = String::with_capacity(s.len() + 2);
-        q.push('"');
-        for ch in s.chars() {
-            match ch {
-                '"' => q.push_str("\\\""),
-                '\\' => q.push_str("\\\\"),
-                '\n' => q.push_str("\\n"),
-                '\t' => q.push_str("\\t"),
-                '\r' => q.push_str("\\r"),
-                c => q.push(c),
-            }
-        }
-        q.push('"');
-        q
-    } else {
-        s.to_string()
-    }
-}
-
-/// Decides whether a plain YAML scalar would be misread and thus needs quoting.
-fn needs_quoting(s: &str) -> bool {
-    if s.is_empty() {
-        return true;
-    }
-    // Reserved plain-scalar words / type-ambiguous forms.
-    let lower = s.to_ascii_lowercase();
-    if matches!(
-        lower.as_str(),
-        "null" | "~" | "true" | "false" | "yes" | "no" | "on" | "off"
-    ) {
-        return true;
-    }
-    // Numbers would be re-typed if left bare.
-    if s.parse::<f64>().is_ok() || s.parse::<i64>().is_ok() {
-        return true;
-    }
-    let first = s.chars().next().unwrap();
-    if matches!(
-        first,
-        '!' | '&' | '*' | '-' | '?' | '{' | '}' | '[' | ']' | ','
-            | '#' | '|' | '>' | '@' | '`' | '"' | '\'' | '%' | ' '
-    ) {
-        return true;
-    }
-    if s.ends_with(' ') {
-        return true;
-    }
-    s.chars().any(|c| {
-        matches!(c, ':' | '#' | '\n' | '\t' | '\r')
-            || c.is_control()
-    })
+/// Like [`marshal`] but with a caller-chosen indent (clamped to yaml.v3's
+/// `2..=9`, defaulting to 2 outside that range — matching `yaml_emitter_set_indent`).
+#[must_use]
+pub fn marshal_indent(value: &GoValue, indent: i32) -> Vec<u8> {
+    let mut e = emitter::Emitter::new(indent);
+    e.marshal_document(value);
+    e.into_bytes()
 }
 
 #[cfg(test)]
@@ -219,15 +55,33 @@ mod tests {
         String::from_utf8(marshal(value)).unwrap()
     }
 
+    fn smap(pairs: Vec<(&str, GoValue)>) -> GoValue {
+        let mut m = GoMap::new_struct();
+        for (k, v) in pairs {
+            m.push(k, v);
+        }
+        GoValue::Map(m)
+    }
+
     #[test]
     fn scalar_document() {
         assert_eq!(s(&GoValue::Int(42)), "42\n");
         assert_eq!(s(&GoValue::Str("hi".into())), "hi\n");
         assert_eq!(s(&GoValue::Bool(true)), "true\n");
+        assert_eq!(s(&GoValue::Str("<unknown>".into())), "<unknown>\n");
     }
 
     #[test]
-    fn mapping_keys_are_byte_sorted() {
+    fn struct_keeps_order() {
+        let v = smap(vec![
+            ("total_commits", GoValue::Int(1)),
+            ("total_lines_added", GoValue::Int(0)),
+        ]);
+        assert_eq!(s(&v), "total_commits: 1\ntotal_lines_added: 0\n");
+    }
+
+    #[test]
+    fn map_origin_sorts() {
         let m = GoMap::from_map(vec![
             ("b".into(), GoValue::Int(2)),
             ("a".into(), GoValue::Int(1)),
@@ -236,23 +90,107 @@ mod tests {
     }
 
     #[test]
-    fn nested_mapping_indents_two_spaces() {
-        let inner = GoMap::from_map(vec![("x".into(), GoValue::Int(1))]);
-        let outer = GoMap::from_map(vec![("k".into(), GoValue::Map(inner))]);
-        assert_eq!(s(&GoValue::Map(outer)), "k:\n  x: 1\n");
+    fn top_level_seq_indents_four() {
+        let item = smap(vec![("name", GoValue::Str("X".into())), ("v", GoValue::Int(17))]);
+        let v = smap(vec![("function_complexity", GoValue::Array(vec![item]))]);
+        assert_eq!(s(&v), "function_complexity:\n    - name: X\n      v: 17\n");
     }
 
     #[test]
-    fn sequence_of_scalars() {
-        let arr = GoValue::Array(vec![GoValue::Int(1), GoValue::Int(2)]);
-        let m = GoMap::from_map(vec![("items".into(), arr)]);
-        assert_eq!(s(&GoValue::Map(m)), "items:\n- 1\n- 2\n");
+    fn nested_seq_indent() {
+        let bydev = smap(vec![("dev_id", GoValue::Int(0)), ("commits", GoValue::Int(1))]);
+        let act = smap(vec![
+            ("tick", GoValue::Int(0)),
+            ("by_developer", GoValue::Array(vec![bydev])),
+            ("total_commits", GoValue::Int(1)),
+        ]);
+        let v = smap(vec![("activity", GoValue::Array(vec![act]))]);
+        let expect = "activity:\n    - tick: 0\n      by_developer:\n        - dev_id: 0\n          commits: 1\n      total_commits: 1\n";
+        assert_eq!(s(&v), expect);
     }
 
     #[test]
-    fn ambiguous_strings_quoted() {
-        assert_eq!(s(&GoValue::Str("true".into())), "\"true\"\n");
-        assert_eq!(s(&GoValue::Str("123".into())), "\"123\"\n");
-        assert_eq!(s(&GoValue::Str("".into())), "\"\"\n");
+    fn empty_containers() {
+        let v = smap(vec![
+            ("languages", GoValue::Array(vec![])),
+            ("m", GoValue::Map(GoMap::new_struct())),
+        ]);
+        assert_eq!(s(&v), "languages: []\nm: {}\n");
+    }
+
+    #[test]
+    fn seq_of_scalars() {
+        let v = smap(vec![("band_breakdown", GoValue::Array(vec![GoValue::Int(112539)]))]);
+        assert_eq!(s(&v), "band_breakdown:\n    - 112539\n");
+    }
+
+    #[test]
+    fn scalar_quoting() {
+        let cases: &[(&str, &str)] = &[
+            ("true", "\"true\""),
+            ("123", "\"123\""),
+            ("", "\"\""),
+            ("null", "\"null\""),
+            ("yes", "\"yes\""),
+            ("no", "\"no\""),
+            ("on", "\"on\""),
+            ("off", "\"off\""),
+            ("~", "\"~\""),
+            ("1.5", "\"1.5\""),
+            ("hello", "hello"),
+            ("a:b", "a:b"),
+            ("a: b", "'a: b'"),
+            ("a #b", "'a #b'"),
+            ("@foo", "'@foo'"),
+            ("-x", "-x"),
+            ("!x", "'!x'"),
+            ("?x", "?x"),
+            ("[x]", "'[x]'"),
+            ("{x}", "'{x}'"),
+            ("&x", "'&x'"),
+            ("*x", "'*x'"),
+            ("%x", "'%x'"),
+            ("a,b", "a,b"),
+            ("2026-01-26T21:53:53Z", "\"2026-01-26T21:53:53Z\""),
+            ("CRITICAL", "CRITICAL"),
+            (".", "."),
+            ("+5", "\"+5\""),
+            ("0", "\"0\""),
+            ("it's", "it's"),
+            ("say \"hi\"", "say \"hi\""),
+            (" x", "' x'"),
+            ("x ", "'x '"),
+        ];
+        for (input, want) in cases {
+            let got = s(&GoValue::Str((*input).into()));
+            assert_eq!(got, format!("{want}\n"), "input={input:?}");
+        }
+    }
+
+    #[test]
+    fn ctrl_char_double_quoted() {
+        assert_eq!(s(&GoValue::Str("a\u{01}b".into())), "\"a\\x01b\"\n");
+        assert_eq!(s(&GoValue::Str("a\tb".into())), "\"a\\tb\"\n");
+    }
+
+    #[test]
+    fn newline_literal_block() {
+        // map value with a newline -> literal block scalar |-
+        let v = smap(vec![("k", GoValue::Str("a\nb".into()))]);
+        assert_eq!(s(&v), "k: |-\n    a\n    b\n");
+    }
+
+    #[test]
+    fn floats_g_format() {
+        let v = smap(vec![
+            ("f1", GoValue::Float(0.7142857142857143)),
+            ("f3", GoValue::Float(1.0)),
+            ("f5", GoValue::Float(0.0)),
+            ("f7", GoValue::Float(1e20)),
+            ("f8", GoValue::Float(1e-7)),
+            ("f10", GoValue::Float(123456789.123456789)),
+        ]);
+        let expect = "f1: 0.7142857142857143\nf3: 1\nf5: 0\nf7: 1e+20\nf8: 1e-07\nf10: 1.2345678912345679e+08\n";
+        assert_eq!(s(&v), expect);
     }
 }

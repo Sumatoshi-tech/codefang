@@ -284,6 +284,10 @@ dependencies = [
 [[package]]
 name = "cf-analyzer-burndown"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+ "cf-goyaml",
+]
 
 [[package]]
 name = "cf-analyzers-common"
@@ -803,13 +807,17 @@ name = "codefang"
 version = "0.0.0"
 dependencies = [
  "cf-analyze",
+ "cf-analyzer-burndown",
  "cf-analyzers-plumbing",
  "cf-anomaly",
+ "cf-composition",
  "cf-devs",
  "cf-gitlib",
  "cf-gojson",
+ "cf-goyaml",
  "cf-imports",
  "cf-pathpolicy",
+ "cf-reportutil",
  "cf-typos",
  "cf-version",
  "clap",

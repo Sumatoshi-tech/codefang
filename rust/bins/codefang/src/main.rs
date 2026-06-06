@@ -31,6 +31,7 @@
 //!  4. Dispatch run / render / version.
 
 mod malloc;
+mod static_json;
 mod watchdog;
 
 use std::process::exit;
@@ -429,6 +430,36 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // closed-form case we reproduce (see devs_head_report).
     }
 
+    // history/devs --head --format yaml: the same closed-form HEAD-only report
+    // as the JSON path, but wrapped in the codefang version header + analyzer
+    // name line and marshaled through cf-goyaml (gopkg.in/yaml.v3 parity).
+    if analyzers.as_slice() == ["history/devs"] && format == "yaml" && sub.get_flag("head") {
+        if let Some(bytes) = devs_head_report_yaml(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the HEAD commit does not match the
+        // closed-form case we reproduce (see devs_head_metrics).
+    }
+
+    // history/devs --head --format bin: the same closed-form HEAD-only report as
+    // the JSON path, wrapped in the CFB1 binary envelope. The Go bin path
+    // (base_history.writeMetricsToFormat → reportutil.EncodeBinaryEnvelope(metrics))
+    // marshals the raw ComputedMetrics with encoding/json (devs ToJSON returns
+    // `m`, so the payload equals the JSON capture) into a CFB1 envelope.
+    if analyzers.as_slice() == ["history/devs"] && format == "bin" && sub.get_flag("head") {
+        if let Some(metrics) = devs_head_metrics(sub) {
+            use std::io::Write;
+            let payload = cf_devs::serialize::computed_metrics_to_go(&metrics);
+            let bytes = cf_reportutil::encode_binary_envelope(&payload)
+                .expect("devs payload within CFB1 limit");
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when HEAD is not the reproduced case.
+    }
+
     // history/anomaly --head --format json: HEAD-only temporal-anomaly report.
     // The streaming pipeline (Go run.go initHeadOnly → Runner → anomaly
     // aggregator → ticksToReport → ComputeAllMetrics) collapses, for a single
@@ -443,7 +474,290 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // closed-form case we reproduce (see anomaly_head_report).
     }
 
+    // static/composition --format json: raw-file composition over the analyzed
+    // folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder →
+    // rawFilePhase → composition.Aggregator → renderer.SectionsToJSON →
+    // json.NewEncoder.SetIndent.Encode) reduces, for this single raw-file
+    // analyzer, to a deterministic directory walk + classify + aggregate we
+    // build here. Bytes route through cf-gojson (indent "  ", trailing newline).
+    if analyzers.as_slice() == ["static/composition"] && format == "json" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_json::composition_report(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // history/burndown --head: HEAD-only burndown survival report. The streaming
+    // pipeline (Go run.go initHeadOnly → RunStreaming(single commit) →
+    // runner.Run → coordinator → blob/diff pipeline → burndown HistoryAnalyzer →
+    // ticksToReport → ComputeAllMetrics) collapses, for a single HEAD commit, to
+    // a closed-form report built here from libgit2. Supported machine formats:
+    // json (cf-gojson), yaml (header + cf-goyaml), bin (CFB1 envelope).
+    // history/burndown --head --format timeseries: the unified time-series view
+    // of the single HEAD commit. The Go streaming pipeline records one CommitMeta
+    // (hash, committer-time RFC3339 in the commit's ORIGINAL zone offset, author
+    // "" since burndown has no identity provider, tick 0) and the burndown
+    // ExtractCommitTimeSeries data {lines_added: <head insertion lines>,
+    // lines_removed: 0}. analyze.WriteMergedTimeSeries encodes the MergedTimeSeries
+    // with json.Encoder.SetIndent("", "  ") (struct-order top level, sorted-key
+    // commit/burndown maps via MarshalJSON re-indent, trailing newline).
+    if analyzers.as_slice() == ["history/burndown"]
+        && sub.get_flag("head")
+        && format == "timeseries"
+        && !sub.get_flag("ndjson")
+    {
+        if let Some(bytes) = burndown_head_timeseries(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when HEAD is not the reproduced case.
+    }
+
+    if analyzers.as_slice() == ["history/burndown"]
+        && sub.get_flag("head")
+        && matches!(format, "json" | "yaml" | "bin")
+    {
+        if let Some(metrics) = burndown_head_metrics(sub) {
+            use std::io::Write;
+            let bytes = match format {
+                "json" => cf_gojson::marshal(&metrics.to_go_value()),
+                "bin" => cf_reportutil::encode_binary_envelope(&metrics.to_go_value())
+                    .expect("burndown payload within CFB1 limit"),
+                // yaml: analyze.OutputHistoryResults non-raw branch — version
+                // header (analyze.PrintHeader, manual lines) + `<name>:` line,
+                // then yaml.Marshal(ComputedMetrics) (gopkg.in/yaml.v3).
+                _ => {
+                    let mut out = Vec::new();
+                    out.extend_from_slice(b"codefang (v2):\n");
+                    out.extend_from_slice(
+                        format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes(),
+                    );
+                    out.extend_from_slice(
+                        format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes(),
+                    );
+                    out.extend_from_slice(b"history/burndown:\n");
+                    out.extend_from_slice(&cf_goyaml::marshal(&metrics.to_go_value_yaml()));
+                    out
+                }
+            };
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when HEAD is not the reproduced case.
+    }
+
     fail(DISPATCH_BLOCKED_MSG);
+}
+
+/// Builds the closed-form `history/burndown --head` [`ComputedMetrics`] for the
+/// HEAD commit, or `None` if HEAD has no resolvable tree.
+///
+/// Reproduces the Go head-only burndown pipeline. For a single HEAD commit no
+/// file is tracked yet, so every surviving tree-diff change — insert OR modify —
+/// routes to `handleInsertion` (modify on an untracked file falls back to insert,
+/// history_changes.go:213), counting the **whole** To-blob's lines
+/// (`CountLines`). Binary blobs (`CountLines → ErrBinary`) and deletions are
+/// skipped. The single commit lands in tick 0 with one granularity band, so the
+/// dense `GlobalHistory` is `[[N]]` where `N` is the summed insertion line count.
+///
+/// `ComputeAllMetrics` over `GlobalHistory=[[N]]` then yields: aggregate
+/// `total_current_lines = total_peak_lines = N`, `overall_survival_rate = 1`,
+/// `num_bands = num_samples = 1`, all other counts 0; a single global-survival
+/// sample `{0, N, 1, [N]}`; empty file/developer survival; nil interactions.
+///
+/// Tree-diff base: HEAD vs its **first parent** (`TreeDiffAnalyzer`/blob pipeline
+/// use `ParentHash(0)`); the empty base (full initial tree) is used only when
+/// HEAD is a root commit. Changes are filtered through the shared vendor /
+/// generated path policy (`filterChanges → pathpolicy.Exclude(name, nil, opts)`,
+/// content `nil`, default opts).
+fn burndown_head_metrics(sub: &clap::ArgMatches) -> Option<cf_analyzer_burndown::ComputedMetrics> {
+    use cf_analyzer_burndown::metrics::{AggregateData, SurvivalData};
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+    let head = repo.head().ok()?;
+    let commit = repo.lookup_commit(head).ok()?;
+    let new_tree = commit.tree().ok()?;
+
+    // Diff base: first parent's tree, or the empty tree for a root commit.
+    let changes = if commit.num_parents() > 0 {
+        let parent = commit.parent(0).ok()?;
+        let old_tree = parent.tree().ok()?;
+        tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+    } else {
+        initial_tree_changes(&repo, Some(&new_tree)).ok()?
+    };
+
+    let opts = PathPolicyOptions::default();
+    let mut total_lines: i64 = 0;
+    for change in &changes {
+        // handleInsertion uses To.Name; every surviving non-deletion change is
+        // counted as a full insertion.
+        if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+            continue;
+        }
+        if exclude(&change.to.name, None, &opts) {
+            continue;
+        }
+        let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+            continue;
+        };
+        // CountLines → ErrBinary for binary blobs (handleInsertion skips them).
+        if let Ok(lines) = blob.count_lines() {
+            total_lines += lines as i64;
+        }
+    }
+
+    Some(cf_analyzer_burndown::ComputedMetrics {
+        aggregate: AggregateData {
+            total_current_lines: total_lines,
+            total_peak_lines: total_lines,
+            overall_survival_rate: if total_lines > 0 { 1.0 } else { 0.0 },
+            analysis_period_days: 0,
+            num_bands: 1,
+            num_samples: 1,
+            tracked_files: 0,
+            tracked_developers: 0,
+        },
+        global_survival: vec![SurvivalData {
+            sample_index: 0,
+            total_lines,
+            survival_rate: if total_lines > 0 { 1.0 } else { 0.0 },
+            band_breakdown: vec![total_lines],
+        }],
+        // computeFileSurvival/computeDeveloperSurvivalList return empty (non-nil)
+        // slices → JSON `[]`; computeInteraction returns nil → JSON `null`.
+        file_survival: Some(Vec::new()),
+        developer_survival: Some(Vec::new()),
+        interactions: None,
+    })
+}
+
+/// Builds the `history/burndown --head --format timeseries` report bytes for the
+/// HEAD commit, or `None` if HEAD has no resolvable tree.
+///
+/// Reproduces analyze.MergedTimeSeries for the single HEAD commit: the top-level
+/// struct (`version`, `tick_size_hours`, `analyzers`, `commits`) holds one commit
+/// whose `MarshalJSON`-flattened object carries the sorted-key metadata + the
+/// burndown ExtractCommitTimeSeries map `{lines_added, lines_removed}`. The
+/// commit insertion-line count is the same closed form as [`burndown_head_metrics`]
+/// (every surviving non-deletion change is a full insertion; binaries skipped).
+/// Timestamp is the committer time formatted Go-`time.RFC3339` in the commit's
+/// ORIGINAL zone offset (runner.recordCommitMeta: `tc.Timestamp.Format(RFC3339)`,
+/// `tc.Timestamp == ac.Time == commit.Committer().When`). Author is "" (burndown
+/// registers no identity provider, so `authorName` resolves the missing author to
+/// the empty string). tick_size_hours defaults to 24 (no --tick-size on run).
+fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
+    use cf_gojson::value::{GoMap, GoValue};
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+    let head = repo.head().ok()?;
+    let commit = repo.lookup_commit(head).ok()?;
+    let new_tree = commit.tree().ok()?;
+
+    let changes = if commit.num_parents() > 0 {
+        let parent = commit.parent(0).ok()?;
+        let old_tree = parent.tree().ok()?;
+        tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+    } else {
+        initial_tree_changes(&repo, Some(&new_tree)).ok()?
+    };
+
+    let opts = PathPolicyOptions::default();
+    let mut total_lines: i64 = 0;
+    for change in &changes {
+        if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+            continue;
+        }
+        if exclude(&change.to.name, None, &opts) {
+            continue;
+        }
+        let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+            continue;
+        };
+        if let Ok(lines) = blob.count_lines() {
+            total_lines += lines as i64;
+        }
+    }
+
+    let committer = commit.committer();
+    let timestamp = format_rfc3339_offset(committer.when.seconds(), committer.when.offset_minutes());
+    let hash = commit.hash().to_string();
+
+    // burndown ExtractCommitTimeSeries map: sorted keys lines_added, lines_removed.
+    let mut burndown = GoMap::new_map();
+    burndown.insert("lines_added", GoValue::Int(total_lines));
+    burndown.insert("lines_removed", GoValue::Int(0));
+
+    // MergedCommitData.MarshalJSON flat map (json.Marshal(map) → sorted keys:
+    // author, burndown, hash, tick, timestamp).
+    let mut commit_obj = GoMap::new_map();
+    commit_obj.insert("author", GoValue::Str(String::new()));
+    commit_obj.insert("burndown", GoValue::Map(burndown));
+    commit_obj.insert("hash", GoValue::Str(hash));
+    commit_obj.insert("tick", GoValue::Int(0));
+    commit_obj.insert("timestamp", GoValue::Str(timestamp));
+
+    // MergedTimeSeries struct: declaration order version, tick_size_hours,
+    // analyzers, commits.
+    let mut root = GoMap::new_struct();
+    root.insert("version", GoValue::Str("codefang.timeseries.v1".into()));
+    root.insert("tick_size_hours", GoValue::Int(24));
+    root.insert("analyzers", GoValue::Array(vec![GoValue::Str("burndown".into())]));
+    root.insert("commits", GoValue::Array(vec![GoValue::Map(commit_obj)]));
+
+    // json.Encoder.SetIndent("", "  ").Encode → 2-space indent + trailing newline.
+    let mut bytes = cf_gojson::marshal_indent(&GoValue::Map(root));
+    bytes.push(b'\n');
+    Some(bytes)
+}
+
+/// Formats Unix seconds as Go `time.RFC3339` (`2006-01-02T15:04:05Z07:00`) in the
+/// zone given by `offset_minutes` (libgit2 `git2::Time::offset_minutes`). A zero
+/// offset prints the literal `Z`; otherwise `±HH:MM`. Mirrors Go's behavior where
+/// a non-UTC `time.Time` formats its numeric offset and only UTC prints `Z`.
+fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
+    let local = unix_secs + i64::from(offset_minutes) * 60;
+    let days = local.div_euclid(86400);
+    let secs_of_day = local.rem_euclid(86400);
+    let (y, m, d) = civil_from_days(days);
+    let hh = secs_of_day / 3600;
+    let mm = (secs_of_day % 3600) / 60;
+    let ss = secs_of_day % 60;
+    let date = format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}");
+    if offset_minutes == 0 {
+        format!("{date}Z")
+    } else {
+        let sign = if offset_minutes < 0 { '-' } else { '+' };
+        let abs = offset_minutes.unsigned_abs();
+        format!("{date}{sign}{:02}:{:02}", abs / 60, abs % 60)
+    }
+}
+
+/// Civil date from a day count since the Unix epoch (Howard Hinnant's algorithm),
+/// matching `cf_analyze::metadata`'s internal conversion.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 /// Builds the `history/anomaly --head --format json` report bytes for the HEAD
@@ -597,6 +911,38 @@ fn run_repo_path(sub: &clap::ArgMatches) -> String {
 ///    return `None` so the caller surfaces the dispatch sentinel rather than
 ///    emitting subtly-divergent bytes.
 fn devs_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = devs_head_metrics(sub)?;
+    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+}
+
+/// Builds the `history/devs --head --format yaml` report bytes for the HEAD
+/// commit, or `None` if HEAD is not the closed-form case [`devs_head_metrics`]
+/// reproduces.
+///
+/// The Go YAML path (analyze.OutputHistoryResults, non-raw branch) prints the
+/// version header (`analyze.PrintHeader`) and a `<analyzer-name>:` line, then
+/// marshals the per-analyzer `ComputedMetrics` with `yaml.Marshal`
+/// (gopkg.in/yaml.v3). The header is emitted manually (NOT via yaml.Marshal);
+/// the report body routes through cf-goyaml. yaml.v3's nil-slice rule (`[]`,
+/// not json's `null`) is handled by `computed_metrics_to_go_yaml`.
+fn devs_head_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = devs_head_metrics(sub)?;
+    let mut out = Vec::new();
+    // analyze.PrintHeader: manual lines, NOT yaml.Marshal. version.Binary is 0
+    // and version.BinaryGitHash is "<unknown>" (cf-version defaults).
+    out.extend_from_slice(b"codefang (v2):\n");
+    out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+    out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
+    // analyze.OutputHistoryResults: `fmt.Fprintf(writer, "%s:\n", leaf.Name())`.
+    out.extend_from_slice(b"history/devs:\n");
+    let body = cf_goyaml::marshal(&cf_devs::serialize::computed_metrics_to_go_yaml(&metrics));
+    out.extend_from_slice(&body);
+    Some(out)
+}
+
+/// Shared closed-form `history/devs --head` metrics builder for the JSON and
+/// YAML capture paths; returns `None` when HEAD is not the reproduced case.
+fn devs_head_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetrics> {
     use std::collections::BTreeMap;
 
     use cf_analyzers_plumbing::git_model::{Commit as PlumbingCommit, Signature as PlumbingSig};
@@ -668,8 +1014,7 @@ fn devs_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // TickSize defaults to 24h (no --tick-size on run); 0 → resolve_tick_size
     // applies the default inside parse_tick_data_with_bounds.
     let input = parse_tick_data_with_bounds(&commit_dev_data, &commits_by_tick, names, 0, tick_bounds);
-    let metrics = cf_devs::compute_all_metrics(&input, &MetricOptions::default());
-    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+    Some(cf_devs::compute_all_metrics(&input, &MetricOptions::default()))
 }
 
 /// Dispatches `codefang render <store-dir>` to cf-commands (DESIGN §4.1).

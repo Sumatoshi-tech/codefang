@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
         if let Some(n) = self.op_call("filter")? {
             return Ok(DslNode::Filter(Box::new(n)));
         }
-        if let Some(n) = self.op_call("reduce")? {
+        if let Some(n) = self.reduce_op()? {
             return Ok(DslNode::Reduce(Box::new(n)));
         }
         if let Some(n) = self.op_call("rmap")? {
@@ -143,6 +143,38 @@ impl<'a> Parser<'a> {
         }
         self.spacing();
         Ok(Some(expr))
+    }
+
+    /// `Reduce <- 'reduce' ((Spacing '(' Spacing ReducerName Spacing ')') / (Spacing ReducerName))`
+    /// where `ReducerName <- [a-zA-Z_][a-zA-Z0-9_]*`. The reducer name becomes a
+    /// bare `Call{name, args:[]}` (Go `convertReduceNode` -> `CallNode{Name, Args:nil}`),
+    /// NOT a general `Expr` — so `reduce(count)` parses `count` as an identifier,
+    /// not as a literal.
+    fn reduce_op(&mut self) -> Result<Option<DslNode>, ParseError> {
+        let save = self.pos;
+        if !self.consume("reduce") {
+            return Ok(None);
+        }
+        self.spacing();
+        if self.consume("(") {
+            self.spacing();
+            let Some(name) = self.identifier() else {
+                return Err(ParseError("expected reducer name in reduce(".into()));
+            };
+            self.spacing();
+            if !self.consume(")") {
+                return Err(ParseError("expected ')' to close reduce(".into()));
+            }
+            self.spacing();
+            return Ok(Some(DslNode::Call { name, args: Vec::new() }));
+        }
+        // Paren-less form: `reduce <ReducerName>`.
+        let Some(name) = self.identifier() else {
+            self.pos = save;
+            return Ok(None);
+        };
+        self.spacing();
+        Ok(Some(DslNode::Call { name, args: Vec::new() }))
     }
 
     /// `FunctionCall <- Identifier LPAR ArgList? RPAR`

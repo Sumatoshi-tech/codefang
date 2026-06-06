@@ -2,26 +2,32 @@
 
 ## TL;DR (latest verified run)
 
-**ALL THREE GATES GREEN.** `cargo test --workspace` now COMPILES and PASSES
-(every test target builds; final tally `0 failed`, 1 ignored), `cargo build
---release` exits 0, and the 7 binding captures are still 7/7 IDENTICAL
-(golden-harness verified this run). The previously-blocking test-target compile
-errors (cf-clones stale `GoValue::Object`/`str`/`Str` + wrong-arity, the `uast`
-bin test, and cf-uast-node engine/aggregator/analyzer/testutil referencing the
-old Builder API) are RESOLVED in the tree — all test-only/dev code now matches
-the shipped crate API; NO shipped (non-test) crate changed, so the 7-capture
-Guard re-check holds (7/7).
+**Binding captures: 17/32 byte-identical.** `cargo build --release` exits 0 and
+`cargo test --workspace` is GREEN (151 test-suites pass, `0 failed`). Of the 32
+MANIFEST-binding captures (`nonBinding=false`), 17 now reproduce the Go goldens
+byte-for-byte under the pinned golden env; the original 7 core captures are all
+still IDENTICAL (no regression).
 
-**Binding parity: 7/7 IDENTICAL.** All 7 binding captures reproduce the Go
-goldens byte-for-byte under the golden env (verified this run via
-`cargo run --release -p golden-harness` → `7/7 identical`):
-`uast/{parse,analyze,query}.json` (285,255 / 965 / 243,439 B) and
-`run/history_{typos,imports,anomaly,devs}.json` (138 / 167 / 570 / 831 B).
-The final gap — `run/history_anomaly.json` — is closed: `run_dispatch` now has
-a `history/anomaly --head --format json` block (`anomaly_head_report`) that
-builds the closed-form HEAD report from libgit2 and routes it through
-`cf_anomaly::{build_report_data, compute_all_metrics}` → `ToGoValue` →
-`cf_gojson::marshal` (Go encoding/json parity), matching the 570-byte golden.
+**New this run (10 additional binding captures driven green):**
+- `uast/query.count` — fixed the DSL parser: `reduce(<ReducerName>)` now parses
+  its argument as a bare identifier (`Reduce <- 'reduce' (… ReducerName …)`,
+  `ReducerName <- [a-zA-Z_][a-zA-Z0-9_]*`) wrapped in `Call{name, args:[]}`,
+  matching Go `convertReduceNode`. `reduce(count)` over a single file → `1`.
+- `run/history_devs.bin` — wired the CFB1 binary envelope around the existing
+  closed-form `devs_head_metrics` (Go bin path: `EncodeBinaryEnvelope(metrics)`,
+  devs `ToJSON` returns `m`, so the payload equals the JSON capture).
+- `run/burndown.{json,yaml,bin}` — closed-form HEAD-only burndown survival
+  report (already wired; verified green this run).
+- `run/burndown.timeseries` — new `burndown_head_timeseries` builds the
+  single-commit `MergedTimeSeries` (`codefang.timeseries.v1`, `tick_size_hours`
+  24, one flattened commit `{author:"", burndown:{lines_added,lines_removed},
+  hash, tick, timestamp}`), with the committer time formatted Go-`time.RFC3339`
+  in the commit's ORIGINAL zone offset (new `format_rfc3339_offset`).
+- `run/history_devs.yaml` — closed-form devs YAML (header + cf-goyaml body),
+  exercising cf-goyaml on a real report (Step 4 evidence).
+
+The 7 original core captures (`uast/{parse,analyze,query}.json`,
+`run/history_{typos,imports,anomaly,devs}.json`) remain byte-identical.
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
@@ -72,25 +78,69 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 - **`cf-goyaml`** still a scaffold; `marshal` is linkable but not yaml.v3-parity
   (Step 4). Not among the 7 (all-JSON) binding captures.
 
-## The 7 binding captures (all JSON; from MANIFEST.json)
+## The 17 passing binding captures (of 32; from MANIFEST.json)
 
-| # | relPath | status (2026-06-06) | binary + argv tail |
-|---|---|---|---|
-| 1 | uast/parse.json   | IDENTICAL | `uast parse --format json <byte.go>` |
-| 2 | uast/analyze.json | IDENTICAL | `uast analyze --format json <byte.go>` |
-| 3 | uast/query.json   | IDENTICAL | `uast query 'filter(.roles has "Function")' --format json <byte.go>` |
-| 4 | run/history_typos.json   | IDENTICAL | `codefang run … --analyzers history/typos --format json --limit 10 --workers 1` |
-| 5 | run/history_imports.json | IDENTICAL | `codefang run … --analyzers history/imports --format json --limit 10 --workers 1` |
-| 6 | run/history_anomaly.json | IDENTICAL | `codefang run … --analyzers history/anomaly --format json --head --limit 5` |
-| 7 | run/history_devs.json    | IDENTICAL | `codefang run … --analyzers history/devs --format json --head --limit 5` |
+| # | relPath | status (2026-06-06) |
+|---|---|---|
+| 1 | uast/parse.json   | IDENTICAL |
+| 2 | uast/parse.compact| IDENTICAL |
+| 3 | uast/analyze.json | IDENTICAL |
+| 4 | uast/query.json   | IDENTICAL |
+| 5 | uast/query.compact| IDENTICAL |
+| 6 | uast/query.count  | IDENTICAL (new: reduce(count) DSL fix) |
+| 7 | run/history_typos.json   | IDENTICAL |
+| 8 | run/history_imports.json | IDENTICAL |
+| 9 | run/history_anomaly.json | IDENTICAL |
+| 10 | run/history_devs.json   | IDENTICAL |
+| 11 | run/history_devs.yaml   | IDENTICAL (cf-goyaml Step 4) |
+| 12 | run/history_devs.bin    | IDENTICAL (new: CFB1 envelope) |
+| 13 | run/burndown.json       | IDENTICAL |
+| 14 | run/burndown.yaml       | IDENTICAL |
+| 15 | run/burndown.bin        | IDENTICAL |
+| 16 | run/burndown.timeseries | IDENTICAL (new: head MergedTimeSeries) |
+| 17 | static/static_composition.json | IDENTICAL |
+
+15 binding captures still fail — see "Remaining failing binding captures" below.
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
 STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
 
-## Exact next action
+## Remaining failing binding captures (15/32) — next work
 
-**Tier 1 is COMPLETE (7/7 binding captures IDENTICAL).** The
-`history/anomaly --head --format json` closed form is implemented in
+All 15 still-failing captures require the **full multi-commit / multi-file
+analysis pipeline** (real diff/blob/UAST processing), not a closed-form HEAD
+reduction — that is the next structural milestone.
+
+| relPath | reason still failing |
+|---|---|
+| static/static_comments.yaml  | static per-analyzer YAML: needs walk+parse of the 10-file subset + cf-comments native report + yaml.v3 emitter |
+| static/static_comments.bin   | static per-analyzer CFB1 bin of the cf-comments native report |
+| static/static_complexity.json| static JSON section report: needs UAST parse of each subset file + cf-complexity aggregation |
+| static/static_complexity.yaml| static per-analyzer YAML of the cf-complexity native report |
+| static/static_complexity.bin | static per-analyzer CFB1 bin of the cf-complexity native report |
+| static/static_composition.yaml| static per-analyzer YAML (composition native report; JSON section path already green) |
+| static/static_composition.bin | static per-analyzer CFB1 bin (composition native report) |
+| static/static_halstead.json  | static JSON section report: UAST parse + cf-halstead aggregation |
+| static/static_halstead.bin   | static per-analyzer CFB1 bin of the cf-halstead native report |
+| static/static_imports.yaml   | static per-analyzer YAML of the cf-imports native report |
+| static/static_imports.bin    | static per-analyzer CFB1 bin of the cf-imports native report |
+| run/burndown.ndjson          | streaming NDJSON: one line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs |
+| run/burndown.timeseries.ndjson| streaming timeseries+NDJSON over `--limit 5` (same multi-commit pipeline) |
+| run/history_quality.json     | multi-commit (`--limit 10`) per-tick quality stats from real cohesion/blob analysis |
+| run/history_sentiment.json   | multi-commit (`--limit 10`) per-tick sentiment over real commit-message comments (govader) |
+
+The two enablers these share:
+1. **Static pipeline** (`StaticService.AnalyzeFolder` parity): WalkDir the subset,
+   parse each Go file to UAST, run the analyzer, aggregate, then serialize via the
+   analyzer's native JSON-section / `FormatReportYAML` / `FormatReportBinary`
+   (`ResolveAggregationMode(format)` differs per format). Unlocks 11 static captures.
+2. **History streaming pipeline** (multi-commit `RunStreaming`): per-commit diff +
+   blob + tick aggregation, then ndjson / timeseries-ndjson / quality / sentiment
+   serialization. Unlocks the remaining 4.
+
+## Earlier: the original Tier-1 anomaly closed form (reference)
+
+The `history/anomaly --head --format json` closed form is implemented in
 `bins/codefang/src/main.rs run_dispatch` (`anomaly_head_report`, mirroring
 `devs_head_report`): it builds the HEAD report directly from libgit2 and routes
 it through `cf_anomaly::{build_report_data, compute_all_metrics}` → `ToGoValue`

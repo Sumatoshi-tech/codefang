@@ -35,6 +35,10 @@ cf-version = { path = "../../crates/cf-version" }
 # HTML-escape, byte-sorted map keys, declaration-order structs, shortest-float).
 # NEVER serde_json for machine output.
 cf-gojson = { path = "../../crates/cf-gojson" }
+# YAML report serialization MUST route through cf-goyaml (gopkg.in/yaml.v3
+# byte-parity: 2-space block indent, nil-slice -> `[]`, struct-declaration key
+# order, yaml.v3 scalar quoting). NEVER serde_yaml for machine output.
+cf-goyaml = { path = "../../crates/cf-goyaml" }
 # history/imports analyzer report computation + Go-value lowering.
 cf-imports = { path = "../../crates/cf-imports" }
 # history/devs analyzer: ComputedMetrics + Go-value lowering for the
@@ -55,3 +59,11 @@ cf-analyze = { path = "../../crates/cf-analyze" }
 cf-anomaly = { path = "../../crates/cf-anomaly" }
 # Vendor / generated path-policy exclusion (TreeDiff.filterChanges parity).
 cf-pathpolicy = { path = "../../crates/cf-pathpolicy", features = ["default-deps"] }
+# static/composition analyzer: raw-file classifier + aggregator for the
+# `run --analyzers static/composition --head` static-analysis captures.
+cf-composition = { path = "../../crates/cf-composition" }
+# history/burndown analyzer: ComputedMetrics + Go-value lowering for the
+# `run --analyzers history/burndown --head` captures (HEAD closed form).
+cf-analyzer-burndown = { path = "../../crates/cf-analyzer-burndown" }
+# CFB1 binary envelope (--format bin) for the burndown machine output.
+cf-reportutil = { path = "../../crates/cf-reportutil" }

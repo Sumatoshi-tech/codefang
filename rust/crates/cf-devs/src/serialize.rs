@@ -97,6 +97,36 @@ pub fn developer_data_to_go(d: &DeveloperData) -> GoValue {
     GoValue::Object(obj)
 }
 
+/// [`DeveloperData`] → struct-origin GoValue for the **YAML** target.
+///
+/// Identical to [`developer_data_to_go`] except the non-omitempty `languages`
+/// slice renders as an empty sequence (`[]`) rather than `null` when empty:
+/// `gopkg.in/yaml.v3` marshals a nil Go slice as `[]`, whereas `encoding/json`
+/// marshals it as `null`. The Go field is `Languages []LanguageStatsEntry`
+/// (a concrete slice type, never a nil interface), so yaml.v3 always emits `[]`.
+#[must_use]
+pub fn developer_data_to_go_yaml(d: &DeveloperData) -> GoValue {
+    let mut obj = GoMap::new_struct();
+    obj.insert("id".to_string(), GoValue::Int(d.id));
+    obj.insert("name".to_string(), GoValue::Str(d.name.clone()));
+    if !d.email.is_empty() {
+        obj.insert("email".to_string(), GoValue::Str(d.email.clone()));
+    }
+    obj.insert("commits".to_string(), GoValue::Int(d.commits));
+    obj.insert("lines_added".to_string(), GoValue::Int(d.added));
+    obj.insert("lines_removed".to_string(), GoValue::Int(d.removed));
+    obj.insert("lines_changed".to_string(), GoValue::Int(d.changed));
+    obj.insert("net_lines".to_string(), GoValue::Int(d.net_lines));
+    obj.insert(
+        "languages".to_string(),
+        GoValue::Array(d.languages.iter().map(language_stats_entry_to_go).collect()),
+    );
+    obj.insert("first_tick".to_string(), GoValue::Int(d.first_tick));
+    obj.insert("last_tick".to_string(), GoValue::Int(d.last_tick));
+    obj.insert("active_ticks".to_string(), GoValue::Int(d.active_ticks));
+    GoValue::Object(obj)
+}
+
 /// [`LanguageData`] → struct-origin GoValue. `contributors` is a `map[int]int`
 /// → map-origin object with decimal-string keys, byte-sorted on encode.
 #[must_use]
@@ -267,6 +297,40 @@ pub fn computed_metrics_to_go(m: &ComputedMetrics) -> GoValue {
     obj.insert(
         "developers".to_string(),
         GoValue::Array(m.developers.iter().map(developer_data_to_go).collect()),
+    );
+    obj.insert(
+        "languages".to_string(),
+        GoValue::Array(m.languages.iter().map(language_data_to_go).collect()),
+    );
+    obj.insert(
+        "busfactor".to_string(),
+        GoValue::Array(m.busfactor.iter().map(bus_factor_data_to_go).collect()),
+    );
+    obj.insert(
+        "activity".to_string(),
+        GoValue::Array(m.activity.iter().map(activity_data_to_go).collect()),
+    );
+    obj.insert(
+        "churn".to_string(),
+        GoValue::Array(m.churn.iter().map(churn_data_to_go).collect()),
+    );
+    GoValue::Object(obj)
+}
+
+/// [`ComputedMetrics`] → struct-origin GoValue for the **YAML** target.
+///
+/// Identical to [`computed_metrics_to_go`] except per-developer empty
+/// `languages` slices render as `[]` (yaml.v3 nil-slice rule) rather than
+/// `null` (encoding/json nil-slice rule). All top-level slices are already
+/// allocated by `ComputeAllMetrics`, so they render as `[]` when empty in both
+/// targets; only the per-developer `languages` field differs.
+#[must_use]
+pub fn computed_metrics_to_go_yaml(m: &ComputedMetrics) -> GoValue {
+    let mut obj = GoMap::new_struct();
+    obj.insert("aggregate".to_string(), aggregate_data_to_go(&m.aggregate));
+    obj.insert(
+        "developers".to_string(),
+        GoValue::Array(m.developers.iter().map(developer_data_to_go_yaml).collect()),
     );
     obj.insert(
         "languages".to_string(),

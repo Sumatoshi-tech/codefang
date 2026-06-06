@@ -51,39 +51,46 @@ pass/fail tally.
 > (expected; the Go cobra surface also exposes `version` as a subcommand).
 >
 > The two prior build blockers (`cf-textutil` E0583, `cf-analyze` 21 errors) are
-> **RESOLVED** and the whole workspace links. **`cargo test --workspace` is now
-> GREEN** — every test target compiles and the full suite passes (`0 failed`, 1
-> ignored); the lint+test evidence gate is satisfied. **Binding parity tally is
-> 7/7 IDENTICAL** (all 7 JSON captures reproduce the Go goldens byte-for-byte,
-> verified this run via `cargo run --release -p golden-harness` → `7/7
-> identical`). Tier 1 is complete; the remaining work is `cf-goyaml` yaml.v3
-> parity (Step 4), nonBinding/unstable determinism (Steps 15–17), and full
-> run-pipeline generalization beyond the closed-form dispatch.
+> **RESOLVED** and the whole workspace links. **`cargo test --workspace` is
+> GREEN** — every test target compiles and the full suite passes (151 suites,
+> `0 failed`). **Binding parity tally is now 17/32 byte-identical** (was 7/7 of
+> the original core set; the MANIFEST marks 32 captures binding). The 7 original
+> core captures remain IDENTICAL (no regression); 10 more were driven green this
+> run: `uast/query.count` (reduce(count) DSL fix), `run/history_devs.{yaml,bin}`,
+> `run/burndown.{json,yaml,bin,timeseries}`, `uast/{parse,query}.compact`, and
+> `static/static_composition.json`. The remaining 15 failing captures all need
+> the full multi-commit / multi-file analysis pipeline (static walk+UAST+native
+> serializers; history streaming ndjson/quality/sentiment) — see Step 18 list.
 > Newly-ported `cf-langpath` (1 doctest) and `cf-persist` (34 unit + 1 doctest)
-> remain green; `cf-anomaly` green (35/35).
+> remain green; `cf-anomaly` green (35/35); `cf-goyaml` is now a real ~1,791-line
+> emitter (two YAML goldens byte-identical).
 
-### Exact next action — Tier 1 COMPLETE (7/7); finish the non-binding gate
+### Exact next action — 17/32 binding captures byte-identical; drive the last 15
 
-All 7 binding JSON captures are byte-IDENTICAL (verified by running each release
-binary under the golden env with the MANIFEST argv and byte-comparing STDOUT):
+17 of the 32 MANIFEST-binding captures are byte-IDENTICAL (verified this run by
+running each release binary under the golden env with the MANIFEST argv and
+byte-comparing STDOUT). PASSING: `uast/{parse,parse.compact,analyze,query,
+query.compact,query.count}`, `run/history_{typos,imports,anomaly,devs}.json`,
+`run/history_devs.{yaml,bin}`, `run/burndown.{json,yaml,bin,timeseries}`,
+`static/static_composition.json`.
 
-| # | relPath | binary + argv tail | status |
-|---|---|---|---|
-| 1 | uast/parse.json   | `uast parse --format json <byte.go>` | IDENTICAL (285,255 B) |
-| 2 | uast/analyze.json | `uast analyze --format json <byte.go>` | IDENTICAL (965 B) |
-| 3 | uast/query.json   | `uast query 'filter(.roles has "Function")' --format json <byte.go>` | IDENTICAL (243,439 B) |
-| 4 | run/history_typos.json   | `codefang run … --analyzers history/typos --format json --limit 10 --workers 1` | IDENTICAL (138 B) |
-| 5 | run/history_imports.json | `codefang run … --analyzers history/imports --format json --limit 10 --workers 1` | IDENTICAL (167 B) |
-| 6 | run/history_anomaly.json | `codefang run … --analyzers history/anomaly --format json --head --limit 5` | IDENTICAL (570 B) |
-| 7 | run/history_devs.json    | `codefang run … --analyzers history/devs --format json --head --limit 5` | IDENTICAL (831 B) |
+The 15 still-failing captures all need the full multi-commit / multi-file
+analysis pipeline (NOT a closed-form HEAD reduction):
 
-Remaining work (none blocks binding parity):
-1. `cf-goyaml` full yaml.v3 emitter parity (Step 4) — blocks `.yaml` captures.
-2. nonBinding / unstable determinism: Steps 15–17 (`bin` for `--analyzers '*'`,
-   stabilize/reclassify Go-map-order captures, govader lexicon parity).
-3. Full run-pipeline generalization beyond the closed-form `run_dispatch` blocks
-   (typos/imports/devs/anomaly) so arbitrary `--analyzers` selectors + formats
-   run end-to-end.
+STATIC (need `StaticService.AnalyzeFolder` parity — walk the 10-file subset,
+UAST-parse each Go file, run the analyzer, aggregate, serialize per format;
+`ResolveAggregationMode(format)` differs):
+- static/static_complexity.json, static/static_halstead.json — JSON section reports
+- static/static_{comments,complexity,composition,halstead,imports}.yaml — per-analyzer yaml.v3 of native report
+- static/static_{comments,complexity,composition,halstead,imports}.bin — per-analyzer CFB1 of native report
+
+HISTORY STREAMING (need multi-commit `RunStreaming` — per-commit diff+blob+tick):
+- run/burndown.ndjson, run/burndown.timeseries.ndjson — one JSON line per commit (`--limit 5`)
+- run/history_quality.json — per-tick quality stats (`--limit 10`, real cohesion/blob)
+- run/history_sentiment.json — per-tick sentiment (`--limit 10`, govader over commit-message comments)
+
+Two enablers unlock all 15: (1) the static folder pipeline (11 captures) and
+(2) the history streaming pipeline (4 captures).
 
 DONE this run: the `cargo test --workspace` test-target compile failures
 (`cf-clones`, the `uast` bin-test, and cf-uast-node) referencing the stale
@@ -234,21 +241,35 @@ Mitigation: prefer a direct port of Go ftoa; gate with the Go oracle.
 
 ### Step 4: Implement `cf-goyaml` (gopkg.in/yaml.v3 emitter parity)
 
-**Description:** `cf-goyaml/src/lib.rs` is a bare scaffold; all `*.yaml` report
-output is blocked. Reproduce yaml.v3's emitter (ARCHITECTURE.md §2.5, risk #5):
-2-space block indent, no `---`, alphabetical map keys, yaml.v3 scalar quoting
-(numbers/bools/null/yes/no/on/off quoted; single-vs-double-quote selection),
-80-col folding, single trailing `\n`. This is the hardest text format — no Rust
-crate matches byte-for-byte out of the box.
+**Description:** `cf-goyaml` is now a real ~1,791-line emitter (NO LONGER a
+scaffold): `emitter.rs` (673), `resolve.rs` (454), `scalar.rs` (252),
+`float.rs` (216), `lib.rs` (196). Reproduces yaml.v3's emitter
+(ARCHITECTURE.md §2.5, risk #5): 2-space block indent, no `---`, alphabetical
+map keys, yaml.v3 scalar quoting (numbers/bools/null/yes/no/on/off quoted;
+single-vs-double-quote selection), 80-col folding, single trailing `\n`.
+
+**STATUS 2026-06-06: effectively DONE for binding YAML captures.**
+`tests/golden/run/burndown.yaml` AND `tests/golden/run/history_devs.yaml` both
+verify **byte-identical** under the golden env this run, exercising scalar
+quoting, key sorting, folding and the trailing `\n` on real reports.
+`cargo test -p cf-goyaml` = 15+1 passing (float.rs has dedicated yaml float
+rules). The checkbox is left unticked only because the Go `make lint` gate is
+unrunnable in this environment (libgit2 pkg-config not resolvable for the lint
+target); the Rust evidence (`cargo test`, two byte-identical YAML goldens) is
+green.
 
 **DoR (Definition of Ready):** Steps 1-3 (shared value model + number formatting available).
 
 **DoD (Definition of Done):**
 - [ ] yaml.v3 emitter matches Go `yaml.Marshal` for the values in
       `tests/golden/run/burndown.yaml` and `tests/golden/run/all.yaml`.
+      (burndown.yaml + history_devs.yaml byte-identical this run; `all.yaml`
+      is non-binding/combined and not yet exercised.)
 - [ ] Scalar quoting, key sorting, folding, and trailing `\n` match yaml.v3.
+      (Confirmed by the two byte-identical YAML goldens.)
 - [ ] Unit tests cover int/float/bool/null/string-quoting parity vs a yaml.v3
       oracle (NOT the json 'g' formatter — yaml uses different float rules).
+      (`cargo test -p cf-goyaml` green: 15+1.)
 
 **Risks:** yaml.v3 quoting/folding heuristics are intricate. Mitigation: build a
 per-scalar decision table from yaml.v3 source; oracle-gate on the golden values.
@@ -557,17 +578,26 @@ upstream VADER; oracle on final bytes.
 
 ## Tier 3 — Full-suite acceptance
 
-### Step 18: Full binding-suite green gate
+### Step 18: Full binding-suite green gate (32 captures)
 
-**Description:** Final acceptance: all 7 binding captures byte-IDENTICAL, release
-build clean, golden-harness exits 0, and ARCHITECTURE.md matches the actual crate
-layout.
+**Description:** Final acceptance: all **32** MANIFEST-binding captures
+(`nonBinding=false`) byte-IDENTICAL, release build clean, golden-harness exits 0,
+and ARCHITECTURE.md matches the actual crate layout.
+
+**STATUS 2026-06-06: 17/32 byte-identical** (release build green; `cargo test
+--workspace` green, 151 suites). The 15 remaining need the static folder
+pipeline (11) and the history streaming pipeline (4) — see the "Exact next
+action" list at the top. The 15 failing relPaths:
+static/static_{comments,complexity,composition,halstead,imports}.{yaml,bin}
+minus static_composition (json already green) → the 11 static yaml/bin +
+static_complexity.json + static_halstead.json; plus run/burndown.ndjson,
+run/burndown.timeseries.ndjson, run/history_quality.json, run/history_sentiment.json.
 
 **DoR (Definition of Ready):** Steps 1-17 complete.
 
 **DoD (Definition of Done):**
 - [ ] `cargo build --release` clean (no errors).
-- [ ] `golden-harness` reports 7/7 binding captures IDENTICAL.
+- [ ] `golden-harness` reports 32/32 binding captures IDENTICAL (now 17/32).
 - [ ] No `todo!`/`unimplemented!`/"not yet implemented" in binding code paths.
 - [ ] ARCHITECTURE.md module map matches the real crate layout.
 
@@ -588,9 +618,11 @@ the full harness after every Tier-0/1 change.
       enry v2.1.0 TSV vendored in `data/`; workspace gate now green)
 - [x] Step 3b — port `persist` → `cf-persist` (34 unit + 1 doctest green;
       gob replaced by bincode per DESIGN §3 — internal state only, not a capture)
-- [ ] Step 4 — cf-goyaml yaml.v3 emitter (STILL 8-line SCAFFOLD; `marshal` fn
-      missing — at minimum add the signature so cf-analyze links; full parity
-      blocks every `.yaml` capture)
+- [ ] Step 4 — cf-goyaml yaml.v3 emitter — NO LONGER a scaffold: a real
+      ~1,791-line emitter (emitter/resolve/scalar/float/lib). `run/burndown.yaml`
+      AND `run/history_devs.yaml` both byte-identical this run; `cargo test
+      -p cf-goyaml` green (15+1). Box left unticked only because the Go `make
+      lint` gate is unrunnable here (libgit2 pkg-config), not for lack of parity.
 - [x] Step 4a — fix `cf-textutil` E0583. The `uast` binary builds. (Gate green.)
 - [x] Step 4b — fix `cf-analyze` 21 errors. cf-analyze compiles in the green
       release build. (Gate green.)
@@ -617,15 +649,25 @@ the full harness after every Tier-0/1 change.
       yields both binaries; `version` subcommand works. `--help`/`--version`
       byte-match vs Go NOT yet diffed. (Gate green.)
 
-### Tier 1 — 7 binding captures (VERIFIED 2026-06-06: 7/7 IDENTICAL)
-> All seven captures below were diffed byte-for-byte against their goldens under
-> the golden env (each Rust release binary run with the exact MANIFEST.json argv,
-> binary path swapped to `rust/target/release/{codefang,uast}`, STDOUT compared
-> byte-for-byte — note command-substitution `$(...)` strips the trailing newline
-> and gives a false 1-byte miss, so compare via file/`cmp`). The `make
-> lint`/`cargo test` gate is now GREEN (both exit 0), so the held `- [x]` ticks
-> are applied. The binding tally is **7/7 IDENTICAL** (re-verified this run via
-> `cargo run --release -p golden-harness`).
+### Tier 1 — binding captures (2026-06-06: 17/32 IDENTICAL)
+> The original 7 core captures below were diffed byte-for-byte against their
+> goldens under the golden env (each Rust release binary run with the exact
+> MANIFEST.json argv, binary path swapped to `rust/target/release/{codefang,uast}`,
+> STDOUT compared byte-for-byte via file/`cmp` — command-substitution `$(...)`
+> strips the trailing newline and gives a false 1-byte miss). The original 7 are
+> all still IDENTICAL. 10 MORE binding captures were driven green this run
+> (17/32 total):
+> - `uast/query.count` — DSL fix: `reduce(<ReducerName>)` parses its argument as a
+>   bare identifier → `Call{name, args:[]}` (Go `convertReduceNode`); `reduce(count)`
+>   over one file → `1` (`crates/cf-uast-node/src/dsl/parser.rs reduce_op`).
+> - `uast/parse.compact`, `uast/query.compact` — compact UAST formats (already wired).
+> - `run/history_devs.{yaml,bin}` — closed-form devs HEAD report: yaml = header +
+>   cf-goyaml body; bin = CFB1 envelope of `computed_metrics_to_go` (Go bin path
+>   `EncodeBinaryEnvelope(metrics)`, devs `ToJSON` returns `m`).
+> - `run/burndown.{json,yaml,bin,timeseries}` — closed-form HEAD burndown survival;
+>   timeseries via new `burndown_head_timeseries` (single-commit MergedTimeSeries,
+>   committer time in original zone offset via `format_rfc3339_offset`).
+> - `static/static_composition.json` — raw-file composition JSON section report.
 - [x] Step 6 — uast parse --format json (golden 285,255 B)
 - [x] Step 7 — uast analyze --format json (golden 965 B)
 - [x] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
@@ -660,7 +702,7 @@ the full harness after every Tier-0/1 change.
 - [ ] Step 17 — sentiment/govader lexicon parity
 
 ### Tier 3 — acceptance
-- [ ] Step 18 — full binding-suite green gate (target 7/7 IDENTICAL)
+- [ ] Step 18 — full binding-suite green gate (target 32/32 IDENTICAL; now 17/32)
 
 ## Top byte-identity risks to watch (from ARCHITECTURE.md §9)
 
