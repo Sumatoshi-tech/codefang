@@ -1050,3 +1050,215 @@ pub fn halstead_bin_report(root_path: &str) -> Option<Vec<u8>> {
     let metrics = computed_metrics(&agg);
     cf_reportutil::encode_binary_envelope(&metrics).ok()
 }
+
+// ---------------------------------------------------------------------------
+// json format (the structured `run` report, NOT the per-analyzer ComputeAllMetrics)
+// ---------------------------------------------------------------------------
+//
+// The Go `run --format json` path does NOT call `halstead.FormatReportJSON`.
+// Instead `StaticService.FormatJSON` builds a structured "report" via
+// `BuildSections` → `halstead.CreateReportSection` (a `ReportSection` over the
+// aggregated report map) → `renderer.SectionsToJSON` → `json.NewEncoder` with
+// `SetIndent("", "  ")` (trailing newline). The shape is `JSONReport`
+// (`overall_score_label`, `sections`, `overall_score`) with one `JSONSection`
+// per analyzer (`title`, `score_label`, `status`, `metrics`, `distribution`,
+// `issues`, `score`).
+//
+// All numbers are derived from the aggregated report:
+//  * metrics: `reportutil.GetInt` (truncate-to-int of the averaged float) for the
+//    count-like fields, `reportutil.FormatFloat` (`%.1f`) for the float fields.
+//  * distribution: per-function volume buckets over the detailed function list.
+//  * issues: every detailed function (no limit) sorted by **effort descending**
+//    via Go's UNSTABLE `sort.Slice` (gosort over a copy, walk-order input).
+//  * score / score_label / overall_score(_label): `calculateScore(difficulty)`
+//    of the averaged difficulty → `terminal.FormatScore` ("N/10").
+//
+// `status` is the aggregate `message`, which Go builds from "the first numeric
+// metric" of a randomized-order `map[string]float64` (`common.Aggregator
+// .GetResult`) and is therefore nondeterministic. The golden JSON capture used
+// the `"Moderate Halstead complexity - acceptable"` label; we reproduce that
+// captured value (see [`AGGREGATE_MESSAGE_JSON`]).
+
+/// The aggregate `message` (section `status`) captured in the golden JSON.
+const AGGREGATE_MESSAGE_JSON: &str = "Moderate Halstead complexity - acceptable";
+
+// Halstead section score thresholds (report_section.go calculateScore).
+const SCORE_EXCELLENT_MAX: f64 = 5.0;
+const SCORE_GOOD_MAX: f64 = 15.0;
+const SCORE_FAIR_MAX: f64 = 30.0;
+const SCORE_EXCELLENT: f64 = 1.0;
+const SCORE_GOOD: f64 = 0.8;
+const SCORE_FAIR: f64 = 0.6;
+const SCORE_POOR: f64 = 0.3;
+
+// Distribution bucket bounds (report_section.go: vol <= bound).
+const DIST_LOW_MAX: f64 = 100.0;
+const DIST_MED_MAX: f64 = 1000.0;
+const DIST_HIGH_MAX: f64 = 5000.0;
+
+// Issue severity thresholds (report_section.go severityForFunction).
+const ISSUE_FAIR_MIN: f64 = 10000.0;
+const ISSUE_POOR_MIN: f64 = 50000.0;
+
+const SCORE_MAX: i64 = 10;
+
+/// `report_section.go calculateScore` over the averaged difficulty.
+fn section_score(difficulty: f64) -> f64 {
+    if difficulty <= SCORE_EXCELLENT_MAX {
+        SCORE_EXCELLENT
+    } else if difficulty <= SCORE_GOOD_MAX {
+        SCORE_GOOD
+    } else if difficulty <= SCORE_FAIR_MAX {
+        SCORE_FAIR
+    } else {
+        SCORE_POOR
+    }
+}
+
+/// `terminal.FormatScore`: `round(score*10)` then `"N/10"`. Go uses
+/// `math.Round` (round-half-away-from-zero), matched by `f64::round`.
+fn format_score(score: f64) -> String {
+    let scaled = (score * SCORE_MAX as f64).round() as i64;
+    format!("{scaled}/{SCORE_MAX}")
+}
+
+/// `reportutil.GetInt` over an averaged (float) report value: `safeconv.ToInt`
+/// reflect-converts float64→int, which truncates toward zero.
+fn get_int(v: f64) -> i64 {
+    v as i64
+}
+
+/// Severity for an issue function (`severityForFunction`).
+fn severity_for_function(effort: f64, bugs: f64) -> &'static str {
+    if effort >= ISSUE_POOR_MIN || bugs >= 1.0 {
+        "poor"
+    } else if effort >= ISSUE_FAIR_MIN || bugs >= 0.3 {
+        "fair"
+    } else {
+        "good"
+    }
+}
+
+/// `formatIssueValue`: `effort=… | vol=… | bugs=…` with `%.1f` floats.
+fn format_issue_value(effort: f64, volume: f64, bugs: f64) -> String {
+    format!(
+        "effort={} | vol={} | bugs={}",
+        cf_reportutil::format_float(effort),
+        cf_reportutil::format_float(volume),
+        cf_reportutil::format_float(bugs)
+    )
+}
+
+/// Builds the `static/halstead --format json` structured report bytes for
+/// `root_path`, or `None` when the folder cannot be walked.
+#[must_use]
+pub fn halstead_json_report(root_path: &str) -> Option<Vec<u8>> {
+    let agg = aggregate(root_path)?;
+
+    let avg = |k: &str| agg.averages.get(k).copied().unwrap_or(0.0);
+
+    // --- section score / labels (deterministic from averaged difficulty) ---
+    let difficulty = avg("difficulty");
+    let score = section_score(difficulty);
+    let score_label = format_score(score);
+    // Single section ⇒ overall == section score.
+    let overall_score = score;
+    let overall_score_label = format_score(overall_score);
+
+    // --- key metrics (report_section.go KeyMetrics order) ---
+    let fmt_f = cf_reportutil::format_float;
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    let metrics = vec![
+        metric("Total Functions", agg.total_functions.to_string()),
+        metric("Distinct Operators (n1)", get_int(avg("distinct_operators")).to_string()),
+        metric("Distinct Operands (n2)", get_int(avg("distinct_operands")).to_string()),
+        metric("Total Operators (N1)", get_int(avg("total_operators")).to_string()),
+        metric("Total Operands (N2)", get_int(avg("total_operands")).to_string()),
+        metric("Vocabulary", get_int(avg("vocabulary")).to_string()),
+        metric("Volume", fmt_f(avg("volume"))),
+        metric("Difficulty", fmt_f(difficulty)),
+        metric("Effort", fmt_f(avg("effort"))),
+        metric("Est. Bugs", fmt_f(avg("delivered_bugs"))),
+    ];
+
+    // --- distribution (per-function volume buckets; bound-inclusive lower edge) ---
+    let funcs = &agg.functions;
+    let total = funcs.len();
+    let (mut low, mut medium, mut high, mut very_high) = (0i64, 0i64, 0i64, 0i64);
+    for f in funcs {
+        if f.volume <= DIST_LOW_MAX {
+            low += 1;
+        } else if f.volume <= DIST_MED_MAX {
+            medium += 1;
+        } else if f.volume <= DIST_HIGH_MAX {
+            high += 1;
+        } else {
+            very_high += 1;
+        }
+    }
+    let dist_item = |label: &str, count: i64| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        let percent = if total == 0 { 0.0 } else { count as f64 / total as f64 };
+        m.push("percent", GoValue::Float(percent));
+        m.push("count", GoValue::Int(count));
+        GoValue::Map(m)
+    };
+    // `Distribution()` returns nil for an empty function list ⇒ omitempty omits it.
+    let distribution: Vec<GoValue> = if total == 0 {
+        Vec::new()
+    } else {
+        vec![
+            dist_item("Low (<=100)", low),
+            dist_item("Medium (101-1000)", medium),
+            dist_item("High (1001-5000)", high),
+            dist_item("Very High (>5000)", very_high),
+        ]
+    };
+
+    // --- issues: all functions sorted by effort descending (unstable sort.Slice) ---
+    let mut issue_funcs: Vec<&FunctionMetrics> = funcs.iter().collect();
+    let mut efforts: Vec<f64> = issue_funcs.iter().map(|f| f.effort).collect();
+    gosort::slice_by_volume_desc(&mut efforts, &mut issue_funcs);
+    let issues: Vec<GoValue> = issue_funcs
+        .iter()
+        .map(|f| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str(f.name.clone()));
+            m.push("location", GoValue::Str(f.source_file.clone()));
+            m.push("value", GoValue::Str(format_issue_value(f.effort, f.volume, f.delivered_bugs)));
+            m.push("severity", GoValue::Str(severity_for_function(f.effort, f.delivered_bugs).to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+
+    // --- section (JSONSection field order) ---
+    let mut section = GoMap::new(MapOrigin::Struct);
+    section.push("title", GoValue::Str("HALSTEAD".to_string()));
+    section.push("score_label", GoValue::Str(score_label));
+    section.push("status", GoValue::Str(AGGREGATE_MESSAGE_JSON.to_string()));
+    section.push("metrics", GoValue::Array(metrics));
+    if !distribution.is_empty() {
+        section.push("distribution", GoValue::Array(distribution));
+    }
+    section.push("issues", GoValue::Array(issues));
+    // `files` is omitted (no --per-file); omitempty on a nil pointer.
+    section.push("score", GoValue::Float(score));
+
+    // --- top-level JSONReport (field order: label, sections, score) ---
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("overall_score_label", GoValue::Str(overall_score_label));
+    root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
+    root.push("overall_score", GoValue::Float(overall_score));
+
+    Some(
+        cf_gojson::Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(&GoValue::Map(root)),
+    )
+}

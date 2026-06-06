@@ -30,6 +30,7 @@
 //!     ([`watchdog`]), behavioral parity only.
 //!  4. Dispatch run / render / version.
 
+mod burndown_ndjson;
 mod go_sort;
 mod malloc;
 mod static_comments;
@@ -495,6 +496,22 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // Fall through to the sentinel when the repo cannot be walked.
     }
 
+    // history/sentiment --format json (streaming, e.g. --limit N --workers 1):
+    // per-commit comment-sentiment history over the oldest N commits. The Go
+    // streaming pipeline (run.go initHistoryPipeline Reverse+Limit → RunStreaming
+    // → sentiment aggregator → ticksToReport → ComputeAllMetrics) reduces to a
+    // deterministic closed form we build from libgit2 here (see
+    // sentiment_run_report). Bytes route through cf-gojson (compact, no trailing
+    // newline) byte-identically to run/history_sentiment.json.
+    if analyzers.as_slice() == ["history/sentiment"] && format == "json" && !sub.get_flag("head") {
+        if let Some(bytes) = sentiment_run_report(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the repo cannot be walked.
+    }
+
     // static/composition --format json: raw-file composition over the analyzed
     // folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder →
     // rawFilePhase → composition.Aggregator → renderer.SectionsToJSON →
@@ -559,6 +576,22 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
     if analyzers.as_slice() == ["static/halstead"] && format == "bin" {
         let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
         if let Some(bytes) = static_halstead::halstead_bin_report(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/halstead --format json: the structured `run` report. Unlike the bin
+    // path (per-analyzer ComputeAllMetrics in a CFB1 envelope), the Go JSON path
+    // is StaticService.FormatJSON -> BuildSections -> halstead.CreateReportSection
+    // -> renderer.SectionsToJSON -> json.NewEncoder(SetIndent("","  ")).Encode.
+    // The shape is JSONReport{overall_score_label, sections[JSONSection],
+    // overall_score} over the aggregated report. See halstead_json_report.
+    if analyzers.as_slice() == ["static/halstead"] && format == "json" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_halstead::halstead_json_report(path) {
             use std::io::Write;
             std::io::stdout().write_all(&bytes).expect("write stdout");
             exit(0);
@@ -714,6 +747,27 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
             exit(0);
         }
         // Fall through to the sentinel when HEAD is not the reproduced case.
+    }
+
+    // history/burndown --format timeseries --ndjson (streaming, e.g. --limit N
+    // --workers 1): per-commit burndown time-series emitted as NDJSON — one
+    // compact JSON line per commit. The Go streaming pipeline
+    // (run.go initHistoryPipeline Reverse+Limit → RunStreaming →
+    // TimeSeriesChunkFlusher → WriteTimeSeriesNDJSON) reduces to a deterministic
+    // closed form built from libgit2 here (see burndown_ndjson). Bytes route
+    // through cf-gojson (compact, per-line trailing newline) byte-identically to
+    // run/burndown.timeseries.ndjson.
+    if analyzers.as_slice() == ["history/burndown"]
+        && format == "timeseries"
+        && sub.get_flag("ndjson")
+        && !sub.get_flag("head")
+    {
+        if let Some(bytes) = burndown_ndjson::burndown_timeseries_ndjson(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the repo cannot be walked.
     }
 
     if analyzers.as_slice() == ["history/burndown"]
@@ -1278,6 +1332,252 @@ fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let input = ReportData { tick_quality, tick_bounds };
     let metrics = compute_all_metrics(&input);
     Some(cf_quality::serialize::to_json_compact(&metrics))
+}
+
+/// Builds the `run --analyzers history/sentiment --format json` bytes for the
+/// oldest `--limit` commits, or `None` if the repository cannot be opened/walked.
+///
+/// Reproduces the Go streaming sentiment pipeline as a closed form:
+///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first),
+///    truncated to `--limit` commits (run.go initHistoryPipeline).
+///  - **tick assignment** (`plumbing.TicksSinceStart`): `tick0 = FloorTime(when0,
+///    24h)`; `tick = max(floor((when-tick0)/24h), previousTick)` over the
+///    committer time. `commits_by_tick` records each tick's commit hashes (drives
+///    `commit_count`); tick bounds = min/max committer time of the tick's
+///    commits, Go-`time.RFC3339`-formatted in UTC (`FormatStartTime/EndTime`).
+///  - **per-commit changes**: tree diff against the commit's **first git parent**
+///    (`TreeDiffAnalyzer` / forked parallel analyzer diffs against its own
+///    parent), or the full initial tree for a root commit.
+///  - **spill rule** (`UASTPipeline.SpillThreshold = 32`): a commit with **> 32**
+///    file changes contributes zero analyzed files (its streamed UAST changes are
+///    dropped), matching the quality path.
+///  - **per-file filter** (`UASTPipeline.parseBlob` over each Insert/Modify
+///    change's *After* version): vendor/generated path policy
+///    (`pathpolicy.Exclude(name, nil)`), parser language support (by extension),
+///    the 256 KiB blob cap, and content-aware generated detection
+///    (`pathpolicy.Exclude(name, content)`).
+///  - **comment extraction** (`Analyzer.Consume`): for each surviving After tree,
+///    recursively collect `Comment` nodes, then `mergeComments` (group by start
+///    line, merge adjacent within `maxEnd+1`, strip delimiters, filter by the
+///    default `MinCommentLength = 20`, letters-ratio, license drop). The merged
+///    comments are keyed by commit hex hash in `comments_by_commit`.
+///
+/// The typed [`cf_sentiment::ReportData`] then drives
+/// `cf_sentiment::compute_all_metrics` (govader scoring via
+/// `AggregateCommitsToTicks`), serialized compact through cf-gojson
+/// (`marshal(metrics.to_go_value())`, no trailing newline) — byte-identical to
+/// `run/history_sentiment.json`.
+fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use std::collections::BTreeMap;
+
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
+    use cf_gitlib::repository::LogOptions;
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+    use cf_sentiment::analyzer::{merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
+    use cf_sentiment::{compute_all_metrics, ReportData, TickBounds, ToGoValue};
+    use cf_uast_node::UAST_COMMENT;
+
+    const SPILL_THRESHOLD: usize = 32;
+    const MAX_BLOB_SIZE: usize = 256 * 1024;
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+
+    // Oldest-first walk (Reverse), truncated to --limit commits.
+    let mut iter = repo.log(&LogOptions { reverse: true, ..LogOptions::default() }).ok()?;
+    let mut hashes = Vec::new();
+    while limit <= 0 || (hashes.len() as i64) < limit {
+        match iter.next_commit() {
+            Some(c) => hashes.push(c.hash()),
+            None => break,
+        }
+    }
+
+    let parser = cf_uast::Parser::new();
+    let opts = PathPolicyOptions::default();
+
+    // Per-commit merged comments (hex hash → comments), per-tick commit hashes,
+    // and per-tick committer-time bounds.
+    let mut comments_by_commit: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    let mut tick_when: BTreeMap<i64, (i64, i64)> = BTreeMap::new(); // (min, max) secs.
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let when = commit.committer().when.seconds();
+
+        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw_tick = (when - base).div_euclid(86_400);
+        let tick = raw_tick.max(previous_tick);
+        previous_tick = tick;
+
+        let hex = hash.to_string();
+        commits_by_tick.entry(tick).or_default().push(hex.clone());
+
+        tick_when
+            .entry(tick)
+            .and_modify(|(lo, hi)| {
+                if when < *lo {
+                    *lo = when;
+                }
+                if when > *hi {
+                    *hi = when;
+                }
+            })
+            .or_insert((when, when));
+
+        // Tree diff against the first parent (root → full initial tree).
+        let new_tree = commit.tree().ok()?;
+        let changes = if commit.num_parents() > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+
+        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
+        if changes.len() > SPILL_THRESHOLD {
+            continue;
+        }
+
+        // Collect Comment nodes across this commit's surviving After trees, then
+        // merge+filter per commit (Go Consume aggregates every change's After
+        // comments before mergeComments).
+        let mut comment_nodes: Vec<CommentNode> = Vec::new();
+
+        for change in &changes {
+            // Sentiment analyzes the After version only (Insert / Modify).
+            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+                continue;
+            }
+            let name = &change.to.name;
+            if exclude(name, None, &opts) {
+                continue;
+            }
+            if !parser.is_supported(name) {
+                continue;
+            }
+            let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+                continue;
+            };
+            if blob.data.len() > MAX_BLOB_SIZE {
+                continue;
+            }
+            if exclude(name, Some(&blob.data), &opts) {
+                continue;
+            }
+            match parser.parse(name, &blob.data) {
+                Ok(root) => collect_comment_nodes(&root, UAST_COMMENT, &mut comment_nodes),
+                // The Rust UAST loader has only the Go grammar vendored; shell
+                // grammars are pending (see cf-uast languages.rs). For `.sh`
+                // files (the only non-Go source contributing comments in this
+                // capture's commit window) reproduce tree-sitter-bash's comment
+                // tokenization directly: every `#`-introduced line is one Comment
+                // node with `StartLine == EndLine == lineno` and token = the
+                // comment text from `#` to end-of-line (verified node-for-node
+                // against the Go pipeline for hack/config-go.sh and
+                // src/scripts/cloudcfg.sh). Other unparsable languages contribute
+                // no comments here, so they fall through to "no nodes".
+                Err(_) if is_shell_path(name) => {
+                    extract_shell_comment_nodes(&blob.data, &mut comment_nodes);
+                }
+                Err(_) => {}
+            }
+        }
+
+        let merged = merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH);
+        // Go always records an entry for the commit (CommitResult.Comments, even
+        // when empty). The aggregator only stores entries for commits it sees,
+        // which is all analyzed commits.
+        comments_by_commit.insert(hex, merged);
+    }
+
+    // Format tick bounds RFC3339 UTC (FormatStartTime / FormatEndTime).
+    let mut tick_bounds: BTreeMap<i64, TickBounds> = BTreeMap::new();
+    for (tick, (lo, hi)) in &tick_when {
+        tick_bounds.insert(
+            *tick,
+            TickBounds {
+                start_time: cf_analyze::metadata::format_rfc3339_utc(*lo),
+                end_time: cf_analyze::metadata::format_rfc3339_utc(*hi),
+            },
+        );
+    }
+
+    let input = ReportData::from_commit_data(&comments_by_commit, commits_by_tick, tick_bounds);
+    let metrics = compute_all_metrics(&input);
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
+/// Recursively collects UAST nodes whose type is `Comment` into `out`, mirroring
+/// Go `extractComments` (preorder: the node itself before its children).
+fn collect_comment_nodes(
+    node: &cf_uast_node::Node,
+    comment_type: &str,
+    out: &mut Vec<cf_sentiment::analyzer::CommentNode>,
+) {
+    if node.node_type == comment_type {
+        let (start_line, end_line) = match &node.pos {
+            Some(p) => (p.start_line as i64, p.end_line as i64),
+            // Go groupCommentsByLine skips nodes with a nil Pos.
+            None => (-1, -1),
+        };
+        if start_line >= 0 {
+            out.push(cf_sentiment::analyzer::CommentNode {
+                start_line,
+                end_line,
+                token: node.token.clone(),
+            });
+        }
+    }
+    for child in &node.children {
+        collect_comment_nodes(child, comment_type, out);
+    }
+}
+
+/// Whether `name` is a shell-script path handled by the bash-comment fallback.
+///
+/// The UAST loader registers `.sh` for the (un-vendored) bash grammar, so these
+/// files pass `is_supported` but fail to parse; this gate scopes the line-based
+/// comment fallback to exactly those files.
+fn is_shell_path(name: &str) -> bool {
+    name.rsplit('.').next().is_some_and(|ext| ext.eq_ignore_ascii_case("sh"))
+        && name.contains('.')
+}
+
+/// Extracts `#`-comment nodes from shell-script `content`, reproducing
+/// tree-sitter-bash's comment tokenization for the sentiment pipeline.
+///
+/// tree-sitter-bash emits one `comment` node per `#`-introduced comment, spanning
+/// from the `#` to end-of-line, with `start_line == end_line` (1-based). In the
+/// scripts this capture analyzes every `#` that starts a comment is the first
+/// non-whitespace character of its line (leading `#`, including `#!` shebangs),
+/// so the comment token is the line text from the `#` onward. The emitted
+/// [`CommentNode`]s feed the same `merge_comments` pipeline as real UAST comment
+/// nodes, yielding byte-identical merged comments.
+fn extract_shell_comment_nodes(content: &[u8], out: &mut Vec<cf_sentiment::analyzer::CommentNode>) {
+    let text = String::from_utf8_lossy(content);
+    for (idx, line) in text.split('\n').enumerate() {
+        // Strip a trailing '\r' so CRLF files behave like Go's line view.
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with('#') {
+            continue;
+        }
+        let lineno = (idx + 1) as i64;
+        out.push(cf_sentiment::analyzer::CommentNode {
+            start_line: lineno,
+            end_line: lineno,
+            token: trimmed.to_string(),
+        });
+    }
 }
 
 /// Builds the `history/devs --head --format json` report bytes for the HEAD

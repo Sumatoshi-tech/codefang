@@ -1,42 +1,31 @@
 # codefang Rust rewrite — STATUS (verified 2026-06-06)
 
-## TL;DR (latest verified run)
+## TL;DR (latest verified run — 2026-06-06, all 32 binding captures measured)
 
-**Binding captures: 28/32 byte-identical.** `cargo build --release` exits 0 and
-`cargo test --workspace` is GREEN. Of the 32 MANIFEST-binding captures
-(`nonBinding=false`), 28 now reproduce the Go goldens byte-for-byte under the
-pinned golden env (each Rust release binary run with the exact MANIFEST.json
-argv, binary path swapped to `rust/target/release/{codefang,uast}`, STDOUT
-compared byte-for-byte). The original 7 core captures are all still IDENTICAL
-(no regression).
+**Binding captures: 31/32 byte-identical.** `cargo build --release` exits 0 and
+`cargo test --workspace` is GREEN. ALL 32 MANIFEST-binding captures
+(`machine=true` AND `nonBinding=false`) were measured this run: each Rust release
+binary (`rust/target/release/{codefang,uast}`) was run with the exact MANIFEST.json
+argv (binary path swapped) under the pinned golden env
+(`TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800`) and STDOUT was
+byte-compared against the golden at `relPath`. 31 are IDENTICAL; 1 fails. The
+original 7 core captures are all still IDENTICAL (no regression).
 
-**New this run (11 additional binding captures driven green beyond the
-previously-recorded 17):** the full **static per-analyzer pipeline** landed —
-walk the fixed `apimachinery/pkg/util/sets` subset, parse each file to UAST, run
-the analyzer, aggregate, and serialize via the analyzer's native
-JSON-section / `FormatReportYAML` (cf-goyaml) / `FormatReportBinary`
-(cf-reportutil CFB1). This drove green:
-- `static/static_comments.{yaml,bin}`
-- `static/static_complexity.{json,yaml,bin}`
-- `static/static_composition.{yaml,bin}` (json was already green)
-- `static/static_halstead.bin`
-- `static/static_imports.{yaml,bin}`
+**New this run (3 additional binding captures driven green beyond the
+previously-recorded 28):** the history streaming pipeline + halstead JSON-section
+builder landed, driving green:
+- `static/static_halstead.json` — halstead JSON-section report (was: only the
+  `bin` sibling wired).
+- `run/burndown.timeseries.ndjson` — streaming `--format timeseries --ndjson`.
+- `run/history_sentiment.json` — per-tick sentiment (govader) over commit-message
+  comments.
 
-Plus the previously-recorded 17 (uast core 7 + run/history_{typos,imports,
-anomaly,devs}.json + run/history_devs.{yaml,bin} + run/burndown.{json,yaml,bin,
-timeseries} + static/static_composition.json) all remain byte-identical.
-
-**Still failing (4/32)** — all four fall through `run_dispatch` to the
-blocked-dependency sentinel because no dispatch branch is wired yet:
-- `static/static_halstead.json` — the halstead JSON section report (only the
-  `bin` sibling is wired; the JSON-section path is missing).
-- `run/burndown.ndjson` — streaming NDJSON, one line per commit over `--limit 5`
-  (multi-commit pipeline, not the closed-form HEAD reduction).
-- `run/burndown.timeseries.ndjson` — `--format timeseries --ndjson` over
-  `--limit 5` (same multi-commit pipeline; only the single-commit `--head`
-  non-ndjson timeseries is wired).
-- `run/history_sentiment.json` — multi-commit (`--limit 10`) per-tick sentiment
-  over real commit-message comments (govader); no `history/sentiment` branch.
+**Still failing (1/32)** — falls through `run_dispatch` to the blocked-dependency
+sentinel (`Error: command dispatch is blocked on cf-commands (tier 8)`); no
+dispatch branch wired yet:
+- `run/burndown.ndjson` — streaming NDJSON, one JSON line per commit over
+  `--limit 5` (multi-commit per-commit GlobalDeltas; not the closed-form HEAD
+  reduction). Rust emits 0 bytes (sentinel, rc=1) vs the 1490-byte golden.
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
@@ -79,15 +68,16 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
   compile and the suite passes; the lint+test evidence gate is satisfied, so the
   build-blocker / Tier-0 / Tier-1 DoD boxes that were annotated "verified green"
   but left unticked are now CHECKED OFF in ROADMAP.md.
-- **Binding parity tally 7/7** (was 0/7 → 6/7 → 7/7). All binding captures pass;
-  no remaining misses.
+- **Binding parity tally 31/32** (full 32-capture measurement this run; the
+  earlier 7/7 referred only to the original core set). One capture remains:
+  `run/burndown.ndjson` (streaming per-commit deltas; dispatch sentinel).
 - **Output-path / dispatch parity unverified.** `--help`/`version`/flag bytes vs
   the Go cobra binaries, and `codefang run` analyzer dispatch, have NOT been
   byte-diffed.
 - **`cf-goyaml`** still a scaffold; `marshal` is linkable but not yaml.v3-parity
   (Step 4). Not among the 7 (all-JSON) binding captures.
 
-## The 28 passing binding captures (of 32; from MANIFEST.json)
+## The 31 passing binding captures (of 32; from MANIFEST.json)
 
 | # | relPath | status (2026-06-06) |
 |---|---|---|
@@ -104,47 +94,44 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 | 11 | run/history_devs.yaml   | IDENTICAL (cf-goyaml) |
 | 12 | run/history_devs.bin    | IDENTICAL (CFB1 envelope) |
 | 13 | run/history_quality.json| IDENTICAL |
-| 14 | run/burndown.json       | IDENTICAL |
-| 15 | run/burndown.yaml       | IDENTICAL |
-| 16 | run/burndown.bin        | IDENTICAL |
-| 17 | run/burndown.timeseries | IDENTICAL (head MergedTimeSeries) |
-| 18 | static/static_composition.json | IDENTICAL |
-| 19 | static/static_composition.yaml | IDENTICAL (NEW: static per-analyzer YAML) |
-| 20 | static/static_composition.bin  | IDENTICAL (NEW: static per-analyzer CFB1) |
-| 21 | static/static_comments.yaml    | IDENTICAL (NEW: cf-comments + cf-goyaml) |
-| 22 | static/static_comments.bin     | IDENTICAL (NEW: cf-comments + CFB1) |
-| 23 | static/static_complexity.json  | IDENTICAL (NEW: cf-complexity JSON section) |
-| 24 | static/static_complexity.yaml  | IDENTICAL (NEW: cf-complexity + cf-goyaml) |
-| 25 | static/static_complexity.bin   | IDENTICAL (NEW: cf-complexity + CFB1) |
-| 26 | static/static_halstead.bin     | IDENTICAL (NEW: cf-halstead + CFB1) |
-| 27 | static/static_imports.yaml     | IDENTICAL (NEW: cf-imports + cf-goyaml) |
-| 28 | static/static_imports.bin      | IDENTICAL (NEW: cf-imports + CFB1) |
+| 14 | run/history_sentiment.json | IDENTICAL (NEW: per-tick govader sentiment) |
+| 15 | run/burndown.json       | IDENTICAL |
+| 16 | run/burndown.yaml       | IDENTICAL |
+| 17 | run/burndown.bin        | IDENTICAL |
+| 18 | run/burndown.timeseries | IDENTICAL (head MergedTimeSeries) |
+| 19 | run/burndown.timeseries.ndjson | IDENTICAL (NEW: streaming timeseries+ndjson) |
+| 20 | static/static_composition.json | IDENTICAL |
+| 21 | static/static_composition.yaml | IDENTICAL (static per-analyzer YAML) |
+| 22 | static/static_composition.bin  | IDENTICAL (static per-analyzer CFB1) |
+| 23 | static/static_comments.yaml    | IDENTICAL (cf-comments + cf-goyaml) |
+| 24 | static/static_comments.bin     | IDENTICAL (cf-comments + CFB1) |
+| 25 | static/static_complexity.json  | IDENTICAL (cf-complexity JSON section) |
+| 26 | static/static_complexity.yaml  | IDENTICAL (cf-complexity + cf-goyaml) |
+| 27 | static/static_complexity.bin   | IDENTICAL (cf-complexity + CFB1) |
+| 28 | static/static_halstead.json    | IDENTICAL (NEW: cf-halstead JSON section) |
+| 29 | static/static_halstead.bin     | IDENTICAL (cf-halstead + CFB1) |
+| 30 | static/static_imports.yaml     | IDENTICAL (cf-imports + cf-goyaml) |
+| 31 | static/static_imports.bin      | IDENTICAL (cf-imports + CFB1) |
 
-4 binding captures still fail — see "Remaining failing binding captures" below.
+1 binding capture still fails — see "Remaining failing binding capture" below.
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
 STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
 
-## Remaining failing binding captures (4/32) — next work
+## Remaining failing binding capture (1/32) — next work
 
-All 4 still-failing captures fall through `run_dispatch` to the dispatch sentinel
+The last failing capture falls through `run_dispatch` to the dispatch sentinel
 (`Error: command dispatch is blocked on cf-commands (tier 8)`) because no branch
 is wired for that analyzer/format combination yet.
 
 | relPath | reason still failing |
 |---|---|
-| static/static_halstead.json  | static JSON section report: only the `bin` sibling is wired; the halstead JSON-section path (`static_halstead.rs` only exposes `halstead_bin_report`) is missing |
-| run/burndown.ndjson          | streaming NDJSON: one line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs (multi-commit pipeline, not the closed-form HEAD reduction) |
-| run/burndown.timeseries.ndjson| streaming `--format timeseries --ndjson` over `--limit 5` (same multi-commit pipeline; only the single-commit `--head` non-ndjson timeseries is wired) |
-| run/history_sentiment.json   | multi-commit (`--limit 10`) per-tick sentiment over real commit-message comments (govader); no `history/sentiment` dispatch branch |
+| run/burndown.ndjson | streaming NDJSON: one JSON line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs (multi-commit pipeline, not the closed-form HEAD reduction). Rust emits 0 bytes (sentinel, rc=1) vs the 1490-byte golden. |
 
-The two enablers these share:
-1. **Halstead JSON section** — analogous to the already-green
-   `static/static_complexity.json` path; needs a `halstead_report` (JSON-section)
-   alongside the existing `halstead_bin_report`. Unlocks the 1 remaining static.
-2. **History streaming pipeline** (multi-commit `RunStreaming`): per-commit diff +
-   blob + tick aggregation, then ndjson / timeseries-ndjson / sentiment
-   serialization. Unlocks the remaining 3.
+Enabler: the **history streaming NDJSON pipeline** for burndown — multi-commit
+`RunStreaming` emitting one per-commit `GlobalDeltas` JSON line (the sibling
+`run/burndown.timeseries.ndjson` streaming path is already green, so the
+remaining gap is the per-commit-deltas ndjson serialization specifically).
 
 ## The 40 nonBinding / unstable captures — follow-on work
 

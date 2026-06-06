@@ -80,3 +80,13 @@ cf-comments = { path = "../../crates/cf-comments" }
 # history/quality analyzer: TickQuality + ComputeAllMetrics + JSON serializer for
 # the streaming `run --analyzers history/quality --format json --limit N` capture.
 cf-quality = { path = "../../crates/cf-quality" }
+# history/sentiment analyzer: per-commit comment extraction + govader scoring +
+# ComputeAllMetrics for the streaming `run --analyzers history/sentiment
+# --format json --limit N` capture.
+cf-sentiment = { path = "../../crates/cf-sentiment" }
+# Line-mode diff (sergi/go-diff diffmatchpatch parity): per-file inserted/deleted
+# line counts for the streaming burndown timeseries NDJSON capture's modify deltas.
+cf-godiff = { path = "../../crates/cf-godiff" }
+# Burndown line-survival treap (File): exact per-commit GlobalDeltas for the
+# streaming burndown timeseries NDJSON capture (replace semantics + tick deltas).
+cf-burndown-core = { path = "../../crates/cf-burndown-core" }

@@ -472,6 +472,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cf-godiff"
+version = "0.0.0"
+
+[[package]]
 name = "cf-gojson"
 version = "0.0.0"
 
@@ -811,17 +815,20 @@ dependencies = [
  "cf-analyzer-burndown",
  "cf-analyzers-plumbing",
  "cf-anomaly",
+ "cf-burndown-core",
  "cf-comments",
  "cf-complexity",
  "cf-composition",
  "cf-devs",
  "cf-gitlib",
+ "cf-godiff",
  "cf-gojson",
  "cf-goyaml",
  "cf-imports",
  "cf-pathpolicy",
  "cf-quality",
  "cf-reportutil",
+ "cf-sentiment",
  "cf-typos",
  "cf-uast",
  "cf-uast-node",
