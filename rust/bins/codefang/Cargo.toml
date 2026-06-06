@@ -67,3 +67,16 @@ cf-composition = { path = "../../crates/cf-composition" }
 cf-analyzer-burndown = { path = "../../crates/cf-analyzer-burndown" }
 # CFB1 binary envelope (--format bin) for the burndown machine output.
 cf-reportutil = { path = "../../crates/cf-reportutil" }
+# UAST parser facade: parse each source file in the static/imports folder phase
+# into a node tree the imports analyzer reads (extractImportsFromUAST parity).
+cf-uast = { path = "../../crates/cf-uast" }
+# Canonical UAST node model produced by cf-uast::Parser::parse.
+cf-uast-node = { path = "../../crates/cf-uast-node" }
+# static/complexity analyzer: per-function complexity over each file's UAST.
+cf-complexity = { path = "../../crates/cf-complexity" }
+# static/comments analyzer: per-file comment/function analysis driving the
+# `run --analyzers static/comments --format yaml` static capture.
+cf-comments = { path = "../../crates/cf-comments" }
+# history/quality analyzer: TickQuality + ComputeAllMetrics + JSON serializer for
+# the streaming `run --analyzers history/quality --format json --limit N` capture.
+cf-quality = { path = "../../crates/cf-quality" }

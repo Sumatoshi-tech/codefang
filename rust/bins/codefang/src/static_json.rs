@@ -65,11 +65,9 @@ impl Counts {
     }
 }
 
-/// Builds the `static/composition --format json` report bytes for `root_path`,
-/// or `None` when the path cannot be read (Go would surface a walk error; the
-/// caller then falls through to the blocked-dependency sentinel).
-#[must_use]
-pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
+/// Walks `root_path` and returns the aggregated composition [`Counts`], or
+/// `None` when the path cannot be read.
+fn composition_counts(root_path: &str) -> Option<Counts> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -80,12 +78,89 @@ pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
     let mut counts = Counts::default();
 
     walk(root, &classifier, &opts, &mut counts);
+    Some(counts)
+}
 
+/// Builds the `static/composition --format json` report bytes for `root_path`,
+/// or `None` when the path cannot be read (Go would surface a walk error; the
+/// caller then falls through to the blocked-dependency sentinel).
+#[must_use]
+pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
+    let counts = composition_counts(root_path)?;
     let report = build_json_report(&counts);
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
     Some(bytes)
+}
+
+/// Builds the `static/composition --format bin` report bytes for `root_path`,
+/// or `None` when the path cannot be read.
+///
+/// The Go per-analyzer binary path (`StaticService.FormatPerAnalyzer` →
+/// `composition.Analyzer.FormatReportBinary` →
+/// `reportutil.EncodeBinaryEnvelope(report)`) wraps the analyzer's **raw**
+/// aggregated `analyze.Report` — NOT the renderer JSON section structure used by
+/// the JSON capture. That report is `composition.Aggregator.GetResult`:
+/// `{breakdown: map[string]int, percentages: map[string]float64, total_files:
+/// int}`, where `breakdown` lists every category (zero counts included) and
+/// `percentages` is `count/total*100` (omitted entirely when `total_files == 0`).
+/// The payload is the compact `encoding/json` marshal of this `map[string]any`
+/// (top-level + nested map keys byte-sorted) inside the CFB1 envelope.
+#[must_use]
+pub fn composition_bin(root_path: &str) -> Option<Vec<u8>> {
+    let counts = composition_counts(root_path)?;
+    let report = build_raw_report(&counts);
+    let bytes = cf_reportutil::encode_binary_envelope(&report)
+        .expect("composition payload within CFB1 limit");
+    Some(bytes)
+}
+
+/// Builds the `static/composition --format yaml` report bytes for `root_path`,
+/// or `None` when the path cannot be read.
+///
+/// The Go per-analyzer YAML path (`StaticService.FormatPerAnalyzer` →
+/// `composition.Analyzer.FormatReportYAML` → `yaml.NewEncoder(w).Encode(report)`)
+/// marshals the analyzer's **raw** aggregated `analyze.Report` —
+/// `composition.Aggregator.GetResult` (`breakdown` / `percentages` /
+/// `total_files`) — exactly the same report value the `bin` capture wraps, only
+/// encoded as gopkg.in/yaml.v3 block YAML (4-space indent, byte-sorted map keys)
+/// via `cf-goyaml::marshal` instead of the CFB1 JSON envelope.
+#[must_use]
+pub fn composition_yaml(root_path: &str) -> Option<Vec<u8>> {
+    let counts = composition_counts(root_path)?;
+    let report = build_raw_report(&counts);
+    Some(cf_goyaml::marshal(&report))
+}
+
+/// Builds the raw aggregated `analyze.Report` GoValue
+/// (`composition.Aggregator.GetResult`) as a Go-map-origin value: top-level keys
+/// `breakdown`, `percentages`, `total_files` and every-category nested maps,
+/// all byte-sorted by the encoder.
+fn build_raw_report(counts: &Counts) -> GoValue {
+    let total = counts.total_files;
+
+    // breakdown: map[string]int over every category (zero counts included).
+    let mut breakdown = GoMap::new(MapOrigin::Map);
+    for cat in ALL_CATEGORIES {
+        breakdown.push(cat.as_str(), GoValue::Int(counts.get(cat)));
+    }
+
+    // percentages: map[string]float64 over every category, count/total*100;
+    // omitted entirely when total_files == 0 (Go leaves the map empty).
+    let mut percentages = GoMap::new(MapOrigin::Map);
+    if total > 0 {
+        for cat in ALL_CATEGORIES {
+            let value = (counts.get(cat) as f64) / (total as f64) * 100.0;
+            percentages.push(cat.as_str(), GoValue::Float(value));
+        }
+    }
+
+    let mut report = GoMap::new(MapOrigin::Map);
+    report.push("breakdown", GoValue::Map(breakdown));
+    report.push("percentages", GoValue::Map(percentages));
+    report.push("total_files", GoValue::Int(total));
+    GoValue::Map(report)
 }
 
 /// Recursively walks `dir` in lexical order, mirroring `filepath.WalkDir`:

@@ -10,6 +10,8 @@ publish = false
 [dependencies]
 # Byte-identity report serialization. NEVER serde_json for output. See DESIGN §2.
 cf-gojson = { workspace = true }
+# Byte-identical YAML (gopkg.in/yaml.v3 parity). NEVER serde_yaml for output.
+cf-goyaml = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

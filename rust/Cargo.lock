@@ -413,6 +413,7 @@ name = "cf-composition"
 version = "0.0.0"
 dependencies = [
  "cf-gojson",
+ "cf-goyaml",
  "serde_json",
 ]
 
@@ -810,6 +811,8 @@ dependencies = [
  "cf-analyzer-burndown",
  "cf-analyzers-plumbing",
  "cf-anomaly",
+ "cf-comments",
+ "cf-complexity",
  "cf-composition",
  "cf-devs",
  "cf-gitlib",
@@ -817,8 +820,11 @@ dependencies = [
  "cf-goyaml",
  "cf-imports",
  "cf-pathpolicy",
+ "cf-quality",
  "cf-reportutil",
  "cf-typos",
+ "cf-uast",
+ "cf-uast-node",
  "cf-version",
  "clap",
  "git2",

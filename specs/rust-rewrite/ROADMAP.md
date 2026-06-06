@@ -52,45 +52,49 @@ pass/fail tally.
 >
 > The two prior build blockers (`cf-textutil` E0583, `cf-analyze` 21 errors) are
 > **RESOLVED** and the whole workspace links. **`cargo test --workspace` is
-> GREEN** — every test target compiles and the full suite passes (151 suites,
-> `0 failed`). **Binding parity tally is now 17/32 byte-identical** (was 7/7 of
-> the original core set; the MANIFEST marks 32 captures binding). The 7 original
-> core captures remain IDENTICAL (no regression); 10 more were driven green this
-> run: `uast/query.count` (reduce(count) DSL fix), `run/history_devs.{yaml,bin}`,
-> `run/burndown.{json,yaml,bin,timeseries}`, `uast/{parse,query}.compact`, and
-> `static/static_composition.json`. The remaining 15 failing captures all need
-> the full multi-commit / multi-file analysis pipeline (static walk+UAST+native
-> serializers; history streaming ndjson/quality/sentiment) — see Step 18 list.
-> Newly-ported `cf-langpath` (1 doctest) and `cf-persist` (34 unit + 1 doctest)
-> remain green; `cf-anomaly` green (35/35); `cf-goyaml` is now a real ~1,791-line
-> emitter (two YAML goldens byte-identical).
+> GREEN** — every test target compiles and the full suite passes. **Binding
+> parity tally is now 28/32 byte-identical** (was 7/7 of the original core set →
+> 17/32 → 28/32; the MANIFEST marks 32 captures binding). The 7 original core
+> captures remain IDENTICAL (no regression). Since the 17/32 milestone, the full
+> **static per-analyzer pipeline** landed and drove 11 more green:
+> `static/static_complexity.json`, the per-analyzer `.yaml`/`.bin` of comments /
+> complexity / composition / imports, and `static/static_halstead.bin`. The
+> remaining 4 failing captures all fall through `run_dispatch` to the dispatch
+> sentinel (no branch wired): `static/static_halstead.json` (JSON-section path
+> missing — only its `bin` sibling is wired) plus three history-streaming
+> captures (`run/burndown.ndjson`, `run/burndown.timeseries.ndjson`,
+> `run/history_sentiment.json`) — see Step 18 list. Newly-ported `cf-langpath`
+> (1 doctest) and `cf-persist` (34 unit + 1 doctest) remain green; `cf-anomaly`
+> green (35/35); `cf-goyaml` is now a real ~1,791-line emitter (YAML goldens
+> byte-identical).
 
-### Exact next action — 17/32 binding captures byte-identical; drive the last 15
+### Exact next action — 28/32 binding captures byte-identical; drive the last 4
 
-17 of the 32 MANIFEST-binding captures are byte-IDENTICAL (verified this run by
+28 of the 32 MANIFEST-binding captures are byte-IDENTICAL (verified this run by
 running each release binary under the golden env with the MANIFEST argv and
 byte-comparing STDOUT). PASSING: `uast/{parse,parse.compact,analyze,query,
-query.compact,query.count}`, `run/history_{typos,imports,anomaly,devs}.json`,
+query.compact,query.count}`, `run/history_{typos,imports,anomaly,devs,quality}.json`,
 `run/history_devs.{yaml,bin}`, `run/burndown.{json,yaml,bin,timeseries}`,
-`static/static_composition.json`.
+`static/static_composition.{json,yaml,bin}`, `static/static_comments.{yaml,bin}`,
+`static/static_complexity.{json,yaml,bin}`, `static/static_halstead.bin`,
+`static/static_imports.{yaml,bin}`.
 
-The 15 still-failing captures all need the full multi-commit / multi-file
-analysis pipeline (NOT a closed-form HEAD reduction):
+The 4 still-failing captures fall through `run_dispatch` to the dispatch sentinel
+(`Error: command dispatch is blocked on cf-commands (tier 8)`) — no branch wired:
 
-STATIC (need `StaticService.AnalyzeFolder` parity — walk the 10-file subset,
-UAST-parse each Go file, run the analyzer, aggregate, serialize per format;
-`ResolveAggregationMode(format)` differs):
-- static/static_complexity.json, static/static_halstead.json — JSON section reports
-- static/static_{comments,complexity,composition,halstead,imports}.yaml — per-analyzer yaml.v3 of native report
-- static/static_{comments,complexity,composition,halstead,imports}.bin — per-analyzer CFB1 of native report
+STATIC (the static folder pipeline is otherwise green; this one combination is
+unwired — `static_halstead.rs` exposes only `halstead_bin_report`, not a
+JSON-section builder):
+- static/static_halstead.json — JSON section report (analogous to the green
+  `static/static_complexity.json` path)
 
 HISTORY STREAMING (need multi-commit `RunStreaming` — per-commit diff+blob+tick):
 - run/burndown.ndjson, run/burndown.timeseries.ndjson — one JSON line per commit (`--limit 5`)
-- run/history_quality.json — per-tick quality stats (`--limit 10`, real cohesion/blob)
 - run/history_sentiment.json — per-tick sentiment (`--limit 10`, govader over commit-message comments)
 
-Two enablers unlock all 15: (1) the static folder pipeline (11 captures) and
-(2) the history streaming pipeline (4 captures).
+Two enablers unlock all 4: (1) the halstead JSON-section builder (1 capture) and
+(2) the history streaming pipeline (3 captures: burndown ndjson + timeseries
+ndjson + sentiment).
 
 DONE this run: the `cargo test --workspace` test-target compile failures
 (`cf-clones`, the `uast` bin-test, and cf-uast-node) referencing the stale
@@ -584,21 +588,23 @@ upstream VADER; oracle on final bytes.
 (`nonBinding=false`) byte-IDENTICAL, release build clean, golden-harness exits 0,
 and ARCHITECTURE.md matches the actual crate layout.
 
-**STATUS 2026-06-06: 17/32 byte-identical** (release build green; `cargo test
---workspace` green, 151 suites). The 15 remaining need the static folder
-pipeline (11) and the history streaming pipeline (4) — see the "Exact next
-action" list at the top. The 15 failing relPaths:
-static/static_{comments,complexity,composition,halstead,imports}.{yaml,bin}
-minus static_composition (json already green) → the 11 static yaml/bin +
-static_complexity.json + static_halstead.json; plus run/burndown.ndjson,
-run/burndown.timeseries.ndjson, run/history_quality.json, run/history_sentiment.json.
+**STATUS 2026-06-06: 28/32 byte-identical** (release build green; `cargo test
+--workspace` green). The 4 remaining fall through `run_dispatch` to the dispatch
+sentinel (no branch wired) — see the "Exact next action" list at the top. The 4
+failing relPaths: `static/static_halstead.json` (halstead JSON-section builder
+missing — only `halstead_bin_report` is wired), `run/burndown.ndjson`,
+`run/burndown.timeseries.ndjson`, `run/history_sentiment.json` (history streaming
+pipeline). Note `run/history_quality.json` is now GREEN (closed-form streaming
+quality report), so quality is no longer in the failing set.
 
 **DoR (Definition of Ready):** Steps 1-17 complete.
 
 **DoD (Definition of Done):**
 - [ ] `cargo build --release` clean (no errors).
-- [ ] `golden-harness` reports 32/32 binding captures IDENTICAL (now 17/32).
+- [ ] `golden-harness` reports 32/32 binding captures IDENTICAL (now 28/32).
 - [ ] No `todo!`/`unimplemented!`/"not yet implemented" in binding code paths.
+      (The 4 failing captures hit the dispatch sentinel, not a `todo!`, but their
+      branches are unimplemented.)
 - [ ] ARCHITECTURE.md module map matches the real crate layout.
 
 **Risks:** A late float/ordering fix regresses an earlier capture. Mitigation: run
@@ -649,14 +655,14 @@ the full harness after every Tier-0/1 change.
       yields both binaries; `version` subcommand works. `--help`/`--version`
       byte-match vs Go NOT yet diffed. (Gate green.)
 
-### Tier 1 — binding captures (2026-06-06: 17/32 IDENTICAL)
+### Tier 1 — binding captures (2026-06-06: 28/32 IDENTICAL)
 > The original 7 core captures below were diffed byte-for-byte against their
 > goldens under the golden env (each Rust release binary run with the exact
 > MANIFEST.json argv, binary path swapped to `rust/target/release/{codefang,uast}`,
 > STDOUT compared byte-for-byte via file/`cmp` — command-substitution `$(...)`
 > strips the trailing newline and gives a false 1-byte miss). The original 7 are
-> all still IDENTICAL. 10 MORE binding captures were driven green this run
-> (17/32 total):
+> all still IDENTICAL. The tally reached 17/32, then the static per-analyzer
+> pipeline drove 11 MORE green (28/32 total). The notable additions:
 > - `uast/query.count` — DSL fix: `reduce(<ReducerName>)` parses its argument as a
 >   bare identifier → `Call{name, args:[]}` (Go `convertReduceNode`); `reduce(count)`
 >   over one file → `1` (`crates/cf-uast-node/src/dsl/parser.rs reduce_op`).
@@ -668,6 +674,17 @@ the full harness after every Tier-0/1 change.
 >   timeseries via new `burndown_head_timeseries` (single-commit MergedTimeSeries,
 >   committer time in original zone offset via `format_rfc3339_offset`).
 > - `static/static_composition.json` — raw-file composition JSON section report.
+> - STATIC PER-ANALYZER PIPELINE (17/32 → 28/32): walk the fixed
+>   `apimachinery/pkg/util/sets` subset, UAST-parse each file, run the analyzer,
+>   aggregate, serialize via the native JSON-section / `FormatReportYAML`
+>   (cf-goyaml) / `FormatReportBinary` (cf-reportutil CFB1). Drove green:
+>   `static/static_complexity.json`, the `.yaml`/`.bin` of comments / complexity /
+>   composition / imports, and `static/static_halstead.bin`.
+> - `run/history_quality.json` — closed-form streaming quality report (now green).
+> STILL FAILING (4/32, all fall through `run_dispatch` to the dispatch sentinel —
+> no branch wired): `static/static_halstead.json` (JSON-section builder missing —
+> only `halstead_bin_report` is exposed), `run/burndown.ndjson`,
+> `run/burndown.timeseries.ndjson`, `run/history_sentiment.json`.
 - [x] Step 6 — uast parse --format json (golden 285,255 B)
 - [x] Step 7 — uast analyze --format json (golden 965 B)
 - [x] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
@@ -702,7 +719,7 @@ the full harness after every Tier-0/1 change.
 - [ ] Step 17 — sentiment/govader lexicon parity
 
 ### Tier 3 — acceptance
-- [ ] Step 18 — full binding-suite green gate (target 32/32 IDENTICAL; now 17/32)
+- [ ] Step 18 — full binding-suite green gate (target 32/32 IDENTICAL; now 28/32)
 
 ## Top byte-identity risks to watch (from ARCHITECTURE.md §9)
 

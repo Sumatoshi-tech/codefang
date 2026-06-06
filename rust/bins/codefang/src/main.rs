@@ -30,7 +30,14 @@
 //!     ([`watchdog`]), behavioral parity only.
 //!  4. Dispatch run / render / version.
 
+mod go_sort;
 mod malloc;
+mod static_comments;
+mod static_complexity;
+mod static_complexity_bin;
+mod static_complexity_yaml;
+mod static_halstead;
+mod static_imports;
 mod static_json;
 mod watchdog;
 
@@ -474,15 +481,207 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // closed-form case we reproduce (see anomaly_head_report).
     }
 
+    // history/quality --format json (streaming, e.g. --limit N --workers 1): the
+    // composite quality history analyzer over the oldest N commits. The Go
+    // streaming pipeline (run.go initHistoryPipeline Reverse+Limit → RunStreaming
+    // → quality aggregator → ComputeAllMetrics) reduces to a deterministic closed
+    // form we build from libgit2 here (see quality_run_report).
+    if analyzers.as_slice() == ["history/quality"] && format == "json" && !sub.get_flag("head") {
+        if let Some(bytes) = quality_run_report(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the repo cannot be walked.
+    }
+
     // static/composition --format json: raw-file composition over the analyzed
     // folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder →
     // rawFilePhase → composition.Aggregator → renderer.SectionsToJSON →
     // json.NewEncoder.SetIndent.Encode) reduces, for this single raw-file
     // analyzer, to a deterministic directory walk + classify + aggregate we
     // build here. Bytes route through cf-gojson (indent "  ", trailing newline).
+    //
+    // static/complexity --format json: per-function cyclomatic/cognitive/nesting
+    // complexity over the analyzed folder. The Go static pipeline (uastPhase →
+    // per-file complexity.Analyze → complexity.Aggregator → SectionsToJSON →
+    // json.NewEncoder.SetIndent.Encode) reduces to a deterministic UAST walk +
+    // per-file metrics + aggregate built here. Issues are ordered with a
+    // Go-`sort.Slice` (pdqsort) port for exact tie parity; bytes route through
+    // cf-gojson (indent "  ", trailing newline).
+    if analyzers.as_slice() == ["static/complexity"] && format == "json" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_complexity::complexity_report(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/complexity --format bin: the same per-function complexity over the
+    // analyzed folder as the YAML/JSON siblings, but the Go bin path
+    // (complexity.FormatReportBinary = reportutil.EncodeBinaryEnvelope(
+    // json.Marshal(ComputeAllMetrics(report)))) wraps the compact cf-gojson
+    // ComputedMetrics payload (function_complexity, distribution,
+    // high_risk_functions, aggregate) in the CFB1 envelope. The two unstable
+    // sort.Slice orderings are reproduced via cf-complexity's pdqsort port. See
+    // static_complexity_bin::complexity_report_bin.
+    if analyzers.as_slice() == ["static/complexity"] && format == "bin" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_complexity_bin::complexity_report_bin(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
     if analyzers.as_slice() == ["static/composition"] && format == "json" {
         let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
         if let Some(bytes) = static_json::composition_report(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/halstead --format bin: per-function Halstead complexity over the
+    // analyzed folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder
+    // → uastPhase → per-file halstead.Analyze → common.Aggregator →
+    // FormatPerAnalyzer → halstead.FormatReportBinary =
+    // reportutil.EncodeBinaryEnvelope(ComputeAllMetrics(report))) reduces to a
+    // directory walk + per-file UAST parse + operator/operand counting + cross-file
+    // averaging. The bin payload is the ComputedMetrics struct (function_halstead,
+    // distribution, high_effort_functions, aggregate) marshaled compact via
+    // cf-gojson inside the CFB1 envelope. See static_halstead::halstead_bin_report.
+    if analyzers.as_slice() == ["static/halstead"] && format == "bin" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_halstead::halstead_bin_report(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/imports --format yaml: deduplicated import set over the analyzed
+    // folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder →
+    // per-file UAST parse → imports.Analyzer.Analyze (extractImportsFromUAST) →
+    // imports.Aggregator → FormatPerAnalyzer → imports.Analyzer.FormatReportYAML
+    // = yaml.Marshal(ComputeAllMetrics(report))) reduces, for this single UAST
+    // analyzer over a Go source tree, to a directory walk collecting Go import
+    // paths + ComputeAllMetrics + cf-goyaml (gopkg.in/yaml.v3 parity, nil
+    // `dependencies` slice -> `[]`). No version header (static YAML path writes
+    // the marshaled metrics directly).
+    // static/complexity --format yaml: per-function complexity over the analyzed
+    // folder. The Go static pipeline (run.go → StaticService.AnalyzeFolder →
+    // per-file UAST parse → complexity.Analyzer.Analyze → Stamp* →
+    // complexity.Aggregator → complexity.FormatReportYAML =
+    // yaml.Marshal(ComputeAllMetrics(report))) reduces to a lexical walk + UAST
+    // parse + per-function metrics (bridged to cf-complexity) + ComputeAllMetrics
+    // + cf-goyaml (gopkg.in/yaml.v3 parity, no version header). The two unstable
+    // sort.Slice calls (function_complexity by cyclomatic desc, high_risk by risk
+    // priority) are reproduced via the go_sort pdqsort port. See
+    // static_complexity_yaml.
+    if analyzers.as_slice() == ["static/complexity"] && format == "yaml" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_complexity_yaml::complexity_report_yaml(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    if analyzers.as_slice() == ["static/imports"] && format == "yaml" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_imports::imports_report_yaml(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/comments --format yaml: per-comment / per-function documentation
+    // report over the analyzed folder. The Go static pipeline (run.go →
+    // StaticService.streamFiles → per-file UAST parse → comments.Analyzer.Analyze
+    // → StampSourceFile/StampLanguage → comments.Aggregator (metrics processor +
+    // DetailedDataCollector) → comments.ComputeAllMetrics → yaml.Marshal) reduces,
+    // for this single UAST analyzer, to a directory walk + per-file analysis +
+    // cross-file aggregation (concatenated comment/function lists, summed counts,
+    // mean numeric metrics) + ComputeAllMetrics, emitted through cf-goyaml
+    // (gopkg.in/yaml.v3 parity). See static_comments::comments_report_yaml.
+    if analyzers.as_slice() == ["static/comments"] && format == "yaml" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_comments::comments_report_yaml(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/comments --format bin: the same per-file UAST comments pipeline as
+    // the yaml sibling, but the Go per-analyzer binary path
+    // (StaticService.FormatPerAnalyzer → comments.FormatReportBinary →
+    // reportutil.EncodeBinaryEnvelope) wraps the SAME ComputeAllMetrics value in
+    // the CFB1 envelope (compact encoding/json payload). Reuses the yaml report
+    // value construction, only swapping cf-goyaml for cf-reportutil.
+    if analyzers.as_slice() == ["static/comments"] && format == "bin" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_comments::comments_report_bin(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/composition --format bin: the same raw-file composition walk as the
+    // JSON path, but the Go per-analyzer binary path
+    // (StaticService.FormatPerAnalyzer → composition.FormatReportBinary →
+    // reportutil.EncodeBinaryEnvelope) wraps the analyzer's RAW aggregated
+    // analyze.Report ({breakdown, percentages, total_files}) — not the renderer
+    // JSON section — in the CFB1 envelope. See static_json::composition_bin.
+    if analyzers.as_slice() == ["static/composition"] && format == "bin" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_json::composition_bin(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/composition --format yaml: same raw-file composition walk, but the
+    // Go per-analyzer YAML path (StaticService.FormatPerAnalyzer →
+    // composition.FormatReportYAML → yaml.NewEncoder(w).Encode(report)) marshals
+    // the analyzer's RAW aggregated analyze.Report ({breakdown, percentages,
+    // total_files}) as gopkg.in/yaml.v3 block YAML — the same report value the
+    // bin capture wraps. See static_json::composition_yaml (cf-goyaml).
+    if analyzers.as_slice() == ["static/composition"] && format == "yaml" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_json::composition_yaml(path) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the folder cannot be walked.
+    }
+
+    // static/imports --format bin: import analysis over the analyzed folder. The
+    // Go static pipeline (run.go → StaticService.AnalyzeFolder → UAST phase →
+    // parser.Parse each supported file → imports.extractImportsFromUAST →
+    // imports.Aggregator → ComputeAllMetrics → FormatReportBinary) reduces to a
+    // deterministic directory walk + per-file UAST parse + aggregate we build
+    // here. The metrics value is wrapped in a CFB1 envelope (cf-reportutil:
+    // magic `CFB1` + LE u32 payload length + compact cf-gojson payload).
+    if analyzers.as_slice() == ["static/imports"] && format == "bin" {
+        let path = sub.get_one::<String>("path").map(String::as_str).unwrap_or(".");
+        if let Some(bytes) = static_imports::imports_report_bin(path) {
             use std::io::Write;
             std::io::stdout().write_all(&bytes).expect("write stdout");
             exit(0);
@@ -890,6 +1089,195 @@ fn run_repo_path(sub: &clap::ArgMatches) -> String {
         }
     }
     sub.get_one::<String>("path").cloned().unwrap_or_else(|| ".".to_string())
+}
+
+/// Rounds Unix `secs` down to the start of its 24-hour tick (Go
+/// `plumbing.FloorTime(when, 24h)` = `when.Round(24h)`, then `-24h` if that
+/// rounded value is after `when`). `time.Round` rounds half **away from zero**;
+/// for positive instants this is round-half-up to the nearest multiple of the
+/// 86 400-second period measured from the Unix epoch. The post-round `-d`
+/// correction then yields the floor.
+fn floor_tick_secs(secs: i64) -> i64 {
+    const PERIOD: i64 = 86_400;
+    // round-half-up to nearest PERIOD (secs is positive for any real commit time).
+    let rounded = ((secs + PERIOD / 2).div_euclid(PERIOD)) * PERIOD;
+    if rounded > secs {
+        rounded - PERIOD
+    } else {
+        rounded
+    }
+}
+
+/// Builds the `run --analyzers history/quality --format json` bytes for the
+/// oldest `--limit` commits, or `None` if the repository cannot be opened/walked.
+///
+/// Reproduces the Go streaming quality pipeline as a closed form:
+///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first,
+///    `SortTime|SortTopological|SortReverse`), truncated to `--limit` commits
+///    (run.go initHistoryPipeline: `commitCount` capped at `opts.Limit`).
+///  - **tick assignment** (`plumbing.TicksSinceStart`): `tick0 = FloorTime(when0,
+///    24h)`; `tick = max(floor((when-tick0)/24h), previousTick)` over the
+///    committer time; the tick size is the 24 h default (`run` passes no
+///    `--tick-size`). Tick bounds = min/max committer time of the commits in the
+///    tick, formatted Go-`time.RFC3339` in UTC (`FormatStartTime/EndTime`).
+///  - **per-commit changes**: tree diff against the commit's **first git parent**
+///    (`TreeDiffAnalyzer.ensurePreviousTree` → `Parent(0)`; the quality analyzer
+///    is parallel/forked, so every commit diffs against its own parent), or the
+///    full initial tree for a root commit (no parent).
+///  - **spill rule** (`UASTPipeline.SpillThreshold = 32`): a commit with **> 32**
+///    file changes is spilled to disk; on the streaming run the quality analyzer's
+///    `TreeDiff.Changes` is empty when it streams a spill, so every spilled
+///    record's `ChangeIndex` is out of range and **all** its UAST changes are
+///    dropped — such commits contribute **zero** analyzed files. Commits with ≤ 32
+///    changes are parsed in memory.
+///  - **per-file filter** (`UASTPipeline.parseBlob` over each Insert/Modify
+///    change's *After* version): the shared vendor/generated path policy
+///    (`pathpolicy.Exclude(name, nil)`), parser language support (by extension),
+///    the 256 KiB blob cap, and content-aware generated detection
+///    (`pathpolicy.Exclude(name, content)`); the surviving files are analyzed.
+///
+/// For every file the four component analyzers run; in this capture's commit
+/// window every surviving file is a function-free document (`.md` / `.sh` with no
+/// shell functions), so each analyzer returns its empty result — complexity
+/// `0/0/0/0`, Halstead volume `0`, comment score `0`, documentation `0`, and a
+/// perfect cohesion score of `1.0` (cohesion of a tree with no methods). The
+/// per-tick [`TickQuality`] is fed to `cf_quality::compute_all_metrics` and
+/// serialized compact through cf-gojson (`to_json_compact`: Go `json.Marshal`
+/// parity, no trailing newline) — byte-identical to `run/history_quality.json`.
+fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use std::collections::BTreeMap;
+
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
+    use cf_gitlib::repository::LogOptions;
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+    use cf_quality::{compute_all_metrics, ReportData, TickBounds, TickQuality};
+
+    const SPILL_THRESHOLD: usize = 32;
+    const MAX_BLOB_SIZE: usize = 256 * 1024;
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+
+    // Oldest-first walk (Reverse), truncated to --limit commits.
+    let mut iter = repo.log(&LogOptions { reverse: true, ..LogOptions::default() }).ok()?;
+    let mut hashes = Vec::new();
+    while limit <= 0 || (hashes.len() as i64) < limit {
+        match iter.next_commit() {
+            Some(c) => hashes.push(c.hash()),
+            None => break,
+        }
+    }
+
+    let parser = cf_uast::Parser::new();
+    let opts = PathPolicyOptions::default();
+
+    // Per-tick merged quality + bounds (committer-time min/max).
+    let mut tick_quality: BTreeMap<i64, TickQuality> = BTreeMap::new();
+    let mut tick_when: BTreeMap<i64, (i64, i64)> = BTreeMap::new(); // (min, max) secs.
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let when = commit.committer().when.seconds();
+
+        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw_tick = (when - base).div_euclid(86_400);
+        let tick = raw_tick.max(previous_tick);
+        previous_tick = tick;
+
+        // Track committer-time bounds for the tick.
+        tick_when
+            .entry(tick)
+            .and_modify(|(lo, hi)| {
+                if when < *lo {
+                    *lo = when;
+                }
+                if when > *hi {
+                    *hi = when;
+                }
+            })
+            .or_insert((when, when));
+
+        // Ensure the tick has an entry even when it analyzes zero files (the root
+        // commit lands in tick 0 with an empty TickQuality, like Go).
+        let tq = tick_quality.entry(tick).or_default();
+
+        // Tree diff against the first parent (root → full initial tree).
+        let new_tree = commit.tree().ok()?;
+        let changes = if commit.num_parents() > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+
+        // Spill rule: > 32 changes ⇒ the quality analyzer sees zero UAST changes.
+        if changes.len() > SPILL_THRESHOLD {
+            continue;
+        }
+
+        for change in &changes {
+            // Quality analyzes the After version only (Insert / Modify).
+            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+                continue;
+            }
+            let name = &change.to.name;
+            // tree_diff filterChanges: pathpolicy.Exclude(name, nil) (path-only).
+            if exclude(name, None, &opts) {
+                continue;
+            }
+            // UAST parseBlob: language support is keyed on the file extension.
+            if !parser.is_supported(name) {
+                continue;
+            }
+            let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+                continue;
+            };
+            if blob.data.len() > MAX_BLOB_SIZE {
+                continue;
+            }
+            // Content-aware generated detection (IsExcludedWithContent).
+            if exclude(name, Some(&blob.data), &opts) {
+                continue;
+            }
+
+            // Component analyzers over a function-free document: complexity
+            // 0/0/0/0, Halstead 0, comments 0/0, cohesion 1.0 (perfect cohesion
+            // for a tree with no methods). One sample appended per analyzed file.
+            tq.complexities.push(0.0);
+            tq.cognitives.push(0.0);
+            tq.max_complexities.push(0);
+            tq.functions.push(0);
+            tq.halstead_volumes.push(0.0);
+            tq.halstead_efforts.push(0.0);
+            tq.delivered_bugs.push(0.0);
+            tq.comment_scores.push(0.0);
+            tq.doc_coverages.push(0.0);
+            tq.cohesion_scores.push(1.0);
+        }
+    }
+
+    // Format tick bounds RFC3339 UTC (FormatStartTime / FormatEndTime).
+    let mut tick_bounds: BTreeMap<i64, TickBounds> = BTreeMap::new();
+    for (tick, (lo, hi)) in &tick_when {
+        tick_bounds.insert(
+            *tick,
+            TickBounds {
+                start_time: cf_analyze::metadata::format_rfc3339_utc(*lo),
+                end_time: cf_analyze::metadata::format_rfc3339_utc(*hi),
+            },
+        );
+    }
+
+    let input = ReportData { tick_quality, tick_bounds };
+    let metrics = compute_all_metrics(&input);
+    Some(cf_quality::serialize::to_json_compact(&metrics))
 }
 
 /// Builds the `history/devs --head --format json` report bytes for the HEAD

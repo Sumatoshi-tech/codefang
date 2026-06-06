@@ -70,6 +70,7 @@ signal-hook = "0.3"
 # Internal crates referenced via `{ workspace = true }` by dependent crates.
 # Registered here so path/version resolve once for the whole workspace.
 cf-gojson = { path = "crates/cf-gojson" }
+cf-goyaml = { path = "crates/cf-goyaml" }
 cf-safeconv = { path = "crates/cf-safeconv" }
 
 [profile.release]

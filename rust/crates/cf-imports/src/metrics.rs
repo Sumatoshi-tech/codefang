@@ -307,6 +307,33 @@ impl ComputedMetrics {
         root.push("aggregate", GoValue::Map(agg));
         GoValue::Map(root)
     }
+
+    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-identical Go
+    /// `gopkg.in/yaml.v3` output (the `--format yaml` static path:
+    /// `imports.Analyzer.FormatReportYAML` = `yaml.Marshal(*ComputedMetrics)`).
+    ///
+    /// This is identical to [`Self::to_go_value`] (struct field-declaration key
+    /// order — `import_list`, `categories`, `dependencies`, `aggregate`) with one
+    /// encoder-specific difference: yaml.v3 marshals a **nil slice** as an empty
+    /// sequence `[]`, not `null`. So when no risky imports exist, `dependencies`
+    /// is `[]` here (vs `null` in the json encoder). This matches the
+    /// `static/static_imports.yaml` golden (`dependencies: []`). `external_ratio`
+    /// is a `float64` routed through cf-goyaml's go-`'g'` float formatter.
+    #[must_use]
+    pub fn to_go_value_yaml(&self) -> cf_gojson::GoValue {
+        use cf_gojson::GoValue;
+
+        let mut root = match self.to_go_value() {
+            GoValue::Map(m) => m,
+            other => return other,
+        };
+        // yaml.v3: nil slice -> `[]` (json -> `null`). Replace a `null`
+        // `dependencies` with an empty array.
+        if matches!(root.get("dependencies"), Some(GoValue::Null)) {
+            root.insert("dependencies", GoValue::Array(Vec::new()));
+        }
+        GoValue::Map(root)
+    }
 }
 
 /// Runs all metrics over a report and returns the combined result.

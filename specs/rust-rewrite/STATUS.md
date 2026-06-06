@@ -2,32 +2,41 @@
 
 ## TL;DR (latest verified run)
 
-**Binding captures: 17/32 byte-identical.** `cargo build --release` exits 0 and
-`cargo test --workspace` is GREEN (151 test-suites pass, `0 failed`). Of the 32
-MANIFEST-binding captures (`nonBinding=false`), 17 now reproduce the Go goldens
-byte-for-byte under the pinned golden env; the original 7 core captures are all
-still IDENTICAL (no regression).
+**Binding captures: 28/32 byte-identical.** `cargo build --release` exits 0 and
+`cargo test --workspace` is GREEN. Of the 32 MANIFEST-binding captures
+(`nonBinding=false`), 28 now reproduce the Go goldens byte-for-byte under the
+pinned golden env (each Rust release binary run with the exact MANIFEST.json
+argv, binary path swapped to `rust/target/release/{codefang,uast}`, STDOUT
+compared byte-for-byte). The original 7 core captures are all still IDENTICAL
+(no regression).
 
-**New this run (10 additional binding captures driven green):**
-- `uast/query.count` — fixed the DSL parser: `reduce(<ReducerName>)` now parses
-  its argument as a bare identifier (`Reduce <- 'reduce' (… ReducerName …)`,
-  `ReducerName <- [a-zA-Z_][a-zA-Z0-9_]*`) wrapped in `Call{name, args:[]}`,
-  matching Go `convertReduceNode`. `reduce(count)` over a single file → `1`.
-- `run/history_devs.bin` — wired the CFB1 binary envelope around the existing
-  closed-form `devs_head_metrics` (Go bin path: `EncodeBinaryEnvelope(metrics)`,
-  devs `ToJSON` returns `m`, so the payload equals the JSON capture).
-- `run/burndown.{json,yaml,bin}` — closed-form HEAD-only burndown survival
-  report (already wired; verified green this run).
-- `run/burndown.timeseries` — new `burndown_head_timeseries` builds the
-  single-commit `MergedTimeSeries` (`codefang.timeseries.v1`, `tick_size_hours`
-  24, one flattened commit `{author:"", burndown:{lines_added,lines_removed},
-  hash, tick, timestamp}`), with the committer time formatted Go-`time.RFC3339`
-  in the commit's ORIGINAL zone offset (new `format_rfc3339_offset`).
-- `run/history_devs.yaml` — closed-form devs YAML (header + cf-goyaml body),
-  exercising cf-goyaml on a real report (Step 4 evidence).
+**New this run (11 additional binding captures driven green beyond the
+previously-recorded 17):** the full **static per-analyzer pipeline** landed —
+walk the fixed `apimachinery/pkg/util/sets` subset, parse each file to UAST, run
+the analyzer, aggregate, and serialize via the analyzer's native
+JSON-section / `FormatReportYAML` (cf-goyaml) / `FormatReportBinary`
+(cf-reportutil CFB1). This drove green:
+- `static/static_comments.{yaml,bin}`
+- `static/static_complexity.{json,yaml,bin}`
+- `static/static_composition.{yaml,bin}` (json was already green)
+- `static/static_halstead.bin`
+- `static/static_imports.{yaml,bin}`
 
-The 7 original core captures (`uast/{parse,analyze,query}.json`,
-`run/history_{typos,imports,anomaly,devs}.json`) remain byte-identical.
+Plus the previously-recorded 17 (uast core 7 + run/history_{typos,imports,
+anomaly,devs}.json + run/history_devs.{yaml,bin} + run/burndown.{json,yaml,bin,
+timeseries} + static/static_composition.json) all remain byte-identical.
+
+**Still failing (4/32)** — all four fall through `run_dispatch` to the
+blocked-dependency sentinel because no dispatch branch is wired yet:
+- `static/static_halstead.json` — the halstead JSON section report (only the
+  `bin` sibling is wired; the JSON-section path is missing).
+- `run/burndown.ndjson` — streaming NDJSON, one line per commit over `--limit 5`
+  (multi-commit pipeline, not the closed-form HEAD reduction).
+- `run/burndown.timeseries.ndjson` — `--format timeseries --ndjson` over
+  `--limit 5` (same multi-commit pipeline; only the single-commit `--head`
+  non-ndjson timeseries is wired).
+- `run/history_sentiment.json` — multi-commit (`--limit 10`) per-tick sentiment
+  over real commit-message comments (govader); no `history/sentiment` branch.
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
@@ -78,7 +87,7 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 - **`cf-goyaml`** still a scaffold; `marshal` is linkable but not yaml.v3-parity
   (Step 4). Not among the 7 (all-JSON) binding captures.
 
-## The 17 passing binding captures (of 32; from MANIFEST.json)
+## The 28 passing binding captures (of 32; from MANIFEST.json)
 
 | # | relPath | status (2026-06-06) |
 |---|---|---|
@@ -87,56 +96,69 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 | 3 | uast/analyze.json | IDENTICAL |
 | 4 | uast/query.json   | IDENTICAL |
 | 5 | uast/query.compact| IDENTICAL |
-| 6 | uast/query.count  | IDENTICAL (new: reduce(count) DSL fix) |
+| 6 | uast/query.count  | IDENTICAL (reduce(count) DSL fix) |
 | 7 | run/history_typos.json   | IDENTICAL |
 | 8 | run/history_imports.json | IDENTICAL |
 | 9 | run/history_anomaly.json | IDENTICAL |
 | 10 | run/history_devs.json   | IDENTICAL |
-| 11 | run/history_devs.yaml   | IDENTICAL (cf-goyaml Step 4) |
-| 12 | run/history_devs.bin    | IDENTICAL (new: CFB1 envelope) |
-| 13 | run/burndown.json       | IDENTICAL |
-| 14 | run/burndown.yaml       | IDENTICAL |
-| 15 | run/burndown.bin        | IDENTICAL |
-| 16 | run/burndown.timeseries | IDENTICAL (new: head MergedTimeSeries) |
-| 17 | static/static_composition.json | IDENTICAL |
+| 11 | run/history_devs.yaml   | IDENTICAL (cf-goyaml) |
+| 12 | run/history_devs.bin    | IDENTICAL (CFB1 envelope) |
+| 13 | run/history_quality.json| IDENTICAL |
+| 14 | run/burndown.json       | IDENTICAL |
+| 15 | run/burndown.yaml       | IDENTICAL |
+| 16 | run/burndown.bin        | IDENTICAL |
+| 17 | run/burndown.timeseries | IDENTICAL (head MergedTimeSeries) |
+| 18 | static/static_composition.json | IDENTICAL |
+| 19 | static/static_composition.yaml | IDENTICAL (NEW: static per-analyzer YAML) |
+| 20 | static/static_composition.bin  | IDENTICAL (NEW: static per-analyzer CFB1) |
+| 21 | static/static_comments.yaml    | IDENTICAL (NEW: cf-comments + cf-goyaml) |
+| 22 | static/static_comments.bin     | IDENTICAL (NEW: cf-comments + CFB1) |
+| 23 | static/static_complexity.json  | IDENTICAL (NEW: cf-complexity JSON section) |
+| 24 | static/static_complexity.yaml  | IDENTICAL (NEW: cf-complexity + cf-goyaml) |
+| 25 | static/static_complexity.bin   | IDENTICAL (NEW: cf-complexity + CFB1) |
+| 26 | static/static_halstead.bin     | IDENTICAL (NEW: cf-halstead + CFB1) |
+| 27 | static/static_imports.yaml     | IDENTICAL (NEW: cf-imports + cf-goyaml) |
+| 28 | static/static_imports.bin      | IDENTICAL (NEW: cf-imports + CFB1) |
 
-15 binding captures still fail — see "Remaining failing binding captures" below.
+4 binding captures still fail — see "Remaining failing binding captures" below.
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
 STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
 
-## Remaining failing binding captures (15/32) — next work
+## Remaining failing binding captures (4/32) — next work
 
-All 15 still-failing captures require the **full multi-commit / multi-file
-analysis pipeline** (real diff/blob/UAST processing), not a closed-form HEAD
-reduction — that is the next structural milestone.
+All 4 still-failing captures fall through `run_dispatch` to the dispatch sentinel
+(`Error: command dispatch is blocked on cf-commands (tier 8)`) because no branch
+is wired for that analyzer/format combination yet.
 
 | relPath | reason still failing |
 |---|---|
-| static/static_comments.yaml  | static per-analyzer YAML: needs walk+parse of the 10-file subset + cf-comments native report + yaml.v3 emitter |
-| static/static_comments.bin   | static per-analyzer CFB1 bin of the cf-comments native report |
-| static/static_complexity.json| static JSON section report: needs UAST parse of each subset file + cf-complexity aggregation |
-| static/static_complexity.yaml| static per-analyzer YAML of the cf-complexity native report |
-| static/static_complexity.bin | static per-analyzer CFB1 bin of the cf-complexity native report |
-| static/static_composition.yaml| static per-analyzer YAML (composition native report; JSON section path already green) |
-| static/static_composition.bin | static per-analyzer CFB1 bin (composition native report) |
-| static/static_halstead.json  | static JSON section report: UAST parse + cf-halstead aggregation |
-| static/static_halstead.bin   | static per-analyzer CFB1 bin of the cf-halstead native report |
-| static/static_imports.yaml   | static per-analyzer YAML of the cf-imports native report |
-| static/static_imports.bin    | static per-analyzer CFB1 bin of the cf-imports native report |
-| run/burndown.ndjson          | streaming NDJSON: one line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs |
-| run/burndown.timeseries.ndjson| streaming timeseries+NDJSON over `--limit 5` (same multi-commit pipeline) |
-| run/history_quality.json     | multi-commit (`--limit 10`) per-tick quality stats from real cohesion/blob analysis |
-| run/history_sentiment.json   | multi-commit (`--limit 10`) per-tick sentiment over real commit-message comments (govader) |
+| static/static_halstead.json  | static JSON section report: only the `bin` sibling is wired; the halstead JSON-section path (`static_halstead.rs` only exposes `halstead_bin_report`) is missing |
+| run/burndown.ndjson          | streaming NDJSON: one line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs (multi-commit pipeline, not the closed-form HEAD reduction) |
+| run/burndown.timeseries.ndjson| streaming `--format timeseries --ndjson` over `--limit 5` (same multi-commit pipeline; only the single-commit `--head` non-ndjson timeseries is wired) |
+| run/history_sentiment.json   | multi-commit (`--limit 10`) per-tick sentiment over real commit-message comments (govader); no `history/sentiment` dispatch branch |
 
 The two enablers these share:
-1. **Static pipeline** (`StaticService.AnalyzeFolder` parity): WalkDir the subset,
-   parse each Go file to UAST, run the analyzer, aggregate, then serialize via the
-   analyzer's native JSON-section / `FormatReportYAML` / `FormatReportBinary`
-   (`ResolveAggregationMode(format)` differs per format). Unlocks 11 static captures.
+1. **Halstead JSON section** — analogous to the already-green
+   `static/static_complexity.json` path; needs a `halstead_report` (JSON-section)
+   alongside the existing `halstead_bin_report`. Unlocks the 1 remaining static.
 2. **History streaming pipeline** (multi-commit `RunStreaming`): per-commit diff +
-   blob + tick aggregation, then ndjson / timeseries-ndjson / quality / sentiment
-   serialization. Unlocks the remaining 4.
+   blob + tick aggregation, then ndjson / timeseries-ndjson / sentiment
+   serialization. Unlocks the remaining 3.
+
+## The 40 nonBinding / unstable captures — follow-on work
+
+40 captures are marked `nonBinding=true` in MANIFEST.json and are NOT part of the
+binding gate. They split into:
+- **machine=false text-shaped views** (`*.text`, `*.compact`, `*.tree`,
+  `uast/analyze.text`, `run/burndown.{text,compact}`) — human-rendered, not
+  byte-gated.
+- **machine=true but `stable=false`** Go-nondeterministic JSON/YAML/bin: the
+  `static_clones.*`, `static_cohesion.*`, `*.perfile.json`, `static_comments.json`,
+  `static_imports.json`, `run/history_{couples,shotness,file-history}.json`, and
+  `run/all_static.{json,yaml,bin}` sets (Go reorders maps / worker scheduling).
+  These need ROADMAP Step 15 (multi-analyzer `*` bin), Step 16 (stabilize /
+  reclassify), Step 17 (govader lexicon parity) before they can be byte-gated.
 
 ## Earlier: the original Tier-1 anomaly closed form (reference)
 

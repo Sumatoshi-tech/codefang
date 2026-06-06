@@ -42,6 +42,12 @@ pub mod uast {
     pub const RETURN: &str = "Return";
     /// `Identifier` node type.
     pub const IDENTIFIER: &str = "Identifier";
+    /// `Match` node type (cognitive: loop-like nesting increment).
+    pub const MATCH: &str = "Match";
+    /// `Lambda` node type (cognitive: increases nesting for its body).
+    pub const LAMBDA: &str = "Lambda";
+    /// `Call` node type (cognitive: +1 for a recursive call).
+    pub const CALL: &str = "Call";
 }
 
 /// UAST role string constants, mirroring `pkg/uast/pkg/node/node.go`.

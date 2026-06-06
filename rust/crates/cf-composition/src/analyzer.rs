@@ -157,14 +157,14 @@ impl Analyzer {
 
     /// Writes YAML output.
     ///
-    /// **Not yet implemented.** Per DESIGN rule 1 this must route through
-    /// `cf-goyaml`, which is still a scaffold (DESIGN rule 5). Returns an error
-    /// rather than emitting non-byte-identical YAML via a different library.
-    pub fn format_report_yaml(&self, _report: &GoMap, _writer: &mut dyn Write) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "cf-composition YAML output requires cf-goyaml (not yet ported)",
-        ))
+    /// Mirrors Go `yaml.NewEncoder(writer).Encode(report)` (`gopkg.in/yaml.v3`,
+    /// default 4-space indent) by delegating to `cf-goyaml::marshal`. The report
+    /// is a map-origin [`GoMap`], so its keys (`breakdown`, `percentages`,
+    /// `total_files`) and the nested category maps are byte-sorted, matching how
+    /// yaml.v3 orders Go `map[string]…` keys.
+    pub fn format_report_yaml(&self, report: &GoMap, writer: &mut dyn Write) -> io::Result<()> {
+        let bytes = cf_goyaml::marshal(&GoValue::Map(report.clone()));
+        writer.write_all(&bytes)
     }
 }
 

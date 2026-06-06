@@ -32,7 +32,9 @@
 //! visitor/aggregator streaming path are not ported here (they depend on
 //! not-yet-ported framework crates). See the crate todos.
 
+pub mod gosort;
 pub mod node;
+pub mod report;
 
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use node::{uast, Node};
@@ -290,21 +292,49 @@ fn calculate_average_complexity(totals: &Totals, function_count: usize) -> f64 {
 // --- Cyclomatic complexity (mirrors calculateCyclomaticComplexity) ---
 
 fn calculate_cyclomatic_complexity(fn_node: &Node) -> i64 {
+    let ctx = function_source_context(fn_node);
     let mut complexity: i64 = 1;
     fn_node.visit_pre_order(&mut |n| {
         if std::ptr::eq(n, fn_node) {
             return;
         }
-        if is_decision_point(n) {
+        if is_decision_point_with_source(n, &ctx) {
             complexity += 1;
         }
     });
     complexity
 }
 
-/// Mirrors `isDecisionPoint` (the AST-metadata variant used by tests and by
-/// `isDecisionPointWithSource` once the source operator is read from
-/// `Props["operator"]`).
+/// Builds the source context from a function node (Go `newFunctionSourceContext`).
+fn function_source_context(fn_node: &Node) -> FunctionSourceContext<'_> {
+    match &fn_node.pos {
+        Some(pos) if !fn_node.token.is_empty() => FunctionSourceContext {
+            source: fn_node.token.as_bytes(),
+            start_offset: pos.start_offset,
+        },
+        _ => FunctionSourceContext {
+            source: &[],
+            start_offset: 0,
+        },
+    }
+}
+
+/// Mirrors `isDecisionPointWithSource`: like [`is_decision_point`] but recovers a
+/// `BinaryOp`'s operator from the function source slice when token/props omit it.
+fn is_decision_point_with_source(target: &Node, ctx: &FunctionSourceContext) -> bool {
+    match target.node_type.as_str() {
+        uast::IF | uast::LOOP | uast::CATCH => true,
+        uast::CASE => !is_default_case(target),
+        uast::BINARY_OP => {
+            let op = ctx.binary_operator(target);
+            !op.is_empty() && is_logical_operator_token(&op)
+        }
+        _ => false,
+    }
+}
+
+/// Mirrors `isDecisionPoint` (the AST-metadata variant used by the analyzer's
+/// own tests): reads the `BinaryOp` operator only from `Props["operator"]`.
 fn is_decision_point(target: &Node) -> bool {
     match target.node_type.as_str() {
         uast::IF | uast::LOOP | uast::CATCH => true,
@@ -320,55 +350,259 @@ fn is_decision_point(target: &Node) -> bool {
     }
 }
 
-// --- Cognitive complexity (mirrors CognitiveComplexityCalculator) ---
+// --- Cognitive complexity (faithful port of CognitiveComplexityCalculator) ---
+//
+// Ports `cognitive_complexity.go` (the SonarSource / gocognit model). The Go
+// calculator walks the function's children with a `walkNode` recursion that
+// tracks structural nesting, recovers binary operators (from token, props, or
+// the function source slice via `functionSourceContext`), and counts:
+//   * a `nesting + 1` increment for each `if` (non-else-if), loop, switch, try,
+//     catch, match (structural + nesting penalty);
+//   * a flat `+1` for an `else if` and for an `else` block;
+//   * logical-operator *sequence* increments (`addLogicalSequenceComplexity`):
+//     +1 for the first run of logical operators in an if condition, +1 for each
+//     change of operator kind along the flattened operator stream;
+//   * `+1` for a recursive call (call whose name equals the function name);
+//   * lambda bodies raise nesting by one.
+
+/// Holds the function's original source bytes and its start offset, so binary
+/// operators can be recovered from the source when the UAST omits them. Mirrors
+/// Go's `functionSourceContext`.
+struct FunctionSourceContext<'a> {
+    source: &'a [u8],
+    start_offset: u32,
+}
 
 fn calculate_cognitive_complexity(fn_node: &Node) -> i64 {
+    let ctx = function_source_context(fn_node);
+    let function_name = extract_cognitive_function_name(fn_node);
+
     let mut complexity: i64 = 0;
-    let mut nesting_level: i64 = 0;
-    calculate_recursive(fn_node, &mut complexity, &mut nesting_level);
+    for (idx, child) in fn_node.children.iter().enumerate() {
+        walk_node(child, fn_node, idx, 0, &ctx, &function_name, &mut complexity);
+    }
     complexity
 }
 
-fn calculate_recursive(n: &Node, complexity: &mut i64, nesting_level: &mut i64) {
-    let nesting_change = process_node(n, complexity, *nesting_level);
-    if nesting_change {
-        *nesting_level += 1;
+#[allow(clippy::too_many_arguments)]
+fn walk_node(
+    curr: &Node,
+    parent: &Node,
+    child_idx: usize,
+    nesting: i64,
+    ctx: &FunctionSourceContext,
+    function_name: &str,
+    complexity: &mut i64,
+) {
+    match curr.node_type.as_str() {
+        uast::IF => {
+            process_if_node(curr, parent, child_idx, nesting, ctx, function_name, complexity);
+            return;
+        }
+        uast::LOOP | uast::SWITCH | uast::TRY | uast::CATCH | uast::MATCH => {
+            *complexity += nesting + 1;
+            for (idx, child) in curr.children.iter().enumerate() {
+                walk_node(child, curr, idx, nesting + 1, ctx, function_name, complexity);
+            }
+            return;
+        }
+        uast::LAMBDA => {
+            for (idx, child) in curr.children.iter().enumerate() {
+                walk_node(child, curr, idx, nesting + 1, ctx, function_name, complexity);
+            }
+            return;
+        }
+        uast::CALL => {
+            if is_recursive_call(curr, function_name) {
+                *complexity += 1;
+            }
+        }
+        _ => {}
     }
-    for child in &n.children {
-        calculate_recursive(child, complexity, nesting_level);
-    }
-    if nesting_change {
-        *nesting_level -= 1;
+
+    for (idx, child) in curr.children.iter().enumerate() {
+        walk_node(child, curr, idx, nesting, ctx, function_name, complexity);
     }
 }
 
-/// Mirrors `processNode`: returns whether this node increases the nesting level.
-fn process_node(n: &Node, complexity: &mut i64, nesting_level: i64) -> bool {
-    match n.node_type.as_str() {
-        // handleIfNode and the loop/switch arm both add `1 + nestingLevel`.
-        uast::IF | uast::LOOP | uast::SWITCH => {
-            *complexity += 1 + nesting_level;
-            true
+#[allow(clippy::too_many_arguments)]
+fn process_if_node(
+    if_node: &Node,
+    parent: &Node,
+    child_idx: usize,
+    nesting: i64,
+    ctx: &FunctionSourceContext,
+    function_name: &str,
+    complexity: &mut i64,
+) {
+    if is_else_if_cognitive(parent, if_node, child_idx) {
+        *complexity += 1;
+    } else {
+        *complexity += nesting + 1;
+    }
+
+    if !if_node.children.is_empty() {
+        add_logical_sequence_complexity(&if_node.children[0], ctx, complexity);
+        walk_node(&if_node.children[0], if_node, 0, nesting, ctx, function_name, complexity);
+    }
+
+    if if_node.children.len() > 1 {
+        walk_node(&if_node.children[1], if_node, 1, nesting + 1, ctx, function_name, complexity);
+    }
+
+    for idx in 2..if_node.children.len() {
+        let child = &if_node.children[idx];
+        match child.node_type.as_str() {
+            uast::IF => {
+                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
+            }
+            uast::BLOCK => {
+                // Sonar/gocognit: an `else` branch adds one structural increment.
+                *complexity += 1;
+                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
+            }
+            _ => {
+                walk_node(child, if_node, idx, nesting, ctx, function_name, complexity);
+            }
         }
-        uast::CATCH => {
-            *complexity += 1;
-            true
-        }
-        uast::BINARY_OP => {
-            handle_binary_op(n, complexity);
-            false
-        }
-        _ => false,
     }
 }
 
-fn handle_binary_op(n: &Node, complexity: &mut i64) {
-    let op = n.prop("operator").unwrap_or("");
-    if op.is_empty() {
+/// Mirrors `addLogicalSequenceComplexity`: +1 for the first logical-operator run
+/// in the condition, +1 for each change of operator kind along the flattened
+/// left-to-right operator stream.
+fn add_logical_sequence_complexity(
+    expr: &Node,
+    ctx: &FunctionSourceContext,
+    complexity: &mut i64,
+) {
+    let mut operators: Vec<String> = Vec::new();
+    collect_logical_operators(expr, ctx, &mut operators);
+    if operators.is_empty() {
         return;
     }
-    if is_logical_operator_token(op) {
-        *complexity += 1;
+    *complexity += 1;
+    let mut last_op = operators[0].clone();
+    for op in &operators[1..] {
+        if *op != last_op {
+            *complexity += 1;
+            last_op = op.clone();
+        }
+    }
+}
+
+fn collect_logical_operators(
+    curr: &Node,
+    ctx: &FunctionSourceContext,
+    operators: &mut Vec<String>,
+) {
+    if curr.node_type == uast::BINARY_OP && curr.children.len() >= 2 {
+        collect_logical_operators(&curr.children[0], ctx, operators);
+        let op = ctx.binary_operator(curr);
+        if is_logical_operator_token(&op) {
+            operators.push(op);
+        }
+        collect_logical_operators(&curr.children[1], ctx, operators);
+        return;
+    }
+    for child in &curr.children {
+        collect_logical_operators(child, ctx, operators);
+    }
+}
+
+impl FunctionSourceContext<'_> {
+    /// Mirrors `functionSourceContext.binaryOperator`: token, then props, then a
+    /// best-effort recovery from the source slice between the operands.
+    fn binary_operator(&self, n: &Node) -> String {
+        if !n.token.is_empty() {
+            let op = normalize_operator_text(&n.token);
+            if !op.is_empty() {
+                return op;
+            }
+        }
+        if let Some(p) = n.prop("operator") {
+            let op = normalize_operator_text(p);
+            if !op.is_empty() {
+                return op;
+            }
+        }
+        self.binary_operator_from_offsets(n)
+    }
+
+    fn binary_operator_from_offsets(&self, n: &Node) -> String {
+        if self.source.is_empty() || n.children.len() < 2 {
+            return String::new();
+        }
+        let (left, right) = (&n.children[0], &n.children[1]);
+        let (Some(lp), Some(rp)) = (&left.pos, &right.pos) else {
+            return String::new();
+        };
+        if rp.start_offset <= lp.end_offset || lp.end_offset < self.start_offset {
+            return String::new();
+        }
+        let start = (lp.end_offset - self.start_offset) as usize;
+        let end = (rp.start_offset - self.start_offset) as usize;
+        if start >= end || end > self.source.len() {
+            return String::new();
+        }
+        let segment = String::from_utf8_lossy(&self.source[start..end]);
+        normalize_operator_text(&segment)
+    }
+}
+
+/// Mirrors `extractFunctionName` for the cognitive calculator: name from the
+/// entity-name helpers/props, used only for recursive-call detection. We use the
+/// shared prop-based extraction (the `common.ExtractEntityName` fast path
+/// resolves to the same name-prop / name-role token for the analyzer's inputs).
+fn extract_cognitive_function_name(fn_node: &Node) -> String {
+    let n = extract_function_name(fn_node);
+    if n == ANONYMOUS_FUNCTION_NAME {
+        String::new()
+    } else {
+        n
+    }
+}
+
+fn is_recursive_call(call_node: &Node, function_name: &str) -> bool {
+    if function_name.is_empty() {
+        return false;
+    }
+    let call_name = extract_call_name(call_node);
+    !call_name.is_empty() && call_name == function_name
+}
+
+/// Mirrors `extractCallName`.
+fn extract_call_name(call_node: &Node) -> String {
+    if let Some(name) = call_node.prop("name") {
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    for child in &call_node.children {
+        if child.has_any_role(&[node::role::NAME]) && !child.token.is_empty() {
+            return child.token.clone();
+        }
+    }
+    if let Some(first) = call_node.children.first() {
+        if !first.token.is_empty() {
+            return first.token.clone();
+        }
+    }
+    String::new()
+}
+
+/// Mirrors `normalizeOperatorText`: trim, strip all whitespace, then keep only
+/// the recognized logical/comparison operators.
+fn normalize_operator_text(raw: &str) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    let compact: String = raw.trim().chars().filter(|c| !c.is_whitespace()).collect();
+    match compact.as_str() {
+        "&&" | "||" | "and" | "or" | "AND" | "OR" | "<" | ">" | "<=" | ">=" | "==" | "!=" => {
+            compact
+        }
+        _ => String::new(),
     }
 }
 
@@ -489,9 +723,16 @@ fn is_else_if_node(parent: Option<&Node>, curr: &Node, child_idx: usize) -> bool
     child_idx > 0
 }
 
-/// Mirrors `isLogicalOperatorToken`.
+/// Mirrors `isLogicalOperatorToken` (flow_helpers.go): also accepts the
+/// uppercase `AND`/`OR` forms used by some languages.
 fn is_logical_operator_token(op: &str) -> bool {
-    matches!(op.trim(), "&&" | "||" | "and" | "or")
+    matches!(op.trim(), "&&" | "||" | "and" | "or" | "AND" | "OR")
+}
+
+/// Mirrors `isElseIfNode` for the cognitive calculator: an `If` nested as the
+/// third-or-later child (index >= 2) of another `If` (the else-if slot).
+fn is_else_if_cognitive(parent: &Node, child: &Node, child_idx: usize) -> bool {
+    parent.node_type == uast::IF && child.node_type == uast::IF && child_idx >= 2
 }
 
 // --- Assessment / message helpers (mirror complexity.go) ---
@@ -663,8 +904,11 @@ mod tests {
         assert_eq!(as_int(obj_get(&result, "total_complexity")), 2);
     }
 
-    /// Mirrors `TestCognitiveComplexityCalculator_NestedStructures`
-    /// (nested ifs => cognitive >= 2).
+    /// Mirrors `TestCognitiveComplexityCalculator_NestedStructures`. The Go
+    /// `processIfNode` walks an `If`'s first child (its condition slot) at the
+    /// SAME nesting level, so a nested `If` placed at index 0 receives no nesting
+    /// penalty: outer `if` (+1) + inner `if` at nesting 0 (+1) = 2. Verified
+    /// against the Go `CognitiveComplexityCalculator` for this exact tree.
     #[test]
     fn cognitive_nested_ifs() {
         let inner_if = Node::new(uast::IF).with_roles(vec![crate::node::role::CONDITION]);
@@ -675,13 +919,15 @@ mod tests {
             .with_roles(vec![crate::node::role::FUNCTION])
             .with_children(vec![outer_if]);
 
-        // if@0 -> +1, if(nested) -> +2 => 3 (>= 2).
-        assert_eq!(calculate_cognitive_complexity(&function_node), 3);
+        assert_eq!(calculate_cognitive_complexity(&function_node), 2);
     }
 
     /// Cyclomatic/cognitive/nesting parity for the canonical `if{loop{if}}`
-    /// body, reproducing the SonarSource nesting weights from the Go
-    /// calculator.
+    /// body, reproducing the SonarSource model exactly as Go does. The loop sits
+    /// in the outer-if's first-child (condition) slot, walked at nesting 0; its
+    /// inner `if` is in the loop's first-child slot, walked at nesting 1.
+    /// cognitive = if(+1) + loop(+1) + inner-if(nesting 1 → +2) = 4. Verified
+    /// against the Go `CognitiveComplexityCalculator`.
     #[test]
     fn nested_if_loop_if_metrics() {
         let inner_if = Node::new(uast::IF);
@@ -693,8 +939,8 @@ mod tests {
 
         // cyclomatic: 1 + if + loop + if = 4
         assert_eq!(calculate_cyclomatic_complexity(&func), 4);
-        // cognitive: if(1+0) + loop(1+1) + if(1+2) = 1+2+3 = 6
-        assert_eq!(calculate_cognitive_complexity(&func), 6);
+        // cognitive: if(+1) + loop(+1) + inner-if@nesting1(+2) = 4
+        assert_eq!(calculate_cognitive_complexity(&func), 4);
         // nesting: if->loop->if = 3
         assert_eq!(calculate_nesting_depth(&func), 3);
     }
