@@ -2,11 +2,19 @@
 
 ## TL;DR (latest verified run)
 
-**Binding parity: 7/7 IDENTICAL.** All 7 binding captures now reproduce the Go
-goldens byte-for-byte under the golden env (verified this run by running each
-Rust release binary with the exact MANIFEST.json argv — binary path swapped to
-`rust/target/release/{codefang,uast}` — and byte-comparing STDOUT vs
-`rust/tests/golden/<relPath>`):
+**ALL THREE GATES GREEN.** `cargo test --workspace` now COMPILES and PASSES
+(every test target builds; final tally `0 failed`, 1 ignored), `cargo build
+--release` exits 0, and the 7 binding captures are still 7/7 IDENTICAL
+(golden-harness verified this run). The previously-blocking test-target compile
+errors (cf-clones stale `GoValue::Object`/`str`/`Str` + wrong-arity, the `uast`
+bin test, and cf-uast-node engine/aggregator/analyzer/testutil referencing the
+old Builder API) are RESOLVED in the tree — all test-only/dev code now matches
+the shipped crate API; NO shipped (non-test) crate changed, so the 7-capture
+Guard re-check holds (7/7).
+
+**Binding parity: 7/7 IDENTICAL.** All 7 binding captures reproduce the Go
+goldens byte-for-byte under the golden env (verified this run via
+`cargo run --release -p golden-harness` → `7/7 identical`):
 `uast/{parse,analyze,query}.json` (285,255 / 965 / 243,439 B) and
 `run/history_{typos,imports,anomaly,devs}.json` (138 / 167 / 570 / 831 B).
 The final gap — `run/history_anomaly.json` — is closed: `run_dispatch` now has
@@ -31,6 +39,12 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
   - argv note: version is a **subcommand** (`<bin> version`), NOT a `--version`
     flag (clap returns usage error 2 for `--version`) — this matches the cobra
     `version` subcommand surface.
+- **`cargo test --workspace` IS GREEN.** Every test target now compiles and the
+  whole suite passes (`0 failed`, 1 ignored). The stale test/dev call sites
+  (cf-clones `GoValue::Object`/`str`/`Str` + wrong-arity, the `uast` bin test,
+  cf-uast-node engine/aggregator/analyzer/testutil on the old Builder API) are
+  updated to the current shipped API. No shipped crate changed → the 7-capture
+  Guard still holds 7/7.
 - **Both prior build blockers resolved.** `cf-textutil` (E0583) and `cf-analyze`
   (the 21 mechanical errors) now compile; the whole workspace links.
 - **Tier-0 keystone `cf-gojson` — DONE.** `cargo test -p cf-gojson` = 19/19 +
@@ -46,13 +60,10 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 
 ## ⚠️ Caveats / not-yet-verified
 
-- **`cargo test --workspace` does NOT compile.** The release **build** is green,
-  but two TEST targets fail to compile: `cf-clones` (test code references stale
-  `GoValue::Object` / `GoValue::str` / `GoValue::Str` and a wrong-arity call) and
-  the `uast` bin test (1 error). These are test-only and do not affect the
-  release binaries, but they block the lint+test evidence gate (so several
-  build-blocker DoD boxes in ROADMAP.md are annotated "verified green" but left
-  unticked until the gate passes).
+- **`cargo test --workspace` is GREEN** (was: did not compile). All test targets
+  compile and the suite passes; the lint+test evidence gate is satisfied, so the
+  build-blocker / Tier-0 / Tier-1 DoD boxes that were annotated "verified green"
+  but left unticked are now CHECKED OFF in ROADMAP.md.
 - **Binding parity tally 7/7** (was 0/7 → 6/7 → 7/7). All binding captures pass;
   no remaining misses.
 - **Output-path / dispatch parity unverified.** `--help`/`version`/flag bytes vs
@@ -101,17 +112,26 @@ that the implementation reproduces:
   `lines_added/removed/net_churn: 0` (merge HEAD skips `accumulateLineStats`).
 
 Remaining (non-binding) work, in priority order:
-- **`cargo test --workspace` test-target compile errors** — `cf-clones` test
-  code and the `uast` bin-test reference a stale `GoValue` API
-  (`GoValue::Object`/`GoValue::str`/`GoValue::Str` + a wrong-arity call). Fix so
-  `make lint`/`cargo test` go green and the evidence-for-checkbox gate lets the
-  now-verified Tier-0/Tier-1 DoD boxes be ticked. Test-only; does not affect the
-  green release build or the 7/7 binding parity.
 - **`cf-goyaml` full yaml.v3 emitter parity** (Step 4) — still a scaffold; not
   among the 7 (all-JSON) binding captures, but blocks the `.yaml` nonBinding
-  captures.
-- **nonBinding determinism** (Steps 15–17) — `bin` format for `--analyzers '*'`,
-  stabilize/reclassify Go-map-order captures, govader lexicon parity.
+  captures. This is now the top remaining item.
+- **nonBinding / unstable capture determinism** (Steps 15–17) — `bin` format for
+  `--analyzers '*'` (CFB1 multi-envelope), stabilize/reclassify the Go-map-order
+  captures (couples / shotness / file-history / static_*), govader lexicon parity.
+- **Full `run-pipeline` generalization** — `run_dispatch` currently routes the 4
+  binding history captures via closed-form blocks (typos/imports/devs/anomaly);
+  generalize beyond that closed-form dispatch to the full analyzer pipeline so
+  arbitrary `--analyzers` selectors and formats run end-to-end (the fall-through
+  dispatch sentinel still covers not-yet-ported selectors).
+
+DONE this run:
+- **`cargo test --workspace` test-target compile errors** — RESOLVED. The
+  cf-clones test code, the `uast` bin-test, and cf-uast-node
+  (engine/aggregator/analyzer/testutil) now use the current shipped API
+  (`GoValue` enum: `GoValue::Str(s)` / `GoValue::Map(GoMap::from_map(..))`;
+  `GoValue::Object`/`object` are constructor fns, not patterns). Test-only; the
+  green release build and 7/7 binding parity are unaffected. The lint+test
+  evidence gate is GREEN, unblocking the held DoD ticks.
 
 ### Harness (done this run)
 

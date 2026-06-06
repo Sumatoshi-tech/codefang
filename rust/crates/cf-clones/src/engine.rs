@@ -335,19 +335,19 @@ mod tests {
     #[test]
     fn count_nodes_counts_subtree() {
         let tree = NodeBuilder::new("A")
-            .child(Node::new("B"))
-            .child(NodeBuilder::new("C").child(Node::new("D")).build())
+            .child(NodeBuilder::new("B").build())
+            .child(NodeBuilder::new("C").child(NodeBuilder::new("D").build()).build())
             .build();
         assert_eq!(count_nodes(&tree), 4);
     }
 
     #[test]
     fn is_function_node_by_type_or_roles() {
-        assert!(is_function_node(&Node::new("Function")));
-        assert!(is_function_node(&Node::new("Method")));
+        assert!(is_function_node(&NodeBuilder::new("Function").build()));
+        assert!(is_function_node(&NodeBuilder::new("Method").build()));
         let decl = NodeBuilder::new("Decl").role("Function").role("Declaration").build();
         assert!(is_function_node(&decl));
-        assert!(!is_function_node(&Node::new("Block")));
+        assert!(!is_function_node(&NodeBuilder::new("Block").build()));
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
     fn extract_func_name_falls_back_to_token_then_type() {
         let tokened = NodeBuilder::new("Function").token("plain").build();
         assert_eq!(extract_func_name(&tokened), "plain");
-        let typed = Node::new("Function");
+        let typed = NodeBuilder::new("Function").build();
         assert_eq!(extract_func_name(&typed), "Function");
     }
 

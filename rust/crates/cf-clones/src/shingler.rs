@@ -92,7 +92,7 @@ mod tests {
 
     fn chain(types: &[&str]) -> Node {
         // Build a left-deep chain so pre-order yields the types in order.
-        let mut node = Node::new(types[types.len() - 1]);
+        let mut node = NodeBuilder::new(types[types.len() - 1]).build();
         for t in types[..types.len() - 1].iter().rev() {
             let parent = NodeBuilder::new(t).child(node).build();
             node = parent;
@@ -109,8 +109,8 @@ mod tests {
     #[test]
     fn collect_skips_empty_types() {
         // A node with empty type must not contribute.
-        let inner = Node::new("B");
-        let mut mid = Node::new(""); // empty type
+        let inner = NodeBuilder::new("B").build();
+        let mut mid = NodeBuilder::new("").build(); // empty type
         mid.add_child(inner);
         let root = NodeBuilder::new("A").child(mid).build();
         assert_eq!(collect_node_types(&root), vec!["A", "B"]);

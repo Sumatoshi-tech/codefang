@@ -230,7 +230,9 @@ fn order_commits_by_meta(
 /// Encodes a [`MergedTimeSeries`] as indented JSON. Port of Go
 /// `WriteMergedTimeSeries` (`json.NewEncoder` + `SetIndent("", "  ")`).
 pub fn write_merged_time_series(ts: &MergedTimeSeries, w: &mut dyn Write) -> io::Result<()> {
-    let bytes = Encoder::indented("  ").encode_to_vec(&ts.to_go_value());
+    let bytes = Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&ts.to_go_value());
     w.write_all(&bytes)
 }
 

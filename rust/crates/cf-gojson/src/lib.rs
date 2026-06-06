@@ -25,7 +25,7 @@
 //! m.push("score", GoValue::Float(0.5));
 //! m.push("name", GoValue::Str("a<b>".into()));
 //! // map-origin keys byte-sort ("name" < "score"); '<','>' are HTML-escaped.
-//! assert_eq!(marshal(&GoValue::Map(m)), br#"{"name":"a<b>","score":0.5}"#);
+//! assert_eq!(marshal(&GoValue::Map(m)), br#"{"name":"a\u003cb\u003e","score":0.5}"#);
 //! ```
 
 pub mod ftoa;

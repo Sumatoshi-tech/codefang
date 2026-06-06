@@ -330,8 +330,18 @@ mod tests {
         })
     }
 
+    /// Zero-value descriptor for tests (Go's zero `Descriptor{}`: empty id /
+    /// description, default `static` mode).
+    fn dummy_descriptor() -> Descriptor {
+        Descriptor {
+            id: String::new(),
+            description: String::new(),
+            mode: crate::descriptor::AnalyzerMode::Static,
+        }
+    }
+
     fn base_with_compute() -> BaseHistoryAnalyzer<DummyMetrics> {
-        let mut b = BaseHistoryAnalyzer::new(Descriptor::default(), dummy_to_value);
+        let mut b = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
         b.compute_metrics_fn = Some(Box::new(compute_dummy));
         b
     }
@@ -344,14 +354,17 @@ mod tests {
     #[test]
     fn metadata() {
         let opts = vec![ConfigurationOption {
+            default: cf_pipeline::DefaultValue::String(String::new()),
             name: "test-opt".into(),
-            ..Default::default()
+            description: String::new(),
+            flag: String::new(),
+            option_type: cf_pipeline::ConfigurationOptionType::String,
         }];
         let mut base = BaseHistoryAnalyzer::new(
             Descriptor {
                 id: "history/dummy".into(),
                 description: "Dummy analyzer".into(),
-                mode: "history".into(),
+                mode: crate::descriptor::AnalyzerMode::History,
             },
             dummy_to_value,
         );
@@ -379,7 +392,8 @@ mod tests {
         let base = BaseHistoryAnalyzer::new(
             Descriptor {
                 id: "dummy".into(),
-                ..Default::default()
+                description: String::new(),
+                mode: crate::descriptor::AnalyzerMode::Static,
             },
             dummy_to_value,
         );
@@ -443,7 +457,7 @@ mod tests {
     // TestBaseHistoryAnalyzer_Serialize/MissingHook (base_history_test.go:152).
     #[test]
     fn serialize_missing_hook() {
-        let base = BaseHistoryAnalyzer::new(Descriptor::default(), dummy_to_value);
+        let base = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
         let mut buf = Vec::new();
         let err = base.serialize(&empty_report(), FORMAT_JSON, &mut buf).unwrap_err();
         assert!(matches!(err, AnalyzerError::MissingComputeMetrics));
@@ -470,7 +484,7 @@ mod tests {
     // TestBaseHistoryAnalyzer_SerializeTICKs/MissingHook (base_history_test.go:185).
     #[test]
     fn serialize_ticks_missing_hook() {
-        let base = BaseHistoryAnalyzer::new(Descriptor::default(), dummy_to_value);
+        let base = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
         let ticks = vec![Tick { tick: 1, ..Default::default() }];
         let mut buf = Vec::new();
         let err = base.serialize_ticks(&ticks, FORMAT_JSON, &mut buf).unwrap_err();
@@ -480,7 +494,7 @@ mod tests {
     // TestBaseHistoryAnalyzer_Snapshots (base_history_test.go:197).
     #[test]
     fn snapshots_are_noops() {
-        let base = BaseHistoryAnalyzer::new(Descriptor::default(), dummy_to_value);
+        let base = BaseHistoryAnalyzer::new(dummy_descriptor(), dummy_to_value);
         let snap = base.snapshot_plumbing();
         assert!(snap.is_none());
         base.apply_snapshot(None);

@@ -335,10 +335,10 @@ mod tests {
         let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
         // Add a deterministic body of ≥20 nodes so countNodes >= 20 and there
         // are enough types (>= k=5) to shingle.
-        let mut block = Node::new("Block");
+        let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];
-            block.add_child(Node::new(kind));
+            block.add_child(NodeBuilder::new(kind).build());
         }
         f.add_child(block);
         f
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn descriptor_is_static_clones() {
         let a = Analyzer::new();
-        assert_eq!(a.descriptor().id(), "static/clones");
+        assert_eq!(a.descriptor().id, "static/clones");
         assert_eq!(a.name(), "clones");
         assert_eq!(a.flag(), "clone-detection");
     }
@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn no_functions_returns_no_functions_message() {
         let a = Analyzer::new();
-        let root = Node::new("File"); // no function nodes
+        let root = NodeBuilder::new("File").build(); // no function nodes
         let report = a.analyze_node(Some(&root));
         assert_eq!(
             cf_reportutil::get_string(&report, KEY_MESSAGE),
@@ -375,7 +375,7 @@ mod tests {
     fn identical_functions_detected_as_type1_clone() {
         let a = Analyzer::new();
         // Two structurally identical functions -> similarity 1.0 -> Type-1.
-        let root = Builder::new("File")
+        let root = NodeBuilder::new("File")
             .child(function("foo"))
             .child(function("bar"))
             .build();

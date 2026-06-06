@@ -77,18 +77,40 @@ pub fn commit_files(
         .and_then(|oid| repo.find_commit(oid).ok());
     let base_tree = parent_commit.as_ref().and_then(|c| c.tree().ok());
 
-    let mut builder = repo
-        .treebuilder(base_tree.as_ref())
-        .map_err(|e| GitError::lib("treebuilder", e))?;
+    // Build the new tree via an in-memory index so nested paths (e.g.
+    // `dir/b.txt`) are materialized as subtrees; a flat treebuilder rejects
+    // entry names containing `/`.
+    let mut index = git2::Index::new().map_err(|e| GitError::lib("new index", e))?;
+    if let Some(tree) = base_tree.as_ref() {
+        index
+            .read_tree(tree)
+            .map_err(|e| GitError::lib("index read_tree", e))?;
+    }
 
     for (path, contents) in files {
         let oid = repo.blob(contents).map_err(|e| GitError::lib("write blob", e))?;
-        builder
-            .insert(path, oid, 0o100644)
-            .map_err(|e| GitError::lib("tree insert", e))?;
+        let entry = git2::IndexEntry {
+            ctime: git2::IndexTime::new(0, 0),
+            mtime: git2::IndexTime::new(0, 0),
+            dev: 0,
+            ino: 0,
+            mode: 0o100_644,
+            uid: 0,
+            gid: 0,
+            file_size: contents.len() as u32,
+            id: oid,
+            flags: 0,
+            flags_extended: 0,
+            path: path.as_bytes().to_vec(),
+        };
+        index
+            .add(&entry)
+            .map_err(|e| GitError::lib("index add", e))?;
     }
 
-    let tree_oid = builder.write().map_err(|e| GitError::lib("tree write", e))?;
+    let tree_oid = index
+        .write_tree_to(repo)
+        .map_err(|e| GitError::lib("tree write", e))?;
     let tree = repo.find_tree(tree_oid).map_err(|e| GitError::lib("find tree", e))?;
     let sig = fixed_sig(time_secs).map_err(|e| GitError::lib("signature", e))?;
     let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
@@ -115,7 +137,7 @@ fn unique_temp_dir() -> std::path::PathBuf {
 mod tests {
     use super::*;
     use crate::changes::{tree_diff, ChangeAction};
-    use crate::helpers::{load_commits, CommitLoadOptions, SystemClock};
+    use crate::helpers::{load_commits, CommitLoadOptions};
     use crate::repository::LogOptions;
 
     #[test]
@@ -128,12 +150,15 @@ mod tests {
 
         let commit = test.repo.lookup_commit(c2).expect("lookup");
         assert_eq!(commit.message().trim_end(), "second");
-        assert_eq!(commit.author().when_secs, 2_000);
+        assert_eq!(commit.author().when.seconds(), 2_000);
         assert_eq!(commit.num_parents(), 1);
         assert_eq!(commit.parent_hash(0), c1);
 
         let mut iter = test.repo.log(&LogOptions::default()).expect("log");
-        let collected = iter.collect_n(0).expect("collect");
+        let mut collected: Vec<_> = Vec::new();
+        while let Some(c) = iter.next_commit() {
+            collected.push(c);
+        }
         assert_eq!(collected.len(), 2);
         assert_eq!(collected[0].hash(), c2);
         assert_eq!(collected[1].hash(), c1);
@@ -154,7 +179,7 @@ mod tests {
         let c1 = commit_files(&test, "1", 1, &[("f", b"1")]).unwrap();
         let _c2 = commit_files(&test, "2", 2, &[("f", b"2")]).unwrap();
         let opts = CommitLoadOptions::default();
-        let commits = load_commits(&test.repo, &opts, &SystemClock).expect("load");
+        let commits = load_commits(&test.repo, &opts).expect("load");
         assert_eq!(commits.first().unwrap().hash(), c1);
     }
 
@@ -189,7 +214,7 @@ mod tests {
         let c1 = commit_files(&test, "1", 1, &[("a.txt", b"hello world")]).unwrap();
         let tree = test.repo.lookup_commit(c1).unwrap().tree().unwrap();
         let entry = tree.entry_by_path("a.txt").unwrap();
-        let blob = test.repo.lookup_blob(entry.hash).unwrap();
+        let blob = test.repo.lookup_blob(entry.hash()).unwrap();
         assert_eq!(blob.contents(), b"hello world");
         assert_eq!(blob.size(), 11);
     }
@@ -202,7 +227,7 @@ mod tests {
         let mut iter = commit.files().unwrap();
         let mut names: Vec<String> = Vec::new();
         while let Some(f) = iter.next_file() {
-            names.push(f.name().to_string());
+            names.push(f.name.to_string());
         }
         names.sort();
         assert_eq!(names, vec!["a.txt".to_string(), "dir/b.txt".to_string()]);
@@ -217,7 +242,7 @@ mod tests {
         let eb = tree.entry_by_path("b.txt").unwrap();
 
         let batch = crate::batch::BlobBatch::with_defaults(&test.repo);
-        let results = batch.fetch_all(&[ea.hash, eb.hash]);
+        let results = batch.fetch_all(&[ea.hash(), eb.hash()]);
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].contents.as_deref(), Some(&b"aaa"[..]));
         assert_eq!(results[1].contents.as_deref(), Some(&b"bbbb"[..]));
@@ -229,7 +254,7 @@ mod tests {
         let c1 = commit_files(&test, "1", 1, &[("a.txt", b"l1\nl2\n")]).unwrap();
         let tree = test.repo.lookup_commit(c1).unwrap().tree().unwrap();
         let entry = tree.entry_by_path("a.txt").unwrap();
-        let cb = crate::cached_blob::CachedBlob::from_repo(&test.repo, entry.hash).unwrap();
+        let cb = crate::cached_blob::CachedBlob::from_repo(&test.repo, entry.hash()).unwrap();
         assert_eq!(cb.data, b"l1\nl2\n");
         assert_eq!(cb.size(), 6);
     }

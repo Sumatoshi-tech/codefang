@@ -41,7 +41,7 @@ impl NodeBuilder {
     #[must_use]
     pub fn new(node_type: &str) -> Self {
         Self {
-            node: cf_uast_node::Node::new(node_type),
+            node: cf_uast_node::Builder::new().with_type(node_type).build(),
         }
     }
 

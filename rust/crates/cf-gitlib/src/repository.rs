@@ -262,7 +262,7 @@ mod tests {
     // Ported from gitlib_test.go::TestOpenRepositoryNotFound.
     #[test]
     fn open_repository_not_found() {
-        let err = Repository::open("/nonexistent/path/to/repo").unwrap_err();
+        let err = Repository::open("/nonexistent/path/to/repo").err().unwrap();
         assert!(err.to_string().contains("open repository"));
     }
 
@@ -582,7 +582,7 @@ mod tests {
         let mut iter = repo.log(&LogOptions::default()).unwrap();
         let mut times = Vec::new();
         iter.for_each(|c| {
-            times.push(c.author().when().seconds());
+            times.push(c.author().when.seconds());
             Ok(())
         })
         .unwrap();

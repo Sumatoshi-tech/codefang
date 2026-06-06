@@ -265,15 +265,16 @@ fn pair_from_map(m: &cf_analyze::GoMap) -> ClonePair {
 mod tests {
     use super::*;
     use crate::analyzer::Analyzer;
-    use cf_uast_node::{Builder, Node};
+    use crate::uast::NodeBuilder;
+    use cf_uast_node::Node;
 
     fn function(name: &str) -> Node {
-        let name_node = Builder::new("Identifier").role("Name").token(name).build();
-        let mut f = Builder::new("Function").role("Function").child(name_node).build();
-        let mut block = Node::new("Block");
+        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
+        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];
-            block.add_child(Node::new(kind));
+            block.add_child(NodeBuilder::new(kind).build());
         }
         f.add_child(block);
         f
@@ -291,7 +292,7 @@ mod tests {
     #[test]
     fn section_from_clone_report_has_metrics_and_issues() {
         let a = Analyzer::new();
-        let root = Builder::new("File")
+        let root = NodeBuilder::new("File")
             .child(function("foo"))
             .child(function("bar"))
             .build();

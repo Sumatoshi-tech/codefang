@@ -189,16 +189,17 @@ fn field_signature(m: &GoMap, key: &str) -> Option<Signature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::uast::NodeBuilder;
     use crate::visitor::Visitor;
-    use cf_uast_node::{Builder, Node};
+    use cf_uast_node::Node;
 
     fn function(name: &str) -> Node {
-        let name_node = Builder::new("Identifier").role("Name").token(name).build();
-        let mut f = Builder::new("Function").role("Function").child(name_node).build();
-        let mut block = Node::new("Block");
+        let name_node = NodeBuilder::new("Identifier").role("Name").token(name).build();
+        let mut f = NodeBuilder::new("Function").role("Function").child(name_node).build();
+        let mut block = NodeBuilder::new("Block").build();
         for i in 0..24 {
             let kind = ["Identifier", "Call", "Literal", "Operator"][i % 4];
-            block.add_child(Node::new(kind));
+            block.add_child(NodeBuilder::new(kind).build());
         }
         f.add_child(block);
         f
@@ -206,12 +207,12 @@ mod tests {
 
     fn file_report(funcs: &[&str]) -> Report {
         let mut v = Visitor::new();
-        let mut file = Builder::new("File");
+        let mut file = NodeBuilder::new("File");
         for name in funcs {
             file = file.child(function(name));
         }
         let root = file.build();
-        root.visit_pre_order(&mut |n| v.on_enter(n));
+        root.visit_pre_order(&mut |n: &Node| v.on_enter(n));
         v.get_report()
     }
 

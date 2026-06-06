@@ -583,7 +583,8 @@ mod tests {
             value: 2.5,
         };
         match p.to_go_value() {
-            GoValue::Object(fields) => {
+            GoValue::Map(m) => {
+                let fields = m.entries();
                 assert_eq!(fields[0].0, "tick");
                 assert_eq!(fields[0].1, GoValue::Int(7));
                 assert_eq!(fields[1].0, "value");
@@ -642,7 +643,8 @@ mod tests {
     fn risk_result_to_go_value_omits_empty_threshold_and_message() {
         let r = RiskResult::new(GoValue::Int(42), RiskLevel::high());
         match r.to_go_value() {
-            GoValue::Object(fields) => {
+            GoValue::Map(m) => {
+                let fields = m.entries();
                 let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
                 assert_eq!(keys, vec!["value", "risk_level"]);
                 assert_eq!(fields[0].1, GoValue::Int(42));
@@ -661,7 +663,8 @@ mod tests {
             message: "too high".to_string(),
         };
         match r.to_go_value() {
-            GoValue::Object(fields) => {
+            GoValue::Map(m) => {
+                let fields = m.entries();
                 let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
                 // Declaration order: value, risk_level, threshold, message.
                 assert_eq!(keys, vec!["value", "risk_level", "threshold", "message"]);

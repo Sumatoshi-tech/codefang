@@ -51,12 +51,14 @@ pass/fail tally.
 > (expected; the Go cobra surface also exposes `version` as a subcommand).
 >
 > The two prior build blockers (`cf-textutil` E0583, `cf-analyze` 21 errors) are
-> **RESOLVED** and the whole workspace links. **Binding parity tally is now 7/7
-> IDENTICAL** (all 7 JSON captures reproduce the Go goldens byte-for-byte,
-> verified by running each release binary with the MANIFEST argv under the golden
-> env and byte-comparing STDOUT). Tier 1 is complete; the remaining work is the
-> non-binding `cargo test --workspace` test-target compile errors, `cf-goyaml`
-> yaml.v3 parity, and nonBinding determinism (Tier 2).
+> **RESOLVED** and the whole workspace links. **`cargo test --workspace` is now
+> GREEN** — every test target compiles and the full suite passes (`0 failed`, 1
+> ignored); the lint+test evidence gate is satisfied. **Binding parity tally is
+> 7/7 IDENTICAL** (all 7 JSON captures reproduce the Go goldens byte-for-byte,
+> verified this run via `cargo run --release -p golden-harness` → `7/7
+> identical`). Tier 1 is complete; the remaining work is `cf-goyaml` yaml.v3
+> parity (Step 4), nonBinding/unstable determinism (Steps 15–17), and full
+> run-pipeline generalization beyond the closed-form dispatch.
 > Newly-ported `cf-langpath` (1 doctest) and `cf-persist` (34 unit + 1 doctest)
 > remain green; `cf-anomaly` green (35/35).
 
@@ -76,12 +78,17 @@ binary under the golden env with the MANIFEST argv and byte-comparing STDOUT):
 | 7 | run/history_devs.json    | `codefang run … --analyzers history/devs --format json --head --limit 5` | IDENTICAL (831 B) |
 
 Remaining work (none blocks binding parity):
-1. Fix the `cargo test --workspace` test-target compile failures (`cf-clones`,
-   `uast` bin-test referencing stale `GoValue::Object`/`str`/`Str` + a
-   wrong-arity call) so the lint+test gate goes green and the now-verified
-   build-blocker / Tier-1 DoD boxes can be ticked.
-2. `cf-goyaml` full yaml.v3 emitter parity (Step 4) — blocks `.yaml` captures.
-3. nonBinding determinism: Steps 15–17.
+1. `cf-goyaml` full yaml.v3 emitter parity (Step 4) — blocks `.yaml` captures.
+2. nonBinding / unstable determinism: Steps 15–17 (`bin` for `--analyzers '*'`,
+   stabilize/reclassify Go-map-order captures, govader lexicon parity).
+3. Full run-pipeline generalization beyond the closed-form `run_dispatch` blocks
+   (typos/imports/devs/anomaly) so arbitrary `--analyzers` selectors + formats
+   run end-to-end.
+
+DONE this run: the `cargo test --workspace` test-target compile failures
+(`cf-clones`, the `uast` bin-test, and cf-uast-node) referencing the stale
+`GoValue`/Builder API are RESOLVED; the lint+test gate is green, so the held
+build-blocker / Tier-0 / Tier-1 DoD boxes are now ticked below.
 
 ### Exact build blockers — RESOLVED (kept for history)
 
@@ -258,27 +265,22 @@ ANY binding verification.
 **DoR (Definition of Ready):** Steps 1-4 complete.
 
 **DoD (Definition of Done):**
-- [VERIFIED 2026-06-06 — release build green] `cargo build --release` exits 0
-      with no errors (warnings only). Box left unticked pending the
-      lint+test gate (`cargo test --workspace` currently fails to COMPILE in
-      test targets `cf-clones` and `uast` bin-test — separate from the green
-      release build; see note below).
-- [VERIFIED 2026-06-06 — binaries run] `target/release/codefang` (1,109,720 B)
-      and `target/release/uast` (12,575,656 B) exist and run their `version`
-      subcommand (`codefang version` / `uast version` → exit 0). NOTE:
-      `--version` is NOT a flag — version is a cobra/clap subcommand, matching
-      the Go cobra surface.
-- [VERIFIED 2026-06-06 — binding paths clean] No `todo!`/`unimplemented!`/"not
-      yet implemented" reached on any binding code path: all 7 binding captures
-      (run history/{anomaly,devs,imports,typos} json + uast {parse,analyze,query}
-      json) run to completion and emit byte-identical bytes. Box withheld pending
-      the lint+test gate.
+- [x] `cargo build --release` exits 0 with no errors (warnings only). The
+      lint+test gate (`make lint` + `cargo test --workspace`) is green, so the
+      box is ticked.
+- [x] `target/release/codefang` (1,109,720 B) and `target/release/uast`
+      (12,575,656 B) exist and run their `version` subcommand (`codefang
+      version` / `uast version` → exit 0). NOTE: `--version` is NOT a flag —
+      version is a cobra/clap subcommand, matching the Go cobra surface.
+- [x] No `todo!`/`unimplemented!`/"not yet implemented" reached on any binding
+      code path: all 7 binding captures (run history/{anomaly,devs,imports,typos}
+      json + uast {parse,analyze,query} json) run to completion and emit
+      byte-identical bytes (golden-harness 7/7 IDENTICAL this run).
 
-> Gate note: the release **build** is green, but `cargo test --workspace` does
-> NOT compile (test-only code in `cf-clones` and the `uast` bin test references
-> stale `GoValue::Object`/`GoValue::str`/`GoValue::Str` and a wrong-arity call).
-> Per the evidence-for-checkbox gate, `- [x]` ticks are withheld until the test
-> targets compile and pass; the verified facts are recorded inline above.
+> Gate note (RESOLVED 2026-06-06): `cargo test --workspace` now COMPILES and
+> PASSES (the stale test-only `GoValue`/Builder call sites in `cf-clones`, the
+> `uast` bin test, and cf-uast-node were updated to the shipped API). `make lint`
+> exit=0, `cargo test` exit=0; the evidence-for-checkbox gate is satisfied.
 
 **Risks:** Unported transitive deps surface only at link time. Mitigation: build
 incrementally per crate (Step 1->2->3->4) so the first failing crate is obvious.
@@ -401,12 +403,12 @@ Trailing-window Z-scores over sorted ticks; deterministic. `--head --limit 5`.
 
 **DoR (Definition of Ready):** Step 9.
 
-**DoD (Definition of Done):** (VERIFIED IDENTICAL 2026-06-06 — boxes withheld
-pending the lint+test gate per evidence-for-checkbox; facts authoritative)
-- [VERIFIED] Byte-identical to `tests/golden/run/history_anomaly.json` (570 B).
-- [VERIFIED] Z-score floats render via the Go shortest-float formatter (Step 3)
+**DoD (Definition of Done):** (VERIFIED IDENTICAL 2026-06-06; lint+test gate now
+green so boxes are ticked)
+- [x] Byte-identical to `tests/golden/run/history_anomaly.json` (570 B).
+- [x] Z-score floats render via the Go shortest-float formatter (Step 3)
       through `cf_gojson::marshal` (`churn_z_score: 0`, all stddevs 0).
-- [VERIFIED] No `cf-anomaly` placeholder on this path: `anomaly_head_report`
+- [x] No `cf-anomaly` placeholder on this path: `anomaly_head_report`
       feeds `build_report_data` → `compute_all_metrics` → `ToGoValue`; `anomalies`
       nil slice → `null`. Non-merge HEAD (needs dmp line stats) returns the
       sentinel — unreachable for this binding HEAD (a 2-parent merge).
@@ -582,61 +584,57 @@ the full harness after every Tier-0/1 change.
 - [x] Step 1 — cf-gojson GoValue/GoMap model (IMPLEMENTED + tested)
 - [x] Step 2 — cf-gojson::marshal Go json byte-parity (IMPLEMENTED + tested)
 - [x] Step 3 — cf-gojson shortest-float ('g',-1,64) (IMPLEMENTED + tested)
-- [ ] Step 3a — port `plumbing/langpath` → `cf-langpath` (builds + doctest green
-      this run; enry v2.1.0 TSV vendored in `data/` — leave unticked until the
-      workspace gate is green)
-- [ ] Step 3b — port `persist` → `cf-persist` (34 unit + 1 doctest green this run;
+- [x] Step 3a — port `plumbing/langpath` → `cf-langpath` (builds + doctest green;
+      enry v2.1.0 TSV vendored in `data/`; workspace gate now green)
+- [x] Step 3b — port `persist` → `cf-persist` (34 unit + 1 doctest green;
       gob replaced by bincode per DESIGN §3 — internal state only, not a capture)
 - [ ] Step 4 — cf-goyaml yaml.v3 emitter (STILL 8-line SCAFFOLD; `marshal` fn
       missing — at minimum add the signature so cf-analyze links; full parity
       blocks every `.yaml` capture)
-- [RESOLVED 2026-06-06] Step 4a — fix `cf-textutil` E0583. The `uast` binary now
-      builds. (Box withheld pending lint+test gate per evidence-for-checkbox.)
-- [RESOLVED 2026-06-06] Step 4b — fix `cf-analyze` 21 errors. cf-analyze
-      compiles in the green release build. (Box withheld pending gate.)
-- [RELEASE BUILD GREEN 2026-06-06] Step 5 — workspace builds release; produces
-      `target/release/{codefang,uast}`. `cargo build --release` exits 0.
-      DoD box withheld pending the lint+test gate (`cargo test --workspace`
-      test-target compile failures in cf-clones / uast bin-test).
+- [x] Step 4a — fix `cf-textutil` E0583. The `uast` binary builds. (Gate green.)
+- [x] Step 4b — fix `cf-analyze` 21 errors. cf-analyze compiles in the green
+      release build. (Gate green.)
+- [x] Step 5 — workspace builds release; produces `target/release/{codefang,uast}`.
+      `cargo build --release` exits 0; `cargo test --workspace` + `make lint`
+      both exit 0; golden-harness 7/7 IDENTICAL.
 
 ### Tier 0b — write the CLI binaries (NEW; discovered 2026-05-31)
 - [x] Step 5a — fix corrupted `bins/uast/Cargo.toml` (was duplicate-package,
       mis-named `cf-bin-codefang`; now `cf-bin-uast`)
-- [BUILDS 2026-06-06] Step 5b — `bins/uast/src/main.rs` written: clap command
-      tree (parse/diff/query/explore/analyze/completion/mapping/validate/lsp/
+- [x] Step 5b — `bins/uast/src/main.rs` written: clap command tree
+      (parse/diff/query/explore/analyze/completion/mapping/validate/lsp/
       server/version) builds and produces `target/release/uast` (`uast version`
       → exit 0). Flag/default/help byte-match vs cobra NOT yet diffed — verify in
-      Tier 1. (Box withheld pending lint+test gate.)
-- [BUILDS 2026-06-06] Step 5c — `bins/codefang/src/main.rs` written: clap
+      Tier 1. (Gate green.)
+- [x] Step 5c — `bins/codefang/src/main.rs` written: clap
       (run/render/version + run flags) builds and produces
       `target/release/codefang` (`codefang version` → exit 0). DISPATCH PARITY
       VERIFIED for ALL 4 `run` history captures: `run_dispatch` routes
       history/imports, history/typos, history/devs (--head) and history/anomaly
       (--head) to byte-identical closed-form reports (cf-imports / cf-typos /
-      cf-devs / cf-anomaly → cf-gojson parity). (Box withheld pending gate.)
-- [BUILDS 2026-06-06] Step 5d — both bin crates are workspace members;
-      `cargo build --release` yields both binaries; `version` subcommand works.
-      `--help`/`--version` byte-match vs Go NOT yet diffed. (Box withheld.)
+      cf-devs / cf-anomaly → cf-gojson parity). (Gate green.)
+- [x] Step 5d — both bin crates are workspace members; `cargo build --release`
+      yields both binaries; `version` subcommand works. `--help`/`--version`
+      byte-match vs Go NOT yet diffed. (Gate green.)
 
 ### Tier 1 — 7 binding captures (VERIFIED 2026-06-06: 7/7 IDENTICAL)
 > All seven captures below were diffed byte-for-byte against their goldens under
 > the golden env (each Rust release binary run with the exact MANIFEST.json argv,
 > binary path swapped to `rust/target/release/{codefang,uast}`, STDOUT compared
 > byte-for-byte — note command-substitution `$(...)` strips the trailing newline
-> and gives a false 1-byte miss, so compare via file/`cmp`). `- [x]` ticks are
-> withheld pending the `make lint`/`make test` gate (the evidence-for-checkbox
-> hook blocks ticking until both exit 0; `cargo test --workspace` still fails to
-> COMPILE in test targets cf-clones / uast bin-test). The verified facts are
-> authoritative regardless: the binding tally is **7/7 IDENTICAL**.
-- [VERIFIED IDENTICAL 2026-06-06] Step 6 — uast parse --format json (golden 285,255 B)
-- [VERIFIED IDENTICAL 2026-06-06] Step 7 — uast analyze --format json (golden 965 B)
-- [VERIFIED IDENTICAL 2026-06-06] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
-- [VERIFIED IDENTICAL 2026-06-06] Step 9 — run history/typos json (golden 138 B).
+> and gives a false 1-byte miss, so compare via file/`cmp`). The `make
+> lint`/`cargo test` gate is now GREEN (both exit 0), so the held `- [x]` ticks
+> are applied. The binding tally is **7/7 IDENTICAL** (re-verified this run via
+> `cargo run --release -p golden-harness`).
+- [x] Step 6 — uast parse --format json (golden 285,255 B)
+- [x] Step 7 — uast analyze --format json (golden 965 B)
+- [x] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
+- [x] Step 9 — run history/typos json (golden 138 B).
       Wired in `bins/codefang/src/main.rs run_dispatch`: the empty-typos report
       (`cf_typos::metrics_report_value(&ReportData::default()).to_json()`) is the
       repo-independent 138-byte constant (same reduction as history/imports).
-- [VERIFIED IDENTICAL 2026-06-06] Step 10 — run history/imports json (golden 167 B)
-- [VERIFIED IDENTICAL 2026-06-06] Step 11 — run history/anomaly json (golden 570 B).
+- [x] Step 10 — run history/imports json (golden 167 B)
+- [x] Step 11 — run history/anomaly json (golden 570 B).
       Wired in `run_dispatch` (`anomaly_head_report`, mirrors `devs_head_report`):
       for the 2-parent merge HEAD, builds the closed-form tick-0 report from the
       `cf-gitlib` tree diff (HEAD vs first parent) filtered by `cf_pathpolicy::
@@ -644,19 +642,19 @@ the full harness after every Tier-0/1 change.
       stats), then `cf_anomaly::{build_report_data, compute_all_metrics}` →
       `ToGoValue` → `cf_gojson::marshal`. The 15→11 file-count gap vs `git
       diff-tree` was the pathpolicy vendor/generated exclusion (RESOLVED).
-- [VERIFIED IDENTICAL 2026-06-06] Step 12 — run history/devs json (golden 831 B)
+- [x] Step 12 — run history/devs json (golden 831 B)
 
 ### Tier 2 — reconciliation & nonBinding determinism
 - [ ] Step 13 — reconcile placeholder/bare crates with ARCHITECTURE.md
-- [VERIFIED 2026-06-06] Step 14 — golden-harness pass/fail verdict. Runnable
-      binary `tests/golden-harness/src/main.rs` (`[[bin]] name = "golden-harness"`)
-      implemented: `cargo run -p golden-harness` reads MANIFEST.json, runs the 7
-      binding captures under the golden env (argv passed straight to `Command`, no
-      shell → selectors reach the binary verbatim, satisfying `set -f`), prints
+- [x] Step 14 — golden-harness pass/fail verdict. Runnable binary
+      `tests/golden-harness/src/main.rs` (`[[bin]] name = "golden-harness"`):
+      `cargo run -p golden-harness` reads MANIFEST.json, runs the 7 binding
+      captures under the golden env (argv passed straight to `Command`, no shell →
+      selectors reach the binary verbatim, satisfying `set -f`), prints
       `IDENTICAL`/`DIFFER` per capture + final `N/7 identical`, and exits nonzero
       on any mismatch. Accepts id/relPath substring filters
-      (`cargo run -p golden-harness -- uast`). Verified output: 7/7 identical
-      (all binding captures pass). Box withheld pending the make lint/test gate.
+      (`cargo run -p golden-harness -- uast`). Verified output this run: 7/7
+      identical. (Gate green.)
 - [ ] Step 15 — bin format for --analyzers '*'
 - [ ] Step 16 — stabilize/reclassify Go-nondeterministic captures
 - [ ] Step 17 — sentiment/govader lexicon parity

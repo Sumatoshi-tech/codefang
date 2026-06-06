@@ -287,6 +287,10 @@ pub fn write_go_json_string(out: &mut Vec<u8>, s: &str) {
             '\n' => (Some(b"\\n"), 1),
             '\r' => (Some(b"\\r"), 1),
             '\t' => (Some(b"\\t"), 1),
+            // Go's encoding/json emits the short escapes \b (0x08) and \f (0x0c),
+            // not the generic  /  forms (verified against json.Marshal).
+            '\u{0008}' => (Some(b"\\b"), 1),
+            '\u{000c}' => (Some(b"\\f"), 1),
             '<' => (Some(b"\\u003c"), 1),
             '>' => (Some(b"\\u003e"), 1),
             '&' => (Some(b"\\u0026"), 1),
@@ -348,15 +352,15 @@ mod tests {
         // Go HTML-escapes <, >, & to < > & by default.
         assert_eq!(
             st(marshal(&GoValue::Str("a<b>c&d".into()))),
-            r#""a<b>c&d""#
+            r#""a\u003cb\u003ec\u0026d""#
         );
         assert_eq!(st(marshal(&GoValue::Str("\"q\"".into()))), r#""\"q\"""#);
         assert_eq!(st(marshal(&GoValue::Str("a\\b".into()))), r#""a\\b""#);
         assert_eq!(st(marshal(&GoValue::Str("x\ny\tz".into()))), r#""x\ny\tz""#);
-        // \b (0x08) and \f (0x0c) use \u00xx, NOT \b/\f.
-        assert_eq!(st(marshal(&GoValue::Str("\u{0008}\u{000c}".into()))), r#""""#);
+        // 0x08 and 0x0c use the short escapes \b and \f (Go json.Marshal).
+        assert_eq!(st(marshal(&GoValue::Str("\u{0008}\u{000c}".into()))), r#""\b\f""#);
         // line/paragraph separators.
-        assert_eq!(st(marshal(&GoValue::Str("\u{2028}\u{2029}".into()))), r#""  ""#);
+        assert_eq!(st(marshal(&GoValue::Str("\u{2028}\u{2029}".into()))), r#""\u2028\u2029""#);
         // forward slash is NOT escaped by Go.
         assert_eq!(st(marshal(&GoValue::Str("a/b".into()))), r#""a/b""#);
     }
@@ -405,7 +409,7 @@ mod tests {
         assert_eq!(Encoder::compact().with_trailing_newline(true).encode(&v), b"7\n");
         assert_eq!(
             Encoder::marshal().encode_to_string(&GoValue::Str("a<b".into())),
-            r#""a<b""#
+            r#""a\u003cb""#
         );
         // indented with trailing newline (the FORMAT_JSON path).
         let mut m = GoMap::new(MapOrigin::Map);
