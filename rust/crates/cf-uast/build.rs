@@ -37,6 +37,60 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-html-1.9.1",
         sources: &["parser.c", "scanner.c"],
     },
+    // The compat-corpus grammars, each pinned to the exact go-sitter-forest
+    // revision recorded in the Go build's `go.mod` (so node kinds/spans flow
+    // into machine output byte-identically). `#include "..."` is a quote-include
+    // that resolves to the source file's own directory first, so each grammar's
+    // own parser.h/array.h/alloc.h/scanner.h are used even though all grammar
+    // dirs share the same `-I` set.
+    Grammar {
+        dir: "tree-sitter-python-1.9.10",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-c-1.9.4",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-rust-1.9.13",
+        sources: &["parser.c", "scanner.c"],
+    },
+    // typescript & tsx ship an external scanner whose scanner.c includes the
+    // sibling scanner.h (quote-include, resolved per-grammar dir). Their external
+    // scanner symbols are uniquely prefixed (tree_sitter_typescript_* vs
+    // tree_sitter_tsx_*), so both link into one archive without clashing.
+    Grammar {
+        dir: "tree-sitter-typescript-1.9.4",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-tsx-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-javascript-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-json-1.9.1",
+        sources: &["parser.c"],
+    },
+    // yaml's scanner.c #includes schema.core.c via the YAML_SCHEMA macro
+    // (default `core`), so the schema is compiled transitively — do NOT list
+    // schema.*.c as separate sources.
+    Grammar {
+        dir: "tree-sitter-yaml-1.9.6",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-cpp-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    // bash is the grammar behind the corpus "shell" (.sh) language.
+    Grammar {
+        dir: "tree-sitter-bash-1.9.6",
+        sources: &["parser.c", "scanner.c"],
+    },
 ];
 
 fn main() {

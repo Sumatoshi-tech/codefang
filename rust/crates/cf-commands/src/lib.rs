@@ -50,6 +50,8 @@
 
 pub mod flags;
 pub mod formats;
+pub mod handlers;
+pub mod pipeline;
 pub mod registry;
 pub mod version;
 
@@ -109,6 +111,115 @@ pub fn build_codefang_command() -> clap::Command {
         .subcommand(build_run_command())
         .subcommand(build_render_command())
         .subcommand(build_version_command())
+}
+
+/// Sentinel error message for run/render dispatch when no registered handler can
+/// produce a report for the requested `(analyzer, format)` selection. Mirrors
+/// the codefang error path (`Error: <msg>\n`, exit 1, no usage).
+const DISPATCH_BLOCKED_MSG: &str =
+    "command dispatch is blocked on cf-commands (tier 8); see DESIGN.md \u{00A7}4.1";
+
+/// The single `codefang` entry point: build the command tree, parse `args`
+/// (which MUST start with the program name, like `std::env::args`), and dispatch
+/// `run` / `render` / `version` through the general pipeline + registry.
+/// Returns the process exit code (Go `RunCommand.run` → cobra `Execute` exit).
+///
+/// This is the thin shell the `codefang` binary calls; all dispatch flows
+/// through [`pipeline::run_pipeline`] over [`handlers::default_registry`] — there
+/// is no per-`(analyzer, format)` branching here.
+#[must_use]
+pub fn run<I, T>(args: I) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let matches = match build_codefang_command().try_get_matches_from(args) {
+        Ok(m) => m,
+        Err(e) => {
+            // clap prints help/usage/version itself; preserve its exit code.
+            e.print().ok();
+            return if e.use_stderr() { 2 } else { 0 };
+        }
+    };
+
+    match matches.subcommand() {
+        Some(("version", _)) => {
+            print!("{}", cf_version::codefang_version_line());
+            0
+        }
+        Some(("run", sub)) => run_subcommand(sub),
+        Some(("render", sub)) => render_subcommand(sub),
+        _ => {
+            build_codefang_command().print_help().ok();
+            println!();
+            0
+        }
+    }
+}
+
+/// Dispatches `codefang run` through the general pipeline. Emits each phase's
+/// report bytes to stdout in dispatch order; on an unsatisfiable selection it
+/// surfaces the codefang error path (`Error: <msg>\n`, exit 1).
+fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
+    use std::io::Write;
+
+    let registry = handlers::default_registry();
+
+    if sub.get_flag("list-analyzers") {
+        let mut out = std::io::stdout();
+        for id in registry.ids() {
+            let _ = writeln!(out, "{id}");
+        }
+        return 0;
+    }
+
+    let ctx = pipeline::RunContext::from_matches(sub);
+    let ids = ctx.analyzer_ids();
+
+    // Special case preserved from Go FormatPerAnalyzer: a static-only glob/id set
+    // with --format bin emits the concatenated registry-ordered per-analyzer CFB1
+    // envelopes. This is a multi-id (glob) concern, not a single-id dispatch, so
+    // it is handled before the per-id pipeline (which dispatches literal ids).
+    let raw_format = ctx.raw_format();
+    let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
+    if raw_format == "bin"
+        && !analyzer_strs.is_empty()
+        && analyzer_strs.iter().any(|a| a.contains(['*', '?', '[']))
+        && analyzer_strs.iter().all(|a| handlers::is_static_id_or_glob(a))
+    {
+        if let Some(bytes) = handlers::static_multi_bin(&analyzer_strs, &ctx.path) {
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            return 0;
+        }
+    }
+
+    match pipeline::run_pipeline(&registry, &ctx, &ids) {
+        Ok(outputs) => {
+            let mut out = std::io::stdout();
+            for phase in &outputs {
+                out.write_all(&phase.bytes).expect("write stdout");
+            }
+            0
+        }
+        // An unsatisfiable selection (no handler for this analyzer/format) routes
+        // to the same codefang error path the legacy dispatch fell through to.
+        Err(_) => {
+            eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
+            1
+        }
+    }
+}
+
+/// Dispatches `codefang render <store-dir>`; reproduces the `--output` precheck
+/// (Go render.go `ErrNoOutputDir`) before the (still-blocked) render body.
+fn render_subcommand(sub: &clap::ArgMatches) -> i32 {
+    let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
+    if output.is_empty() {
+        eprintln!("Error: output directory is required (use --output)");
+        return 1;
+    }
+    eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
+    1
 }
 
 #[cfg(test)]

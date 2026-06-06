@@ -45,7 +45,7 @@ use cf_shotness::aggregate::{
 use cf_shotness::{compute_all_metrics, NodeSummary};
 use cf_uast_node::Node;
 
-use crate::{floor_tick_secs, run_repo_path};
+use crate::handlers::{floor_tick_secs, run_repo_path};
 
 /// `UASTChangesAnalyzer` spill threshold: a commit with more than this many file
 /// changes streams zero UAST changes (Go `UASTPipeline.SpillThreshold = 32`).

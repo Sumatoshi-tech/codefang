@@ -25,91 +25,11 @@ profile = []
 [dependencies]
 clap = { workspace = true }
 # KEEP libgit2 (vendored via git2). The entrypoint links a core libgit2 path so
-# the binary anchors the vendored build; per-thread Repository usage lands with
-# cf-gitlib. See DESIGN §3.
+# the binary anchors the vendored build (DESIGN §3); cf-commands/cf-gitlib own
+# the per-thread Repository usage.
 git2 = { workspace = true }
-# Build/version metadata — `codefang version` reproduces the Go output via the
-# ldflags-equivalent constants populated by cf-version's build.rs. See DESIGN §4.1.
-cf-version = { path = "../../crates/cf-version" }
-# Report serialization MUST route through cf-gojson (Go encoding/json byte-parity:
-# HTML-escape, byte-sorted map keys, declaration-order structs, shortest-float).
-# NEVER serde_json for machine output.
-cf-gojson = { path = "../../crates/cf-gojson" }
-# YAML report serialization MUST route through cf-goyaml (gopkg.in/yaml.v3
-# byte-parity: 2-space block indent, nil-slice -> `[]`, struct-declaration key
-# order, yaml.v3 scalar quoting). NEVER serde_yaml for machine output.
-cf-goyaml = { path = "../../crates/cf-goyaml" }
-# history/imports analyzer report computation + Go-value lowering.
-cf-imports = { path = "../../crates/cf-imports" }
-# history/devs analyzer: ComputedMetrics + Go-value lowering for the
-# `run --analyzers history/devs --head` capture.
-cf-devs = { path = "../../crates/cf-devs" }
-# history/typos analyzer: metrics_report_value for the empty-report
-# `run --analyzers history/typos --format json` capture (repo-independent
-# constant, like history/imports). Routes the bytes through cf-gojson parity.
-cf-typos = { path = "../../crates/cf-typos" }
-# history/couples analyzer: real co-change coupling over the general history
-# pipeline (file/dev matrices, ownership, aggregate). hll feature (default) on
-# for bit-identical per-file contributor cardinality.
-cf-couples = { path = "../../crates/cf-couples" }
-# Seen-files Bloom filter for couples merge-mode coupling dedup.
-cf-alg-bloom = { path = "../../crates/cf-alg-bloom" }
-# libgit2-backed repository / commit access for the head-only run path.
-cf-gitlib = { path = "../../crates/cf-gitlib" }
-# Loose people-dict construction (ReversedPeopleDict) for identity parity.
-cf-analyzers-plumbing = { path = "../../crates/cf-analyzers-plumbing" }
-# Go-`time.RFC3339`-parity unix→string formatter for tick bounds.
-cf-analyze = { path = "../../crates/cf-analyze" }
-# textutil.IsBinary parity for history/devs language detection.
-cf-textutil = { path = "../../crates/cf-textutil" }
-# enry path-only language detection (extension/filename) for history/devs
-# language attribution beyond the fast-path extension table.
-cf-langpath = { path = "../../crates/cf-langpath" }
-# history/anomaly analyzer: ComputedMetrics + Go-value lowering for the
-# `run --analyzers history/anomaly --head` capture (HEAD merge closed form).
-cf-anomaly = { path = "../../crates/cf-anomaly" }
-# Vendor / generated path-policy exclusion (TreeDiff.filterChanges parity).
-cf-pathpolicy = { path = "../../crates/cf-pathpolicy", features = ["default-deps"] }
-# static/composition analyzer: raw-file classifier + aggregator for the
-# `run --analyzers static/composition --head` static-analysis captures.
-cf-composition = { path = "../../crates/cf-composition" }
-# history/burndown analyzer: ComputedMetrics + Go-value lowering for the
-# `run --analyzers history/burndown --head` captures (HEAD closed form).
-cf-analyzer-burndown = { path = "../../crates/cf-analyzer-burndown" }
-# CFB1 binary envelope (--format bin) for the burndown machine output.
-cf-reportutil = { path = "../../crates/cf-reportutil" }
-# UAST parser facade: parse each source file in the static/imports folder phase
-# into a node tree the imports analyzer reads (extractImportsFromUAST parity).
-cf-uast = { path = "../../crates/cf-uast" }
-# Canonical UAST node model produced by cf-uast::Parser::parse.
-cf-uast-node = { path = "../../crates/cf-uast-node" }
-# static/complexity analyzer: per-function complexity over each file's UAST.
-cf-complexity = { path = "../../crates/cf-complexity" }
-# static/comments analyzer: per-file comment/function analysis driving the
-# `run --analyzers static/comments --format yaml` static capture.
-cf-comments = { path = "../../crates/cf-comments" }
-# history/quality analyzer: TickQuality + ComputeAllMetrics + JSON serializer for
-# the streaming `run --analyzers history/quality --format json --limit N` capture.
-cf-quality = { path = "../../crates/cf-quality" }
-# history/sentiment analyzer: per-commit comment extraction + govader scoring +
-# ComputeAllMetrics for the streaming `run --analyzers history/sentiment
-# --format json --limit N` capture.
-cf-sentiment = { path = "../../crates/cf-sentiment" }
-# Line-mode diff (sergi/go-diff diffmatchpatch parity): per-file inserted/deleted
-# line counts for the streaming burndown timeseries NDJSON capture's modify deltas.
-cf-godiff = { path = "../../crates/cf-godiff" }
-# history/shotness analyzer: per-commit structural co-change accumulation
-# (accumulate_nodes / compute_coupling_pairs / build_report_from_merged) +
-# ComputeAllMetrics + Go-value lowering for the streaming
-# `run --analyzers history/shotness --format json --limit N` capture.
-cf-shotness = { path = "../../crates/cf-shotness" }
-# Levenshtein distance (pkg/alg/levenshtein parity): the typos analyzer's
-# line-pair candidate test uses the same bit-parallel Myers/DP distance Go does.
-cf-alg-levenshtein = { path = "../../crates/cf-alg-levenshtein" }
-# Burndown line-survival treap (File): exact per-commit GlobalDeltas for the
-# streaming burndown timeseries NDJSON capture (replace semantics + tick deltas).
-cf-burndown-core = { path = "../../crates/cf-burndown-core" }
-# history/file-history analyzer: FileHistory accumulation + ComputeAllMetrics +
-# Go-value lowering for the streaming `run --analyzers history/file-history
-# --format json --limit N` capture (real per-commit file-change history).
-cf-file-history = { path = "../../crates/cf-file-history" }
+# The entire CLI surface + the general run pipeline (registry-driven dispatch to
+# the analyzer crates) live in cf-commands (DESIGN §1 tier 8). This binary is a
+# thin shell that bootstraps malloc tunables + the --profile watchdog, then calls
+# cf_commands::run(argv).
+cf-commands = { path = "../../crates/cf-commands" }

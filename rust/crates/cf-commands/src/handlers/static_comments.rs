@@ -186,7 +186,7 @@ pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
         .collect();
     // Go: mapx.SortAndLimit(buildIssues(), commentNameLess, 0) — unstable
     // sort.Slice by Name ascending. Reproduce the pdqsort permutation.
-    crate::go_sort::slice(&mut issue_fns, |a, b| a.function_name < b.function_name);
+    crate::handlers::go_sort::slice(&mut issue_fns, |a, b| a.function_name < b.function_name);
     let issues: Vec<GoValue> = issue_fns
         .iter()
         .map(|f| {
@@ -404,7 +404,7 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     // CommentQualityMetric.Compute calls sort.Slice (unstable pdqsort); the
     // equal-line ties must follow pdqsort's permutation, not a stable order.
     let mut comment_order: Vec<&CommentItem> = agg.comments.iter().collect();
-    crate::go_sort::slice(&mut comment_order, |a, b| a.line < b.line);
+    crate::handlers::go_sort::slice(&mut comment_order, |a, b| a.line < b.line);
     let comment_quality: Vec<GoValue> = comment_order
         .iter()
         .map(|&c| {
@@ -429,7 +429,7 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     // `comment_score`), so every key is equal; the emitted order is pdqsort's
     // permutation of the equal-key input, reproduced via go_sort.
     let mut doc_order: Vec<&FunctionItem> = agg.functions.iter().collect();
-    crate::go_sort::slice(&mut doc_order, |_a, _b| false);
+    crate::handlers::go_sort::slice(&mut doc_order, |_a, _b| false);
     let function_documentation: Vec<GoValue> = doc_order
         .iter()
         .map(|&f| {
@@ -450,7 +450,7 @@ fn compute_metrics(agg: &Aggregated) -> GoValue {
     // needs_comment false for all → all MEDIUM → all equal RiskPriority; the
     // emitted order is pdqsort's permutation of the equal-key input (sort.Slice).
     let mut risk_order: Vec<&FunctionItem> = agg.functions.iter().collect();
-    crate::go_sort::slice(&mut risk_order, |_a, _b| false);
+    crate::handlers::go_sort::slice(&mut risk_order, |_a, _b| false);
     let undocumented_functions: Vec<GoValue> = risk_order
         .iter()
         .map(|&f| {

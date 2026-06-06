@@ -114,6 +114,16 @@ mod ffi {
     extern "C" {
         pub fn tree_sitter_go() -> tree_sitter::Language;
         pub fn tree_sitter_html() -> tree_sitter::Language;
+        pub fn tree_sitter_python() -> tree_sitter::Language;
+        pub fn tree_sitter_c() -> tree_sitter::Language;
+        pub fn tree_sitter_rust() -> tree_sitter::Language;
+        pub fn tree_sitter_typescript() -> tree_sitter::Language;
+        pub fn tree_sitter_tsx() -> tree_sitter::Language;
+        pub fn tree_sitter_javascript() -> tree_sitter::Language;
+        pub fn tree_sitter_json() -> tree_sitter::Language;
+        pub fn tree_sitter_yaml() -> tree_sitter::Language;
+        pub fn tree_sitter_cpp() -> tree_sitter::Language;
+        pub fn tree_sitter_bash() -> tree_sitter::Language;
     }
 }
 
@@ -139,6 +149,29 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         // `build.rs` (parser.c + scanner.c). Returns its static `TSLanguage`.
         #[allow(unsafe_code)]
         "html" => Some(unsafe { ffi::tree_sitter_html() }),
+        // The compat-corpus grammars, vendored at the exact go-sitter-forest
+        // revisions the Go build's go.mod pins. Each entry point returns the
+        // grammar's static `TSLanguage` table compiled by `build.rs`.
+        #[allow(unsafe_code)]
+        "python" => Some(unsafe { ffi::tree_sitter_python() }),
+        #[allow(unsafe_code)]
+        "c" => Some(unsafe { ffi::tree_sitter_c() }),
+        #[allow(unsafe_code)]
+        "rust" => Some(unsafe { ffi::tree_sitter_rust() }),
+        #[allow(unsafe_code)]
+        "typescript" => Some(unsafe { ffi::tree_sitter_typescript() }),
+        #[allow(unsafe_code)]
+        "tsx" => Some(unsafe { ffi::tree_sitter_tsx() }),
+        #[allow(unsafe_code)]
+        "javascript" => Some(unsafe { ffi::tree_sitter_javascript() }),
+        #[allow(unsafe_code)]
+        "json" => Some(unsafe { ffi::tree_sitter_json() }),
+        #[allow(unsafe_code)]
+        "yaml" => Some(unsafe { ffi::tree_sitter_yaml() }),
+        #[allow(unsafe_code)]
+        "cpp" => Some(unsafe { ffi::tree_sitter_cpp() }),
+        #[allow(unsafe_code)]
+        "bash" => Some(unsafe { ffi::tree_sitter_bash() }),
         _ => None,
     }
 }

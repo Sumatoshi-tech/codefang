@@ -3,8 +3,8 @@
   "matrix_hash": "94130a05066db2a4477e07f206566abea72731e992802f8e0f1f2ace88c80a4b",
   "total_cells": 155,
   "tally": {
-    "PASS": 11,
-    "FAIL": 72,
+    "PASS": 33,
+    "FAIL": 50,
     "SIM": 0,
     "EXPECTED_EMPTY": 72
   },
@@ -138,7 +138,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/python",
@@ -151,7 +151,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/python",
@@ -256,7 +256,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/c",
@@ -269,7 +269,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/c",
@@ -374,7 +374,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/c-header",
@@ -387,7 +387,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/c-header",
@@ -492,7 +492,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/rust",
@@ -505,7 +505,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/rust",
@@ -610,7 +610,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/typescript",
@@ -623,7 +623,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/typescript",
@@ -728,7 +728,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/tsx",
@@ -741,7 +741,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/tsx",
@@ -846,7 +846,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/javascript",
@@ -859,7 +859,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/javascript",
@@ -964,7 +964,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/json",
@@ -977,7 +977,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/json",
@@ -1082,7 +1082,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/yaml",
@@ -1095,7 +1095,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/yaml",
@@ -1200,7 +1200,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/cpp",
@@ -1213,7 +1213,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/cpp",
@@ -1318,7 +1318,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[compact]/shell",
@@ -1331,7 +1331,7 @@
       ],
       "family": "uast_parse",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "uast/parse[tree]/shell",
@@ -1676,7 +1676,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "PASS"
+      "verdict": "FAIL"
     },
     {
       "label": "static:static/halstead[yaml]@hercules",
@@ -1814,7 +1814,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "PASS"
+      "verdict": "FAIL"
     },
     {
       "label": "static:static/imports[yaml]@hercules",
@@ -2019,7 +2019,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/sentiment[bin]@hercules/lim20",
@@ -2397,7 +2397,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/quality[bin]@hercules/lim20",

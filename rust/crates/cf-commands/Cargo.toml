@@ -28,21 +28,19 @@ description = "Analyzer-registration + clap command construction for codefang (G
 # the clap command tree, format validation, and the version command.
 default = []
 
-# `runtime` pulls in the execution crates so the run/render handlers can
-# actually drive analysis. Enable once the analyzer + git tiers compile.
+# `runtime` pulls in the remaining execution crates (framework runner,
+# checkpoint/cache, observability, plot/store) for the not-yet-wired streaming
+# pipeline paths. The core run pipeline + registry (this crate's `pipeline` and
+# `handlers` modules) now depend on the analyzer + git crates unconditionally,
+# so they are no longer behind this feature.
 runtime = [
-    "dep:cf-analyze",
     "dep:cf-framework",
-    "dep:cf-gitlib",
     "dep:cf-config",
     "dep:cf-checkpoint",
     "dep:cf-budget",
     "dep:cf-observability",
-    "dep:cf-pathpolicy",
-    "dep:cf-langpath",
     "dep:cf-plotpage",
     "dep:cf-storage",
-    "dep:cf-textutil",
 ]
 
 # The Go `mcp` command is //go:build ignore and NOT shipped by default
@@ -56,18 +54,51 @@ clap = { workspace = true }
 cf-version = { path = "../cf-version" }
 cf-pipeline = { path = "../cf-pipeline" }
 
-# Scaffold / not-yet-compiling sibling crates -- optional, gated behind the
-# `runtime` / `mcp` features.
-cf-analyze = { path = "../cf-analyze", optional = true }
+# --- Run-pipeline execution crates (the general run pipeline + registry) ---
+# Report serialization MUST route through these go-compat crates, never serde.
+cf-gojson = { path = "../cf-gojson" }
+cf-goyaml = { path = "../cf-goyaml" }
+cf-reportutil = { path = "../cf-reportutil" }
+# UAST parse for the shared static folder phase (parse the file set once).
+cf-uast = { path = "../cf-uast" }
+cf-uast-node = { path = "../cf-uast-node" }
+# Vendor/generated path-policy exclusion shared by the static + history phases.
+cf-pathpolicy = { path = "../cf-pathpolicy", features = ["default-deps"] }
+# libgit2-backed repository/commit access for the single history revwalk.
+cf-gitlib = { path = "../cf-gitlib" }
+# Go-time.RFC3339 formatting + metadata for history tick bounds / timeseries.
+cf-analyze = { path = "../cf-analyze" }
+cf-textutil = { path = "../cf-textutil" }
+cf-langpath = { path = "../cf-langpath" }
+# Line-mode diff (diffmatchpatch parity) for history per-file line stats.
+cf-godiff = { path = "../cf-godiff" }
+cf-alg-bloom = { path = "../cf-alg-bloom" }
+cf-alg-levenshtein = { path = "../cf-alg-levenshtein" }
+cf-analyzers-plumbing = { path = "../cf-analyzers-plumbing" }
+cf-burndown-core = { path = "../cf-burndown-core" }
+# --- Analyzer math crates (per-file Analyze + report serializers) ---
+cf-complexity = { path = "../cf-complexity" }
+cf-halstead = { path = "../cf-halstead" }
+cf-comments = { path = "../cf-comments" }
+cf-imports = { path = "../cf-imports" }
+cf-composition = { path = "../cf-composition" }
+cf-couples = { path = "../cf-couples" }
+cf-shotness = { path = "../cf-shotness" }
+cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }
+cf-devs = { path = "../cf-devs" }
+cf-typos = { path = "../cf-typos" }
+cf-anomaly = { path = "../cf-anomaly" }
+cf-quality = { path = "../cf-quality" }
+cf-sentiment = { path = "../cf-sentiment" }
+cf-file-history = { path = "../cf-file-history" }
+
+# Scaffold / not-yet-wired sibling crates -- optional, gated behind the
+# `runtime` / `mcp` features (streaming framework runner, persistence, plot).
 cf-framework = { path = "../cf-framework", optional = true }
-cf-gitlib = { path = "../cf-gitlib", optional = true }
 cf-config = { path = "../cf-config", optional = true }
 cf-checkpoint = { path = "../cf-checkpoint", optional = true }
 cf-budget = { path = "../cf-budget", optional = true }
 cf-observability = { path = "../cf-observability", optional = true }
-cf-pathpolicy = { path = "../cf-pathpolicy", optional = true }
-cf-langpath = { path = "../cf-langpath", optional = true }
 cf-plotpage = { path = "../cf-plotpage", optional = true }
 cf-storage = { path = "../cf-storage", optional = true }
-cf-textutil = { path = "../cf-textutil", optional = true }
 cf-mcp = { path = "../cf-mcp", optional = true }

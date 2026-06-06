@@ -19,7 +19,7 @@
 //!     `DetailedDataCollector` appends without re-sorting) plus summing the
 //!     aggregate totals;
 //!  4. `ComputeAllMetrics` over the assembled report — `function_complexity`
-//!     (Go `sort.Slice` by cyclomatic desc, reproduced via [`crate::go_sort`]),
+//!     (Go `sort.Slice` by cyclomatic desc, reproduced via [`crate::handlers::go_sort`]),
 //!     `distribution`, `high_risk_functions` (Go `sort.Slice` by risk priority),
 //!     `aggregate`;
 //!  5. marshaling the `ComputedMetrics` struct through cf-goyaml
@@ -41,7 +41,7 @@ use cf_goyaml::marshal;
 use cf_uast::Parser;
 use cf_uast_node::Node as UNode;
 
-use crate::go_sort;
+use crate::handlers::go_sort;
 
 // Risk thresholds (metrics.go).
 const CYCLOMATIC_THRESHOLD_HIGH: i64 = 10;

@@ -1,0 +1,12 @@
+{
+  "test": {
+    "exit": 0,
+    "seq": 599
+  },
+  "seq": 600,
+  "lint": {
+    "exit": 0,
+    "seq": 303
+  },
+  "last_code_write_seq": 600
+}

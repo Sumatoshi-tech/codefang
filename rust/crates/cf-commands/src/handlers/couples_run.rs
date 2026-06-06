@@ -40,7 +40,7 @@ const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 /// the HEAD commit (`--head`) or the oldest `--limit` commits (streaming
 /// Reverse walk). Returns `None` if the repository cannot be opened/walked.
 pub fn couples_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
-    let path = crate::run_repo_path(sub);
+    let path = crate::handlers::run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let head_only = sub.get_flag("head");

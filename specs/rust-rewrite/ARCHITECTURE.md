@@ -532,9 +532,109 @@ concrete analyzer and by `internal/framework`. Port right after gitlib + uast + 
 Heavy LOC: pkg/uast 132558 (mostly generated grammar+tests), sentiment/lexicons 94118 (embedded —
 copy verbatim), framework 5197, uast/pkg/node 4112, burndown 3993, analyze 3885.
 
-The full per-module table (name, goPath, Rust crate, tier, internal deps, purpose, LOC) is returned
-as the structured JSON artifact accompanying this document and is the canonical port-ordering
-record. Summary of tiers (leaf → root):
+### 8.1 Canonical Go-package → Rust-crate map (verified 2026-06-06)
+
+Every Go package under `internal/`, `pkg/`, `cmd/` maps to exactly one real Rust crate under
+`rust/crates/` (or a documented merge / support shim). Verified against the live tree: 74 crates +
+2 bin crates. No orphan bare scaffold remains except `cf-plotpage` (documented below). The
+`run`/`uast` CLIs live in `rust/bins/{codefang,uast}` (the `cmd/*` Tier 8/9 packages).
+
+| Go package | Rust crate | Notes |
+|---|---|---|
+| pkg/alg | cf-alg | umbrella re-export over the alg/* leaf crates |
+| pkg/alg/bloom | cf-alg-bloom | |
+| pkg/alg/cms | cf-alg-cms | |
+| pkg/alg/hll | cf-alg-hll | |
+| pkg/alg/internal/hashutil | cf-alg-hashutil | |
+| pkg/alg/interval | cf-alg-interval | |
+| pkg/alg/levenshtein | cf-alg-levenshtein | |
+| pkg/alg/lru | cf-alg-lru | |
+| pkg/alg/lsh | cf-alg-lsh | |
+| pkg/alg/mapx | cf-alg-mapx | |
+| pkg/alg/minhash | cf-alg-minhash | |
+| pkg/alg/stats | cf-alg-stats | |
+| pkg/gitlib | cf-gitlib | libgit2 via git2 |
+| pkg/iosafety | cf-iosafety | |
+| pkg/meminfo | cf-meminfo | |
+| pkg/metrics | cf-metrics | |
+| pkg/pathfilter | cf-pathfilter | |
+| pkg/persist | cf-persist | gob→bincode (internal state only, DESIGN §3) |
+| pkg/pipeline | cf-pipeline | |
+| pkg/safeconv | cf-safeconv | |
+| pkg/sigutil | cf-sigutil | |
+| pkg/textutil | cf-textutil | |
+| pkg/uast | cf-uast | tree-sitter stack |
+| pkg/uast/lsp | cf-uast-lsp | |
+| pkg/uast/pkg/mapping | cf-uast-mapping | |
+| pkg/uast/pkg/node | cf-uast-node | |
+| pkg/uast/pkg/spec | cf-uast-spec | |
+| pkg/uast/uastmaps (embedded `.uastmap`) | cf-uast-uastmaps | embedded mapping data |
+| pkg/units | cf-units | |
+| pkg/version | cf-version | |
+| internal/analyzers/analyze | cf-analyze | SPI hub (3885 LOC) |
+| internal/analyzers/plumbing | cf-analyzers-plumbing | |
+| internal/analyzers/plumbing/langpath | cf-langpath | enry v2.1.0 TSV vendored |
+| internal/analyzers/plumbing/pathpolicy | cf-pathpolicy | |
+| internal/analyzers/common | cf-analyzers-common | aggregator/reporter/computed-metrics |
+| internal/analyzers/common/renderer | cf-renderer | merged into cf-renderer |
+| internal/analyzers/common/reportutil | cf-reportutil | CFB1 .bin envelope |
+| internal/analyzers/common/plotpage | cf-plotpage | **SCAFFOLD** — see 8.2 |
+| internal/analyzers/common/spillstore | cf-spillstore | |
+| internal/analyzers/common/terminal | cf-terminal | |
+| internal/analyzers/anomaly | cf-anomaly | |
+| internal/analyzers/burndown | cf-analyzer-burndown | the analyzer (vs internal/burndown core) |
+| internal/analyzers/clones | cf-clones | |
+| internal/analyzers/cohesion | cf-cohesion | |
+| internal/analyzers/comments | cf-comments | |
+| internal/analyzers/complexity | cf-complexity | |
+| internal/analyzers/composition | cf-composition | |
+| internal/analyzers/couples | cf-couples | |
+| internal/analyzers/devs | cf-devs | |
+| internal/analyzers/file_history | cf-file-history | |
+| internal/analyzers/halstead | cf-halstead | |
+| internal/analyzers/imports | cf-imports | |
+| internal/analyzers/quality | cf-quality | |
+| internal/analyzers/sentiment | cf-sentiment | |
+| internal/analyzers/sentiment/lexicons | cf-sentiment-lexicons | embedded lexicon (94k LOC) |
+| internal/analyzers/shotness | cf-shotness | |
+| internal/analyzers/typos | cf-typos | |
+| internal/budget | cf-budget | |
+| internal/burndown | cf-burndown-core | burndown timeline/treap core (vs the analyzer) |
+| internal/cache | cf-cache | |
+| internal/checkpoint | cf-checkpoint | |
+| internal/config | cf-config | |
+| internal/framework | cf-framework | orchestration |
+| internal/identity | cf-identity | |
+| internal/mcp | cf-mcp | ported but `//go:build ignore` in Go → not wired into the bins |
+| internal/observability | cf-observability | |
+| internal/plumbing | cf-plumbing | |
+| internal/storage | cf-storage | |
+| internal/streaming | cf-streaming | |
+| cmd/codefang + cmd/codefang/commands | cf-commands + bins/codefang | command registry + clap bin |
+| cmd/uast | bins/uast | clap bin |
+
+**Support / third-party shim crates** (no 1:1 Go internal package — they stand in for Go stdlib /
+vendored libs so OUTPUT stays byte-identical; never substitute serde):
+
+| Rust crate | Stands in for | Used for |
+|---|---|---|
+| cf-gojson | `encoding/json` | byte-parity JSON marshal + shortest-float |
+| cf-goyaml | `gopkg.in/yaml.v3` | byte-parity YAML emitter |
+| cf-godiff | `sergi/go-diff` | diff-match-patch line stats |
+| cf-govader | `govader@f6505c8d03cc` | sentiment scoring algorithm |
+
+### 8.2 Bare scaffold inventory
+
+Exactly ONE crate remains a bare compiling scaffold: **`cf-plotpage`** (8-line `lib.rs`, just
+`CRATE_NAME`). Its Go origin (`internal/analyzers/common/plotpage`, 1629 LOC) renders multi-page
+HTML for `run --format plot|html`, which writes to an output DIRECTORY (`-o`) and emits **empty
+stdout** — so it produces NO byte-gated capture (MANIFEST `plotHtmlNote`: plot/html are nonBinding
+by nature). It is depended on only by `cf-commands` (link-through). It is therefore an intentional,
+documented deferral, NOT a correctness gap on any binding path. To be implemented when the plot/html
+human-rendered views are ported (out of binding scope).
+
+The full per-module table above is the canonical port-ordering record. Summary of tiers (leaf →
+root):
 
 - **Tier 0** (no internal deps): pkg/alg, alg/bloom, alg/internal/hashutil, alg/interval,
   alg/levenshtein, alg/mapx, alg/stats, iosafety, meminfo, metrics, pathfilter, persist, pipeline,

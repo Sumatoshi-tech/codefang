@@ -1,9 +1,9 @@
 {
   "tier": "smoke",
   "tally": {
-    "PASS": 26,
-    "SIM": 2,
-    "FAIL": 15,
+    "PASS": 39,
+    "SIM": 0,
+    "FAIL": 4,
     "NA": 3
   },
   "records": [
@@ -39,36 +39,22 @@
     {
       "property": "vary-input",
       "label": "uast/parse c-vs-rust",
-      "verdict": "SIM",
-      "SIMULATION_SUSPECT": "rust emits identical bytes for two inputs Go distinguishes (hardcoded-constant signature)",
-      "input_a": "/home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c",
-      "input_b": "/home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs",
-      "rust_out_a_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "rust_out_b_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "rust_out_a_head": "",
-      "rust_out_b_head": "",
-      "go_a_sha": "c01a39061f51eb918579525417a80acdc373a42de29e48a74b23b55c25eaa576",
-      "go_b_sha": "33e4dcb1d22d2ef9a93f8e859909524709246bd1057c280d615e651e24900fd9"
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
     },
     {
       "property": "vary-input",
       "label": "uast/parse typescript-vs-javascript",
-      "verdict": "SIM",
-      "SIMULATION_SUSPECT": "rust emits identical bytes for two inputs Go distinguishes (hardcoded-constant signature)",
-      "input_a": "/home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts",
-      "input_b": "/home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js",
-      "rust_out_a_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "rust_out_b_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "rust_out_a_head": "",
-      "rust_out_b_head": "",
-      "go_a_sha": "ad6448c7a8a545a096fb240aec10e0144b9a779fa4036a895743c1f8abb6e78e",
-      "go_b_sha": "0d69f5a4b707994db6d821c6074f281dd6553f27d436ab03ee8eb27af29fb267"
+      "verdict": "PASS",
+      "go_differs": true,
+      "rust_differs": true
     },
     {
       "property": "grow-limit",
       "label": "history/devs@kube",
       "verdict": "PASS",
-      "go_grows": "6455->24450",
+      "go_grows": "6458->24471",
       "rust_grows": "6455->24471"
     },
     {
@@ -90,8 +76,8 @@
       "property": "grow-limit",
       "label": "history/typos@kube",
       "verdict": "PASS",
-      "go_grows": "138->5952",
-      "rust_grows": "138->5875"
+      "go_grows": "138->5757",
+      "rust_grows": "138->6082"
     },
     {
       "property": "grow-limit",
@@ -104,8 +90,8 @@
       "property": "grow-limit",
       "label": "history/shotness@kube",
       "verdict": "PASS",
-      "go_grows": "194->3327282",
-      "rust_grows": "190->1324107"
+      "go_grows": "194->3665132",
+      "rust_grows": "190->1329608"
     },
     {
       "property": "determinism",
@@ -118,7 +104,7 @@
       "property": "determinism",
       "label": "static/complexity@hercules",
       "verdict": "PASS",
-      "sha": "726c89f08671b6bf23a56e83d541e84231dbb28fb2be726988d94f4b53e844b2",
+      "sha": "30a591254c765f1eabe008381a10992236860877866fde9324190b2500676fb2",
       "runs": 3
     },
     {
@@ -160,8 +146,8 @@
       "property": "non-empty",
       "label": "history/shotness@hercules",
       "verdict": "PASS",
-      "go_len": 385681,
-      "rust_len": 365171
+      "go_len": 383758,
+      "rust_len": 375599
     },
     {
       "property": "non-empty",
@@ -184,7 +170,7 @@
       "label": "history/sentiment@hercules",
       "verdict": "PASS",
       "go_len": 1246,
-      "rust_len": 1244
+      "rust_len": 1246
     },
     {
       "property": "non-empty",
@@ -207,7 +193,7 @@
       "label": "static/complexity@hercules",
       "verdict": "PASS",
       "go_len": 321919,
-      "rust_len": 202979
+      "rust_len": 315406
     },
     {
       "property": "non-empty",
@@ -220,22 +206,22 @@
       "property": "non-empty",
       "label": "static/halstead@hercules",
       "verdict": "PASS",
-      "go_len": 340765,
-      "rust_len": 218259
+      "go_len": 340739,
+      "rust_len": 333726
     },
     {
       "property": "non-empty",
       "label": "static/comments@hercules",
       "verdict": "PASS",
       "go_len": 236197,
-      "rust_len": 143258
+      "rust_len": 223349
     },
     {
       "property": "non-empty",
       "label": "static/imports@hercules",
       "verdict": "PASS",
       "go_len": 26337,
-      "rust_len": 15521
+      "rust_len": 24269
     },
     {
       "property": "non-empty",
@@ -252,7 +238,7 @@
       "verdict": "FAIL",
       "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
       "input": "run --checkpoint=false --resume=false --no-cache --head --workers 1 --static-workers 1 -p /home/dmitriy/sources/hercules --analyzers static/cohesion --format json",
-      "go_len": 274941,
+      "go_len": 274945,
       "rust_len": 0
     },
     {
@@ -265,101 +251,79 @@
     {
       "property": "non-empty",
       "label": "uast/parse python",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/984f54a60df9d1aa844e7e0aef10000e7090a00109d13e43587ccb077ef340bb.py",
+      "verdict": "PASS",
       "go_len": 700431,
-      "rust_len": 0
+      "rust_len": 700431
     },
     {
       "property": "non-empty",
       "label": "uast/parse c",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae.c",
+      "verdict": "PASS",
       "go_len": 142327,
-      "rust_len": 0
+      "rust_len": 142327
     },
     {
       "property": "non-empty",
       "label": "uast/parse c-header",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/ccd7c25e6864012e70abb674ac0895c42073fb1dcfc9531690f923d0df81c6c8.h",
+      "verdict": "PASS",
       "go_len": 19243,
-      "rust_len": 0
+      "rust_len": 19243
     },
     {
       "property": "non-empty",
       "label": "uast/parse rust",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/e4c669377ee72df081c75942df30d9cce9e1b2b718bd420b7958f05830659482.rs",
+      "verdict": "PASS",
       "go_len": 125877,
-      "rust_len": 0
+      "rust_len": 125877
     },
     {
       "property": "non-empty",
       "label": "uast/parse typescript",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/48db5a9463619bf983f8b297fd456bfb72c85ff6fda0f62c875528bb5f646c88.ts",
+      "verdict": "PASS",
       "go_len": 2555406,
-      "rust_len": 0
+      "rust_len": 2555406
     },
     {
       "property": "non-empty",
       "label": "uast/parse tsx",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/29a5b9fb763e0d6e383680f47a92eb1b9f47cc7de7d3f88f6f419a1378ed48f8.tsx",
+      "verdict": "PASS",
       "go_len": 244099,
-      "rust_len": 0
+      "rust_len": 244099
     },
     {
       "property": "non-empty",
       "label": "uast/parse javascript",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/cec8ae3b8004ac99daf3b97af96e152bc3a37be2c726a8d4264315ebff00e447.js",
+      "verdict": "PASS",
       "go_len": 54802,
-      "rust_len": 0
+      "rust_len": 54802
     },
     {
       "property": "non-empty",
       "label": "uast/parse json",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/9dcac88c20ff3561abd8bc8e7bcf921351c2566074697cb5b66553bf731d5355.json",
+      "verdict": "PASS",
       "go_len": 308147,
-      "rust_len": 0
+      "rust_len": 308147
     },
     {
       "property": "non-empty",
       "label": "uast/parse yaml",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/fbcb9a96145124eca68f210c9b89f5aeb2f1b0735b3227000590d17bb47bd868.yml",
+      "verdict": "PASS",
       "go_len": 150552,
-      "rust_len": 0
+      "rust_len": 150552
     },
     {
       "property": "non-empty",
       "label": "uast/parse cpp",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6.cpp",
+      "verdict": "PASS",
       "go_len": 3895930,
-      "rust_len": 0
+      "rust_len": 3895930
     },
     {
       "property": "non-empty",
       "label": "uast/parse shell",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "uast parse --format json /home/dmitriy/sources/codefang/rust/tests/compat/metamorphic/../corpus/files/5825f4115e21702b2ce1071b9972b5f9b89d93e2f116be2266c73c806be8ba58.sh",
+      "verdict": "PASS",
       "go_len": 148968,
-      "rust_len": 0
+      "rust_len": 148968
     },
     {
       "property": "golden-drift",

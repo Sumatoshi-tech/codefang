@@ -42,7 +42,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use crate::{floor_tick_secs, format_rfc3339_offset, run_repo_path};
+use crate::handlers::{floor_tick_secs, format_rfc3339_offset, run_repo_path};
 
 /// 24-hour tick period in seconds (`plumbing.DefaultTicksSinceStartTickSize`).
 const TICK_PERIOD: i64 = 86_400;
