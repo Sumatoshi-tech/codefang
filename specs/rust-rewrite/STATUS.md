@@ -2,30 +2,41 @@
 
 ## TL;DR (latest verified run — 2026-06-06, all 32 binding captures measured)
 
-**Binding captures: 31/32 byte-identical.** `cargo build --release` exits 0 and
-`cargo test --workspace` is GREEN. ALL 32 MANIFEST-binding captures
-(`machine=true` AND `nonBinding=false`) were measured this run: each Rust release
-binary (`rust/target/release/{codefang,uast}`) was run with the exact MANIFEST.json
-argv (binary path swapped) under the pinned golden env
-(`TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800`) and STDOUT was
-byte-compared against the golden at `relPath`. 31 are IDENTICAL; 1 fails. The
-original 7 core captures are all still IDENTICAL (no regression).
+**Binding captures: 32/32 byte-identical — BINDING-CAPTURE TIER COMPLETE.**
+`cargo build --release` exits 0 and `cargo test --workspace` is GREEN. ALL 32
+MANIFEST-binding captures (`machine=true` AND `nonBinding=false`) were measured
+this run: each Rust release binary (`rust/target/release/{codefang,uast}`) was run
+with the exact MANIFEST.json argv (binary path swapped) under the pinned golden
+env (`TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800`) and STDOUT
+was byte-compared against the golden at `relPath`. ALL 32 are IDENTICAL; 0 fail.
+The original 7 core captures are all still IDENTICAL (no regression).
 
-**New this run (3 additional binding captures driven green beyond the
-previously-recorded 28):** the history streaming pipeline + halstead JSON-section
-builder landed, driving green:
-- `static/static_halstead.json` — halstead JSON-section report (was: only the
-  `bin` sibling wired).
+**New this run (the last binding capture driven green — was 31/32):** the
+per-commit streaming NDJSON burndown path landed, driving green:
+- `run/burndown.ndjson` — streaming NDJSON, one JSON line per commit over
+  `--limit 5` (multi-commit per-commit GlobalDeltas, real per-commit diff+tick;
+  not the closed-form HEAD reduction). Rust now emits the 1490-byte golden
+  byte-for-byte (`cmp` IDENTICAL, rc=0), independently re-verified with the exact
+  MANIFEST argv.
+
+**Previously driven green (beyond the recorded 28):** the history streaming
+pipeline + halstead JSON-section builder:
+- `static/static_halstead.json` — halstead JSON-section report.
 - `run/burndown.timeseries.ndjson` — streaming `--format timeseries --ndjson`.
 - `run/history_sentiment.json` — per-tick sentiment (govader) over commit-message
   comments.
 
-**Still failing (1/32)** — falls through `run_dispatch` to the blocked-dependency
-sentinel (`Error: command dispatch is blocked on cf-commands (tier 8)`); no
-dispatch branch wired yet:
-- `run/burndown.ndjson` — streaming NDJSON, one JSON line per commit over
-  `--limit 5` (multi-commit per-commit GlobalDeltas; not the closed-form HEAD
-  reduction). Rust emits 0 bytes (sentinel, rc=1) vs the 1490-byte golden.
+**Remaining scope (NOT binding-gated):**
+- the **40 nonBinding / unstable captures** (`nonBinding=true` in MANIFEST.json):
+  human text-shaped views + Go-map-order-nondeterministic machine formats (see
+  "The 40 nonBinding / unstable captures" below);
+- **full run-pipeline generalization** — `run_dispatch` still routes the binding
+  history/static captures via closed-form / fixed-subset blocks; generalize to the
+  full analyzer pipeline so arbitrary `--analyzers` selectors + formats run
+  end-to-end;
+- **general (non-closed-form) analyzer dispatch** — replace the remaining
+  closed-form dispatch branches with a generic analyzer-dispatch path (the
+  fall-through dispatch sentinel still covers not-yet-ported selectors).
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
@@ -68,16 +79,17 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
   compile and the suite passes; the lint+test evidence gate is satisfied, so the
   build-blocker / Tier-0 / Tier-1 DoD boxes that were annotated "verified green"
   but left unticked are now CHECKED OFF in ROADMAP.md.
-- **Binding parity tally 31/32** (full 32-capture measurement this run; the
-  earlier 7/7 referred only to the original core set). One capture remains:
-  `run/burndown.ndjson` (streaming per-commit deltas; dispatch sentinel).
+- **Binding parity tally 32/32** (full 32-capture measurement this run; the
+  earlier 7/7 referred only to the original core set). No binding capture remains:
+  `run/burndown.ndjson` (streaming per-commit deltas) is now byte-identical, so
+  the binding-capture tier is COMPLETE.
 - **Output-path / dispatch parity unverified.** `--help`/`version`/flag bytes vs
   the Go cobra binaries, and `codefang run` analyzer dispatch, have NOT been
   byte-diffed.
 - **`cf-goyaml`** still a scaffold; `marshal` is linkable but not yaml.v3-parity
   (Step 4). Not among the 7 (all-JSON) binding captures.
 
-## The 31 passing binding captures (of 32; from MANIFEST.json)
+## The 32 passing binding captures (32/32; from MANIFEST.json)
 
 | # | relPath | status (2026-06-06) |
 |---|---|---|
@@ -112,26 +124,33 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 | 29 | static/static_halstead.bin     | IDENTICAL (cf-halstead + CFB1) |
 | 30 | static/static_imports.yaml     | IDENTICAL (cf-imports + cf-goyaml) |
 | 31 | static/static_imports.bin      | IDENTICAL (cf-imports + CFB1) |
+| 32 | run/burndown.ndjson            | IDENTICAL (NEW: streaming per-commit GlobalDeltas NDJSON, `--limit 5`) |
 
-1 binding capture still fails — see "Remaining failing binding capture" below.
+ALL 32 binding captures are byte-identical — the binding-capture tier is COMPLETE.
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
 STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
 
-## Remaining failing binding capture (1/32) — next work
+## Remaining failing binding capture — NONE (32/32)
 
-The last failing capture falls through `run_dispatch` to the dispatch sentinel
-(`Error: command dispatch is blocked on cf-commands (tier 8)`) because no branch
-is wired for that analyzer/format combination yet.
+There are no failing binding captures. The last one to land,
+`run/burndown.ndjson` (streaming NDJSON: one JSON line per commit over
+`--limit 5`, real per-commit GlobalDeltas from diffs — multi-commit pipeline, not
+the closed-form HEAD reduction), now emits the 1490-byte golden byte-for-byte
+(`cmp` IDENTICAL, rc=0). The history streaming NDJSON pipeline for burndown
+(multi-commit `RunStreaming` emitting one per-commit `GlobalDeltas` JSON line) is
+wired.
 
-| relPath | reason still failing |
-|---|---|
-| run/burndown.ndjson | streaming NDJSON: one JSON line per commit over `--limit 5`, real per-commit GlobalDeltas from diffs (multi-commit pipeline, not the closed-form HEAD reduction). Rust emits 0 bytes (sentinel, rc=1) vs the 1490-byte golden. |
+## Remaining scope (NOT binding-gated)
 
-Enabler: the **history streaming NDJSON pipeline** for burndown — multi-commit
-`RunStreaming` emitting one per-commit `GlobalDeltas` JSON line (the sibling
-`run/burndown.timeseries.ndjson` streaming path is already green, so the
-remaining gap is the per-commit-deltas ndjson serialization specifically).
+With the binding tier COMPLETE, the remaining work is:
+1. **40 nonBinding / unstable captures** — see the next section.
+2. **Full run-pipeline generalization** — generalize `run_dispatch` beyond the
+   closed-form / fixed-subset blocks so arbitrary `--analyzers` selectors and
+   formats run through the full analyzer pipeline end-to-end.
+3. **General (non-closed-form) analyzer dispatch** — replace the remaining
+   closed-form dispatch branches with a generic analyzer-dispatch path; the
+   fall-through dispatch sentinel still covers not-yet-ported selectors.
 
 ## The 40 nonBinding / unstable captures — follow-on work
 

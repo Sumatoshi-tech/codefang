@@ -770,6 +770,29 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // Fall through to the sentinel when the repo cannot be walked.
     }
 
+    // history/burndown --format ndjson (streaming record NDJSON, no timeseries,
+    // no --head, e.g. --limit N --workers 1): per-commit burndown CommitResult
+    // emitted as NDJSON — one compact JSON line per commit. The Go streaming
+    // pipeline (run.go initHistoryPipeline Reverse+FirstParent+Limit →
+    // RunStreaming → analyze.StreamingSink.WriteTC) writes an
+    // NDJSONLine{hash, tick, author_id, timestamp, analyzer, data} where `data`
+    // is the burndown CommitResult (full sparse GlobalDeltas + LinesAdded/Removed;
+    // people/matrix/file/ownership null at PeopleNumber 0). author_id comes from
+    // the loose IdentityDetector. Reduces to a deterministic closed form built
+    // from libgit2 here (see burndown_record_ndjson); bytes route through
+    // cf-gojson byte-identically to run/burndown.ndjson.
+    if analyzers.as_slice() == ["history/burndown"]
+        && format == "ndjson"
+        && !sub.get_flag("head")
+    {
+        if let Some(bytes) = burndown_ndjson::burndown_record_ndjson(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the repo cannot be walked.
+    }
+
     if analyzers.as_slice() == ["history/burndown"]
         && sub.get_flag("head")
         && matches!(format, "json" | "yaml" | "bin")

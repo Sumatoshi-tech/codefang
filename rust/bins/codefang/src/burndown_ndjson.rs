@@ -36,10 +36,10 @@ use cf_gitlib::blob::CachedBlob;
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, Change, ChangeAction};
 use cf_gitlib::repository::LogOptions;
 use cf_godiff::Op;
-use cf_gojson::value::{GoMap, GoValue};
+use cf_gojson::value::{GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use crate::{floor_tick_secs, format_rfc3339_offset, run_repo_path};
@@ -136,6 +136,193 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     }
 
     Some(out)
+}
+
+/// Builds the burndown **record** NDJSON bytes for the oldest `--limit` commits
+/// (`run --analyzers history/burndown --format ndjson`, no `--timeseries`,
+/// no `--head`), or `None` if the repository cannot be opened/walked.
+///
+/// Reproduces the Go streaming NDJSON sink (`analyze.StreamingSink.WriteTC`):
+/// one `NDJSONLine{hash, tick, author_id, timestamp, analyzer, data}` per commit,
+/// where `data` is the burndown `CommitResult` carried as `TC.Data`. Unlike the
+/// time-series sibling this emits the full per-commit sparse `GlobalDeltas`
+/// (`curTick -> prevTick -> lineCountDelta`) plus the derived `LinesAdded` /
+/// `LinesRemoved`; the people/matrix/file/ownership fields are `null` because the
+/// streaming pipeline runs with `PeopleNumber == 0` and no file tracking.
+///
+/// `author_id` is the identity assigned by `IdentityDetector` (default loose
+/// signature matching, dict built incrementally in walk order): each commit's
+/// lowercased author email/name resolves to (or registers) a sequential id.
+/// `timestamp` is the committer time in the commit's original zone offset
+/// (`time.RFC3339`). Tick assignment matches the time-series path
+/// (`TicksSinceStart`, monotonic floor of committer time against `tick0`).
+///
+/// Both the top-level `NDJSONLine` object (`hash, tick, author_id, timestamp,
+/// analyzer, data`) and the nested `data` `CommitResult` (`GlobalDeltas,
+/// PeopleDeltas, MatrixDeltas, FileDeltas, FileOwnership, LinesAdded,
+/// LinesRemoved`) preserve Go struct-declaration field order via struct-origin
+/// maps, exactly as `json.Marshal` of those structs. All bytes route through
+/// `cf-gojson`.
+pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+
+    let mut iter = repo
+        .log(&LogOptions { reverse: true, first_parent: true, ..LogOptions::default() })
+        .ok()?;
+    let mut hashes = Vec::new();
+    while limit <= 0 || (hashes.len() as i64) < limit {
+        match iter.next_commit() {
+            Some(c) => hashes.push(c.hash()),
+            None => break,
+        }
+    }
+    drop(iter);
+
+    let opts = PathPolicyOptions::default();
+    let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
+    let mut tracked: HashMap<String, File> = HashMap::new();
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+    let mut identity = LooseIdentity::default();
+
+    let mut out: Vec<u8> = Vec::new();
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let new_tree = commit.tree().ok()?;
+
+        // author_id: loose identity over the commit's author signature.
+        let author = commit.author();
+        let author_id = identity.resolve(&author.name, &author.email);
+
+        let committer = commit.committer();
+        let when = committer.when.seconds();
+        let t0 = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw = (when - t0).div_euclid(TICK_PERIOD);
+        let tick = raw.max(previous_tick);
+        previous_tick = tick;
+
+        let num_parents = commit.num_parents();
+        let changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+        let is_merge = num_parents > 1;
+
+        sink.borrow_mut().clear();
+        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        let (global, added, removed) = commit_sparse_stats(&sink.borrow(), tick);
+
+        // CommitResult struct (struct-declaration field order, GlobalDeltas full
+        // sparse map; people/matrix/file/ownership null).
+        let mut data = GoMap::new(MapOrigin::Struct);
+        data.insert("GlobalDeltas", sparse_to_value(&global));
+        data.insert("PeopleDeltas", GoValue::Null);
+        data.insert("MatrixDeltas", GoValue::Null);
+        data.insert("FileDeltas", GoValue::Null);
+        data.insert("FileOwnership", GoValue::Null);
+        data.insert("LinesAdded", GoValue::Int(added));
+        data.insert("LinesRemoved", GoValue::Int(removed));
+
+        let timestamp =
+            format_rfc3339_offset(committer.when.seconds(), committer.when.offset_minutes());
+
+        // NDJSONLine: json.Marshal of a struct → field-declaration order
+        // (hash, tick, author_id, timestamp, analyzer, data).
+        let mut line = GoMap::new(MapOrigin::Struct);
+        line.insert("hash", GoValue::Str(hash.to_string()));
+        line.insert("tick", GoValue::Int(tick));
+        line.insert("author_id", GoValue::Int(author_id));
+        line.insert("timestamp", GoValue::Str(timestamp));
+        line.insert("analyzer", GoValue::Str("burndown".to_string()));
+        line.insert("data", GoValue::Map(data));
+
+        out.extend_from_slice(&cf_gojson::marshal(&GoValue::Map(line)));
+        out.push(b'\n');
+    }
+
+    Some(out)
+}
+
+/// `IdentityDetector` with default loose signature matching, built incrementally
+/// in commit-walk order (`registerLooseIdentity`). Maps lowercased author
+/// email/name to a sequential id, registering new identities on first sight.
+#[derive(Default)]
+struct LooseIdentity {
+    dict: HashMap<String, i64>,
+    size: i64,
+}
+
+impl LooseIdentity {
+    fn resolve(&mut self, name: &str, email: &str) -> i64 {
+        let email = email.to_lowercase();
+        let name = name.to_lowercase();
+
+        if let Some(&id) = self.dict.get(&email) {
+            self.dict.entry(name).or_insert(id);
+            return id;
+        }
+        if let Some(&id) = self.dict.get(&name) {
+            self.dict.insert(email, id);
+            return id;
+        }
+        let id = self.size;
+        self.dict.insert(email, id);
+        self.dict.insert(name, id);
+        self.size += 1;
+        id
+    }
+}
+
+/// `computeCommitLineStats` plus the full sparse `globalDeltas[cur][prev]` map.
+/// Reports `(cur, prev, delta)` aggregate into numerically-sorted nested
+/// `BTreeMap`s (so canceling `(tick,tick,+n)`/`(tick,tick,-n)` cells vanish, and
+/// the int map keys emit in Go's numeric order). `lines_added` sums positive
+/// `(tick, tick)` cells; `lines_removed` sums the magnitudes of negative cells in
+/// the commit-tick row.
+fn commit_sparse_stats(
+    reports: &[(i64, i64, i64)],
+    tick: i64,
+) -> (BTreeMap<i64, BTreeMap<i64, i64>>, i64, i64) {
+    let mut global: BTreeMap<i64, BTreeMap<i64, i64>> = BTreeMap::new();
+    for &(cur, prev, delta) in reports {
+        *global.entry(cur).or_default().entry(prev).or_default() += delta;
+    }
+    let mut added = 0i64;
+    let mut removed = 0i64;
+    if let Some(row) = global.get(&tick) {
+        for (&prev, &delta) in row {
+            if prev == tick && delta > 0 {
+                added += delta;
+            } else if delta < 0 {
+                removed += -delta;
+            }
+        }
+    }
+    (global, added, removed)
+}
+
+/// Serializes the sparse `curTick -> prevTick -> delta` map as a struct-origin
+/// `GoValue` so the numerically-sorted `BTreeMap` insertion order is preserved on
+/// encode (matching Go's `json.Marshal` of `map[int]map[int]int64`, which sorts
+/// integer keys numerically and renders them as strings).
+fn sparse_to_value(global: &BTreeMap<i64, BTreeMap<i64, i64>>) -> GoValue {
+    let mut outer = GoMap::new(MapOrigin::Struct);
+    for (cur, row) in global {
+        let mut inner = GoMap::new(MapOrigin::Struct);
+        for (prev, delta) in row {
+            inner.insert(prev.to_string(), GoValue::Int(*delta));
+        }
+        outer.insert(cur.to_string(), GoValue::Map(inner));
+    }
+    GoValue::Map(outer)
 }
 
 /// `computeCommitLineStats(cr, curTick)`: the `(cur, prev, delta)` reports are

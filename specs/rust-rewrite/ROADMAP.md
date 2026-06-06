@@ -21,7 +21,9 @@ env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <argv>
 
 Capture STDOUT only (STDERR is timestamped progress, discarded), then `cmp -s` /
 `sha256sum` against `rust/tests/golden/<relPath>`. A step is done only when its
-binding capture(s) are byte-IDENTICAL. The 7 BINDING captures are:
+binding capture(s) are byte-IDENTICAL. MANIFEST.json marks **32** captures binding
+(`machine=true` AND `nonBinding=false`) — ALL 32 are byte-IDENTICAL as of
+2026-06-06. The 7 ORIGINAL CORE captures (the first to be driven green) are:
 
 | relPath | argv tail |
 |---|---|
@@ -33,9 +35,11 @@ binding capture(s) are byte-IDENTICAL. The 7 BINDING captures are:
 | uast/analyze.json | analyze --format json <byte.go> |
 | uast/query.json | query 'filter(.roles has "Function")' --format json <byte.go> |
 
-The remaining 18 captures in MANIFEST.json are nonBinding (`machine:false` or
-human text/plot/html, or unstable Go map-order). They do NOT count toward the
-pass/fail tally.
+The other 25 binding captures (static/run yaml+bin+json sections, the uast
+compact/count formats, the burndown stream formats) are listed in STATUS.md's
+"32 passing binding captures" table. The 40 nonBinding captures in MANIFEST.json
+(`machine:false` human text/plot/html/compact, or `stable=false` Go-map-order)
+do NOT count toward the binding pass/fail tally.
 
 ## Current state (verified 2026-06-06 — authoritative)
 
@@ -53,37 +57,39 @@ pass/fail tally.
 > The two prior build blockers (`cf-textutil` E0583, `cf-analyze` 21 errors) are
 > **RESOLVED** and the whole workspace links. **`cargo test --workspace` is
 > GREEN** — every test target compiles and the full suite passes. **Binding
-> parity tally is now 31/32 byte-identical** (was 7/7 of the original core set →
-> 17/32 → 28/32 → 31/32; the MANIFEST marks 32 captures binding). The 7 original
-> core captures remain IDENTICAL (no regression). Since the 28/32 milestone, the
-> halstead JSON-section builder and the history streaming pipeline landed and
-> drove 3 more green: `static/static_halstead.json`,
-> `run/burndown.timeseries.ndjson`, and `run/history_sentiment.json`. The single
-> remaining failing capture falls through `run_dispatch` to the dispatch sentinel
-> (no branch wired): `run/burndown.ndjson` (streaming per-commit GlobalDeltas
-> NDJSON) — see Step 18 list. Newly-ported `cf-langpath` (1 doctest) and
-> `cf-persist` (34 unit + 1 doctest) remain green; `cf-anomaly` green (35/35);
-> `cf-goyaml` is now a real ~1,791-line emitter (YAML goldens byte-identical).
+> parity tally is now 32/32 byte-identical — the BINDING-CAPTURE TIER is
+> COMPLETE** (was 7/7 of the original core set → 17/32 → 28/32 → 31/32 → 32/32;
+> the MANIFEST marks 32 captures binding). The 7 original core captures remain
+> IDENTICAL (no regression). Since the 28/32 milestone, the halstead JSON-section
+> builder and the history streaming pipeline drove 3 green
+> (`static/static_halstead.json`, `run/burndown.timeseries.ndjson`,
+> `run/history_sentiment.json`); the per-commit streaming NDJSON burndown path
+> then drove the LAST one green: `run/burndown.ndjson` (streaming per-commit
+> GlobalDeltas NDJSON over `--limit 5`, now byte-identical to the 1490-byte
+> golden). Newly-ported `cf-langpath` (1 doctest) and `cf-persist` (34 unit +
+> 1 doctest) remain green; `cf-anomaly` green (35/35); `cf-goyaml` is now a real
+> ~1,791-line emitter (YAML goldens byte-identical).
 
-### Exact next action — 31/32 binding captures byte-identical; drive the last 1
+### Exact next action — 32/32 binding captures byte-identical (TIER COMPLETE); remaining scope below
 
-31 of the 32 MANIFEST-binding captures are byte-IDENTICAL (verified this run by
+ALL 32 MANIFEST-binding captures are byte-IDENTICAL (verified this run by
 running each release binary under the golden env with the MANIFEST argv and
-byte-comparing STDOUT). PASSING: `uast/{parse,parse.compact,analyze,query,
-query.compact,query.count}`, `run/history_{typos,imports,anomaly,devs,quality,
-sentiment}.json`, `run/history_devs.{yaml,bin}`,
-`run/burndown.{json,yaml,bin,timeseries,timeseries.ndjson}`,
+byte-comparing STDOUT — `32/32 IDENTICAL`, 0 failing). PASSING:
+`uast/{parse,parse.compact,analyze,query,query.compact,query.count}`,
+`run/history_{typos,imports,anomaly,devs,quality,sentiment}.json`,
+`run/history_devs.{yaml,bin}`,
+`run/burndown.{json,yaml,bin,timeseries,ndjson,timeseries.ndjson}`,
 `static/static_composition.{json,yaml,bin}`, `static/static_comments.{yaml,bin}`,
 `static/static_complexity.{json,yaml,bin}`, `static/static_halstead.{json,bin}`,
 `static/static_imports.{yaml,bin}`.
 
-The 1 still-failing capture falls through `run_dispatch` to the dispatch sentinel
-(`Error: command dispatch is blocked on cf-commands (tier 8)`) — no branch wired:
-
-HISTORY STREAMING (need multi-commit `RunStreaming` — per-commit diff+blob+tick):
-- run/burndown.ndjson — one per-commit GlobalDeltas JSON line over `--limit 5`
-  (the sibling `run/burndown.timeseries.ndjson` streaming path is already green;
-  the remaining gap is the per-commit-deltas ndjson serialization specifically).
+REMAINING SCOPE (NOT binding-gated): (1) the **40 nonBinding / unstable
+captures** (`nonBinding=true` — human text-shaped views + Go-map-order
+nondeterministic machine formats; Steps 15-17); (2) **full run-pipeline
+generalization** beyond the closed-form / fixed-subset dispatch blocks; (3)
+**general (non-closed-form) analyzer dispatch** to replace the remaining
+closed-form branches (the fall-through dispatch sentinel still covers
+not-yet-ported selectors).
 
 DONE this run: the `cargo test --workspace` test-target compile failures
 (`cf-clones`, the `uast` bin-test, and cf-uast-node) referencing the stale
@@ -580,26 +586,29 @@ upstream VADER; oracle on final bytes.
 (`nonBinding=false`) byte-IDENTICAL, release build clean, golden-harness exits 0,
 and ARCHITECTURE.md matches the actual crate layout.
 
-**STATUS 2026-06-06: 31/32 byte-identical** (release build green; `cargo test
---workspace` green; full 32-capture measurement this run). The 1 remaining falls
-through `run_dispatch` to the dispatch sentinel (no branch wired) — see the
-"Exact next action" list at the top. The failing relPath: `run/burndown.ndjson`
-(streaming per-commit GlobalDeltas NDJSON). Newly green since 28/32:
-`static/static_halstead.json` (halstead JSON-section builder),
-`run/burndown.timeseries.ndjson` (streaming timeseries+ndjson), and
-`run/history_sentiment.json` (per-tick govader sentiment).
+**STATUS 2026-06-06: 32/32 byte-identical — BINDING-CAPTURE TIER COMPLETE**
+(release build green; `cargo test --workspace` green; full 32-capture measurement
+this run = `32/32 IDENTICAL`, 0 failing). The last capture,
+`run/burndown.ndjson` (streaming per-commit GlobalDeltas NDJSON over `--limit 5`),
+is now byte-identical to the 1490-byte golden (`cmp` IDENTICAL, rc=0). Newly green
+since 28/32: `static/static_halstead.json` (halstead JSON-section builder),
+`run/burndown.timeseries.ndjson` (streaming timeseries+ndjson),
+`run/history_sentiment.json` (per-tick govader sentiment), and finally
+`run/burndown.ndjson` (per-commit streaming NDJSON pipeline).
 
 **DoR (Definition of Ready):** Steps 1-17 complete.
 
 **DoD (Definition of Done):**
 - [x] `cargo build --release` clean (no errors).
-- [ ] `golden-harness` reports 32/32 binding captures IDENTICAL (now 31/32; the
-      in-repo `golden-harness` binary still checks only the original 7 — the
-      32-capture measurement was run out-of-band this session).
-- [ ] No `todo!`/`unimplemented!`/"not yet implemented" in binding code paths.
-      (The 1 failing capture hits the dispatch sentinel, not a `todo!`, but its
-      branch is unimplemented.)
-- [ ] ARCHITECTURE.md module map matches the real crate layout.
+- [x] All 32 binding captures report IDENTICAL (32/32 this run — measured by
+      running each release binary with the exact MANIFEST argv under the golden
+      env and byte-comparing STDOUT vs `relPath`; the in-repo `golden-harness`
+      binary still checks only the original 7).
+- [x] No `todo!`/`unimplemented!`/"not yet implemented" in binding code paths.
+      (All 32 binding captures run to completion and emit byte-identical bytes; no
+      binding capture hits the dispatch sentinel.)
+- [ ] ARCHITECTURE.md module map matches the real crate layout. (Step 13 — not
+      part of the binding-capture tier.)
 
 **Risks:** A late float/ordering fix regresses an earlier capture. Mitigation: run
 the full harness after every Tier-0/1 change.
@@ -649,7 +658,7 @@ the full harness after every Tier-0/1 change.
       yields both binaries; `version` subcommand works. `--help`/`--version`
       byte-match vs Go NOT yet diffed. (Gate green.)
 
-### Tier 1 — binding captures (2026-06-06: 31/32 IDENTICAL)
+### Tier 1 — binding captures (2026-06-06: 32/32 IDENTICAL — TIER COMPLETE)
 > The original 7 core captures below were diffed byte-for-byte against their
 > goldens under the golden env (each Rust release binary run with the exact
 > MANIFEST.json argv, binary path swapped to `rust/target/release/{codefang,uast}`,
@@ -678,9 +687,9 @@ the full harness after every Tier-0/1 change.
 > - `static/static_halstead.json` — halstead JSON-section builder (now green).
 > - `run/burndown.timeseries.ndjson` — streaming timeseries+ndjson (now green).
 > - `run/history_sentiment.json` — per-tick govader sentiment (now green).
-> STILL FAILING (1/32, falls through `run_dispatch` to the dispatch sentinel —
-> no branch wired): `run/burndown.ndjson` (streaming per-commit GlobalDeltas
-> NDJSON; the sibling timeseries+ndjson streaming path is already green).
+> - `run/burndown.ndjson` — streaming per-commit GlobalDeltas NDJSON over
+>   `--limit 5` (the LAST binding capture; now byte-identical to the 1490-byte
+>   golden). ALL 32 binding captures are now IDENTICAL — TIER COMPLETE.
 - [x] Step 6 — uast parse --format json (golden 285,255 B)
 - [x] Step 7 — uast analyze --format json (golden 965 B)
 - [x] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
@@ -715,7 +724,10 @@ the full harness after every Tier-0/1 change.
 - [ ] Step 17 — sentiment/govader lexicon parity
 
 ### Tier 3 — acceptance
-- [ ] Step 18 — full binding-suite green gate (target 32/32 IDENTICAL; now 31/32)
+- [x] Step 18 — full binding-suite green gate: **32/32 IDENTICAL** (measured this
+      run; release build green; `cargo test --workspace` green). Only the
+      ARCHITECTURE.md-module-map sub-item (Step 13) remains, which is reconciliation
+      work, not a binding capture. BINDING-CAPTURE TIER COMPLETE.
 
 ## Top byte-identity risks to watch (from ARCHITECTURE.md §9)
 
