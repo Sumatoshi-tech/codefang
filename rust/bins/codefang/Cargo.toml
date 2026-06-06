@@ -50,3 +50,8 @@ cf-gitlib = { path = "../../crates/cf-gitlib" }
 cf-analyzers-plumbing = { path = "../../crates/cf-analyzers-plumbing" }
 # Go-`time.RFC3339`-parity unix→string formatter for tick bounds.
 cf-analyze = { path = "../../crates/cf-analyze" }
+# history/anomaly analyzer: ComputedMetrics + Go-value lowering for the
+# `run --analyzers history/anomaly --head` capture (HEAD merge closed form).
+cf-anomaly = { path = "../../crates/cf-anomaly" }
+# Vendor / generated path-policy exclusion (TreeDiff.filterChanges parity).
+cf-pathpolicy = { path = "../../crates/cf-pathpolicy", features = ["default-deps"] }

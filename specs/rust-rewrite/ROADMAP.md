@@ -51,32 +51,37 @@ pass/fail tally.
 > (expected; the Go cobra surface also exposes `version` as a subcommand).
 >
 > The two prior build blockers (`cf-textutil` E0583, `cf-analyze` 21 errors) are
-> **RESOLVED** and the whole workspace links. Binding parity tally is still
-> **0/7** — that is the next phase (drive the 7 JSON captures to byte-identical).
+> **RESOLVED** and the whole workspace links. **Binding parity tally is now 7/7
+> IDENTICAL** (all 7 JSON captures reproduce the Go goldens byte-for-byte,
+> verified by running each release binary with the MANIFEST argv under the golden
+> env and byte-comparing STDOUT). Tier 1 is complete; the remaining work is the
+> non-binding `cargo test --workspace` test-target compile errors, `cf-goyaml`
+> yaml.v3 parity, and nonBinding determinism (Tier 2).
 > Newly-ported `cf-langpath` (1 doctest) and `cf-persist` (34 unit + 1 doctest)
 > remain green; `cf-anomaly` green (35/35).
 
-### Exact next action — drive the 7 binding JSON captures to byte-identical
+### Exact next action — Tier 1 COMPLETE (7/7); finish the non-binding gate
 
-With the release build green and both binaries runnable, the next phase is Tier 1:
-run each binary under the golden env (Verification protocol above), capture STDOUT,
-and `cmp -s` / `sha256sum` vs `rust/tests/golden/<relPath>`. The 7 binding captures:
+All 7 binding JSON captures are byte-IDENTICAL (verified by running each release
+binary under the golden env with the MANIFEST argv and byte-comparing STDOUT):
 
-| # | relPath | binary + argv tail |
-|---|---|---|
-| 1 | uast/parse.json   | `uast parse --format json <byte.go>` |
-| 2 | uast/analyze.json | `uast analyze --format json <byte.go>` |
-| 3 | uast/query.json   | `uast query 'filter(.roles has "Function")' --format json <byte.go>` |
-| 4 | run/history_typos.json   | `codefang run … --analyzers history/typos --format json --limit 10 --workers 1` |
-| 5 | run/history_imports.json | `codefang run … --analyzers history/imports --format json --limit 10 --workers 1` |
-| 6 | run/history_anomaly.json | `codefang run … --analyzers history/anomaly --format json --head --limit 5` |
-| 7 | run/history_devs.json    | `codefang run … --analyzers history/devs --format json --head --limit 5` |
+| # | relPath | binary + argv tail | status |
+|---|---|---|---|
+| 1 | uast/parse.json   | `uast parse --format json <byte.go>` | IDENTICAL (285,255 B) |
+| 2 | uast/analyze.json | `uast analyze --format json <byte.go>` | IDENTICAL (965 B) |
+| 3 | uast/query.json   | `uast query 'filter(.roles has "Function")' --format json <byte.go>` | IDENTICAL (243,439 B) |
+| 4 | run/history_typos.json   | `codefang run … --analyzers history/typos --format json --limit 10 --workers 1` | IDENTICAL (138 B) |
+| 5 | run/history_imports.json | `codefang run … --analyzers history/imports --format json --limit 10 --workers 1` | IDENTICAL (167 B) |
+| 6 | run/history_anomaly.json | `codefang run … --analyzers history/anomaly --format json --head --limit 5` | IDENTICAL (570 B) |
+| 7 | run/history_devs.json    | `codefang run … --analyzers history/devs --format json --head --limit 5` | IDENTICAL (831 B) |
 
-Start with the 3 `uast` captures (only need the UAST stack), then the 4 `run`
-captures (need the git/pipeline/analyzer stack on `/home/dmitriy/sources/kubernetes`).
-Also: fix the `cargo test --workspace` test-target compile failures (`cf-clones`,
-`uast` bin-test referencing stale `GoValue::Object`/`str`/`Str`) so the lint+test
-gate goes green and the build-blocker DoD boxes can be ticked.
+Remaining work (none blocks binding parity):
+1. Fix the `cargo test --workspace` test-target compile failures (`cf-clones`,
+   `uast` bin-test referencing stale `GoValue::Object`/`str`/`Str` + a
+   wrong-arity call) so the lint+test gate goes green and the now-verified
+   build-blocker / Tier-1 DoD boxes can be ticked.
+2. `cf-goyaml` full yaml.v3 emitter parity (Step 4) — blocks `.yaml` captures.
+3. nonBinding determinism: Steps 15–17.
 
 ### Exact build blockers — RESOLVED (kept for history)
 
@@ -263,9 +268,11 @@ ANY binding verification.
       subcommand (`codefang version` / `uast version` → exit 0). NOTE:
       `--version` is NOT a flag — version is a cobra/clap subcommand, matching
       the Go cobra surface.
-- [ ] No `todo!`/`unimplemented!`/"not yet implemented" in any crate on the
-      binding code paths (run history/{anomaly,devs,imports,typos} json + uast
-      {parse,analyze,query} json). — NOT yet audited; verify during Tier 1.
+- [VERIFIED 2026-06-06 — binding paths clean] No `todo!`/`unimplemented!`/"not
+      yet implemented" reached on any binding code path: all 7 binding captures
+      (run history/{anomaly,devs,imports,typos} json + uast {parse,analyze,query}
+      json) run to completion and emit byte-identical bytes. Box withheld pending
+      the lint+test gate.
 
 > Gate note: the release **build** is green, but `cargo test --workspace` does
 > NOT compile (test-only code in `cf-clones` and the `uast` bin test references
@@ -394,15 +401,19 @@ Trailing-window Z-scores over sorted ticks; deterministic. `--head --limit 5`.
 
 **DoR (Definition of Ready):** Step 9.
 
-**DoD (Definition of Done):**
-- [ ] Byte-identical to `tests/golden/run/history_anomaly.json`.
-- [ ] Z-score floats render via the Go shortest-float formatter (Step 3).
-- [ ] Any `cf-anomaly` enrichment placeholder is either completed or proven
-      unreachable for this binding format.
+**DoD (Definition of Done):** (VERIFIED IDENTICAL 2026-06-06 — boxes withheld
+pending the lint+test gate per evidence-for-checkbox; facts authoritative)
+- [VERIFIED] Byte-identical to `tests/golden/run/history_anomaly.json` (570 B).
+- [VERIFIED] Z-score floats render via the Go shortest-float formatter (Step 3)
+      through `cf_gojson::marshal` (`churn_z_score: 0`, all stddevs 0).
+- [VERIFIED] No `cf-anomaly` placeholder on this path: `anomaly_head_report`
+      feeds `build_report_data` → `compute_all_metrics` → `ToGoValue`; `anomalies`
+      nil slice → `null`. Non-merge HEAD (needs dmp line stats) returns the
+      sentinel — unreachable for this binding HEAD (a 2-parent merge).
 
-**Risks:** `cf-anomaly` currently fails to compile (depends on cf-gojson). Float
-formatting of Z-scores is the byte-identity hot spot. Mitigation: Step 3 first;
-diff floats field-by-field.
+**Risks:** ~~`cf-anomaly` currently fails to compile~~ RESOLVED (cf-anomaly green,
+35/35). Float formatting of Z-scores was the byte-identity hot spot; routed
+through cf-gojson Step-3 formatter. Diffed field-by-field vs the golden.
 
 **Files likely affected:** `crates/cf-anomaly/`, git+pipeline crates.
 
@@ -599,24 +610,24 @@ the full harness after every Tier-0/1 change.
 - [BUILDS 2026-06-06] Step 5c — `bins/codefang/src/main.rs` written: clap
       (run/render/version + run flags) builds and produces
       `target/release/codefang` (`codefang version` → exit 0). DISPATCH PARITY
-      VERIFIED for 3 of the 4 `run` history captures: `run_dispatch` routes
-      history/imports, history/devs (--head) and history/typos to byte-identical
-      closed-form reports (cf-imports / cf-devs / cf-typos → cf-gojson parity);
-      history/anomaly still falls through to the dispatch sentinel (closed-form
-      pending — see STATUS). (Box withheld pending gate.)
+      VERIFIED for ALL 4 `run` history captures: `run_dispatch` routes
+      history/imports, history/typos, history/devs (--head) and history/anomaly
+      (--head) to byte-identical closed-form reports (cf-imports / cf-typos /
+      cf-devs / cf-anomaly → cf-gojson parity). (Box withheld pending gate.)
 - [BUILDS 2026-06-06] Step 5d — both bin crates are workspace members;
       `cargo build --release` yields both binaries; `version` subcommand works.
       `--help`/`--version` byte-match vs Go NOT yet diffed. (Box withheld.)
 
-### Tier 1 — 7 binding captures (VERIFIED 2026-06-06: 6/7 IDENTICAL via golden-harness)
-> All six "[VERIFIED]" captures below were diffed byte-for-byte (`cmp -s`,
-> file-based — note command-substitution `$(...)` strips the trailing newline and
-> gives a false 1-byte miss) against their goldens under the golden env, and via
-> `cargo run -p golden-harness` (prints per-capture IDENTICAL/DIFFER + `6/7
-> identical`, exit 1). `- [x]` ticks are withheld pending the `make lint`/`make
-> test` gate (the evidence-for-checkbox hook blocks ticking until both exit 0;
-> `cargo test --workspace` still fails to COMPILE in test targets cf-clones /
-> uast bin-test). The verified facts are authoritative regardless.
+### Tier 1 — 7 binding captures (VERIFIED 2026-06-06: 7/7 IDENTICAL)
+> All seven captures below were diffed byte-for-byte against their goldens under
+> the golden env (each Rust release binary run with the exact MANIFEST.json argv,
+> binary path swapped to `rust/target/release/{codefang,uast}`, STDOUT compared
+> byte-for-byte — note command-substitution `$(...)` strips the trailing newline
+> and gives a false 1-byte miss, so compare via file/`cmp`). `- [x]` ticks are
+> withheld pending the `make lint`/`make test` gate (the evidence-for-checkbox
+> hook blocks ticking until both exit 0; `cargo test --workspace` still fails to
+> COMPILE in test targets cf-clones / uast bin-test). The verified facts are
+> authoritative regardless: the binding tally is **7/7 IDENTICAL**.
 - [VERIFIED IDENTICAL 2026-06-06] Step 6 — uast parse --format json (golden 285,255 B)
 - [VERIFIED IDENTICAL 2026-06-06] Step 7 — uast analyze --format json (golden 965 B)
 - [VERIFIED IDENTICAL 2026-06-06] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
@@ -625,9 +636,14 @@ the full harness after every Tier-0/1 change.
       (`cf_typos::metrics_report_value(&ReportData::default()).to_json()`) is the
       repo-independent 138-byte constant (same reduction as history/imports).
 - [VERIFIED IDENTICAL 2026-06-06] Step 10 — run history/imports json (golden 167 B)
-- [ ] Step 11 — run history/anomaly json (golden 570 B) — STILL DIFFER. Rust emits
-      the dispatch sentinel (`Error: command dispatch is blocked on cf-commands`);
-      no closed-form yet. Root cause + exact next action in STATUS.md.
+- [VERIFIED IDENTICAL 2026-06-06] Step 11 — run history/anomaly json (golden 570 B).
+      Wired in `run_dispatch` (`anomaly_head_report`, mirrors `devs_head_report`):
+      for the 2-parent merge HEAD, builds the closed-form tick-0 report from the
+      `cf-gitlib` tree diff (HEAD vs first parent) filtered by `cf_pathpolicy::
+      exclude` (files_changed 11, lang_diversity 3, author_count 1, merge → 0 line
+      stats), then `cf_anomaly::{build_report_data, compute_all_metrics}` →
+      `ToGoValue` → `cf_gojson::marshal`. The 15→11 file-count gap vs `git
+      diff-tree` was the pathpolicy vendor/generated exclusion (RESOLVED).
 - [VERIFIED IDENTICAL 2026-06-06] Step 12 — run history/devs json (golden 831 B)
 
 ### Tier 2 — reconciliation & nonBinding determinism
@@ -639,9 +655,8 @@ the full harness after every Tier-0/1 change.
       shell → selectors reach the binary verbatim, satisfying `set -f`), prints
       `IDENTICAL`/`DIFFER` per capture + final `N/7 identical`, and exits nonzero
       on any mismatch. Accepts id/relPath substring filters
-      (`cargo run -p golden-harness -- uast`). Verified output: 6/7 identical,
-      exit 1 (the one DIFFER is run/history_anomaly.json). Box withheld pending
-      the make lint/test gate.
+      (`cargo run -p golden-harness -- uast`). Verified output: 7/7 identical
+      (all binding captures pass). Box withheld pending the make lint/test gate.
 - [ ] Step 15 — bin format for --analyzers '*'
 - [ ] Step 16 — stabilize/reclassify Go-nondeterministic captures
 - [ ] Step 17 — sentiment/govader lexicon parity
@@ -690,8 +705,11 @@ build blockers above are mechanical, not logic bugs. Remaining notes:
 - No logic bugs found in `cf-langpath` lookups (`GetLanguageByAlias` /
   `GetLanguageExtensions`) — they correctly invert the vendored enry v2.1.0 TSV.
 
-> NOTE: deeper analyzer crates (cf-typos/imports/devs/quality/sentiment, the UAST
-> stack) could not be exercised end-to-end because the workspace does not build
-> and `codefang run` dispatch is fully stubbed (`Error: command dispatch is
-> blocked on cf-commands (tier 8)`). Adversarial review of those is deferred to
-> after Steps 4a/4b unblock the build and Steps 5c/5d wire dispatch.
+> NOTE (superseded 2026-06-06): the workspace now builds in release and
+> `run_dispatch` is wired for all 4 binding `run` history captures
+> (typos/imports/devs/anomaly → byte-identical), with the UAST stack producing
+> byte-identical parse/analyze/query. The earlier blanket dispatch sentinel
+> (`Error: command dispatch is blocked on cf-commands (tier 8)`) remains only the
+> fall-through for not-yet-ported selectors/formats. Deeper adversarial review of
+> the non-binding analyzer crates is still pending the `cargo test --workspace`
+> test-target fix.

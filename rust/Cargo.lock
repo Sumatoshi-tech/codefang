@@ -804,10 +804,12 @@ version = "0.0.0"
 dependencies = [
  "cf-analyze",
  "cf-analyzers-plumbing",
+ "cf-anomaly",
  "cf-devs",
  "cf-gitlib",
  "cf-gojson",
  "cf-imports",
+ "cf-pathpolicy",
  "cf-typos",
  "cf-version",
  "clap",

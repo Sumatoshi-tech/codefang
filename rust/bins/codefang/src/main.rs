@@ -429,7 +429,142 @@ fn run_dispatch(sub: &clap::ArgMatches) -> ! {
         // closed-form case we reproduce (see devs_head_report).
     }
 
+    // history/anomaly --head --format json: HEAD-only temporal-anomaly report.
+    // The streaming pipeline (Go run.go initHeadOnly → Runner → anomaly
+    // aggregator → ticksToReport → ComputeAllMetrics) collapses, for a single
+    // HEAD commit, to a closed-form report built here from libgit2.
+    if analyzers.as_slice() == ["history/anomaly"] && format == "json" && sub.get_flag("head") {
+        if let Some(bytes) = anomaly_head_report(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the HEAD commit does not match the
+        // closed-form case we reproduce (see anomaly_head_report).
+    }
+
     fail(DISPATCH_BLOCKED_MSG);
+}
+
+/// Builds the `history/anomaly --head --format json` report bytes for the HEAD
+/// commit, or `None` if HEAD is not the closed-form case this path reproduces.
+///
+/// Reproduces the Go head-only pipeline for `history/anomaly`:
+///  - tree diff: HEAD's tree vs its **first parent's** tree
+///    (`TreeDiffAnalyzer.ensurePreviousTree` uses `Parent(0)`), then filtered
+///    through the shared vendor / generated path policy
+///    (`filterChanges -> pathpolicy.Exclude(name, nil, opts)`, content `nil`,
+///    default opts: exclude vendor + generated paths). `files_changed` is the
+///    surviving change count;
+///  - per-change language detection (`LanguagesDetectionAnalyzer.Languages` +
+///    `accumulateLanguagesAndAuthors`): each filtered change contributes its
+///    extension-mapped language; `language_diversity` is the distinct count;
+///  - a **merge** HEAD (`NumParents()>1`) skips `accumulateLineStats`
+///    (analyzer.go:184/195), so lines added/removed and net churn are 0 — the
+///    deterministic, language-free-of-blob-content closed form. For a non-merge
+///    HEAD the Go pipeline computes diff-match-patch line stats this closed form
+///    does not reproduce; we return `None` so the caller surfaces the dispatch
+///    sentinel rather than emitting subtly-divergent bytes;
+///  - identity: a single HEAD commit yields author id 0
+///    (`IdentityDetector` loose dict over `[head]`), so `author_count` is 1;
+///  - tick assignment: the single HEAD commit lands in tick 0; tick bounds
+///    start == end == HEAD's **committer** time, Go-`time.RFC3339`-formatted UTC.
+///
+/// The typed report (`commit_metrics`/`commits_by_tick`/`tick_bounds`) is fed to
+/// `cf_anomaly::build_report_data` → `compute_all_metrics`, whose
+/// `ComputedMetrics::to_go_value` is serialized through cf-gojson (Go
+/// encoding/json parity: declaration-order keys, byte-sorted map keys, Go
+/// shortest-float, `anomalies` nil slice → `null`, no trailing newline).
+fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use std::collections::BTreeMap;
+
+    use cf_analyzers_plumbing::languages_detection::language_by_extension;
+    use cf_anomaly::metrics::{build_report_data, TickBounds};
+    use cf_anomaly::model::{CommitAnomalyData, ToGoValue};
+    use cf_gitlib::changes::tree_diff;
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+    let head = repo.head().ok()?;
+    let commit = repo.lookup_commit(head).ok()?;
+
+    // Only the deterministic, language-free-of-blob-content closed form (merge
+    // HEAD → 0 line stats) is reproduced here.
+    if commit.num_parents() <= 1 {
+        return None;
+    }
+
+    let committer_when = commit.committer().when.seconds(); // ac.Time == committer When.
+    let commit_hash = commit.hash().to_string();
+
+    // Tree diff HEAD vs first parent, then the shared vendor/generated filter.
+    let new_tree = commit.tree().ok()?;
+    let parent = commit.parent(0).ok()?;
+    let old_tree = parent.tree().ok()?;
+    let changes = tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?;
+
+    let opts = PathPolicyOptions::default();
+    let mut files_changed: i64 = 0;
+    let mut languages: BTreeMap<String, i64> = BTreeMap::new();
+    for change in &changes {
+        // changeNameHash: Delete → From.Name, otherwise To.Name.
+        let name = if matches!(change.action, cf_gitlib::changes::ChangeAction::Delete) {
+            &change.from.name
+        } else {
+            &change.to.name
+        };
+        // filterChanges: pathpolicy.Exclude(name, nil, opts) (content nil).
+        if exclude(name, None, &opts) {
+            continue;
+        }
+        files_changed += 1;
+
+        // accumulateLanguagesAndAuthors: count each non-empty detected language.
+        // detectLanguage's extension fast-path resolves these text source files
+        // without blob content; a Modify contributes both To and From names, but
+        // both share the same extension so the language set is unaffected.
+        let lang = language_by_extension(name);
+        if !lang.is_empty() {
+            *languages.entry(lang.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    // Per-commit anomaly data: merge HEAD → no line stats, author id 0.
+    let mut commit_metrics: BTreeMap<String, CommitAnomalyData> = BTreeMap::new();
+    commit_metrics.insert(
+        commit_hash.clone(),
+        CommitAnomalyData {
+            files_changed,
+            lines_added: 0,
+            lines_removed: 0,
+            net_churn: 0,
+            files: Vec::new(),
+            languages,
+            author_id: 0,
+        },
+    );
+
+    // Single HEAD commit → tick 0.
+    let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    commits_by_tick.insert(0, vec![commit_hash]);
+
+    // tick_bounds[0] = { start: end: committer time } formatted RFC3339 UTC.
+    let when_rfc3339 = cf_analyze::metadata::format_rfc3339_utc(committer_when);
+    let mut tick_bounds: BTreeMap<i64, TickBounds> = BTreeMap::new();
+    tick_bounds.insert(
+        0,
+        TickBounds {
+            start_time: when_rfc3339.clone(),
+            end_time: when_rfc3339,
+        },
+    );
+
+    // Default config: Threshold 2.0, WindowSize 20 (DefaultAnomalyThreshold /
+    // DefaultAnomalyWindowSize); no --anomaly-threshold/--anomaly-window flags.
+    let input = build_report_data(&commit_metrics, &commits_by_tick, tick_bounds, 2.0, 20);
+    let metrics = cf_anomaly::metrics::compute_all_metrics(&input);
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
 }
 
 /// Resolves the repository path from `run`'s positional arg or `-p/--path`

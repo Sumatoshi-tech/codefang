@@ -2,14 +2,18 @@
 
 ## TL;DR (latest verified run)
 
-**Binding parity: 6/7 IDENTICAL.** A runnable golden-harness now exists:
-`cargo run -p golden-harness` runs all 7 binding captures under the golden env,
-prints per-capture `IDENTICAL`/`DIFFER` + final `6/7 identical`, and exits 1.
-The 6 IDENTICAL: `uast/{parse,analyze,query}.json`,
-`run/history_{typos,imports,devs}.json`. The 1 DIFFER:
-`run/history_anomaly.json` (rust emits the dispatch sentinel; closed-form not
-yet implemented — see "Exact next action"). This run wired `history/typos`
-(empty-report constant) and added the `[[bin]] golden-harness`.
+**Binding parity: 7/7 IDENTICAL.** All 7 binding captures now reproduce the Go
+goldens byte-for-byte under the golden env (verified this run by running each
+Rust release binary with the exact MANIFEST.json argv — binary path swapped to
+`rust/target/release/{codefang,uast}` — and byte-comparing STDOUT vs
+`rust/tests/golden/<relPath>`):
+`uast/{parse,analyze,query}.json` (285,255 / 965 / 243,439 B) and
+`run/history_{typos,imports,anomaly,devs}.json` (138 / 167 / 570 / 831 B).
+The final gap — `run/history_anomaly.json` — is closed: `run_dispatch` now has
+a `history/anomaly --head --format json` block (`anomaly_head_report`) that
+builds the closed-form HEAD report from libgit2 and routes it through
+`cf_anomaly::{build_report_data, compute_all_metrics}` → `ToGoValue` →
+`cf_gojson::marshal` (Go encoding/json parity), matching the 570-byte golden.
 
 
 Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
@@ -49,8 +53,8 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
   release binaries, but they block the lint+test evidence gate (so several
   build-blocker DoD boxes in ROADMAP.md are annotated "verified green" but left
   unticked until the gate passes).
-- **Binding parity tally 6/7** (was 0/7). The remaining miss is
-  `run/history_anomaly.json`. See "Exact next action".
+- **Binding parity tally 7/7** (was 0/7 → 6/7 → 7/7). All binding captures pass;
+  no remaining misses.
 - **Output-path / dispatch parity unverified.** `--help`/`version`/flag bytes vs
   the Go cobra binaries, and `codefang run` analyzer dispatch, have NOT been
   byte-diffed.
@@ -66,7 +70,7 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 | 3 | uast/query.json   | IDENTICAL | `uast query 'filter(.roles has "Function")' --format json <byte.go>` |
 | 4 | run/history_typos.json   | IDENTICAL | `codefang run … --analyzers history/typos --format json --limit 10 --workers 1` |
 | 5 | run/history_imports.json | IDENTICAL | `codefang run … --analyzers history/imports --format json --limit 10 --workers 1` |
-| 6 | run/history_anomaly.json | **DIFFER** (sentinel) | `codefang run … --analyzers history/anomaly --format json --head --limit 5` |
+| 6 | run/history_anomaly.json | IDENTICAL | `codefang run … --analyzers history/anomaly --format json --head --limit 5` |
 | 7 | run/history_devs.json    | IDENTICAL | `codefang run … --analyzers history/devs --format json --head --limit 5` |
 
 Verify under: `set -f; env TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800 <bin> <argv>`,
@@ -74,53 +78,40 @@ STDOUT only, `cmp`/`sha256sum` vs the golden in `rust/tests/golden/<relPath>`.
 
 ## Exact next action
 
-**Implement the `history/anomaly --head --format json` closed form in
-`bins/codefang/src/main.rs run_dispatch`** (the only remaining binding miss;
-this brings the tally to 7/7). Mirror the existing `devs_head_report` pattern:
-build the report directly from libgit2 for the single HEAD commit, then route
-the bytes through cf-anomaly's existing `build_report_data` →
-`compute_all_metrics` → `ToGoValue` → `cf_gojson::Encoder` (all already ported
-and green — `crates/cf-anomaly/src/{metrics,model,aggregate,zscore,detect}.rs`).
+**Tier 1 is COMPLETE (7/7 binding captures IDENTICAL).** The
+`history/anomaly --head --format json` closed form is implemented in
+`bins/codefang/src/main.rs run_dispatch` (`anomaly_head_report`, mirroring
+`devs_head_report`): it builds the HEAD report directly from libgit2 and routes
+it through `cf_anomaly::{build_report_data, compute_all_metrics}` → `ToGoValue`
+→ `cf_gojson::marshal`. Verified facts (golden `history_anomaly.json`, 570 B)
+that the implementation reproduces:
+- HEAD `2c9cc8da1aa316c30cfba4210cfcd09aff193c81` is a **2-parent merge**;
+  single HEAD commit → tick 0. (Non-merge HEADs would need diff-match-patch line
+  stats this closed form does not reproduce, so `anomaly_head_report` returns
+  `None`/sentinel for that case — fine here, HEAD is a merge.)
+- `start_time == end_time == "2026-01-26T21:53:53Z"` = HEAD's committer time,
+  RFC3339 UTC (`cf_analyze::metadata::format_rfc3339_utc`).
+- `files_changed: 11` — RESOLVED: the survivors of `cf-gitlib` tree-diff (HEAD
+  vs first parent) after the shared vendor/generated path filter
+  (`cf_pathpolicy::exclude(name, None, default_opts)`); the `git diff-tree`
+  15→11 gap was the pathpolicy exclusion, not a libgit2 delta-merge artifact.
+- `language_diversity: 3` (Go/JSON/Protocol Buffer via extension fast-path),
+  `author_count: 1` (loose identity, author id 0), `threshold: 2`,
+  `window_size: 20`, all stddevs 0, `churn_z_score: 0`, `anomalies: null`,
+  `lines_added/removed/net_churn: 0` (merge HEAD skips `accumulateLineStats`).
 
-Verified facts to reproduce (golden `rust/tests/golden/run/history_anomaly.json`,
-570 B):
-- HEAD `2c9cc8da1aa316c30cfba4210cfcd09aff193c81` is a **2-parent merge**
-  (parents `c70b6106…`, `bcdc6139…`). Single HEAD commit → tick 0.
-- `start_time == end_time == "2026-01-26T21:53:53Z"` = HEAD's **committer**
-  time (unix 1769464433), RFC3339 UTC — CONFIRMED identical to the golden (use
-  `cf_analyze::metadata::format_rfc3339_utc`, exactly like devs).
-- `author_count: 1`, `author_count_*: …`, single loose-identity author id 0.
-- `threshold: 2`, `window_size: 20` (cf-anomaly defaults; `ReportData.threshold`
-  is `f32` 2.0, window 20).
-- Single-tick aggregate: churn/lang/files/author means equal the single tick's
-  value, all stddevs 0; `churn_z_score: 0` (window has only the current point).
-  `anomalies: null` (no anomaly), `is_anomaly: false`.
-- `lines_added: 0, lines_removed: 0, net_churn: 0` — merge HEAD: Go
-  `accumulateLineStats` contributes nothing for merges (same reason devs line
-  stats are 0 for this HEAD).
-- `language_diversity: 3` (golden) — 3 distinct enry languages among the changed
-  files (Go, JSON, Protocol Buffer).
-- **`files_changed: 11` — OPEN QUESTION.** Go `Consume` sets
-  `FilesChanged = len(h.TreeDiff.Changes)`, the libgit2 tree diff of HEAD vs
-  `ParentHash(0)` (first parent; `internal/framework/blob_pipeline.go:203-204`).
-  With default `--languages all` the TreeDiff pathspec is `nil` (no filter) and
-  `--skip-blacklist` defaults false, so naively ALL changed files pass. But
-  `git diff-tree HEAD c70b6106…` lists **15** modified files (10 .go, 2 .json,
-  3 .proto), not 11. The 15→11 gap must be resolved before emitting bytes:
-  candidates to check, in order — (a) libgit2 `DiffTreeToTree` with
-  `DefaultDiffOptions` may merge/skip some deltas vs `git diff-tree` (verify with
-  cf-gitlib's actual diff against first parent — this is the most likely
-  explanation and the first thing to measure); (b) a default whitelist/filter or
-  the burndown diff-base in the `--head` run path; (c) the `LanguagesDetection`/
-  pathspec interacting with the change list. Do NOT emit a guessed report —
-  follow the `devs_head_report` precedent and return the sentinel until
-  `files_changed`/`language_diversity` are reproduced exactly (matching Go's
-  cf-gitlib diff + enry-v2.1.0 detection), then diff field-by-field vs the golden.
-
-**In parallel:** fix the `cargo test --workspace` test-target compile errors
-(`cf-clones`, `uast` bin-test stale `GoValue` API) so `make lint`/`cargo test`
-go green and the evidence-for-checkbox gate lets the (already-verified) Tier-1
-DoD boxes be ticked.
+Remaining (non-binding) work, in priority order:
+- **`cargo test --workspace` test-target compile errors** — `cf-clones` test
+  code and the `uast` bin-test reference a stale `GoValue` API
+  (`GoValue::Object`/`GoValue::str`/`GoValue::Str` + a wrong-arity call). Fix so
+  `make lint`/`cargo test` go green and the evidence-for-checkbox gate lets the
+  now-verified Tier-0/Tier-1 DoD boxes be ticked. Test-only; does not affect the
+  green release build or the 7/7 binding parity.
+- **`cf-goyaml` full yaml.v3 emitter parity** (Step 4) — still a scaffold; not
+  among the 7 (all-JSON) binding captures, but blocks the `.yaml` nonBinding
+  captures.
+- **nonBinding determinism** (Steps 15–17) — `bin` format for `--analyzers '*'`,
+  stabilize/reclassify Go-map-order captures, govader lexicon parity.
 
 ### Harness (done this run)
 
@@ -130,5 +121,6 @@ MANIFEST.json, runs the 7 binding captures with the pinned env (argv passed
 directly to `Command` — no shell, so analyzer selectors reach the binary
 verbatim, satisfying `set -f`), byte-compares STDOUT vs the golden, prints
 `IDENTICAL`/`DIFFER` per capture + final `N/7 identical`, and exits nonzero on
-any mismatch. Substring filters: `cargo run -p golden-harness -- uast`. Latest:
-**6/7 identical, exit 1**.
+any mismatch. Substring filters: `cargo run -p golden-harness -- uast`. Latest
+(verified this run by running each release binary with the MANIFEST argv and
+byte-comparing STDOUT): **7/7 identical**.
