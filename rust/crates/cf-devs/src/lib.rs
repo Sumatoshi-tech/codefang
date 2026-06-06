@@ -62,13 +62,13 @@ pub mod descriptor {
 
 pub use aggregate::{
     accumulate_line_stats, aggregate_commits_to_ticks, merge_dev_data, parse_tick_data,
-    resolve_tick_size,
+    parse_tick_data_with_bounds, resolve_tick_size,
 };
 pub use metrics::{
     compute_activity, compute_aggregate, compute_all_metrics, compute_bus_factor,
     compute_bus_factor_from_sorted, compute_churn, compute_developers, compute_languages,
     compute_project_bus_factor, dev_id_bytes, dev_name_and_email, AggregateInput, BusFactorInput,
-    MetricOptions, TickData, HLL_PRECISION,
+    MetricOptions, TickBounds, TickData, HLL_PRECISION,
 };
 pub use model::{
     ActivityData, AggregateData, BusFactorData, ChurnData, CommitDevData, ComputedMetrics,
@@ -110,6 +110,7 @@ mod tests {
             ticks,
             names: names.iter().map(|s| (*s).to_string()).collect(),
             tick_size: TICK_SIZE,
+            tick_bounds: BTreeMap::new(),
         }
     }
 

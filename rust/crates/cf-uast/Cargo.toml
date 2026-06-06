@@ -31,7 +31,12 @@ description = "Aggregate UAST parser facade: tree-sitter parse to UAST over many
 cf-uast-node = { path = "../cf-uast-node" }
 cf-uast-mapping = { path = "../cf-uast-mapping" }
 cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
-# tree-sitter is pinned in the workspace; the per-language grammar crates are
-# integrated centrally (see crate todos / externalCrates) and wired by
+# tree-sitter is pinned in the workspace; per-language grammar C sources are
+# vendored under `vendor/` from go-sitter-forest at the EXACT same grammar
+# revision the Go build uses, compiled by `build.rs`, and wired by
 # `languages.rs`'s `get_language` dispatch.
 tree-sitter = { workspace = true }
+
+[build-dependencies]
+# Compiles the vendored grammar C sources (vendor/tree-sitter-<lang>/parser.c).
+cc = { workspace = true }

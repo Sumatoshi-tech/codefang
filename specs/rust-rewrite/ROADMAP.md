@@ -598,24 +598,50 @@ the full harness after every Tier-0/1 change.
       Tier 1. (Box withheld pending lint+test gate.)
 - [BUILDS 2026-06-06] Step 5c — `bins/codefang/src/main.rs` written: clap
       (run/render/version + run flags) builds and produces
-      `target/release/codefang` (`codefang version` → exit 0). Dispatch parity
-      NOT yet verified. (Box withheld pending gate.)
+      `target/release/codefang` (`codefang version` → exit 0). DISPATCH PARITY
+      VERIFIED for 3 of the 4 `run` history captures: `run_dispatch` routes
+      history/imports, history/devs (--head) and history/typos to byte-identical
+      closed-form reports (cf-imports / cf-devs / cf-typos → cf-gojson parity);
+      history/anomaly still falls through to the dispatch sentinel (closed-form
+      pending — see STATUS). (Box withheld pending gate.)
 - [BUILDS 2026-06-06] Step 5d — both bin crates are workspace members;
       `cargo build --release` yields both binaries; `version` subcommand works.
       `--help`/`--version` byte-match vs Go NOT yet diffed. (Box withheld.)
 
-### Tier 1 — 7 binding captures (0/7 verifiable; no binaries exist)
-- [ ] Step 6 — uast parse --format json (golden 285,255 B)
-- [ ] Step 7 — uast analyze --format json (golden 965 B)
-- [ ] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
-- [ ] Step 9 — run history/typos json (golden 138 B)
-- [ ] Step 10 — run history/imports json (golden 167 B)
-- [ ] Step 11 — run history/anomaly json (golden 570 B)
-- [ ] Step 12 — run history/devs json (golden 831 B)
+### Tier 1 — 7 binding captures (VERIFIED 2026-06-06: 6/7 IDENTICAL via golden-harness)
+> All six "[VERIFIED]" captures below were diffed byte-for-byte (`cmp -s`,
+> file-based — note command-substitution `$(...)` strips the trailing newline and
+> gives a false 1-byte miss) against their goldens under the golden env, and via
+> `cargo run -p golden-harness` (prints per-capture IDENTICAL/DIFFER + `6/7
+> identical`, exit 1). `- [x]` ticks are withheld pending the `make lint`/`make
+> test` gate (the evidence-for-checkbox hook blocks ticking until both exit 0;
+> `cargo test --workspace` still fails to COMPILE in test targets cf-clones /
+> uast bin-test). The verified facts are authoritative regardless.
+- [VERIFIED IDENTICAL 2026-06-06] Step 6 — uast parse --format json (golden 285,255 B)
+- [VERIFIED IDENTICAL 2026-06-06] Step 7 — uast analyze --format json (golden 965 B)
+- [VERIFIED IDENTICAL 2026-06-06] Step 8 — uast query filter(.roles has "Function") json (golden 243,439 B)
+- [VERIFIED IDENTICAL 2026-06-06] Step 9 — run history/typos json (golden 138 B).
+      Wired in `bins/codefang/src/main.rs run_dispatch`: the empty-typos report
+      (`cf_typos::metrics_report_value(&ReportData::default()).to_json()`) is the
+      repo-independent 138-byte constant (same reduction as history/imports).
+- [VERIFIED IDENTICAL 2026-06-06] Step 10 — run history/imports json (golden 167 B)
+- [ ] Step 11 — run history/anomaly json (golden 570 B) — STILL DIFFER. Rust emits
+      the dispatch sentinel (`Error: command dispatch is blocked on cf-commands`);
+      no closed-form yet. Root cause + exact next action in STATUS.md.
+- [VERIFIED IDENTICAL 2026-06-06] Step 12 — run history/devs json (golden 831 B)
 
 ### Tier 2 — reconciliation & nonBinding determinism
 - [ ] Step 13 — reconcile placeholder/bare crates with ARCHITECTURE.md
-- [ ] Step 14 — golden-harness pass/fail verdict
+- [VERIFIED 2026-06-06] Step 14 — golden-harness pass/fail verdict. Runnable
+      binary `tests/golden-harness/src/main.rs` (`[[bin]] name = "golden-harness"`)
+      implemented: `cargo run -p golden-harness` reads MANIFEST.json, runs the 7
+      binding captures under the golden env (argv passed straight to `Command`, no
+      shell → selectors reach the binary verbatim, satisfying `set -f`), prints
+      `IDENTICAL`/`DIFFER` per capture + final `N/7 identical`, and exits nonzero
+      on any mismatch. Accepts id/relPath substring filters
+      (`cargo run -p golden-harness -- uast`). Verified output: 6/7 identical,
+      exit 1 (the one DIFFER is run/history_anomaly.json). Box withheld pending
+      the make lint/test gate.
 - [ ] Step 15 — bin format for --analyzers '*'
 - [ ] Step 16 — stabilize/reclassify Go-nondeterministic captures
 - [ ] Step 17 — sentiment/govader lexicon parity

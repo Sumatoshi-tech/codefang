@@ -98,7 +98,28 @@ pub fn parse_tick_data(
         ticks,
         names,
         tick_size: resolve_tick_size(tick_size),
+        tick_bounds: BTreeMap::new(),
     }
+}
+
+/// Builds [`TickData`] from raw inputs together with per-tick time bounds.
+///
+/// Same aggregation + tick-size default as [`parse_tick_data`], plus the
+/// `tick → (start,end)` bounds that `ParseTickDataWithPrecision` copies from
+/// the report's `tick_bounds` key. `tick_bounds` values are the already
+/// Go-`time.RFC3339`-formatted strings (`""` == Go zero time → omitted by the
+/// `start_time,omitempty` / `end_time,omitempty` JSON tags).
+#[must_use]
+pub fn parse_tick_data_with_bounds(
+    commit_dev_data: &BTreeMap<String, CommitDevData>,
+    commits_by_tick: &BTreeMap<i64, Vec<String>>,
+    names: Vec<String>,
+    tick_size: i64,
+    tick_bounds: BTreeMap<i64, crate::metrics::TickBounds>,
+) -> TickData {
+    let mut td = parse_tick_data(commit_dev_data, commits_by_tick, names, tick_size);
+    td.tick_bounds = tick_bounds;
+    td
 }
 
 /// Additively merges two `tick → CommitDevData` maps (`mergeState` /

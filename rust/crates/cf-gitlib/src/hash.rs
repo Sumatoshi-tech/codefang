@@ -32,12 +32,18 @@ const HEX_SHIFT: u8 = 4;
 pub struct Hash(pub [u8; HASH_SIZE]);
 
 impl Hash {
+    /// The zero-value hash (all bytes `0x00`), as an associated constant.
+    ///
+    /// Equivalent to Go's `ZeroHash()` / the zero `Hash{}` value; provided as a
+    /// `const` so it can be used directly in struct-field initializers.
+    pub const ZERO: Hash = Hash([0u8; HASH_SIZE]);
+
     /// Returns the zero-value hash (all bytes `0x00`).
     ///
     /// Equivalent to Go's `ZeroHash()` and the zero `Hash{}` value.
     #[must_use]
     pub const fn zero() -> Self {
-        Hash([0u8; HASH_SIZE])
+        Hash::ZERO
     }
 
     /// Parses a [`Hash`] from a hex string.

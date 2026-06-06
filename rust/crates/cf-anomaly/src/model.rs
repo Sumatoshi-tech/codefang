@@ -402,10 +402,13 @@ impl ComputedMetrics {
 impl ToGoValue for ComputedMetrics {
     fn to_go_value(&self) -> GoValue {
         let mut m = GoMap::new_struct();
-        // Go emits `null` for a nil `[]Record`/`[]TimeSeriesEntry` slice; an
-        // initialized-but-empty slice emits `[]`. ComputeAllMetrics always
-        // returns non-nil slices, so `anomalies`/`time_series` are `[]` here.
-        m.push("anomalies", records_array(&self.anomalies));
+        // Go emits `null` for a nil slice and `[]` for an initialized-but-empty
+        // slice. `computeList` returns `input.Anomalies`, which is whatever
+        // `buildRecords` produced: a nil `[]Record` (`var anomalies []Record`)
+        // when no tick is flagged, so an empty anomaly set marshals as `null`.
+        // `computeTimeSeries` always allocates `make([]TimeSeriesEntry, …)`, a
+        // non-nil slice, so an empty series marshals as `[]`.
+        m.push("anomalies", records_array_or_null(&self.anomalies));
         m.push("time_series", time_series_array(&self.time_series));
         m.push("aggregate", self.aggregate.to_go_value());
         if !self.external_anomalies.is_empty() {
@@ -447,6 +450,17 @@ fn lang_map(langs: &BTreeMap<String, i64>) -> GoValue {
 
 fn records_array(items: &[Record]) -> GoValue {
     GoValue::Array(items.iter().map(ToGoValue::to_go_value).collect())
+}
+
+/// Encodes a `[]Record` mirroring Go's nil-slice → `null` behavior. `computeList`
+/// returns the nil slice `buildRecords` yields when no anomaly is flagged, so an
+/// empty list marshals as `null` (not `[]`).
+fn records_array_or_null(items: &[Record]) -> GoValue {
+    if items.is_empty() {
+        GoValue::Null
+    } else {
+        records_array(items)
+    }
 }
 
 fn time_series_array(items: &[TimeSeriesEntry]) -> GoValue {
@@ -547,8 +561,10 @@ mod tests {
         let json = Encoder::marshal().encode_to_string(&cm.to_go_value());
         assert!(!json.contains("external_anomalies"), "got: {json}");
         assert!(!json.contains("external_summaries"), "got: {json}");
-        // anomalies/time_series are always present as `[]`.
-        assert!(json.contains(r#""anomalies":[]"#), "got: {json}");
+        // `anomalies` is the nil slice `buildRecords` yields for no detections
+        // (Go marshals nil `[]Record` -> `null`); `time_series` is a non-nil
+        // `make([]TimeSeriesEntry, 0)` -> `[]`.
+        assert!(json.contains(r#""anomalies":null"#), "got: {json}");
         assert!(json.contains(r#""time_series":[]"#), "got: {json}");
     }
 

@@ -31,3 +31,22 @@ git2 = { workspace = true }
 # Build/version metadata — `codefang version` reproduces the Go output via the
 # ldflags-equivalent constants populated by cf-version's build.rs. See DESIGN §4.1.
 cf-version = { path = "../../crates/cf-version" }
+# Report serialization MUST route through cf-gojson (Go encoding/json byte-parity:
+# HTML-escape, byte-sorted map keys, declaration-order structs, shortest-float).
+# NEVER serde_json for machine output.
+cf-gojson = { path = "../../crates/cf-gojson" }
+# history/imports analyzer report computation + Go-value lowering.
+cf-imports = { path = "../../crates/cf-imports" }
+# history/devs analyzer: ComputedMetrics + Go-value lowering for the
+# `run --analyzers history/devs --head` capture.
+cf-devs = { path = "../../crates/cf-devs" }
+# history/typos analyzer: metrics_report_value for the empty-report
+# `run --analyzers history/typos --format json` capture (repo-independent
+# constant, like history/imports). Routes the bytes through cf-gojson parity.
+cf-typos = { path = "../../crates/cf-typos" }
+# libgit2-backed repository / commit access for the head-only run path.
+cf-gitlib = { path = "../../crates/cf-gitlib" }
+# Loose people-dict construction (ReversedPeopleDict) for identity parity.
+cf-analyzers-plumbing = { path = "../../crates/cf-analyzers-plumbing" }
+# Go-`time.RFC3339`-parity unix→string formatter for tick bounds.
+cf-analyze = { path = "../../crates/cf-analyze" }

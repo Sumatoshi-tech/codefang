@@ -108,6 +108,20 @@ fn lower_field_access(expr: &DslNode) -> Box<dyn Fn(&[Node]) -> Vec<Node>> {
 /// the always-true predicate.
 fn lower_filter_expr(expr: &DslNode) -> Box<dyn Fn(&Node) -> bool> {
     match expr {
+        // `FieldAccess has Value` (Go `Membership` → CallNode{"has"}). Mirrors
+        // `CheckMembership`: the left field access yields a node set (one literal
+        // per role for `.roles`), and membership is true iff any left value's
+        // token equals the right literal's token (`checkGeneralMembership`). The
+        // `checkRolesMembership` branch only triggers when the left side is a
+        // single `[a b]`-bracketed literal, which the single-field `.roles`
+        // access never produces (it yields one literal per role).
+        DslNode::Comparison { lhs, op, rhs } if op == "has" => {
+            let left_fn = lower_field_access(lhs);
+            let rhs_val = literal_or_field_value(rhs);
+            Box::new(move |n: &Node| {
+                check_membership(&left_fn, &rhs_val, n)
+            })
+        }
         DslNode::Comparison { lhs, op, rhs } => {
             let field = field_name_of(lhs);
             let op = op.clone();
@@ -123,6 +137,33 @@ fn lower_filter_expr(expr: &DslNode) -> Box<dyn Fn(&Node) -> bool> {
         }
         _ => Box::new(|_n: &Node| true),
     }
+}
+
+/// Evaluates `<field> has <rhs>` for one node. Mirrors Go's
+/// `FieldAccessManager.CheckMembership`: `leftFunc(node)` is the field-access
+/// node set, `rightFunc(nil)` is the single literal `rhs`. Empty on either side
+/// is false. If the left side is a single `[...]`-bracketed literal, the roles
+/// are extracted and matched (`checkRolesMembership`); otherwise any token
+/// equality wins (`checkGeneralMembership`).
+fn check_membership(left_fn: &dyn Fn(&[Node]) -> Vec<Node>, rhs_val: &str, node: &Node) -> bool {
+    let left_vals = left_fn(std::slice::from_ref(node));
+    if left_vals.is_empty() || rhs_val.is_empty() {
+        return false;
+    }
+
+    // `isRolesMembership`: a single literal whose token is `[ ... ]` (len > 2).
+    if left_vals.len() == 1 {
+        let tok = &left_vals[0].token;
+        let bytes = tok.as_bytes();
+        if bytes.len() > 2 && bytes[0] == b'[' && bytes[bytes.len() - 1] == b']' {
+            // `extractRoles`: strip brackets, split on ASCII whitespace.
+            let content = &tok[1..tok.len() - 1];
+            return content.split_ascii_whitespace().any(|r| r == rhs_val);
+        }
+    }
+
+    // `checkGeneralMembership`: any left token equals the right token.
+    left_vals.iter().any(|lv| lv.token == rhs_val)
 }
 
 /// Extracts the leading field name from a field-access (or empty).

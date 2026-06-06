@@ -133,7 +133,7 @@ impl<'repo> Commit<'repo> {
         match &self.commit {
             Some(c) => {
                 let idx = must_int_to_uint(n as isize);
-                c.parent_id(idx).map(|oid| Hash::from_oid(&oid)).unwrap_or_else(Hash::zero)
+                c.parent_id(idx).map(|oid| Hash::from_oid(&oid)).unwrap_or_else(|_| Hash::zero())
             }
             None => Hash::zero(),
         }

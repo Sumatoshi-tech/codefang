@@ -187,9 +187,3 @@ pub fn tree_files_public<'repo>(
 ) -> Result<Vec<File<'repo>>> {
     tree_files(repo, tree)
 }
-
-// Keep GitError referenced in the public error surface for this module.
-#[allow(dead_code)]
-fn _err_marker() -> Option<GitError> {
-    None
-}

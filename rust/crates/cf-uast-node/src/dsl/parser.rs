@@ -253,6 +253,16 @@ impl<'a> Parser<'a> {
             self.pos = save;
             return Ok(None);
         };
+        // `has` is a keyword operator (`Membership <- FieldAccess 'has' Value`):
+        // it must be a whole word, not a prefix of an identifier.
+        if op == "has" {
+            if let Some(c) = self.peek() {
+                if c.is_ascii_alphanumeric() || c == b'_' {
+                    self.pos = save;
+                    return Ok(None);
+                }
+            }
+        }
         self.spacing();
         // rhs: Literal or FieldAccess.
         let rhs = if self.peek() == Some(b'.') {
@@ -267,9 +277,11 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    /// `CompareOp <- "==" / "!=" / "<=" / ">=" / "<" / ">"`
+    /// `CompareOp <- "==" / "!=" / "<=" / ">=" / "<" / ">"`, plus the membership
+    /// keyword `has` (`Membership <- FieldAccess 'has' Value`), which the caller
+    /// guards with a word-boundary check.
     fn compare_op(&mut self) -> Option<String> {
-        for op in ["==", "!=", "<=", ">=", "<", ">"] {
+        for op in ["==", "!=", "<=", ">=", "<", ">", "has"] {
             if self.consume(op) {
                 return Some(op.to_string());
             }

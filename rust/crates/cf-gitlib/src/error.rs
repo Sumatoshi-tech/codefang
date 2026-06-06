@@ -10,13 +10,60 @@
 
 use std::fmt;
 
+/// A cloneable wrapper around a libgit2 [`git2::Error`].
+///
+/// `git2::Error` is not `Clone`, but several gitlib result types (e.g.
+/// [`crate::worker::BlobResult`]) carry an error by value and need to be
+/// `Clone`. `GitCause` captures the libgit2 error's decomposed parts and
+/// reproduces its [`std::fmt::Display`] **byte-for-byte** (message, plus the
+/// `; class=…`/`; code=…` suffix git2 appends for non-`None` classes/codes), so
+/// wrapping it in a `GitError` variant preserves the exact Go `%w` chain text.
+#[derive(Debug, Clone)]
+pub struct GitCause(String);
+
+impl GitCause {
+    /// The rendered cause string (identical to the source `git2::Error`'s
+    /// `Display`).
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<git2::Error> for GitCause {
+    fn from(e: git2::Error) -> Self {
+        // git2::Error's Display is `<message>[; class=…][; code=…]`; capture the
+        // fully-rendered form so our Display matches it exactly.
+        GitCause(e.to_string())
+    }
+}
+
+impl From<&git2::Error> for GitCause {
+    fn from(e: &git2::Error) -> Self {
+        GitCause(e.to_string())
+    }
+}
+
+impl fmt::Display for GitCause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// Errors produced by the gitlib layer.
 ///
 /// Variants reproduce the Go sentinel/`%w`-wrapped errors. The `Display`
 /// strings of the sentinel variants match Go's `Error()` output exactly so that
-/// callers asserting on message text behave identically.
+/// callers asserting on message text behave identically. The libgit2-cause
+/// Lib variant stores a [`GitCause`] (a cloneable, Display-preserving capture
+/// of a libgit2 error) for the rare paths that need a cloneable wrapper.
 #[derive(Debug)]
 pub enum GitError {
+    /// A free-form wrapped message (Go `fmt.Errorf` without a sentinel).
+    Message(String),
+    /// A `"<context>: <cause>"` wrapper over a libgit2 error (Go
+    /// `fmt.Errorf("<context>: %w", err)`); built via [`GitError::lib`].
+    Lib { context: String, source: GitCause },
     /// `open repository: <cause>` — [`crate::Repository::open`] failure.
     OpenRepository(git2::Error),
     /// `get HEAD: <cause>`.
@@ -94,9 +141,20 @@ pub enum GitError {
     ConfigureMemory,
 }
 
+impl GitError {
+    /// Builds a [`GitError::Lib`] from a context label and a libgit2 error,
+    /// mirroring Go's `fmt.Errorf("<context>: %w", err)`.
+    #[must_use]
+    pub fn lib(context: impl Into<String>, source: impl Into<GitCause>) -> Self {
+        GitError::Lib { context: context.into(), source: source.into() }
+    }
+}
+
 impl fmt::Display for GitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            GitError::Message(m) => f.write_str(m),
+            GitError::Lib { context, source } => write!(f, "{context}: {source}"),
             GitError::OpenRepository(e) => write!(f, "open repository: {e}"),
             GitError::GetHead(e) => write!(f, "get HEAD: {e}"),
             GitError::LookupCommit(e) => write!(f, "lookup commit: {e}"),

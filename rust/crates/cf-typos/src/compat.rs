@@ -253,6 +253,11 @@ mod tests {
 
     #[test]
     fn escapes_html() {
-        assert_eq!(GoValue::Str("a<b>&c".to_string()).to_json(), r#""a<b>&c""#);
+        // Go `encoding/json` has HTML escaping ON by default: <, >, & become
+        // <, >, &.
+        assert_eq!(
+            GoValue::Str("a<b>&c".to_string()).to_json(),
+            "\"a\\u003cb\\u003e\\u0026c\""
+        );
     }
 }

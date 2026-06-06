@@ -102,29 +102,38 @@ pub fn is_supported_language(name: &str) -> bool {
     SUPPORTED_LANGUAGES.contains(&name)
 }
 
+/// FFI entry points for the vendored grammar C sources compiled by `build.rs`.
+///
+/// Each `tree_sitter_<lang>()` returns the grammar's static [`tree_sitter::Language`]
+/// table. `Language` is `#[repr(transparent)]` over the `*const TSLanguage`
+/// pointer the C function returns, so declaring the extern with a `Language`
+/// return type is ABI-correct; `ts_language_delete` is a no-op for native
+/// (non-wasm) static languages, so the resulting `Drop` is safe.
+#[allow(unsafe_code)]
+mod ffi {
+    extern "C" {
+        pub fn tree_sitter_go() -> tree_sitter::Language;
+    }
+}
+
 /// Returns the tree-sitter [`tree_sitter::Language`] for `name`, or [`None`].
 ///
 /// Port of Go `GetLanguage`. The Go version caches the constructed language in a
-/// `sync.Map`; the Rust grammar crates return a cheap `Language` handle, so no
-/// cache is needed here.
+/// `sync.Map`; here each call returns the grammar's static table via the
+/// vendored FFI entry point, which is cheap (a pointer), so no cache is needed.
 ///
-/// Currently returns [`None`] for every recognized language pending central
-/// grammar-crate integration (see the module docs and crate todos). Wiring a
-/// language is a localized edit: gate a `tree-sitter-<lang>` dependency behind a
-/// feature and return its `Language` for the matching name.
+/// Languages whose grammar C sources are not yet vendored resolve to [`None`];
+/// wiring one is a localized edit: vendor its `vendor/tree-sitter-<lang>/`
+/// sources, list them in `build.rs`'s `GRAMMARS`, add an `ffi` extern, and a
+/// match arm here.
 pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
-    // The match arms are intentionally exhaustive over SUPPORTED_LANGUAGES so a
-    // wiring change is a one-line edit per language. Example of the eventual
-    // shape (behind a feature):
-    //
-    //   #[cfg(feature = "lang-go")]
-    //   "go" => Some(tree_sitter_go::LANGUAGE.into()),
-    //
-    // Until grammars are integrated, all recognized languages resolve to None.
-    if is_supported_language(name) {
-        None
-    } else {
-        None
+    match name {
+        // SAFETY: `tree_sitter_go` is the entry point of the vendored
+        // go-sitter-forest go@v1.9.4 grammar (ABI 14), compiled into this crate
+        // by `build.rs`. It returns the grammar's static `TSLanguage` table.
+        #[allow(unsafe_code)]
+        "go" => Some(unsafe { ffi::tree_sitter_go() }),
+        _ => None,
     }
 }
 

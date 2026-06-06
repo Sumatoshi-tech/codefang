@@ -333,7 +333,12 @@ mod tests {
         let nodes = vec![Node::with_token("Function", "f")];
         let v = nodes_to_value(&nodes);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
-        assert_eq!(s, "{\"results\":[{\"token\":\"f\",\"type\":\"Function\"}]}\n");
+        // Go `ToMap` always emits `pos` (all-zero here) and `roles` ([]).
+        assert_eq!(
+            s,
+            "{\"results\":[{\"pos\":{\"end_col\":0,\"end_line\":0,\"end_offset\":0,\
+\"start_col\":0,\"start_line\":0,\"start_offset\":0},\"roles\":[],\"token\":\"f\",\"type\":\"Function\"}]}\n"
+        );
     }
 
     #[test]
@@ -349,9 +354,15 @@ mod tests {
         let node = decode_uast(json).unwrap();
         let v = node_to_value(&node);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
+        // Go `ToMap` always emits `pos` (all-zero) and `roles` ([]) on each node.
+        const ZERO_POS: &str = "\"pos\":{\"end_col\":0,\"end_line\":0,\"end_offset\":0,\
+\"start_col\":0,\"start_line\":0,\"start_offset\":0}";
         assert_eq!(
             s,
-            "{\"children\":[{\"token\":\"x\",\"type\":\"Identifier\"}],\"type\":\"File\"}\n"
+            format!(
+                "{{\"children\":[{{{ZERO_POS},\"roles\":[],\"token\":\"x\",\"type\":\"Identifier\"}}],\
+{ZERO_POS},\"roles\":[],\"type\":\"File\"}}\n"
+            )
         );
     }
 

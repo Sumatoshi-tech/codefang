@@ -39,10 +39,14 @@
 //! [`cf_uast_node::encode_compact`] / the node's map-origin
 //! [`GoValue`](cf_uast_node::GoValue) — never `serde_json` (DESIGN §2).
 
-#![forbid(unsafe_code)]
+// `deny` rather than `forbid`: the only `unsafe` in this crate is the FFI call
+// into the vendored tree-sitter grammar C entry points in `languages.rs`, which
+// is locally `#[allow(unsafe_code)]`-gated and documented with a SAFETY note.
+#![deny(unsafe_code)]
 
 mod changes;
 mod loader;
+mod lowering;
 mod parser;
 mod parsefile;
 mod types;

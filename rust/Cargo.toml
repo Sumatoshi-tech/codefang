@@ -44,6 +44,12 @@ git2 = { version = "0.19", default-features = false, features = ["vendored-libgi
 # pinned. Per-language grammar crates are added behind features in cf-uast.
 tree-sitter = "0.22"
 
+# cc — compiles the vendored go-sitter-forest grammar C sources (parser.c) into
+# cf-uast at build time, so the Rust parse tree is byte-identical to the Go
+# build's grammar revision. Build-dependency only; never linked at runtime as a
+# library API.
+cc = "1"
+
 # Harness / build-script only — NEVER used for machine report output.
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

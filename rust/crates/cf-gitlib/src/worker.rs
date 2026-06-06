@@ -50,7 +50,7 @@ pub struct DiffOp {
 }
 
 /// The result of loading a single blob (Go `BlobResult`).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BlobResult {
     /// The blob hash.
     pub hash: Hash,
@@ -67,7 +67,7 @@ pub struct BlobResult {
 }
 
 /// The result of diffing two blobs (Go `DiffResult`).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DiffResult {
     /// Total lines in the old blob.
     pub old_lines: i32,
@@ -452,61 +452,74 @@ fn compute_line_diff(old_data: &[u8], new_data: &[u8], old_lines: i32) -> Vec<Di
         new_line_pos: 0,
     });
 
-    // Scope the callbacks (which borrow `ctx`) so their borrows end before we
-    // move `ctx` out with `into_inner()` below.
+    // Scope the patch walk so any borrows end before we move `ctx` out with
+    // `into_inner()` below. git2 0.19 exposes buffer-to-buffer line diffs via
+    // `Patch::from_buffers`; we iterate its hunks/lines in order and apply the
+    // same coalescing the C `diff foreach` callbacks did (an implicit equal
+    // block for lines skipped before each hunk, then per-line origin mapping).
     let diff_ok = {
         let mut opts = git2::DiffOptions::new();
-
-        // hunk_cb: insert an implicit equal block for lines skipped before a hunk.
-        let mut hunk_cb = |_delta: git2::DiffDelta<'_>, hunk: git2::DiffHunk<'_>| -> bool {
-            let mut c = ctx.borrow_mut();
-            let hunk_start = hunk.old_start() as i32 - 1; // 1-based -> 0-based
-            if hunk_start > c.old_line_pos {
-                let skipped = hunk_start - c.old_line_pos;
-                c.add(0, skipped);
-                c.old_line_pos = hunk_start;
-                c.new_line_pos += skipped;
+        match git2::Patch::from_buffers(old_data, None, new_data, None, Some(&mut opts)) {
+            Ok(patch) => {
+                let mut ok = true;
+                let num_hunks = patch.num_hunks();
+                'hunks: for h in 0..num_hunks {
+                    let (hunk, _hl): (git2::DiffHunk<'_>, usize) = match patch.hunk(h) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            ok = false;
+                            break 'hunks;
+                        }
+                    };
+                    {
+                        // hunk preamble: implicit equal block for skipped lines.
+                        let mut c = ctx.borrow_mut();
+                        let hunk_start = hunk.old_start() as i32 - 1; // 1-based -> 0-based
+                        if hunk_start > c.old_line_pos {
+                            let skipped = hunk_start - c.old_line_pos;
+                            c.add(0, skipped);
+                            c.old_line_pos = hunk_start;
+                            c.new_line_pos += skipped;
+                        }
+                    }
+                    let lines = match patch.num_lines_in_hunk(h) {
+                        Ok(n) => n,
+                        Err(_) => {
+                            ok = false;
+                            break 'hunks;
+                        }
+                    };
+                    for l in 0..lines {
+                        let line: git2::DiffLine<'_> = match patch.line_in_hunk(h, l) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                ok = false;
+                                break 'hunks;
+                            }
+                        };
+                        let mut c = ctx.borrow_mut();
+                        match line.origin() {
+                            ' ' => {
+                                c.add(0, 1); // CONTEXT -> EQUAL
+                                c.old_line_pos += 1;
+                                c.new_line_pos += 1;
+                            }
+                            '+' => {
+                                c.add(1, 1); // ADDITION -> INSERT
+                                c.new_line_pos += 1;
+                            }
+                            '-' => {
+                                c.add(2, 1); // DELETION -> DELETE
+                                c.old_line_pos += 1;
+                            }
+                            _ => {} // file/hunk headers, etc.
+                        }
+                    }
+                }
+                ok
             }
-            true
-        };
-
-        // line_cb: map origin to equal/insert/delete and advance positions.
-        let mut line_cb = |_delta: git2::DiffDelta<'_>,
-                           _hunk: Option<git2::DiffHunk<'_>>,
-                           line: git2::DiffLine<'_>|
-         -> bool {
-            let mut c = ctx.borrow_mut();
-            match line.origin() {
-                ' ' => {
-                    c.add(0, 1); // CONTEXT -> EQUAL
-                    c.old_line_pos += 1;
-                    c.new_line_pos += 1;
-                }
-                '+' => {
-                    c.add(1, 1); // ADDITION -> INSERT
-                    c.new_line_pos += 1;
-                }
-                '-' => {
-                    c.add(2, 1); // DELETION -> DELETE
-                    c.old_line_pos += 1;
-                }
-                _ => {} // file/hunk headers, etc.
-            }
-            true
-        };
-
-        git2::Diff::buffers(
-            Some(old_data),
-            None,
-            Some(new_data),
-            None,
-            Some(&mut opts),
-            None,
-            None,
-            Some(&mut hunk_cb),
-            Some(&mut line_cb),
-        )
-        .is_ok()
+            Err(_) => false,
+        }
     };
 
     let mut c = ctx.into_inner();

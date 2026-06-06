@@ -211,7 +211,9 @@ mod tests {
 
     #[test]
     fn compliance_zero_when_no_nodes() {
-        assert_eq!(calculate_compliance(&json!("x"), 0), 1); // scalar counts as 1 node
+        // A scalar counts as 1 node; 0 errors of 1 node => 100% (matches Go
+        // `calculateCompliance`: 1/1 * 100 = 100).
+        assert_eq!(calculate_compliance(&json!("x"), 0), 100);
         assert_eq!(calculate_compliance(&json!([]), 0), 100); // 1 node (the array), 0 errors
     }
 

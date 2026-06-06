@@ -226,6 +226,87 @@ impl ComputedMetrics {
 
         root
     }
+
+    /// Converts the metrics to a [`cf_gojson::GoValue`] for byte-identical Go
+    /// `encoding/json` output (DESIGN §2/§3). This is the authoritative encoder
+    /// path; [`Self::to_report_value`] is the legacy local shim.
+    ///
+    /// Byte-parity details reproduced from Go `*ComputedMetrics`:
+    ///
+    /// * The top-level object is **struct-origin** ([`MapOrigin::Struct`]), so
+    ///   keys are emitted in Go field-declaration order — `import_list`,
+    ///   `categories`, `dependencies`, `aggregate` — **not** byte-sorted.
+    /// * `import_list` and `categories` come from `make([]T, 0, n)` in Go (never
+    ///   nil), so they always serialize as `[]` when empty.
+    /// * `dependencies` comes from a Go `var result []ImportDependencyData` (nil
+    ///   until the first `append`), so when no risky imports exist it is a **nil
+    ///   slice** and Go marshals it as `null`, not `[]`. This is the first-byte
+    ///   distinction in the `run/history_imports.json` golden
+    ///   (`"dependencies":null`).
+    /// * `aggregate` is itself a struct: declaration order `total_imports`,
+    ///   `external_imports`, `internal_imports`, `unique_packages`,
+    ///   `external_ratio`; `external_ratio` is a `float64` routed through
+    ///   cf-gojson's Go-`'g'` formatter (`0` for the empty report).
+    #[must_use]
+    pub fn to_go_value(&self) -> cf_gojson::GoValue {
+        use cf_gojson::{GoMap, GoValue};
+
+        let import_list = self
+            .import_list
+            .iter()
+            .map(|d| {
+                let mut m = GoMap::new_struct();
+                m.push("path", GoValue::Str(d.path.clone()));
+                m.push("category", GoValue::Str(d.category.clone()));
+                m.push("is_external", GoValue::Bool(d.is_external));
+                GoValue::Map(m)
+            })
+            .collect();
+
+        let categories = self
+            .categories
+            .iter()
+            .map(|c| {
+                let mut m = GoMap::new_struct();
+                m.push("category", GoValue::Str(c.category.clone()));
+                m.push("count", GoValue::Int(c.count));
+                GoValue::Map(m)
+            })
+            .collect();
+
+        // Go nil-slice -> `null`. The Dependency metric only ever `append`s to a
+        // `var result []…` (nil) slice, so an empty result is nil, not `[]`.
+        let dependencies = if self.dependencies.is_empty() {
+            GoValue::Null
+        } else {
+            GoValue::Array(
+                self.dependencies
+                    .iter()
+                    .map(|d| {
+                        let mut m = GoMap::new_struct();
+                        m.push("path", GoValue::Str(d.path.clone()));
+                        m.push("risk_level", GoValue::Str(d.risk_level.clone()));
+                        m.push("reason", GoValue::Str(d.reason.clone()));
+                        GoValue::Map(m)
+                    })
+                    .collect(),
+            )
+        };
+
+        let mut agg = GoMap::new_struct();
+        agg.push("total_imports", GoValue::Int(self.aggregate.total_imports));
+        agg.push("external_imports", GoValue::Int(self.aggregate.external_imports));
+        agg.push("internal_imports", GoValue::Int(self.aggregate.internal_imports));
+        agg.push("unique_packages", GoValue::Int(self.aggregate.unique_packages));
+        agg.push("external_ratio", GoValue::Float(self.aggregate.external_ratio));
+
+        let mut root = GoMap::new_struct();
+        root.push("import_list", GoValue::Array(import_list));
+        root.push("categories", GoValue::Array(categories));
+        root.push("dependencies", dependencies);
+        root.push("aggregate", GoValue::Map(agg));
+        GoValue::Map(root)
+    }
 }
 
 /// Runs all metrics over a report and returns the combined result.
@@ -445,6 +526,27 @@ mod tests {
         let result = ReportData::parse(&ReportValue::map()).unwrap();
         assert!(result.imports.is_empty());
         assert_eq!(result.count, 0);
+    }
+
+    /// Byte-for-byte parity of the empty-imports report against the binding
+    /// golden `rust/tests/golden/run/history_imports.json` (history/imports json,
+    /// 10 commits with no extracted imports). Locks: declaration field order
+    /// (not byte-sorted), `import_list`/`categories` => `[]`, `dependencies` =>
+    /// `null` (Go nil slice), `external_ratio` => `0`, and NO trailing newline
+    /// (compact `json.Marshal`).
+    #[test]
+    fn empty_report_matches_history_imports_golden() {
+        // ticksToReport always emits a non-empty report (imports/author_index/
+        // tick_size keys), so ComputeAllMetrics runs even when no imports exist.
+        let report = ReportValue::map();
+        let metrics = compute_all_metrics(&report).unwrap();
+        let bytes = cf_gojson::marshal(&metrics.to_go_value());
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            "{\"import_list\":[],\"categories\":[],\"dependencies\":null,\
+             \"aggregate\":{\"total_imports\":0,\"external_imports\":0,\
+             \"internal_imports\":0,\"unique_packages\":0,\"external_ratio\":0}}"
+        );
     }
 
     #[test]

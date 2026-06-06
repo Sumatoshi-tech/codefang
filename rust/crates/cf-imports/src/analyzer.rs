@@ -8,7 +8,7 @@
 
 use crate::metrics::{compute_all_metrics, ComputedMetrics};
 use crate::node::{self, Node};
-use crate::report::{encode_binary_envelope, ReportValue};
+use crate::report::ReportValue;
 
 /// Configuration key for the max dependency-risk rows shown in plots.
 ///
@@ -96,23 +96,30 @@ impl Analyzer {
         compute_all_metrics(report).unwrap_or_default()
     }
 
-    /// Renders the JSON form of a report (compact-JSON of [`ComputedMetrics`]).
+    /// Renders the JSON form of a report (`json.MarshalIndent` of
+    /// [`ComputedMetrics`]).
     ///
-    /// Mirrors Go `(*Analyzer).FormatReportJSON`. The Go code uses
-    /// `json.MarshalIndent(metrics, "", "  ")`; for byte-identity the indented
-    /// form must come from `cf-gojson` (DESIGN §2.3). This shim returns the
-    /// compact form; swap for the indented go-compat encoder once available.
+    /// Mirrors Go `(*Analyzer).FormatReportJSON`, which uses
+    /// `json.MarshalIndent(metrics, "", "  ")`. Routes through `cf-gojson`'s
+    /// `marshal_indent` over the struct-origin [`ComputedMetrics::to_go_value`]
+    /// so field order, the `dependencies`-nil-slice `null`, and float formatting
+    /// are byte-identical (DESIGN §2.3). (The history-run path serializes the
+    /// same value with compact `cf_gojson::marshal`.)
     pub fn format_report_json(&self, report: &ReportValue) -> String {
-        self.compute_metrics(report).to_report_value().to_go_json_compact()
+        let bytes = cf_gojson::marshal_indent(&self.compute_metrics(report).to_go_value());
+        String::from_utf8(bytes).expect("cf-gojson emits valid UTF-8")
     }
 
     /// Encodes a report as a CFB1 `bin` envelope.
     ///
     /// Mirrors Go `(*Analyzer).FormatReportBinary` (which wraps the metrics in
-    /// `reportutil.EncodeBinaryEnvelope`).
+    /// `reportutil.EncodeBinaryEnvelope`). The envelope payload is compact
+    /// `json.Marshal` of the struct-origin metrics value, via cf-reportutil.
     pub fn format_report_binary(&self, report: &ReportValue, out: &mut Vec<u8>) {
-        let value = self.compute_metrics(report).to_report_value();
-        encode_binary_envelope(&value, out);
+        let value = self.compute_metrics(report).to_go_value();
+        let envelope = cf_reportutil::encode_binary_envelope(&value)
+            .expect("imports metrics never exceed the CFB1 length cap");
+        out.extend_from_slice(&envelope);
     }
 }
 

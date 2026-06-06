@@ -191,7 +191,7 @@ mod tests {
     fn change_json_is_struct_order_with_omitempty() {
         let changes = vec![Change {
             change_type: "modified".to_string(),
-            before: Some(GoValue::str("b")),
+            before: Some(GoValue::Str("b".to_string())),
             after: None,
             file: "f.go".to_string(),
         }];

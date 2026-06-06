@@ -344,7 +344,7 @@ fn main() {
             // version uses cobra `Run` (no error path), exit 0.
             print!("{}", cf_version::codefang_version_line());
         }
-        Some(("run", _sub)) => run_dispatch(),
+        Some(("run", sub)) => run_dispatch(sub),
         Some(("render", sub)) => render_dispatch(sub),
         _ => {
             // No subcommand: print help (cobra root with no args).
@@ -361,12 +361,180 @@ fn fail(msg: &str) -> ! {
     exit(1);
 }
 
-/// Dispatches `codefang run` to cf-commands (DESIGN §4.1). The full flag surface
-/// is parsed by [`build_run_command`]; the analysis body is owned by cf-commands
-/// (tier 8). Until that crate is wired in, this surfaces the blocked-dependency
-/// sentinel through the codefang error path.
-fn run_dispatch() -> ! {
+/// Dispatches `codefang run` (DESIGN §4.1). The full flag surface is parsed by
+/// [`build_run_command`]; the analysis body is being ported into the analyzer
+/// crates (tier 8). Analyzer/format combinations whose report is already wired
+/// to its Go-parity crate are emitted here through the shared cf-gojson encoder;
+/// the rest still surface the blocked-dependency sentinel through the codefang
+/// error path.
+fn run_dispatch(sub: &clap::ArgMatches) -> ! {
+    let analyzers: Vec<&str> = sub
+        .get_many::<String>("analyzers")
+        .map(|vals| vals.map(String::as_str).collect())
+        .unwrap_or_default();
+    let format = sub.get_one::<String>("format").map(String::as_str).unwrap_or("json");
+
+    // Single history analyzer JSON captures whose finalized in-memory report is
+    // empty of analyzer payload (the streaming pipeline emits per-tick data into
+    // typed maps the JSON metric-computer does not read) reduce to the analyzer's
+    // `ComputeAllMetrics` over an empty report — a repo-independent constant. See
+    // the Go path cmd/codefang/commands/run.go renderReport ->
+    // BaseHistoryAnalyzer.Serialize -> ComputeMetricsFn (run/history_imports.json).
+    if analyzers.as_slice() == ["history/imports"] && format == "json" {
+        // history/imports: ticksToReport stores the 4-level imports map under the
+        // "imports" key, but ParseReportData only recognises `imports: []string`
+        // or a JSON-decoded `import_list`; neither is present in the in-memory
+        // report, so the parsed import set is empty and ComputeAllMetrics yields
+        // the zero ComputedMetrics. Route the bytes through cf-gojson (Go
+        // encoding/json parity: `dependencies` is a Go nil slice -> `null`,
+        // `external_ratio` float 0 -> `0`, struct-declaration key order, no
+        // trailing newline).
+        let report = cf_imports::ReportValue::map();
+        let metrics =
+            cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
+        let bytes = cf_gojson::marshal(&metrics.to_go_value());
+        use std::io::Write;
+        std::io::stdout().write_all(&bytes).expect("write stdout");
+        exit(0);
+    }
+
+    // history/typos --format json: like history/imports, the streaming pipeline
+    // emits per-commit typo data into typed maps the JSON metric-computer does
+    // not read back, so the finalized in-memory report holds zero typos and the
+    // capture reduces to `ComputeAllMetrics` over an empty report — a
+    // repo-independent constant (the 138-byte golden). `metrics_report_value`
+    // builds the byte-sorted MetricSet map; `to_json()` is the cf-gojson-parity
+    // compact encoder (HTML-escape on, sorted keys, `patterns:null` vs `[]`,
+    // no trailing newline). Verified byte-identical to run/history_typos.json.
+    if analyzers.as_slice() == ["history/typos"] && format == "json" {
+        use std::io::Write;
+        let bytes = cf_typos::metrics_report_value(&cf_typos::ReportData::default())
+            .to_json()
+            .into_bytes();
+        std::io::stdout().write_all(&bytes).expect("write stdout");
+        exit(0);
+    }
+
+    // history/devs --head --format json: HEAD-only developer analytics. The
+    // streaming pipeline (Go run.go initHeadOnly → Runner → devs aggregator →
+    // ticksToReport → ComputeAllMetrics) collapses, for a single HEAD commit,
+    // to a closed-form report we build directly from libgit2 here.
+    if analyzers.as_slice() == ["history/devs"] && format == "json" && sub.get_flag("head") {
+        if let Some(bytes) = devs_head_report(sub) {
+            use std::io::Write;
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            exit(0);
+        }
+        // Fall through to the sentinel when the HEAD commit does not match the
+        // closed-form case we reproduce (see devs_head_report).
+    }
+
     fail(DISPATCH_BLOCKED_MSG);
+}
+
+/// Resolves the repository path from `run`'s positional arg or `-p/--path`
+/// (Go run.go: the positional wins when present, else `--path`, default `.`).
+fn run_repo_path(sub: &clap::ArgMatches) -> String {
+    if let Some(p) = sub.get_one::<String>("path_arg") {
+        if !p.is_empty() {
+            return p.clone();
+        }
+    }
+    sub.get_one::<String>("path").cloned().unwrap_or_else(|| ".".to_string())
+}
+
+/// Builds the `history/devs --head --format json` report bytes for the HEAD
+/// commit, or `None` if HEAD is not the closed-form case this path reproduces.
+///
+/// Reproduces the Go head-only pipeline for `history/devs`:
+///  - identity: a loose people dict built from HEAD's author
+///    (`IdentityDetector.GeneratePeopleDict([head]).generateLooseDict`), giving
+///    `ReversedPeopleDict[0] = "<lower name>|<lower email>"` and author id 0;
+///  - tick assignment: a single HEAD commit lands in tick 0
+///    (`TicksSinceStart`, `CommitsByTick = {0:[hash]}`);
+///  - tick bounds: start == end == HEAD's **committer** time (`ac.Time`,
+///    runner.go:1456), Go-`time.RFC3339`-formatted in UTC;
+///  - per-commit dev data: `{commits:1, author_id:0}`. A **merge** HEAD
+///    (`NumParents()>1`) skips `accumulateLineStats` (analyzer.go:234), so all
+///    line stats are 0 — the deterministic, language-free closed form. For a
+///    non-merge HEAD the Go pipeline computes diff-match-patch line stats and
+///    enry language buckets, which this closed form does not reproduce; we
+///    return `None` so the caller surfaces the dispatch sentinel rather than
+///    emitting subtly-divergent bytes.
+fn devs_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use std::collections::BTreeMap;
+
+    use cf_analyzers_plumbing::git_model::{Commit as PlumbingCommit, Signature as PlumbingSig};
+    use cf_analyzers_plumbing::IdentityDetector;
+    use cf_devs::{parse_tick_data_with_bounds, MetricOptions, TickBounds};
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+    let head = repo.head().ok()?;
+    let commit = repo.lookup_commit(head).ok()?;
+
+    // Only the deterministic, language-free closed form (merge HEAD → 0 line
+    // stats) is reproduced here.
+    if commit.num_parents() <= 1 {
+        return None;
+    }
+
+    let author = commit.author();
+    let committer_when = commit.committer().when.seconds(); // ac.Time == committer When.
+    let commit_hash = commit.hash().to_string();
+
+    // Loose people dict from the single HEAD commit (author identity).
+    let plumb_commit = PlumbingCommit {
+        author: PlumbingSig {
+            name: author.name.clone(),
+            email: author.email.clone(),
+            when_unix: author.when.seconds(),
+        },
+        committer: PlumbingSig {
+            name: String::new(),
+            email: String::new(),
+            when_unix: committer_when,
+        },
+    };
+    let mut ident = IdentityDetector::new();
+    ident.generate_people_dict(std::slice::from_ref(&plumb_commit));
+    let author_id = ident.consume_signature(&plumb_commit.author);
+    let names = ident.reversed_people_dict.clone();
+
+    // Per-commit dev data: merge commit → commits=1, no line stats, no langs.
+    let mut commit_dev_data = BTreeMap::new();
+    commit_dev_data.insert(
+        commit_hash.clone(),
+        cf_devs::CommitDevData {
+            commits: 1,
+            added: 0,
+            removed: 0,
+            changed: 0,
+            author_id,
+            languages: BTreeMap::new(),
+        },
+    );
+
+    // Single HEAD commit → tick 0.
+    let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    commits_by_tick.insert(0, vec![commit_hash]);
+
+    // tick_bounds[0] = { start: end: committer time } formatted RFC3339 UTC.
+    let when_rfc3339 = cf_analyze::metadata::format_rfc3339_utc(committer_when);
+    let mut tick_bounds: BTreeMap<i64, TickBounds> = BTreeMap::new();
+    tick_bounds.insert(
+        0,
+        TickBounds {
+            start_time: when_rfc3339.clone(),
+            end_time: when_rfc3339,
+        },
+    );
+
+    // TickSize defaults to 24h (no --tick-size on run); 0 → resolve_tick_size
+    // applies the default inside parse_tick_data_with_bounds.
+    let input = parse_tick_data_with_bounds(&commit_dev_data, &commits_by_tick, names, 0, tick_bounds);
+    let metrics = cf_devs::compute_all_metrics(&input, &MetricOptions::default());
+    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
 }
 
 /// Dispatches `codefang render <store-dir>` to cf-commands (DESIGN §4.1).

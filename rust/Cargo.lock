@@ -498,6 +498,10 @@ version = "0.0.0"
 [[package]]
 name = "cf-imports"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+ "cf-reportutil",
+]
 
 [[package]]
 name = "cf-iosafety"
@@ -682,6 +686,7 @@ version = "0.0.0"
 name = "cf-uast"
 version = "0.0.0"
 dependencies = [
+ "cc",
  "cf-uast-mapping",
  "cf-uast-node",
  "cf-uast-uastmaps",
@@ -797,6 +802,13 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 name = "codefang"
 version = "0.0.0"
 dependencies = [
+ "cf-analyze",
+ "cf-analyzers-plumbing",
+ "cf-devs",
+ "cf-gitlib",
+ "cf-gojson",
+ "cf-imports",
+ "cf-typos",
  "cf-version",
  "clap",
  "git2",

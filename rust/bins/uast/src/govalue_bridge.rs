@@ -20,9 +20,11 @@
 //! `cf-uast-node/src/tomap.rs`):
 //! - `type` is always present (even when empty);
 //! - `token` only when non-empty;
-//! - `roles` only when non-empty (array of strings);
-//! - `pos` only when the node has a position; each of the six `uint` fields is
-//!   emitted only when non-zero;
+//! - `roles` is ALWAYS present (Go `addRolesToMap` is unconditional; empty →
+//!   `[]`);
+//! - `pos` is ALWAYS present (Go `ToMap` sets it unconditionally via
+//!   `buildPositionMap`); all six `uint` fields are emitted, a missing position
+//!   yielding all-zero fields;
 //! - `props` only when non-empty (nested map-origin object);
 //! - `children` only when non-empty (array of recursively-mapped nodes);
 //! - `id` only when non-empty, hex-encoded (`fmt.Sprintf("%x", id)`).
@@ -43,33 +45,27 @@ pub fn node_to_value(node: &Node) -> GoValue {
         entries.push(("token".to_string(), GoValue::Str(node.token.clone())));
     }
 
-    // roles — omitempty.
-    if !node.roles.is_empty() {
+    // roles — ALWAYS present (Go `addRolesToMap` sets the key unconditionally;
+    // an empty slice serializes as `[]`, NOT omitted).
+    {
         let roles = node.roles.iter().map(|r| GoValue::Str(r.clone())).collect();
         entries.push(("roles".to_string(), GoValue::Array(roles)));
     }
 
-    // pos — only when present; the six uint fields are each omitempty.
-    if let Some(pos) = node.pos {
-        let mut pos_entries: Vec<(String, GoValue)> = Vec::new();
-        if pos.start_line != 0 {
-            pos_entries.push(("start_line".to_string(), GoValue::Uint(pos.start_line)));
-        }
-        if pos.start_col != 0 {
-            pos_entries.push(("start_col".to_string(), GoValue::Uint(pos.start_col)));
-        }
-        if pos.start_offset != 0 {
-            pos_entries.push(("start_offset".to_string(), GoValue::Uint(pos.start_offset)));
-        }
-        if pos.end_line != 0 {
-            pos_entries.push(("end_line".to_string(), GoValue::Uint(pos.end_line)));
-        }
-        if pos.end_col != 0 {
-            pos_entries.push(("end_col".to_string(), GoValue::Uint(pos.end_col)));
-        }
-        if pos.end_offset != 0 {
-            pos_entries.push(("end_offset".to_string(), GoValue::Uint(pos.end_offset)));
-        }
+    // pos — ALWAYS present (Go `ToMap` does `result["pos"] = buildPositionMap`
+    // unconditionally). `buildPositionMap` emits all six uint fields; a missing
+    // position yields all-zero fields. The struct-tag `omitempty` does not apply
+    // because the map is built with literal keys.
+    {
+        let pos = node.pos.unwrap_or_default();
+        let pos_entries: Vec<(String, GoValue)> = vec![
+            ("start_line".to_string(), GoValue::Uint(pos.start_line)),
+            ("start_col".to_string(), GoValue::Uint(pos.start_col)),
+            ("start_offset".to_string(), GoValue::Uint(pos.start_offset)),
+            ("end_line".to_string(), GoValue::Uint(pos.end_line)),
+            ("end_col".to_string(), GoValue::Uint(pos.end_col)),
+            ("end_offset".to_string(), GoValue::Uint(pos.end_offset)),
+        ];
         entries.push(("pos".to_string(), GoValue::object(GoMap::from_map(pos_entries))));
     }
 
@@ -113,12 +109,18 @@ mod tests {
     use super::*;
     use cf_uast_node::Node;
 
+    /// The all-zero position map Go's `buildPositionMap(nil)` emits, in
+    /// byte-sorted key order.
+    const ZERO_POS: &str = "\"pos\":{\"end_col\":0,\"end_line\":0,\"end_offset\":0,\
+\"start_col\":0,\"start_line\":0,\"start_offset\":0}";
+
     #[test]
     fn type_always_present_token_omitempty() {
         let n = Node::with_token("Identifier", "x");
         let v = node_to_value(&n);
-        let bytes = cf_textutil::marshal_json(&v, false).unwrap();
-        assert_eq!(bytes, br#"{"token":"x","type":"Identifier"}"#.to_vec().into_iter().chain(*b"\n").collect::<Vec<u8>>());
+        let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
+        // pos (always) < roles (always, empty) < token < type.
+        assert_eq!(s, format!("{{{ZERO_POS},\"roles\":[],\"token\":\"x\",\"type\":\"Identifier\"}}\n"));
     }
 
     #[test]
@@ -126,7 +128,7 @@ mod tests {
         let n = Node::with_token("File", "");
         let v = node_to_value(&n);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
-        assert_eq!(s, "{\"type\":\"File\"}\n");
+        assert_eq!(s, format!("{{{ZERO_POS},\"roles\":[],\"type\":\"File\"}}\n"));
     }
 
     #[test]
@@ -139,11 +141,13 @@ mod tests {
         n.add_child(Node::with_token("Identifier", "x"));
         let v = node_to_value(&n);
         let s = String::from_utf8(cf_textutil::marshal_json(&v, false).unwrap()).unwrap();
-        // children, id, roles, token, type (no pos/props here).
+        // children, id, pos, roles, token, type (pos/roles always present).
         assert_eq!(
             s,
-            "{\"children\":[{\"token\":\"x\",\"type\":\"Identifier\"}],\
-\"id\":\"abcd\",\"roles\":[\"Declaration\"],\"token\":\"foo\",\"type\":\"Function\"}\n"
+            format!(
+                "{{\"children\":[{{{ZERO_POS},\"roles\":[],\"token\":\"x\",\"type\":\"Identifier\"}}],\
+\"id\":\"abcd\",{ZERO_POS},\"roles\":[\"Declaration\"],\"token\":\"foo\",\"type\":\"Function\"}}\n"
+            )
         );
     }
 

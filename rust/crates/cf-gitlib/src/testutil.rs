@@ -96,7 +96,7 @@ pub fn commit_files(
         .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .map_err(|e| GitError::lib("commit", e))?;
 
-    Ok(Hash::from_oid(commit_oid))
+    Ok(Hash::from_oid(&commit_oid))
 }
 
 fn unique_temp_dir() -> std::path::PathBuf {

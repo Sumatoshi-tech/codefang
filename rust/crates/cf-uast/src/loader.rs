@@ -20,9 +20,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, Rule};
+use cf_uast_mapping::{LanguageInfo, Parser as MappingParser, PatternMatcher, Rule};
 use cf_uast_node::Node;
 
+use crate::lowering::Lowering;
 use crate::types::{LanguageParser, ParseError};
 
 /// The bit-array length for the extension bloom filter (Go `bloomSize`).
@@ -183,17 +184,23 @@ struct LazyDslParser {
 }
 
 /// The state produced when a lazy parser is initialized: a tree-sitter
-/// [`tree_sitter::Language`] plus the parsed rules / language info needed to map
-/// the concrete syntax tree to a UAST.
+/// [`tree_sitter::Language`] plus the parsed rules / derived lookup structures
+/// needed to lower a concrete syntax tree to a UAST (Go `DSLParser` fields built
+/// in `initializeLanguage`).
 struct InitState {
-    #[allow(dead_code)]
     rules: Vec<Rule>,
     #[allow(dead_code)]
     lang_info: LanguageInfo,
+    /// First-occurrence-wins rule index keyed by node type (Go `ruleIndex`).
+    rule_index: HashMap<String, usize>,
     /// The tree-sitter language, looked up via [`crate::languages::get_language`].
-    /// `None` means no Rust grammar is wired for this language yet (grammar
-    /// crates are integrated centrally — see crate docs / todos).
+    /// `None` means no grammar is vendored for this language yet.
     ts_language: Option<tree_sitter::Language>,
+    /// Compiled-pattern matcher bound to `ts_language` (Go `patternMatcher`).
+    /// `None` when no grammar is available.
+    pattern_matcher: Option<PatternMatcher>,
+    /// Language name (Go `langInfo.Name`).
+    language: String,
 }
 
 impl LazyDslParser {
@@ -230,12 +237,25 @@ impl LazyDslParser {
                 )
             };
 
+            // Build the O(1) rule lookup index (first occurrence wins), matching
+            // Go `initializeLanguage`'s `ruleIndex` construction.
+            let mut rule_index: HashMap<String, usize> = HashMap::with_capacity(rules.len());
+            for (i, r) in rules.iter().enumerate() {
+                rule_index.entry(r.name.clone()).or_insert(i);
+            }
+
             let ts_language = crate::languages::get_language(&self.mapping.language);
+            let pattern_matcher = ts_language
+                .as_ref()
+                .map(|lang| PatternMatcher::new(lang.clone()));
 
             Ok(InitState {
                 rules,
                 lang_info,
+                rule_index,
                 ts_language,
+                pattern_matcher,
+                language: self.mapping.language.clone(),
             })
         })
     }
@@ -248,25 +268,47 @@ impl LanguageParser for LazyDslParser {
             Err(e) => return Err(e.clone()),
         };
 
-        // The concrete tree-sitter lowering (cursor walk over the parsed tree +
-        // applying `state.rules` via the cf-uast-mapping pattern matcher) becomes
-        // available once the per-language grammar is wired into
-        // `languages::get_language`. Grammar crates are integrated centrally
-        // (DESIGN §5); until a given language's grammar is present this returns a
-        // precise, actionable error rather than a partial tree.
-        match state.ts_language.as_ref() {
-            None => Err(ParseError::Other(format!(
-                "no tree-sitter grammar wired for language {} (grammar integration pending; see crate docs)",
-                self.language
-            ))),
-            Some(_lang) => {
-                let _ = content;
-                Err(ParseError::Other(format!(
-                    "tree-sitter lowering for language {} is not yet enabled in this build",
+        let lang = match state.ts_language.as_ref() {
+            Some(lang) => lang,
+            None => {
+                return Err(ParseError::Other(format!(
+                    "no tree-sitter grammar wired for language {} (grammar vendoring pending; see crate docs)",
                     self.language
                 )))
             }
-        }
+        };
+        let pattern_matcher = state.pattern_matcher.as_ref().expect(
+            "pattern_matcher is always Some when ts_language is Some (built together in init)",
+        );
+
+        // Go uses a pooled `*sitter.Parser`; a fresh parser per call is
+        // behavior-identical (pooling never affects output bytes — DESIGN).
+        let mut ts_parser = tree_sitter::Parser::new();
+        ts_parser
+            .set_language(lang)
+            .map_err(|e| ParseError::Other(format!("dsl parser: set language: {e}")))?;
+
+        let tree = ts_parser
+            .parse(content, None)
+            .ok_or_else(|| ParseError::Other("dsl parser: failed to parse".to_string()))?;
+
+        let lowering = Lowering::new(
+            content,
+            &state.rules,
+            &state.rule_index,
+            pattern_matcher,
+            &state.language,
+            false,
+        );
+
+        // Go returns `errNoRootNode` only when the root is null, which
+        // tree-sitter never produces for a successful parse. A root that lowers
+        // to `None` (e.g. an empty source file) yields an empty `File` root in
+        // Go's `outputNode` path is not reached — Go returns the canonical node
+        // directly. Here `lower` returning `None` means the root collapsed; we
+        // surface a default (empty) node to mirror Go's non-nil root for the
+        // empty-input case.
+        Ok(lowering.lower(&tree).unwrap_or_default())
     }
 
     fn language(&self) -> String {

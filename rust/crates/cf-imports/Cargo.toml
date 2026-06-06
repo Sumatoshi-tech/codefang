@@ -9,7 +9,17 @@ publish.workspace = true
 description = "Import/dependency analysis: static import IDs (`imports`) plus per-developer/per-language import usage history (`ImportsPerDeveloper`, id `history/imports`, additive merge). Rust port of the Go internal/analyzers/imports package."
 
 [dependencies]
-# This crate is std-only at this stage of the port.
+# DESIGN §2/§3: all MACHINE report bytes MUST flow through cf-gojson, the
+# go-compat encoder that models Go struct-declaration key order vs byte-sorted
+# map keys and Go nil-slice -> JSON `null`. `ComputedMetrics::to_go_value`
+# builds a struct-origin `GoValue` so json/bin output is byte-identical to Go
+# `json.Marshal(*ComputedMetrics)` (e.g. `dependencies:null` for the empty
+# report, and declaration field order import_list/categories/dependencies/
+# aggregate rather than a byte-sorted alphabetical order).
+cf-gojson = { workspace = true }
+# CFB1 `bin` envelope (DESIGN §3.6): "CFB1" + LE u32 len + compact json.Marshal
+# of the struct-origin metrics value. Routes through cf-gojson internally.
+cf-reportutil = { path = "../cf-reportutil" }
 #
 # In the integrated workspace it will depend on path crates that supply the
 # canonical types: cf-uast-node (the Node model + VisitPreOrder/HasAnyRole),

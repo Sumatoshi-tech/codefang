@@ -267,12 +267,19 @@ pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
         },
         MetricResult {
             name: METRIC_NAME_PATTERNS.to_string(),
-            value: GoValue::Array(
-                compute_typo_patterns(input)
-                    .iter()
-                    .map(TypoPatternData::to_govalue)
-                    .collect(),
-            ),
+            // Go `computeTypoPatterns` returns a nil slice (`var result
+            // []TypoPatternData`) until the "frequency > 1" filter appends to
+            // it, so an empty result marshals to JSON `null`, NOT `[]`. The
+            // `typo_list`/`file_typos` metrics use `make([]T, 0, …)` and so
+            // marshal to `[]` when empty — keep that asymmetry exact.
+            value: {
+                let patterns = compute_typo_patterns(input);
+                if patterns.is_empty() {
+                    GoValue::Null
+                } else {
+                    GoValue::Array(patterns.iter().map(TypoPatternData::to_govalue).collect())
+                }
+            },
         },
         MetricResult {
             name: METRIC_NAME_FILE_TYPOS.to_string(),
@@ -290,14 +297,17 @@ pub fn compute_all_metrics(input: &ReportData) -> Vec<MetricResult> {
     ]
 }
 
-/// Builds the metrics report value: a struct-origin object keyed by metric name
-/// in computation order.
+/// Builds the metrics report value: a **map-origin** object keyed by metric
+/// name, so JSON encoding sorts the keys by raw UTF-8 bytes.
 ///
-/// The Go MetricsOutput serializer emits the metrics as a struct (declaration
-/// order preserved), so this uses [`GoValue::Struct`] rather than a sorted map.
+/// Go `common.MetricSet.ToJSON()` returns a `map[string]any` (one entry per
+/// metric), and `json.Marshal` sorts map keys. So the top-level order is the
+/// byte-sorted `aggregate`, `file_typos`, `patterns`, `typo_list` — NOT the
+/// `typo_list`, `patterns`, `file_typos`, `aggregate` computation order. Using
+/// [`GoValue::Map`] (sorted at encode time) reproduces that exactly.
 pub fn metrics_report_value(input: &ReportData) -> GoValue {
     let metrics = compute_all_metrics(input);
-    GoValue::Struct(metrics.into_iter().map(|m| (m.name, m.value)).collect())
+    GoValue::Map(metrics.into_iter().map(|m| (m.name, m.value)).collect())
 }
 
 #[cfg(test)]
@@ -381,16 +391,32 @@ mod tests {
     }
 
     #[test]
-    fn metrics_report_value_struct_order_and_json() {
-        // Single typo -> typo_list has one entry, patterns empty, file_typos one,
-        // aggregate totals 1. Verify the struct-origin field order is preserved.
+    fn metrics_report_value_sorted_keys_and_json() {
+        // Single typo -> typo_list has one entry, patterns empty (one
+        // occurrence, filtered out -> nil -> null), file_typos one, aggregate
+        // totals 1. Go `MetricSet.ToJSON()` is a map, so keys are byte-sorted:
+        // aggregate, file_typos, patterns, typo_list.
         let input = ReportData {
             typos: vec![typo("tets", "test", "main.go", 10, Hash::default())],
         };
         let json = metrics_report_value(&input).to_json();
-        assert!(json.starts_with("{\"typo_list\":["));
-        assert!(json.contains("\"patterns\":[]"));
+        assert!(json.starts_with("{\"aggregate\":{\"total_typos\":1,"));
         assert!(json.contains("\"file_typos\":[{\"file\":\"main.go\",\"typo_count\":1,\"fixed_typos\":1}]"));
-        assert!(json.contains("\"aggregate\":{\"total_typos\":1,"));
+        // A single occurrence is filtered (frequency > 1), leaving the nil
+        // slice -> JSON null, not [].
+        assert!(json.contains("\"patterns\":null"));
+        assert!(json.ends_with("\"typo_list\":[{\"wrong\":\"tets\",\"correct\":\"test\",\"file\":\"main.go\",\"line\":10,\"commit\":\"0000000000000000000000000000000000000000\"}]}"));
+    }
+
+    #[test]
+    fn metrics_report_value_empty_matches_golden_bytes() {
+        // The run/history_typos.json golden: zero typos -> the exact 138-byte
+        // compact JSON the Go binary emits for the empty typos metric set.
+        let json = metrics_report_value(&ReportData::default()).to_json();
+        assert_eq!(
+            json,
+            r#"{"aggregate":{"total_typos":0,"unique_patterns":0,"affected_files":0,"affected_commits":0},"file_typos":[],"patterns":null,"typo_list":[]}"#
+        );
+        assert_eq!(json.len(), 138);
     }
 }

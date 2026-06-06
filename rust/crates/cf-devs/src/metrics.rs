@@ -84,6 +84,30 @@ pub struct TickData {
     pub names: Vec<String>,
     /// Tick size in nanoseconds (`time.Duration`).
     pub tick_size: i64,
+    /// `tick → (start_time, end_time)` already formatted as Go
+    /// `time.RFC3339` strings (empty string == Go zero time, i.e. omit).
+    ///
+    /// Port of `TickData.TickBounds map[int]analyze.TickBounds` combined with
+    /// `TickBounds.FormatStartTime/FormatEndTime` (the metrics layer only ever
+    /// reads the formatted strings). When a tick has no entry, activity/churn
+    /// emit no `start_time`/`end_time` (their `omitempty` JSON tags), exactly
+    /// as Go does when `input.TickBounds[tick]` is absent.
+    pub tick_bounds: BTreeMap<i64, TickBounds>,
+}
+
+/// Pre-formatted time boundaries of a single tick (port of
+/// `analyze.TickBounds` *after* `FormatStartTime`/`FormatEndTime`).
+///
+/// Each field holds the Go `time.RFC3339` rendering of the corresponding
+/// `time.Time`, or the empty string when that time was the Go zero value
+/// (`FormatStartTime`/`FormatEndTime` return `""` for a zero time, which the
+/// `start_time,omitempty` / `end_time,omitempty` JSON tags then drop).
+#[derive(Debug, Clone, Default)]
+pub struct TickBounds {
+    /// Formatted start time (`FormatStartTime`), or `""` for a zero time.
+    pub start_time: String,
+    /// Formatted end time (`FormatEndTime`), or `""` for a zero time.
+    pub end_time: String,
 }
 
 /// Converts a developer id to the deterministic byte slice HLL hashes
@@ -347,6 +371,11 @@ pub fn compute_activity(input: &TickData) -> Vec<ActivityData> {
             ad.total_commits += dt.commits;
         }
 
+        if let Some(bounds) = input.tick_bounds.get(&tick) {
+            ad.start_time = bounds.start_time.clone();
+            ad.end_time = bounds.end_time.clone();
+        }
+
         result.push(ad);
     }
 
@@ -372,6 +401,12 @@ pub fn compute_churn(input: &TickData) -> Vec<ChurnData> {
         }
 
         cd.net = cd.added - cd.removed;
+
+        if let Some(bounds) = input.tick_bounds.get(&tick) {
+            cd.start_time = bounds.start_time.clone();
+            cd.end_time = bounds.end_time.clone();
+        }
+
         result.push(cd);
     }
 

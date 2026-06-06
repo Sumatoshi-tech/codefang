@@ -232,7 +232,8 @@ impl Repository {
             source: e,
         })?;
 
-        Ok(commit.author().when().seconds())
+        let when = commit.author().when();
+        Ok(when.seconds())
     }
 
     /// Returns the underlying libgit2 repository (Go `Repository.Native`).

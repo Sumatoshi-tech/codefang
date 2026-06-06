@@ -150,7 +150,7 @@ mod default_classifier {
 
     use once_cell::sync::Lazy;
 
-    use cf_pathfilter::PathFilter;
+    use cf_pathfilter::{is_vendor, Filter};
 
     use super::{exclude_with, Classifier, Options};
 
@@ -159,16 +159,16 @@ mod default_classifier {
     /// immutable instance keeps allocation off the hot path.
     ///
     /// Mirrors Go `var defaultFilter = pathfilter.New()`.
-    static DEFAULT_FILTER: Lazy<PathFilter> = Lazy::new(PathFilter::new);
+    static DEFAULT_FILTER: Lazy<Filter> = Lazy::new(Filter::new);
 
-    /// Production [`Classifier`]: vendor via [`cf_langpath::is_vendor`]
+    /// Production [`Classifier`]: vendor via [`cf_pathfilter::is_vendor`]
     /// (enry / Linguist data), generated via the shared [`DEFAULT_FILTER`].
     #[derive(Debug, Clone, Copy, Default)]
     pub struct DefaultClassifier;
 
     impl Classifier for DefaultClassifier {
         fn is_vendor(&self, path: &str) -> bool {
-            cf_langpath::is_vendor(path)
+            is_vendor(path)
         }
 
         fn is_generated_path(&self, path: &str) -> bool {

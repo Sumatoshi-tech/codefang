@@ -73,9 +73,9 @@ mod tests {
     #[test]
     fn lang_override_rewrites_extension() {
         // Write a temp file with a non-language extension, then force `lang=go`.
-        // The grammar isn't wired yet, so parse fails *after* language
-        // resolution — proving the override picked the go parser (a `.txt`
-        // extension would otherwise yield NoParser before this point).
+        // With the go grammar wired, the override makes the `.txt` file parse as
+        // Go: a `.txt` extension would otherwise yield NoParser, so a successful
+        // Go parse proves the override picked the go parser.
         let mut tmp = std::env::temp_dir();
         tmp.push(format!("cf_uast_parsefile_{}.txt", std::process::id()));
         let mut f = std::fs::File::create(&tmp).unwrap();
@@ -86,13 +86,12 @@ mod tests {
         let res = p.parse_file(tmp.to_str().unwrap(), "go");
         let _ = std::fs::remove_file(&tmp);
 
-        // Resolution succeeded (go parser chosen); failure is the known grammar
-        // gap, wrapped with the `parse <path>:` prefix.
-        match res {
-            Err(ParseError::Other(msg)) => {
-                assert!(msg.contains("parse "), "expected parse-prefixed error, got {msg}");
-            }
-            other => panic!("expected wrapped parse error, got {other:?}"),
-        }
+        // The go grammar parsed `package main` into a non-empty tree rooted at
+        // the `source_file` (a `package_clause` child). The override selected the
+        // go parser; a `.txt` extension alone would have yielded `NoParser`.
+        let node = res.expect("go-forced parse of a .txt file should succeed");
+        // The go mapping lowers the `source_file` root to type `File`.
+        assert_eq!(node.node_type, "File");
+        assert!(!node.children.is_empty(), "parsed tree should have children");
     }
 }
