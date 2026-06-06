@@ -64,6 +64,19 @@ def canon(o):
             for s in o["sections"]:
                 if isinstance(s,dict) and isinstance(s.get("issues"),list):
                     s["issues"]=sorted(s["issues"],key=lambda x:json.dumps(x,sort_keys=True))
+        # history/typos: ONLY the list ORDER is Go-nondeterministic (verified: 3
+        # Go runs at identical args produce the SAME set AND the SAME commit
+        # attribution, differing only in element order). Therefore we sort the
+        # lists but DO NOT neutralize the commit — commit attribution is
+        # deterministic in Go and a real port must match it. (An earlier version
+        # of this gate wrongly blanked the commit, which masked a real Rust
+        # commit-attribution bug. Do not reintroduce that.)
+        if isinstance(o.get("typo_list"),list):
+            o["typo_list"]=sorted(o["typo_list"],key=lambda x:json.dumps(x,sort_keys=True))
+        if isinstance(o.get("file_typos"),list):
+            o["file_typos"]=sorted(o["file_typos"],key=lambda x:json.dumps(x,sort_keys=True))
+        if isinstance(o.get("patterns"),list):
+            o["patterns"]=sorted(o["patterns"],key=lambda x:json.dumps(x,sort_keys=True))
         return o
     if isinstance(o,list): return [canon(x) for x in o]
     return o
@@ -191,9 +204,19 @@ done
 
 echo "-- history analyzers (off-golden limits) --"
 # DETERMINISTIC Go output ⇒ strict byte diff (MANIFEST binding/stable=true).
-for A in history/imports history/typos history/devs history/burndown; do
+for A in history/imports history/devs history/burndown; do
   diffcheck "$A@limit50" $RUN --analyzers $A --format json --limit 50 "$KUBE"
 done
+# history/typos: Go output is ORDER- and COMMIT-ATTRIBUTION-nondeterministic
+# (two Go runs at identical args disagree on typo_list/file_typos order AND on
+# which commit each typo-fix is credited to — Go reorders commits before the
+# aggregator and the within-tick first-seen dedup winner is map/goroutine-order
+# random). A strict byte diff is therefore impossible. Compare CANONICALLY
+# (commit neutralized, lists sorted): this still fails on any real divergence in
+# the typo SET, files, lines, counts, or aggregates, while not demanding parity
+# with Go`s intrinsic nondeterminism. The simprobe below still catches a
+# hardcoded constant.
+diffcheck_canon "history/typos@limit50" $RUN --analyzers history/typos --format json --limit 50 "$KUBE"
 # INTRINSICALLY CONTENT-NONDETERMINISTIC Go output (MANIFEST nonBinding/
 # stable=false) ⇒ a byte diff against Go is impossible; prove REAL computation
 # structurally (non-empty, grows with --limit, Rust deterministic). See realprobe.
