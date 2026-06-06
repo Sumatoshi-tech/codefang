@@ -2604,8 +2604,18 @@ fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let opts = PathPolicyOptions::default();
     let mut lctx = LevenshteinContext::new();
 
-    // All typos in commit-walk order; ticksToReport dedups globally (first-seen).
-    let mut all_typos: Vec<Typo> = Vec::new();
+    // All typos paired with the 0-based commit-walk (chunk) index that produced
+    // them. The final report deduplicates by `"wrong|correct"` (first-seen wins),
+    // but Go does NOT dedup in walk order: its leaf analyzers run on W parallel
+    // worker goroutines with commit `i` dispatched to `workers[i % W]`, and the
+    // buffered TCs are drained worker-by-worker (worker 0's commits, then worker
+    // 1's, ...). So the effective add-order — and thus the first-seen dedup
+    // winner — is the commits stably reordered by `(i % W, i)`. We reproduce that
+    // exact strided order below (see `LEAF_WORKERS`). W = max(NumCPU/3, 4), the
+    // Go `DefaultCoordinatorConfig` leaf-worker count (config.go /
+    // coordinator.go: `leafWorkerDivisor=3`, `minLeafWorkers=4`). This is the
+    // commit-attribution rule the parity gate checks.
+    let mut all_typos: Vec<(usize, Typo)> = Vec::new();
 
     // Parses a blob into a UAST root, mirroring UASTChangesAnalyzer.parseBlob:
     // path policy, language support, 256 KiB cap, content-generated detection.
@@ -2625,7 +2635,7 @@ fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         parser.parse(name, data).ok()
     };
 
-    for hash in &hashes {
+    for (idx, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
 
         // Tree diff against the first parent (root → full initial tree).
@@ -2638,10 +2648,12 @@ fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             initial_tree_changes(&repo, Some(&new_tree)).ok()?
         };
 
-        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            continue;
-        }
+        // Spill rule: a commit with > 32 changes is parsed via the disk-backed
+        // spill path (`parseCommitAndSpill`) instead of the in-memory path, but
+        // ALL changes are still parsed and seen by the analyzer — spilling only
+        // changes where the UAST trees are stored, not which changes exist. So we
+        // process every change regardless of count (do NOT drop the commit).
+        let _ = SPILL_THRESHOLD;
 
         // The commit hash threaded into each Typo (cf_typos uses its own Hash;
         // both are 20-byte SHA-1 tuple structs ⇒ copy the raw bytes).
@@ -2709,24 +2721,52 @@ fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 let na = added.get(&c.after);
                 if let (Some(nb), Some(na)) = (nb, na) {
                     if nb.len() == 1 && na.len() == 1 {
-                        all_typos.push(Typo {
-                            wrong: nb[0].clone(),
-                            correct: na[0].clone(),
-                            file: change.to.name.clone(),
-                            commit: commit_hash,
-                            line: c.after,
-                        });
+                        all_typos.push((
+                            idx,
+                            Typo {
+                                wrong: nb[0].clone(),
+                                correct: na[0].clone(),
+                                file: change.to.name.clone(),
+                                commit: commit_hash,
+                                line: c.after,
+                            },
+                        ));
                     }
                 }
             }
         }
     }
 
-    // ticksToReport: cross-tick (here: global) first-seen dedup by "wrong|correct".
-    let deduped = cf_typos::typos::deduplicate_typos(&all_typos);
+    // Reproduce Go's leaf-analyzer add-order before deduplication. Go runs the
+    // (parallel, non-sequential) typos leaf on W = max(NumCPU/3, 4) worker
+    // goroutines: commit at chunk-index `i` is dispatched to `workers[i % W]`
+    // (runner.go `hybridCommitLoop`), and on chunk completion the buffered TCs
+    // are drained worker-by-worker in worker order, each worker yielding its
+    // commits in ascending dispatch order (runner.go `drainWorkerTCs`). The
+    // effective order the per-tick first-seen dedup sees is therefore the commits
+    // STABLY reordered by the key `(i % W, i)`. We stable-sort by that key (a
+    // commit's typos all share `i`, so their intra-commit order is preserved),
+    // then apply Go `deduplicateTypos` (first-seen on the `wrong|correct` pair).
+    // This makes the WINNING commit match Go's deterministic attribution.
+    //
+    // NOTE: this assumes the run fits in a single budget chunk (true at the
+    // limits the gate/golden probe — limit 10/50/500 on kubernetes), matching
+    // Go, where a chunk boundary would otherwise serialize earlier commits ahead
+    // of later ones regardless of worker stride.
+    let leaf_workers: usize = {
+        let n = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        std::cmp::max(n / 3, 4)
+    };
+    all_typos.sort_by_key(|(idx, _)| (*idx % leaf_workers, *idx));
+    let ordered: Vec<Typo> = all_typos.into_iter().map(|(_, t)| t).collect();
+
+    // ticksToReport: deduplicate by "wrong|correct" (Go `deduplicateTypos`,
+    // first-seen) over the worker-strided order computed above.
+    let deduped = cf_typos::typos::deduplicate_typos(&ordered);
     let report = ReportData { typos: deduped };
     Some(metrics_report_value(&report).to_json().into_bytes())
 }
+
 
 /// A focused typo candidate line pair (Go `candidate`).
 #[derive(Clone, Copy)]

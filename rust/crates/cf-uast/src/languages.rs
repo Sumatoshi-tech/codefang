@@ -113,6 +113,7 @@ pub fn is_supported_language(name: &str) -> bool {
 mod ffi {
     extern "C" {
         pub fn tree_sitter_go() -> tree_sitter::Language;
+        pub fn tree_sitter_html() -> tree_sitter::Language;
     }
 }
 
@@ -133,6 +134,11 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         // by `build.rs`. It returns the grammar's static `TSLanguage` table.
         #[allow(unsafe_code)]
         "go" => Some(unsafe { ffi::tree_sitter_go() }),
+        // SAFETY: `tree_sitter_html` is the entry point of the vendored
+        // go-sitter-forest html@v1.9.1 grammar, compiled into this crate by
+        // `build.rs` (parser.c + scanner.c). Returns its static `TSLanguage`.
+        #[allow(unsafe_code)]
+        "html" => Some(unsafe { ffi::tree_sitter_html() }),
         _ => None,
     }
 }

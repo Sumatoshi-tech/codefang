@@ -24,10 +24,20 @@ struct Grammar {
 
 /// The vendored grammars compiled into this crate. Start with GO only; the
 /// remaining go-sitter-forest grammars are added here as they are vendored.
-const GRAMMARS: &[Grammar] = &[Grammar {
-    dir: "tree-sitter-go-1.9.4",
-    sources: &["parser.c"],
-}];
+const GRAMMARS: &[Grammar] = &[
+    Grammar {
+        dir: "tree-sitter-go-1.9.4",
+        sources: &["parser.c"],
+    },
+    // HTML (go-sitter-forest html@v1.9.1): has an external scanner, so both
+    // parser.c and scanner.c must be compiled. Vendored at the exact revision
+    // the Go build links so the tree-sitter parse (and thus the UAST identifier
+    // extraction the typos analyzer depends on) is byte-faithful.
+    Grammar {
+        dir: "tree-sitter-html-1.9.1",
+        sources: &["parser.c", "scanner.c"],
+    },
+];
 
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
