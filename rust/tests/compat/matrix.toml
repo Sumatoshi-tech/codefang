@@ -1,0 +1,121 @@
+# =============================================================================
+# COMPATIBILITY INVOCATION MATRIX  (SPEC: specs/go-compat-testing/SPEC.md §3.2)
+# =============================================================================
+# The MEANINGFUL cross-product:
+#     {analyzer} x {output format} x {key flags} x {analyzer sets}
+# plus the per-language uast surface ({uast subcommand} x {language file}).
+#
+# Every expanded cell is wired to the LIVE GO ORACLE (oracle/oracle.py). The
+# expander (expand_matrix.py) cross-multiplies the axes below, substitutes corpus
+# inputs (content-addressed files + real repos from corpus/manifest.json), and
+# emits one oracle invocation per cell. Cells the LIVE Go binary leaves empty are
+# recorded as expected-empty CONTRACTS (kind="expected-empty"), never skipped.
+#
+# This file is DATA only. It declares the axes; it does NOT decide pass/fail and
+# it NEVER declares any field stable/variant -- that is measured by the oracle.
+# Shrinking any axis here is detectable by the tamper layer (matrix hashing).
+
+[meta]
+spec = "specs/go-compat-testing/SPEC.md"
+phase = "MatrixCorpus (roadmap 3)"
+# Pinned env applied by the oracle to BOTH binaries.
+env = "set -f; TZ=UTC NO_COLOR=1 LANG=C LC_ALL=C SOURCE_DATE_EPOCH=315532800"
+# Common flags that make a `run` invocation hermetic/deterministic & cheap.
+run_base = ["run", "--checkpoint=false", "--resume=false", "--no-cache", "--workers", "1"]
+static_base = ["run", "--checkpoint=false", "--resume=false", "--no-cache", "--head", "--workers", "1", "--static-workers", "1"]
+
+# -----------------------------------------------------------------------------
+# AXIS: analyzers (from `codefang run --list-analyzers`: 7 static + 10 history)
+# -----------------------------------------------------------------------------
+[analyzers]
+static  = ["static/clones", "static/complexity", "static/comments",
+           "static/halstead", "static/cohesion", "static/imports",
+           "static/composition"]
+history = ["history/sentiment", "history/shotness", "history/typos",
+           "history/anomaly", "history/burndown", "history/imports",
+           "history/quality", "history/couples", "history/devs",
+           "history/file-history"]
+
+# Analyzer SETS (the '*' and pairs the SPEC calls out explicitly).
+[analyzer_sets]
+sets = [
+  "*",                                   # everything at once
+  "static/*",                            # all static
+  "history/*",                           # all history
+  "static/complexity,static/halstead",   # static pair
+  "history/devs,history/burndown",       # history pair
+  "static/complexity,history/devs",      # cross pair
+]
+
+# -----------------------------------------------------------------------------
+# AXIS: output formats (from `run --help`: json,yaml,bin,compact,text,ndjson,
+# timeseries; plus timeseries+ndjson combo). plot/tree/count handled in uast.
+# -----------------------------------------------------------------------------
+[formats]
+# formats valid for `codefang run`
+run = ["json", "yaml", "bin", "compact", "text", "ndjson", "timeseries"]
+# combination cell: timeseries + --ndjson (one JSON line per commit)
+run_combo = ["timeseries+ndjson"]
+# uast surface formats (parse: json,compact,tree,none ; query: json,compact,count)
+uast_parse = ["json", "compact", "tree"]
+uast_query = ["json", "compact", "count"]
+uast_analyze = ["json", "text"]
+
+# -----------------------------------------------------------------------------
+# AXIS: key flags (the SPEC's named subset that changes observable output)
+# -----------------------------------------------------------------------------
+[flags]
+# history-affecting flags; each is one matrix cell against the base history run.
+history = [
+  "--head",
+  "--limit:50",
+  "--first-parent",
+  "--since:2020-01-01",
+  "--include-vendored",
+  "--include-generated",
+]
+# static-affecting flags
+static = [
+  "--per-file",
+  "--include-vendored",
+  "--include-generated",
+]
+
+# -----------------------------------------------------------------------------
+# AXIS: uast subcommands x corpus languages (the per-language parse/query
+# contract). Inputs are substituted from corpus/manifest.json "files".
+# -----------------------------------------------------------------------------
+[uast]
+subcommands = ["parse", "analyze", "query"]
+# default query DSL used for the query subcommand cells
+query_dsl = 'filter(.roles has "Function")'
+
+# -----------------------------------------------------------------------------
+# CORPUS BINDING: which corpus entries feed which cell family. The expander
+# resolves these against corpus/manifest.json (content-addressed).
+# -----------------------------------------------------------------------------
+[corpus]
+# repos used for history/static analyzer cells (smoke tier uses the small repo
+# with a small --limit so the smoke run is fast; full tier sweeps all repos).
+smoke_repo = "hercules"
+smoke_limit = 20
+full_repos = ["hercules", "ioq3", "kubernetes"]
+# per-language uast cells use ALL mined files (every supported language).
+uast_files = "ALL"
+
+# -----------------------------------------------------------------------------
+# TIERS: smoke (pre-commit, fast) vs full (scheduled). Tier only controls which
+# repos/limits are swept -- it NEVER blanks a field and NEVER drops an analyzer.
+# -----------------------------------------------------------------------------
+[tiers.smoke]
+repos = ["hercules"]
+history_limit = 20
+# representative format coverage in smoke (json + the two binding binary-ish ones)
+run_formats = ["json", "bin", "yaml"]
+include_flags = false
+
+[tiers.full]
+repos = ["hercules", "ioq3", "kubernetes"]
+history_limit = 50
+run_formats = ["json", "yaml", "bin", "compact", "text", "ndjson", "timeseries"]
+include_flags = true

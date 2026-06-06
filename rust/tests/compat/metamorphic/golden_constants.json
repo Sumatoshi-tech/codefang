@@ -1,0 +1,12 @@
+{
+  "history/devs|hercules->kube": {
+    "input": "/home/dmitriy/sources/hercules@lim20",
+    "len": 3845,
+    "sha": "a320ae7c95fcc6f58f8e276cb6d3fce79fad145d1ad8254e81885ad234abb7f3"
+  },
+  "history/imports|hercules->kube": {
+    "input": "/home/dmitriy/sources/hercules@lim20",
+    "len": 167,
+    "sha": "ce55f5e60f641da9a6e24fedc06a465e109448cf19c326c3978c69a141f8862a"
+  }
+}

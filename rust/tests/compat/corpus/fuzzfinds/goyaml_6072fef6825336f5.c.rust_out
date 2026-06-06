@@ -1,0 +1,13 @@
+function_complexity: []
+distribution: {}
+high_risk_functions: []
+aggregate:
+    total_functions: 0
+    average_complexity: 0
+    max_complexity: 0
+    total_complexity: 0
+    cognitive_complexity: 0
+    nesting_depth: 0
+    decision_points: 0
+    health_score: 100
+    message: Excellent complexity - functions are simple and maintainable

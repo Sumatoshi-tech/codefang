@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @4: go=\"CFB1/\\f\\x00\\x00{\\\"function_c\" rust=\"CFB1A\\x01\\x00\\x00{\\\"function_c\"",
+  "go_runs_sha256": [
+    "3979071a444d34ad1c9d40f349582faa623682e651884bcc6c404fb8cc80fab0",
+    "3979071a444d34ad1c9d40f349582faa623682e651884bcc6c404fb8cc80fab0",
+    "3979071a444d34ad1c9d40f349582faa623682e651884bcc6c404fb8cc80fab0"
+  ],
+  "input_sha256": "6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae",
+  "json_mode": false,
+  "reason": "canonical divergence (go=3127B rust=329B, variant-fields=0)",
+  "rust_out_sha256": "821f5a73480d8c46c137e2fcc62488d35b70dcade1885d8a7b78fedfa58fbe0a",
+  "stage": "cfb1",
+  "variant_fields": []
+}

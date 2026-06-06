@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @134: go=\"     \\\"status\\\": \\\"Excellent comple\" rust=\"     \\\"status\\\": \\\"No complexity da\"",
+  "go_runs_sha256": [
+    "bc67d96e60b47378377647593a076f3eec5d126aac4220945c9beb3512394e8f",
+    "bc67d96e60b47378377647593a076f3eec5d126aac4220945c9beb3512394e8f",
+    "bc67d96e60b47378377647593a076f3eec5d126aac4220945c9beb3512394e8f"
+  ],
+  "input_sha256": "6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae",
+  "json_mode": true,
+  "reason": "canonical divergence (go=3584B rust=756B, variant-fields=0)",
+  "rust_out_sha256": "24634aaf32bf11843f7510e854e121ef47b31f75744474e8be327116d724671b",
+  "stage": "metrics_static-complexity",
+  "variant_fields": []
+}

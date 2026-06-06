@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @20: go=\"tion_complexity:\\n    - name: \\\"in\" rust=\"tion_complexity: []\\ndistribution\"",
+  "go_runs_sha256": [
+    "4bfb07cc50e61c9ec04992bed37cd578748a0770e0df12cceb6f73014882ce9c",
+    "4bfb07cc50e61c9ec04992bed37cd578748a0770e0df12cceb6f73014882ce9c",
+    "4bfb07cc50e61c9ec04992bed37cd578748a0770e0df12cceb6f73014882ce9c"
+  ],
+  "input_sha256": "6072fef6825336f5e6e67538478a16dfa6a45bcac93825dccb40bf3f001b14ae",
+  "json_mode": false,
+  "reason": "canonical divergence (go=3448B rust=339B, variant-fields=0)",
+  "rust_out_sha256": "a85cc8f739ec01747a329bfd066cc01519937dd5a283ca67d8e56506295bf27a",
+  "stage": "goyaml",
+  "variant_fields": []
+}

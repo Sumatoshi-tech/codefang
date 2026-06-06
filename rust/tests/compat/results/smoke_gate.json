@@ -1,0 +1,1291 @@
+{
+  "tier": "smoke",
+  "tally": {
+    "PASS": 11,
+    "FAIL": 50,
+    "SIM": 0,
+    "EXPECTED_EMPTY": 72,
+    "ALLOWED_GO_NONDET": 0,
+    "TRACKED_KNOWN_FAILING": 22
+  },
+  "meta_sim": 2,
+  "real_divergence_count": 74,
+  "allowed": [],
+  "tracked": [
+    {
+      "label": "uast/parse[json]/python",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/python",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/c",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/c",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/c-header",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/c-header",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/rust",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/rust",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/typescript",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/typescript",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/tsx",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/tsx",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/javascript",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/javascript",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/json",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/json",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/yaml",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/yaml",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/cpp",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/cpp",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[json]/shell",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    },
+    {
+      "label": "uast/parse[compact]/shell",
+      "verdict": "FAIL",
+      "reason": "11 tree-sitter grammars (python,c,c-header,rust,typescript,tsx,javascript,json,yaml,cpp,shell) are not yet vendored into the Rust uast binary, so Rust emits a parse error where Go produces a UAST. This is a WIP port gap, NOT Go-nondeterminism: Go is byte-STABLE here (see corpus/known_gaps.json go_uast_bytes). It therefore stays RED and keeps the gate nonzero; it is listed only so triage knows it is already tracked."
+    }
+  ],
+  "real_divergences": [
+    {
+      "label": "uast/parse[json]/python",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/python",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/c",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/c",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/c-header",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/c-header",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/rust",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/rust",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/typescript",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/typescript",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/tsx",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/tsx",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/javascript",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/javascript",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/json",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/json",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/yaml",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/yaml",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/cpp",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/cpp",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[json]/shell",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "uast/parse[compact]/shell",
+      "verdict": "FAIL",
+      "tracked": true
+    },
+    {
+      "label": "static:static/clones[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/clones",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/clones[bin]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/clones",
+        "--format",
+        "bin"
+      ]
+    },
+    {
+      "label": "static:static/clones[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/clones",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static:static/complexity[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/complexity[bin]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity",
+        "--format",
+        "bin"
+      ]
+    },
+    {
+      "label": "static:static/complexity[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static:static/comments[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/comments",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/comments[bin]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/comments",
+        "--format",
+        "bin"
+      ]
+    },
+    {
+      "label": "static:static/comments[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/comments",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static:static/halstead[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/halstead",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static:static/cohesion[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/cohesion",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/cohesion[bin]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/cohesion",
+        "--format",
+        "bin"
+      ]
+    },
+    {
+      "label": "static:static/cohesion[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/cohesion",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static:static/imports[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/imports",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/composition[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/composition",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static:static/composition[bin]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/composition",
+        "--format",
+        "bin"
+      ]
+    },
+    {
+      "label": "static:static/composition[yaml]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/composition",
+        "--format",
+        "yaml"
+      ]
+    },
+    {
+      "label": "static-set:*[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "*",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static-set:static/*[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/*",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static-set:static/complexity,static/halstead[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity,static/halstead",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "static-set:static/complexity,history/devs[json]@hercules",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--head",
+        "--workers",
+        "1",
+        "--static-workers",
+        "1",
+        "-p",
+        "/home/dmitriy/sources/hercules",
+        "--analyzers",
+        "static/complexity,history/devs",
+        "--format",
+        "json"
+      ]
+    },
+    {
+      "label": "history:history/sentiment[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/sentiment",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/sentiment[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/sentiment",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/sentiment[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/sentiment",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/shotness[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/shotness",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/shotness[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/shotness",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/typos[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/typos",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/typos[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/typos",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/anomaly[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/anomaly",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/anomaly[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/anomaly",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/anomaly[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/anomaly",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/burndown[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/burndown",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/burndown[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/burndown",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/imports[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/imports",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/imports[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/imports",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/quality[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/quality",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/quality[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/quality",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/quality[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/quality",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/couples[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/couples",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/couples[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/couples",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/couples[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/couples",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/devs[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/devs",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/devs[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/devs",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/file-history[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/file-history",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/file-history[bin]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/file-history",
+        "--format",
+        "bin",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/file-history[yaml]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/file-history",
+        "--format",
+        "yaml",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history-set:*[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "*",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history-set:history/*[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/*",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history-set:history/devs,history/burndown[json]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/devs,history/burndown",
+        "--format",
+        "json",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "history:history/devs[timeseries+ndjson]@hercules/lim20",
+      "verdict": "FAIL",
+      "tracked": false,
+      "argv": [
+        "run",
+        "--checkpoint=false",
+        "--resume=false",
+        "--no-cache",
+        "--workers",
+        "1",
+        "--analyzers",
+        "history/devs",
+        "--format",
+        "timeseries",
+        "--ndjson",
+        "--limit",
+        "20",
+        "/home/dmitriy/sources/hercules"
+      ]
+    },
+    {
+      "label": "metamorphic:uast/parse c-vs-rust",
+      "verdict": "SIM",
+      "tracked": false
+    },
+    {
+      "label": "metamorphic:uast/parse typescript-vs-javascript",
+      "verdict": "SIM",
+      "tracked": false
+    }
+  ]
+}

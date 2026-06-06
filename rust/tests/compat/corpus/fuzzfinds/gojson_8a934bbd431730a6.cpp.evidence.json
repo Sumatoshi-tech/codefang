@@ -1,0 +1,14 @@
+{
+  "first_diff": "first diff @28: go=\"_score_label\\\": \\\"6/10\\\",\\n  \\\"sectio\" rust=\"_score_label\\\": \\\"10/10\\\",\\n  \\\"secti\"",
+  "go_runs_sha256": [
+    "05784b22e6a3f6a58d975b156f226e65a3bdf8c2a63dde6743bcc3bf3932aa29",
+    "05784b22e6a3f6a58d975b156f226e65a3bdf8c2a63dde6743bcc3bf3932aa29",
+    "05784b22e6a3f6a58d975b156f226e65a3bdf8c2a63dde6743bcc3bf3932aa29"
+  ],
+  "input_sha256": "8a934bbd431730a6dd443b321d287d66e63f290ff07d97aa7a2655999cf754d6",
+  "json_mode": true,
+  "reason": "canonical divergence (go=7573B rust=756B, variant-fields=0)",
+  "rust_out_sha256": "24634aaf32bf11843f7510e854e121ef47b31f75744474e8be327116d724671b",
+  "stage": "gojson",
+  "variant_fields": []
+}
