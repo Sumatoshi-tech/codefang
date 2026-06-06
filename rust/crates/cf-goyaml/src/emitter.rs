@@ -233,7 +233,7 @@ impl Emitter {
 
     fn emit_block_mapping(&mut self, m: &cf_gojson::GoMap) {
         self.increase_indent(false, false);
-        for (k, v) in m.encode_order() {
+        for (k, v) in yaml_key_order(m) {
             self.write_indent();
             // All keys here are strings; a string key is a "simple key" unless
             // it is multiline (then yaml.v3 renders `? <block>` / `:`).
@@ -593,6 +593,102 @@ fn string_style(s: &str) -> (String, Style) {
 /// set `multiline`, which is `line_breaks`).
 fn key_is_multiline(k: &str) -> bool {
     scalar::analyze(k.as_bytes()).multiline
+}
+
+/// Order a block-mapping's entries the way `yaml.v3` does at marshal time.
+///
+/// Struct-origin maps keep declaration order (yaml.v3 emits struct fields in
+/// field order); map-origin maps are sorted by yaml.v3's `keyList.Less`
+/// (`sorter.go`). Our keys are always strings, so the numeric/bool fast-path
+/// in `keyList.Less` never applies and we port only its rune-comparison branch,
+/// which orders embedded digit runs *numerically* (e.g. `a2` < `a10`).
+fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
+    let mut refs: Vec<&(String, GoValue)> = m.entries().iter().collect();
+    if m.origin() == cf_gojson::MapOrigin::Map {
+        // A stable sort matches Go's `sort.Sort` only up to ties, but
+        // `yaml_key_less` is a total order over distinct map keys (keys are
+        // unique), so stability is irrelevant here.
+        refs.sort_by(|a, b| {
+            if yaml_key_less(&a.0, &b.0) {
+                std::cmp::Ordering::Less
+            } else if yaml_key_less(&b.0, &a.0) {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        });
+    }
+    refs
+}
+
+/// Port of the string branch of `yaml.v3`'s `keyList.Less` (`sorter.go`).
+///
+/// Both inputs are compared as `[]rune`. Equal prefixes are skipped (tracking
+/// whether the last matched rune was a digit); at the first differing position:
+/// letters compare by code point; a letter vs non-letter is ordered by the
+/// `digits` context; otherwise the maximal digit runs starting at that position
+/// are compared as base-10 integers (with leading-zero handling), then by run
+/// length, then by raw rune. Equal-prefix strings order by length.
+fn yaml_key_less(a: &str, b: &str) -> bool {
+    let ar: Vec<char> = a.chars().collect();
+    let br: Vec<char> = b.chars().collect();
+    let mut digits = false;
+    let n = ar.len().min(br.len());
+    let mut i = 0;
+    while i < n {
+        if ar[i] == br[i] {
+            digits = ar[i].is_ascii_digit();
+            i += 1;
+            continue;
+        }
+        let al = is_letter(ar[i]);
+        let bl = is_letter(br[i]);
+        if al && bl {
+            return ar[i] < br[i];
+        }
+        if al || bl {
+            return if digits { al } else { bl };
+        }
+        // Both differing runes are non-letters: compare digit runs numerically.
+        let mut an: i64 = 0;
+        let mut bn: i64 = 0;
+        if ar[i] == '0' || br[i] == '0' {
+            let mut j = i as isize - 1;
+            while j >= 0 && ar[j as usize].is_ascii_digit() {
+                if ar[j as usize] != '0' {
+                    an = 1;
+                    bn = 1;
+                    break;
+                }
+                j -= 1;
+            }
+        }
+        let mut ai = i;
+        while ai < ar.len() && ar[ai].is_ascii_digit() {
+            an = an * 10 + (ar[ai] as i64 - '0' as i64);
+            ai += 1;
+        }
+        let mut bi = i;
+        while bi < br.len() && br[bi].is_ascii_digit() {
+            bn = bn * 10 + (br[bi] as i64 - '0' as i64);
+            bi += 1;
+        }
+        if an != bn {
+            return an < bn;
+        }
+        if ai != bi {
+            return ai < bi;
+        }
+        return ar[i] < br[i];
+    }
+    ar.len() < br.len()
+}
+
+/// `unicode.IsLetter` for the rune classes yaml.v3 keys can contain. Go's
+/// `unicode.IsLetter` covers all Unicode letter categories; `char::is_alphabetic`
+/// is the matching Rust predicate (both are the Unicode "Letter" supercategory).
+fn is_letter(c: char) -> bool {
+    c.is_alphabetic()
 }
 
 fn utf8_width(b: u8) -> usize {

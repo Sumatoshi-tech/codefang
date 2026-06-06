@@ -97,7 +97,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/clones, format json, subset (--head, single worker)"
+      "note": "static/clones, format json, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Clone-pair representative is tie-broken by Go map-iteration order: across two Go runs the emitted pair name flips (e.g. 'Int64.Has <-> String.HasAny' vs 'Int64.Has <-> Int64.HasAny'), byte length varies. No Rust sort can reproduce it. Stays nonBinding."
     },
     {
       "id": "static.static_clones.yaml",
@@ -134,7 +135,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/clones, format yaml, subset (--head, single worker)"
+      "note": "static/clones, format yaml, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Clone-pair representative is tie-broken by Go map-iteration order: across two Go runs the emitted pair name flips (e.g. 'Int64.Has <-> String.HasAny' vs 'Int64.Has <-> Int64.HasAny'), byte length varies. No Rust sort can reproduce it. Stays nonBinding."
     },
     {
       "id": "static.static_clones.bin",
@@ -171,7 +173,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/clones, format bin, subset (--head, single worker)"
+      "note": "static/clones, format bin, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Clone-pair representative is tie-broken by Go map-iteration order: across two Go runs the emitted pair name flips (e.g. 'Int64.Has <-> String.HasAny' vs 'Int64.Has <-> Int64.HasAny'), byte length varies. No Rust sort can reproduce it. Stays nonBinding."
     },
     {
       "id": "static.static_clones.compact",
@@ -283,7 +286,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/clones per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/clones per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Clone-pair representative is tie-broken by Go map-iteration order: across two Go runs the emitted pair name flips (e.g. 'Int64.Has <-> String.HasAny' vs 'Int64.Has <-> Int64.HasAny'), byte length varies. No Rust sort can reproduce it. Stays nonBinding."
     },
     {
       "id": "static.static_cohesion.json",
@@ -320,7 +324,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/cohesion, format json, subset (--head, single worker)"
+      "note": "static/cohesion, format json, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_cohesion.yaml",
@@ -357,7 +362,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/cohesion, format yaml, subset (--head, single worker)"
+      "note": "static/cohesion, format yaml, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_cohesion.bin",
@@ -394,7 +400,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/cohesion, format bin, subset (--head, single worker)"
+      "note": "static/cohesion, format bin, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_cohesion.compact",
@@ -506,7 +513,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/cohesion per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/cohesion per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_comments.json",
@@ -543,7 +551,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/comments, format json, subset (--head, single worker)"
+      "note": "static/comments, format json, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_comments.yaml",
@@ -729,7 +738,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/comments per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/comments per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_complexity.json",
@@ -952,7 +962,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/complexity per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/complexity per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_composition.json",
@@ -1175,7 +1186,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/composition per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/composition per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_halstead.json",
@@ -1249,7 +1261,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/halstead, format yaml, subset (--head, single worker)"
+      "note": "static/halstead, format yaml, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Aggregate Halstead metric is summed in Go map-iteration order; float accumulation order flips a threshold so the qualitative message changes across runs (e.g. 'Very high Halstead complexity' vs 'Moderate Halstead complexity'), byte length varies. Stays nonBinding."
     },
     {
       "id": "static.static_halstead.bin",
@@ -1398,7 +1411,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/halstead per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/halstead per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). Aggregate Halstead metric is summed in Go map-iteration order; float accumulation order flips a threshold so the qualitative message changes across runs (e.g. 'Very high Halstead complexity' vs 'Moderate Halstead complexity'), byte length varies. Stays nonBinding."
     },
     {
       "id": "static.static_imports.json",
@@ -1435,7 +1449,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/imports, format json, subset (--head, single worker)"
+      "note": "static/imports, format json, subset (--head, single worker)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "static.static_imports.yaml",
@@ -1621,7 +1636,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "static/imports per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)"
+      "note": "static/imports per-file json (per-file array ordering is Go-map-nondeterministic; canonicalize)",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "run.burndown.json",
@@ -1968,7 +1984,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "history/couples json, --head --limit 5 --workers 1"
+      "note": "history/couples json, --head --limit 5 --workers 1",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "run.history_devs.json",
@@ -2040,7 +2057,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "history/shotness json, --head --limit 5 --workers 1"
+      "note": "history/shotness json, --head --limit 5 --workers 1",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). The node_hotness / node_coupling SET selected differs across two Go runs (different nodes and coupled_nodes counts; 67 vs 97 leaf values), byte length varies. Selection is driven by Go map order. Stays nonBinding."
     },
     {
       "id": "run.history_imports.json",
@@ -2215,7 +2233,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "history/file-history json; streaming --limit 10 --workers 1"
+      "note": "history/file-history json; streaming --limit 10 --workers 1",
+      "triageVerdict": "GO-NONDETERMINISTIC (pure map-reorder of identical content; verified: deep-sorted JSON / sorted lines equal across two Go runs, equal byte length). Rust port should emit deterministic SORTED order (correctness improvement over Go per nondeterminismNote); will NOT be byte-identical to this unstable golden. Stays nonBinding."
     },
     {
       "id": "run.history_devs.yaml",
@@ -2324,7 +2343,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "all static analyzers (static/*) json on subset"
+      "note": "all static analyzers (static/*) json on subset",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). static/* union includes static/clones and static/halstead, both of which are content-nondeterministic in Go (see those captures). Stays nonBinding."
     },
     {
       "id": "all_static.yaml",
@@ -2361,7 +2381,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "all static analyzers (static/*) yaml on subset"
+      "note": "all static analyzers (static/*) yaml on subset",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). static/* union includes static/clones and static/halstead, both of which are content-nondeterministic in Go (see those captures). Stays nonBinding."
     },
     {
       "id": "all_static.bin",
@@ -2398,7 +2419,8 @@
       "machine": true,
       "nonBinding": true,
       "stable": "false",
-      "note": "all static analyzers (static/*) bin on subset"
+      "note": "all static analyzers (static/*) bin on subset",
+      "triageVerdict": "GO-NONDETERMINISTIC AT CONTENT LEVEL (not sortable). static/* union includes static/clones and static/halstead, both of which are content-nondeterministic in Go (see those captures). Stays nonBinding."
     },
     {
       "id": "uast.parse.json",
@@ -2611,5 +2633,6 @@
       "stable": "true",
       "note": "uast query 'reduce(count)' count (blob 4d7a17c3afad3186d86f357906c843623eb57d49)"
     }
-  ]
+  ],
+  "triageNote": "Step 16 triage (2026-06-06): each machine&&stable=false capture was run twice via the Go ref AND twice via the Rust release binary. RESULT: Go is nondeterministic across its OWN two runs for ALL 22 (the golden sha never reproduces), so category (a) 'Rust-missing-sort -> byte-identical' has ZERO members. Two sub-causes: PURE-REORDER (deep-sorted content equal: cohesion/comments/complexity/composition/imports/couples/file-history) where the Rust port should emit a deterministic SORTED order as a correctness improvement (still not byte-identical to the unstable golden), and CONTENT-NONDETERMINISM (clones/halstead/shotness, and all_static which unions them) where the actual data differs run-to-run and no sort helps. All 22 correctly remain stable=false/nonBinding. See per-capture triageVerdict."
 }

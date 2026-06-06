@@ -86,8 +86,13 @@ Authoritative, evidence-backed snapshot. Companion docs: `ARCHITECTURE.md`,
 - **Output-path / dispatch parity unverified.** `--help`/`version`/flag bytes vs
   the Go cobra binaries, and `codefang run` analyzer dispatch, have NOT been
   byte-diffed.
-- **`cf-goyaml`** still a scaffold; `marshal` is linkable but not yaml.v3-parity
-  (Step 4). Not among the 7 (all-JSON) binding captures.
+- **`cf-goyaml` is DONE (Step 4)** — a real ~1,887-line yaml.v3 emitter; all
+  binding YAML goldens byte-identical. (Was: "still a scaffold" — superseded.)
+- **`make lint` runs GREEN here.** The prior "libgit2 pkg-config unrunnable"
+  caveat is RESOLVED: golangci-lint reports 0 issues and deadcode/orphan checks
+  pass once the `third_party/libgit2/install` pkgconfig path is exported so the
+  deadcode step's CGO import of libgit2 resolves (the Makefile's deadcode line
+  doesn't set PKG_CONFIG_PATH itself). `cargo test --workspace` also green.
 
 ## The 32 passing binding captures (32/32; from MANIFEST.json)
 
@@ -202,6 +207,51 @@ Remaining (non-binding) work, in priority order:
   arbitrary `--analyzers` selectors and formats run end-to-end (the fall-through
   dispatch sentinel still covers not-yet-ported selectors).
 
+### Step 16 — nonBinding/unstable capture triage (verified)
+
+Triaged every `machine && stable=false` capture (22 runnable ones). Method: ran
+each capture's argv TWICE via the Go ref (`build/bin`) and TWICE via the Rust
+release binary, under the pinned env with `set -f`, comparing only STDOUT, with an
+isolated `$HOME` (flags `--checkpoint=false --resume=false --no-cache` already
+disable cross-run state, so no checkpoint wipe was needed).
+
+**Headline result: category (a) "Rust-missing-sort → make byte-identical" has ZERO
+members.** Go is nondeterministic across its OWN two runs for all 22 captures, so
+the golden sha is unstable and no Rust sort can reproduce it byte-for-byte. All 22
+correctly remain `stable=false` / `nonBinding=true`. Two distinct sub-causes:
+
+1. **PURE map-reorder** (deep-sorted JSON / sorted YAML lines are EQUAL across the
+   two Go runs, identical byte length): `static/cohesion` (json/yaml/bin/perfile),
+   `static/comments` (json/perfile), `static/complexity` (perfile),
+   `static/composition` (perfile), `static/imports` (json/perfile),
+   `history/couples` (json), `history/file-history` (json). For these the Rust
+   port SHOULD emit a deterministic SORTED order — a correctness improvement over
+   Go per the manifest `nondeterminismNote`. That is still NOT byte-identical to
+   the unstable golden, so they remain nonBinding. (These selectors are not yet
+   ported through `run_dispatch`; they currently hit the tier-8 sentinel, so no
+   Rust sort change applies in this state — the verdict is recorded for when they
+   land.)
+
+2. **CONTENT nondeterminism** (the actual data differs run-to-run; deep-sort does
+   NOT equalize; byte length varies — no sort can help):
+   - `static/clones` (json/yaml/bin/perfile): the clone-pair representative is
+     tie-broken by Go map order; the emitted pair name flips between runs
+     (e.g. `Int64.Has <-> String.HasAny` vs `Int64.Has <-> Int64.HasAny`).
+   - `static/halstead` (yaml/perfile): an aggregate metric is summed in Go map
+     order; float accumulation order crosses a threshold so the qualitative
+     message flips (`Very high Halstead complexity` vs `Moderate Halstead
+     complexity`).
+   - `history/shotness` (json): the selected node_hotness/node_coupling SET differs
+     across runs (different nodes, different coupled_nodes counts; 67 vs 97 leaf
+     values).
+   - `all_static` (json/yaml/bin): `static/*` union inherits clones + halstead
+     content-nondeterminism.
+
+Per-capture verdicts were written into `rust/tests/golden/MANIFEST.json` as a new
+`triageVerdict` field on each of the 22 captures, plus a top-level `triageNote`.
+The golden harness (`cargo test -p golden-harness`) stays GREEN and the 32 binding
+captures are unaffected (the edit only touches nonBinding capture metadata).
+
 DONE this run:
 - **`cargo test --workspace` test-target compile errors** — RESOLVED. The
   cf-clones test code, the `uast` bin-test, and cf-uast-node
@@ -211,14 +261,32 @@ DONE this run:
   green release build and 7/7 binding parity are unaffected. The lint+test
   evidence gate is GREEN, unblocking the held DoD ticks.
 
-### Harness (done this run)
+### Harness (Step 14 — DONE)
 
 `cargo run -p golden-harness` is the canonical verifier:
 `tests/golden-harness/src/main.rs` (`[[bin]] golden-harness`). It reads
-MANIFEST.json, runs the 7 binding captures with the pinned env (argv passed
+MANIFEST.json, runs ALL 32 binding captures with the pinned env (argv passed
 directly to `Command` — no shell, so analyzer selectors reach the binary
 verbatim, satisfying `set -f`), byte-compares STDOUT vs the golden, prints
-`IDENTICAL`/`DIFFER` per capture + final `N/7 identical`, and exits nonzero on
+`IDENTICAL`/`DIFFER` per capture + final `N/32 identical`, and exits nonzero on
 any mismatch. Substring filters: `cargo run -p golden-harness -- uast`. Latest
-(verified this run by running each release binary with the MANIFEST argv and
-byte-comparing STDOUT): **7/7 identical**.
+(verified this run): **32/32 identical, rc=0, 0 DIFFER**.
+
+### Step 13 — module-map reconciliation (DONE this run)
+
+Verified every Go package under `internal/`, `pkg/`, `cmd/` (71 packages) maps to
+a real Rust crate under `rust/crates/` (74 crates + 2 bin crates). Wrote the
+canonical Go-package→Rust-crate table into ARCHITECTURE.md **§8.1** (it replaces
+the dangling "structured JSON artifact" reference, which never existed on disk),
+and a scaffold inventory in **§8.2**. Documented merges: `internal/analyzers/
+common` + `common/renderer` → cf-analyzers-common / cf-renderer; `internal/
+burndown` (timeline core) vs `internal/analyzers/burndown` (the analyzer) →
+cf-burndown-core / cf-analyzer-burndown. `cf-alg` is an intentional umbrella
+re-export. Support shims with no 1:1 Go internal package (cf-gojson / cf-goyaml /
+cf-godiff / cf-govader) documented as stdlib/third-party stand-ins. The SOLE bare
+scaffold is **`cf-plotpage`** (8-line lib.rs; Go origin `common/plotpage`, 1629
+LOC) — it renders plot/html to an output DIRECTORY → empty stdout → nonBinding by
+nature (MANIFEST `plotHtmlNote`), depended on only by cf-commands (link-through),
+so it is NOT on any binding path. Its lib.rs is annotated as an intentional
+deferral. NO code was moved (doc comments only), so output bytes are provably
+unperturbed; the harness stayed 32/32 and `cargo build --release` stayed clean.
