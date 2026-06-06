@@ -224,6 +224,39 @@ impl IdentityDetector {
         self.reversed_people_dict = reverse;
     }
 
+    /// Build [`reversed_people_dict`](IdentityDetector::reversed_people_dict)
+    /// from the incrementally-collected names/emails, mirroring Go's
+    /// `FinalizeDict`.
+    ///
+    /// No-op when the dictionary is already finalized (e.g. loaded from a file
+    /// or preset). For loose matching the reverse entry is
+    /// `sorted(names).join("|") + "|" + sorted(emails).join("|")`; for exact
+    /// matching it is the signature key itself.
+    pub fn finalize_dict(&mut self) {
+        if self.dict_finalized {
+            return;
+        }
+        let size = self.incremental_size;
+        let mut reverse = vec![String::new(); size.max(0) as usize];
+        if self.exact_signatures {
+            for (key, &val) in &self.people_dict {
+                if val >= 0 && (val as usize) < reverse.len() {
+                    reverse[val as usize] = key.clone();
+                }
+            }
+        } else {
+            for id in 0..size {
+                let mut names = self.incremental_names.get(&id).cloned().unwrap_or_default();
+                let mut emails = self.incremental_emails.get(&id).cloned().unwrap_or_default();
+                names.sort();
+                emails.sort();
+                reverse[id as usize] = format!("{}|{}", names.join("|"), emails.join("|"));
+            }
+        }
+        self.reversed_people_dict = reverse;
+        self.dict_finalized = true;
+    }
+
     /// Author id of the last consumed commit, mirroring Go's `GetAuthorID`.
     pub fn get_author_id(&self) -> i64 {
         self.author_id

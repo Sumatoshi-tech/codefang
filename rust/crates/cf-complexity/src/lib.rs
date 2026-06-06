@@ -669,6 +669,16 @@ fn estimate_lines_of_code(fn_node: &Node) -> i64 {
 // Name-role-child branches plus the "anonymous" fallback, which covers the
 // analyzer's own tests. See crate todos.
 fn extract_function_name(fn_node: &Node) -> String {
+    // Mirror Go `complexity.extractFunctionName`: the FIRST branch is
+    // `common.ExtractEntityName(fn)` (props["name"] -> token -> first child's
+    // token -> first child's props["name"]). For anonymous Go functions whose
+    // props lack "name", this surfaces the first child's token (the full
+    // parameter/receiver signature, e.g. "(action cgotesting.Action)" or "()").
+    if let Some(n) = extract_entity_name(fn_node) {
+        if !n.is_empty() {
+            return n;
+        }
+    }
     if let Some(n) = extract_name_from_props(fn_node) {
         return n;
     }
@@ -682,6 +692,30 @@ fn extract_function_name(fn_node: &Node) -> String {
         }
     }
     ANONYMOUS_FUNCTION_NAME.to_string()
+}
+
+/// Faithful port of `common.ExtractEntityName`: props["name"] -> own token ->
+/// first child's token -> first child's props["name"]. Each branch returns
+/// `Some(value)` when the source is present (even empty), so the caller's
+/// `!is_empty()` guard matches Go's `ok && name != ""` semantics. Note: unlike
+/// `extract_name_from_props`, the prop lookup here is NOT trimmed and does not
+/// consider "function_name"/"method_name".
+fn extract_entity_name(n: &Node) -> Option<String> {
+    if let Some(v) = n.prop("name") {
+        return Some(v.to_string());
+    }
+    if !n.token.is_empty() {
+        return Some(n.token.clone());
+    }
+    if let Some(child) = n.children.first() {
+        if !child.token.is_empty() {
+            return Some(child.token.clone());
+        }
+        if let Some(v) = child.prop("name") {
+            return Some(v.to_string());
+        }
+    }
+    None
 }
 
 fn extract_name_from_props(fn_node: &Node) -> Option<String> {

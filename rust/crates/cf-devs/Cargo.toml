@@ -36,6 +36,9 @@ cf-alg-stats = { path = "../cf-alg-stats" }
 cf-identity = { path = "../cf-identity" }
 # MetricMeta + risk level/priority enums (pkg/metrics).
 cf-metrics = { path = "../cf-metrics" }
+# Go sort.Slice (pdqsort) parity for byte-identical tie ordering (busfactor
+# risk-priority sort, contributor sort).
+cf-gosort = { path = "../cf-gosort" }
 
 [lints.clippy]
 pedantic = "warn"

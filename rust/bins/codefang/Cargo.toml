@@ -48,12 +48,23 @@ cf-devs = { path = "../../crates/cf-devs" }
 # `run --analyzers history/typos --format json` capture (repo-independent
 # constant, like history/imports). Routes the bytes through cf-gojson parity.
 cf-typos = { path = "../../crates/cf-typos" }
+# history/couples analyzer: real co-change coupling over the general history
+# pipeline (file/dev matrices, ownership, aggregate). hll feature (default) on
+# for bit-identical per-file contributor cardinality.
+cf-couples = { path = "../../crates/cf-couples" }
+# Seen-files Bloom filter for couples merge-mode coupling dedup.
+cf-alg-bloom = { path = "../../crates/cf-alg-bloom" }
 # libgit2-backed repository / commit access for the head-only run path.
 cf-gitlib = { path = "../../crates/cf-gitlib" }
 # Loose people-dict construction (ReversedPeopleDict) for identity parity.
 cf-analyzers-plumbing = { path = "../../crates/cf-analyzers-plumbing" }
 # Go-`time.RFC3339`-parity unix→string formatter for tick bounds.
 cf-analyze = { path = "../../crates/cf-analyze" }
+# textutil.IsBinary parity for history/devs language detection.
+cf-textutil = { path = "../../crates/cf-textutil" }
+# enry path-only language detection (extension/filename) for history/devs
+# language attribution beyond the fast-path extension table.
+cf-langpath = { path = "../../crates/cf-langpath" }
 # history/anomaly analyzer: ComputedMetrics + Go-value lowering for the
 # `run --analyzers history/anomaly --head` capture (HEAD merge closed form).
 cf-anomaly = { path = "../../crates/cf-anomaly" }
@@ -87,6 +98,18 @@ cf-sentiment = { path = "../../crates/cf-sentiment" }
 # Line-mode diff (sergi/go-diff diffmatchpatch parity): per-file inserted/deleted
 # line counts for the streaming burndown timeseries NDJSON capture's modify deltas.
 cf-godiff = { path = "../../crates/cf-godiff" }
+# history/shotness analyzer: per-commit structural co-change accumulation
+# (accumulate_nodes / compute_coupling_pairs / build_report_from_merged) +
+# ComputeAllMetrics + Go-value lowering for the streaming
+# `run --analyzers history/shotness --format json --limit N` capture.
+cf-shotness = { path = "../../crates/cf-shotness" }
+# Levenshtein distance (pkg/alg/levenshtein parity): the typos analyzer's
+# line-pair candidate test uses the same bit-parallel Myers/DP distance Go does.
+cf-alg-levenshtein = { path = "../../crates/cf-alg-levenshtein" }
 # Burndown line-survival treap (File): exact per-commit GlobalDeltas for the
 # streaming burndown timeseries NDJSON capture (replace semantics + tick deltas).
 cf-burndown-core = { path = "../../crates/cf-burndown-core" }
+# history/file-history analyzer: FileHistory accumulation + ComputeAllMetrics +
+# Go-value lowering for the streaming `run --analyzers history/file-history
+# --format json --limit N` capture (real per-commit file-change history).
+cf-file-history = { path = "../../crates/cf-file-history" }

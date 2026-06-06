@@ -58,6 +58,12 @@ struct FunctionItem {
     source_file: String,
     language: String,
     directory: String,
+    /// The function's name (`function` key) — used only by the JSON section's
+    /// issue list; the machine ComputeAllMetrics payload ignores it.
+    function_name: String,
+    /// The per-function documentation assessment (`assessment` key, e.g.
+    /// `"❌ No Comment"`); the JSON section emits an issue for each bad one.
+    assessment: String,
 }
 
 /// Cross-file accumulator mirroring `comments.Aggregator`.
@@ -104,10 +110,143 @@ pub fn comments_report_bin(root_path: &str) -> Option<Vec<u8>> {
     )
 }
 
+/// Builds the `static/comments --format json` structured-report bytes for
+/// `root_path`, or `None` when the folder cannot be walked.
+///
+/// The Go JSON path (`StaticService.FormatJSON` → `comments.CreateReportSection`
+/// → `renderer.SectionToJSON` → `json.Encoder.SetIndent("","  ").Encode`) emits
+/// a scored COMMENTS section: key metrics (Total/Good/Bad Comments, Doc
+/// Coverage, Good Ratio, Total Functions), a Documented/Undocumented
+/// distribution, and one info issue per UNDOCUMENTED function (assessment
+/// `"❌ No Comment"`), sorted by name. Go sorts via an unstable `sort.Slice`
+/// over functions collected in (parallel/map) order, so the tie order of
+/// same-named functions is intrinsically Go-nondeterministic (the project
+/// MANIFEST marks static_comments.json nonBinding). We emit the deterministic
+/// computation: the section score/labels/metrics/distribution are exact, and the
+/// issue list is sorted by name (file-walk order within equal names).
+#[must_use]
+pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
+    let agg = comments_aggregate(root_path)?;
+    let report_count = agg.report_count.max(0);
+    let mean = |sum: f64| if report_count > 0 { sum / report_count as f64 } else { 0.0 };
+    let overall_score = mean(agg.sum_overall_score);
+    let good_ratio = mean(agg.sum_good_comments_ratio);
+    let doc_coverage = mean(agg.sum_documentation_coverage);
+
+    // --- section score / labels ---
+    let score = overall_score;
+    let score_label = format_score(score);
+
+    // --- status: NewReportSection reads the aggregate `message`; we emit the
+    // deterministic ThresholdLabeler value (matches the common Go output). ---
+    let status = comment_message(overall_score);
+
+    // --- metrics (report_section.go KeyMetrics order) ---
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    let metrics = vec![
+        metric("Total Comments", cf_reportutil::format_int(agg.total_comments)),
+        metric("Good Comments", cf_reportutil::format_int(agg.good_comments)),
+        metric("Bad Comments", cf_reportutil::format_int(agg.bad_comments)),
+        metric("Doc Coverage", format_percent(doc_coverage)),
+        metric("Good Ratio", format_percent(good_ratio)),
+        metric("Total Functions", cf_reportutil::format_int(agg.total_functions)),
+    ];
+
+    // --- distribution (Documented / Undocumented); nil when no functions ---
+    let total_fns = agg.total_functions;
+    let distribution: Vec<GoValue> = if total_fns == 0 {
+        Vec::new()
+    } else {
+        let documented = agg.documented_functions;
+        let undocumented = total_fns - documented;
+        let pct = |c: i64| if total_fns == 0 { 0.0 } else { c as f64 / total_fns as f64 };
+        let dist = |label: &str, count: i64| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("label", GoValue::Str(label.to_string()));
+            m.push("percent", GoValue::Float(pct(count)));
+            m.push("count", GoValue::Int(count));
+            GoValue::Map(m)
+        };
+        vec![
+            dist("Documented", documented),
+            dist("Undocumented", undocumented),
+        ]
+    };
+
+    // --- issues: undocumented functions (assessment "❌ No Comment"), name asc ---
+    let mut issue_fns: Vec<&FunctionItem> = agg
+        .functions
+        .iter()
+        .filter(|f| f.assessment == "❌ No Comment")
+        .collect();
+    // Go: mapx.SortAndLimit(buildIssues(), commentNameLess, 0) — unstable
+    // sort.Slice by Name ascending. Reproduce the pdqsort permutation.
+    crate::go_sort::slice(&mut issue_fns, |a, b| a.function_name < b.function_name);
+    let issues: Vec<GoValue> = issue_fns
+        .iter()
+        .map(|f| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str(f.function_name.clone()));
+            m.push("location", GoValue::Str(f.source_file.clone()));
+            m.push("value", GoValue::Str("undocumented".to_string()));
+            m.push("severity", GoValue::Str("poor".to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+
+    // --- section (JSONSection field order) ---
+    let mut section = GoMap::new(MapOrigin::Struct);
+    section.push("title", GoValue::Str("COMMENTS".to_string()));
+    section.push("score_label", GoValue::Str(score_label.clone()));
+    section.push("status", GoValue::Str(status));
+    section.push("metrics", GoValue::Array(metrics));
+    if !distribution.is_empty() {
+        section.push("distribution", GoValue::Array(distribution));
+    }
+    section.push("issues", GoValue::Array(issues));
+    section.push("score", GoValue::Float(score));
+
+    // --- top-level JSONReport: single scored section ⇒ overall == section ---
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("overall_score_label", GoValue::Str(score_label));
+    root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
+    root.push("overall_score", GoValue::Float(score));
+
+    Some(
+        cf_gojson::Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(&GoValue::Map(root)),
+    )
+}
+
+/// `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`.
+fn format_score(score: f64) -> String {
+    let scaled = (score * 10.0).round() as i64;
+    format!("{scaled}/10")
+}
+
+/// `reportutil.FormatPercent`: `"%.1f%%"` of `v*100`.
+fn format_percent(v: f64) -> String {
+    format!("{:.1}%", v * 100.0)
+}
+
 /// Runs the static pipeline over `root_path` and returns the assembled
 /// `ComputedMetrics` go-value (the shared report value behind every machine
 /// encoding). Returns `None` when the path does not exist.
 fn comments_metrics(root_path: &str) -> Option<GoValue> {
+    let agg = comments_aggregate(root_path)?;
+    Some(compute_metrics(&agg))
+}
+
+/// Runs the static pipeline over `root_path` and returns the cross-file
+/// [`Aggregated`] accumulator (shared by the machine-format `ComputeAllMetrics`
+/// path and the JSON-section path). Returns `None` when the path is missing.
+fn comments_aggregate(root_path: &str) -> Option<Aggregated> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -129,10 +268,20 @@ fn comments_metrics(root_path: &str) -> Option<GoValue> {
             continue;
         };
         let path_str = path.to_string_lossy();
+
+        // Go's static pipeline parses EVERY UAST-supported file and runs the
+        // analyzer; files whose tree has no functions/comments (markdown
+        // READMEs) yield an empty report that still counts as one file in the
+        // cross-file averages (`report_count`). Rust may lack a wired grammar
+        // for some supported extensions (markdown), so a parse failure on a
+        // supported file is folded as that same empty report — keeping the mean
+        // denominator (and thus the averaged scalar metrics) byte-identical.
         let Ok(node) = parser.parse(&path_str, &content) else {
+            agg.report_count += 1;
             continue;
         };
         let Ok(report) = analyzer.analyze(Some(&node)) else {
+            agg.report_count += 1;
             continue;
         };
 
@@ -144,7 +293,7 @@ fn comments_metrics(root_path: &str) -> Option<GoValue> {
         aggregate_report(&mut agg, &report, &stamped, &directory, &language);
     }
 
-    Some(compute_metrics(&agg))
+    Some(agg)
 }
 
 /// Recursively collects UAST-supported, non-excluded regular files under `dir`.
@@ -206,11 +355,19 @@ fn aggregate_report(
         }
     }
     if let Some(items) = map_get(report, "functions").and_then(as_array) {
-        for _ in items {
+        for item in items {
             agg.functions.push(FunctionItem {
                 source_file: source_file.to_string(),
                 language: language.to_string(),
                 directory: directory.to_string(),
+                function_name: map_get(item, "function")
+                    .and_then(as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                assessment: map_get(item, "assessment")
+                    .and_then(as_str)
+                    .unwrap_or_default()
+                    .to_string(),
             });
         }
     }
@@ -365,6 +522,13 @@ fn as_array(v: &GoValue) -> Option<&Vec<GoValue>> {
 fn as_int(v: &GoValue) -> Option<i64> {
     match v {
         GoValue::Int(n) => Some(*n),
+        _ => None,
+    }
+}
+
+fn as_str(v: &GoValue) -> Option<&str> {
+    match v {
+        GoValue::Str(s) => Some(s.as_str()),
         _ => None,
     }
 }

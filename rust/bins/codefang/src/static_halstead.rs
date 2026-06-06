@@ -339,6 +339,130 @@ fn collect(
     }
 }
 
+/// `node.HasAnyType` over the given type list.
+fn has_any_type(node: &Node, types: &[&str]) -> bool {
+    types.iter().any(|t| node.node_type == *t)
+}
+
+/// `node.HasAllRoles`: node must carry every role in `roles`.
+fn has_all_roles(node: &Node, roles: &[&str]) -> bool {
+    roles.iter().all(|r| node.roles.iter().any(|nr| nr == r))
+}
+
+/// Mirrors `Visitor.isFunction`: a `Function`/`Method` type OR a node carrying
+/// BOTH the `Function` and `Declaration` roles.
+fn is_function_node(node: &Node) -> bool {
+    has_any_type(node, &["Function", "Method"]) || has_all_roles(node, &["Function", "Declaration"])
+}
+
+/// Faithful port of `common.ExtractEntityName`: props["name"] -> own token ->
+/// first child's token -> first child's props["name"]. Returns `None` only when
+/// none of those sources is present (matching Go's `(string, bool)` where the
+/// caller treats `!ok` and `""` identically via the `name == "" -> "anonymous"`
+/// fallback in `pushContext`).
+fn extract_entity_name(n: &Node) -> Option<String> {
+    if let Some(v) = n.props.get("name") {
+        return Some(v.clone());
+    }
+    if !n.token.is_empty() {
+        return Some(n.token.clone());
+    }
+    if let Some(child) = n.children.first() {
+        if !child.token.is_empty() {
+            return Some(child.token.clone());
+        }
+        if let Some(v) = child.props.get("name") {
+            return Some(v.clone());
+        }
+    }
+    None
+}
+
+type FuncCounts = (String, HashMap<String, i64>, HashMap<String, i64>);
+
+/// Reproduces the Go `MultiAnalyzerTraverser.Traverse` driving the halstead
+/// `Visitor`: a pre/post-order DFS with a function-context STACK. Each
+/// operator/operand token is attributed to the innermost open function context
+/// (so nested closures do not double-count into their parents). Functions are
+/// returned in OnExit (post-order completion) order — the order Go appends to
+/// `functionMetrics`.
+fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
+    // Each open context: (name, operators, operands).
+    struct Ctx {
+        name: String,
+        operators: HashMap<String, i64>,
+        operands: HashMap<String, i64>,
+    }
+    let mut contexts: Vec<Ctx> = Vec::new();
+    let mut out: Vec<FuncCounts> = Vec::new();
+
+    // Manual explicit stack mirroring traverseFrame (childIdx == -1 => pre-enter).
+    struct Frame<'a> {
+        node: &'a Node,
+        parent: Option<&'a Node>,
+        child_idx: i64,
+        is_fn: bool,
+    }
+    let mut stack: Vec<Frame> = vec![Frame { node: root, parent: None, child_idx: -1, is_fn: false }];
+
+    while let Some(top) = stack.last_mut() {
+        if top.child_idx == -1 {
+            // OnEnter.
+            let n = top.node;
+            let parent = top.parent;
+            let is_fn = is_function_node(n);
+            top.is_fn = is_fn;
+            if is_fn {
+                let name = match extract_entity_name(n) {
+                    Some(s) if !s.is_empty() => s,
+                    _ => "anonymous".to_string(),
+                };
+                contexts.push(Ctx { name, operators: HashMap::new(), operands: HashMap::new() });
+            }
+            // processNode against the current (innermost) context.
+            if let Some(ctx) = contexts.last_mut() {
+                if is_operator(n) {
+                    let op = operator_name(n);
+                    if !op.is_empty() {
+                        *ctx.operators.entry(op).or_insert(0) += 1;
+                    }
+                    // operator matched: do not also try operand (recordOperator
+                    // returns true even when the name is empty).
+                } else if is_operand(n) && !is_declaration_identifier(n, parent) {
+                    let opnd = operand_name(n);
+                    if !opnd.is_empty() {
+                        *ctx.operands.entry(opnd).or_insert(0) += 1;
+                    }
+                }
+            }
+            top.child_idx = 0;
+            // fallthrough to push children below.
+        }
+
+        let top = stack.last_mut().unwrap();
+        let nchildren = top.node.children.len() as i64;
+        if top.child_idx < nchildren {
+            let idx = top.child_idx as usize;
+            top.child_idx += 1;
+            // SAFETY of borrows: re-borrow via raw indices to satisfy the
+            // borrow checker by cloning the needed references first.
+            let parent_node: &Node = top.node;
+            let child: &Node = &top.node.children[idx];
+            stack.push(Frame { node: child, parent: Some(parent_node), child_idx: -1, is_fn: false });
+            continue;
+        }
+
+        // OnExit: pop frame, finalize context if this node opened one.
+        let finished = stack.pop().unwrap();
+        if finished.is_fn {
+            if let Some(ctx) = contexts.pop() {
+                out.push((ctx.name, ctx.operators, ctx.operands));
+            }
+        }
+    }
+    out
+}
+
 /// Finds all function nodes (`findFunctions`): UAST `Function`/`Method` types ∪
 /// `Function` role, depth ≤ [`MAX_DEPTH`], each node counted once.
 ///
@@ -379,8 +503,13 @@ fn function_name(node: &Node) -> String {
 /// aggregation). Returns the empty report (all-zero scalars, no functions) when
 /// the file has no functions.
 fn analyze_file(root: &Node, source_file: &str, directory: &str) -> FileReport {
-    let mut functions: Vec<&Node> = Vec::new();
-    find_functions(root, &mut functions);
+    // Mirror the Go VISITOR path (the static pipeline uses `CreateVisitor` +
+    // MultiAnalyzerTraverser, NOT the standalone `findFunctions`/Analyze path).
+    // The visitor maintains a context STACK: every operator/operand token is
+    // recorded into the INNERMOST enclosing function only, so tokens inside a
+    // nested closure do not leak into the outer function's counts. Functions are
+    // emitted in OnExit (post-order) order. There is no depth limit.
+    let functions = collect_function_metrics(root);
 
     let mut scalars: HashMap<&'static str, f64> = NUMERIC_KEYS.iter().map(|k| (*k, 0.0)).collect();
 
@@ -396,13 +525,9 @@ fn analyze_file(root: &Node, source_file: &str, directory: &str) -> FileReport {
     let mut est_total_ops: i64 = 0;
     let mut est_total_opnds: i64 = 0;
 
-    for fnode in &functions {
-        let mut operators: HashMap<String, i64> = HashMap::new();
-        let mut operands: HashMap<String, i64> = HashMap::new();
-        collect(fnode, None, &mut operators, &mut operands);
-
-        let total_ops: i64 = operators.values().sum();
-        let total_opnds: i64 = operands.values().sum();
+    for (fname, operators, operands) in &functions {
+        let total_ops: i64 = operators.values().copied().sum();
+        let total_opnds: i64 = operands.values().copied().sum();
         let n1 = operators.len() as i64;
         let n2 = operands.len() as i64;
 
@@ -416,15 +541,15 @@ fn analyze_file(root: &Node, source_file: &str, directory: &str) -> FileReport {
             est_total_opnds += total_opnds;
         }
 
-        for (k, v) in &operators {
+        for (k, v) in operators.iter() {
             *file_operators.entry(k.clone()).or_insert(0) += *v;
         }
-        for (k, v) in &operands {
+        for (k, v) in operands.iter() {
             *file_operands.entry(k.clone()).or_insert(0) += *v;
         }
 
         fn_metrics.push(FunctionMetrics {
-            name: function_name(fnode),
+            name: fname.clone(),
             source_file: source_file.to_string(),
             language: "go".to_string(),
             directory: directory.to_string(),
@@ -502,11 +627,26 @@ fn aggregate(root_path: &str) -> Option<Aggregate> {
 
     for path in &files {
         let Ok(content) = std::fs::read(path) else { continue };
-        let Ok(node) = parser.parse(path, &content) else { continue };
 
         let rel = make_relative(path, root_path);
         let directory = dir_of(&rel);
-        let report = analyze_file(&node, &rel, &directory);
+
+        // Go's static pipeline parses EVERY UAST-supported file (`IsSupported`
+        // true) and runs the analyzer on the resulting tree. For files whose
+        // tree carries no functions (e.g. markdown READMEs), the analyzer
+        // returns the all-zero empty report, which still counts as one file in
+        // the cross-file average denominator (`report_count`). Rust may lack a
+        // wired grammar for some supported extensions (markdown), so a parse
+        // failure on a supported file is treated as that same empty report —
+        // matching Go's denominator byte-for-byte.
+        let report = match parser.parse(path, &content) {
+            Ok(node) => analyze_file(&node, &rel, &directory),
+            Err(_) => FileReport {
+                scalars: NUMERIC_KEYS.iter().map(|k| (*k, 0.0)).collect(),
+                total_functions: 0,
+                functions: Vec::new(),
+            },
+        };
 
         report_count += 1;
         for (k, v) in &report.scalars {

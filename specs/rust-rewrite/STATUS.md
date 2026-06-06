@@ -1,5 +1,26 @@
 # codefang Rust rewrite — STATUS (verified 2026-06-06)
 
+## ANTI-SIM GATE — REAL TALLY (latest verified run, 2026-06-06)
+
+The authoritative liveness signal is `rust/tests/antisim/parity_gate.sh` (diffs
+vs Go on OFF-GOLDEN inputs). Latest run:
+
+- `cargo build --release` → **exit 0** (warnings only).
+- `parity_gate.sh` → **PASS=20  FAIL=1  SIMULATION_SUSPECT=0** → GATE: RED.
+  - Only failing analyzer: **history/typos@limit50** (go=3265B rust=3083B).
+- `golden-harness --release` → **32/32 identical** (no regression).
+- `cargo test --workspace` → **2133 passed, 0 failed, 1 ignored**.
+
+**Genuinely ported (gate PASS off-golden):** uast parse/analyze/query;
+static composition/complexity/halstead/comments/imports; history
+imports/devs/burndown. **Real but Go-nondeterministic (realprobe PASS):**
+history shotness/couples/file-history. **Still pending (gate FAIL):**
+history/typos. See `PORT_TRUTH.md` for per-analyzer evidence.
+
+NOTE: complexity, halstead, comments, and imports are now byte-identical
+off-golden (gate PASS) — previously recorded as divergent/0B/faked in older
+notes; that is now resolved.
+
 ## TL;DR (latest verified run — 2026-06-06, all 32 binding captures measured)
 
 **Binding captures: 32/32 byte-identical — BINDING-CAPTURE TIER COMPLETE.**

@@ -1,5 +1,5 @@
 [package]
-name = "cf-langpath"
+name = "cf-gosort"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,6 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# enry tokenizer regexes. Go `regexp` and Rust `regex` are both RE2-derived
-# (leftmost-first, lazy `*?` supported), so the tokenization passes match.
-regex = "1"
+
+[lints.clippy]
+pedantic = "warn"

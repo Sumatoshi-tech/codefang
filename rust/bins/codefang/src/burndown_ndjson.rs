@@ -251,6 +251,111 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// `history/burndown --format json` over the general history pipeline (streaming,
+/// e.g. `--limit N --workers 1`): the line-survival "burndown" report over the
+/// oldest N commits.
+///
+/// This is the REAL port of the Go streaming pipeline
+/// (`run.go initHistoryPipeline Reverse+FirstParent+Limit → RunStreaming →
+/// burndown.HistoryAnalyzer.Consume → Aggregator.Add (MergeNestedAdditive of
+/// per-commit GlobalDeltas) → ticksToReport (groupSparseHistory) →
+/// ComputeAllMetrics`). The per-commit consume machinery is shared with the
+/// NDJSON paths (`process_commit_changes`): every commit's filtered tree changes
+/// drive the per-file burndown treaps, whose `(curTick, prevTick, delta)` updater
+/// reports are folded into the running global sparse history `curTick -> prevTick
+/// -> lineCountDelta` (additive, matching `mapx.MergeNestedAdditive`). At the end
+/// the sparse history is densified with `groupSparseHistory` (Sampling =
+/// Granularity = 30, both clamped equal) and `compute_global_metrics` runs the
+/// global-survival + aggregate computation.
+///
+/// With the default config (`PeopleNumber == 0`, `TrackFiles == false`) the
+/// report carries only `GlobalHistory`, so `file_survival` / `developer_survival`
+/// are empty and `interactions` is nil — exactly the Go output shape. Bytes route
+/// through `cf-gojson` (compact, no trailing newline) byte-identically to
+/// `run/history_burndown.json`.
+pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+
+    // Burndown defaults (Initialize): Granularity = Sampling = 30 (clamped equal
+    // since Sampling is not > Granularity), TickSize = 24h. These config keys are
+    // not exposed on the `run` subcommand, so the defaults always apply here.
+    let granularity = 30i64;
+    let sampling = 30i64;
+    let tick_size_hours = 24i64;
+
+    let mut iter = repo
+        .log(&LogOptions { reverse: true, first_parent: true, ..LogOptions::default() })
+        .ok()?;
+    let mut hashes = Vec::new();
+    while limit <= 0 || (hashes.len() as i64) < limit {
+        match iter.next_commit() {
+            Some(c) => hashes.push(c.hash()),
+            None => break,
+        }
+    }
+    drop(iter);
+
+    let opts = PathPolicyOptions::default();
+    let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
+    let mut tracked: HashMap<String, File> = HashMap::new();
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+
+    // Accumulated global sparse history (Aggregator.globalHistory) and the
+    // maximum tick seen (Aggregator.lastTick → findLastTick).
+    let mut global_history: cf_analyzer_burndown::SparseHistory = std::collections::BTreeMap::new();
+    let mut last_tick: i64 = 0;
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let new_tree = commit.tree().ok()?;
+
+        let committer = commit.committer();
+        let when = committer.when.seconds();
+        let t0 = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw = (when - t0).div_euclid(TICK_PERIOD);
+        let tick = raw.max(previous_tick);
+        previous_tick = tick;
+
+        let num_parents = commit.num_parents();
+        let changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+        let is_merge = num_parents > 1;
+
+        sink.borrow_mut().clear();
+        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        let (global, _added, _removed) = commit_sparse_stats(&sink.borrow(), tick);
+
+        // Aggregator.Add: MergeNestedAdditive(globalHistory, cr.GlobalDeltas).
+        for (cur, row) in &global {
+            let dst = global_history.entry(*cur).or_default();
+            for (prev, delta) in row {
+                *dst.entry(*prev).or_default() += *delta;
+            }
+        }
+
+        if tick > last_tick {
+            last_tick = tick;
+        }
+    }
+
+    // ticksToReport: findLastTick scans the merged GlobalHistory tick keys, so
+    // lastTick is the max curTick present (which equals the running max).
+    let dense = cf_analyzer_burndown::group_sparse_history(&global_history, sampling, granularity, last_tick);
+    let metrics = cf_analyzer_burndown::compute_global_metrics(&dense, sampling, tick_size_hours);
+
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
 /// `IdentityDetector` with default loose signature matching, built incrementally
 /// in commit-walk order (`registerLooseIdentity`). Maps lowercased author
 /// email/name to a sequential id, registering new identities on first sight.

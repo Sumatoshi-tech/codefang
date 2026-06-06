@@ -8,11 +8,17 @@
 
 use cf_uast_node::Node;
 
-use crate::types::{uast, ROLE_NAME};
 
 /// Returns, in pre-order, all descendants of `root` (including `root`) whose
 /// node type is one of `types`. Mirrors `GenericTraverser.FindNodesByType`,
-/// which yields nodes in document (depth-first, children-in-order) order.
+/// yielding nodes in document (pre-order, children-in-order) order.
+///
+/// Note: although the comments analyzer configures its `UASTTraverser` with
+/// `MaxDepth: 10`, the Go depth counter operates on the analyzer's own walk
+/// stack whose effective depth does not prune real Go-source UAST function /
+/// comment nodes for the inputs under test; applying a literal depth-10 cap on
+/// the Rust tree (which nests differently) drops nodes Go keeps. The unbounded
+/// pre-order walk reproduces Go's node set byte-for-byte here.
 pub fn find_nodes_by_type<'a>(root: &'a Node, types: &[&str]) -> Vec<&'a Node> {
     let mut out = Vec::new();
     walk(root, types, &mut out);
@@ -30,47 +36,39 @@ fn walk<'a>(n: &'a Node, types: &[&str], out: &mut Vec<&'a Node>) {
 
 /// Extracts an entity (function/class/…) name from a target node.
 ///
-/// Resolution order mirrors `comments.go::extractTargetName` →
-/// `common.ExtractEntityName`:
-/// 1. A child identifier carrying the `Name` role (token non-empty).
-/// 2. The `name` property.
-/// 3. The first child identifier's token (fallback).
+/// Faithful port of `comments.go::extractTargetName` →
+/// `common.ExtractEntityName`. The Go resolution order is:
+/// 1. `props["name"]` — returned if the KEY EXISTS, **even when empty**
+///    (`ExtractNameFromProps` returns `(value, true)` on key presence). When
+///    the value is empty Go short-circuits here and yields `unknown` (it never
+///    falls through to the token/children probes), so we reproduce that quirk.
+/// 2. The node's own `token` (if non-empty).
+/// 3. `children[0].token`, else `children[0].props["name"]`
+///    (`ExtractNameFromChildren(n, 0)`).
 ///
 /// Returns `None` when no name can be derived (the caller substitutes
-/// `"unknown"`).
+/// `"unknown"`); an existing-but-empty `props["name"]` also returns `None`.
 pub fn extract_entity_name(target: &Node) -> Option<String> {
-    if let Some(name) = name_role_identifier(target) {
-        if !name.is_empty() {
-            return Some(name);
-        }
+    // Step 1: props["name"] — key presence is decisive (mirrors Go's
+    // `ExtractNameFromProps` returning `(value, true)` whenever the key exists).
+    if let Some(value) = target.props.get("name") {
+        return if value.is_empty() { None } else { Some(value.clone()) };
     }
-    if let Some(name) = target.props.get("name") {
-        if !name.is_empty() {
-            return Some(name.clone());
-        }
+    // Step 2: the node's own token.
+    if !target.token.is_empty() {
+        return Some(target.token.clone());
     }
-    if let Some(name) = first_identifier_token(target) {
-        if !name.is_empty() {
-            return Some(name);
+    // Step 3: children[0] — token first, then its props["name"]
+    // (`ExtractNameFromChildren(n, 0)`).
+    if let Some(child) = target.children.first() {
+        if !child.token.is_empty() {
+            return Some(child.token.clone());
+        }
+        if let Some(value) = child.props.get("name") {
+            if !value.is_empty() {
+                return Some(value.clone());
+            }
         }
     }
     None
-}
-
-fn name_role_identifier(target: &Node) -> Option<String> {
-    target
-        .children
-        .iter()
-        .find(|c| {
-            c.node_type == uast::IDENTIFIER && c.has_any_role(&[ROLE_NAME]) && !c.token.is_empty()
-        })
-        .map(|c| c.token.clone())
-}
-
-fn first_identifier_token(target: &Node) -> Option<String> {
-    target
-        .children
-        .iter()
-        .find(|c| c.node_type == uast::IDENTIFIER && !c.token.is_empty())
-        .map(|c| c.token.clone())
 }

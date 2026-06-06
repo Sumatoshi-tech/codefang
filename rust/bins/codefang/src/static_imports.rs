@@ -1,184 +1,360 @@
-//! Static-analysis YAML report path for the UAST `static/imports` analyzer.
+//! Static-analysis report path for the UAST `static/imports` analyzer.
 //!
-//! Reproduces the `codefang run --analyzers static/imports --format yaml`
-//! capture (`static/static_imports.yaml`). The Go static pipeline
-//! (run.go → StaticService.AnalyzeFolder → UAST parse per file →
+//! Reproduces the Go static pipeline for `codefang run --analyzers
+//! static/imports` across its machine formats (yaml, bin, json).
+//!
+//! Pipeline (Go `StaticService.streamFiles` → per-file `uast.Parser.Parse` →
 //! `imports.Analyzer.Analyze` (`extractImportsFromUAST`) → `imports.Aggregator`
-//! (dedup across files into the `imports` report key) →
-//! `StaticService.FormatPerAnalyzer` → `imports.Analyzer.FormatReportYAML`
-//! = `yaml.Marshal(ComputeAllMetrics(report))`) reduces, for this single
-//! UAST analyzer over a Go source tree, to:
+//! → format-specific serialization):
 //!
-//!  1. a lexical directory walk (mirroring the composition path), collecting the
-//!     deduplicated set of Go import paths across all `.go` files (the value the
-//!     aggregator stores under the report `imports` key — order-independent, the
-//!     metric computer re-sorts by category then path);
-//!  2. `ComputedMetrics` via [`cf_imports::compute_all_metrics`];
-//!  3. marshaling through cf-goyaml (`gopkg.in/yaml.v3` parity) — note yaml.v3
-//!     renders the nil `dependencies` slice as `[]` (vs json `null`), handled by
-//!     [`cf_imports::ComputedMetrics::to_go_value_yaml`].
+//!  1. `streamFiles` walks `rootPath` with `filepath.WalkDir` (lexical order,
+//!     `.git` skipped), keeping every UAST-supported, non-vendor/-generated file
+//!     (`ShouldSkipFolderNode` → `parser.IsSupported`, `pathpolicy.Exclude`).
+//!  2. Each file is parsed to a real UAST and run through
+//!     [`cf_imports::extract_imports_from_uast`] — the import path is taken from
+//!     each `Import` node's token (or first literal/identifier child), cleaned
+//!     (quotes/semicolons trimmed, statement forms parsed), and **deduplicated
+//!     within the file in first-seen order**. Crucially the import token retains
+//!     any alias prefix (e.g. `fwk "k8s.io/kube-scheduler/framework`), exactly
+//!     as Go emits it — the previous text-based extractor incorrectly stripped
+//!     aliases.
+//!  3. The cross-file [`cf_imports::Aggregator`] increments `total_files` for
+//!     EVERY analyzed file (including markdown READMEs that contribute no
+//!     imports — Go parses every supported file and folds an empty report) and
+//!     sums per-import occurrence counts.
+//!  4. `ComputeAllMetrics(report)` derives the structured metrics; the machine
+//!     formats serialize that value through cf-goyaml / cf-reportutil / cf-gojson
+//!     byte-identically.
 //!
-//! The set of imports is computed independent of map-iteration order, so the
-//! sorted `import_list`/`categories`/`aggregate` output is deterministic.
+//! ## Markdown / ungrammared-but-supported files
+//!
+//! Go's `IsSupported` is true for markdown (a wired tree-sitter grammar), so a
+//! `README.md` is parsed (to a tree with no import nodes) and still counts as
+//! one file in `total_files`. Rust may lack a wired grammar for some supported
+//! extensions; a parse failure on a supported file is therefore folded as that
+//! same empty report (`total_files += 1`, no imports) — keeping `total_files`
+//! (and thus every derived metric and the JSON `Total Files` value) identical.
 
-use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
+
+use cf_gojson::{GoMap, GoValue, MapOrigin};
+use cf_pathpolicy::{exclude, Options};
+use cf_uast::{Node as UastNode, Parser};
 
 /// Builds the `static/imports --format yaml` report bytes for `root_path`.
 /// Returns `None` when the path does not exist (the caller falls through to the
 /// blocked-dependency sentinel).
 pub fn imports_report_yaml(root_path: &str) -> Option<Vec<u8>> {
-    let metrics = compute_metrics(root_path)?;
+    let report = aggregate_report_value(root_path)?;
+    let metrics = cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(cf_goyaml::marshal(&metrics.to_go_value_yaml()))
 }
 
 /// Builds the `static/imports --format bin` report bytes for `root_path`.
 ///
 /// Same aggregate report + [`cf_imports::compute_all_metrics`] as the yaml
-/// sibling, but wrapped in a CFB1 envelope (`reportutil.EncodeBinaryEnvelope`:
-/// magic `CFB1` + little-endian u32 payload length + compact `encoding/json`
-/// payload). Mirrors `imports.Analyzer.FormatReportBinary`. The bin payload
-/// uses the json-shaped go-value (`dependencies` nil slice → `null`), distinct
-/// from the yaml go-value (`[]`).
+/// sibling, but wrapped in a CFB1 envelope (`reportutil.EncodeBinaryEnvelope`).
 pub fn imports_report_bin(root_path: &str) -> Option<Vec<u8>> {
-    let metrics = compute_metrics(root_path)?;
+    let report = aggregate_report_value(root_path)?;
+    let metrics = cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible");
     Some(
         cf_reportutil::encode_binary_envelope(&metrics.to_go_value())
             .expect("imports metrics never exceed the CFB1 length cap"),
     )
 }
 
-/// Walks `root_path`, collects the deduplicated import set, and runs the imports
-/// metric computer. Returns `None` when the path does not exist (the caller
-/// falls through to the blocked-dependency sentinel).
-fn compute_metrics(root_path: &str) -> Option<cf_imports::ComputedMetrics> {
+/// Aggregates into the `cf_imports::ReportValue` aggregator report (the
+/// `imports.Aggregator.GetResult` shape) consumed by `compute_all_metrics`.
+fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
+    let (all_imports, total_files) = walk_and_count(root_path)?;
+    let imports: Vec<cf_imports::ReportValue> = all_imports
+        .keys()
+        .map(|k| cf_imports::ReportValue::Str(k.clone()))
+        .collect();
+    let mut import_counts = cf_imports::ReportValue::map();
+    for (imp, c) in &all_imports {
+        import_counts.insert(imp.clone(), cf_imports::ReportValue::Int(*c));
+    }
+    let mut report = cf_imports::ReportValue::map();
+    report.insert("imports", cf_imports::ReportValue::List(imports));
+    report.insert("import_counts", import_counts);
+    report.insert("count", cf_imports::ReportValue::Int(all_imports.len() as i64));
+    report.insert("total_files", cf_imports::ReportValue::Int(total_files));
+    Some(report)
+}
+
+/// Builds the `static/imports --format json` structured-report bytes.
+///
+/// The Go JSON path is `StaticService.FormatJSON` →
+/// `imports.CreateReportSection(aggregatedReport)` → `renderer.SectionToJSON` →
+/// `json.NewEncoder(SetIndent("","  ")).Encode`. Imports is an INFO-only section
+/// (`score = -1` ⇒ `score_label = "Info"`); the single-section overall is also
+/// info-only. The `issues` list is every unique import, ordered by occurrence
+/// count descending via Go's `sort.Slice` over a map iterated in random order —
+/// so the tie order is intrinsically Go-nondeterministic (the project MANIFEST
+/// marks `static_imports.json` nonBinding). We emit a DETERMINISTIC, correct
+/// ordering: count descending, ties broken by the aggregator's sorted import
+/// keys (the same set Go emits, just stably ordered).
+pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
+    let (all_imports, total_files) = walk_and_count(root_path)?;
+    let count = all_imports.len() as i64;
+
+    // --- status / score (info-only) ---
+    let status = build_status_message(count);
+
+    // --- key metrics (report_section.go KeyMetrics order) ---
+    let metric = |label: &str, value: String| {
+        let mut m = GoMap::new(MapOrigin::Struct);
+        m.push("label", GoValue::Str(label.to_string()));
+        m.push("value", GoValue::Str(value));
+        GoValue::Map(m)
+    };
+    let metrics = vec![
+        metric("Unique Imports", cf_reportutil::format_int(count)),
+        metric("Total Files", cf_reportutil::format_int(total_files)),
+    ];
+
+    // --- issues: imports sorted by count desc (deterministic tie-break by key) ---
+    // Go sorts `import_counts` (a map iterated in RANDOM order) by count desc via
+    // an unstable sort.Slice, so its tie order is nondeterministic (the project
+    // MANIFEST marks static_imports.json nonBinding). We emit a DETERMINISTIC,
+    // correct ordering: count descending, ties broken by ascending import key.
+    let mut entries: Vec<(String, i64)> =
+        all_imports.iter().map(|(k, c)| (k.clone(), *c)).collect();
+    // all_imports is a BTreeMap (keys already ascending); stable sort by count
+    // desc keeps that ascending tie order.
+    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    let issues: Vec<GoValue> = entries
+        .iter()
+        .map(|(name, c)| {
+            let mut m = GoMap::new(MapOrigin::Struct);
+            m.push("name", GoValue::Str(name.clone()));
+            m.push("location", GoValue::Str(String::new()));
+            m.push("value", GoValue::Str(cf_reportutil::format_int(*c)));
+            m.push("severity", GoValue::Str("info".to_string()));
+            GoValue::Map(m)
+        })
+        .collect();
+
+    // --- section (JSONSection field order) ---
+    let mut section = GoMap::new(MapOrigin::Struct);
+    section.push("title", GoValue::Str("IMPORTS".to_string()));
+    section.push("score_label", GoValue::Str("Info".to_string()));
+    section.push("status", GoValue::Str(status));
+    section.push("metrics", GoValue::Array(metrics));
+    // Distribution() returns nil ⇒ omitempty omits it.
+    section.push("issues", GoValue::Array(issues));
+    section.push("score", GoValue::Float(-1.0));
+
+    // --- top-level JSONReport (overall info-only) ---
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("overall_score_label", GoValue::Str("Info".to_string()));
+    root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
+    root.push("overall_score", GoValue::Float(-1.0));
+
+    Some(
+        cf_gojson::Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(&GoValue::Map(root)),
+    )
+}
+
+/// `imports.buildStatusMessage`.
+fn build_status_message(count: i64) -> String {
+    if count == 0 {
+        "No import data available".to_string()
+    } else {
+        format!("Found {} unique imports", cf_reportutil::format_int(count))
+    }
+}
+
+fn go_int(v: &GoValue) -> Option<i64> {
+    match v {
+        GoValue::Int(n) => Some(*n),
+        _ => None,
+    }
+}
+
+/// Walks `root_path`, parses each supported file to a real UAST, extracts its
+/// imports, and folds them into a cross-file `import path -> file count` map
+/// alongside the total analyzed-file count. Returns `None` when the path is
+/// missing. Mirrors the per-file analyze + `imports.Aggregator` accumulation.
+fn walk_and_count(root_path: &str) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
-    let mut imports: BTreeSet<String> = BTreeSet::new();
-    walk(root, &mut imports);
+    let parser = Parser::new();
+    let opts = Options::default();
 
-    // The aggregator stores `imports` as a `[]string` (deduplicated across
-    // files). compute_all_metrics re-sorts deterministically, so any order
-    // works; a BTreeSet gives a stable, allocation-light dedup.
-    let mut report = cf_imports::ReportValue::map();
-    report.insert(
-        "imports",
-        cf_imports::ReportValue::List(
-            imports.into_iter().map(cf_imports::ReportValue::Str).collect(),
-        ),
-    );
+    let mut files: Vec<String> = Vec::new();
+    collect_files(root, &parser, &opts, &mut files);
+    files.sort();
 
-    Some(cf_imports::compute_all_metrics(&report).expect("compute_all_metrics is infallible"))
+    // The Go aggregator increments total_files for every analyzed file and sums
+    // per-import occurrence counts across files.
+    let mut all_imports: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    let mut total_files: i64 = 0;
+
+    for path in &files {
+        let Ok(content) = std::fs::read(path) else { continue };
+        total_files += 1;
+        // Parse failures on supported files (markdown without a wired grammar)
+        // fold as an empty report: +1 file, no imports (see module docs).
+        let Ok(node) = parser.parse(path, &content) else { continue };
+
+        // extract_imports_from_uast deduplicates within the file in first-seen
+        // order; the cross-file aggregator then counts file occurrences.
+        for imp in extract_imports_from_uast(&node) {
+            *all_imports.entry(imp).or_insert(0) += 1;
+        }
+    }
+
+    if total_files == 0 {
+        return None;
+    }
+    Some((all_imports, total_files))
 }
 
-/// Recursively walks `dir` in lexical order (mirroring `filepath.WalkDir`),
-/// extracting Go import paths from every `.go` file. `.git` is skipped.
-fn walk(dir: &Path, imports: &mut BTreeSet<String>) {
-    let Ok(read) = fs::read_dir(dir) else {
-        return;
-    };
-
+/// Recursively collects UAST-supported, non-excluded regular files under `dir`
+/// (lexical order; `.git` skipped). Mirrors `streamFiles` /
+/// `ShouldSkipFolderNode`.
+fn collect_files(dir: &Path, parser: &Parser, opts: &Options, out: &mut Vec<String>) {
+    let Ok(read) = std::fs::read_dir(dir) else { return };
     let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
     entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
     for entry in entries {
         let path = entry.path();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-
-        if file_type.is_dir() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
             if entry.file_name() == ".git" {
                 continue;
             }
-            walk(&path, imports);
+            collect_files(&path, parser, opts, out);
             continue;
         }
-
-        if path.extension().and_then(|e| e.to_str()) == Some("go") {
-            if let Ok(src) = fs::read_to_string(&path) {
-                extract_go_imports(&src, imports);
-            }
+        let path_str = path.to_string_lossy().to_string();
+        if !parser.is_supported(&path_str) {
+            continue;
         }
+        if exclude(&path_str, None, opts) {
+            continue;
+        }
+        out.push(path_str);
     }
 }
 
-/// Extracts import paths from Go source, mirroring `extractImportsFromUAST` +
-/// `extractImportPath`/`cleanImportPath`: each import spec's quoted path string
-/// is the import identifier; the optional alias (`alias`, `_`, `.`) and quotes
-/// are stripped. Both grouped (`import ( ... )`) and single
-/// (`import "path"` / `import alias "path"`) forms are handled.
-fn extract_go_imports(src: &str, imports: &mut BTreeSet<String>) {
-    let mut in_group = false;
-
-    for raw in src.lines() {
-        let line = strip_line_comment(raw).trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if in_group {
-            if line == ")" {
-                in_group = false;
-                continue;
-            }
-            if let Some(p) = import_path_from_spec(line) {
-                imports.insert(p);
-            }
-            continue;
-        }
-
-        if line == "import (" || line.starts_with("import(") {
-            in_group = true;
-            continue;
-        }
-
-        if let Some(rest) = line.strip_prefix("import ") {
-            let rest = rest.trim();
-            // `import ( "a"; "b" )` on one line is not generated by gofmt; the
-            // grouped form opens on its own line. A single `import "path"` (with
-            // optional alias) reduces to the same spec parser.
-            if rest == "(" {
-                in_group = true;
-                continue;
-            }
-            if let Some(p) = import_path_from_spec(rest) {
-                imports.insert(p);
+/// Extracts deduplicated import strings from a real cf-uast tree.
+///
+/// Faithful port of Go `extractImportsFromUAST` (mirrored in
+/// `cf_imports::extract_imports_from_uast`, here applied to `cf_uast::Node`):
+/// pre-order traversal; a node contributes when its type is `Import` or it
+/// carries the `Import` role. Duplicates (by extracted path) are dropped,
+/// preserving first-seen order.
+pub fn extract_imports_from_uast(root: &UastNode) -> Vec<String> {
+    let mut imports: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    visit_pre_order(root, &mut |n: &UastNode| {
+        if n.node_type == "Import" || has_role(n, "Import") {
+            let p = extract_import_path(n);
+            if !p.is_empty() && seen.insert(p.clone()) {
+                imports.push(p);
             }
         }
+    });
+    imports
+}
+
+fn visit_pre_order<F: FnMut(&UastNode)>(n: &UastNode, f: &mut F) {
+    f(n);
+    for c in &n.children {
+        visit_pre_order(c, f);
     }
 }
 
-/// Parses an import spec (`"path"`, `alias "path"`, `_ "path"`, `. "path"`) into
-/// the bare import path, returning `None` for non-import lines.
-fn import_path_from_spec(spec: &str) -> Option<String> {
-    let start = spec.find('"')?;
-    let rest = &spec[start + 1..];
-    let end = rest.find('"')?;
-    let path = &rest[..end];
-    if path.is_empty() {
-        return None;
-    }
-    Some(path.to_string())
+fn has_role(n: &UastNode, role: &str) -> bool {
+    n.roles.iter().any(|r| r == role)
 }
 
-/// Removes a trailing `// ...` line comment outside of string literals (good
-/// enough for import blocks, which contain only quoted paths and aliases).
-fn strip_line_comment(line: &str) -> &str {
-    let bytes = line.as_bytes();
-    let mut in_str = false;
-    let mut i = 0;
-    while i + 1 < bytes.len() {
-        match bytes[i] {
-            b'"' => in_str = !in_str,
-            b'/' if !in_str && bytes[i + 1] == b'/' => return &line[..i],
-            _ => {}
-        }
-        i += 1;
+/// `extractImportPath`: node token (cleaned), else search children.
+fn extract_import_path(n: &UastNode) -> String {
+    if !n.token.is_empty() {
+        return clean_import_path(&n.token);
     }
-    line
+    if n.children.is_empty() {
+        return String::new();
+    }
+    extract_import_path_from_children(&n.children)
+}
+
+/// `extractImportPathFromChildren`: first literal-with-token, then
+/// identifier-with-token, then recurse.
+fn extract_import_path_from_children(children: &[UastNode]) -> String {
+    for c in children {
+        if c.node_type == "Literal" && !c.token.is_empty() {
+            return clean_import_path(&c.token);
+        }
+    }
+    for c in children {
+        if c.node_type == "Identifier" && !c.token.is_empty() {
+            return clean_import_path(&c.token);
+        }
+    }
+    for c in children {
+        let p = extract_import_path(c);
+        if !p.is_empty() {
+            return p;
+        }
+    }
+    String::new()
+}
+
+/// `cleanImportPath`: trim `"`/`'`/`;` from both ends, skip empty/`{`/`}`, apply
+/// the statement-form parser, else return the trimmed value.
+fn clean_import_path(path: &str) -> String {
+    let path = path.trim_matches(|c| c == '"' || c == '\'' || c == ';');
+    if path.is_empty() || path == "{" || path == "}" {
+        return String::new();
+    }
+    let parsed = parse_import_format(path);
+    if !parsed.is_empty() {
+        return parsed;
+    }
+    path.to_string()
+}
+
+/// `parseImportFormat`: Python/JS statement forms; empty for Go-style specs (so
+/// `cleanImportPath` falls back to the bare token, retaining any alias prefix).
+fn parse_import_format(path: &str) -> String {
+    if path.starts_with("from ") {
+        let parts: Vec<&str> = path.split_whitespace().collect();
+        if parts.len() >= 2 {
+            return parts[1].to_string();
+        }
+        return String::new();
+    }
+    if path.contains(" from ") {
+        let parts: Vec<&str> = path.splitn(2, " from ").collect();
+        if parts.len() >= 2 {
+            return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
+        }
+        return String::new();
+    }
+    if path.starts_with("import ") {
+        let parts: Vec<&str> = path.split_whitespace().collect();
+        if parts.len() >= 2 {
+            return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
+        }
+        return String::new();
+    }
+    if path.contains("import ") {
+        let parts: Vec<&str> = path.splitn(2, "import ").collect();
+        if parts.len() >= 2 {
+            return parts[1].trim_matches(|c| c == '"' || c == '\'').to_string();
+        }
+        return String::new();
+    }
+    String::new()
 }

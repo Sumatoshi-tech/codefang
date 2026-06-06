@@ -136,6 +136,155 @@ impl ComputedMetrics {
     }
 }
 
+/// Sparse global history accumulated across the commit walk:
+/// `curTick -> prevTick -> lineCountDelta`. Mirrors the Go `sparseHistory`
+/// (`map[int]map[int]int64`) that the burndown aggregator builds by additively
+/// merging every per-commit `CommitResult.GlobalDeltas`.
+pub type SparseHistory = std::collections::BTreeMap<i64, std::collections::BTreeMap<i64, i64>>;
+
+/// Dense burndown matrix (Go `DenseHistory = [][]int64`): rows are samples,
+/// columns are cohort bands.
+pub type DenseHistory = Vec<Vec<i64>>;
+
+/// `groupSparseHistory` (Go `internal/analyzers/burndown/history_dense.go`):
+/// densify a sparse tick history into a `samples x bands` matrix. `sampling` and
+/// `granularity` are the band/sample sizes (both 30 by default); `last_tick` is
+/// the maximum tick observed across the whole walk.
+#[must_use]
+pub fn group_sparse_history(history: &SparseHistory, sampling: i64, granularity: i64, last_tick: i64) -> DenseHistory {
+    if history.is_empty() {
+        return Vec::new();
+    }
+
+    // normalizeTicks: sorted tick keys (BTreeMap already sorted); append
+    // last_tick if it exceeds the largest key (last_tick >= 0 here).
+    let mut ticks: Vec<i64> = history.keys().copied().collect();
+    let resolved_last = if let Some(&max_key) = ticks.last() {
+        if max_key < last_tick {
+            ticks.push(last_tick);
+            last_tick
+        } else {
+            last_tick
+        }
+    } else {
+        last_tick.max(0)
+    };
+
+    let samples = (resolved_last / sampling + 1) as usize;
+    let bands = (resolved_last / granularity + 1) as usize;
+
+    let mut result: DenseHistory = vec![vec![0i64; bands]; samples];
+
+    // fillDenseHistory: carry forward state across empty sample rows, then add
+    // each tick's per-band deltas into its sample row.
+    let mut prevsi: usize = 0;
+    for &tick in &ticks {
+        let si = (tick / sampling) as usize;
+        if si > prevsi {
+            let state = result[prevsi].clone();
+            for row in result.iter_mut().take(si + 1).skip(prevsi + 1) {
+                row.copy_from_slice(&state);
+            }
+            prevsi = si;
+        }
+        if let Some(row) = history.get(&tick) {
+            for (&t, &value) in row {
+                let band = (t / granularity) as usize;
+                if band < bands {
+                    result[si][band] += value;
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// `findPeakLines` (Go `metrics.go`): sum, over every band, of that band's
+/// maximum value across all samples — the total lines ever written.
+fn find_peak_lines(history: &DenseHistory) -> i64 {
+    if history.is_empty() {
+        return 0;
+    }
+    let num_bands = history[0].len();
+    let mut band_peaks = vec![0i64; num_bands];
+    for sample in history {
+        for band in 0..sample.len().min(num_bands) {
+            if sample[band] > band_peaks[band] {
+                band_peaks[band] = sample[band];
+            }
+        }
+    }
+    band_peaks.iter().sum()
+}
+
+/// `sumPositiveValues` (Go `metrics.go`).
+fn sum_positive(values: &[i64]) -> i64 {
+    values.iter().filter(|&&v| v > 0).sum()
+}
+
+/// `computeSurvivalSample` (Go `metrics.go`).
+fn compute_survival_sample(index: i64, sample: &[i64], peak_lines: i64) -> SurvivalData {
+    let mut breakdown = vec![0i64; sample.len()];
+    let mut total = 0i64;
+    for (j, &v) in sample.iter().enumerate() {
+        if v > 0 {
+            total += v;
+            breakdown[j] = v;
+        }
+    }
+    let survival_rate = if peak_lines > 0 { total as f64 / peak_lines as f64 } else { 0.0 };
+    SurvivalData { sample_index: index, total_lines: total, survival_rate, band_breakdown: breakdown }
+}
+
+/// `ComputeAllMetrics` (Go `metrics.go`) for the default report shape
+/// (`PeopleNumber == 0`, `TrackFiles == false`): only `GlobalHistory`,
+/// `Sampling`, `Granularity`, and `TickSize` feed the output, so
+/// `file_survival` / `developer_survival` stay empty and `interactions` nil.
+///
+/// `tick_size_hours` is the configured tick size in hours (24 by default);
+/// `analysis_period_days = (num_samples-1) * sampling * tick_size_hours / 24`,
+/// matching Go's `time.Duration` arithmetic in `computeAggregate`.
+#[must_use]
+pub fn compute_global_metrics(global_dense: &DenseHistory, sampling: i64, tick_size_hours: i64) -> ComputedMetrics {
+    // computeGlobalSurvival.
+    let peak = find_peak_lines(global_dense);
+    let global_survival: Vec<SurvivalData> = global_dense
+        .iter()
+        .enumerate()
+        .map(|(i, sample)| compute_survival_sample(i as i64, sample, peak))
+        .collect();
+
+    // computeAggregate (TrackedFiles/TrackedDevelopers are 0: no per-file /
+    // per-people histories in the default report).
+    let mut aggregate = AggregateData::default();
+    if !global_dense.is_empty() {
+        let num_samples = global_dense.len() as i64;
+        aggregate.num_samples = num_samples;
+        aggregate.num_bands = global_dense[0].len() as i64;
+        let total_ticks = (num_samples - 1) * sampling;
+        // time.Duration(totalTicks) * tickSize / 24h, integer-truncated.
+        aggregate.analysis_period_days = total_ticks * tick_size_hours / 24;
+        aggregate.total_peak_lines = peak;
+        aggregate.total_current_lines = sum_positive(&global_dense[num_samples as usize - 1]);
+        if aggregate.total_peak_lines > 0 {
+            aggregate.overall_survival_rate =
+                aggregate.total_current_lines as f64 / aggregate.total_peak_lines as f64;
+        }
+    }
+
+    ComputedMetrics {
+        aggregate,
+        global_survival,
+        // computeFileSurvival over an empty FileOwnership map → empty slice
+        // (make([]FileSurvivalData, 0, ...)); same for developer_survival.
+        file_survival: Some(Vec::new()),
+        developer_survival: Some(Vec::new()),
+        // computeInteraction over an empty PeopleMatrix → nil slice.
+        interactions: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

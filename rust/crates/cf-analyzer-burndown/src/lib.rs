@@ -8,7 +8,10 @@
 
 pub mod metrics;
 
-pub use metrics::{AggregateData, ComputedMetrics, SurvivalData};
+pub use metrics::{
+    compute_global_metrics, group_sparse_history, AggregateData, ComputedMetrics, DenseHistory,
+    SparseHistory, SurvivalData,
+};
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-analyzer-burndown";

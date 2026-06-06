@@ -273,10 +273,14 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
             continue;
         }
 
-        // (id, lines) sorted descending by lines, tie-break id ascending.
+        // (id, lines) sorted descending by lines via Go sort.Slice (pdqsort,
+        // unstable). The contributor input order is the BTreeMap id-ascending
+        // order (deterministic; a correctness improvement over Go's random map
+        // iteration, which only affects the order of equal-line contributors —
+        // and Go's output is itself nondeterministic on such ties).
         let mut contribs: Vec<(i64, i64)> =
             ld.contributors.iter().map(|(&id, &lines)| (id, lines)).collect();
-        contribs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        cf_gosort::go_sort_slice(&mut contribs, |a, b| a.1 > b.1);
 
         let sorted_amounts: Vec<i64> = contribs.iter().map(|c| c.1).collect();
 
@@ -321,10 +325,14 @@ pub fn compute_bus_factor(input: &BusFactorInput, opts: &MetricOptions) -> Vec<B
         result.push(bf);
     }
 
-    result.sort_by(|a, b| {
+    // Go: sort.Slice(result, byRiskPriority) — an UNSTABLE pdqsort keyed ONLY on
+    // risk priority (no secondary key). The exact tie permutation (equal-priority
+    // runs) is reproduced via the Go-`sort.Slice` port over the same input order
+    // (the `input.languages` slice order, total_lines desc).
+    cf_gosort::go_sort_slice(&mut result, |a, b| {
         let pa = cf_metrics::risk_priority(&cf_metrics::RiskLevel::from(a.risk_level.as_str()));
         let pb = cf_metrics::risk_priority(&cf_metrics::RiskLevel::from(b.risk_level.as_str()));
-        pa.cmp(&pb).then(a.language.cmp(&b.language))
+        pa < pb
     });
     result
 }

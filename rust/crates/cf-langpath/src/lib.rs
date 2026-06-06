@@ -29,6 +29,17 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
+pub mod content;
+
+/// Resolve a candidate token to its canonical Linguist language via enry's
+/// alias table (`GetLanguageByAlias`), or `None` if unrecognized. Public so the
+/// content classifier can normalize candidates exactly as enry's
+/// `(*classifier).Classify` does.
+#[must_use]
+pub fn canonical_language(token: &str) -> Option<String> {
+    get_language_by_alias(token).map(str::to_string)
+}
+
 /// Error returned when a user-supplied token does not resolve to any Linguist
 /// language (including its aliases).
 ///
@@ -67,10 +78,22 @@ struct EnryData {
     /// canonical name → literal filenames, the inversion of
     /// `LanguagesByFilename`.
     filenames_by_language: HashMap<String, Vec<String>>,
+    /// lowercased extension (with leading dot) → languages, enry's
+    /// `data.LanguagesByExtension`. Built by inverting the `E` rows.
+    languages_by_extension: HashMap<String, Vec<String>>,
+    /// literal filename → languages, enry's `data.LanguagesByFilename`
+    /// (the `F` rows, un-inverted).
+    languages_by_filename: HashMap<String, Vec<String>>,
+    /// interpreter (shebang) → languages, enry's `data.LanguagesByInterpreter`.
+    languages_by_interpreter: HashMap<String, Vec<String>>,
 }
 
 /// Vendored enry v2.1.0 tables, verbatim. See `data/README.md`.
 const ENRY_TSV: &str = include_str!("../data/enry-v2.1.0.tsv");
+
+/// Vendored enry v2.1.0 `LanguagesByInterpreter` table (shebang strategy),
+/// one `interpreter<TAB>lang1<TAB>lang2…` row per line.
+const ENRY_INTERPRETERS_TSV: &str = include_str!("../data/enry-interpreters-v2.1.0.tsv");
 
 /// Loads and caches the parsed enry tables. Parsed once on first access;
 /// read-only thereafter (mirrors the Go package-load-time inversion).
@@ -89,6 +112,8 @@ fn parse_enry_tsv(tsv: &str) -> EnryData {
     let mut alias_to_lang = HashMap::new();
     let mut extensions_by_language = HashMap::new();
     let mut filenames_by_language: HashMap<String, Vec<String>> = HashMap::new();
+    let mut languages_by_extension: HashMap<String, Vec<String>> = HashMap::new();
+    let mut languages_by_filename: HashMap<String, Vec<String>> = HashMap::new();
 
     for line in tsv.lines() {
         if line.is_empty() {
@@ -105,6 +130,16 @@ fn parse_enry_tsv(tsv: &str) -> EnryData {
             "E" => {
                 if let Some(lang) = cols.next() {
                     let exts: Vec<String> = cols.map(str::to_string).collect();
+                    // Forward inversion: ext (lowercased) → languages, mirroring
+                    // enry's `data.LanguagesByExtension`. enry stores extensions
+                    // already lowercased; the extension strategy lowercases the
+                    // filename before lookup, so key by lowercase here too.
+                    for ext in &exts {
+                        languages_by_extension
+                            .entry(ext.to_lowercase())
+                            .or_default()
+                            .push(lang.to_string());
+                    }
                     extensions_by_language.insert(lang.to_string(), exts);
                 }
             }
@@ -113,15 +148,33 @@ fn parse_enry_tsv(tsv: &str) -> EnryData {
                     // Invert: each lang in this filename's list gains `filename`.
                     // Preserve enry's per-language filename ordering by appending
                     // in the order filenames appear in the (sorted) TSV.
-                    for lang in cols {
+                    let langs: Vec<String> = cols.map(str::to_string).collect();
+                    for lang in &langs {
                         filenames_by_language
-                            .entry(lang.to_string())
+                            .entry(lang.clone())
                             .or_default()
                             .push(filename.to_string());
                     }
+                    // Forward map: filename → languages (enry's
+                    // `data.LanguagesByFilename`, un-inverted).
+                    languages_by_filename.insert(filename.to_string(), langs);
                 }
             }
             _ => {}
+        }
+    }
+
+    let mut languages_by_interpreter: HashMap<String, Vec<String>> = HashMap::new();
+    for line in ENRY_INTERPRETERS_TSV.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let mut cols = line.split('\t');
+        if let Some(interp) = cols.next() {
+            let langs: Vec<String> = cols.map(str::to_string).collect();
+            if !langs.is_empty() {
+                languages_by_interpreter.insert(interp.to_string(), langs);
+            }
         }
     }
 
@@ -129,7 +182,238 @@ fn parse_enry_tsv(tsv: &str) -> EnryData {
         alias_to_lang,
         extensions_by_language,
         filenames_by_language,
+        languages_by_extension,
+        languages_by_filename,
+        languages_by_interpreter,
     }
+}
+
+/// Reproduces `enry.getInterpreter`: extract the interpreter name from a
+/// shebang line, returning `""` when there is none.
+///
+/// Mirrors the Go logic: read the first line; require a `#!` prefix; strip it;
+/// split on whitespace; if the first field contains `env`, use the second
+/// field, else use the basename of the first field. `sh` triggers a 5-line
+/// `exec <interp> ... $0 ... $@` scan; `pythonX.Y` collapses to `pythonX`;
+/// `osascript` with a `-l` flag is cleared.
+fn get_interpreter(content: &[u8]) -> String {
+    let line = first_line(content);
+    if !line.starts_with(b"#!") {
+        return String::new();
+    }
+    // Skip `#!`, trim ASCII whitespace (Go bytes.TrimSpace).
+    let rest = trim_ascii_space(&line[2..]);
+    let fields: Vec<&[u8]> = rest.split(u8::is_ascii_whitespace).filter(|f| !f.is_empty()).collect();
+    if fields.is_empty() {
+        return String::new();
+    }
+    let mut interpreter = if contains_subslice(fields[0], b"env") {
+        if fields.len() > 1 {
+            String::from_utf8_lossy(fields[1]).into_owned()
+        } else {
+            String::new()
+        }
+    } else {
+        let last = fields[0].rsplit(|&b| b == b'/').next().unwrap_or(fields[0]);
+        String::from_utf8_lossy(last).into_owned()
+    };
+
+    if interpreter == "sh" {
+        interpreter = look_for_multiline_exec(content);
+    }
+
+    // pythonVersion regex `python\d\.\d+`: collapse pythonX.Y → pythonX.
+    if is_python_version(&interpreter) {
+        if let Some(dot) = interpreter.find('.') {
+            interpreter = interpreter[..dot].to_string();
+        }
+    }
+
+    // osascript -l: clear (matches linguist behaviour).
+    if interpreter == "osascript" && contains_subslice(&line, b"-l") {
+        interpreter = String::new();
+    }
+
+    interpreter
+}
+
+/// `pythonVersion = python\d\.\d+`: `python`, a digit, `.`, one-or-more digits.
+fn is_python_version(s: &str) -> bool {
+    let b = s.as_bytes();
+    if !s.starts_with("python") {
+        return false;
+    }
+    let rest = &b[6..];
+    if rest.len() < 3 || !rest[0].is_ascii_digit() || rest[1] != b'.' {
+        return false;
+    }
+    rest[2..].iter().all(u8::is_ascii_digit) && rest.len() >= 3
+}
+
+/// `shebangExecHack = exec (\w+).+\$0.+\$@`: scan up to 5 lines for an
+/// `exec <interp> ... $0 ... $@` pattern; default `sh`.
+fn look_for_multiline_exec(content: &[u8]) -> String {
+    const MAGIC_LINES: usize = 5;
+    let interpreter = "sh".to_string();
+    for (i, line) in content.split(|&b| b == b'\n').enumerate() {
+        if i >= MAGIC_LINES {
+            break;
+        }
+        if let Some(found) = match_exec_hack(line) {
+            return found;
+        }
+    }
+    interpreter
+}
+
+/// Matches `exec (\w+).+\$0.+\$@` (Go RE2 semantics: `.` does not match `\n`,
+/// `\w` = `[0-9A-Za-z_]`); returns the captured interpreter word.
+fn match_exec_hack(line: &[u8]) -> Option<String> {
+    // Find "exec " then a \w+ run, then require "$0" later then "$@" later.
+    let needle = b"exec ";
+    let start = find_subslice(line, needle)? + needle.len();
+    let mut j = start;
+    while j < line.len() && is_word_byte(line[j]) {
+        j += 1;
+    }
+    if j == start {
+        return None; // \w+ requires at least one.
+    }
+    let word = &line[start..j];
+    // .+\$0.+\$@ : need at least one char, then "$0", at least one char, "$@".
+    // Search for "$0" strictly after j (the .+ requires ≥1 char between).
+    let after_word = &line[j..];
+    let zero = find_subslice(after_word, b"$0")?;
+    if zero < 1 {
+        return None; // .+ before $0 needs ≥1 char.
+    }
+    let after_zero = &after_word[zero + 2..];
+    let at = find_subslice(after_zero, b"$@")?;
+    if at < 1 {
+        return None; // .+ before $@ needs ≥1 char.
+    }
+    Some(String::from_utf8_lossy(word).into_owned())
+}
+
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+fn first_line(content: &[u8]) -> &[u8] {
+    // Go uses bufio.Scanner default split (lines), which strips a trailing \r\n
+    // or \n. We take bytes up to the first \n and strip a trailing \r.
+    let end = content.iter().position(|&b| b == b'\n').unwrap_or(content.len());
+    let line = &content[..end];
+    if line.last() == Some(&b'\r') {
+        &line[..line.len() - 1]
+    } else {
+        line
+    }
+}
+
+fn trim_ascii_space(s: &[u8]) -> &[u8] {
+    let start = s.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(s.len());
+    let end = s.iter().rposition(|b| !b.is_ascii_whitespace()).map_or(start, |p| p + 1);
+    &s[start..end]
+}
+
+fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+    find_subslice(haystack, needle).is_some()
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Reproduces `enry.GetLanguage(base(filename), content)` for a NON-binary blob:
+/// the strategy cascade `GetLanguages` runs (minus the modeline pass, which is
+/// content-regexp-only and not ported), then `firstLanguage` picks the result.
+///
+/// `GetLanguages` semantics (`common.go`): each strategy returns candidate
+/// languages; if a strategy yields **exactly one** candidate it short-circuits
+/// and that is the answer; otherwise its candidates accumulate and the next
+/// strategy runs (the classifier, the last strategy, scores the accumulated
+/// candidate set). The final result is `firstLanguage(languages)` — the first
+/// non-empty, or `"Other"`.
+///
+/// Strategy order (`DefaultStrategies`):
+/// 1. `GetLanguagesByModeline` — content vim/emacs modelines. NOT ported; treated
+///    as always-empty (no modeline-tagged files among the gate inputs).
+/// 2. `GetLanguagesByFilename` → `LanguagesByFilename[base]`.
+/// 3. `GetLanguagesByShebang` → `LanguagesByInterpreter[interpreter(content)]`.
+/// 4. `GetLanguagesByExtension` → longest dotted suffix first (lowercased).
+/// 5. `GetLanguagesByContent` — per-extension content regex heuristics. NOT
+///    ported; treated as always-empty (no `.sls`/observed-extension heuristic).
+/// 6. `GetLanguagesByClassifier` — Naive-Bayes over the accumulated candidates
+///    ([`content::classify_language`]).
+///
+/// Returns `None` only when EVERY strategy yields no candidate (enry's
+/// `firstLanguage` would then return `"Other"`; the caller maps `None` to the
+/// same `""`/`"Other"` bucket).
+#[must_use]
+pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<String> {
+    let data = enry_data();
+    let base = filename.rsplit(['/', '\\']).next().unwrap_or(filename);
+
+    let mut candidates: Vec<String> = Vec::new();
+
+    // Strategy 2: filename.
+    if let Some(langs) = data.languages_by_filename.get(base) {
+        if langs.len() == 1 {
+            return Some(langs[0].clone());
+        }
+        candidates.extend(langs.iter().cloned());
+    }
+
+    // Strategy 3: shebang.
+    let interp = get_interpreter(content);
+    if !interp.is_empty() {
+        if let Some(langs) = data.languages_by_interpreter.get(&interp) {
+            if langs.len() == 1 {
+                return Some(langs[0].clone());
+            }
+            if !langs.is_empty() {
+                candidates.extend(langs.iter().cloned());
+            }
+        }
+    }
+
+    // Strategy 4: extension (longest dotted suffix first, lowercased).
+    if filename.contains('.') {
+        let lower = filename.to_lowercase();
+        'ext: for (i, ch) in lower.char_indices() {
+            if ch != '.' {
+                continue;
+            }
+            let ext = &lower[i..];
+            if let Some(langs) = data.languages_by_extension.get(ext) {
+                if langs.len() == 1 {
+                    return Some(langs[0].clone());
+                }
+                if !langs.is_empty() {
+                    candidates.extend(langs.iter().cloned());
+                }
+                // enry returns this extension's list (first matching suffix
+                // wins); stop scanning further suffixes.
+                break 'ext;
+            }
+        }
+    }
+
+    // Strategy 5 (content heuristics) not ported — assumed empty.
+
+    // Strategy 6: classifier over the accumulated candidates.
+    content::classify_language(content, &candidates)
+}
+
+/// Path-only convenience over [`language_by_path_with_content`] (no shebang/
+/// classifier content available). Equivalent to passing empty content.
+#[must_use]
+pub fn language_by_path(filename: &str) -> Option<String> {
+    language_by_path_with_content(filename, &[])
 }
 
 /// Reproduces enry's `convertToAliasKey`: take the substring before the first

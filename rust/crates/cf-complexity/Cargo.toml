@@ -20,6 +20,8 @@ publish.workspace = true
 # analyzer builds its report as a GoValue tree; serialization is owned by the
 # report layer. NEVER serde_json.
 cf-gojson = { workspace = true }
+# Go sort.Slice (pdqsort) parity for tie ordering, shared across analyzers.
+cf-gosort = { workspace = true }
 
 [lints.clippy]
 pedantic = "warn"

@@ -71,6 +71,7 @@ signal-hook = "0.3"
 # Registered here so path/version resolve once for the whole workspace.
 cf-gojson = { path = "crates/cf-gojson" }
 cf-goyaml = { path = "crates/cf-goyaml" }
+cf-gosort = { path = "crates/cf-gosort" }
 cf-safeconv = { path = "crates/cf-safeconv" }
 
 [profile.release]
