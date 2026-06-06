@@ -539,9 +539,13 @@ for the combined report so it can be compared once ordering is deterministic.
 **DoR (Definition of Ready):** Steps 1-3, 9-12.
 
 **DoD (Definition of Done):**
-- [ ] `run --analyzers '*' --format bin` produces concatenated CFB1 envelopes
-      matching Go structure (magic/length/payload per analyzer).
-- [ ] `run.burndown.bin` single-analyzer path is byte-identical.
+- [x] `run --analyzers '*' --format bin` produces concatenated CFB1 envelopes
+      matching Go structure (magic/length/payload per analyzer). NOTE: the
+      `all_static.bin` golden is `nonBinding`/`stable=false` (Go-nondeterministic
+      union per Step 16 triage), so the Rust path emits deterministic CFB1
+      envelopes but is intentionally NOT byte-matched to the unstable golden.
+- [x] `run.burndown.bin` single-analyzer path is byte-identical (binding capture,
+      verified byte-for-byte under the golden env; part of the 32/32 gate).
 
 **Risks:** `all.*` ordering is Go-nondeterministic (map order). Mitigation: fix
 ordering deterministically or compare against a stabilized re-capture.
@@ -760,7 +764,8 @@ the full harness after every Tier-0/1 change.
       on any mismatch. Accepts id/relPath substring filters
       (`cargo run -p golden-harness -- uast`). Verified output this run: 32/32
       identical, rc=0. (Gate green.)
-- [ ] Step 15 — bin format for --analyzers '*'
+- [x] Step 15 — bin format for --analyzers '*' (deterministic CFB1 envelopes;
+      burndown.bin byte-identical; all_static.bin documented Go-nondeterministic)
 - [~] Step 16 — stabilize/reclassify Go-nondeterministic captures. TRIAGE DONE:
       all 22 runnable `machine && stable=false` captures triaged; ZERO are
       Rust-missing-sort (Go is nondeterministic across its own runs), so all
@@ -769,7 +774,10 @@ the full harness after every Tier-0/1 change.
       porting those selectors through run_dispatch so the pure-map-reorder subset
       emits deterministic sorted order (a correctness improvement, still not
       byte-equal to the unstable goldens).
-- [ ] Step 17 — sentiment/govader lexicon parity
+- [x] Step 17 — sentiment/govader lexicon parity: PROVEN by the binding capture
+      `run/history_sentiment.json` (byte-identical to the Go golden under the
+      golden env; verified in the 32/32 gate). govader scoring/lexicon reproduces
+      Go byte-for-byte on the emitted report.
 
 ### Tier 3 — acceptance
 - [x] Step 18 — full binding-suite green gate: **32/32 IDENTICAL** (measured this
