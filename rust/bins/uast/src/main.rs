@@ -106,7 +106,17 @@ fn build_cli() -> Command {
 }
 
 fn main() {
-    let matches = build_cli().get_matches();
+    // cobra exits 1 on a usage error (bad flag / unknown command / missing arg)
+    // and 0 when it merely printed help/version; clap's own `get_matches` would
+    // exit 2 on a usage error, so parse explicitly and map the exit code to
+    // cobra's contract (the cli-surface error-path probes assert rc==1).
+    let matches = match build_cli().try_get_matches() {
+        Ok(m) => m,
+        Err(e) => {
+            e.print().ok();
+            exit(i32::from(e.use_stderr()));
+        }
+    };
 
     // version uses cobra `Run` (no error path), exit 0 (main.go:56-58).
     let result: Result<(), String> = match matches.subcommand() {

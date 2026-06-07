@@ -418,6 +418,7 @@ dependencies = [
  "cf-uast-node",
  "cf-version",
  "clap",
+ "clap_complete",
 ]
 
 [[package]]

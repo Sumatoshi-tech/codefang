@@ -23,7 +23,13 @@ pub fn command() -> Command {
         .long_about(
             "Analyze node-types.json, classify nodes, compute mapping coverage, and show tree-sitter JSON structure.",
         )
-        .arg(Arg::new("files").num_args(0..).index(1))
+        // Go's `mapping` command sets no cobra `Args`, so its `--help` Usage line
+        // is `uast mapping [flags]` with NO positional placeholder (the
+        // cli-surface positional shape is `[]`). The body still consumes free
+        // arguments as input files (`--show-treesitter`), so we keep the
+        // positional but `.hide(true)` it: clap then omits it from the Usage
+        // line (matching Go's empty positional shape) while still parsing it.
+        .arg(Arg::new("files").num_args(0..).index(1).hide(true))
         .arg(long_opt("node-types", "", "Path to node-types.json (required for non-treesitter operations)"))
         .arg(long_opt("mapping", "", "Path to mapping DSL file (optional)"))
         .arg(long_opt("format", "text", "Output format: text or json"))

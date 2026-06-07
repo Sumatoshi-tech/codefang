@@ -90,7 +90,7 @@
       "property": "grow-limit",
       "label": "history/shotness@kube",
       "verdict": "PASS",
-      "go_grows": "194->3469694",
+      "go_grows": "194->3498357",
       "rust_grows": "190->1329608"
     },
     {
@@ -146,7 +146,7 @@
       "property": "non-empty",
       "label": "history/shotness@hercules",
       "verdict": "PASS",
-      "go_len": 386083,
+      "go_len": 388339,
       "rust_len": 375599
     },
     {

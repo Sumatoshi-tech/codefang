@@ -231,7 +231,7 @@ impl core::fmt::Display for PipelineError {
                 f,
                 "no analyzers selected. Use -a flag, e.g.: -a burndown,couples"
             ),
-            PipelineError::UnknownAnalyzer(id) => write!(f, "unknown analyzer: {id}"),
+            PipelineError::UnknownAnalyzer(id) => write!(f, "unknown analyzer id: {id}"),
             PipelineError::UnsupportedFormat(fmt) => write!(f, "unsupported format: {fmt}"),
             PipelineError::AnalyzerFailed(id) => write!(f, "analyzer {id} produced no report"),
         }

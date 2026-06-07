@@ -49,6 +49,10 @@ mcp = ["dep:cf-mcp"]
 
 [dependencies]
 clap = { workspace = true }
+# Generates the shell-completion scripts for the `completion` subcommand, the
+# Rust analogue of the bytes cobra emits for its auto-registered completion
+# command (bash/fish/powershell/zsh).
+clap_complete = "4"
 
 # Real, compiling sibling crates depended on unconditionally.
 cf-version = { path = "../cf-version" }

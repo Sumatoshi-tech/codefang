@@ -243,6 +243,11 @@ fn config_flag_arg(opt: &ConfigurationOption) -> Option<Arg> {
     let help: &'static str = string_to_static_leak(&opt.description);
 
     let arg = match (opt.option_type, &opt.default) {
+        // cobra registers a BoolConfigurationOption as `Flags().Bool` — a
+        // value-less boolean flag (`--anonymize`, no `<value>` placeholder in
+        // help). `require_equals(true)` makes clap render `--anonymize[=<..>]`,
+        // the `[=<` form the cli-surface extractor reads as value-less, while
+        // still accepting an explicit `--anonymize=true/false` like cobra.
         (ConfigurationOptionType::Bool, DefaultValue::Bool(v)) => Arg::new(flag)
             .long(flag)
             .help(help)
@@ -250,6 +255,7 @@ fn config_flag_arg(opt: &ConfigurationOption) -> Option<Arg> {
             .default_value(if *v { "true" } else { "false" })
             .default_missing_value("true")
             .value_parser(clap::value_parser!(bool))
+            .require_equals(true)
             .num_args(0..=1),
         (ConfigurationOptionType::Int, DefaultValue::Int(v)) => Arg::new(flag)
             .long(flag)
@@ -299,37 +305,240 @@ fn format_go_float_default(v: f64) -> String {
     }
 }
 
-/// The default analyzer configuration options used by the non-`runtime` build
-/// and by tests, mirroring the subset of Go analyzer options the CLI golden and
-/// the `run_config_test.go` tests exercise.
+/// `runtime.NumCPU()` analogue — the per-machine goroutine-count default the Go
+/// analyzers derive their `*-goroutines` defaults from (`runtime.NumCPU()` and
+/// `max(NumCPU()/4, 1)`). The live Go binary bakes the host CPU count into its
+/// `--help` defaults, so the Rust surface must compute the same number for the
+/// cli-surface comparison (and for runtime parity) to match.
+fn num_cpu() -> i64 {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1) as i64
+}
+
+/// The default analyzer configuration options: the FULL Go analyzer option set
+/// produced by `registerAnalyzerFlags` walking `buildPipeline(nil)` Core +
+/// Leaves (every analyzer's `ListConfigurationOptions`). Each entry mirrors the
+/// Go `ConfigurationOption` (Name / Flag / Type / Default / Description) so the
+/// dynamic clap registration in [`register_analyzer_flags`] reproduces cobra's
+/// flag surface byte-for-byte, and every value lands in the parsed matches that
+/// `cf_commands::run` threads into the handlers via [`crate::pipeline::RunContext`].
 ///
-/// NOTE: this is a representative subset (notably the burndown options the Go
-/// `run_config_test.go` asserts on, plus the cross-analyzer `--languages`
-/// option). The full set is produced at runtime from the real analyzer
-/// providers once the analyzer crates compile; see the crate `todos`.
+/// The `*-goroutines` defaults are derived from [`num_cpu`] exactly as Go derives
+/// them from `runtime.NumCPU()`.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn default_analyzer_options() -> Vec<ConfigurationOption> {
+    let ncpu = num_cpu();
+    let uast_goroutines = (ncpu / 4).max(1);
     vec![
+        // --- plumbing/tree_diff ---
         ConfigurationOption {
-            name: "Granularity".into(),
-            flag: "burndown-granularity".into(),
-            description: "Number of ticks per band in the burndown matrix".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(30),
+            name: "TreeDiff.FilteredRegexes".into(),
+            flag: "whitelist".into(),
+            description: "Whitelist regexp to determine which files to analyze.".into(),
+            option_type: ConfigurationOptionType::String,
+            default: DefaultValue::String(String::new()),
         },
         ConfigurationOption {
-            name: "Sampling".into(),
-            flag: "burndown-sampling".into(),
-            description: "Number of ticks between burndown matrix samples".into(),
-            option_type: ConfigurationOptionType::Int,
-            default: DefaultValue::Int(30),
-        },
-        ConfigurationOption {
-            name: "Languages".into(),
+            name: "TreeDiff.Languages".into(),
             flag: "languages".into(),
             description: "Restrict analysis to these languages (comma-separated; 'all' for no filter)".into(),
             option_type: ConfigurationOptionType::Strings,
             default: DefaultValue::Strings(Vec::new()),
+        },
+        // --- plumbing/ticks ---
+        ConfigurationOption {
+            name: "TicksSinceStart.TickSize".into(),
+            flag: "tick-size".into(),
+            description: "How long each 'tick' represents in hours.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(24),
+        },
+        // --- plumbing/identity ---
+        ConfigurationOption {
+            name: "IdentityDetector.PeopleDictPath".into(),
+            flag: "people-dict".into(),
+            description: "Path to the file with developer -> name|email associations.".into(),
+            option_type: ConfigurationOptionType::Path,
+            default: DefaultValue::Path(String::new()),
+        },
+        ConfigurationOption {
+            name: "IdentityDetector.ExactSignatures".into(),
+            flag: "exact-signatures".into(),
+            description: "Disable separate name/email matching. This will lead to considerably more identities and should not be normally used.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        // --- plumbing/blob_cache ---
+        ConfigurationOption {
+            name: "BlobCache.FailOnMissingSubmodules".into(),
+            flag: "fail-on-missing-submodules".into(),
+            description: "Specifies whether to panic if any referenced submodule does not exist in .gitmodules and thus the corresponding Git object cannot be loaded. Override this if you want to ensure that your repository is integral.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "BlobCache.Goroutines".into(),
+            flag: "blob-cache-goroutines".into(),
+            description: "Number of goroutines to use for parallel blob loading.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(ncpu),
+        },
+        // --- plumbing/file_diff ---
+        ConfigurationOption {
+            name: "FileDiff.NoCleanup".into(),
+            flag: "no-diff-cleanup".into(),
+            description: "Do not apply additional heuristics to improve diffs.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "FileDiff.WhitespaceIgnore".into(),
+            flag: "no-diff-whitespace".into(),
+            description: "Ignore whitespace when computing diffs.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "FileDiff.Timeout".into(),
+            flag: "diff-timeout".into(),
+            description: "Maximum time in milliseconds a single diff calculation may elapse.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(1000),
+        },
+        ConfigurationOption {
+            name: "FileDiff.Goroutines".into(),
+            flag: "diff-goroutines".into(),
+            description: "Number of goroutines to use for diff calculation.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(ncpu),
+        },
+        // --- plumbing/uast ---
+        ConfigurationOption {
+            name: "UASTChanges.Goroutines".into(),
+            flag: "uast-changes-goroutines".into(),
+            description: "Number of goroutines to use for parallel UAST parsing (fallback when pipeline is not available).".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(uast_goroutines),
+        },
+        // --- burndown ---
+        ConfigurationOption {
+            name: "Burndown.Granularity".into(),
+            flag: "granularity".into(),
+            description: "How many time ticks there are in a single band.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(30),
+        },
+        ConfigurationOption {
+            name: "Burndown.Sampling".into(),
+            flag: "sampling".into(),
+            description: "How frequently to record the state in time ticks.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(30),
+        },
+        ConfigurationOption {
+            name: "Burndown.TrackFiles".into(),
+            flag: "burndown-files".into(),
+            description: "Record detailed statistics per each file.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "Burndown.TrackPeople".into(),
+            flag: "burndown-people".into(),
+            description: "Record detailed statistics per each developer.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "Burndown.HibernationThreshold".into(),
+            flag: "burndown-hibernation-threshold".into(),
+            description: "The minimum size for the allocated memory in each branch to be compressed.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(1000),
+        },
+        ConfigurationOption {
+            name: "Burndown.HibernationOnDisk".into(),
+            flag: "burndown-hibernation-disk".into(),
+            description: "If true, save hibernated state to disk (no-op with default treap timeline).".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(true),
+        },
+        ConfigurationOption {
+            name: "Burndown.HibernationDirectory".into(),
+            flag: "burndown-hibernation-dir".into(),
+            description: "Temporary directory for hibernated state (no-op with default treap timeline).".into(),
+            option_type: ConfigurationOptionType::Path,
+            default: DefaultValue::Path(String::new()),
+        },
+        ConfigurationOption {
+            name: "Burndown.Debug".into(),
+            flag: "burndown-debug".into(),
+            description: "Validate the trees at each step.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "Burndown.Goroutines".into(),
+            flag: "burndown-goroutines".into(),
+            description: "Number of goroutines to use for parallel processing.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(ncpu),
+        },
+        // --- anomaly ---
+        ConfigurationOption {
+            name: "TemporalAnomaly.WindowSize".into(),
+            flag: "anomaly-window".into(),
+            description: "Sliding window size in ticks for computing rolling statistics.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(20),
+        },
+        // --- devs ---
+        ConfigurationOption {
+            name: "Devs.ConsiderEmptyCommits".into(),
+            flag: "empty-commits".into(),
+            description: "Take into account empty commits such as trivial merges.".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        ConfigurationOption {
+            name: "Devs.Anonymize".into(),
+            flag: "anonymize".into(),
+            description: "Anonymize developer names in output (e.g., Developer-A, Developer-B).".into(),
+            option_type: ConfigurationOptionType::Bool,
+            default: DefaultValue::Bool(false),
+        },
+        // --- shotness ---
+        ConfigurationOption {
+            name: "Shotness.DSLStruct".into(),
+            flag: "shotness-dsl-struct".into(),
+            description: "UAST DSL query to use for filtering the nodes.".into(),
+            option_type: ConfigurationOptionType::String,
+            default: DefaultValue::String("filter(.roles has \"Function\")".into()),
+        },
+        ConfigurationOption {
+            name: "Shotness.DSLName".into(),
+            flag: "shotness-dsl-name".into(),
+            description: "UAST DSL query to determine the names of the filtered nodes.".into(),
+            option_type: ConfigurationOptionType::String,
+            default: DefaultValue::String(".props.name".into()),
+        },
+        // --- typos ---
+        ConfigurationOption {
+            name: "TyposDatasetBuilder.MaximumAllowedDistance".into(),
+            flag: "typos-max-distance".into(),
+            description: "Maximum Levenshtein distance between two identifiers to consider them a typo-fix pair.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(4),
+        },
+        // --- sentiment ---
+        ConfigurationOption {
+            name: "CommentSentiment.MinLength".into(),
+            flag: "min-comment-len".into(),
+            description: "Minimum length of the comment to be analyzed.".into(),
+            option_type: ConfigurationOptionType::Int,
+            default: DefaultValue::Int(20),
         },
     ]
 }
@@ -357,6 +566,56 @@ pub fn build_render_command() -> Command {
         )
 }
 
+/// Build the `completion` [`clap::Command`] with the four shell subcommands
+/// (`bash`, `fish`, `powershell`, `zsh`), mirroring the command cobra
+/// auto-registers (`rootCmd.AddCommand`'s implicit completion command). The help
+/// strings are copied verbatim from cobra's generated completion command so the
+/// cli-surface comparison matches the live Go binary.
+#[must_use]
+pub fn build_completion_command() -> Command {
+    Command::new("completion")
+        .about("Generate the autocompletion script for the specified shell")
+        .long_about(
+            "Generate the autocompletion script for codefang for the specified shell.\n\
+See each sub-command's help for details on how to use the generated script.",
+        )
+        .subcommand_required(false)
+        // cobra's auto-registered completion command, run with NO shell argument,
+        // prints its long help and exits 0; `arg_required_else_help` would make
+        // clap exit 1, so we let the bare invocation flow to the handler, which
+        // prints help and returns 0 (matching Go).
+        .subcommand(
+            Command::new("bash")
+                .about("Generate the autocompletion script for bash")
+                .arg(completion_no_descriptions_flag()),
+        )
+        .subcommand(
+            Command::new("fish")
+                .about("Generate the autocompletion script for fish")
+                .arg(completion_no_descriptions_flag()),
+        )
+        .subcommand(
+            Command::new("powershell")
+                .about("Generate the autocompletion script for powershell")
+                .arg(completion_no_descriptions_flag()),
+        )
+        .subcommand(
+            Command::new("zsh")
+                .about("Generate the autocompletion script for zsh")
+                .arg(completion_no_descriptions_flag()),
+        )
+}
+
+/// The `--no-descriptions` toggle cobra adds to every generated shell-completion
+/// subcommand (bash/fish/powershell/zsh). A value-less boolean flag, matching
+/// cobra's surface ("disable completion descriptions").
+fn completion_no_descriptions_flag() -> Arg {
+    bool_arg(
+        "no-descriptions",
+        "disable completion descriptions",
+    )
+}
+
 // --- small flag-builder helpers (cobra-style: long name + short + default) ---
 
 /// A boolean `--flag` (clap `SetTrue`), default `false`. Mirrors cobra
@@ -368,15 +627,26 @@ fn bool_arg(name: &'static str, help: &'static str) -> Arg {
         .action(ArgAction::SetTrue)
 }
 
-/// A tri-state boolean flag taking an explicit value (`--flag=false`) with the
-/// given default. The caller distinguishes "set by user" from "default" via
-/// [`clap::ArgMatches::value_source`], the Rust analogue of cobra's `Changed`.
+/// A tri-state boolean flag, the Rust analogue of cobra's `Flags().Bool(..)`
+/// read through `Changed` (`parseBoolFlag`): default `default`, the bare
+/// `--flag` form sets `true`, `--flag=false` negates, and the caller
+/// distinguishes "set by user" from "default" via
+/// [`clap::ArgMatches::value_source`] (cobra `Changed`).
+///
+/// `require_equals(true)` is load-bearing for surface parity: a cobra `Bool`
+/// flag advertises NO value placeholder in `--help` (it is `takes_value=false`
+/// in the cli-surface comparison), and `require_equals` makes clap render
+/// `--flag[=<flag>]` — the `[=<` form the surface extractor reads as
+/// value-less — instead of the `[<flag>]` (value-taking) form a plain
+/// `num_args(0..=1)` would print. The explicit `--flag=false` value still
+/// parses, matching cobra (the analyzer matrix passes `--checkpoint=false`).
 fn tristate_bool_arg(name: &'static str, default: bool, help: &'static str) -> Arg {
     Arg::new(name)
         .long(name)
         .help(help)
         .action(ArgAction::Set)
         .num_args(0..=1)
+        .require_equals(true)
         .default_value(if default { "true" } else { "false" })
         .default_missing_value("true")
         .value_parser(clap::value_parser!(bool))
@@ -518,13 +788,50 @@ mod tests {
         );
     }
 
-    // --- TestRunCommandConfig_AnalyzerFlags (burndown-granularity registered) ---
+    // --- TestRunCommandConfig_AnalyzerFlags (burndown --granularity registered) ---
+    // Go renamed --burndown-granularity to --granularity (the cobra flag is
+    // "granularity"); the dynamic registration must expose that name.
     #[test]
     fn run_registers_dynamic_burndown_flag() {
         let m = run()
-            .try_get_matches_from(["run", "--burndown-granularity", "60"])
+            .try_get_matches_from(["run", "--granularity", "60"])
             .unwrap();
-        assert_eq!(*m.get_one::<i64>("burndown-granularity").unwrap(), 60);
+        assert_eq!(*m.get_one::<i64>("granularity").unwrap(), 60);
+        // The old name must be gone (Go dropped it).
+        assert!(
+            run().try_get_matches_from(["run", "--burndown-granularity", "60"]).is_err(),
+            "--burndown-granularity must no longer exist (renamed to --granularity)"
+        );
+    }
+
+    // The new analyzer flags are registered with Go-exact names/defaults.
+    #[test]
+    fn run_registers_new_analyzer_flags() {
+        let m = run().try_get_matches_from(["run"]).unwrap();
+        assert_eq!(*m.get_one::<i64>("anomaly-window").unwrap(), 20);
+        assert_eq!(*m.get_one::<i64>("sampling").unwrap(), 30);
+        assert_eq!(*m.get_one::<i64>("tick-size").unwrap(), 24);
+        assert_eq!(*m.get_one::<i64>("typos-max-distance").unwrap(), 4);
+        assert_eq!(*m.get_one::<i64>("min-comment-len").unwrap(), 20);
+        assert_eq!(*m.get_one::<i64>("diff-timeout").unwrap(), 1000);
+        assert_eq!(*m.get_one::<i64>("burndown-hibernation-threshold").unwrap(), 1000);
+        assert!(*m.get_one::<bool>("burndown-hibernation-disk").unwrap());
+        assert!(!m.get_flag("anonymize"));
+        assert_eq!(m.get_one::<String>("shotness-dsl-name").unwrap(), ".props.name");
+        assert_eq!(m.get_one::<String>("people-dict").unwrap(), "");
+        assert_eq!(m.get_one::<String>("whitelist").unwrap(), "");
+    }
+
+    // --checkpoint=false still parses (the analyzer matrix passes it) and reports
+    // a CommandLine source (Go Changed==true) — surface is value-less.
+    #[test]
+    fn checkpoint_value_form_still_parses() {
+        let m = run().try_get_matches_from(["run", "--checkpoint=false"]).unwrap();
+        assert!(!*m.get_one::<bool>("checkpoint").unwrap());
+        assert_eq!(
+            m.value_source("checkpoint"),
+            Some(clap::parser::ValueSource::CommandLine)
+        );
     }
 
     // --- TestRunCommandConfig_DryRunOmitted ---

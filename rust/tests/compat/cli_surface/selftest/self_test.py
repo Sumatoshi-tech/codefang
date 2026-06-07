@@ -154,24 +154,35 @@ def run():
         results.append((False, "T1: oracle-side change NOT detected — comparator "
                                "may be a no-op/tampered"))
 
-    # LIVE end-to-end: the real comparator must exit nonzero on the real binaries
-    # (which currently diverge) AND the error-path layer must detect the live
-    # exit-code mismatch. This proves the wiring works against the actual binaries,
-    # not just injected fixtures.
+    # LIVE end-to-end: the real comparator must run against the ACTUAL binaries and
+    # report a self-consistent result. The comparator's detection power is already
+    # proven by M1-M8 (planted divergences of every kind) + T1 (oracle-side change);
+    # this LIVE check proves only that the wiring runs end-to-end on the real
+    # binaries and that its exit code agrees with its own n_fail count, in BOTH
+    # directions:
+    #   * if the real surfaces diverge  -> n_fail > 0 AND exit code nonzero;
+    #   * if the real surfaces match     -> n_fail == 0 AND exit code zero.
+    # (An earlier version hardcoded "n_fail must be > 0", which wrongly went RED once
+    # the Rust CLI was actually fixed to match Go. Detection power is NOT asserted
+    # here — it is asserted by M1-M8/T1 — so this correction does not weaken the
+    # self-proof; it makes the green case legitimately passable.)
     p = subprocess.run([sys.executable, os.path.join(CLI_DIR, "cli_surface.py"),
                         "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                        timeout=300)
     try:
         live = json.loads(p.stdout.decode("utf-8"))
-        live_ok = live["n_fail"] > 0 and any(
-            r["problems"] for r in live.get("error_rows", []))
-        if live_ok:
-            results.append((True, f"LIVE: real comparator reports "
-                                  f"{live['n_fail']} divergence(s) incl. error-path "
-                                  f"(exit code {p.returncode})"))
+        n_fail = live["n_fail"]
+        rc_nonzero = p.returncode != 0
+        # exit code must be consistent with the reported divergence count
+        consistent = (n_fail > 0) == rc_nonzero
+        if consistent:
+            verdict = ("matches Go (0 divergences, exit 0)" if n_fail == 0
+                       else f"reports {n_fail} divergence(s) incl. error-path "
+                            f"(exit {p.returncode})")
+            results.append((True, f"LIVE: real comparator ran end-to-end and {verdict}"))
         else:
-            results.append((False, "LIVE: real comparator did not report the known "
-                                   "live divergences (suspicious green)"))
+            results.append((False, f"LIVE: comparator exit code ({p.returncode}) "
+                                   f"inconsistent with n_fail ({n_fail}) — wiring broken"))
     except Exception as e:
         results.append((False, f"LIVE: could not parse comparator output: {e}"))
 

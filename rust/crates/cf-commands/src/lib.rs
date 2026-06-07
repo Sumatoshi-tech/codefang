@@ -55,7 +55,9 @@ pub mod pipeline;
 pub mod registry;
 pub mod version;
 
-pub use flags::{build_render_command, build_run_command, deprecated_flag_message};
+pub use flags::{
+    build_completion_command, build_render_command, build_run_command, deprecated_flag_message,
+};
 // `FORMAT_JSON` is part of the public format-constant API (used by the binary
 // and golden harness); rustc emits a spurious unused-import warning for the
 // re-export because it is also referenced internally via `crate::formats`.
@@ -111,6 +113,7 @@ pub fn build_codefang_command() -> clap::Command {
         .subcommand(build_run_command())
         .subcommand(build_render_command())
         .subcommand(build_version_command())
+        .subcommand(build_completion_command())
 }
 
 /// Sentinel error message for run/render dispatch when no registered handler can
@@ -136,9 +139,12 @@ where
     let matches = match build_codefang_command().try_get_matches_from(args) {
         Ok(m) => m,
         Err(e) => {
-            // clap prints help/usage/version itself; preserve its exit code.
+            // clap prints help/usage/version itself. cobra exits 1 on a usage
+            // error (bad flag / unknown command / missing arg) and 0 when it
+            // merely displayed help/version; mirror that exit-code contract
+            // (the cli-surface error-path probes assert rc==1, not clap's 2).
             e.print().ok();
-            return if e.use_stderr() { 2 } else { 0 };
+            return i32::from(e.use_stderr());
         }
     };
 
@@ -149,12 +155,39 @@ where
         }
         Some(("run", sub)) => run_subcommand(sub),
         Some(("render", sub)) => render_subcommand(sub),
+        Some(("completion", sub)) => completion_subcommand(sub),
         _ => {
             build_codefang_command().print_help().ok();
             println!();
             0
         }
     }
+}
+
+/// Dispatches `codefang completion <shell>`; generates the shell-completion
+/// script to stdout, the Rust analogue of the bytes cobra's auto-registered
+/// completion command emits (`bash`/`fish`/`powershell`/`zsh`). The script bytes
+/// are clap-vs-cobra cosmetic (Layer-D informational), but a real generator (not
+/// a help stub) is required so the command behaves like Go's. With no shell
+/// subcommand cobra prints the completion command's help (rc 0).
+fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
+    use clap_complete::Shell;
+
+    let shell = match sub.subcommand_name() {
+        Some("bash") => Shell::Bash,
+        Some("fish") => Shell::Fish,
+        Some("powershell") => Shell::PowerShell,
+        Some("zsh") => Shell::Zsh,
+        _ => {
+            build_completion_command().print_help().ok();
+            println!();
+            return 0;
+        }
+    };
+
+    let mut cmd = build_codefang_command();
+    clap_complete::generate(shell, &mut cmd, "codefang", &mut std::io::stdout());
+    0
 }
 
 /// Dispatches `codefang run` through the general pipeline. Emits each phase's
@@ -264,8 +297,16 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             }
             0
         }
-        // An unsatisfiable selection (no handler for this analyzer/format) routes
-        // to the same codefang error path the legacy dispatch fell through to.
+        // An unknown analyzer id surfaces the specific Go diagnostic
+        // ("unknown analyzer id: <id>", Go ErrUnknownAnalyzer) so the error
+        // path is byte-class-identical to cobra (the cli-surface runtime probe
+        // requires the "analyzer" diagnostic, not a generic stub message).
+        Err(pipeline::PipelineError::UnknownAnalyzer(id)) => {
+            eprintln!("Error: unknown analyzer id: {id}");
+            1
+        }
+        // Any other unsatisfiable selection (no handler for this analyzer/format)
+        // routes to the same codefang error path the legacy dispatch fell through to.
         Err(_) => {
             eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
             1
@@ -295,10 +336,12 @@ mod tests {
     }
 
     #[test]
-    fn root_has_three_subcommands_in_order() {
+    fn root_has_subcommands_in_order() {
         let cmd = build_codefang_command();
         let names: Vec<&str> = cmd.get_subcommands().map(clap::Command::get_name).collect();
-        assert_eq!(names, vec!["run", "render", "version"]);
+        // `completion` mirrors the command cobra auto-registers (cli-surface
+        // parity); it is wired last, after the three explicit subcommands.
+        assert_eq!(names, vec!["run", "render", "version", "completion"]);
     }
 
     #[test]
