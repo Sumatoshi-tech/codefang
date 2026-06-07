@@ -233,11 +233,17 @@ impl Emitter {
 
     fn emit_block_mapping(&mut self, m: &cf_gojson::GoMap) {
         self.increase_indent(false, false);
+        let int_keys = m.origin() == cf_gojson::MapOrigin::IntMap;
         for (k, v) in yaml_key_order(m) {
             self.write_indent();
-            // All keys here are strings; a string key is a "simple key" unless
-            // it is multiline (then yaml.v3 renders `? <block>` / `:`).
-            let key_val = GoValue::Str(k.clone());
+            // String-origin keys emit as `!!str` scalars (quoted when they would
+            // otherwise resolve to another tag). Int-origin keys (`map[int]…`)
+            // emit as plain `!!int` scalars (unquoted), matching yaml.v3.
+            let key_val = if int_keys {
+                GoValue::Int(k.parse::<i64>().unwrap_or(0))
+            } else {
+                GoValue::Str(k.clone())
+            };
             let simple = !key_is_multiline(k);
             if simple {
                 self.states.push(State::Other);
@@ -604,19 +610,32 @@ fn key_is_multiline(k: &str) -> bool {
 /// which orders embedded digit runs *numerically* (e.g. `a2` < `a10`).
 fn yaml_key_order(m: &cf_gojson::GoMap) -> Vec<&(String, GoValue)> {
     let mut refs: Vec<&(String, GoValue)> = m.entries().iter().collect();
-    if m.origin() == cf_gojson::MapOrigin::Map {
-        // A stable sort matches Go's `sort.Sort` only up to ties, but
-        // `yaml_key_less` is a total order over distinct map keys (keys are
-        // unique), so stability is irrelevant here.
-        refs.sort_by(|a, b| {
-            if yaml_key_less(&a.0, &b.0) {
-                std::cmp::Ordering::Less
-            } else if yaml_key_less(&b.0, &a.0) {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        });
+    match m.origin() {
+        cf_gojson::MapOrigin::Map => {
+            // A stable sort matches Go's `sort.Sort` only up to ties, but
+            // `yaml_key_less` is a total order over distinct map keys (keys are
+            // unique), so stability is irrelevant here.
+            refs.sort_by(|a, b| {
+                if yaml_key_less(&a.0, &b.0) {
+                    std::cmp::Ordering::Less
+                } else if yaml_key_less(&b.0, &a.0) {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            });
+        }
+        // Integer map keys sort by integer value (yaml.v3 `keyList.Less` numeric
+        // fast-path for `map[int]…`).
+        cf_gojson::MapOrigin::IntMap => {
+            refs.sort_by(|a, b| {
+                match (a.0.parse::<i64>(), b.0.parse::<i64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    _ => a.0.as_bytes().cmp(b.0.as_bytes()),
+                }
+            });
+        }
+        cf_gojson::MapOrigin::Struct => {}
     }
     refs
 }

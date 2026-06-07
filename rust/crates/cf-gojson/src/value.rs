@@ -35,6 +35,14 @@ pub enum MapOrigin {
     /// A Go map: keys are **byte-sorted** by the encoder at marshal time, exactly
     /// as the Go runtime sorts `map[string]…` keys when encoding JSON.
     Map,
+    /// A Go map with **integer keys** (`map[int]…`), whose decimal-string keys
+    /// are stored here but originate from an integer type. The encoders sort
+    /// these keys **numerically** (Go orders integer map keys by value, not
+    /// lexicographically), and the YAML emitter writes them as **plain `!!int`
+    /// scalars** (unquoted), matching `gopkg.in/yaml.v3`'s `map[int]…` output.
+    /// JSON keys are always quoted strings regardless, so JSON output differs
+    /// from [`MapOrigin::Map`] only in the numeric key ordering.
+    IntMap,
 }
 
 /// A dynamic Go value, covering every shape `encoding/json` marshals from `any`.
@@ -169,6 +177,16 @@ impl GoMap {
         GoMap::new(MapOrigin::Map)
     }
 
+    /// Creates an empty **int-map-origin** object (decimal-string keys that
+    /// originate from an integer type; sorted numerically on encode, emitted as
+    /// plain `!!int` YAML scalars).
+    ///
+    /// Use this for Go `map[int]…` values. Insert keys via `i.to_string()`.
+    #[must_use]
+    pub fn new_int_map() -> Self {
+        GoMap::new(MapOrigin::IntMap)
+    }
+
     /// Creates an empty **struct-origin** object (fields keep declaration order).
     ///
     /// Use this for Go structs; `push` fields in source declaration order.
@@ -280,10 +298,16 @@ impl GoMap {
     #[must_use]
     pub fn encode_order(&self) -> Vec<&(String, GoValue)> {
         let mut refs: Vec<&(String, GoValue)> = self.entries.iter().collect();
-        if self.origin == MapOrigin::Map {
+        match self.origin {
             // Go sorts map keys by raw byte order. `str`'s `Ord` is byte-wise
-            // (it compares `as_bytes()`), so this matches Go exactly.
-            refs.sort_by(|a, b| cmp_keys(&a.0, &b.0));
+            // (it compares `as_bytes()`), so this matches Go exactly. This also
+            // covers `IntMap`: `encoding/json` stringifies integer keys and then
+            // sorts the STRINGS lexically — `{"10":…,"2":…}` — so for JSON an
+            // int-keyed map orders exactly like a string-keyed one. (Only the
+            // YAML encoder treats `IntMap` differently: numeric sort + unquoted
+            // keys, matching yaml.v3.)
+            MapOrigin::Map | MapOrigin::IntMap => refs.sort_by(|a, b| cmp_keys(&a.0, &b.0)),
+            MapOrigin::Struct => {}
         }
         refs
     }

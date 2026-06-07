@@ -6,10 +6,18 @@
 //! (DESIGN §2.7), so byte-identity is not required here; the score/percent
 //! computations are nonetheless ported faithfully for behavioral parity.
 
-use cf_analyze::Report;
+use cf_analyze::{GoMap, GoValue, MapOrigin, Report};
 
 use crate::report::{categorize_clone_pairs, CloneTypeCounts, ClonePair, CLONE_TYPE1, CLONE_TYPE2, CLONE_TYPE3};
 use crate::{KEY_CLONE_PAIRS, KEY_CLONE_RATIO, KEY_CLONE_TYPE_DISTRIBUTION, KEY_MESSAGE, KEY_TOTAL_CLONE_PAIRS, KEY_TOTAL_FUNCTIONS};
+
+/// Machine-output severity for a clone pair below [`SEVERITY_THRESH_HIGH`].
+/// Mirrors Go `analyze.SeverityFair` (the lowercase JSON form, distinct from the
+/// capitalized terminal label produced by [`ReportSection::clone_issues`]).
+pub const JSON_SEVERITY_FAIR: &str = "fair";
+/// Machine-output severity for a clone pair at/above [`SEVERITY_THRESH_HIGH`].
+/// Mirrors Go `analyze.SeverityPoor`.
+pub const JSON_SEVERITY_POOR: &str = "poor";
 
 /// Section title. Mirrors Go `sectionTitle`.
 pub const SECTION_TITLE: &str = "CLONE DETECTION";
@@ -188,6 +196,173 @@ impl ReportSection {
             })
             .collect()
     }
+}
+
+/// Formats a 0..1 score as the Go `N/10` label (`terminal.FormatScore`:
+/// `round(score*10)` then `"%d/10"`). A negative score renders `"Info"`, but the
+/// clone score is always in `[0, 1]`.
+#[must_use]
+pub fn score_label(score: f64) -> String {
+    if score < 0.0 {
+        return "Info".to_string();
+    }
+    let scaled = (score * 10.0).round() as i64;
+    format!("{scaled}/10")
+}
+
+/// Builds the `renderer.SectionsToJSON` [`GoValue`] tree for the single clones
+/// section produced by a `run --analyzers static/clones --format json`.
+///
+/// Mirrors Go `StaticService.FormatJSON` for one analyzer: one
+/// [`ReportSection`] is rendered by `renderer.SectionToJSON`
+/// (`title, score_label, status, metrics, distribution (omitempty), issues,
+/// score`) and wrapped by `SectionsToJSON` (`overall_score_label, sections,
+/// overall_score`). For a single scored section the executive summary's overall
+/// score equals the section score. Issue severities use the lowercase machine
+/// form (`analyze.SeverityPoor`/`SeverityFair`), NOT the capitalized terminal
+/// label. The issues list is a Go-order-nondeterministic VARIANT list (the
+/// stored pair multiset is stable; only the tie order varies run-to-run), so it
+/// is emitted here sorted by similarity descending as the deterministic
+/// representative — the differential oracle canonicalizes this list before
+/// comparison.
+#[must_use]
+pub fn report_section_json_value(report: &Report) -> GoValue {
+    let section = ReportSection::new(report.clone());
+    let score = section.score;
+
+    // metrics
+    let metrics = GoValue::Array(
+        section
+            .key_metrics()
+            .into_iter()
+            .map(|m| {
+                let mut sm = GoMap::new(MapOrigin::Struct);
+                sm.push("label", GoValue::Str(m.label));
+                sm.push("value", GoValue::Str(m.value));
+                GoValue::Object(sm)
+            })
+            .collect(),
+    );
+
+    // distribution (omitempty: omitted entirely when empty)
+    let dist = section.distribution();
+
+    // issues: all pairs sorted by similarity descending, lowercase severity.
+    let mut pairs = extract_clone_pairs(report);
+    pairs.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+    let issues = GoValue::Array(
+        pairs
+            .into_iter()
+            .map(|p| {
+                let severity = if p.similarity >= SEVERITY_THRESH_HIGH {
+                    JSON_SEVERITY_POOR
+                } else {
+                    JSON_SEVERITY_FAIR
+                };
+                let mut si = GoMap::new(MapOrigin::Struct);
+                si.push("name", GoValue::Str(format!("{} <-> {}", p.func_a, p.func_b)));
+                si.push("location", GoValue::Str(p.clone_type));
+                si.push("value", GoValue::Str(cf_reportutil::format_float(p.similarity)));
+                si.push("severity", GoValue::Str(severity.to_string()));
+                GoValue::Object(si)
+            })
+            .collect(),
+    );
+
+    let mut sect = GoMap::new(MapOrigin::Struct);
+    sect.push("title", GoValue::Str(section.title));
+    sect.push("score_label", GoValue::Str(score_label(score)));
+    sect.push("status", GoValue::Str(section.message));
+    sect.push("metrics", metrics);
+    if !dist.is_empty() {
+        sect.push(
+            "distribution",
+            GoValue::Array(
+                dist.into_iter()
+                    .map(|d| {
+                        let mut sd = GoMap::new(MapOrigin::Struct);
+                        sd.push("label", GoValue::Str(d.label));
+                        sd.push("percent", GoValue::Float(d.percent));
+                        sd.push("count", GoValue::Int(d.count));
+                        GoValue::Object(sd)
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    sect.push("issues", issues);
+    sect.push("score", GoValue::Float(score));
+
+    let mut report_tree = GoMap::new(MapOrigin::Struct);
+    report_tree.push("overall_score_label", GoValue::Str(score_label(score)));
+    report_tree.push("sections", GoValue::Array(vec![GoValue::Object(sect)]));
+    report_tree.push("overall_score", GoValue::Float(score));
+    GoValue::Object(report_tree)
+}
+
+/// Compact title column width. Mirrors Go `renderer.CompactTitleWidth`.
+const COMPACT_TITLE_WIDTH: usize = 12;
+/// Compact score-bar width. Mirrors Go `renderer.CompactBarWidth`.
+const COMPACT_BAR_WIDTH: usize = 10;
+/// Filled progress-bar cell. Mirrors Go `terminal.ProgressFilled`.
+const PROGRESS_FILLED: &str = "\u{2588}"; // █
+/// Empty progress-bar cell. Mirrors Go `terminal.ProgressEmpty`.
+const PROGRESS_EMPTY: &str = "\u{2591}"; // ░
+
+/// Right-pads `s` with spaces to `width`; returns `s` unchanged when already at
+/// least `width` (by BYTE length, matching Go `terminal.PadRight`'s `len(s)`,
+/// which counts UTF-8 bytes — irrelevant for the ASCII section title but kept
+/// faithful).
+fn pad_right(s: &str, width: usize) -> String {
+    if s.len() >= width {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(width);
+    out.push_str(s);
+    out.extend(std::iter::repeat(' ').take(width - s.len()));
+    out
+}
+
+/// Go `terminal.DrawProgressBar(value, width)`: `int(value*width)` filled cells
+/// (value clamped to `[0,1]`), the remainder empty.
+fn draw_progress_bar(value: f64, width: usize) -> String {
+    let v = value.clamp(0.0, 1.0);
+    // Go: filled := int(value * float64(width)) — truncation toward zero.
+    let filled = (v * width as f64) as usize;
+    let empty = width.saturating_sub(filled);
+    let mut bar = String::with_capacity((filled + empty) * 3);
+    for _ in 0..filled {
+        bar.push_str(PROGRESS_FILLED);
+    }
+    for _ in 0..empty {
+        bar.push_str(PROGRESS_EMPTY);
+    }
+    bar
+}
+
+/// Builds the single-line `--format compact` bytes for the clones section,
+/// mirroring Go `DefaultStaticRenderer.RenderCompact` →
+/// `SectionRenderer.RenderCompact`:
+///
+/// ```text
+/// <title padded to 12> [<bar>] <N/10>  <status message>\n
+/// ```
+///
+/// Color is always disabled (the compat env pins `NO_COLOR=1`), so no ANSI
+/// codes are emitted. `fmt.Fprintln` appends the trailing newline. This is the
+/// only fully Go-deterministic terminal format for clones (it never lists the
+/// order-nondeterministic clone pairs), so it must match Go byte-for-byte.
+#[must_use]
+pub fn report_section_compact(report: &Report) -> Vec<u8> {
+    let section = ReportSection::new(report.clone());
+    let title = pad_right(&section.title, COMPACT_TITLE_WIDTH);
+    let bar = draw_progress_bar(section.score, COMPACT_BAR_WIDTH);
+    // Go terminal.FormatScoreBar: "[<bar>] <N/10>". FormatScore uses
+    // round(score*10); score_label() reproduces it exactly.
+    let score_bar = format!("[{}] {}", bar, score_label(section.score));
+    // Go SectionRenderer.RenderCompact: "%s %s  %s" then Fprintln adds '\n'.
+    let line = format!("{title} {score_bar}  {}\n", section.message);
+    line.into_bytes()
 }
 
 /// Converts a clone ratio to a 0..1 score (lower ratio = higher score).

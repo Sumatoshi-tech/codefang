@@ -311,11 +311,13 @@ pub fn compute_low_cohesion_functions(input: &ReportData) -> Vec<LowCohesionFunc
         if fd.cohesion >= COHESION_THRESHOLD_GOOD {
             continue;
         }
+        // Go uses the `pkg/metrics` RiskLevel string constants, which are
+        // UPPERCASE ("HIGH"/"MEDIUM"); see `metrics.RiskHigh`/`RiskMedium`.
         let (risk_level, recommendation) = if fd.cohesion < COHESION_THRESHOLD_FAIR {
-            ("high", "Consider splitting into multiple focused functions")
+            ("HIGH", "Consider splitting into multiple focused functions")
         } else {
             (
-                "medium",
+                "MEDIUM",
                 "Review function responsibilities for possible separation",
             )
         };
@@ -428,13 +430,13 @@ mod tests {
         // "good" (0.9) excluded; sorted ascending -> bad, mid.
         assert_eq!(low.len(), 2);
         assert_eq!(low[0].name, "bad");
-        assert_eq!(low[0].risk_level, "high");
+        assert_eq!(low[0].risk_level, "HIGH");
         assert_eq!(
             low[0].recommendation,
             "Consider splitting into multiple focused functions"
         );
         assert_eq!(low[1].name, "mid");
-        assert_eq!(low[1].risk_level, "medium");
+        assert_eq!(low[1].risk_level, "MEDIUM");
         assert_eq!(
             low[1].recommendation,
             "Review function responsibilities for possible separation"

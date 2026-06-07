@@ -416,6 +416,35 @@ pub fn language_by_path(filename: &str) -> Option<String> {
     language_by_path_with_content(filename, &[])
 }
 
+/// Reproduces enry's `GetLanguageByExtension` (the extension-only strategy used
+/// by `enry.IsConfiguration`/`enry.IsDocumentation`-adjacent predicates).
+///
+/// enry: lowercase the filename, then for each dot index left-to-right (longest
+/// dotted suffix first) look up `data.LanguagesByExtension[ext]`; the first
+/// extension that has an entry wins, and the language returned is that entry's
+/// first non-empty element (`firstLanguage`). Returns `None` when the filename
+/// has no dot or no dotted suffix resolves to a language (enry's
+/// `firstLanguage` would return `"Other"`; callers treat `None` the same).
+#[must_use]
+pub fn language_by_extension(filename: &str) -> Option<String> {
+    if !filename.contains('.') {
+        return None;
+    }
+    let data = enry_data();
+    let lower = filename.to_lowercase();
+    for (i, ch) in lower.char_indices() {
+        if ch != '.' {
+            continue;
+        }
+        let ext = &lower[i..];
+        if let Some(langs) = data.languages_by_extension.get(ext) {
+            // enry's firstLanguage: first non-empty entry of the matching list.
+            return langs.iter().find(|l| !l.is_empty()).cloned();
+        }
+    }
+    None
+}
+
 /// Reproduces enry's `convertToAliasKey`: take the substring before the first
 /// comma, replace ASCII spaces with underscores, then lowercase.
 ///

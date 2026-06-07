@@ -6,7 +6,11 @@
 //! function are shared" rule.
 
 use crate::analyzer::Function;
-use crate::bloom::Filter;
+// Go-bit-identical Bloom filter (FNV-128a hash kernel, same optimalM/K + double
+// hashing as `pkg/alg/bloom`). The crate's own `bloom.rs` is NOT hash-compatible
+// with Go, so the cohesion math MUST use the shared sketch crate or the per-
+// function shared-variable false positives — and thus the cohesion scores — drift.
+use cf_alg_bloom::Filter;
 use std::collections::HashMap;
 
 /// 1% false-positive rate for per-function and global Bloom filters

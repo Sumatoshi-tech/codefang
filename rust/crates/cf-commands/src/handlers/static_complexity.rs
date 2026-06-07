@@ -105,6 +105,18 @@ struct FnRecord {
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
+    let report = complexity_report_value(root_path)?;
+    let bytes = Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&report);
+    Some(bytes)
+}
+
+/// Builds the `static/complexity` `renderer.JSONReport` GoValue (single scored
+/// section), shared by the single-analyzer byte path and the multi-analyzer
+/// static-JSON merge. `None` when the path cannot be walked.
+#[must_use]
+pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -181,10 +193,7 @@ pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
         &records,
     );
 
-    let bytes = Encoder::indented("  ")
-        .with_trailing_newline(true)
-        .encode_to_vec(&report);
-    Some(bytes)
+    Some(report)
 }
 
 /// Recursively walks `dir` in lexical order, mirroring `filepath.WalkDir`:
@@ -488,7 +497,7 @@ fn build_json_report(
     section.push("issues", GoValue::Array(issue_items));
     section.push("score", GoValue::Float(score));
 
-    // ---- report (renderer.SectionsToJSON) ----
+    // ---- report (renderer.SectionsToJSON over one scored section) ----
     let mut report = GoMap::new(MapOrigin::Struct);
     report.push("overall_score_label", GoValue::Str(score_label(score)));
     report.push("sections", GoValue::Array(vec![GoValue::Map(section)]));

@@ -139,19 +139,29 @@ pub struct LowSentimentPeriodData {
     pub risk_level: String,
 }
 
-impl ToGoValue for LowSentimentPeriodData {
-    fn to_go_value(&self) -> GoValue {
+impl LowSentimentPeriodData {
+    fn build(&self, nil_as_empty: bool) -> GoValue {
         let mut m = GoMap::new_struct();
         m.push("tick", GoValue::Int(self.tick));
         m.push("sentiment", f32_float(self.sentiment));
-        // Go has no omitempty on `comments`: a nil slice marshals to JSON `null`.
+        // Go has no omitempty on `comments`: a nil slice marshals to JSON `null`
+        // (encoding/json) but to `[]` under `gopkg.in/yaml.v3`.
         if self.comments.is_empty() {
-            m.push("comments", GoValue::Null);
+            m.push(
+                "comments",
+                if nil_as_empty { GoValue::Array(Vec::new()) } else { GoValue::Null },
+            );
         } else {
             m.push("comments", string_array(&self.comments));
         }
         m.push("risk_level", GoValue::Str(self.risk_level.clone()));
         GoValue::Object(m)
+    }
+}
+
+impl ToGoValue for LowSentimentPeriodData {
+    fn to_go_value(&self) -> GoValue {
+        self.build(false)
     }
 }
 
@@ -217,30 +227,48 @@ impl ComputedMetrics {
     }
 }
 
-impl ToGoValue for ComputedMetrics {
-    fn to_go_value(&self) -> GoValue {
+impl ComputedMetrics {
+    fn build(&self, nil_as_empty: bool) -> GoValue {
         let mut m = GoMap::new_struct();
         m.push(
             "time_series",
             GoValue::Array(self.time_series.iter().map(ToGoValue::to_go_value).collect()),
         );
         m.push("trend", self.trend.to_go_value());
-        // `low_sentiment_periods` has no omitempty: nil slice => JSON null.
+        // `low_sentiment_periods` has no omitempty: nil slice => JSON `null`
+        // (encoding/json) but => `[]` under `gopkg.in/yaml.v3`.
         if self.low_sentiment_periods.is_empty() {
-            m.push("low_sentiment_periods", GoValue::Null);
+            m.push(
+                "low_sentiment_periods",
+                if nil_as_empty { GoValue::Array(Vec::new()) } else { GoValue::Null },
+            );
         } else {
             m.push(
                 "low_sentiment_periods",
                 GoValue::Array(
                     self.low_sentiment_periods
                         .iter()
-                        .map(ToGoValue::to_go_value)
+                        .map(|p| p.build(nil_as_empty))
                         .collect(),
                 ),
             );
         }
         m.push("aggregate", self.aggregate.to_go_value());
         GoValue::Object(m)
+    }
+
+    /// Build the YAML value tree (`gopkg.in/yaml.v3`: nil slice → `[]`), used by
+    /// the `--format yaml` / `--format bin` (YAML-bodied) serializers.
+    #[must_use]
+    pub fn to_go_value_yaml(&self) -> GoValue {
+        self.build(true)
+    }
+}
+
+impl ToGoValue for ComputedMetrics {
+    fn to_go_value(&self) -> GoValue {
+        // JSON/bin path: nil slice → `null` (encoding/json).
+        self.build(false)
     }
 }
 

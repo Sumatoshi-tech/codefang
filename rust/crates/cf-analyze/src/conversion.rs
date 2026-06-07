@@ -306,20 +306,23 @@ fn has_extension_ignore_ascii_case(path: &str, ext: &str) -> bool {
 /// them positionally with `ids`/`modes` to build a [`UnifiedModel`].
 ///
 /// Mirrors `DecodeCombinedBinaryReports` (conversion.go:201). Used by the
-/// combined static+history rendering path. Each report's schema is looked up via
-/// [`schema_for_analyzer`]. The per-report payload bytes are returned as raw
-/// JSON (cf-gojson is an encoder, not a parser), so the report is carried as a
-/// pre-serialized blob inside an opaque map entry until the parse companion
-/// lands; callers that only re-encode round-trip it unchanged.
+/// combined static+history rendering path where each phase serializes its
+/// Reports as separate envelopes. Each payload's report JSON is parsed into a
+/// map-origin [`crate::Report`] via [`crate::json_parse`] (Go
+/// `json.Unmarshal(payload, &report)`), the analyzer's schema is looked up via
+/// [`schema_for_analyzer`], and the results are assembled into a
+/// [`UnifiedModel`] with [`UNIFIED_MODEL_VERSION`] and no metadata (the caller
+/// stamps [`UnifiedModel::metadata`]).
 ///
 /// # Errors
 /// - [`ConversionError::BinaryEnvelopeCount`] if the envelope count ≠ `ids.len()`.
-/// - [`ConversionError::Encode`] if envelope decoding fails.
+/// - [`ConversionError::Encode`] if envelope decoding or a report's JSON parse
+///   fails.
 pub fn decode_combined_binary_reports(
     input: &[u8],
     ids: &[String],
     modes: &[AnalyzerMode],
-) -> Result<Vec<Vec<u8>>, ConversionError> {
+) -> Result<UnifiedModel, ConversionError> {
     let payloads = cf_reportutil::binary::decode_binary_envelopes(input)
         .map_err(|e| ConversionError::Encode(format!("decode binary envelopes: {e}")))?;
 
@@ -329,10 +332,36 @@ pub fn decode_combined_binary_reports(
             got: payloads.len(),
         });
     }
-    // ids/modes are validated for length parity by the caller; we surface the
-    // raw payloads so the (encoder-only) tier-0 stack round-trips them.
-    let _ = modes;
-    Ok(payloads.into_iter().map(<[u8]>::to_vec).collect())
+
+    let mut analyzers = Vec::with_capacity(payloads.len());
+    for (i, payload) in payloads.iter().enumerate() {
+        // Go: json.Unmarshal(payload, &report) where Report = map[string]any.
+        // The parser yields map-origin maps so re-encoding byte-sorts keys
+        // exactly like Go's map[string]any round-trip.
+        let value = crate::json_parse::parse(payload)
+            .map_err(|e| ConversionError::Encode(format!("unmarshal report {i}: {e}")))?;
+        let report = match value {
+            GoValue::Map(m) => m,
+            other => {
+                return Err(ConversionError::Encode(format!(
+                    "unmarshal report {i}: expected object, got {other:?}"
+                )))
+            }
+        };
+        let schema = schema_for_analyzer(&ids[i]);
+        analyzers.push(AnalyzerResult {
+            id: ids[i].clone(),
+            mode: modes[i].clone(),
+            schema,
+            report,
+        });
+    }
+
+    Ok(UnifiedModel {
+        version: UNIFIED_MODEL_VERSION.to_string(),
+        metadata: None,
+        analyzers,
+    })
 }
 
 /// Encodes a [`UnifiedModel`] in `output_format` to `writer`.
@@ -730,6 +759,47 @@ mod tests {
         let mut buf = Vec::new();
         let err = write_converted_output(&model, "html", &mut buf, None).unwrap_err();
         assert!(matches!(err, ConversionError::UnsupportedFormat(_)));
+    }
+
+    #[test]
+    fn decode_combined_binary_reports_builds_model() {
+        // Two CFB1 envelopes (static then history) -> one UnifiedModel whose
+        // analyzers carry the parsed reports in id/mode order, version set, and
+        // no metadata (the caller stamps it). Mirrors Go DecodeCombinedBinaryReports.
+        let mut input = Vec::new();
+        input.extend_from_slice(
+            &cf_reportutil::binary::encode_binary_envelope(&GoValue::Map(report(&[(
+                "total_functions",
+                GoValue::Int(7),
+            )])))
+            .unwrap(),
+        );
+        input.extend_from_slice(
+            &cf_reportutil::binary::encode_binary_envelope(&GoValue::Map(report(&[(
+                "total_commits",
+                GoValue::Int(3),
+            )])))
+            .unwrap(),
+        );
+        let model = decode_combined_binary_reports(
+            &input,
+            &["static/complexity".into(), "history/devs".into()],
+            &[AnalyzerMode::static_mode(), AnalyzerMode::history()],
+        )
+        .expect("build model");
+        assert_eq!(model.version, UNIFIED_MODEL_VERSION);
+        assert!(model.metadata.is_none());
+        assert_eq!(model.analyzers.len(), 2);
+        assert_eq!(model.analyzers[0].id, "static/complexity");
+        assert_eq!(model.analyzers[0].mode.as_str(), "static");
+        assert_eq!(model.analyzers[1].id, "history/devs");
+        assert_eq!(model.analyzers[1].mode.as_str(), "history");
+        // The parsed report re-encodes to the canonical JSON object.
+        let enc = Encoder::compact();
+        assert_eq!(
+            enc.encode(&GoValue::Map(model.analyzers[0].report.clone())),
+            br#"{"total_functions":7}"#
+        );
     }
 
     #[test]

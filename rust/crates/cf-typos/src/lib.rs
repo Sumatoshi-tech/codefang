@@ -14,7 +14,7 @@ pub mod metrics;
 pub mod typos;
 
 pub use compat::{GoValue, Hash};
-pub use metrics::{metrics_report_value, ReportData};
+pub use metrics::{metrics_report_value, metrics_yaml_value, ReportData};
 pub use typos::Typo;
 
 /// Crate name, used by smoke tests to confirm the module links.

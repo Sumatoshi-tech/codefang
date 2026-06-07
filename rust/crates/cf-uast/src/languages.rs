@@ -124,6 +124,9 @@ mod ffi {
         pub fn tree_sitter_yaml() -> tree_sitter::Language;
         pub fn tree_sitter_cpp() -> tree_sitter::Language;
         pub fn tree_sitter_bash() -> tree_sitter::Language;
+        pub fn tree_sitter_proto() -> tree_sitter::Language;
+        pub fn tree_sitter_java() -> tree_sitter::Language;
+        pub fn tree_sitter_markdown_inline() -> tree_sitter::Language;
     }
 }
 
@@ -172,6 +175,16 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         "cpp" => Some(unsafe { ffi::tree_sitter_cpp() }),
         #[allow(unsafe_code)]
         "bash" => Some(unsafe { ffi::tree_sitter_bash() }),
+        #[allow(unsafe_code)]
+        "proto" => Some(unsafe { ffi::tree_sitter_proto() }),
+        #[allow(unsafe_code)]
+        "java" => Some(unsafe { ffi::tree_sitter_java() }),
+        // markdown_inline is the grammar `.md`/`.markdown` resolves to (Go's
+        // loader registers it after the block `markdown` mapping, so it wins the
+        // shared extensions). Wiring it lets Rust parse Markdown files into a
+        // (function-free) UAST, matching Go's per-file report count.
+        #[allow(unsafe_code)]
+        "markdown_inline" => Some(unsafe { ffi::tree_sitter_markdown_inline() }),
         _ => None,
     }
 }

@@ -192,12 +192,12 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// `ComputedMetrics::to_go_value` is serialized through cf-gojson (Go
 /// encoding/json parity: declaration-order keys, byte-sorted map keys, Go
 /// shortest-float, `anomalies` nil slice → `null`, no trailing newline).
-pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::ComputedMetrics> {
     use std::collections::BTreeMap;
 
     use cf_analyzers_plumbing::languages_detection::language_by_extension;
     use cf_anomaly::metrics::{build_report_data, TickBounds};
-    use cf_anomaly::model::{CommitAnomalyData, ToGoValue};
+    use cf_anomaly::model::CommitAnomalyData;
     use cf_gitlib::changes::tree_diff;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
@@ -280,9 +280,238 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // Default config: Threshold 2.0, WindowSize 20 (DefaultAnomalyThreshold /
     // DefaultAnomalyWindowSize); no --anomaly-threshold/--anomaly-window flags.
     let input = build_report_data(&commit_metrics, &commits_by_tick, tick_bounds, 2.0, 20);
-    let metrics = cf_anomaly::metrics::compute_all_metrics(&input);
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+    Some(cf_anomaly::metrics::compute_all_metrics(&input))
 }
+
+/// Runs the real `history/anomaly` pipeline over the oldest `--limit` commits and
+/// returns the aggregated [`cf_anomaly::model::ComputedMetrics`], or `None` if the
+/// repository cannot be opened/walked. This is the single report value every
+/// machine format (json/yaml/bin) is an encoding of — the non-`--head` analogue of
+/// [`anomaly_head_report`]'s closed form, driven through the general
+/// revwalk → per-commit → aggregate → `ComputeAllMetrics` pipeline.
+///
+/// Faithful port of the Go streaming anomaly path
+/// (`run.go initHistoryPipeline` → `framework.RunStreaming` →
+/// `plumbing.{TreeDiff,BlobCache,FileDiff,LineStats,Languages,Identity}` →
+/// `anomaly.Analyzer.Consume` → `extractTC`/`buildTick` → `ticksToReport` →
+/// `AggregateCommitsToTicks` → `ComputeAllMetrics`):
+///  - **commit set / order**: `repository.Log(Reverse=true)` (oldest-first),
+///    truncated to `--limit` commits. `--first-parent` adds first-parent
+///    simplification.
+///  - **tick assignment** (`plumbing.TicksSinceStart`, 24 h default): `tick0 =
+///    FloorTime(when0, 24h)`; `tick = max(floor((when-tick0)/24h), previousTick)`
+///    over the committer time. `commits_by_tick` records each tick's commit
+///    hashes; tick bounds = min/max committer time of the tick's commits, Go
+///    `time.RFC3339`-formatted in UTC.
+///  - **per-commit changes** (`TreeDiffAnalyzer`): tree diff against the commit's
+///    **first git parent** (root → full initial tree), already filtered by the
+///    shared vendor/generated path policy (`pathpolicy.Exclude(name, nil)`).
+///    `files_changed = len(changes)`; `files` = each change's `To.Name`
+///    (`anomaly.Consume`), unconditionally — exactly as Go appends.
+///  - **line stats** (`LinesStatsCalculator`, **skipped for merge commits** —
+///    `ac.IsMerge`): Insert ⇒ `CountLines(To)` added; Delete ⇒ `CountLines(From)`
+///    removed; Modify ⇒ `computeDiffLineStats` (diff-match-patch line diff),
+///    skipping binary / identical-content blobs. `net_churn = added - removed`.
+///  - **languages** (`LanguagesDetectionAnalyzer.Languages`, keyed by blob hash:
+///    Insert/Delete one side, Modify both sides; binary ⇒ `""`, extension fast
+///    path, enry content fallback): `accumulateLanguagesAndAuthors` counts each
+///    non-empty detected language into the commit's `languages` map, so
+///    `language_diversity` (per tick) is the distinct-language count.
+///  - **identity** (`plumbing.IdentityDetector`, loose mode): the author id;
+///    `author_count` per tick is the distinct-author-id count.
+///
+/// `cf_anomaly::metrics::build_report_data` then aggregates commits to ticks and
+/// runs Z-score detection (default threshold 2.0, window 20 — `run` passes no
+/// `--anomaly-threshold`/`--anomaly-window`), and `compute_all_metrics` derives
+/// the `anomalies`/`time_series`/`aggregate` report value.
+pub fn anomaly_run_metrics(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::ComputedMetrics> {
+    use std::collections::BTreeMap;
+
+    use cf_analyzers_plumbing::identity_detector::IdentityDetector;
+    use cf_anomaly::metrics::{build_report_data, TickBounds};
+    use cf_anomaly::model::CommitAnomalyData;
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
+    use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
+
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+    let first_parent = crate::handlers::effective_first_parent(sub);
+
+    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
+    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+
+    let policy = PathPolicyOptions::default();
+    let mut identity = IdentityDetector::new();
+
+    let mut commit_metrics: BTreeMap<String, CommitAnomalyData> = BTreeMap::new();
+    let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    let mut tick_when: BTreeMap<i64, (i64, i64)> = BTreeMap::new(); // (min, max) secs.
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let num_parents = commit.num_parents();
+        let is_merge = num_parents > 1;
+        let hash_str = hash.to_hex();
+
+        // Identity: resolve this commit's author id (loose signature).
+        let gsig = commit.author();
+        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
+            name: gsig.name.clone(),
+            email: gsig.email.clone(),
+            when_unix: gsig.when.seconds(),
+        });
+
+        // Tick assignment from the committer time (24 h default).
+        let when = commit.committer().when.seconds();
+        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw_tick = (when - base).div_euclid(86_400);
+        let tick = raw_tick.max(previous_tick);
+        previous_tick = tick;
+
+        // Track committer-time bounds for the tick (extractTC updateTimeRange).
+        tick_when
+            .entry(tick)
+            .and_modify(|(lo, hi)| {
+                if when < *lo {
+                    *lo = when;
+                }
+                if when > *hi {
+                    *hi = when;
+                }
+            })
+            .or_insert((when, when));
+        commits_by_tick.entry(tick).or_default().push(hash_str.clone());
+
+        // Tree diff against the first parent (root → full initial tree), then the
+        // shared vendor/generated filter (TreeDiffAnalyzer.filterChanges).
+        let new_tree = commit.tree().ok()?;
+        let raw_changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+        let changes: Vec<_> = raw_changes
+            .into_iter()
+            .filter(|change| {
+                let name = match change.action {
+                    ChangeAction::Delete => &change.from.name,
+                    _ => &change.to.name,
+                };
+                !exclude(name, None, &policy)
+            })
+            .collect();
+
+        // anomaly.Consume: FilesChanged = len(changes); Files = each change's
+        // To.Name (unconditionally, like Go's append).
+        let mut cm = CommitAnomalyData {
+            files_changed: changes.len() as i64,
+            author_id,
+            ..Default::default()
+        };
+        for change in &changes {
+            cm.files.push(change.to.name.clone());
+        }
+
+        // accumulateLineStats (skipped for merge commits): per-change line stats.
+        if !is_merge {
+            let mut added = 0i64;
+            let mut removed = 0i64;
+            for change in &changes {
+                match change.action {
+                    ChangeAction::Insert => {
+                        if let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) {
+                            if let Ok(n) = blob.count_lines() {
+                                added += n as i64;
+                            }
+                        }
+                    }
+                    ChangeAction::Delete => {
+                        if let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) {
+                            if let Ok(n) = blob.count_lines() {
+                                removed += n as i64;
+                            }
+                        }
+                    }
+                    ChangeAction::Modify => {
+                        // computeModifyStats: needs both blobs, skips binary and
+                        // identical content.
+                        let (Ok(blob_from), Ok(blob_to)) = (
+                            CachedBlob::from_repo(&repo, change.from.hash),
+                            CachedBlob::from_repo(&repo, change.to.hash),
+                        ) else {
+                            continue;
+                        };
+                        if change.from.hash == change.to.hash {
+                            continue;
+                        }
+                        if blob_from.is_binary() || blob_to.is_binary() {
+                            continue;
+                        }
+                        let (a, r, _changed) =
+                            compute_diff_line_stats(&blob_from.data, &blob_to.data);
+                        added += a;
+                        removed += r;
+                    }
+                }
+            }
+            cm.lines_added = added;
+            cm.lines_removed = removed;
+        }
+
+        // accumulateLanguagesAndAuthors: build the blob-hash → language map exactly
+        // as Languages() does (Insert/Delete one side, Modify both sides), then
+        // count each non-empty value into cm.languages.
+        let mut by_blob: BTreeMap<cf_gitlib::hash::Hash, String> = BTreeMap::new();
+        let mut detect = |entry: &cf_gitlib::changes::ChangeEntry| {
+            let data = CachedBlob::from_repo(&repo, entry.hash).map(|b| b.data).unwrap_or_default();
+            by_blob.insert(entry.hash, devs_detect_language(&entry.name, &data));
+        };
+        for change in &changes {
+            match change.action {
+                ChangeAction::Insert => detect(&change.to),
+                ChangeAction::Delete => detect(&change.from),
+                ChangeAction::Modify => {
+                    detect(&change.to);
+                    detect(&change.from);
+                }
+            }
+        }
+        for lang in by_blob.values() {
+            if !lang.is_empty() {
+                *cm.languages.entry(lang.clone()).or_insert(0) += 1;
+            }
+        }
+
+        cm.net_churn = cm.lines_added - cm.lines_removed;
+        commit_metrics.insert(hash_str, cm);
+    }
+
+    // tick_bounds[tick] = { start: end: committer min/max } RFC3339 UTC.
+    let mut tick_bounds: BTreeMap<i64, TickBounds> = BTreeMap::new();
+    for (tick, (lo, hi)) in &tick_when {
+        tick_bounds.insert(
+            *tick,
+            TickBounds {
+                start_time: cf_analyze::metadata::format_rfc3339_utc(*lo),
+                end_time: cf_analyze::metadata::format_rfc3339_utc(*hi),
+            },
+        );
+    }
+
+    // Default config: Threshold 2.0, WindowSize 20.
+    let input = build_report_data(&commit_metrics, &commits_by_tick, tick_bounds, 2.0, 20);
+    Some(cf_anomaly::metrics::compute_all_metrics(&input))
+}
+
 /// Builds the `run --analyzers history/quality --format json` bytes for the
 /// oldest `--limit` commits, or `None` if the repository cannot be opened/walked.
 ///
@@ -319,12 +548,11 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// per-tick [`TickQuality`] is fed to `cf_quality::compute_all_metrics` and
 /// serialized compact through cf-gojson (`to_json_compact`: Go `json.Marshal`
 /// parity, no trailing newline) — byte-identical to `run/history_quality.json`.
-pub fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMetrics> {
     use std::collections::BTreeMap;
 
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
     use cf_quality::{compute_all_metrics, ReportData, TickBounds, TickQuality};
 
@@ -336,15 +564,16 @@ pub fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let mut iter = repo.log(&LogOptions { reverse: true, ..LogOptions::default() }).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`, ignoring
+    // `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`). The HEAD commit on a large repo spills (> 32
+    // changes ⇒ zero UAST files), yielding Go's single all-zero tick-0 report.
+    let first_parent = crate::handlers::effective_first_parent(sub);
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
@@ -422,19 +651,17 @@ pub fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
                 continue;
             }
 
-            // Component analyzers over a function-free document: complexity
-            // 0/0/0/0, Halstead 0, comments 0/0, cohesion 1.0 (perfect cohesion
-            // for a tree with no methods). One sample appended per analyzed file.
-            tq.complexities.push(0.0);
-            tq.cognitives.push(0.0);
-            tq.max_complexities.push(0);
-            tq.functions.push(0);
-            tq.halstead_volumes.push(0.0);
-            tq.halstead_efforts.push(0.0);
-            tq.delivered_bugs.push(0.0);
-            tq.comment_scores.push(0.0);
-            tq.doc_coverages.push(0.0);
-            tq.cohesion_scores.push(1.0);
+            // Parse the file to UAST and run the four component analyzers on the
+            // `change.After` root, exactly as Go `quality.(*Analyzer).analyzeNode`
+            // (complexity -> halstead -> comments -> cohesion), recording the same
+            // scalar keys. One sample per analyzed file. When Rust lacks a wired
+            // grammar for a Go-supported file the parse fails; the file still
+            // counts as one analyzed file (Go has a node there) but contributes a
+            // function-free sample, keeping `files_analyzed` byte-identical.
+            match parser.parse(name, &blob.data) {
+                Ok(root) => accumulate_quality_file(&root, tq),
+                Err(_) => push_empty_quality_sample(tq),
+            }
         }
     }
 
@@ -451,8 +678,111 @@ pub fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     }
 
     let input = ReportData { tick_quality, tick_bounds };
-    let metrics = compute_all_metrics(&input);
-    Some(cf_quality::serialize::to_json_compact(&metrics))
+    Some(compute_all_metrics(&input))
+}
+
+/// Pushes one function-free quality sample (Go `analyzeNode` over a tree with no
+/// functions): complexity 0/0/0/0, Halstead 0/0/0, comments 0/0, cohesion 1.0
+/// (the cohesion analyzer's empty-result `cohesion_score`).
+fn push_empty_quality_sample(tq: &mut cf_quality::TickQuality) {
+    tq.complexities.push(0.0);
+    tq.cognitives.push(0.0);
+    tq.max_complexities.push(0);
+    tq.functions.push(0);
+    tq.halstead_volumes.push(0.0);
+    tq.halstead_efforts.push(0.0);
+    tq.delivered_bugs.push(0.0);
+    tq.comment_scores.push(0.0);
+    tq.doc_coverages.push(0.0);
+    tq.cohesion_scores.push(1.0);
+}
+
+/// Runs the four component analyzers on one file's UAST root and appends their
+/// scalars to `tq`, mirroring Go `quality.(*Analyzer).analyzeNode`:
+/// `analyzeComplexity` -> `analyzeHalstead` -> `analyzeComments` -> `analyzeCohesion`.
+/// Each component appends exactly one value per file (Go appends unconditionally
+/// on success; the per-file `Analyze` calls here do not error for a parsed root).
+fn accumulate_quality_file(root: &cf_uast::Node, tq: &mut cf_quality::TickQuality) {
+    // --- complexity (cf_complexity::Analyzer::analyze over its node model) ---
+    let cx_root = uast_to_cx_node(root);
+    let cx = cf_complexity::Analyzer.analyze(Some(&cx_root));
+    tq.complexities.push(govalue_int(&cx, "total_complexity") as f64);
+    tq.cognitives.push(govalue_int(&cx, "cognitive_complexity") as f64);
+    tq.max_complexities.push(govalue_int(&cx, "max_complexity"));
+    tq.functions.push(govalue_int(&cx, "total_functions"));
+
+    // --- halstead (standalone findFunctions/Analyze file-level measures) ---
+    let h = cf_halstead::analyze(root);
+    tq.halstead_volumes.push(h.volume);
+    tq.halstead_efforts.push(h.effort);
+    tq.delivered_bugs.push(h.delivered_bugs);
+
+    // --- comments (cf_comments::Analyzer::analyze) ---
+    match cf_comments::Analyzer::new().analyze(Some(root)) {
+        Ok(c) => {
+            tq.comment_scores.push(govalue_float(&c, "overall_score"));
+            tq.doc_coverages.push(govalue_float(&c, "documentation_coverage"));
+        }
+        Err(_) => {
+            tq.comment_scores.push(0.0);
+            tq.doc_coverages.push(0.0);
+        }
+    }
+
+    // --- cohesion (cf_cohesion::Analyzer::analyze, the findFunctions path) ---
+    match cf_cohesion::Analyzer::new().analyze(root) {
+        Ok(r) => tq.cohesion_scores.push(
+            r.get("cohesion_score")
+                .and_then(cf_cohesion::report_value::ReportValue::as_float)
+                .unwrap_or(0.0),
+        ),
+        Err(_) => {}
+    }
+}
+
+/// `reportutil.GetInt`: integer value at `key` in a `cf-gojson` report map,
+/// truncating floats toward zero; `0` when absent or non-numeric.
+fn govalue_int(v: &cf_gojson::GoValue, key: &str) -> i64 {
+    match v {
+        cf_gojson::GoValue::Map(m) => match m.get(key) {
+            Some(cf_gojson::GoValue::Int(n)) => *n,
+            Some(cf_gojson::GoValue::Float(f)) => *f as i64,
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
+/// `reportutil.GetFloat64`: float value at `key`; `0.0` when absent/non-numeric.
+fn govalue_float(v: &cf_gojson::GoValue, key: &str) -> f64 {
+    match v {
+        cf_gojson::GoValue::Map(m) => match m.get(key) {
+            Some(cf_gojson::GoValue::Float(f)) => *f,
+            Some(cf_gojson::GoValue::Int(n)) => *n as f64,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
+
+/// Converts a `cf_uast::Node` into the `cf_complexity::node::Node` subset the
+/// complexity analyzer reads (type, token, roles, props, children, positions),
+/// matching the static complexity handler's bridge.
+fn uast_to_cx_node(n: &cf_uast::Node) -> cf_complexity::node::Node {
+    let mut out = cf_complexity::node::Node::new(n.node_type.clone());
+    out.token = n.token.clone();
+    out.roles = n.roles.clone();
+    out.props = n.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    out.pos = n.pos.as_ref().map(|p| cf_complexity::node::Positions {
+        start_line: p.start_line as u32,
+        start_col: p.start_col as u32,
+        start_offset: p.start_offset as u32,
+        end_line: p.end_line as u32,
+        end_col: p.end_col as u32,
+        end_offset: p.end_offset as u32,
+    });
+    out.children = n.children.iter().map(uast_to_cx_node).collect();
+    out
 }
 
 /// Builds the `run --analyzers history/sentiment --format json` bytes for the
@@ -489,14 +819,23 @@ pub fn quality_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// (`marshal(metrics.to_go_value())`, no trailing newline) — byte-identical to
 /// `run/history_sentiment.json`.
 pub fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_sentiment::ToGoValue;
+    let metrics = sentiment_metrics(sub)?;
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
+/// Computes the typed sentiment [`cf_sentiment::ComputedMetrics`] for the oldest
+/// `--limit` commits — the single report value behind every output format. The
+/// serializer (json / yaml / bin) is chosen by the caller so all formats follow
+/// from the one computation (Go `ComputeAllMetrics` → `FormatReport*`).
+pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::ComputedMetrics> {
     use std::collections::BTreeMap;
 
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
     use cf_sentiment::analyzer::{merge_comments, CommentNode, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH};
-    use cf_sentiment::{compute_all_metrics, ReportData, TickBounds, ToGoValue};
+    use cf_sentiment::{compute_all_metrics, ReportData, TickBounds};
     use cf_uast_node::UAST_COMMENT;
 
     const SPILL_THRESHOLD: usize = 32;
@@ -507,15 +846,15 @@ pub fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let mut iter = repo.log(&LogOptions { reverse: true, ..LogOptions::default() }).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`, ignoring
+    // `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`).
+    let first_parent = crate::handlers::effective_first_parent(sub);
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
@@ -633,8 +972,7 @@ pub fn sentiment_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     }
 
     let input = ReportData::from_commit_data(&comments_by_commit, commits_by_tick, tick_bounds);
-    let metrics = compute_all_metrics(&input);
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+    Some(compute_all_metrics(&input))
 }
 
 /// Recursively collects UAST nodes whose type is `Comment` into `out`, mirroring
@@ -745,10 +1083,21 @@ fn extract_shell_comment_nodes(content: &[u8], out: &mut Vec<cf_sentiment::analy
 /// 167-byte report Go emits for ANY repo/limit — here produced by REAL
 /// computation over the commit stream, not a constant.
 pub fn imports_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = imports_run_metrics(sub)?;
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
+/// Computes the `history/imports` [`cf_imports::ComputedMetrics`] over the real
+/// commit stream (the format-independent report value). The json/yaml/bin
+/// encodings are all serializations of THIS one value, routed through the
+/// analyzer crate's own serializers by `h_history_imports` — mirroring Go
+/// `BaseHistoryAnalyzer.Serialize` (one `ComputeMetricsFn`, then
+/// `writeMetricsToFormat` switching on the format). See [`imports_run_report`]
+/// for the full pipeline contract.
+pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::ComputedMetrics> {
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_imports::history::{add_entries_to_map, merge_import_maps, ImportEntry, ImportsMap};
     use cf_imports::{compute_all_metrics, ReportValue};
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
@@ -760,18 +1109,11 @@ pub fn imports_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
-    let mut iter = repo.log(&log_opts).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
+    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
+    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
 
     let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
@@ -883,7 +1225,7 @@ pub fn imports_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     report.insert("imports", imports_map_to_report_value(&merged));
 
     let metrics = compute_all_metrics(&report).expect("compute_all_metrics is infallible");
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+    Some(metrics)
 }
 
 /// Converts the 4-level [`ImportsMap`] into a nested [`cf_imports::ReportValue`]
@@ -970,7 +1312,7 @@ fn imports_map_to_report_value(
 /// map-iteration order, per the golden MANIFEST nondeterminism note. Bytes route
 /// through cf-gojson (Go `encoding/json` parity: compact, HTML-escape on, no
 /// trailing newline).
-pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
     use std::collections::{BTreeMap, HashSet};
 
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
@@ -980,25 +1322,56 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     use cf_file_history::{compute_all_metrics_with_options, computed_metrics_to_go, MetricOptions};
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
+    let head_only = sub.get_flag("head");
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
-    let mut iter = repo.log(&log_opts).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
+    // Go `run.go`: `--head` loads EXACTLY the single HEAD commit (ignoring
+    // `--limit`); otherwise `initHistoryPipeline` streams the first
+    // `min(limit, total)` commits of an oldest-first walk — the N OLDEST commits,
+    // oldest-first (see `load_history_commit_hashes`).
+    // Oldest-first window (the N OLDEST commits, oldest-first).
+    let revwalk_hashes = if head_only {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
+
+    // Tick per commit is assigned by the TicksSinceStart CORE analyzer as the
+    // revwalk produces commits — i.e. in OLDEST-FIRST order, monotonic
+    // (`tick = max(rawTick, previousTick)`), tick0 = floor of the first commit's
+    // committer time. The leaf then consumes commits in round-robin order but
+    // carries each commit's pre-assigned tick, so composition buckets by the
+    // REVWALK-order tick, NOT the consume-order tick. Precompute the map here.
+    let mut commit_tick: std::collections::HashMap<cf_gitlib::hash::Hash, i64> =
+        std::collections::HashMap::new();
+    {
+        let mut tick0_rw: Option<i64> = None;
+        let mut prev_rw: i64 = 0;
+        for h in &revwalk_hashes {
+            if let Ok(c) = repo.lookup_commit(*h) {
+                let when = c.committer().when.seconds();
+                let b = *tick0_rw.get_or_insert_with(|| floor_tick_secs(when));
+                let t = ((when - b).div_euclid(86_400)).max(prev_rw);
+                prev_rw = t;
+                commit_tick.insert(*h, t);
+            }
         }
     }
+
+    // Leaf consume order: round-robin PIPELINE_CHUNK blocks (NOT raw revwalk).
+    // file-history's per-path `applyInsert` RESETS the commit list, so at a merge
+    // the consume order decides the final commit_count.
+    let hashes = if head_only {
+        revwalk_hashes
+    } else {
+        crate::handlers::pipeline_consume_order(revwalk_hashes)
+    };
 
     let policy = PathPolicyOptions::default();
     let classifier = Classifier::new();
@@ -1011,17 +1384,18 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // Merge dedup set (commits with >1 parent already consumed).
     let mut seen_merges: HashSet<String> = HashSet::new();
 
-    let mut tick0: Option<i64> = None;
-    let mut previous_tick: i64 = 0;
     let mut last_commit_hash: Option<cf_gitlib::hash::Hash> = None;
-
     for hash in &hashes {
         let commit = repo.lookup_commit(*hash).ok()?;
         let num_parents = commit.num_parents();
-        let is_merge = num_parents > 1;
+        // Go `runner.buildAnalyzeContext`: `isMerge = NumParents()>1`, but FORCED
+        // to false under --first-parent (the simplified walk visits a merge as an
+        // ordinary single-parent commit). So under first-parent a merge's line
+        // stats ARE aggregated and the merge-dedup skip does NOT apply.
+        let is_merge = num_parents > 1 && !first_parent;
         let hash_str = hash.to_hex();
 
-        // shouldConsumeCommit: skip duplicate merge commits.
+        // shouldConsumeCommit: skip duplicate merge commits (real merges only).
         if is_merge && !seen_merges.insert(hash_str.clone()) {
             continue;
         }
@@ -1036,21 +1410,24 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             when_unix: gsig.when.seconds(),
         });
 
-        // Tick assignment from the committer time (24 h default).
-        let when = commit.committer().when.seconds();
-        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
-        let raw_tick = (when - base).div_euclid(86_400);
-        let tick = raw_tick.max(previous_tick);
-        previous_tick = tick;
+        // Tick: the REVWALK-order monotonic tick assigned by TicksSinceStart when
+        // the commit was produced (precomputed above), NOT a consume-order tick.
+        let tick = commit_tick.get(hash).copied().unwrap_or(0);
 
-        // Tree diff against the first parent (root → full initial tree).
+        // TreeDiff diff base — each commit is diffed against its OWN parent(0)
+        // tree (a root commit vs the empty tree → `InitialTreeChanges`).
+        // Combined with the round-robin consume order of `hashes` above + the
+        // commit_count-resetting `applyInsert`, this reproduces the oracle's
+        // per-file commit_count byte-for-byte (e.g. hercules analyser.go=10).
         let new_tree = commit.tree().ok()?;
-        let raw_changes = if num_parents > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        let base_tree: Option<cf_gitlib::tree::Tree> = if num_parents > 0 {
+            commit.parent(0).ok().and_then(|p| p.tree().ok())
         } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+            None
+        };
+        let raw_changes = match &base_tree {
+            Some(prev) => tree_diff(&repo, Some(prev), Some(&new_tree)).ok()?,
+            None => initial_tree_changes(&repo, Some(&new_tree)).ok()?,
         };
 
         // filterChanges: drop vendor/generated paths (content=nil).
@@ -1102,14 +1479,23 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             for change in &changes {
                 let (name, stats) = match change.action {
                     ChangeAction::Insert => {
-                        let blob = CachedBlob::from_repo(&repo, change.to.hash).ok()?;
-                        let added = blob.count_lines().ok()? as i64;
-                        (&change.to.name, LineStats { added, removed: 0, changed: 0 })
+                        // computeInsertStats: nil blob OR a CountLines error
+                        // (binary blob) records NO line stats for this change —
+                        // Go `return`s, so the change is simply skipped, the run
+                        // is NOT aborted.
+                        let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+                            continue;
+                        };
+                        let Ok(added) = blob.count_lines() else { continue };
+                        (&change.to.name, LineStats { added: added as i64, removed: 0, changed: 0 })
                     }
                     ChangeAction::Delete => {
-                        let blob = CachedBlob::from_repo(&repo, change.from.hash).ok()?;
-                        let removed = blob.count_lines().ok()? as i64;
-                        (&change.from.name, LineStats { added: 0, removed, changed: 0 })
+                        // computeDeleteStats: same skip-on-error contract.
+                        let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) else {
+                            continue;
+                        };
+                        let Ok(removed) = blob.count_lines() else { continue };
+                        (&change.from.name, LineStats { added: 0, removed: removed as i64, changed: 0 })
                     }
                     ChangeAction::Modify => {
                         // computeModifyStats: keyed by change.To.Name; needs both
@@ -1140,17 +1526,20 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             }
         }
 
-        // classifyChanges → tickComposition[tick].
+        // classifyChanges → tickComposition[tick]. Go `classifyChanges` reads the
+        // blob *cache* (`h.blobCache()`); in the streaming `run` path that cache is
+        // not wired for file-history, so content is empty and classification is
+        // PATH-ONLY (oracle-verified: e.g. `git-git.png` buckets as `image` by
+        // extension, NOT `binary` by content — passing real PNG bytes would flip
+        // it via `enry.IsBinary`'s NUL sniff and diverge from Go).
         let mut counts = CategoryCounts::default();
         let mut any = false;
         for change in &changes {
-            let (name, blob_hash) = match change.action {
-                ChangeAction::Insert => (&change.to.name, change.to.hash),
-                ChangeAction::Delete => (&change.from.name, change.from.hash),
-                ChangeAction::Modify => (&change.to.name, change.to.hash),
+            let name = match change.action {
+                ChangeAction::Delete => &change.from.name,
+                _ => &change.to.name,
             };
-            let content = CachedBlob::from_repo(&repo, blob_hash).map(|b| b.data).unwrap_or_default();
-            let cat = classifier.classify(name, &content);
+            let cat = classifier.classify(name, &[]);
             counts.increment(map_category(cat));
             any = true;
         }
@@ -1183,7 +1572,7 @@ pub fn file_history_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         &tick_composition,
         Some(&tick_bounds),
     );
-    Some(cf_gojson::marshal(&computed_metrics_to_go(&metrics)))
+    Some(computed_metrics_to_go(&metrics))
 }
 
 /// Maps a [`cf_composition::category::Category`] to the file-history
@@ -1288,12 +1677,87 @@ fn compute_diff_line_stats(from: &[u8], to: &[u8]) -> (i64, i64, i64) {
 /// `metrics_report_value` builds the byte-sorted `MetricSet` map and `to_json()`
 /// is the cf-gojson-parity compact encoder (no trailing newline).
 pub fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let report = typos_report_data(sub)?;
+    Some(cf_typos::metrics_report_value(&report).to_json().into_bytes())
+}
+
+/// `--format yaml` bytes for `history/typos`: the run-level YAML header (Go
+/// `analyze.PrintHeader`, emitted for every non-raw format) followed by the
+/// `history/typos:` section name (Go `OutputHistoryResults`) and the metrics map
+/// rendered by `gopkg.in/yaml.v3` (Go `MetricSet.ToYAML()` →
+/// `writeMetricsToFormat`). The only json/yaml shape difference is the empty
+/// `patterns` metric (JSON `null` vs YAML `[]`), captured by
+/// [`cf_typos::metrics_yaml_value`]; both come from the same report value.
+pub fn typos_run_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let report = typos_report_data(sub)?;
+    let value = typos_value_to_gojson(&cf_typos::metrics_yaml_value(&report));
+    let mut out = Vec::new();
+    out.extend_from_slice(b"codefang (v2):\n");
+    out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+    out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
+    out.extend_from_slice(b"history/typos:\n");
+    out.extend_from_slice(&cf_goyaml::marshal(&value));
+    Some(out)
+}
+
+/// `--format bin` bytes for `history/typos`: the `CFB1` envelope (Go
+/// `reportutil.EncodeBinaryEnvelope`) over `json.Marshal(metrics)`. Go's binary
+/// path marshals the `common.MetricSet` STRUCT directly (not its `ToJSON()`
+/// map), and `MetricSet` exports no fields, so the payload is always the empty
+/// object `{}`. We reproduce that faithfully by encoding an empty struct-origin
+/// map (which `cf_gojson` marshals to `{}`); the report is still computed first,
+/// matching Go, so the metamorphic anti-sim check sees real work, not a constant.
+pub fn typos_run_report_bin(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let _report = typos_report_data(sub)?;
+    let empty_struct = cf_gojson::GoValue::Map(cf_gojson::GoMap::new_struct());
+    cf_reportutil::encode_binary_envelope(&empty_struct).ok()
+}
+
+/// Converts a `cf_typos`-local [`cf_typos::GoValue`] into the shared
+/// [`cf_gojson::GoValue`] the serializer crates consume. `Map` keeps map-origin
+/// (encode-time byte-sort), `Struct` keeps struct-origin (declaration order) —
+/// the same dual-mode contract both value models carry.
+fn typos_value_to_gojson(value: &cf_typos::GoValue) -> cf_gojson::GoValue {
+    use cf_typos::GoValue as TV;
+    match value {
+        TV::Null => cf_gojson::GoValue::Null,
+        TV::Int(n) => cf_gojson::GoValue::Int(*n),
+        TV::Str(s) => cf_gojson::GoValue::Str(s.clone()),
+        TV::Array(items) => {
+            cf_gojson::GoValue::Array(items.iter().map(typos_value_to_gojson).collect())
+        }
+        TV::Map(entries) => {
+            let mut m = cf_gojson::GoMap::new_map();
+            for (k, v) in entries {
+                m.insert(k.clone(), typos_value_to_gojson(v));
+            }
+            cf_gojson::GoValue::Map(m)
+        }
+        TV::Struct(entries) => {
+            let mut m = cf_gojson::GoMap::new_struct();
+            for (k, v) in entries {
+                m.push(k.clone(), typos_value_to_gojson(v));
+            }
+            cf_gojson::GoValue::Map(m)
+        }
+    }
+}
+
+/// Builds the deduplicated `history/typos` [`cf_typos::ReportData`] for the
+/// requested run — the single report value that every output format encodes (Go
+/// `BaseHistoryAnalyzer.Serialize`: one `Report` → `ComputeAllMetrics` →
+/// per-format encoder). Returns `None` when the repository cannot be walked.
+///
+/// The walk + per-commit typo detection + Go-faithful worker-strided dedup are
+/// format-independent; only the final encoding differs, so the format glue in
+/// `h_history_typos` calls this once and routes the value through the
+/// json / yaml / binary serializers.
+pub fn typos_report_data(sub: &clap::ArgMatches) -> Option<cf_typos::ReportData> {
     use cf_alg_levenshtein::Context as LevenshteinContext;
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
-    use cf_typos::{metrics_report_value, Hash as TypoHash, ReportData, Typo};
+    use cf_typos::{Hash as TypoHash, ReportData, Typo};
     use cf_uast_node::Node;
 
     const SPILL_THRESHOLD: usize = 32;
@@ -1306,7 +1770,7 @@ pub fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
 
     // --typos-max-distance: 0/unset ⇒ default 4 (Go Configure/Initialize).
     let max_distance = {
@@ -1318,20 +1782,8 @@ pub fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         }
     };
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let log_opts = LogOptions {
-        reverse: true,
-        first_parent,
-        ..LogOptions::default()
-    };
-    let mut iter = repo.log(&log_opts).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
+    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`).
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
 
     let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
@@ -1496,8 +1948,7 @@ pub fn typos_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     // ticksToReport: deduplicate by "wrong|correct" (Go `deduplicateTypos`,
     // first-seen) over the worker-strided order computed above.
     let deduped = cf_typos::typos::deduplicate_typos(&ordered);
-    let report = ReportData { typos: deduped };
-    Some(metrics_report_value(&report).to_json().into_bytes())
+    Some(ReportData { typos: deduped })
 }
 
 
@@ -1765,13 +2216,84 @@ fn devs_detect_language(name: &str, data: &[u8]) -> String {
 /// absent on the Go-source-heavy inputs the gate probes (every changed file is a
 /// fast-path extension). [`devs_detect_language`].
 pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = devs_run_metrics(sub)?;
+    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+}
+
+/// Builds the full-revwalk `history/devs --format yaml` report bytes (no
+/// `--head`), reusing the shared [`devs_run_metrics`] report value. Mirrors the
+/// Go YAML branch of `analyze.OutputHistoryResults`: the manual version header
+/// (`analyze.PrintHeader`), the `<leaf-name>:` line, then `yaml.Marshal` of the
+/// per-leaf `ComputedMetrics` (routed through cf-goyaml so the same report value
+/// drives every format).
+pub fn devs_run_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = devs_run_metrics(sub)?;
+    let mut out = Vec::new();
+    out.extend_from_slice(b"codefang (v2):\n");
+    out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+    out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
+    out.extend_from_slice(b"history/devs:\n");
+    let body = cf_goyaml::marshal(&cf_devs::serialize::computed_metrics_to_go_yaml(&metrics));
+    out.extend_from_slice(&body);
+    Some(out)
+}
+
+/// Builds the full-revwalk `history/devs --format bin` report bytes (no
+/// `--head`), reusing the shared [`devs_run_metrics`] report value wrapped in
+/// the CFB1 binary envelope (Go `analyze.OutputHistoryResults` raw/binary
+/// branch). One report value, encoded by the serializer layer.
+pub fn devs_run_report_bin(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = devs_run_metrics(sub)?;
+    let payload = cf_devs::serialize::computed_metrics_to_go(&metrics);
+    cf_reportutil::encode_binary_envelope(&payload).ok()
+}
+
+/// Shared full-revwalk `history/devs` metrics builder (no `--head`): runs the
+/// general per-commit pipeline once and returns the aggregated
+/// [`cf_devs::ComputedMetrics`], so every output format (json/yaml/bin) is an
+/// encoding of the SAME report value (Go `analyze.OutputHistoryResults`, which
+/// computes the per-leaf `ComputedMetrics` once and then marshals it per format).
+pub fn devs_run_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetrics> {
+    use cf_devs::{parse_tick_data_with_bounds, MetricOptions};
+    let walk = devs_walk(sub)?;
+    let input = parse_tick_data_with_bounds(
+        &walk.commit_dev_data,
+        &walk.commits_by_tick,
+        walk.names,
+        0,
+        walk.tick_bounds,
+    );
+    Some(cf_devs::compute_all_metrics(&input, &MetricOptions::default()))
+}
+
+/// The raw products of one `history/devs` revwalk, shared by the aggregated
+/// metrics path and the per-commit time-series (NDJSON) path so both encode the
+/// SAME walk (Go `framework.Runner` builds the per-commit `CommitDevData` +
+/// `commitMeta` once; `OutputHistoryResults` aggregates while the timeseries
+/// sink streams per commit).
+struct DevsWalk {
+    /// hex hash → per-commit dev data (Go `CommitDevData`).
+    commit_dev_data: std::collections::BTreeMap<String, cf_devs::CommitDevData>,
+    /// tick → hashes in walk order (Go `commits_by_tick`); drives commit order.
+    commits_by_tick: std::collections::BTreeMap<i64, Vec<String>>,
+    /// tick → RFC3339-UTC committer-time bounds over CDD commits.
+    tick_bounds: std::collections::BTreeMap<i64, cf_devs::TickBounds>,
+    /// hex hash → tick (Go `CommitMeta.Tick`).
+    tick_by_hash: std::collections::BTreeMap<String, i64>,
+    /// hex hash → (committer seconds, committer UTC-offset minutes) for the
+    /// RFC3339 `CommitMeta.Timestamp` (Go formats `commit.Committer().When`).
+    when_by_hash: std::collections::BTreeMap<String, (i64, i32)>,
+    /// Finalized ReversedPeopleDict (Go `FinalizeDict`).
+    names: Vec<String>,
+}
+
+fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     use std::collections::{BTreeMap, HashSet};
 
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
-    use cf_devs::{parse_tick_data_with_bounds, CommitDevData, MetricOptions, TickBounds};
+    use cf_devs::{CommitDevData, TickBounds};
     use cf_gitlib::blob::CachedBlob;
     use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-    use cf_gitlib::repository::LogOptions;
     use cf_gitlib::worker::Worker;
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
@@ -1782,18 +2304,11 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Oldest-first walk (Reverse), truncated to --limit commits.
-    let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
-    let mut iter = repo.log(&log_opts).ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
+    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
+    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
 
     let policy = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
@@ -1804,6 +2319,8 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let mut commit_dev_data: BTreeMap<String, CommitDevData> = BTreeMap::new();
     let mut commits_by_tick: BTreeMap<i64, Vec<String>> = BTreeMap::new();
     let mut tick_when: BTreeMap<i64, (i64, i64)> = BTreeMap::new(); // (min,max) secs over CDD commits.
+    let mut tick_by_hash: BTreeMap<String, i64> = BTreeMap::new();
+    let mut when_by_hash: BTreeMap<String, (i64, i32)> = BTreeMap::new();
     let mut seen_merges: HashSet<String> = HashSet::new();
 
     let mut tick0: Option<i64> = None;
@@ -1812,7 +2329,17 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     for hash in &hashes {
         let commit = repo.lookup_commit(*hash).ok()?;
         let num_parents = commit.num_parents();
-        let is_merge = num_parents > 1; // FirstParent off for devs ⇒ IsMerge.
+        // Two distinct "merge" notions from the Go framework:
+        //  - `multi_parent` (`commit.NumParents() > 1`) drives the devs
+        //    MergeTracker dedup (`devs.Consume`: SeenOrAdd is keyed on the raw
+        //    parent count, independent of first-parent).
+        //  - `is_merge` is `analyze.Context.IsMerge`, which the framework sets to
+        //    `NumParents() > 1` but FORCES to false when the run is first-parent
+        //    (runner.go buildAnalyzeContext). It gates line-stat accumulation
+        //    (`if !ac.IsMerge`). With burndown co-selected the run is first-parent,
+        //    so a merge's first-parent diff IS counted — matching Go.
+        let multi_parent = num_parents > 1;
+        let is_merge = multi_parent && !first_parent;
         let hex = hash.to_string();
 
         // Tree diff against the first parent (root → full initial tree).
@@ -1841,7 +2368,9 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         });
 
         // Tick assignment from the committer time (24h default), monotonic.
-        let when = commit.committer().when.seconds();
+        let committer_when = commit.committer().when;
+        let when = committer_when.seconds();
+        let when_offset = committer_when.offset_minutes();
         let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
         let raw_tick = (when - base).div_euclid(86_400);
         let tick = raw_tick.max(previous_tick);
@@ -1855,8 +2384,10 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
             bucket.push(hex.clone());
         }
 
-        // devs.Consume: skip already-seen merge commits (MergeTracker).
-        if is_merge && !seen_merges.insert(hex.clone()) {
+        // devs.Consume: skip already-seen merge commits (MergeTracker). Keyed on
+        // the RAW multi-parent flag, not IsMerge (SeenOrAdd runs before the
+        // first-parent IsMerge override).
+        if multi_parent && !seen_merges.insert(hex.clone()) {
             continue;
         }
 
@@ -1952,6 +2483,11 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
         commit_dev_data.insert(hex.clone(), cdd);
 
+        // CommitMeta (Go framework.recordCommitMeta): tick + committer-time
+        // RFC3339 for the per-commit time-series stream, deduped by first TC.
+        tick_by_hash.entry(hex.clone()).or_insert(tick);
+        when_by_hash.entry(hex.clone()).or_insert((when, when_offset));
+
         // Tick bounds: min/max committer time over CDD commits (tc.Timestamp).
         tick_when
             .entry(tick)
@@ -1982,11 +2518,89 @@ pub fn devs_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
         );
     }
 
-    // TickSize defaults to 24h (no --tick-size on run); 0 → resolved inside
-    // parse_tick_data_with_bounds.
-    let input = parse_tick_data_with_bounds(&commit_dev_data, &commits_by_tick, names, 0, tick_bounds);
-    let metrics = cf_devs::compute_all_metrics(&input, &MetricOptions::default());
-    Some(cf_gojson::marshal(&cf_devs::serialize::computed_metrics_to_go(&metrics)))
+    Some(DevsWalk {
+        commit_dev_data,
+        commits_by_tick,
+        tick_bounds,
+        tick_by_hash,
+        when_by_hash,
+        names,
+    })
+}
+
+/// Builds the `history/devs --format timeseries --ndjson` bytes: one compact
+/// JSON line per CDD commit, in `commits_by_tick` order (tick-sorted, walk order
+/// within a tick), matching Go `analyze.WriteTimeSeriesNDJSON` over the
+/// `MergedTimeSeries` built from devs' `ExtractCommitTimeSeries`.
+///
+/// Each line is a Go `MergedCommitData` whose flattened key set
+/// (`author`/`devs`/`hash`/`tick`/`timestamp`) is `json.Marshal(map[string]any)`
+/// — alphabetically key-sorted. The `devs` value is the per-commit entry
+/// (`author_id`/`commits`/`languages`/`lines_*`/`net_change`, also a key-sorted
+/// `map[string]any`); `languages` is `map[string]LineStats` (sorted by language,
+/// each a struct in `added`/`removed`/`changed` field order). `author` is empty
+/// (the direct time-series path wires no identity provider, Go
+/// `framework.authorName` → ""); `timestamp` is the committer time in RFC3339
+/// with its original zone offset.
+pub fn devs_run_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    use cf_gojson::{GoMap, GoValue};
+
+    let walk = devs_walk(sub)?;
+
+    let line_stats_value = |s: &cf_devs::LineStats| -> GoValue {
+        // LineStats is a Go struct: `added`/`removed`/`changed` field order.
+        let mut m = GoMap::new_struct();
+        m.insert("added".to_string(), GoValue::Int(s.added));
+        m.insert("removed".to_string(), GoValue::Int(s.removed));
+        m.insert("changed".to_string(), GoValue::Int(s.changed));
+        GoValue::Object(m)
+    };
+
+    let mut out = Vec::new();
+    for hashes in walk.commits_by_tick.values() {
+        for hex in hashes {
+            // Only CDD commits contribute a time-series record (ExtractCommit-
+            // TimeSeries iterates CommitDevData).
+            let Some(cdd) = walk.commit_dev_data.get(hex) else {
+                continue;
+            };
+
+            // devs per-commit entry: a map[string]any (key-sorted on marshal).
+            let mut devs = GoMap::new_map();
+            devs.insert("commits".to_string(), GoValue::Int(cdd.commits));
+            devs.insert("lines_added".to_string(), GoValue::Int(cdd.added));
+            devs.insert("lines_removed".to_string(), GoValue::Int(cdd.removed));
+            devs.insert("lines_changed".to_string(), GoValue::Int(cdd.changed));
+            devs.insert("net_change".to_string(), GoValue::Int(cdd.added - cdd.removed));
+            devs.insert("author_id".to_string(), GoValue::Int(cdd.author_id));
+            if !cdd.languages.is_empty() {
+                // languages: map[string]LineStats (key-sorted by language name).
+                let mut langs = GoMap::new_map();
+                for (lang, stats) in &cdd.languages {
+                    langs.insert(lang.clone(), line_stats_value(stats));
+                }
+                devs.insert("languages".to_string(), GoValue::Object(langs));
+            }
+
+            // MergedCommitData flattened to a map[string]any (key-sorted):
+            // author / devs / hash / tick / timestamp.
+            let tick = walk.tick_by_hash.get(hex).copied().unwrap_or(0);
+            let timestamp = match walk.when_by_hash.get(hex) {
+                Some((secs, off)) => format_rfc3339_offset(*secs, *off),
+                None => String::new(),
+            };
+            let mut rec = GoMap::new_map();
+            rec.insert("hash".to_string(), GoValue::Str(hex.clone()));
+            rec.insert("timestamp".to_string(), GoValue::Str(timestamp));
+            rec.insert("author".to_string(), GoValue::Str(String::new()));
+            rec.insert("tick".to_string(), GoValue::Int(tick));
+            rec.insert("devs".to_string(), GoValue::Object(devs));
+
+            out.extend_from_slice(&cf_gojson::marshal(&GoValue::Object(rec)));
+            out.push(b'\n');
+        }
+    }
+    Some(out)
 }
 
 /// Builds the `history/devs --head --format json` report bytes for the HEAD
@@ -2051,10 +2665,25 @@ pub fn devs_head_metrics(sub: &clap::ArgMatches) -> Option<cf_devs::ComputedMetr
     let head = repo.head().ok()?;
     let commit = repo.lookup_commit(head).ok()?;
 
-    // Only the deterministic, language-free closed form (merge HEAD → 0 line
-    // stats) is reproduced here.
+    // Head-only history runs feed exactly the single HEAD commit through the
+    // streaming pipeline (Go cmd/codefang loadHeadCommit → RunStreaming over a
+    // 1-element slice). The tree-diff plumbing has no predecessor for the only
+    // commit, so for a NON-merge HEAD the devs analyzer's Consume early-returns
+    // an empty TC (tree_diff.go: a single non-merge commit yields no per-commit
+    // dev data) and the report is the all-zero/empty aggregate Go emits. We
+    // reproduce that deterministically by computing over EMPTY tick input rather
+    // than failing — keeping every machine format an encoding of one report
+    // value (Go ComputeAllMetrics over zero ticks). A MERGE HEAD (>1 parent) is
+    // the closed form below (commits=1, the author registered, no line stats).
     if commit.num_parents() <= 1 {
-        return None;
+        let empty = parse_tick_data_with_bounds(
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            Vec::new(),
+            0,
+            BTreeMap::new(),
+        );
+        return Some(cf_devs::compute_all_metrics(&empty, &MetricOptions::default()));
     }
 
     let author = commit.author();

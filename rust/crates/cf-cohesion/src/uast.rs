@@ -63,7 +63,11 @@ pub trait Node {
     /// The entity name carried by this node, if any (Go
     /// `common.ExtractEntityName` / `extractor.ExtractName`). Empty string means
     /// "no name", matching the Go `name == ""` checks.
-    fn entity_name(&self) -> &str;
+    ///
+    /// Returns an owned `String` because the real UAST implementation derives the
+    /// name from props/token/child (Go `ExtractEntityName`), which is not a borrow
+    /// of any single field.
+    fn entity_name(&self) -> String;
 
     /// Number of source lines spanned by the node (Go `traverser.CountLines`).
     fn count_lines(&self) -> i64;
@@ -134,6 +138,63 @@ impl TestNode {
     }
 }
 
+// === Real UAST node adapter ===
+//
+// Implements the cohesion [`Node`] surface for the shared `cf_uast_node::Node`, so
+// the static pipeline can drive the analyzer over parsed source. Each method maps
+// to its Go counterpart in `pkg/uast/pkg/node` + `internal/analyzers/common`.
+
+impl Node for cf_uast_node::Node {
+    fn children(&self) -> &[Self] {
+        &self.children
+    }
+
+    fn has_any_type(&self, types: &[&str]) -> bool {
+        cf_uast_node::Node::has_any_type(self, types)
+    }
+
+    fn has_any_role(&self, roles: &[&str]) -> bool {
+        cf_uast_node::Node::has_any_role(self, roles)
+    }
+
+    fn has_all_roles(&self, roles: &[&str]) -> bool {
+        cf_uast_node::Node::has_all_roles(self, roles)
+    }
+
+    fn entity_name(&self) -> String {
+        extract_entity_name(self).unwrap_or_default()
+    }
+
+    fn count_lines(&self) -> i64 {
+        // Go `UASTTraverser.CountLines`: (end_line - start_line + 1) for this node
+        // when a position is present, plus the recursive sum over children.
+        let mut total: i64 = 0;
+        if let Some(pos) = &self.pos {
+            total = pos.end_line as i64 - pos.start_line as i64 + 1;
+        }
+        for child in &self.children {
+            total += Node::count_lines(child);
+        }
+        total
+    }
+}
+
+/// Go `common.ExtractEntityName`: try `props["name"]`, then a non-empty token,
+/// then the first child's token / `props["name"]`.
+fn extract_entity_name(n: &cf_uast_node::Node) -> Option<String> {
+    if let Some(name) = n.props.get("name") {
+        return Some(name.clone());
+    }
+    if !n.token.is_empty() {
+        return Some(n.token.clone());
+    }
+    let child = n.children.first()?;
+    if !child.token.is_empty() {
+        return Some(child.token.clone());
+    }
+    child.props.get("name").cloned()
+}
+
 impl Node for TestNode {
     fn children(&self) -> &[Self] {
         &self.children
@@ -151,8 +212,8 @@ impl Node for TestNode {
         roles.iter().all(|r| self.roles.iter().any(|s| s == r))
     }
 
-    fn entity_name(&self) -> &str {
-        &self.name
+    fn entity_name(&self) -> String {
+        self.name.clone()
     }
 
     fn count_lines(&self) -> i64 {

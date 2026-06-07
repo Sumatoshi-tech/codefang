@@ -34,7 +34,6 @@
 use cf_burndown_core::{File, Updater};
 use cf_gitlib::blob::CachedBlob;
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, Change, ChangeAction};
-use cf_gitlib::repository::LogOptions;
 use cf_godiff::Op;
 use cf_gojson::value::{GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
@@ -59,21 +58,12 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    // Oldest-first walk (Reverse). Burndown forces --first-parent (run.go:
-    // `if slices.Contains(analyzerKeys, "burndown") && !opts.FirstParent {
-    // opts.FirstParent = true }`), so the walk follows only the first parent of
-    // merge commits (simplify_first_parent). Truncated to --limit commits.
-    let mut iter = repo
-        .log(&LogOptions { reverse: true, first_parent: true, ..LogOptions::default() })
-        .ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
-    drop(iter);
+    // Burndown forces --first-parent (run.go: `if slices.Contains(analyzerKeys,
+    // "burndown") && !opts.FirstParent { opts.FirstParent = true }`), so the walk
+    // follows only the first parent of merge commits (simplify_first_parent).
+    // The window is the `limit` NEWEST commits processed oldest-first (Go
+    // `gitlib.loadHistoryCommits`), NOT the `limit` oldest.
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -169,17 +159,9 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
 
-    let mut iter = repo
-        .log(&LogOptions { reverse: true, first_parent: true, ..LogOptions::default() })
-        .ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
-    drop(iter);
+    // Window: `limit` NEWEST commits oldest-first, first-parent (Go
+    // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -274,6 +256,22 @@ pub fn burndown_record_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// through `cf-gojson` (compact, no trailing newline) byte-identically to
 /// `run/history_burndown.json`.
 pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = burndown_run_metrics(sub)?;
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
+/// Shared full-revwalk `history/burndown` report value (no `--head`): runs the
+/// general per-commit streaming pipeline once and returns the aggregated
+/// [`cf_analyzer_burndown::ComputedMetrics`], so every output format
+/// (json/yaml/bin) is an encoding of the SAME report value (Go
+/// `analyze.OutputHistoryResults`, which computes the per-leaf `ComputedMetrics`
+/// once and then marshals it per format). The json/yaml/bin wrappers
+/// ([`burndown_run_report`], [`burndown_run_report_yaml`],
+/// [`burndown_run_report_bin`]) all route this one value through the serializer
+/// layer.
+pub fn burndown_run_metrics(
+    sub: &clap::ArgMatches,
+) -> Option<cf_analyzer_burndown::ComputedMetrics> {
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -286,17 +284,9 @@ pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let sampling = 30i64;
     let tick_size_hours = 24i64;
 
-    let mut iter = repo
-        .log(&LogOptions { reverse: true, first_parent: true, ..LogOptions::default() })
-        .ok()?;
-    let mut hashes = Vec::new();
-    while limit <= 0 || (hashes.len() as i64) < limit {
-        match iter.next_commit() {
-            Some(c) => hashes.push(c.hash()),
-            None => break,
-        }
-    }
-    drop(iter);
+    // Window: `limit` NEWEST commits oldest-first, first-parent (Go
+    // `gitlib.loadHistoryCommits`; burndown forces --first-parent).
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
 
     let opts = PathPolicyOptions::default();
     let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
@@ -353,7 +343,31 @@ pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     let dense = cf_analyzer_burndown::group_sparse_history(&global_history, sampling, granularity, last_tick);
     let metrics = cf_analyzer_burndown::compute_global_metrics(&dense, sampling, tick_size_hours);
 
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+    Some(metrics)
+}
+
+/// Full-revwalk `history/burndown --format yaml` report bytes (no `--head`),
+/// reusing the shared [`burndown_run_metrics`] report value wrapped in the
+/// `codefang (v2)` YAML envelope (Go `analyze.OutputHistoryResults` YAML branch).
+/// One report value, encoded by the serializer layer.
+pub fn burndown_run_report_yaml(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = burndown_run_metrics(sub)?;
+    let mut out = Vec::new();
+    out.extend_from_slice(b"codefang (v2):\n");
+    out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+    out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
+    out.extend_from_slice(b"history/burndown:\n");
+    out.extend_from_slice(&cf_goyaml::marshal(&metrics.to_go_value_yaml()));
+    Some(out)
+}
+
+/// Full-revwalk `history/burndown --format bin` report bytes (no `--head`),
+/// reusing the shared [`burndown_run_metrics`] report value wrapped in the CFB1
+/// binary envelope (Go `analyze.OutputHistoryResults` raw/binary branch). One
+/// report value, encoded by the serializer layer.
+pub fn burndown_run_report_bin(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = burndown_run_metrics(sub)?;
+    cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()
 }
 
 /// `IdentityDetector` with default loose signature matching, built incrementally

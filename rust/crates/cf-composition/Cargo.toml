@@ -12,6 +12,9 @@ publish = false
 cf-gojson = { workspace = true }
 # Byte-identical YAML (gopkg.in/yaml.v3 parity). NEVER serde_yaml for output.
 cf-goyaml = { workspace = true }
+# enry v2.1.0 language data (LanguagesByExtension) — drives enry.IsConfiguration
+# byte-for-byte instead of a hand-rolled extension list.
+cf-langpath = { path = "../cf-langpath" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

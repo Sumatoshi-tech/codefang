@@ -245,14 +245,22 @@ fn calculate_all_function_metrics(functions: &[&Node]) -> (Vec<FunctionMetrics>,
         metrics.push(m);
     }
 
-    metrics.sort_by(|left, right| {
+    // Go's `calculateAllFunctionMetrics` uses `sort.Slice` (UNSTABLE pdqsort),
+    // not a stable sort. For functions that tie on every key (same cyclomatic,
+    // cognitive, and name — e.g. several identically-named methods in one file),
+    // Rust's stable `sort_by` would preserve input order while Go's pdqsort
+    // permutes them. Reproduce Go's exact element movement with the shared
+    // pdqsort port so tie ordering matches byte-for-byte in formats whose final
+    // sort key (e.g. the YAML `function_complexity` cyclomatic-only sort) does
+    // not otherwise break those ties.
+    gosort::go_sort_slice(&mut metrics, |left, right| {
         if left.cyclomatic_complexity != right.cyclomatic_complexity {
-            return right.cyclomatic_complexity.cmp(&left.cyclomatic_complexity);
+            return left.cyclomatic_complexity > right.cyclomatic_complexity;
         }
         if left.cognitive_complexity != right.cognitive_complexity {
-            return right.cognitive_complexity.cmp(&left.cognitive_complexity);
+            return left.cognitive_complexity > right.cognitive_complexity;
         }
-        left.name.cmp(&right.name)
+        left.name < right.name
     });
 
     (metrics, totals)
@@ -550,17 +558,28 @@ impl FunctionSourceContext<'_> {
     }
 }
 
-/// Mirrors `extractFunctionName` for the cognitive calculator: name from the
-/// entity-name helpers/props, used only for recursive-call detection. We use the
-/// shared prop-based extraction (the `common.ExtractEntityName` fast path
-/// resolves to the same name-prop / name-role token for the analyzer's inputs).
+/// Mirrors the cognitive calculator's OWN `extractFunctionName`
+/// (`cognitive_complexity.go`), used only for recursive-call detection.
+///
+/// Go's cognitive name extraction is NARROWER than the analyzer's
+/// `complexity.extractFunctionName`: it is `common.ExtractEntityName(fn)`
+/// (props["name"] -> token -> child0.token -> child0.props["name"]) followed by
+/// a `fn.Props["name"]` check, and returns `""` otherwise. Critically it does
+/// NOT consult a `Name`-role child token. Using the broader analyzer name here
+/// surfaces a name for functions that Go treats as unnamed, which over-counts
+/// recursive calls and inflates the cognitive total.
 fn extract_cognitive_function_name(fn_node: &Node) -> String {
-    let n = extract_function_name(fn_node);
-    if n == ANONYMOUS_FUNCTION_NAME {
-        String::new()
-    } else {
-        n
+    if let Some(n) = extract_entity_name(fn_node) {
+        if !n.is_empty() {
+            return n;
+        }
     }
+    if let Some(v) = fn_node.prop("name") {
+        if !v.is_empty() {
+            return v.to_string();
+        }
+    }
+    String::new()
 }
 
 fn is_recursive_call(call_node: &Node, function_name: &str) -> bool {

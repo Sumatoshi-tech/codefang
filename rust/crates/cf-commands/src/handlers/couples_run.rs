@@ -19,7 +19,6 @@ use cf_couples::aggregator::Aggregator;
 use cf_couples::tc::{CommitData, RenamePair};
 use cf_couples::{compute_all_metrics, report};
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction};
-use cf_gitlib::repository::LogOptions;
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use std::collections::{BTreeMap, HashSet};
 
@@ -36,32 +35,39 @@ const MAX_MEANINGFUL_CONTEXT: usize = cf_couples::COUPLES_MAXIMUM_MEANINGFUL_CON
 /// `identity.AuthorMissing = (1 << 18) - 1`.
 const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 
-/// Builds the `run --analyzers history/couples --format json` bytes for either
-/// the HEAD commit (`--head`) or the oldest `--limit` commits (streaming
-/// Reverse walk). Returns `None` if the repository cannot be opened/walked.
-pub fn couples_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+/// Builds the `history/couples` report value (Go `ComputedMetrics`, the single
+/// value behind `ToJSON`/`ToYAML`) for either the HEAD commit (`--head`) or the
+/// oldest `--limit` commits (streaming Reverse walk). Returns `None` if the
+/// repository cannot be opened/walked. The caller serializes this one value
+/// across json/yaml/bin uniformly (`serialize_history_metrics`), so every
+/// format follows from the same report value (no per-format branch).
+pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
     let path = crate::handlers::run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let head_only = sub.get_flag("head");
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Commit window: HEAD-only loads the single HEAD commit; streaming walks
-    // oldest-first (Reverse), truncated to --limit.
+    // Commit window: HEAD-only loads the single HEAD commit; streaming selects
+    // the `limit` NEWEST commits (Go `gitlib.loadHistoryCommits`: newest-first
+    // walk, CollectN, then slices.Reverse to oldest-first) — NOT the `limit`
+    // oldest. With `limit <= 0` this is the full oldest-first history.
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {
-        let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
-        let mut iter = repo.log(&log_opts).ok()?;
-        let mut v = Vec::new();
-        while limit <= 0 || (v.len() as i64) < limit {
-            match iter.next_commit() {
-                Some(c) => v.push(c.hash()),
-                None => break,
-            }
-        }
-        v
+        let v = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+        // Go consume order: the streaming pipeline (commit streamer + blob/diff
+        // prefetch) does NOT feed commits to the analyzers in raw revwalk order.
+        // It splits the oldest-first window into contiguous size-PIPELINE_CHUNK
+        // blocks and consumes them ROUND-ROBIN (one commit from each block per
+        // pass). This consume order is observable and stable, and it is the order
+        // in which the couples seen-files Bloom is populated — so a merge commit's
+        // merge-mode coupling gate (`!seenFiles.Test(name)`) depends on it. The
+        // additive coupling/people matrices are themselves order-independent, but
+        // the Bloom gate and loose-identity id assignment are not, so we must
+        // reproduce Go's consume order exactly to match byte-for-byte.
+        pipeline_consume_order(v)
     };
 
     let opts = PathPolicyOptions::default();
@@ -183,7 +189,7 @@ pub fn couples_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     report_data.reversed_people_dict = identity.reversed_people_dict.clone();
 
     let metrics = compute_all_metrics(&report_data);
-    Some(report::to_go_json(&report::computed_metrics_to_value(&metrics)))
+    Some(report::computed_metrics_to_value(&metrics))
 }
 
 /// Collects the current-file set and per-file newline counts from the live
@@ -218,6 +224,34 @@ fn collect_current_and_lines(
         set.insert(f.name);
     }
     (Some(set), lines)
+}
+
+/// Go streaming pipeline prefetch block size. The commit streamer / blob+diff
+/// prefetch consumes the oldest-first window in contiguous blocks of this size,
+/// interleaved round-robin. Empirically constant across `--limit` (verified at
+/// 9/10/15/20/25/40 against the live Go binary's TC consume order).
+const PIPELINE_CHUNK: usize = 8;
+
+/// Reorders the oldest-first commit window into Go's actual consume order:
+/// split into contiguous `PIPELINE_CHUNK`-sized blocks, then emit round-robin
+/// (block0[0], block1[0], ..., block0[1], block1[1], ...). For windows of
+/// `<= PIPELINE_CHUNK` commits this is the identity (single block).
+fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
+    let n = hashes.len();
+    if n <= PIPELINE_CHUNK {
+        return hashes;
+    }
+    let num_blocks = n.div_ceil(PIPELINE_CHUNK);
+    let mut out = Vec::with_capacity(n);
+    for offset in 0..PIPELINE_CHUNK {
+        for block in 0..num_blocks {
+            let idx = block * PIPELINE_CHUNK + offset;
+            if idx < n {
+                out.push(hashes[idx]);
+            }
+        }
+    }
+    out
 }
 
 /// Per-commit change processing (Go: `HistoryAnalyzer.processChange`).
@@ -260,17 +294,14 @@ fn process_change(
         return;
     }
 
-    // Merge mode. Go's source gates this on `!seenFiles.Test(name)`, but the Go
-    // run BINARY's streaming pipeline does not actually suppress a merge's
-    // parent(0)-diff files against the first-parent line: observed behavior is
-    // that a file changed on a merged-in branch is counted both on that branch's
-    // commit and again at the merge. We reproduce the observed binary behavior
-    // (no merge-context suppression), which is byte/canonically identical to the
-    // Go binary across the probed window. The `seen_files` Bloom is still
-    // maintained (populated by non-merge commits) for the test below, which is a
-    // no-op in this branch; kept for structural fidelity with the Go analyzer.
-    let _ = seen_files;
-    data.coupling_files.push(name.clone());
+    // Merge mode (Go: HistoryAnalyzer.processChange). Only add the file to the
+    // coupling context if it was NOT seen on the first-parent line already
+    // (`!seenFiles.Test(name)`): a file changed on a merged-in branch must not
+    // be double-counted against files it already coupled with on mainline.
+    // The author touch is always recorded (coupling dedup != ownership dedup).
+    if !seen_files.test(name.as_bytes()) {
+        data.coupling_files.push(name.clone());
+    }
     if author != AUTHOR_MISSING_IDX {
         data.author_files.insert(name, 1);
     }

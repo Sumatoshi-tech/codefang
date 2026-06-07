@@ -91,6 +91,30 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-bash-1.9.6",
         sources: &["parser.c", "scanner.c"],
     },
+    // proto (go-sitter-forest proto@v1.9.1) and java (java@v1.9.5): both are
+    // single-file grammars (parser.c, no external scanner) exporting
+    // tree_sitter_proto()/tree_sitter_java(). Vendored at the exact revisions
+    // the Go build's go.mod pins so node kinds/spans flow into machine output
+    // byte-identically (e.g. comment/struct/interface nodes the comments
+    // analyzer counts in .proto/.java sources).
+    Grammar {
+        dir: "tree-sitter-proto-1.9.1",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-java-1.9.5",
+        sources: &["parser.c"],
+    },
+    // markdown_inline (go-sitter-forest markdown_inline@v1.9.3): the grammar the
+    // Go loader dispatches `.md`/`.markdown` to (its UAST root is `Synthetic`).
+    // Ships an external scanner (parser.c + scanner.c) exporting
+    // tree_sitter_markdown_inline(). Vendored at the exact revision the Go
+    // build's go.mod pins so the parse — and the per-file report COUNT the
+    // complexity aggregator divides by — matches Go.
+    Grammar {
+        dir: "tree-sitter-markdown_inline-1.9.3",
+        sources: &["parser.c", "scanner.c"],
+    },
 ];
 
 fn main() {

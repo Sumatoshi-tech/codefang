@@ -38,6 +38,7 @@ use cf_complexity::node::{Node as CNode, Positions as CPos};
 use cf_complexity::{Analyzer, FunctionMetrics};
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_goyaml::marshal;
+use cf_pathpolicy::{exclude, Options};
 use cf_uast::Parser;
 use cf_uast_node::Node as UNode;
 
@@ -158,6 +159,13 @@ fn walk(
 
         let path_str = path.to_string_lossy();
         if !parser.is_supported(&path_str) {
+            continue;
+        }
+        // pathpolicy.Exclude(path, nil, opts): skip vendored / generated paths,
+        // exactly as the Go static `streamFiles` filter does (without this, the
+        // walk over a repo with a `vendor/` tree pulls in thousands of extra
+        // functions and the report diverges from Go).
+        if exclude(&path_str, None, &Options::default()) {
             continue;
         }
         let Ok(content) = fs::read(&path) else { continue };

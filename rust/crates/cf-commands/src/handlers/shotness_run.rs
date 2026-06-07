@@ -37,7 +37,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use cf_analyzers_plumbing::identity_detector::IdentityDetector;
 use cf_gitlib::blob::CachedBlob;
 use cf_gitlib::changes::{initial_tree_changes, tree_diff, ChangeAction, ChangeEntry};
-use cf_gitlib::repository::LogOptions;
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use cf_shotness::aggregate::{
     accumulate_nodes, build_report_from_merged, compute_coupling_pairs, merge_nodes_into, TickNodes,
@@ -63,26 +62,28 @@ const _DSL_NAME: &str = ".props.name";
 /// REAL general history pipeline, or `None` if the repository cannot be
 /// opened/walked.
 pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
+    let metrics = shotness_run_metrics(sub)?;
+    Some(cf_gojson::marshal(&metrics.to_go_value()))
+}
+
+/// Computes the `history/shotness` [`ComputedMetrics`] over the REAL general
+/// history pipeline (one report value shared by every output format), or `None`
+/// if the repository cannot be opened/walked. Each `run --format` encoding is
+/// just a serializer over this single value (Go `ToJSON`/`ToYAML`/binary
+/// envelope), routed at the handler layer.
+pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::ComputedMetrics> {
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
     let head_only = sub.get_flag("head");
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
-    let first_parent = sub.get_flag("first-parent");
+    let first_parent = crate::handlers::effective_first_parent(sub);
 
     let hashes: Vec<cf_gitlib::Hash> = if head_only {
         vec![repo.head().ok()?]
     } else {
-        let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
-        let mut iter = repo.log(&log_opts).ok()?;
-        let mut v = Vec::new();
-        while limit <= 0 || (v.len() as i64) < limit {
-            match iter.next_commit() {
-                Some(c) => v.push(c.hash()),
-                None => break,
-            }
-        }
-        v
+        // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`).
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
     };
 
     let parser = cf_uast::Parser::new();
@@ -186,8 +187,7 @@ pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     }
 
     let report = build_report_from_merged(&merged);
-    let metrics = compute_all_metrics(&report);
-    Some(cf_gojson::marshal(&metrics.to_go_value()))
+    Some(compute_all_metrics(&report))
 }
 
 /// Parses a change side's blob into a UAST root, applying the same filters as

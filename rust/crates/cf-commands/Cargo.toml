@@ -78,10 +78,12 @@ cf-analyzers-plumbing = { path = "../cf-analyzers-plumbing" }
 cf-burndown-core = { path = "../cf-burndown-core" }
 # --- Analyzer math crates (per-file Analyze + report serializers) ---
 cf-complexity = { path = "../cf-complexity" }
+cf-clones = { path = "../cf-clones" }
 cf-halstead = { path = "../cf-halstead" }
 cf-comments = { path = "../cf-comments" }
 cf-imports = { path = "../cf-imports" }
 cf-composition = { path = "../cf-composition" }
+cf-cohesion = { path = "../cf-cohesion" }
 cf-couples = { path = "../cf-couples" }
 cf-shotness = { path = "../cf-shotness" }
 cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }

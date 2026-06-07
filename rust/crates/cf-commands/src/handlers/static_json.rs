@@ -94,6 +94,15 @@ pub fn composition_report(root_path: &str) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// Builds the `static/composition` `renderer.JSONReport` GoValue (single
+/// info-only section), shared by the single-analyzer byte path and the
+/// multi-analyzer static-JSON merge. `None` when the path cannot be walked.
+#[must_use]
+pub fn composition_report_value(root_path: &str) -> Option<GoValue> {
+    let counts = composition_counts(root_path)?;
+    Some(build_json_report(&counts))
+}
+
 /// Builds the `static/composition --format bin` report bytes for `root_path`,
 /// or `None` when the path cannot be read.
 ///
@@ -231,6 +240,18 @@ fn read_header(path: &Path) -> Vec<u8> {
 /// per section `title`, `score_label`, `status`, `metrics`, `distribution`
 /// (omitted when empty), `issues`, `score`.
 fn build_json_report(counts: &Counts) -> GoValue {
+    // Single info-only section → overall score is ScoreInfoOnly (-1), label Info.
+    let mut report = GoMap::new(MapOrigin::Struct);
+    report.push("overall_score_label", GoValue::Str(SCORE_LABEL_INFO.to_string()));
+    report.push("sections", GoValue::Array(vec![build_section(counts)]));
+    report.push("overall_score", GoValue::Float(SCORE_INFO_ONLY));
+    GoValue::Map(report)
+}
+
+/// Builds the single composition `renderer.JSONSection` GoValue (Go
+/// `SectionToJSON`). Field order mirrors the Go struct: `title`, `score_label`,
+/// `status`, `metrics`, `distribution` (omitted when empty), `issues`, `score`.
+fn build_section(counts: &Counts) -> GoValue {
     let total = counts.total_files;
     let source_count = counts.get(Category::Source);
 
@@ -294,14 +315,7 @@ fn build_json_report(counts: &Counts) -> GoValue {
     // `files` is a nil `*[]JSONFileEntry` (omitempty) → omitted (no per-file).
     section.push("score", GoValue::Float(SCORE_INFO_ONLY));
 
-    // ---- report ----
-    // Single info-only section → overall score is ScoreInfoOnly (-1), label Info.
-    let mut report = GoMap::new(MapOrigin::Struct);
-    report.push("overall_score_label", GoValue::Str(SCORE_LABEL_INFO.to_string()));
-    report.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
-    report.push("overall_score", GoValue::Float(SCORE_INFO_ONLY));
-
-    GoValue::Map(report)
+    GoValue::Map(section)
 }
 
 fn metric(label: &str, value: &str) -> GoValue {

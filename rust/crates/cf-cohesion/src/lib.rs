@@ -46,6 +46,7 @@ pub mod report_section;
 pub mod report_value;
 pub mod serialize;
 pub mod uast;
+pub mod visitor;
 
 pub use analyzer::{Analyzer, Function, FunctionReportItem};
 pub use metrics::{

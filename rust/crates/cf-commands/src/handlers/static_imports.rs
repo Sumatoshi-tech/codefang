@@ -96,6 +96,19 @@ fn aggregate_report_value(root_path: &str) -> Option<cf_imports::ReportValue> {
 /// ordering: count descending, ties broken by the aggregator's sorted import
 /// keys (the same set Go emits, just stably ordered).
 pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
+    let root = imports_report_value(root_path)?;
+    Some(
+        cf_gojson::Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(&root),
+    )
+}
+
+/// Builds the `static/imports` `renderer.JSONReport` GoValue (single info-only
+/// section), shared by the single-analyzer byte path and the multi-analyzer
+/// static-JSON merge. `None` when the path cannot be walked.
+#[must_use]
+pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     let (all_imports, total_files) = walk_and_count(root_path)?;
     let count = all_imports.len() as i64;
 
@@ -152,11 +165,7 @@ pub fn imports_report_json(root_path: &str) -> Option<Vec<u8>> {
     root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
     root.push("overall_score", GoValue::Float(-1.0));
 
-    Some(
-        cf_gojson::Encoder::indented("  ")
-            .with_trailing_newline(true)
-            .encode(&GoValue::Map(root)),
-    )
+    Some(GoValue::Map(root))
 }
 
 /// `imports.buildStatusMessage`.

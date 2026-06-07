@@ -310,6 +310,35 @@ pub fn metrics_report_value(input: &ReportData) -> GoValue {
     GoValue::Map(metrics.into_iter().map(|m| (m.name, m.value)).collect())
 }
 
+/// Builds the metrics value for **YAML** serialization (Go `MetricSet.ToYAML()`
+/// marshaled by `gopkg.in/yaml.v3`).
+///
+/// `ToYAML()` returns the same `map[string]any` as [`metrics_report_value`], but
+/// Go's YAML encoder renders a typed **nil slice** (`[]TypoPatternData(nil)`) as
+/// `[]`, whereas `encoding/json` renders it as `null`. `computeTypoPatterns`
+/// returns such a nil slice when no pattern repeats, so the only json/yaml shape
+/// difference is the empty `patterns` metric: JSON `null` vs YAML `[]`. This
+/// builder reproduces the YAML side by promoting an empty `patterns` value
+/// ([`GoValue::Null`]) to an empty [`GoValue::Array`]; every other metric is
+/// identical to the JSON value.
+#[must_use]
+pub fn metrics_yaml_value(input: &ReportData) -> GoValue {
+    let metrics = compute_all_metrics(input);
+    GoValue::Map(
+        metrics
+            .into_iter()
+            .map(|m| {
+                let value = if m.name == METRIC_NAME_PATTERNS && m.value == GoValue::Null {
+                    GoValue::Array(Vec::new())
+                } else {
+                    m.value
+                };
+                (m.name, value)
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

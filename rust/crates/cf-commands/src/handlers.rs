@@ -21,6 +21,8 @@ pub mod couples_run;
 pub mod go_sort;
 pub mod history;
 pub mod shotness_run;
+pub mod static_clones;
+pub mod static_cohesion;
 pub mod static_comments;
 pub mod static_complexity;
 pub mod static_complexity_bin;
@@ -47,6 +49,110 @@ pub fn run_repo_path(sub: &clap::ArgMatches) -> String {
         }
     }
     sub.get_one::<String>("path").cloned().unwrap_or_else(|| ".".to_string())
+}
+
+/// The effective first-parent mode for the shared history revwalk, mirroring Go
+/// `run.go` `initHistoryPipeline`:
+///
+/// ```go
+/// if slices.Contains(analyzerKeys, "burndown") && !opts.FirstParent {
+///     opts.FirstParent = true
+/// }
+/// ```
+///
+/// Go forces first-parent for the WHOLE history run (the single shared revwalk
+/// that feeds every selected history analyzer) whenever `history/burndown` is in
+/// the resolved leaf set, regardless of the `--first-parent` flag. Because every
+/// history analyzer in one `run` shares that revwalk, the window selection — and
+/// therefore each analyzer's tick assignment and commit set — must observe the
+/// same forced flag. A handler that read only `--first-parent` would diverge from
+/// Go whenever burndown is co-selected (e.g. `--analyzers history/devs,history/burndown`,
+/// `history/*`, or `*`), even though it is not the burndown handler.
+///
+/// The burndown membership is computed over the RESOLVED leaf set, so literal ids
+/// and globs (`history/*`, `*`) that select burndown all force the flag, exactly
+/// as Go's `slices.Contains(analyzerKeys, "burndown")` does after glob expansion.
+#[must_use]
+pub fn effective_first_parent(sub: &clap::ArgMatches) -> bool {
+    if sub.get_flag("first-parent") {
+        return true;
+    }
+    let patterns: Vec<String> = sub
+        .get_many::<String>("analyzers")
+        .map(|vals| vals.cloned().collect())
+        .unwrap_or_default();
+    let pats: Vec<&str> = patterns.iter().map(String::as_str).collect();
+    let (_static_ids, history_ids) = expand_combined_ids(&pats);
+    history_ids.iter().any(|id| id == "history/burndown")
+}
+
+/// Replicates Go `run.go` `initHistoryPipeline` (the iterator path the real
+/// `run` command uses — NOT `gitlib.LoadCommits`): walks history oldest-first
+/// (`SortTime|SortTopological|SortReverse`) and feeds the analyzer the FIRST
+/// `commitCount = min(limit, total)` commits. That selects the N OLDEST
+/// reachable commits, oldest-first (oracle-verified against the live Go binary —
+/// `--limit 20` on hercules yields the repo's first 20 commits, with ascending
+/// composition ticks). `limit <= 0` returns the full oldest-first history.
+#[must_use]
+pub fn load_history_commit_hashes(
+    repo: &cf_gitlib::Repository,
+    limit: i64,
+    first_parent: bool,
+) -> Option<Vec<cf_gitlib::Hash>> {
+    use cf_gitlib::repository::LogOptions;
+    // ORACLE-VERIFIED window selection. The real `run` command uses
+    // `run.go::initStreamingIterator`, which sets `logOpts.Reverse = true`
+    // (oldest-first walk) and then streams the FIRST `commitCount =
+    // min(limit, total)` commits — i.e. the `limit` OLDEST reachable commits,
+    // oldest-first. (NOT `gitlib.loadHistoryCommits`'s newest-N+reverse: the live
+    // Go binary at `--limit 2` on hercules emits the repo's first two commits —
+    // analyser.go/LICENSE — proving the OLDEST set is selected, even though the
+    // repo has 1006 commits.) Do NOT switch to `reverse: false` + post-reverse.
+    let log_opts = LogOptions { reverse: true, first_parent, ..LogOptions::default() };
+    let mut iter = repo.log(&log_opts).ok()?;
+    let mut hashes = Vec::new();
+    while limit <= 0 || (hashes.len() as i64) < limit {
+        match iter.next_commit() {
+            Some(c) => hashes.push(c.hash()),
+            None => break,
+        }
+    }
+    Some(hashes)
+}
+
+/// Size of the streaming-pipeline commit chunk (Go `framework` PIPELINE_CHUNK):
+/// the oldest-first window is split into contiguous blocks of this size and
+/// consumed round-robin.
+pub const PIPELINE_CHUNK: usize = 8;
+
+/// Reorders an oldest-first commit window into Go's actual *consume* order: the
+/// streaming pipeline splits the window into contiguous [`PIPELINE_CHUNK`]-sized
+/// blocks and feeds the analyzers ROUND-ROBIN (block0[0], block1[0], …,
+/// block0[1], block1[1], …), NOT in raw revwalk order. For windows of
+/// `<= PIPELINE_CHUNK` commits this is the identity.
+///
+/// This order is observable for any analyzer whose per-commit aggregation is
+/// order-sensitive — e.g. file-history's `applyInsert` RESETS a path's commit
+/// list, so whether a merge's re-insert is consumed before or after a sibling's
+/// modify changes the final `commit_count`; couples' merge-mode Bloom gate is
+/// likewise order-dependent.
+#[must_use]
+pub fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
+    let n = hashes.len();
+    if n <= PIPELINE_CHUNK {
+        return hashes;
+    }
+    let num_blocks = n.div_ceil(PIPELINE_CHUNK);
+    let mut out = Vec::with_capacity(n);
+    for offset in 0..PIPELINE_CHUNK {
+        for block in 0..num_blocks {
+            let idx = block * PIPELINE_CHUNK + offset;
+            if idx < n {
+                out.push(hashes[idx]);
+            }
+        }
+    }
+    out
 }
 
 /// Rounds Unix `secs` down to the start of its 24-hour tick (Go
@@ -84,6 +190,47 @@ pub fn format_rfc3339_offset(unix_secs: i64, offset_minutes: i32) -> String {
     }
 }
 
+/// Serializes a history analyzer's report value across the json/yaml/bin
+/// machine formats, mirroring Go `OutputHistoryResults` +
+/// `BaseHistoryAnalyzer.Serialize` (`writeMetricsToFormat`): the *same* report
+/// value is encoded each way, so a handler computes the value once and routes
+/// it here rather than re-deriving per format.
+///
+/// - `json` (a "raw" format): `json.Marshal(metrics.ToJSON())` — `json_value`,
+///   no header, no trailing newline (cf-gojson `marshal`).
+/// - `binary` (a "raw" format): `reportutil.EncodeBinaryEnvelope(metrics)` — a
+///   CFB1 envelope wrapping the same `json_value` bytes (no header).
+/// - `yaml` (non-raw): `PrintHeader` (`codefang (v2):` / version / hash) then
+///   `<analyzer_name>:\n` then `yaml.Marshal(metrics.ToYAML())` — `yaml_value`.
+///
+/// `analyzer_name` is the history analyzer's `Name()` (the YAML section header,
+/// e.g. `ImportsPerDeveloper`). Returns `None` for any non-machine format, so
+/// the caller surfaces the same dispatch error Go does.
+#[must_use]
+pub fn serialize_history_metrics(
+    format: &str,
+    analyzer_name: &str,
+    json_value: &cf_gojson::GoValue,
+    yaml_value: &cf_gojson::GoValue,
+) -> Option<Vec<u8>> {
+    match format {
+        // Raw formats: no version header, no per-analyzer section name.
+        "json" => Some(cf_gojson::marshal(json_value)),
+        "binary" | "bin" => cf_reportutil::encode_binary_envelope(json_value).ok(),
+        // Non-raw: PrintHeader + "<Name>:\n" + yaml body.
+        "yaml" => {
+            let mut out = Vec::new();
+            out.extend_from_slice(b"codefang (v2):\n");
+            out.extend_from_slice(format!("  version: {}\n", cf_version::DEFAULT_BINARY).as_bytes());
+            out.extend_from_slice(format!("  hash: {}\n", cf_version::BINARY_GIT_HASH).as_bytes());
+            out.extend_from_slice(format!("{analyzer_name}:\n").as_bytes());
+            out.extend_from_slice(&cf_goyaml::marshal(yaml_value));
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
 /// Civil date from a day count since the Unix epoch (Howard Hinnant's algorithm).
 #[must_use]
 pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
@@ -105,14 +252,15 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 /// The static analyzers in registry order (Go `defaultUASTAnalyzers ++
 /// defaultRawFileAnalyzers`). `bin_ported` is true for the analyzers whose
-/// `--format bin` payload is reproduced byte-for-byte; clones and cohesion are
-/// not (Go-map-order-dependent, nonBinding captures).
+/// `--format bin` payload is reproduced byte-for-byte; cohesion is not yet
+/// ported. clones IS ported: its bin payload is the CFB1 envelope of
+/// `computeMetricsFromReport` over the cross-file aggregate report.
 pub const STATIC_BIN_ANALYZERS: &[(&str, bool)] = &[
-    ("static/clones", false),
+    ("static/clones", true),
     ("static/complexity", true),
     ("static/comments", true),
     ("static/halstead", true),
-    ("static/cohesion", false),
+    ("static/cohesion", true),
     ("static/imports", true),
     ("static/composition", true),
 ];
@@ -180,17 +328,332 @@ pub fn static_multi_bin(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+// ---------------------------------------------------------------------------
+// Static analyzer multi-analyzer JSON merge (Go `renderer.SectionsToJSON` over
+// several analyzers). For `codefang run --format json` with more than one static
+// analyzer (or a glob that selects several), Go renders ONE `renderer.JSONReport`
+// whose `sections` are the per-analyzer sections in REGISTRY order and whose
+// `overall_score` is the executive-summary average of the scored sections
+// (info-only sections, score < 0, are excluded; all-info ⇒ overall is -1 / Info).
+// Each analyzer's section value comes from its own crate-owned report builder
+// (the same GoValue the single-analyzer JSON path serializes), so the merge owns
+// no analyzer math and every format follows the same report value.
+// ---------------------------------------------------------------------------
+
+/// Registry-ordered (Go `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`) map of
+/// static analyzer id → the crate-owned builder of that analyzer's single-section
+/// `renderer.JSONReport` GoValue. Used by [`static_multi_json`] to merge several
+/// analyzers' sections; the merge never branches per format — the same GoValue
+/// feeds the serializer.
+type ReportValueFn = fn(&str) -> Option<GoValue>;
+
+use cf_gojson::{GoMap, GoValue, MapOrigin};
+
+const STATIC_JSON_VALUE_BUILDERS: &[(&str, ReportValueFn)] = &[
+    ("static/clones", static_clones::clones_report_value),
+    ("static/complexity", static_complexity::complexity_report_value),
+    ("static/comments", static_comments::comments_report_value),
+    ("static/halstead", static_halstead::halstead_report_value),
+    ("static/cohesion", static_cohesion::cohesion_report_value),
+    ("static/imports", static_imports::imports_report_value),
+    ("static/composition", static_json::composition_report_value),
+];
+
+/// Pulls the `sections` array and `overall_score` out of a single-analyzer
+/// `renderer.JSONReport` GoValue (`{overall_score_label, sections, overall_score}`).
+/// Returns the section GoValues and the contained `overall_score` (each section's
+/// own `score` field is what the merge re-averages, but the single-analyzer
+/// `overall_score` equals that section's score for one section, so we read the
+/// per-section `score` directly for robustness against future multi-section
+/// analyzers).
+fn extract_sections(report: &GoValue) -> Vec<GoValue> {
+    report
+        .as_map()
+        .and_then(|m| m.get("sections"))
+        .and_then(|s| match s {
+            GoValue::Array(items) => Some(items.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Reads a section's numeric `score` field (Go `JSONSection.Score`), defaulting
+/// to the info-only sentinel `-1.0` when absent.
+fn section_score(section: &GoValue) -> f64 {
+    match section.as_map().and_then(|m| m.get("score")) {
+        Some(GoValue::Float(f)) => *f,
+        Some(GoValue::Int(i)) => *i as f64,
+        _ => -1.0,
+    }
+}
+
+/// Go `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`; a negative score
+/// (info-only) renders `"Info"` (Go `ExecutiveSummary.OverallScoreLabel`).
+fn overall_score_label(score: f64) -> String {
+    if score < 0.0 {
+        return "Info".to_string();
+    }
+    let n = (score * 10.0).round() as i64;
+    format!("{n}/10")
+}
+
+/// Expands `patterns` over the registry-ordered static analyzers and renders ONE
+/// merged `renderer.JSONReport` (Go `renderer.SectionsToJSON`): sections in
+/// registry order, `overall_score` the average of the scored (`score >= 0`)
+/// sections (or `-1` when none are scored). `None` if no static analyzer is
+/// selected or any selected analyzer cannot produce a report (the caller then
+/// falls through to the same error path Go takes).
+#[must_use]
+pub fn static_multi_json(patterns: &[&str], path: &str) -> Option<Vec<u8>> {
+    let mut sections: Vec<GoValue> = Vec::new();
+    let mut score_total = 0.0_f64;
+    let mut score_count = 0_usize;
+
+    for &(id, build) in STATIC_JSON_VALUE_BUILDERS {
+        let matched = patterns.iter().any(|pat| {
+            if pat.contains(['*', '?', '[']) {
+                go_path_match(pat, id)
+            } else {
+                *pat == id
+            }
+        });
+        if !matched {
+            continue;
+        }
+        let report = build(path)?;
+        for section in extract_sections(&report) {
+            let s = section_score(&section);
+            if s >= 0.0 {
+                score_total += s;
+                score_count += 1;
+            }
+            sections.push(section);
+        }
+    }
+
+    if sections.is_empty() {
+        return None;
+    }
+
+    let overall = if score_count == 0 {
+        -1.0
+    } else {
+        score_total / score_count as f64
+    };
+
+    let mut root = GoMap::new(MapOrigin::Struct);
+    root.push("overall_score_label", GoValue::Str(overall_score_label(overall)));
+    root.push("sections", GoValue::Array(sections));
+    root.push("overall_score", GoValue::Float(overall));
+
+    let bytes = cf_gojson::Encoder::indented("  ")
+        .with_trailing_newline(true)
+        .encode_to_vec(&GoValue::Map(root));
+    Some(bytes)
+}
+
+/// True when `patterns` select MORE THAN ONE static analyzer (a literal multi-id
+/// list or a glob matching several), so the JSON path must merge sections rather
+/// than emit a single-analyzer document.
+#[must_use]
+pub fn static_json_selects_multiple(patterns: &[&str]) -> bool {
+    let mut matched = 0usize;
+    for &(id, _) in STATIC_JSON_VALUE_BUILDERS {
+        let hit = patterns.iter().any(|pat| {
+            if pat.contains(['*', '?', '[']) {
+                go_path_match(pat, id)
+            } else {
+                *pat == id
+            }
+        });
+        if hit {
+            matched += 1;
+            if matched > 1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Produces a single static analyzer's CFB1 bin envelope.
 #[must_use]
 pub fn static_single_bin(id: &str, path: &str) -> Option<Vec<u8>> {
     match id {
+        "static/clones" => static_clones::clones_report_bin(path),
         "static/complexity" => static_complexity_bin::complexity_report_bin(path),
         "static/comments" => static_comments::comments_report_bin(path),
         "static/halstead" => static_halstead::halstead_bin_report(path),
+        "static/cohesion" => static_cohesion::cohesion_report_bin(path),
         "static/imports" => static_imports::imports_report_bin(path),
         "static/composition" => static_json::composition_bin(path),
         _ => None,
     }
+}
+
+/// The history analyzers in Go phase/registry order (Go `defaultHistoryLeaves`
+/// as emitted by the combined unified-model path). Used to expand `*`/globs and
+/// to order the history phase of the combined static+history render.
+pub const HISTORY_COMBINED_ORDER: &[&str] = &[
+    "history/typos",
+    "history/file-history",
+    "history/imports",
+    "history/shotness",
+    "history/anomaly",
+    "history/burndown",
+    "history/couples",
+    "history/devs",
+    "history/quality",
+    "history/sentiment",
+];
+
+/// The history analyzers in Go's *separate-phase* per-analyzer emit order — the
+/// order `runHistoryPhase` writes each leaf's standalone report when the run is
+/// NOT a mixed static+history combined render (i.e. a history-only selection,
+/// literal list or glob, in a machine format). This is the pipeline leaf order
+/// (`pl.Leaves` → `selectLeaves`), which differs from both the registry id sort
+/// and [`HISTORY_COMBINED_ORDER`]. Verified against the live Go binary
+/// (`--analyzers history/* --format json`): the concatenated per-analyzer reports
+/// appear in exactly this sequence.
+pub const HISTORY_PHASE_EMIT_ORDER: &[&str] = &[
+    "history/quality",
+    "history/sentiment",
+    "history/shotness",
+    "history/couples",
+    "history/imports",
+    "history/typos",
+    "history/anomaly",
+    "history/burndown",
+    "history/devs",
+    "history/file-history",
+];
+
+/// Expands a requested pattern list into the concrete history leaf ids it
+/// selects, in Go's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
+/// Literal ids match exactly; globs use Go `path.Match` semantics. Used by the
+/// history-only-glob per-analyzer concatenation path (Go `runHistoryPhase` over a
+/// glob-expanded selection), so a `history/*` or multi-id history selection emits
+/// each leaf's standalone report in the same order Go does.
+/// Whether any requested pattern selects the analyzer `id`, mirroring Go
+/// `Registry.resolvePattern` (registry.go): a bare `*` matches EVERY id (Go
+/// special-cases `pattern == "*"` to `allIDs()` BEFORE `path.Match`, because
+/// `path.Match("*", "history/typos")` is false — `*` does not cross `/`); other
+/// globs use Go `path.Match` semantics ([`go_path_match`]); a literal id matches
+/// exactly. Without the `*` special case, `--analyzers '*'` would select nothing,
+/// while `--analyzers 'history/*'` would still work (the literal `history/`
+/// prefix anchors the match).
+#[must_use]
+fn pattern_selects_id(patterns: &[&str], id: &str) -> bool {
+    let is_glob = |p: &str| p.contains(['*', '?', '[']);
+    patterns.iter().any(|p| {
+        if *p == "*" {
+            true
+        } else if is_glob(p) {
+            go_path_match(p, id)
+        } else {
+            *p == id
+        }
+    })
+}
+
+#[must_use]
+pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
+    let selected = |id: &str| pattern_selects_id(patterns, id);
+    HISTORY_PHASE_EMIT_ORDER
+        .iter()
+        .filter(|id| selected(id))
+        .map(|id| (*id).to_string())
+        .collect()
+}
+
+/// Expands the requested analyzer patterns into concrete (static, history) id
+/// lists in Go combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
+/// registry order, then history analyzers in [`HISTORY_COMBINED_ORDER`]. Literal
+/// (non-glob) ids are matched exactly; globs use Go `path.Match` semantics. This
+/// mirrors Go `registry.Split` + `combinedIDsAndModes` ordering used by the
+/// combined render.
+#[must_use]
+pub fn expand_combined_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
+    let matches = |id: &str| pattern_selects_id(patterns, id);
+    let statics: Vec<String> = STATIC_BIN_ANALYZERS
+        .iter()
+        .filter(|(id, _)| matches(id))
+        .map(|(id, _)| (*id).to_string())
+        .collect();
+    let history: Vec<String> = HISTORY_COMBINED_ORDER
+        .iter()
+        .filter(|id| matches(id))
+        .map(|id| (*id).to_string())
+        .collect();
+    (statics, history)
+}
+
+/// Renders the combined static+history run as the single `codefang.run.v1`
+/// unified-model envelope, the Rust analogue of Go `renderCombinedDirect`
+/// (run.go:678). Each selected analyzer is dispatched through its registry
+/// handler with `--format bin`, producing a CFB1 envelope whose payload is the
+/// analyzer's raw report JSON. The concatenated envelopes are decoded into a
+/// [`cf_analyze::conversion::UnifiedModel`] (Go `DecodeCombinedBinaryReports`),
+/// stamped with run metadata (Go `NewAnalysisMetadata`), and re-serialized in the
+/// requested `output_format` via [`cf_analyze::conversion::write_converted_output`]
+/// so every machine format (json/yaml/bin/ndjson/timeseries) follows from the
+/// one model value.
+///
+/// Returns `None` if any selected analyzer cannot produce its bin payload (e.g.
+/// an unported history analyzer), so the caller can fall back to the per-analyzer
+/// pipeline rather than emit a partial envelope.
+#[must_use]
+pub fn render_combined(
+    ctx: &RunContext,
+    static_ids: &[String],
+    history_ids: &[String],
+    output_format: &str,
+) -> Option<Vec<u8>> {
+    let registry = default_registry();
+    let mut raw: Vec<u8> = Vec::new();
+    let mut ids: Vec<String> = Vec::new();
+    let mut modes: Vec<cf_analyze::AnalyzerMode> = Vec::new();
+
+    // Static phase, then history phase — Go renderCombinedDirect order. Each
+    // handler is dispatched with the literal "bin" format; its CFB1 envelope is
+    // appended to the combined buffer (Go staticExec/historyExec into &raw).
+    // Each leaf's raw report is gathered via its CFB1 bin envelope. Handlers
+    // match on the NORMALIZED format name (Go `ValidateFormat` maps the `bin`
+    // alias to `binary`), so pass the normalized name here — passing the bare
+    // `bin` alias would miss any handler that only accepts `binary` (e.g.
+    // static/halstead), aborting the whole combined render.
+    for id in static_ids {
+        let entry = registry.lookup(id)?;
+        let env = (entry.run)(ctx, "binary")?;
+        raw.extend_from_slice(&env);
+        ids.push(id.clone());
+        modes.push(cf_analyze::AnalyzerMode::static_mode());
+    }
+    for id in history_ids {
+        let entry = registry.lookup(id)?;
+        let env = (entry.run)(ctx, "binary")?;
+        raw.extend_from_slice(&env);
+        ids.push(id.clone());
+        modes.push(cf_analyze::AnalyzerMode::history());
+    }
+
+    let mut model = cf_analyze::conversion::decode_combined_binary_reports(&raw, &ids, &modes).ok()?;
+    model.metadata = Some(cf_analyze::metadata::new_analysis_metadata(&ctx.path));
+
+    // Normalize the requested format to the canonical name the conversion
+    // serializer matches on (Go ValidateUniversalFormat: "bin" -> "binary",
+    // case-folded), then apply the --ndjson modifier on timeseries exactly as
+    // Go renderCombinedDirect does.
+    let normalized = crate::formats::normalize_format(output_format);
+    let render_format = if ctx.ndjson() && normalized == "timeseries" {
+        "timeseries+ndjson".to_string()
+    } else {
+        normalized
+    };
+
+    let mut out: Vec<u8> = Vec::new();
+    cf_analyze::conversion::write_converted_output(&model, &render_format, &mut out, None).ok()?;
+    Some(out)
 }
 
 /// Go `path.Match` semantics over an analyzer ID (`*`, `?`, `[...]`).
@@ -281,12 +744,43 @@ fn match_class(pat: &[u8], ch: u8) -> (bool, &[u8]) {
 // FormatReport* family). One handler per analyzer id — NOT one per (id,format).
 // ---------------------------------------------------------------------------
 
+fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+    let path = &ctx.path;
+    // `format` is the resolved/normalized value: `--format bin` arrives here as
+    // `"binary"` (Go `ValidateFormat` maps the `bin` alias to `binary`); accept
+    // both spellings for robustness.
+    match format {
+        "json" => static_clones::clones_report_json(path),
+        "yaml" => static_clones::clones_report_yaml(path),
+        "binary" | "bin" => static_clones::clones_report_bin(path),
+        "compact" => static_clones::clones_report_compact(path),
+        _ => None,
+    }
+}
+
 fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    // `format` is the resolved/normalized format from `resolve_formats`, where the
+    // `bin` CLI alias has already been normalized to `binary` (formats.rs
+    // `normalize_format`). Match the normalized name so `--format bin` dispatches
+    // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
         "json" => static_complexity::complexity_report(path),
         "yaml" => static_complexity_yaml::complexity_report_yaml(path),
-        "bin" => static_complexity_bin::complexity_report_bin(path),
+        "binary" | "bin" => static_complexity_bin::complexity_report_bin(path),
+        _ => None,
+    }
+}
+
+fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
+    let path = &ctx.path;
+    // `format` is the resolved/normalized format from `resolve_formats`, where the
+    // `bin` CLI alias has already been normalized to `binary` (formats.rs
+    // `normalize_format`). Match the normalized name (accept the raw alias too).
+    match format {
+        "json" => static_cohesion::cohesion_report_json(path),
+        "yaml" => static_cohesion::cohesion_report_yaml(path),
+        "binary" | "bin" => static_cohesion::cohesion_report_bin(path),
         _ => None,
     }
 }
@@ -296,26 +790,38 @@ fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     match format {
         "json" => static_json::composition_report(path),
         "yaml" => static_json::composition_yaml(path),
-        "bin" => static_json::composition_bin(path),
+        // The pipeline resolves the `bin` alias to the canonical `binary`
+        // (formats::normalize_format) before dispatch, so match that; accept the
+        // raw alias too for direct callers.
+        "binary" | "bin" => static_json::composition_bin(path),
         _ => None,
     }
 }
 
 fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    // `format` is the resolved/normalized format from `resolve_formats`, where the
+    // `bin` CLI alias has already been normalized to `binary` (formats.rs
+    // `normalize_format`). Match the normalized name so `--format bin` dispatches
+    // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
         "json" => static_halstead::halstead_json_report(path),
-        "bin" => static_halstead::halstead_bin_report(path),
+        "yaml" => static_halstead::halstead_yaml_report(path),
+        "binary" => static_halstead::halstead_bin_report(path),
         _ => None,
     }
 }
 
 fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
+    // `format` is the resolved/normalized format from `resolve_formats`, where the
+    // `bin` CLI alias has already been normalized to `binary` (formats.rs
+    // `normalize_format`). Match the normalized name so `--format bin` dispatches
+    // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
         "json" => static_imports::imports_report_json(path),
         "yaml" => static_imports::imports_report_yaml(path),
-        "bin" => static_imports::imports_report_bin(path),
+        "binary" => static_imports::imports_report_bin(path),
         _ => None,
     }
 }
@@ -325,37 +831,53 @@ fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     match format {
         "json" => static_comments::comments_report_json(path),
         "yaml" => static_comments::comments_report_yaml(path),
-        "bin" => static_comments::comments_report_bin(path),
+        // The pipeline resolves the `bin` alias to the canonical `binary`
+        // (formats::normalize_format) before dispatch, so match that; accept the
+        // raw alias too for direct callers.
+        "binary" | "bin" => static_comments::comments_report_bin(path),
         _ => None,
     }
 }
 
 fn h_history_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match format {
-        "json" => history::imports_run_report(ctx.matches),
-        _ => None,
-    }
+    // One report value, encoded per format by the shared history serializer
+    // (Go BaseHistoryAnalyzer.Serialize). The YAML section header is the Go
+    // analyzer Name() (`imports.HistoryAnalyzer.Name` == "ImportsPerDeveloper").
+    let metrics = history::imports_run_metrics(ctx.matches)?;
+    serialize_history_metrics(
+        format,
+        "ImportsPerDeveloper",
+        &metrics.to_go_value(),
+        &metrics.to_go_value_yaml(),
+    )
 }
 
 fn h_history_typos(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     match format {
         "json" => history::typos_run_report(ctx.matches),
+        "yaml" => history::typos_run_report_yaml(ctx.matches),
+        "binary" => history::typos_run_report_bin(ctx.matches),
         _ => None,
     }
 }
 
 fn h_history_couples(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match format {
-        "json" => couples_run::couples_run_report(ctx.matches),
-        _ => None,
-    }
+    // One report value (Go `ComputedMetrics`, behind ToJSON/ToYAML); every
+    // machine format is a serializer over it. ToJSON == ToYAML for couples, so
+    // json_value and yaml_value share the same tree. The YAML section name is
+    // the analyzer's Go `Name()` ("Couples").
+    let value = couples_run::couples_run_value(ctx.matches)?;
+    serialize_history_metrics(format, "Couples", &value, &value)
 }
 
 fn h_history_shotness(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match format {
-        "json" => shotness_run::shotness_run_report(ctx.matches),
-        _ => None,
-    }
+    // One report value (Go `ComputedMetrics`, the value behind ToJSON/ToYAML);
+    // every machine format is just a serializer over it. ToJSON == ToYAML for
+    // shotness, so json_value and yaml_value share `to_go_value()`. The YAML
+    // section name is the analyzer's Go `Name()` ("Shotness").
+    let metrics = shotness_run::shotness_run_metrics(ctx.matches)?;
+    let value = metrics.to_go_value();
+    serialize_history_metrics(format, "Shotness", &value, &value)
 }
 
 fn h_history_devs(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
@@ -365,7 +887,13 @@ fn h_history_devs(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         ("json", true) => history::devs_head_report(sub),
         ("json", false) => history::devs_run_report(sub),
         ("yaml", true) => history::devs_head_report_yaml(sub),
-        ("bin", true) => {
+        ("yaml", false) => history::devs_run_report_yaml(sub),
+        ("timeseries+ndjson", false) => history::devs_run_timeseries_ndjson(sub),
+        // The pipeline resolves the `bin` alias to canonical `binary`
+        // (formats::normalize_format) before dispatch; accept the raw alias too
+        // for direct callers.
+        ("binary" | "bin", false) => history::devs_run_report_bin(sub),
+        ("binary" | "bin", true) => {
             let metrics = history::devs_head_metrics(sub)?;
             let payload = cf_devs::serialize::computed_metrics_to_go(&metrics);
             cf_reportutil::encode_binary_envelope(&payload).ok()
@@ -375,31 +903,66 @@ fn h_history_devs(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 }
 
 fn h_history_anomaly(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match (format, ctx.head()) {
-        ("json", true) => history::anomaly_head_report(ctx.matches),
-        _ => None,
+    use cf_anomaly::model::ToGoValue;
+    if ctx.head() {
+        // Closed-form merge-HEAD path (analyzer's deterministic head case): ONE
+        // report value, every machine format an encoding of it via the shared
+        // serializer — so the combined `*` model can request `binary` here too.
+        let metrics = history::anomaly_head_report(ctx.matches)?;
+        let value = metrics.to_go_value();
+        return serialize_history_metrics(format, "TemporalAnomaly", &value, &value);
     }
+    // Full revwalk (no --head): one report value (Go ComputeAllMetrics →
+    // ComputedMetrics), every machine format an encoding of it via the shared
+    // history serializer. ToJSON == ToYAML for anomaly, so json/yaml share the
+    // same GoValue. The YAML section name is the analyzer's Go `Name()`
+    // ("TemporalAnomaly").
+    let metrics = history::anomaly_run_metrics(ctx.matches)?;
+    let value = metrics.to_go_value();
+    serialize_history_metrics(format, "TemporalAnomaly", &value, &value)
 }
 
 fn h_history_quality(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match (format, ctx.head()) {
-        ("json", false) => history::quality_run_report(ctx.matches),
-        _ => None,
-    }
+    // `--head` is handled inside `quality_metrics` (single HEAD-commit window),
+    // so every format is the same encoding of one computed value — including the
+    // `binary` payload the combined `*` model gathers.
+    // One computed report value (Go ComputeAllMetrics), three encodings routed
+    // through the shared serializer (Go FormatReportJSON/YAML/Binary): json/bin
+    // marshal the encoding/json value tree; yaml wraps the same struct-origin
+    // value tree in the `codefang (v2)` envelope under `history/quality:`.
+    let metrics = history::quality_metrics(ctx.matches)?;
+    let value = cf_quality::serialize::computed_metrics_value(&metrics);
+    serialize_history_metrics(format, "history/quality", &value, &value)
 }
 
 fn h_history_sentiment(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match (format, ctx.head()) {
-        ("json", false) => history::sentiment_run_report(ctx.matches),
-        _ => None,
-    }
+    use cf_sentiment::ToGoValue;
+    // `--head` is handled inside `sentiment_metrics` (single HEAD-commit window),
+    // so every format (including the combined `*` model's `binary`) is one
+    // encoding of the same computed value.
+    // One computed report value, three encodings (Go ComputeAllMetrics →
+    // FormatReportJSON/YAML/Binary): json/bin marshal the encoding/json value
+    // tree (nil slice → null); yaml wraps the yaml.v3 value tree (nil → []) in
+    // the `codefang (v2)` envelope. Routed through the shared serializer so every
+    // format follows the one computation (same path as the other history leaves).
+    let metrics = history::sentiment_metrics(ctx.matches)?;
+    serialize_history_metrics(
+        format,
+        "history/sentiment",
+        &metrics.to_go_value(),
+        &metrics.to_go_value_yaml(),
+    )
 }
 
 fn h_history_file_history(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
-    match (format, ctx.head()) {
-        ("json", false) => history::file_history_run_report(ctx.matches),
-        _ => None,
-    }
+    // One computed report value (Go ComputeAllMetricsWithOptions), three machine
+    // encodings (json/bin/yaml). The crate's `computed_metrics_to_go` is the
+    // single `ToJSON`/`ToYAML` value tree (file_history's ToJSON == ToYAML);
+    // route it through the shared history-metrics serializer so all formats are
+    // encodings of THE SAME value (Go BaseHistoryAnalyzer.Serialize). The YAML
+    // section header is the analyzer's Name(): `FileHistoryAnalysis`.
+    let value = history::file_history_report_value(ctx.matches)?;
+    serialize_history_metrics(format, "FileHistoryAnalysis", &value, &value)
 }
 
 fn h_history_burndown(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
@@ -411,11 +974,13 @@ fn h_history_burndown(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         ("timeseries+ndjson", false, _) => burndown_ndjson::burndown_timeseries_ndjson(sub),
         ("ndjson", false, _) => burndown_ndjson::burndown_record_ndjson(sub),
         ("json", false, _) => burndown_ndjson::burndown_run_report(sub),
-        ("json" | "yaml" | "bin", true, _) => {
+        ("yaml", false, _) => burndown_ndjson::burndown_run_report_yaml(sub),
+        ("binary" | "bin", false, _) => burndown_ndjson::burndown_run_report_bin(sub),
+        ("json" | "yaml" | "binary" | "bin", true, _) => {
             let metrics = history::burndown_head_metrics(sub)?;
             let bytes = match format {
                 "json" => cf_gojson::marshal(&metrics.to_go_value()),
-                "bin" => cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()?,
+                "binary" | "bin" => cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()?,
                 _ => {
                     let mut out = Vec::new();
                     out.extend_from_slice(b"codefang (v2):\n");
@@ -454,7 +1019,9 @@ pub fn default_registry() -> Registry {
         run,
     };
 
+    r.register(s("static/clones", h_static_clones));
     r.register(s("static/complexity", h_static_complexity));
+    r.register(s("static/cohesion", h_static_cohesion));
     r.register(s("static/composition", h_static_composition));
     r.register(s("static/halstead", h_static_halstead));
     r.register(s("static/imports", h_static_imports));
@@ -473,3 +1040,4 @@ pub fn default_registry() -> Registry {
 
     r
 }
+

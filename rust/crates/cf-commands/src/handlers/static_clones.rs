@@ -1,0 +1,189 @@
+//! Static-analysis report path for the UAST `static/clones` analyzer.
+//!
+//! Reproduces the Go static folder pipeline for
+//! `codefang run --analyzers static/clones --format {json,yaml,bin}`:
+//!
+//!  1. `StaticService.uastPhase` walks `rootPath` with `filepath.WalkDir` in
+//!     lexical order (directories recursed except `.git`); every regular file
+//!     that is UAST-supported (`parser.IsSupported`), matches `--languages`
+//!     (none here -> all), and is not excluded by `pathpolicy.Exclude` is
+//!     streamed for analysis.
+//!  2. clones is a `VisitorProvider`, so per file the framework runs the
+//!     single-pass [`cf_clones::Visitor`] (full pre-order traversal): it counts
+//!     function nodes and exports each surviving function's MinHash signature in
+//!     the `_func_signatures` report key. The framework then stamps every
+//!     signature item with `_source_file` (the repo-relative path).
+//!  3. The clones [`cf_clones::Aggregator`] folds every per-file report: it sums
+//!     `total_functions`, qualifies each function name as `sourceFile::name`,
+//!     builds ONE global LSH index over all signatures, finds cross-file clone
+//!     pairs (`findClonePairs`, dedup by canonical name key, cap stored pairs at
+//!     `DefaultMaxClonePairs = 1000` while keeping the exact total count), and
+//!     emits the aggregate report value.
+//!  4. That single report value drives every format:
+//!       * `json` -> the report becomes ONE `clones.ReportSection`
+//!         (`renderer.SectionsToJSON`): `overall_score_label` / `sections`
+//!         (title, score_label, status, metrics, distribution, issues, score) /
+//!         `overall_score`. Issues are the stored clone pairs sorted by
+//!         similarity descending; the issue list order is Go-nondeterministic
+//!         (the stored pair multiset is stable, only the tie order varies),
+//!         which the differential oracle canonicalizes.
+//!       * `yaml` / `bin` -> `FormatPerAnalyzer` -> `computeMetricsFromReport`
+//!         (`ComputedMetrics`: total_functions, total_clone_pairs, clone_ratio,
+//!         clone_type_distribution, clone_pairs (the stored <=1000), message),
+//!         marshaled through cf-goyaml / the CFB1 binary envelope.
+//!
+//! The analyzer MATH (signatures, LSH, pair finding, classification, ratio,
+//! section/metrics projection) lives entirely in the cf-clones crate; this
+//! module owns only the pipeline-tier folder walk + the serializer routing,
+//! exactly as Go `internal/framework` + `internal/analyzers/analyze` do.
+
+use std::fs;
+use std::path::Path;
+
+use cf_clones::aggregator::Aggregator;
+use cf_clones::report_section::report_section_json_value;
+use cf_clones::Visitor;
+use cf_analyze::Report;
+use cf_gojson::Encoder;
+use cf_pathpolicy::{exclude, Options};
+use cf_uast::Parser;
+use cf_uast_node::Node as UastNode;
+
+/// Builds the `static/clones --format json` report bytes for `root_path`
+/// (`renderer.SectionsToJSON` of the single aggregated clones section), or
+/// `None` when the path cannot be read.
+#[must_use]
+pub fn clones_report_json(root_path: &str) -> Option<Vec<u8>> {
+    let value = clones_report_value(root_path)?;
+    // Go: json.NewEncoder(w).SetIndent("", "  ").Encode(report) -> two-space
+    // indent + one trailing newline.
+    let bytes = Encoder::indented("  ").with_trailing_newline(true).encode_to_vec(&value);
+    Some(bytes)
+}
+
+/// Builds the `static/clones` `renderer.JSONReport` GoValue (single scored
+/// section), shared by the single-analyzer byte path and the multi-analyzer
+/// static-JSON merge. `None` when the path cannot be walked.
+#[must_use]
+pub fn clones_report_value(root_path: &str) -> Option<cf_gojson::GoValue> {
+    let report = aggregate_report(root_path)?;
+    Some(report_section_json_value(&report))
+}
+
+/// Builds the `static/clones --format yaml` report bytes for `root_path`
+/// (`FormatPerAnalyzer(YAML)` -> `yaml.Marshal(computeMetricsFromReport)`), or
+/// `None` when the path cannot be read.
+#[must_use]
+pub fn clones_report_yaml(root_path: &str) -> Option<Vec<u8>> {
+    let report = aggregate_report(root_path)?;
+    let metrics = cf_clones::Analyzer::new().computed_metrics(&report);
+    Some(cf_goyaml::marshal(&metrics.to_go_value()))
+}
+
+/// Builds the `static/clones --format bin` report bytes for `root_path`
+/// (`FormatPerAnalyzer(Binary)` -> CFB1 envelope of `computeMetricsFromReport`),
+/// or `None` when the path cannot be read.
+#[must_use]
+pub fn clones_report_bin(root_path: &str) -> Option<Vec<u8>> {
+    let report = aggregate_report(root_path)?;
+    let metrics = cf_clones::Analyzer::new().computed_metrics(&report);
+    cf_reportutil::encode_binary_envelope(&metrics.to_go_value()).ok()
+}
+
+/// Builds the `static/clones --format compact` report bytes for `root_path`
+/// (Go `StaticService.FormatCompact` -> `DefaultStaticRenderer.RenderCompact`:
+/// one single-line section render), or `None` when the path cannot be read.
+/// This is the only fully Go-deterministic terminal format for clones — it shows
+/// only the title/score-bar/message, never the order-nondeterministic pair list.
+#[must_use]
+pub fn clones_report_compact(root_path: &str) -> Option<Vec<u8>> {
+    let report = aggregate_report(root_path)?;
+    Some(cf_clones::report_section::report_section_compact(&report))
+}
+
+/// Walks `root_path`, runs the clones visitor per file, and folds the per-file
+/// signature reports into the cross-file aggregate report value. Returns `None`
+/// when the root path does not exist (Go would surface a walk error).
+fn aggregate_report(root_path: &str) -> Option<Report> {
+    let root = Path::new(root_path);
+    if !root.exists() {
+        return None;
+    }
+
+    let parser = Parser::new();
+    let opts = Options::default();
+    let mut agg = Aggregator::new();
+
+    walk(root, root_path, &parser, &opts, &mut agg);
+
+    Some(agg.get_result())
+}
+
+/// Recursively walks `dir` in lexical order, mirroring `filepath.WalkDir`:
+/// directories are recursed (except `.git`), files are filtered through parser
+/// support + path policy, parsed, run through the clones visitor, and folded
+/// into `agg`.
+fn walk(dir: &Path, root_path: &str, parser: &Parser, opts: &Options, agg: &mut Aggregator) {
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
+
+    let mut entries: Vec<_> = read.filter_map(Result::ok).collect();
+    entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+    for entry in entries {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            if entry.file_name() == ".git" {
+                continue;
+            }
+            walk(&path, root_path, parser, opts, agg);
+            continue;
+        }
+
+        let path_str = path.to_string_lossy();
+
+        // ShouldSkipFolderNode: must be UAST-supported.
+        if !parser.is_supported(&path_str) {
+            continue;
+        }
+        // matchesLanguageGlobs (empty -> all match), then pathpolicy.Exclude.
+        if exclude(&path_str, None, opts) {
+            continue;
+        }
+
+        let Ok(content) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(uast_root) = parser.parse(&path_str, &content) else {
+            continue;
+        };
+
+        // Single-pass clones visitor: count functions + export signatures.
+        let mut visitor = Visitor::new();
+        uast_root.visit_pre_order(&mut |n: &UastNode| visitor.on_enter(n));
+
+        // _source_file stamp = path relative to the analyzed root, then fold the
+        // stamped per-file signature report into the aggregate.
+        let source = make_relative_path(&path_str, root_path);
+        let report = visitor.get_report_with_source(&source);
+        agg.aggregate(&[(cf_clones::ANALYZER_NAME.to_string(), report)]);
+    }
+}
+
+/// Go `MakeRelativePath`: `filepath.Rel(rootPath, filePath)`.
+fn make_relative_path(file_path: &str, root_path: &str) -> String {
+    if root_path.is_empty() {
+        return file_path.to_string();
+    }
+    let root = Path::new(root_path);
+    let file = Path::new(file_path);
+    match file.strip_prefix(root) {
+        Ok(rel) => rel.to_string_lossy().into_owned(),
+        Err(_) => file_path.to_string(),
+    }
+}

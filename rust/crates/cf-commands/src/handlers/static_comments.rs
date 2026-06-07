@@ -126,6 +126,19 @@ pub fn comments_report_bin(root_path: &str) -> Option<Vec<u8>> {
 /// issue list is sorted by name (file-walk order within equal names).
 #[must_use]
 pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
+    let root = comments_report_value(root_path)?;
+    Some(
+        cf_gojson::Encoder::indented("  ")
+            .with_trailing_newline(true)
+            .encode(&root),
+    )
+}
+
+/// Builds the `static/comments` `renderer.JSONReport` GoValue (single scored
+/// section), shared by the single-analyzer byte path and the multi-analyzer
+/// static-JSON merge. `None` when the path cannot be walked.
+#[must_use]
+pub fn comments_report_value(root_path: &str) -> Option<GoValue> {
     let agg = comments_aggregate(root_path)?;
     let report_count = agg.report_count.max(0);
     let mean = |sum: f64| if report_count > 0 { sum / report_count as f64 } else { 0.0 };
@@ -217,11 +230,7 @@ pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
     root.push("sections", GoValue::Array(vec![GoValue::Map(section)]));
     root.push("overall_score", GoValue::Float(score));
 
-    Some(
-        cf_gojson::Encoder::indented("  ")
-            .with_trailing_newline(true)
-            .encode(&GoValue::Map(root)),
-    )
+    Some(GoValue::Map(root))
 }
 
 /// `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`.

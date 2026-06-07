@@ -139,7 +139,7 @@ pub fn language_data_to_go(l: &LanguageData) -> GoValue {
         GoValue::Int(l.total_contribution),
     );
 
-    let mut contribs = GoMap::new_map();
+    let mut contribs = GoMap::new_int_map();
     for (id, lines) in &l.contributors {
         contribs.insert(id.to_string(), GoValue::Int(*lines));
     }

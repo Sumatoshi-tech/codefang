@@ -148,6 +148,36 @@ impl Analyzer {
         Ok(self.build_result(&functions, &metrics))
     }
 
+    /// Performs cohesion analysis the way the **static pipeline actually runs it**:
+    /// via the cohesion [`Visitor`](crate::visitor) (Go `cohesion.Visitor`), driven
+    /// by a preorder DFS over the UAST (Go `MultiAnalyzerTraverser.Traverse`).
+    ///
+    /// This is NOT the same as [`Analyze`](Self::analyze): the visitor's function
+    /// detection (`HasAnyType(Function,Method) OR HasAllRoles(Function,Declaration)`)
+    /// and its context-stack variable attribution (variables belong to the
+    /// *innermost* enclosing function) differ from the `findFunctions` path, and the
+    /// static pipeline (`Factory.runVisitors`) uses the visitor. Use this for
+    /// folder-walk parity.
+    #[must_use]
+    pub fn analyze_visitor<N: Node>(&self, root: &N) -> Report {
+        let functions = crate::visitor::collect_functions_via_visitor(self, root);
+        if functions.is_empty() {
+            return self.build_empty_result();
+        }
+        let mut functions = functions;
+        self.compute_per_function_cohesion(&mut functions);
+        let metrics = self.calculate_metrics(&functions);
+        self.build_result(&functions, &metrics)
+    }
+
+    /// Visitor function predicate (Go `(*Visitor).isFunction`): type Function/Method
+    /// OR roles {Function AND Declaration}. Distinct from [`Self::is_function_node`].
+    #[must_use]
+    pub fn is_visitor_function<N: Node>(&self, n: &N) -> bool {
+        n.has_any_type(&[ty::FUNCTION, ty::METHOD])
+            || n.has_all_roles(&[role::FUNCTION, role::DECLARATION])
+    }
+
     /// Computes per-function cohesion via the global shared-variable Bloom filter
     /// (Go `computePerFunctionCohesion`).
     pub fn compute_per_function_cohesion(&self, functions: &mut [Function]) {
@@ -428,7 +458,7 @@ impl Analyzer {
     /// Extracts the function name (Go `extractFunctionName`).
     #[must_use]
     pub fn extract_function_name<N: Node>(&self, n: &N) -> String {
-        n.entity_name().to_string()
+        n.entity_name()
     }
 
     /// Collects all variable names within a function subtree (Go `extractVariables`
@@ -470,10 +500,24 @@ impl Analyzer {
         n.has_any_type(&[ty::IDENTIFIER]) && n.has_any_role(&[role::VARIABLE, role::NAME])
     }
 
+    /// Public wrapper of the declaration predicate, used by the visitor module
+    /// (Go `(*Analyzer).isVariableDeclaration`).
+    #[must_use]
+    pub fn is_variable_declaration_pub<N: Node>(&self, n: &N) -> bool {
+        self.is_variable_declaration(n)
+    }
+
+    /// Public wrapper of the identifier predicate, used by the visitor module
+    /// (Go `(*Analyzer).isVariableIdentifier`).
+    #[must_use]
+    pub fn is_variable_identifier_pub<N: Node>(&self, n: &N) -> bool {
+        self.is_variable_identifier(n)
+    }
+
     fn add_variable_if_valid<N: Node>(&self, n: &N, vars: &mut Vec<String>) {
         let name = n.entity_name();
         if !name.is_empty() {
-            vars.push(name.to_string());
+            vars.push(name);
         }
     }
 }

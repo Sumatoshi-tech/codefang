@@ -193,7 +193,70 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     }
 
-    match pipeline::run_pipeline(&registry, &ctx, &ids) {
+    // Special case preserved from Go renderer.SectionsToJSON: a STATIC-ONLY
+    // selection (no history analyzer) of MORE THAN ONE static analyzer (a literal
+    // multi-id list or a glob like `static/*`) with `--format json` renders ONE
+    // merged JSONReport — sections in registry order, overall_score the average
+    // of the scored sections. A single static analyzer keeps its own one-section
+    // document (the per-id pipeline below); a selection that also matches a
+    // history analyzer (e.g. `*`) uses the UnifiedModel path, not this merge.
+    if raw_format == "json"
+        && !analyzer_strs.is_empty()
+        && analyzer_strs.iter().all(|a| handlers::is_static_id_or_glob(a))
+        && handlers::static_json_selects_multiple(&analyzer_strs)
+    {
+        if let Some(bytes) = handlers::static_multi_json(&analyzer_strs, &ctx.path) {
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            return 0;
+        }
+    }
+
+    // Mixed static+history selection (both phases non-empty) renders the single
+    // `codefang.run.v1` unified-model envelope, mirroring Go runDirect →
+    // renderCombinedDirect. This is NOT a per-analyzer concatenation: every
+    // selected analyzer's raw report is gathered (via its bin payload) into one
+    // model with run metadata and re-serialized in the requested format by the
+    // serializer layer (cf-analyze::write_converted_output). Plot is excluded
+    // (Go isMixedPlot keeps the separate-phase path). On any unported analyzer
+    // the helper returns None and we fall through to the per-id pipeline.
+    let (combined_static, combined_history) = handlers::expand_combined_ids(&analyzer_strs);
+    if !combined_static.is_empty()
+        && !combined_history.is_empty()
+        && raw_format != "plot"
+        && raw_format != "compact"
+    {
+        if let Some(bytes) =
+            handlers::render_combined(&ctx, &combined_static, &combined_history, &raw_format)
+        {
+            std::io::stdout().write_all(&bytes).expect("write stdout");
+            return 0;
+        }
+    }
+
+    // Expand globs / literal ids to the concrete registry ids the per-id pipeline
+    // dispatches (Go `registry.Split` resolves patterns before the phase loop).
+    // `run_pipeline` matches literal ids only, so an unexpanded glob like
+    // `history/*` would otherwise miss every handler. The static phase uses the
+    // registry static order; the history phase uses Go's SEPARATE-phase emit order
+    // (`HISTORY_PHASE_EMIT_ORDER` — `runHistoryPhase` over the glob-expanded leaf
+    // set), which differs from the combined-model order, so a history-only glob's
+    // per-analyzer reports concatenate in the same sequence Go writes them. Fall
+    // back to the raw selection when nothing expands (preserves Go's unknown-id
+    // error). A glob in `analyzer_strs` forces the expanded ordering even for a
+    // mixed selection; a purely literal selection keeps its request order.
+    let resolved_ids = {
+        let is_glob = |p: &&str| p.contains(['*', '?', '[']);
+        if analyzer_strs.iter().any(is_glob) {
+            let (s, _h) = handlers::expand_combined_ids(&analyzer_strs);
+            let mut v = s;
+            v.extend(handlers::expand_history_phase_ids(&analyzer_strs));
+            if v.is_empty() { ids.clone() } else { v }
+        } else {
+            ids.clone()
+        }
+    };
+
+    match pipeline::run_pipeline(&registry, &ctx, &resolved_ids) {
         Ok(outputs) => {
             let mut out = std::io::stdout();
             for phase in &outputs {

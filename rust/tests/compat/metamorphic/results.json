@@ -1,9 +1,9 @@
 {
   "tier": "smoke",
   "tally": {
-    "PASS": 39,
+    "PASS": 43,
     "SIM": 0,
-    "FAIL": 4,
+    "FAIL": 0,
     "NA": 3
   },
   "records": [
@@ -54,7 +54,7 @@
       "property": "grow-limit",
       "label": "history/devs@kube",
       "verdict": "PASS",
-      "go_grows": "6458->24471",
+      "go_grows": "6455->24450",
       "rust_grows": "6455->24471"
     },
     {
@@ -76,7 +76,7 @@
       "property": "grow-limit",
       "label": "history/typos@kube",
       "verdict": "PASS",
-      "go_grows": "138->5757",
+      "go_grows": "138->5952",
       "rust_grows": "138->6082"
     },
     {
@@ -84,13 +84,13 @@
       "label": "history/couples@kube",
       "verdict": "PASS",
       "go_grows": "1047972->1380105",
-      "rust_grows": "1047972->1433931"
+      "rust_grows": "1049727->1361905"
     },
     {
       "property": "grow-limit",
       "label": "history/shotness@kube",
       "verdict": "PASS",
-      "go_grows": "194->3665132",
+      "go_grows": "194->3469694",
       "rust_grows": "190->1329608"
     },
     {
@@ -104,7 +104,7 @@
       "property": "determinism",
       "label": "static/complexity@hercules",
       "verdict": "PASS",
-      "sha": "30a591254c765f1eabe008381a10992236860877866fde9324190b2500676fb2",
+      "sha": "54ba4eb574e75aa0a1b824b5d79f736d087775ef8b4327e8c0f1e865334c72d9",
       "runs": 3
     },
     {
@@ -140,13 +140,13 @@
       "label": "history/couples@hercules",
       "verdict": "PASS",
       "go_len": 2772,
-      "rust_len": 3033
+      "rust_len": 2772
     },
     {
       "property": "non-empty",
       "label": "history/shotness@hercules",
       "verdict": "PASS",
-      "go_len": 383758,
+      "go_len": 386083,
       "rust_len": 375599
     },
     {
@@ -159,11 +159,9 @@
     {
       "property": "non-empty",
       "label": "history/file-history@hercules",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "run --checkpoint=false --resume=false --no-cache --workers 1 --analyzers history/file-history --format json --limit 20 /home/dmitriy/sources/hercules",
+      "verdict": "PASS",
       "go_len": 3391,
-      "rust_len": 0
+      "rust_len": 3391
     },
     {
       "property": "non-empty",
@@ -177,69 +175,63 @@
       "label": "history/quality@hercules",
       "verdict": "PASS",
       "go_len": 3232,
-      "rust_len": 2483
+      "rust_len": 3232
     },
     {
       "property": "non-empty",
       "label": "history/anomaly@hercules",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "run --checkpoint=false --resume=false --no-cache --workers 1 --analyzers history/anomaly --format json --limit 20 /home/dmitriy/sources/hercules",
+      "verdict": "PASS",
       "go_len": 2379,
-      "rust_len": 0
+      "rust_len": 2379
     },
     {
       "property": "non-empty",
       "label": "static/complexity@hercules",
       "verdict": "PASS",
       "go_len": 321919,
-      "rust_len": 315406
+      "rust_len": 321919
     },
     {
       "property": "non-empty",
       "label": "static/composition@hercules",
       "verdict": "PASS",
       "go_len": 1458,
-      "rust_len": 1460
+      "rust_len": 1458
     },
     {
       "property": "non-empty",
       "label": "static/halstead@hercules",
       "verdict": "PASS",
       "go_len": 340739,
-      "rust_len": 333726
+      "rust_len": 340739
     },
     {
       "property": "non-empty",
       "label": "static/comments@hercules",
       "verdict": "PASS",
       "go_len": 236197,
-      "rust_len": 223349
+      "rust_len": 236197
     },
     {
       "property": "non-empty",
       "label": "static/imports@hercules",
       "verdict": "PASS",
       "go_len": 26337,
-      "rust_len": 24269
+      "rust_len": 26337
     },
     {
       "property": "non-empty",
       "label": "static/clones@hercules",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "run --checkpoint=false --resume=false --no-cache --head --workers 1 --static-workers 1 -p /home/dmitriy/sources/hercules --analyzers static/clones --format json",
+      "verdict": "PASS",
       "go_len": 258822,
-      "rust_len": 0
+      "rust_len": 258822
     },
     {
       "property": "non-empty",
       "label": "static/cohesion@hercules",
-      "verdict": "FAIL",
-      "reason": "rust EMPTY where Go is NON-EMPTY (0-byte stub / not ported)",
-      "input": "run --checkpoint=false --resume=false --no-cache --head --workers 1 --static-workers 1 -p /home/dmitriy/sources/hercules --analyzers static/cohesion --format json",
-      "go_len": 274945,
-      "rust_len": 0
+      "verdict": "PASS",
+      "go_len": 274941,
+      "rust_len": 274941
     },
     {
       "property": "non-empty",

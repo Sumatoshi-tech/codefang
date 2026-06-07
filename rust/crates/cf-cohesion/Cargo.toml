@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 cf-gojson = { workspace = true }
+cf-gosort = { workspace = true }
 cf-goyaml = { path = "../cf-goyaml" }
 cf-reportutil = { path = "../cf-reportutil" }
 cf-uast-node = { path = "../cf-uast-node" }

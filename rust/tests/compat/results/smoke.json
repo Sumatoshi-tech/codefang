@@ -3,8 +3,8 @@
   "matrix_hash": "94130a05066db2a4477e07f206566abea72731e992802f8e0f1f2ace88c80a4b",
   "total_cells": 155,
   "tally": {
-    "PASS": 33,
-    "FAIL": 50,
+    "PASS": 83,
+    "FAIL": 0,
     "SIM": 0,
     "EXPECTED_EMPTY": 72
   },
@@ -1446,7 +1446,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/clones[bin]@hercules",
@@ -1469,7 +1469,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/clones[yaml]@hercules",
@@ -1492,7 +1492,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/complexity[json]@hercules",
@@ -1515,7 +1515,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/complexity[bin]@hercules",
@@ -1538,7 +1538,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/complexity[yaml]@hercules",
@@ -1561,7 +1561,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/comments[json]@hercules",
@@ -1584,7 +1584,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/comments[bin]@hercules",
@@ -1607,7 +1607,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/comments[yaml]@hercules",
@@ -1630,7 +1630,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/halstead[json]@hercules",
@@ -1676,7 +1676,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/halstead[yaml]@hercules",
@@ -1699,7 +1699,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/cohesion[json]@hercules",
@@ -1722,7 +1722,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/cohesion[bin]@hercules",
@@ -1745,7 +1745,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/cohesion[yaml]@hercules",
@@ -1768,7 +1768,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/imports[json]@hercules",
@@ -1791,7 +1791,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/imports[bin]@hercules",
@@ -1814,7 +1814,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/imports[yaml]@hercules",
@@ -1860,7 +1860,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/composition[bin]@hercules",
@@ -1883,7 +1883,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static:static/composition[yaml]@hercules",
@@ -1906,7 +1906,7 @@
       ],
       "family": "static_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static-set:*[json]@hercules",
@@ -1929,7 +1929,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static-set:static/*[json]@hercules",
@@ -1952,7 +1952,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static-set:static/complexity,static/halstead[json]@hercules",
@@ -1975,7 +1975,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "static-set:static/complexity,history/devs[json]@hercules",
@@ -1998,7 +1998,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/sentiment[json]@hercules/lim20",
@@ -2040,7 +2040,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/sentiment[yaml]@hercules/lim20",
@@ -2061,7 +2061,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/shotness[json]@hercules/lim20",
@@ -2103,7 +2103,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/shotness[yaml]@hercules/lim20",
@@ -2124,7 +2124,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/typos[json]@hercules/lim20",
@@ -2166,7 +2166,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/typos[yaml]@hercules/lim20",
@@ -2187,7 +2187,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/anomaly[json]@hercules/lim20",
@@ -2208,7 +2208,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/anomaly[bin]@hercules/lim20",
@@ -2229,7 +2229,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/anomaly[yaml]@hercules/lim20",
@@ -2250,7 +2250,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/burndown[json]@hercules/lim20",
@@ -2292,7 +2292,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/burndown[yaml]@hercules/lim20",
@@ -2313,7 +2313,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/imports[json]@hercules/lim20",
@@ -2355,7 +2355,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/imports[yaml]@hercules/lim20",
@@ -2376,7 +2376,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/quality[json]@hercules/lim20",
@@ -2418,7 +2418,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/quality[yaml]@hercules/lim20",
@@ -2439,7 +2439,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/couples[json]@hercules/lim20",
@@ -2460,7 +2460,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/couples[bin]@hercules/lim20",
@@ -2481,7 +2481,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/couples[yaml]@hercules/lim20",
@@ -2502,7 +2502,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/devs[json]@hercules/lim20",
@@ -2544,7 +2544,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/devs[yaml]@hercules/lim20",
@@ -2565,7 +2565,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/file-history[json]@hercules/lim20",
@@ -2586,7 +2586,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/file-history[bin]@hercules/lim20",
@@ -2607,7 +2607,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/file-history[yaml]@hercules/lim20",
@@ -2628,7 +2628,7 @@
       ],
       "family": "history_analyzer",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history-set:*[json]@hercules/lim20",
@@ -2649,7 +2649,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history-set:history/*[json]@hercules/lim20",
@@ -2670,7 +2670,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history-set:history/devs,history/burndown[json]@hercules/lim20",
@@ -2691,7 +2691,7 @@
       ],
       "family": "analyzer_set",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     },
     {
       "label": "history:history/devs[timeseries+ndjson]@hercules/lim20",
@@ -2713,7 +2713,7 @@
       ],
       "family": "format_combo",
       "tier": "smoke",
-      "verdict": "FAIL"
+      "verdict": "PASS"
     }
   ]
 }

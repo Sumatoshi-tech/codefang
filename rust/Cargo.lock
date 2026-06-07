@@ -366,6 +366,7 @@ dependencies = [
  "cf-analyze",
  "cf-analyzers-common",
  "cf-gojson",
+ "cf-gosort",
  "cf-goyaml",
  "cf-reportutil",
  "cf-uast-node",
@@ -384,6 +385,8 @@ dependencies = [
  "cf-budget",
  "cf-burndown-core",
  "cf-checkpoint",
+ "cf-clones",
+ "cf-cohesion",
  "cf-comments",
  "cf-complexity",
  "cf-composition",
@@ -439,6 +442,7 @@ version = "0.0.0"
 dependencies = [
  "cf-gojson",
  "cf-goyaml",
+ "cf-langpath",
  "serde_json",
 ]
 

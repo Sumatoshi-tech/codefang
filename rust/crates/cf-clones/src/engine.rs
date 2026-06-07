@@ -16,7 +16,7 @@ use cf_uast_node::Node;
 use crate::report::{classify_clone_type, ClonePair, CloneTypeCounts};
 use crate::shingler::Shingler;
 use crate::uast::{
-    ROLE_DECLARATION, ROLE_FUNCTION, ROLE_NAME, ROLE_PARAMETER, UAST_FUNCTION, UAST_METHOD,
+    ROLE_DECLARATION, ROLE_FUNCTION, ROLE_PARAMETER, UAST_FUNCTION, UAST_METHOD,
 };
 use crate::{MIN_FUNCTION_NODES, NUM_HASHES};
 
@@ -87,26 +87,40 @@ pub fn extract_func_name(fn_node: &Node) -> String {
 
 /// Extracts the entity (function/identifier) name from a node.
 ///
-/// Mirrors Go `common.ExtractEntityName`: prefer the node's `props["name"]`,
-/// then the first descendant carrying the `Name` role (its token), then the
-/// node's own token. Returns `None` when nothing usable is found.
+/// Mirrors Go `common.ExtractEntityName` exactly, in its precedence order:
+///  1. the node's `props["name"]` (`ExtractNameFromProps`);
+///  2. the node's OWN token (`ExtractNameFromToken`);
+///  3. the **first child** (index 0): its token, then its `props["name"]`
+///     (`ExtractNameFromChildren(n, 0)`).
+///
+/// Go checks the node's own token BEFORE descending to a child, and the child
+/// step looks only at `Children[0]` (not "the first child with the Name role").
+/// Both points matter: e.g. C `Function` nodes whose token is the full function
+/// text must keep that text as the name so distinct functions stay distinct in
+/// the LSH index. Returns `None` when nothing usable is found. (Go returns
+/// `("", false)` only when all three steps fail; an empty `props["name"]` value
+/// is still returned by Go as `("", true)`, but `extract_func_name` treats an
+/// empty result identically to `None`, so the observable name is the same.)
 #[must_use]
 fn extract_entity_name(n: &Node) -> Option<String> {
+    // 1. props["name"] — present-key wins even if empty (Go returns ("", true)).
     if let Some(name) = n.props.get("name") {
-        if !name.is_empty() {
-            return Some(name.to_string());
-        }
+        return Some(name.to_string());
     }
 
-    // First child with the Name role whose token is non-empty.
-    for child in &n.children {
-        if child.has_any_role(&[ROLE_NAME]) && !child.token.is_empty() {
-            return Some(child.token.clone());
-        }
-    }
-
+    // 2. node's own token.
     if !n.token.is_empty() {
         return Some(n.token.clone());
+    }
+
+    // 3. first child (index 0): token, then props["name"].
+    if let Some(child) = n.children.first() {
+        if !child.token.is_empty() {
+            return Some(child.token.clone());
+        }
+        if let Some(name) = child.props.get("name") {
+            return Some(name.to_string());
+        }
     }
 
     None
@@ -255,9 +269,21 @@ pub fn find_clone_pairs(
     let mut result = ClonePairResult::default();
 
     for entry in entries {
-        let Ok(candidates) = idx.query_threshold(&entry.sig, min_similarity) else {
+        let Ok(mut candidates) = idx.query_threshold(&entry.sig, min_similarity) else {
             continue;
         };
+
+        // Go's `lsh.Query` collects candidates via Go map iteration (`for id :=
+        // range seen`), whose order is randomized per run; the Rust LSH `query`
+        // likewise iterates a `HashMap`. That randomness propagates into the
+        // discovery order, which (a) decides which pairs survive the
+        // `pair_cap`, and (b) is the tie-break order among equal-similarity
+        // pairs after the final sort. Sorting the candidates here makes
+        // discovery order deterministic, so the stored pair SET and ORDER are
+        // reproducible run-to-run. (Go is order-nondeterministic here; the
+        // compat harness canonicalizes that away, but it requires Rust to be
+        // deterministic.)
+        candidates.sort_unstable();
 
         for candidate_id in candidates {
             if candidate_id == entry.name {
@@ -284,11 +310,19 @@ pub fn find_clone_pairs(
     }
 
     // Go: sort.Slice(pairs, |i,j| pairs[i].Similarity > pairs[j].Similarity).
-    // A strict-greater comparator over f64 (no NaN here) gives a descending
-    // sort; `sort_by` with `total_cmp` reversed reproduces it deterministically.
-    result
-        .pairs
-        .sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+    // Go's `sort.Slice` is UNSTABLE, so equal-similarity pairs keep whatever
+    // (randomized) discovery order they had — Go is order-nondeterministic for
+    // this list, which the compat harness canonicalizes by sorting. To be
+    // deterministic on the Rust side we give equal-similarity pairs a stable
+    // tie-break on the qualified names, so two identical Rust runs are
+    // byte-identical (the harness requires Rust determinism). The membership of
+    // the list still matches Go; only the within-tier order is pinned.
+    result.pairs.sort_by(|a, b| {
+        b.similarity
+            .total_cmp(&a.similarity)
+            .then_with(|| a.func_a.cmp(&b.func_a))
+            .then_with(|| a.func_b.cmp(&b.func_b))
+    });
 
     result
 }
@@ -370,10 +404,25 @@ mod tests {
 
     #[test]
     fn extract_func_name_qualifies_methods() {
-        let recv = NodeBuilder::new("Parameter").role("Parameter").token("(f *Foo)").build();
+        // Go `ExtractEntityName` precedence: props["name"] -> own token ->
+        // Children[0]'s token. Here the method's name comes from Children[0]
+        // ("DoWork"); the receiver type is discovered separately by
+        // `extract_receiver_type` (which scans all children for the Parameter
+        // role), yielding "Foo.DoWork".
         let name = NodeBuilder::new("Identifier").role("Name").token("DoWork").build();
-        let m = NodeBuilder::new("Method").child(recv).child(name).build();
+        let recv = NodeBuilder::new("Parameter").role("Parameter").token("(f *Foo)").build();
+        let m = NodeBuilder::new("Method").child(name).child(recv).build();
         assert_eq!(extract_func_name(&m), "Foo.DoWork");
+    }
+
+    #[test]
+    fn extract_func_name_own_token_beats_children() {
+        // Go checks the node's OWN token before any child. A C `Function` node
+        // whose token is the full function text keeps that text as its name, so
+        // distinct functions stay distinct in the LSH index.
+        let child = NodeBuilder::new("Identifier").role("Name").token("U16").build();
+        let f = NodeBuilder::new("Function").token("static U16 LZ4_read16(...)").child(child).build();
+        assert_eq!(extract_func_name(&f), "static U16 LZ4_read16(...)");
     }
 
     #[test]

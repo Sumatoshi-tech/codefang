@@ -140,6 +140,22 @@ pub fn aggregate(reports: &[Report]) -> Report {
         "function_cohesion".into(),
         ReportValue::Float(mean("function_cohesion")),
     );
+    // Go `SpillableDataCollector.GetSortedData` sorts the de-duplicated rows by
+    // the *last* identifier key ("name") via `sort.Slice` (unstable pdqsort)
+    // before they enter the report. Replicating both the key and Go's exact tie
+    // permutation here is what makes the downstream value-sort in `report_section`
+    // (also an unstable pdqsort) emit the same byte order as Go.
+    cf_gosort::go_sort_slice(&mut functions, |a, b| {
+        let na = a
+            .get(DEDUP_KEYS[1])
+            .and_then(ReportValue::as_str)
+            .unwrap_or("");
+        let nb = b
+            .get(DEDUP_KEYS[1])
+            .and_then(ReportValue::as_str)
+            .unwrap_or("");
+        na < nb
+    });
     out.insert("functions".into(), ReportValue::Functions(functions));
     out.insert(
         "message".into(),

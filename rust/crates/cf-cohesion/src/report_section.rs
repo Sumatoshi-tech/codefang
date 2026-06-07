@@ -171,7 +171,7 @@ impl ReportSection {
         if functions.is_empty() {
             return Vec::new();
         }
-        let mut issues: Vec<(f64, Issue)> = functions
+        let mut out: Vec<Issue> = functions
             .iter()
             .map(|f| {
                 let coh = f
@@ -188,22 +188,19 @@ impl ReportSection {
                     .and_then(ReportValue::as_str)
                     .unwrap_or("")
                     .to_string();
-                (
-                    coh,
-                    Issue {
-                        name,
-                        location,
-                        value: format_float(coh),
-                        severity: severity_for_cohesion(coh).to_string(),
-                    },
-                )
+                Issue {
+                    name,
+                    location,
+                    value: format_float(coh),
+                    severity: severity_for_cohesion(coh).to_string(),
+                }
             })
             .collect();
-        // Go orders by the formatted string Value ascending; we sort by numeric
-        // cohesion which yields the same order for the formatted decimals and is the
-        // cosmetic intent. (Terminal output is non-binding.)
-        issues.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut out: Vec<Issue> = issues.into_iter().map(|(_, i)| i).collect();
+        // Go (`cohesionLess`) orders issues by the formatted string `Value`
+        // ascending via `sort.Slice` (unstable pdqsort). Replicate both the
+        // string key and Go's exact tie permutation so the emitted byte order
+        // matches; numeric sorting or a stable sort diverges on ties.
+        cf_gosort::go_sort_slice(&mut out, |a, b| a.value < b.value);
         if limit > 0 && out.len() > limit {
             out.truncate(limit);
         }

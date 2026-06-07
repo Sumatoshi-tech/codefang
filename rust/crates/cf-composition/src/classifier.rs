@@ -147,41 +147,32 @@ mod enry {
         base.starts_with('.') && base != "."
     }
 
-    /// `enry.IsConfiguration` — exact port of the *algorithm*: the file's
-    /// language (by extension) must be one of enry's `ConfigurationLanguages`
-    /// (`{INI, JSON, TOML, YAML, XML}`).
+    /// `enry.IsConfiguration` — exact port:
     ///
-    /// enry resolves the language via its full extension table; here the mapping
-    /// is restricted to the extensions that resolve to a *configuration*
-    /// language (the only ones that matter for this predicate), taken from the
-    /// enry v2.1.0 data:
+    /// ```go
+    /// func IsConfiguration(path string) bool {
+    ///     language, _ := GetLanguageByExtension(path)
+    ///     _, is := configurationLanguages[language]
+    ///     return is
+    /// }
+    /// var configurationLanguages = map[string]bool{
+    ///     "XML": true, "JSON": true, "TOML": true, "YAML": true, "INI": true, "SQL": true,
+    /// }
+    /// ```
     ///
-    /// * YAML — `.yml`, `.yaml`, plus the well-known YAML config filenames
-    ///   enry maps (e.g. `.golangci.yml`).
-    /// * JSON — `.json`
-    /// * TOML — `.toml`
-    /// * INI  — `.ini`, `.cfg`, `.prefs`, `.pro`, `.properties`
-    /// * XML  — `.xml`, and the many XML-family extensions; the common ones are
-    ///   listed.
-    ///
-    /// Extensions resolving to a non-config language (or to none, e.g.
-    /// `.editorconfig`) return `false`, so such files fall through to the
-    /// DotFile / Source branches exactly as in Go.
+    /// We resolve the extension-only language via enry's real
+    /// `data.LanguagesByExtension` table (vendored in `cf-langpath`) through
+    /// [`cf_langpath::language_by_extension`], then test membership in the exact
+    /// `configurationLanguages` set. This replaces the previous hand-curated
+    /// extension list, which both missed entries (`SQL`, and the long XML-family
+    /// tail) and added wrong ones, so files now bucket exactly as Go does.
     pub fn is_configuration(path: &str) -> bool {
-        const CONFIG_EXTS: &[&str] = &[
-            // YAML
-            ".yml", ".yaml",
-            // JSON
-            ".json",
-            // TOML
-            ".toml",
-            // INI
-            ".ini", ".cfg", ".prefs", ".properties",
-            // XML
-            ".xml", ".xsd", ".xsl", ".plist", ".csproj", ".props",
-        ];
-        let ext = ext_lower(path);
-        CONFIG_EXTS.contains(&ext.as_str())
+        const CONFIGURATION_LANGUAGES: [&str; 6] =
+            ["XML", "JSON", "TOML", "YAML", "INI", "SQL"];
+        match cf_langpath::language_by_extension(path) {
+            Some(lang) => CONFIGURATION_LANGUAGES.contains(&lang.as_str()),
+            None => false,
+        }
     }
 
     /// `enry.IsVendor` — path matches a vendoring convention.
@@ -219,19 +210,120 @@ mod enry {
         path == "vendor" || path == "node_modules"
     }
 
-    /// `enry.IsDocumentation` — path matches a documentation convention.
+    /// `enry.IsDocumentation` — exact port of `data.DocumentationMatchers`.
     ///
-    /// enry checks `data.DocumentationMatchers` (regexes), which cover both
-    /// documentation directories (e.g. a `docs/` segment) and prose extensions.
-    /// The high-frequency rules are reproduced here.
+    /// enry's matcher is a `substring.Or` of unanchored `regexp.MatchString`
+    /// patterns (verbatim from `src-d/enry/v2@v2.1.0/data/documentation.go`,
+    /// extracted from github/linguist):
+    ///
+    /// ```text
+    /// ^[Dd]ocs?/                  (^|/)[Dd]ocumentation/   (^|/)[Gg]roovydoc/
+    /// (^|/)[Jj]avadoc/            ^[Mm]an/                 ^[Ee]xamples/
+    /// ^[Dd]emos?/                 (^|/)inst/doc/
+    /// (^|/)CHANGE(S|LOG)?(\.|$)   (^|/)CONTRIBUTING(\.|$)  (^|/)COPYING(\.|$)
+    /// (^|/)INSTALL(\.|$)          (^|/)LICEN[CS]E(\.|$)    (^|/)[Ll]icen[cs]e(\.|$)
+    /// (^|/)README(\.|$)          (^|/)[Rr]eadme(\.|$)      ^[Ss]amples?/
+    /// ```
+    ///
+    /// These are PATH-only (no prose extensions such as `.md`/`.rst` — the
+    /// previous port wrongly added those, over-classifying source files as
+    /// documentation). The patterns are reproduced exactly below without a regex
+    /// dependency.
     pub fn is_documentation(path: &str) -> bool {
-        const DOC_EXTS: [&str; 6] = [".md", ".markdown", ".rst", ".adoc", ".txt", ".org"];
-        const DOC_DIR_SEGMENTS: [&str; 4] = ["docs/", "/docs/", "doc/", "/doc/"];
-        let lower = path.to_ascii_lowercase();
-        if DOC_EXTS.iter().any(|ext| lower.ends_with(ext)) {
+        // `^[Dd]ocs?/` — starts with Doc/ Docs/ doc/ docs/.
+        if dir_prefix(path, &["Doc/", "Docs/", "doc/", "docs/"]) {
             return true;
         }
-        DOC_DIR_SEGMENTS.iter().any(|seg| lower.starts_with(seg) || lower.contains(seg))
+        // `(^|/)X/` directory-segment matchers.
+        if dir_segment(path, &["Documentation/", "documentation/"]) {
+            return true;
+        }
+        if dir_segment(path, &["groovydoc/", "Groovydoc/"]) {
+            return true;
+        }
+        if dir_segment(path, &["javadoc/", "Javadoc/"]) {
+            return true;
+        }
+        // `^[Mm]an/`
+        if dir_prefix(path, &["man/", "Man/"]) {
+            return true;
+        }
+        // `^[Ee]xamples/`
+        if dir_prefix(path, &["examples/", "Examples/"]) {
+            return true;
+        }
+        // `^[Dd]emos?/`
+        if dir_prefix(path, &["demo/", "demos/", "Demo/", "Demos/"]) {
+            return true;
+        }
+        // `(^|/)inst/doc/`
+        if dir_segment(path, &["inst/doc/"]) {
+            return true;
+        }
+        // `^[Ss]amples?/`
+        if dir_prefix(path, &["sample/", "samples/", "Sample/", "Samples/"]) {
+            return true;
+        }
+        // Filename matchers: `(^|/)NAME(\.|$)` — the path component equals NAME
+        // or starts with `NAME.`. enry's `(\.|$)` allows a trailing extension.
+        const FILE_NAMES: &[&str] = &[
+            "CONTRIBUTING",
+            "COPYING",
+            "INSTALL",
+            "README",
+            "Readme",
+            "readme",
+        ];
+        if file_component(path, |name| FILE_NAMES.contains(&name)) {
+            return true;
+        }
+        // `(^|/)CHANGE(S|LOG)?(\.|$)` — CHANGE / CHANGES / CHANGELOG, optionally
+        // with an extension.
+        if file_component(path, |name| {
+            let stem = name.split('.').next().unwrap_or(name);
+            matches!(stem, "CHANGE" | "CHANGES" | "CHANGELOG")
+        }) {
+            return true;
+        }
+        // `(^|/)LICEN[CS]E(\.|$)` and `(^|/)[Ll]icen[cs]e(\.|$)`.
+        file_component(path, |name| {
+            let stem = name.split('.').next().unwrap_or(name);
+            matches!(
+                stem,
+                "LICENCE" | "LICENSE" | "Licence" | "License" | "licence" | "license"
+            )
+        })
+    }
+
+    /// Tests `^(prefix)` for any of the given directory prefixes (each ending in
+    /// `/`), matching enry's anchored `^[Xx].../` patterns.
+    fn dir_prefix(path: &str, prefixes: &[&str]) -> bool {
+        prefixes.iter().any(|p| path.starts_with(p))
+    }
+
+    /// Tests `(^|/)segment` for any of the given directory segments (each ending
+    /// in `/`), matching enry's `(^|/)X/` patterns.
+    fn dir_segment(path: &str, segments: &[&str]) -> bool {
+        segments
+            .iter()
+            .any(|s| path.starts_with(s) || path.contains(&format!("/{s}")))
+    }
+
+    /// Tests `(^|/)NAME(\.|$)`: splits `path` into `/`-separated components and
+    /// returns true if any component's leading token (up to the first `.`)
+    /// satisfies `pred`. The `(\.|$)` means the component may carry a trailing
+    /// extension.
+    fn file_component(path: &str, pred: impl Fn(&str) -> bool) -> bool {
+        path.split('/').any(|comp| {
+            // Exactly NAME, or NAME followed by `.<ext>`.
+            if pred(comp) {
+                return true;
+            }
+            match comp.find('.') {
+                Some(idx) => pred(&comp[..idx]),
+                None => false,
+            }
+        })
     }
 }
 

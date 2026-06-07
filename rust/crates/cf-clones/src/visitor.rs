@@ -86,6 +86,53 @@ impl Visitor {
     pub fn entries(&self) -> &[FuncEntry] {
         &self.entries
     }
+
+    /// Like [`Visitor::get_report`] but stamps each exported signature item with
+    /// `_source_file = source_file`.
+    ///
+    /// Mirrors the Go folder pipeline, where the framework's
+    /// `analyze.StampSourceFile` sets `_source_file` on every `_func_signatures`
+    /// collection item (the repo-relative path) after the visitor runs and before
+    /// the aggregator reads it back to qualify function names. With no functions
+    /// it returns the "No functions found" empty report (which carries no
+    /// signatures to stamp).
+    #[must_use]
+    pub fn get_report_with_source(&self, source_file: &str) -> Report {
+        if self.function_count == 0 {
+            return build_empty_report(MSG_NO_FUNCTIONS);
+        }
+        build_signature_report_with_source(self.function_count, &self.entries, source_file)
+    }
+}
+
+/// Builds the signature-export report, stamping each `{name, sig}` item with
+/// `_source_file`. Mirrors Go `buildSignatureReport` followed by the framework's
+/// `StampSourceFile`.
+#[must_use]
+pub fn build_signature_report_with_source(
+    total_functions: usize,
+    entries: &[FuncEntry],
+    source_file: &str,
+) -> Report {
+    let mut sig_entries = Vec::with_capacity(entries.len());
+    for e in entries {
+        let mut m = GoMap::new_struct();
+        m.push("name", GoValue::Str(e.name.clone()));
+        let bytes = e.sig.bytes().into_iter().map(|b| GoValue::Uint(u64::from(b))).collect();
+        m.push("sig", GoValue::Array(bytes));
+        m.push(cf_analyze::SOURCE_FILE_KEY, GoValue::Str(source_file.to_string()));
+        sig_entries.push(GoValue::Object(m));
+    }
+
+    let mut report = GoMap::new(MapOrigin::Map);
+    report.push(KEY_ANALYZER_NAME, GoValue::Str(crate::ANALYZER_NAME.to_string()));
+    report.push(KEY_TOTAL_FUNCTIONS, GoValue::Int(total_functions as i64));
+    report.push(KEY_TOTAL_CLONE_PAIRS, GoValue::Int(0));
+    report.push(KEY_CLONE_RATIO, GoValue::Float(0.0));
+    report.push(KEY_CLONE_PAIRS, GoValue::Array(Vec::new()));
+    report.push(KEY_MESSAGE, GoValue::Str(MSG_NO_CLONES.to_string()));
+    report.push(KEY_FUNC_SIGNATURES, GoValue::Array(sig_entries));
+    report
 }
 
 /// Builds the signature-export report. Mirrors Go `buildSignatureReport`.
