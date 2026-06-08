@@ -125,6 +125,30 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-cmake-1.9.5",
         sources: &["parser.c", "scanner.c"],
     },
+    // Non-code corpus grammars Go parses (zero functions, but each is one parsed
+    // file in the static aggregators' `reportCount` divisor, so omitting them
+    // shifts averaged metrics like complexity's "Cognitive Total"). Vendored at
+    // the exact go-sitter-forest revisions the Go build's go.mod pins.
+    Grammar {
+        dir: "tree-sitter-xml-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-toml-1.9.2",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-perl-1.9.9",
+        sources: &["parser.c", "scanner.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-gitignore-1.9.0",
+        sources: &["parser.c"],
+    },
+    Grammar {
+        dir: "tree-sitter-gitattributes-1.9.1",
+        sources: &["parser.c"],
+    },
 ];
 
 fn main() {

@@ -127,6 +127,11 @@ mod ffi {
         pub fn tree_sitter_proto() -> tree_sitter::Language;
         pub fn tree_sitter_java() -> tree_sitter::Language;
         pub fn tree_sitter_cmake() -> tree_sitter::Language;
+        pub fn tree_sitter_xml() -> tree_sitter::Language;
+        pub fn tree_sitter_toml() -> tree_sitter::Language;
+        pub fn tree_sitter_perl() -> tree_sitter::Language;
+        pub fn tree_sitter_gitignore() -> tree_sitter::Language;
+        pub fn tree_sitter_gitattributes() -> tree_sitter::Language;
         pub fn tree_sitter_markdown_inline() -> tree_sitter::Language;
     }
 }
@@ -187,6 +192,21 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         // like ioq3.
         #[allow(unsafe_code)]
         "cmake" => Some(unsafe { ffi::tree_sitter_cmake() }),
+        // Non-code corpus grammars Go links (go-sitter-forest): xml@v1.9.5,
+        // toml@v1.9.2, perl@v1.9.9 (.pl), gitignore@v1.9.0, gitattributes@v1.9.1.
+        // They produce function-free UASTs, but each parsed file is counted in the
+        // static aggregators' reportCount divisor, so Rust must parse them too to
+        // match Go's averaged metrics.
+        #[allow(unsafe_code)]
+        "xml" => Some(unsafe { ffi::tree_sitter_xml() }),
+        #[allow(unsafe_code)]
+        "toml" => Some(unsafe { ffi::tree_sitter_toml() }),
+        #[allow(unsafe_code)]
+        "perl" => Some(unsafe { ffi::tree_sitter_perl() }),
+        #[allow(unsafe_code)]
+        "gitignore" => Some(unsafe { ffi::tree_sitter_gitignore() }),
+        #[allow(unsafe_code)]
+        "gitattributes" => Some(unsafe { ffi::tree_sitter_gitattributes() }),
         // markdown_inline is the grammar `.md`/`.markdown` resolves to (Go's
         // loader registers it after the block `markdown` mapping, so it wins the
         // shared extensions). Wiring it lets Rust parse Markdown files into a
