@@ -753,15 +753,14 @@ fn extract_name_from_props(fn_node: &Node) -> Option<String> {
 
 /// Mirrors `isDefaultCase`.
 fn is_default_case(n: &Node) -> bool {
-    if n.node_type != uast::CASE {
-        return false;
-    }
-    if n.token.trim().starts_with("default") {
-        return true;
-    }
-    n.children
-        .iter()
-        .any(|c| c.token.trim().starts_with("default"))
+    // Go `isDefaultCase` (flow_helpers.go): trim + LOWERCASE the case node's OWN
+    // token, then `HasPrefix(token, "default")`. It does NOT inspect children.
+    // The earlier port both skipped the lowercase AND scanned children, so a
+    // non-default `case X:` whose body began with an identifier like
+    // `defaultedPod` was misclassified as the default case and dropped from the
+    // cyclomatic decision count (off-by-1 on such functions, e.g. kubernetes
+    // kubelet makeEnvironmentVariables).
+    n.token.trim().to_lowercase().starts_with("default")
 }
 
 /// Mirrors `isElseIfNode`: an `If` nested as a non-first child of another `If`.
