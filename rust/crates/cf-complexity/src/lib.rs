@@ -773,7 +773,12 @@ fn is_else_if_node(parent: Option<&Node>, curr: &Node, child_idx: usize) -> bool
     if parent.node_type != uast::IF || curr.node_type != uast::IF {
         return false;
     }
-    child_idx > 0
+    // Go `isElseIfNode` (flow_helpers.go): an `If` is the else-if continuation of
+    // a parent `If` only at child index >= 2 (after [condition(0), then-block(1)]).
+    // Using `> 0` wrongly treated a braceless nested `if (a) if (b)` (inner `If` at
+    // index 1) as an else-if, skipping its nesting increment and under-counting
+    // nesting_depth by 1 vs Go on C code. Matches `is_else_if_cognitive`.
+    child_idx >= 2
 }
 
 /// Mirrors `isLogicalOperatorToken` (flow_helpers.go): also accepts the
