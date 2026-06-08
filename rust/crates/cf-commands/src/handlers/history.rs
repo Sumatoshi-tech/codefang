@@ -195,10 +195,10 @@ pub fn burndown_head_timeseries(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::ComputedMetrics> {
     use std::collections::BTreeMap;
 
-    use cf_analyzers_plumbing::languages_detection::language_by_extension;
     use cf_anomaly::metrics::{build_report_data, TickBounds};
     use cf_anomaly::model::CommitAnomalyData;
-    use cf_gitlib::changes::tree_diff;
+    use cf_gitlib::blob::CachedBlob;
+    use cf_gitlib::changes::{tree_diff, ChangeAction};
     use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 
     let path = run_repo_path(sub);
@@ -206,11 +206,15 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     let head = repo.head().ok()?;
     let commit = repo.lookup_commit(head).ok()?;
 
-    // Only the deterministic, language-free-of-blob-content closed form (merge
-    // HEAD → 0 line stats) is reproduced here.
-    if commit.num_parents() <= 1 {
+    // The HEAD commit is Consume'd exactly once (single tick). A MERGE HEAD
+    // (NumParents > 1) skips accumulateLineStats (Go's LineStats plumbing emits
+    // nothing for merges) so its line stats are 0; a regular HEAD computes them
+    // from the HEAD-vs-first-parent diff. A root HEAD (no parent) has no diff
+    // contract reproduced here.
+    if commit.num_parents() == 0 {
         return None;
     }
+    let is_merge = commit.num_parents() > 1;
 
     let committer_when = commit.committer().when.seconds(); // ac.Time == committer When.
     let commit_hash = commit.hash().to_string();
@@ -224,9 +228,11 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     let opts = PathPolicyOptions::default();
     let mut files_changed: i64 = 0;
     let mut languages: BTreeMap<String, i64> = BTreeMap::new();
+    let mut lines_added: i64 = 0;
+    let mut lines_removed: i64 = 0;
     for change in &changes {
         // changeNameHash: Delete → From.Name, otherwise To.Name.
-        let name = if matches!(change.action, cf_gitlib::changes::ChangeAction::Delete) {
+        let name = if matches!(change.action, ChangeAction::Delete) {
             &change.from.name
         } else {
             &change.to.name
@@ -238,24 +244,74 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
         files_changed += 1;
 
         // accumulateLanguagesAndAuthors: count each non-empty detected language.
-        // detectLanguage's extension fast-path resolves these text source files
-        // without blob content; a Modify contributes both To and From names, but
-        // both share the same extension so the language set is unaffected.
-        let lang = language_by_extension(name);
+        // Go's Languages plumbing analyzer detects from BLOB CONTENT (not just the
+        // extension), so a changed file whose extension is unknown but whose
+        // content is recognized still contributes to language_diversity (e.g.
+        // hercules's merge HEAD). Mirror the full revwalk path's `devs_detect_language`.
+        let blob_hash = if matches!(change.action, ChangeAction::Delete) {
+            change.from.hash
+        } else {
+            change.to.hash
+        };
+        let data = CachedBlob::from_repo(&repo, blob_hash)
+            .map(|b| b.data)
+            .unwrap_or_default();
+        let lang = devs_detect_language(name, &data);
         if !lang.is_empty() {
-            *languages.entry(lang.to_string()).or_insert(0) += 1;
+            *languages.entry(lang).or_insert(0) += 1;
+        }
+
+        // accumulateLineStats (skipped for merge commits, mirroring the LineStats
+        // plumbing analyzer): Insert ⇒ +lines of the new blob; Delete ⇒ +lines of
+        // the old blob removed; Modify ⇒ diff-match-patch line stats, skipping
+        // binary / identical-content blobs.
+        if is_merge {
+            continue;
+        }
+        match change.action {
+            ChangeAction::Insert => {
+                if let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) {
+                    if let Ok(n) = blob.count_lines() {
+                        lines_added += n as i64;
+                    }
+                }
+            }
+            ChangeAction::Delete => {
+                if let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) {
+                    if let Ok(n) = blob.count_lines() {
+                        lines_removed += n as i64;
+                    }
+                }
+            }
+            ChangeAction::Modify => {
+                let (Ok(blob_from), Ok(blob_to)) = (
+                    CachedBlob::from_repo(&repo, change.from.hash),
+                    CachedBlob::from_repo(&repo, change.to.hash),
+                ) else {
+                    continue;
+                };
+                if change.from.hash == change.to.hash
+                    || blob_from.is_binary()
+                    || blob_to.is_binary()
+                {
+                    continue;
+                }
+                let (a, r, _changed) = compute_diff_line_stats(&blob_from.data, &blob_to.data);
+                lines_added += a;
+                lines_removed += r;
+            }
         }
     }
 
-    // Per-commit anomaly data: merge HEAD → no line stats, author id 0.
+    // Per-commit anomaly data: single HEAD commit ⇒ author id 0.
     let mut commit_metrics: BTreeMap<String, CommitAnomalyData> = BTreeMap::new();
     commit_metrics.insert(
         commit_hash.clone(),
         CommitAnomalyData {
             files_changed,
-            lines_added: 0,
-            lines_removed: 0,
-            net_churn: 0,
+            lines_added,
+            lines_removed,
+            net_churn: lines_added - lines_removed,
             files: Vec::new(),
             languages,
             author_id: 0,
