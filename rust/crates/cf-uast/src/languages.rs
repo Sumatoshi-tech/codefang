@@ -126,6 +126,7 @@ mod ffi {
         pub fn tree_sitter_bash() -> tree_sitter::Language;
         pub fn tree_sitter_proto() -> tree_sitter::Language;
         pub fn tree_sitter_java() -> tree_sitter::Language;
+        pub fn tree_sitter_cmake() -> tree_sitter::Language;
         pub fn tree_sitter_markdown_inline() -> tree_sitter::Language;
     }
 }
@@ -179,6 +180,13 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         "proto" => Some(unsafe { ffi::tree_sitter_proto() }),
         #[allow(unsafe_code)]
         "java" => Some(unsafe { ffi::tree_sitter_java() }),
+        // cmake is the grammar `.cmake`/`CMakeLists.txt` resolves to (go-sitter-
+        // forest cmake@v1.9.5, parser.c + scanner.c). Wiring it lets Rust parse
+        // CMake files into a UAST with Function nodes for `function()`/`macro()`
+        // definitions, matching Go's per-file report + function counts on repos
+        // like ioq3.
+        #[allow(unsafe_code)]
+        "cmake" => Some(unsafe { ffi::tree_sitter_cmake() }),
         // markdown_inline is the grammar `.md`/`.markdown` resolves to (Go's
         // loader registers it after the block `markdown` mapping, so it wins the
         // shared extensions). Wiring it lets Rust parse Markdown files into a

@@ -115,6 +115,16 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-markdown_inline-1.9.3",
         sources: &["parser.c", "scanner.c"],
     },
+    // cmake (go-sitter-forest cmake@v1.9.5): the grammar the Go loader dispatches
+    // `.cmake`/`CMakeLists.txt` to. Ships an external scanner (parser.c +
+    // scanner.c) exporting tree_sitter_cmake(). Vendored at the exact revision the
+    // Go build's go.mod pins so the parse — and the per-file report COUNT that the
+    // static aggregators (complexity/comments/halstead) divide by — matches Go on
+    // CMake-bearing repos (e.g. ioq3).
+    Grammar {
+        dir: "tree-sitter-cmake-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
 ];
 
 fn main() {
