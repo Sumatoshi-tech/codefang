@@ -149,6 +149,13 @@ const GRAMMARS: &[Grammar] = &[
         dir: "tree-sitter-gitattributes-1.9.1",
         sources: &["parser.c"],
     },
+    // PowerShell (go-sitter-forest powershell@v1.9.5): .ps1/.psm1. Has functions,
+    // so omitting it under-counts the static aggregators' function totals on repos
+    // with PowerShell (e.g. kubernetes cluster/gce/windows: 115 functions).
+    Grammar {
+        dir: "tree-sitter-powershell-1.9.5",
+        sources: &["parser.c", "scanner.c"],
+    },
 ];
 
 fn main() {

@@ -132,6 +132,7 @@ mod ffi {
         pub fn tree_sitter_perl() -> tree_sitter::Language;
         pub fn tree_sitter_gitignore() -> tree_sitter::Language;
         pub fn tree_sitter_gitattributes() -> tree_sitter::Language;
+        pub fn tree_sitter_powershell() -> tree_sitter::Language;
         pub fn tree_sitter_markdown_inline() -> tree_sitter::Language;
     }
 }
@@ -207,6 +208,11 @@ pub fn get_language(name: &str) -> Option<tree_sitter::Language> {
         "gitignore" => Some(unsafe { ffi::tree_sitter_gitignore() }),
         #[allow(unsafe_code)]
         "gitattributes" => Some(unsafe { ffi::tree_sitter_gitattributes() }),
+        // PowerShell (.ps1/.psm1) — go-sitter-forest powershell@v1.9.5. Has
+        // function definitions, so it contributes to the static aggregators'
+        // function counts (e.g. kubernetes cluster/gce/windows).
+        #[allow(unsafe_code)]
+        "powershell" => Some(unsafe { ffi::tree_sitter_powershell() }),
         // markdown_inline is the grammar `.md`/`.markdown` resolves to (Go's
         // loader registers it after the block `markdown` mapping, so it wins the
         // shared extensions). Wiring it lets Rust parse Markdown files into a
