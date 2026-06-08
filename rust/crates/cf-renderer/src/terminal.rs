@@ -102,12 +102,13 @@ pub fn format_score(score: f64) -> String {
 /// Pads a string with spaces on the right to reach the given width, by rune
 /// count. Mirrors Go's `PadRight`.
 pub fn pad_right(s: &str, width: usize) -> String {
-    let rune_count = s.chars().count();
-    if rune_count >= width {
+    // Go `PadRight` pads by BYTE length (`len(s)`), not rune count.
+    let len = s.len();
+    if len >= width {
         return s.to_string();
     }
     let mut out = String::from(s);
-    out.extend(std::iter::repeat(' ').take(width - rune_count));
+    out.extend(std::iter::repeat(' ').take(width - len));
     out
 }
 
@@ -215,13 +216,11 @@ pub fn draw_percent_bar(
     let empty = bar_width - filled;
     let bar = format!("{}{}", BAR_FILLED.repeat(filled), BAR_EMPTY.repeat(empty));
     let padded_label = pad_right(label, label_width);
-    format!(
-        "{} {} {:.0}% ({})",
-        padded_label,
-        bar,
-        percent * PERCENT_SCALE,
-        count
-    )
+    // Go `DrawPercentBar`: fmt.Sprintf("%s %s %3d%%  (%d)", ...) where
+    // pctValue := int(percent * 100) — TRUNCATION (not rounding), right-aligned
+    // to width 3, a literal `%`, then TWO spaces before the parenthesized count.
+    let pct_value = (percent * PERCENT_SCALE) as i64;
+    format!("{padded_label} {bar} {pct_value:>3}%  ({count})")
 }
 
 /// Truncates a string to `max_len` runes, appending `"..."` if needed. Mirrors

@@ -109,16 +109,23 @@ pub fn validate_format(format: &str) -> Result<String, FormatError> {
 }
 
 /// Returns `true` if `normalized` is in the universal-conversion set. Mirrors
-/// Go's `universalFormats` map.
+/// Go's `UniversalFormats()` = {json, yaml, plot, binary, timeseries, ndjson,
+/// text}. Note Go's universal set INCLUDES `text` but EXCLUDES `compact`
+/// (compact is a static-only output format, see [`validate_format`]); `plot` is
+/// handled specially by [`resolve_formats`] before this check. The
+/// `timeseries+ndjson` combo is the Rust pipeline's pre-resolved spelling of the
+/// `--ndjson` modifier and is accepted here so a directly-supplied combo string
+/// validates.
 fn is_universal_format(normalized: &str) -> bool {
     matches!(
         normalized,
         FORMAT_JSON
             | FORMAT_YAML
+            | FORMAT_PLOT
             | FORMAT_BINARY
             | FORMAT_TIMESERIES
             | FORMAT_NDJSON
-            | FORMAT_COMPACT
+            | FORMAT_TEXT
             | FORMAT_TIMESERIES_NDJSON
     )
 }
@@ -177,17 +184,27 @@ pub fn resolve_formats(
         return Ok((static_fmt, history_fmt));
     }
 
-    // For non-plot formats, validate against universal formats.
-    let validated = validate_universal_format(&normalized)?;
+    // Mirror Go `ResolveFormats` branching exactly:
+    //   * mixed (static && history) -> ValidateUniversalFormat (text yes, compact no)
+    //   * static-only               -> ValidateFormat(staticOutputFormats) (text & compact yes)
+    //   * history-only              -> ValidateUniversalFormat (text yes, compact no)
+    // The earlier port validated EVERY non-plot path against the universal set,
+    // which wrongly rejected static-only `text` (Go accepts it) and wrongly
+    // accepted history/mixed `compact` (Go rejects it).
+    if has_static && has_history {
+        let validated = validate_universal_format(format)?;
+        return Ok((validated.clone(), validated));
+    }
+    if has_static {
+        let validated = validate_format(format)?;
+        return Ok((validated, String::new()));
+    }
+    if has_history {
+        let validated = validate_universal_format(format)?;
+        return Ok((String::new(), validated));
+    }
 
-    let static_fmt = if has_static {
-        validated.clone()
-    } else {
-        String::new()
-    };
-    let history_fmt = if has_history { validated } else { String::new() };
-
-    Ok((static_fmt, history_fmt))
+    Ok((String::new(), String::new()))
 }
 
 /// Determines the input format from the path and explicit flag, mirror of Go
@@ -282,13 +299,17 @@ mod tests {
 
     #[test]
     fn validate_universal_accepts_conversion_set() {
+        // Go UniversalFormats() = {json, yaml, plot, binary, timeseries, ndjson,
+        // text}. `bin` normalizes to `binary`; `timeseries+ndjson` is the Rust
+        // pre-resolved modifier spelling.
         for f in [
             "json",
             "yaml",
+            "plot",
             "binary",
             "timeseries",
             "ndjson",
-            "compact",
+            "text",
             "timeseries+ndjson",
             "bin",
         ] {
@@ -297,16 +318,18 @@ mod tests {
     }
 
     #[test]
-    fn validate_universal_rejects_plot_and_text() {
-        assert!(validate_universal_format("plot").is_err());
-        assert!(validate_universal_format("text").is_err());
+    fn validate_universal_rejects_compact() {
+        // compact is a static-only output format; Go's universal set excludes it.
+        assert!(validate_universal_format("compact").is_err());
     }
 
     #[test]
     fn error_string_uses_original_format_and_go_wording() {
         // Go: fmt.Errorf("%w: %s", ErrUnsupportedFormat, format) with original arg.
-        let err = validate_universal_format("PLOT").unwrap_err();
-        assert_eq!(err.to_string(), "unsupported format: PLOT");
+        // `plot` IS in Go's universal set, so use a genuinely-unsupported token to
+        // exercise the error path while proving the original casing is preserved.
+        let err = validate_universal_format("BOGUS").unwrap_err();
+        assert_eq!(err.to_string(), "unsupported format: BOGUS");
         let err2 = validate_format("nope").unwrap_err();
         assert_eq!(err2.to_string(), "unsupported format: nope");
     }
@@ -333,8 +356,20 @@ mod tests {
 
     #[test]
     fn resolve_formats_propagates_unsupported_error() {
-        let err = resolve_formats("text", true, true).unwrap_err();
-        assert_eq!(err.to_string(), "unsupported format: text");
+        // `compact` is rejected on the MIXED path (Go ResolveFormats ->
+        // ValidateUniversalFormat, which excludes compact).
+        let err = resolve_formats("compact", true, true).unwrap_err();
+        assert_eq!(err.to_string(), "unsupported format: compact");
+    }
+
+    #[test]
+    fn resolve_formats_static_only_accepts_text_and_compact() {
+        // Go static-only path validates against staticOutputFormats(), which
+        // includes BOTH text and compact (universal set does not).
+        let (s, h) = resolve_formats("text", true, false).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("text", ""));
+        let (s, h) = resolve_formats("compact", true, false).unwrap();
+        assert_eq!((s.as_str(), h.as_str()), ("compact", ""));
     }
 
     #[test]

@@ -1347,7 +1347,23 @@ pub fn halstead_json_report(root_path: &str) -> Option<Vec<u8>> {
 /// merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn halstead_report_value(root_path: &str) -> Option<GoValue> {
-    let agg = aggregate(root_path)?;
+    halstead_report_value_mode(root_path, false)
+}
+
+/// Builds the `static/halstead` section tree in Go's `AggregationModeSummaryOnly`
+/// shape (`text` / `compact`): the detailed `functions` collection is a no-op, so
+/// the per-function volume distribution and the top-issues list are absent while
+/// the averaged scalar Key Metrics are unchanged.
+#[must_use]
+pub fn halstead_report_value_summary(root_path: &str) -> Option<GoValue> {
+    halstead_report_value_mode(root_path, true)
+}
+
+fn halstead_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
+    let mut agg = aggregate(root_path)?;
+    if summary_only {
+        agg.functions.clear();
+    }
 
     let avg = |k: &str| agg.averages.get(k).copied().unwrap_or(0.0);
 

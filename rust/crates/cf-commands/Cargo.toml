@@ -88,6 +88,7 @@ cf-comments = { path = "../cf-comments" }
 cf-imports = { path = "../cf-imports" }
 cf-composition = { path = "../cf-composition" }
 cf-cohesion = { path = "../cf-cohesion" }
+cf-renderer = { path = "../cf-renderer" }
 cf-couples = { path = "../cf-couples" }
 cf-shotness = { path = "../cf-shotness" }
 cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }

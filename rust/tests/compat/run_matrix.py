@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ORACLE = os.path.join(HERE, "oracle", "oracle.py")
@@ -107,6 +108,9 @@ def main():
                          "matrix -- every enumerated cell still runs)")
     ap.add_argument("--dry-run", action="store_true",
                     help="only enumerate + classify expected-empty; no oracle")
+    ap.add_argument("--no-resume", dest="resume", action="store_false",
+                    help="ignore + clear any prior partial results; clean run")
+    ap.set_defaults(resume=True)
     a = ap.parse_args()
 
     cells = expand(a.tier)
@@ -119,30 +123,80 @@ def main():
     tally = {"PASS": 0, "FAIL": 0, "SIM": 0, "EXPECTED_EMPTY": 0}
     records = [None] * len(cells)
 
+    # --- incremental + resume -------------------------------------------------
+    # Each completed cell is appended (label-keyed) to results/<tier>.partial.jsonl
+    # and fsync'd, so a long full run is observable live and survives a crash. On
+    # startup, already-completed labels are reloaded and their cells skipped, so a
+    # restart NEVER repeats work already done. --no-resume forces a clean run.
+    partial_path = os.path.join(RESULTS_DIR, f"{a.tier}.partial.jsonl")
+    done = {}
+    if a.resume and os.path.exists(partial_path):
+        with open(partial_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                    done[r["label"]] = r
+                except Exception:
+                    pass  # tolerate a torn last line from a crash mid-write
+    elif not a.resume and os.path.exists(partial_path):
+        os.remove(partial_path)
+
+    pf = open(partial_path, "a")
+    wlock = threading.Lock()
+
     def absorb(idx, rec, detail):
         v = rec["verdict"]
         tally[v] = tally.get(v, 0) + 1
         mark = {"PASS": "PASS ", "FAIL": "FAIL!", "SIM": "SIM! ",
                 "EXPECTED_EMPTY": "EMPTY"}.get(v, v)
-        print(f"  {mark} {cells[idx]['label']}")
+        nd = sum(1 for r in records if r is not None) + 1
+        print(f"  [{nd}/{len(cells)}] {mark} {cells[idx]['label']}", flush=True)
         if v not in ("PASS", "EXPECTED_EMPTY") and detail:
             for line in detail.splitlines()[:4]:
-                print("        " + line)
+                print("        " + line, flush=True)
         records[idx] = rec
+        with wlock:
+            pf.write(json.dumps(rec, default=str) + "\n")
+            pf.flush()
+            os.fsync(pf.fileno())
+
+    # split cells into already-done (replayed) and pending (to run)
+    # Only replay SETTLED-GREEN cells (PASS / EXPECTED_EMPTY). A prior FAIL/SIM is
+    # NEVER trusted on resume -- after a Rust fix+rebuild those cells must be
+    # re-measured against the live oracle. This makes resume safe for the burndown
+    # loop: expensive green kubernetes-static cells stay cached, red cells re-run.
+    GREEN = ("PASS", "EXPECTED_EMPTY")
+    pending = []
+    for i, c in enumerate(cells):
+        prior = done.get(c["label"])
+        if prior is not None and prior.get("verdict") in GREEN:
+            v = prior["verdict"]
+            tally[v] = tally.get(v, 0) + 1
+            records[i] = prior
+        else:
+            pending.append((i, c))
+    if done:
+        print(f"== resume: {len(done)} cell(s) already done, "
+              f"{len(pending)} pending", flush=True)
 
     if a.jobs <= 1:
-        for i, c in enumerate(cells):
+        for i, c in pending:
             rec, detail = run_cell(c, a.n_go, a.dry_run)
             absorb(i, rec, detail)
     else:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=a.jobs) as ex:
             futs = {ex.submit(run_cell, c, a.n_go, a.dry_run): i
-                    for i, c in enumerate(cells)}
+                    for i, c in pending}
             for fut in as_completed(futs):
                 i = futs[fut]
                 rec, detail = fut.result()
                 absorb(i, rec, detail)
+
+    pf.close()
 
     summary = {
         "tier": a.tier,

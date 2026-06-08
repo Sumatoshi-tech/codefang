@@ -287,6 +287,17 @@ pub fn cohesion_report_value(root_path: &str) -> Option<GoValue> {
     Some(build_json_report(&agg))
 }
 
+/// Builds the `static/cohesion` section tree in Go's `AggregationModeSummaryOnly`
+/// shape (`text` / `compact`): the detailed `functions` collection is a no-op, so
+/// the distribution + issues sections (both derived from the collected functions)
+/// are absent while the averaged scalar metrics are unchanged.
+#[must_use]
+pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
+    let mut agg = aggregate(root_path)?;
+    agg.functions.clear();
+    Some(build_json_report(&agg))
+}
+
 /// Aggregator message keyed by the first numeric average (Go `getCohesionMessage`).
 fn cohesion_message(score: f64) -> &'static str {
     if score >= MSG_SCORE_HIGH {

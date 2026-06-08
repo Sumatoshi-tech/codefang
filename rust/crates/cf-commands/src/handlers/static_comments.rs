@@ -139,7 +139,25 @@ pub fn comments_report_json(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn comments_report_value(root_path: &str) -> Option<GoValue> {
-    let agg = comments_aggregate(root_path)?;
+    comments_report_value_mode(root_path, false)
+}
+
+/// Builds the `static/comments` section tree in Go's `AggregationModeSummaryOnly`
+/// shape (`text` / `compact`): the detailed `comments`/`functions` collections are
+/// no-ops, so the top-issues list (undocumented functions, read from `functions`)
+/// is absent, while the Documented/Undocumented distribution — computed from the
+/// always-on scalar `total_functions`/`documented_functions` counts — and the Key
+/// Metrics are unchanged.
+#[must_use]
+pub fn comments_report_value_summary(root_path: &str) -> Option<GoValue> {
+    comments_report_value_mode(root_path, true)
+}
+
+fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
+    let mut agg = comments_aggregate(root_path)?;
+    if summary_only {
+        agg.functions.clear();
+    }
     let report_count = agg.report_count.max(0);
     let mean = |sum: f64| if report_count > 0 { sum / report_count as f64 } else { 0.0 };
     let overall_score = mean(agg.sum_overall_score);

@@ -20,6 +20,7 @@ pub mod burndown_ndjson;
 pub mod couples_run;
 pub mod go_sort;
 pub mod history;
+pub mod section_render;
 pub mod shotness_run;
 pub mod static_clones;
 pub mod static_cohesion;
@@ -754,6 +755,9 @@ fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         "yaml" => static_clones::clones_report_yaml(path),
         "binary" | "bin" => static_clones::clones_report_bin(path),
         "compact" => static_clones::clones_report_compact(path),
+        "text" => Some(section_render::render_text_report(
+            &static_clones::clones_report_value(path)?,
+        )),
         _ => None,
     }
 }
@@ -768,6 +772,12 @@ fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         "json" => static_complexity::complexity_report(path),
         "yaml" => static_complexity_yaml::complexity_report_yaml(path),
         "binary" | "bin" => static_complexity_bin::complexity_report_bin(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_complexity::complexity_report_value_summary(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_complexity::complexity_report_value_summary(path)?,
+        )),
         _ => None,
     }
 }
@@ -781,6 +791,12 @@ fn h_static_cohesion(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         "json" => static_cohesion::cohesion_report_json(path),
         "yaml" => static_cohesion::cohesion_report_yaml(path),
         "binary" | "bin" => static_cohesion::cohesion_report_bin(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_cohesion::cohesion_report_value_summary(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_cohesion::cohesion_report_value_summary(path)?,
+        )),
         _ => None,
     }
 }
@@ -794,6 +810,12 @@ fn h_static_composition(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         // (formats::normalize_format) before dispatch, so match that; accept the
         // raw alias too for direct callers.
         "binary" | "bin" => static_json::composition_bin(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_json::composition_report_value(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_json::composition_report_value(path)?,
+        )),
         _ => None,
     }
 }
@@ -808,6 +830,12 @@ fn h_static_halstead(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         "json" => static_halstead::halstead_json_report(path),
         "yaml" => static_halstead::halstead_yaml_report(path),
         "binary" => static_halstead::halstead_bin_report(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_halstead::halstead_report_value_summary(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_halstead::halstead_report_value_summary(path)?,
+        )),
         _ => None,
     }
 }
@@ -822,6 +850,12 @@ fn h_static_imports(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         "json" => static_imports::imports_report_json(path),
         "yaml" => static_imports::imports_report_yaml(path),
         "binary" => static_imports::imports_report_bin(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_imports::imports_report_value(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_imports::imports_report_value(path)?,
+        )),
         _ => None,
     }
 }
@@ -835,6 +869,12 @@ fn h_static_comments(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
         // (formats::normalize_format) before dispatch, so match that; accept the
         // raw alias too for direct callers.
         "binary" | "bin" => static_comments::comments_report_bin(path),
+        "compact" => Some(section_render::render_compact_report(
+            &static_comments::comments_report_value_summary(path)?,
+        )),
+        "text" => Some(section_render::render_text_report(
+            &static_comments::comments_report_value_summary(path)?,
+        )),
         _ => None,
     }
 }

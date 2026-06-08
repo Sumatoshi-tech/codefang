@@ -117,6 +117,21 @@ pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
+    complexity_report_value_mode(root_path, false)
+}
+
+/// Builds the `static/complexity` section tree in Go's `AggregationModeSummaryOnly`
+/// shape used for the `text` / `compact` formats: the per-item `functions`
+/// detailed collection is a no-op, so the distribution and top-issues sections
+/// (both derived from `functions`) are absent while the scalar Key Metrics
+/// (computed by the always-on `MetricsProcessor`) are unchanged. Mirrors Go
+/// `ResolveAggregationMode(FormatText|FormatCompact) -> SummaryOnly`.
+#[must_use]
+pub fn complexity_report_value_summary(root_path: &str) -> Option<GoValue> {
+    complexity_report_value_mode(root_path, true)
+}
+
+fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
@@ -182,6 +197,11 @@ pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
         DEFAULT_STATUS_MESSAGE.to_string()
     };
 
+    // SummaryOnly: the detailed `functions` collection is a no-op, so the
+    // section's distribution + issues (both read `functions`) are empty while the
+    // scalar metrics above are untouched.
+    let records_ref: &[FnRecord] = if summary_only { &[] } else { &records };
+
     let report = build_json_report(
         total_functions,
         avg_complexity,
@@ -190,7 +210,7 @@ pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
         cognitive_metric,
         decision_points,
         &message,
-        &records,
+        records_ref,
     );
 
     Some(report)
