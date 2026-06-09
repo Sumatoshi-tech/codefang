@@ -122,32 +122,22 @@ const BOX_BORDER_WIDTH: usize = 4;
 const BOX_CORNER_WIDTH: usize = 2;
 const MIN_GAP: usize = 1;
 
-/// Returns the visible length of a string, excluding ANSI escape sequences.
-/// Mirrors Go's unexported `visibleLength`.
-fn visible_length(s: &str) -> usize {
-    let mut length = 0usize;
-    let mut in_escape = false;
-    for r in s.chars() {
-        if r == '\u{001b}' {
-            in_escape = true;
-            continue;
-        }
-        if in_escape {
-            if r == 'm' {
-                in_escape = false;
-            }
-            continue;
-        }
-        length += 1;
-    }
-    length
-}
 
 /// Draws a header box with left-aligned title and right-aligned score. Mirrors
 /// Go's `DrawHeader`, including the heavy box-drawing characters.
 pub fn draw_header(left: &str, right: &str, width: usize) -> String {
-    let left_len = visible_length(left);
-    let right_len = visible_length(right);
+    // Go `DrawHeader` measures title/right with `len()` — the RAW byte length,
+    // which INCLUDES any ANSI color escapes the caller already wrapped them in
+    // (e.g. `\x1b[34mHALSTEAD\x1b[0m`). Those escape bytes are part of the width
+    // budget, so the visible content is narrower than the border; a visible-width
+    // measure here would over-pad colored headers.
+    let left_len = left.len();
+    let right_len = right.len();
+
+    // Go expands `width` when the text cannot fit (`minRequired = len(title) +
+    // len(right) + headerExtraChars(4) + HeaderPadding*2(2)`), so the box grows
+    // rather than overflowing.
+    let width = width.max(left_len + right_len + BOX_BORDER_WIDTH + 2);
 
     let inner_width = width.saturating_sub(BOX_BORDER_WIDTH);
     let mut gap = inner_width
