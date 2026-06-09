@@ -1871,7 +1871,7 @@ fn map_category(cat: cf_composition::category::Category) -> cf_file_history::Cat
 /// Work is split into `workers` contiguous index ranges, each thread writing only
 /// its disjoint `chunks_mut` slice (checked at compile time by `scope`), so no
 /// synchronization is needed on the hot path.
-fn parallel_prepare<T: Send>(
+pub(crate) fn parallel_prepare<T: Send>(
     repo_path: &str,
     hashes: &[cf_gitlib::hash::Hash],
     workers: usize,

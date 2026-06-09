@@ -108,8 +108,72 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
 
     let mut last_commit_hash: Option<cf_gitlib::Hash> = None;
 
+    // ---- parallel pure-compute stage -----------------------------------------
+    // ONLY the per-commit-independent work is parallelized — the tree diff (vs
+    // parent(0)) + path-policy filter — which dominates the per-commit cost. Each
+    // worker thread opens its OWN libgit2 Repository handle (the handle is !Send;
+    // per-thread handles also avoid shared-ODB-cache contention). The author
+    // signature is read here too (pure per commit) so the reduce needs no commit
+    // lookup. The order-SENSITIVE reduce below is UNCHANGED: the per-worker
+    // seen-files Bloom (partitioned by `pos % leaf_worker_count()`), the per-worker
+    // merge-dedup tracker, the loose-identity consume order (oldest-first), and the
+    // additive aggregator all run sequentially in the exact same order — only now
+    // reading `prepared[pos]` instead of recomputing the diff inline. The Bloom
+    // partition width (`num_workers`) is the modeled Go leaf-worker count and is
+    // INDEPENDENT of the parallel-compute worker count; neither is changed here.
+    struct CouplesPrepared {
+        num_parents: usize,
+        sig_name: String,
+        sig_email: String,
+        sig_when: i64,
+        changes: Vec<cf_gitlib::changes::Change>,
+    }
+    let compute_workers =
+        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let opts_ref = &opts;
+    let prepared = crate::handlers::history::parallel_prepare(
+        &path,
+        &hashes,
+        compute_workers,
+        move |repo, hash| {
+            let commit = repo.lookup_commit(hash).ok()?;
+            let num_parents = commit.num_parents();
+            let gsig = commit.author();
+
+            // Tree diff against the first parent (root → full initial tree).
+            let new_tree = commit.tree().ok()?;
+            let raw_changes = if num_parents > 0 {
+                let parent = commit.parent(0).ok()?;
+                let old_tree = parent.tree().ok()?;
+                tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
+            } else {
+                initial_tree_changes(repo, Some(&new_tree)).ok()?
+            };
+
+            // TreeDiffAnalyzer.shouldIncludeChange: path-policy exclusion (no blob
+            // content, no language filter for the default all-languages case).
+            let changes: Vec<cf_gitlib::changes::Change> = raw_changes
+                .into_iter()
+                .filter(|c| {
+                    let name =
+                        if c.action == ChangeAction::Delete { &c.from.name } else { &c.to.name };
+                    !exclude(name, None, opts_ref)
+                })
+                .collect();
+
+            Some(CouplesPrepared {
+                num_parents,
+                sig_name: gsig.name.clone(),
+                sig_email: gsig.email.clone(),
+                sig_when: gsig.when.seconds(),
+                changes,
+            })
+        },
+    )?;
+
+    // ---- sequential ordered-reduce stage (UNCHANGED order) -------------------
     for (pos, hash) in hashes.iter().enumerate() {
-        let commit = repo.lookup_commit(*hash).ok()?;
+        let prep = &prepared[pos];
         // Worker that consumes this commit in Go's hybrid leaf dispatch.
         let worker = pos % num_workers;
 
@@ -117,7 +181,7 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         // worker contributes an empty CommitData (Go: SeenOrAdd → return empty).
         // With unique hashes in a single window this never triggers, but mirror
         // Go faithfully — and the tracker is per-worker (Fork/Merge above).
-        let is_multi_parent = commit.num_parents() > 1;
+        let is_multi_parent = prep.num_parents > 1;
         if is_multi_parent && !seen_merges[worker].insert(*hash) {
             // Already seen: empty CommitData, not counted, no author attribution.
             continue;
@@ -132,35 +196,18 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
 
         // Identity: resolve this commit's author id (loose signature). Consumed in
         // oldest-first order (CORE analyzer), independent of the worker partition.
-        let gsig = commit.author();
         let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: gsig.name.clone(),
-            email: gsig.email.clone(),
-            when_unix: gsig.when.seconds(),
+            name: prep.sig_name.clone(),
+            email: prep.sig_email.clone(),
+            when_unix: prep.sig_when,
         });
         // Go: author = Identity.AuthorID; if AuthorMissing → PeopleNumber.
         // With loose detection author_id is always a real id, never AuthorMissing.
         let author = if author_id == AUTHOR_MISSING { 0 } else { author_id as usize };
 
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let raw_changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
-        // TreeDiffAnalyzer.shouldIncludeChange: path-policy exclusion (no blob
-        // content, no language filter for the default all-languages case).
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|c| {
-                let name = if c.action == ChangeAction::Delete { &c.from.name } else { &c.to.name };
-                !exclude(name, None, &opts)
-            })
-            .collect();
+        // The tree diff + path-policy filter for this commit was computed in the
+        // parallel pre-pass; the reduce only reads it.
+        let changes = &prep.changes;
 
         // Build this commit's CommitData (Go: Consume).
         let mut data = CommitData { commit_counted: true, ..CommitData::default() };
@@ -172,7 +219,7 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
             continue;
         }
 
-        for change in &changes {
+        for change in changes {
             process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
         }
 
