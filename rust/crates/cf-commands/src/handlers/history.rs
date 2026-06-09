@@ -1974,12 +1974,19 @@ pub fn typos_report_data(sub: &clap::ArgMatches) -> Option<cf_typos::ReportData>
             initial_tree_changes(&repo, Some(&new_tree)).ok()?
         };
 
-        // Spill rule: a commit with > 32 changes is parsed via the disk-backed
-        // spill path (`parseCommitAndSpill`) instead of the in-memory path, but
-        // ALL changes are still parsed and seen by the analyzer — spilling only
-        // changes where the UAST trees are stored, not which changes exist. So we
-        // process every change regardless of count (do NOT drop the commit).
-        let _ = SPILL_THRESHOLD;
+        // Spill rule: a commit with > 32 changes (`uastSpillThreshold`) has its
+        // UAST parsed via the disk-backed spill path (`parseCommitAndSpill`), and
+        // in the streaming run the typos leaf then sees ZERO UAST changes for that
+        // commit — so it produces no typos there. (Verified against the live Go
+        // binary: e.g. ioq3's 1409-change `5b755058` line-ending commit and
+        // kubernetes' 54-change `894a7e32` both yield 0 typos in Go, while every
+        // typo Go reports comes from a <=32-change commit.) This mirrors the
+        // identical `> SPILL_THRESHOLD` skip the quality/sentiment/shotness/
+        // comments analyzers already apply; without it Rust over-detects thousands
+        // of spurious typos on mass-rewrite commits.
+        if changes.len() > SPILL_THRESHOLD {
+            continue;
+        }
 
         // The commit hash threaded into each Typo (cf_typos uses its own Hash;
         // both are 20-byte SHA-1 tuple structs ⇒ copy the raw bytes).
