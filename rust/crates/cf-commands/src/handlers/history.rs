@@ -10,6 +10,26 @@
 
 use crate::handlers::{civil_from_days, floor_tick_secs, format_rfc3339_offset, run_repo_path};
 
+thread_local! {
+    /// One [`cf_uast::Parser`] per worker thread, reused across every commit that
+    /// thread processes in a [`parallel_prepare`] UAST walk. `Parser::new()`
+    /// registers a lazy parser for every embedded language mapping (hundreds of
+    /// bloom inserts), so constructing it per commit dominated the parallel
+    /// runtime — making the parallel UAST walks slower than sequential. A
+    /// thread-local amortizes that construction to once per thread while keeping
+    /// each thread its OWN parser (tree-sitter parsers are not thread-safe, so the
+    /// parser is never shared ACROSS threads).
+    static UAST_PARSER: cf_uast::Parser = cf_uast::Parser::new();
+}
+
+/// Runs `f` with this worker thread's reusable [`cf_uast::Parser`] (see
+/// [`UAST_PARSER`]). Used by the per-commit compute closures of the parallel
+/// UAST history walks (imports / quality / sentiment) so the parser is built once
+/// per thread, not once per commit.
+pub(crate) fn with_uast_parser<R>(f: impl FnOnce(&cf_uast::Parser) -> R) -> R {
+    UAST_PARSER.with(|p| f(p))
+}
+
 pub fn burndown_head_metrics(sub: &clap::ArgMatches) -> Option<cf_analyzer_burndown::ComputedMetrics> {
     use cf_analyzer_burndown::metrics::{AggregateData, SurvivalData};
     use cf_gitlib::blob::CachedBlob;
@@ -679,8 +699,9 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-        // Per-thread UAST parser (tree-sitter parsers are not thread-safe).
-        let parser = cf_uast::Parser::new();
+      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+      // parsers are not thread-safe, so never shared across threads).
+      crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
 
         // This commit's per-file quality samples (Go appends one sample per
@@ -740,6 +761,7 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
             }
         }
         Some(commit_q)
+      })
     })?;
 
     // ---- sequential ordered-reduce stage -------------------------------------
@@ -1004,8 +1026,9 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-        // Per-thread UAST parser (tree-sitter parsers are not thread-safe).
-        let parser = cf_uast::Parser::new();
+      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+      // parsers are not thread-safe, so never shared across threads).
+      crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
 
         // Tree diff against the first parent (root → full initial tree).
@@ -1070,6 +1093,7 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
         }
 
         Some(Some(merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH)))
+      })
     })?;
 
     // ---- sequential ordered-reduce stage -------------------------------------
@@ -1283,9 +1307,9 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
     let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
     let opts_ref = &opts;
     let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
-        // Per-thread UAST parser (tree-sitter parsers are not thread-safe; a fresh
-        // one per call keeps the compute pure and Send-safe).
-        let parser = cf_uast::Parser::new();
+      // Per-thread UAST parser, reused across this thread's commits (tree-sitter
+      // parsers are not thread-safe, so never shared across threads).
+      crate::handlers::history::with_uast_parser(|parser| {
         let commit = repo.lookup_commit(hash).ok()?;
 
         // Tree diff against the first parent (root → full initial tree).
@@ -1351,6 +1375,7 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
             }
         }
         Some(entries)
+      })
     })?;
 
     // ---- sequential ordered-reduce stage -------------------------------------
