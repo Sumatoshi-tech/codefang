@@ -408,6 +408,7 @@ dependencies = [
  "cf-pipeline",
  "cf-plotpage",
  "cf-quality",
+ "cf-renderer",
  "cf-reportutil",
  "cf-sentiment",
  "cf-shotness",

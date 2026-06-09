@@ -27,6 +27,28 @@ pub struct LogOptions {
     pub reverse: bool,
 }
 
+/// Applies process-global libgit2 performance options, once.
+///
+/// **`strict_hash_verification(false)`** — by default libgit2 re-hashes every
+/// object it reads from the ODB (the hardened sha1dc SHA-1) to verify it against
+/// its OID. For a read-only history walk over a large repo (e.g. kubernetes) that
+/// re-hashing dominates the profile (~24% of CPU: `sha1_compression_states` +
+/// `ubc_check`). The objects come from a trusted local clone and their content is
+/// unaffected by the check, so disabling it is a pure speedup with **byte-identical
+/// output** (it only skips an integrity assertion, never changes which bytes are
+/// read or diffed).
+///
+/// The options are libgit2 process-global state, so they are set once under a
+/// [`std::sync::Once`] on the first repository open.
+fn tune_libgit2() {
+    static TUNE: std::sync::Once = std::sync::Once::new();
+    TUNE.call_once(|| {
+        // `git2::opts` calls `crate::init()` internally, so libgit2 is initialized
+        // before the option is applied.
+        git2::opts::strict_hash_verification(false);
+    });
+}
+
 /// A libgit2 repository (Go `gitlib.Repository`).
 ///
 /// **Not** `Send`/`Sync`: libgit2 repositories are single-threaded, so each
@@ -47,6 +69,7 @@ impl Repository {
     /// Returns [`GitError::OpenRepository`] (Go `open repository: %w`) when the
     /// repository cannot be opened.
     pub fn open(path: &str) -> Result<Self> {
+        tune_libgit2();
         let repo = git2::Repository::open(path).map_err(GitError::OpenRepository)?;
         Ok(Repository {
             repo,
