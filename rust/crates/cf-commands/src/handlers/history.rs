@@ -1376,7 +1376,7 @@ fn imports_map_to_report_value(
 /// through cf-gojson (Go `encoding/json` parity: compact, HTML-escape on, no
 /// trailing newline).
 pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
     use cf_analyzers_plumbing::identity_detector::IdentityDetector;
     use cf_composition::classifier::Classifier;
@@ -1464,6 +1464,33 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
         v
     };
 
+    // Identity (`IdentityDetector`) is a CORE/plumbing analyzer: Go's
+    // `runner.runCoreAnalyzers` consumes EVERY commit (merges included, before any
+    // leaf merge-dedup) in plain oldest-first coordinator order, and `Consume`
+    // assigns loose author ids first-seen in THAT order. The resolved `AuthorID`
+    // is then STAMPED onto the per-commit leaf work (`buildLeafWork`) and carried
+    // unchanged through the forked worker / strided aggregator drain. So the
+    // dev_id integer for a signature is fixed by oldest-first first-seen, NOT by
+    // the worker-strided `(p % W, p)` order the file map is updated in. Resolve
+    // every commit's id here, oldest-first, then merely LOOK IT UP in the strided
+    // loop below — assigning inside that loop would mislabel ids (the bug this
+    // fixes: kubernetes file_contributors dev_ids 1<->2 swapped). This matches
+    // `devs@kubernetes`, which already assigns identity oldest-first.
+    let author_id_by_hash: HashMap<cf_gitlib::hash::Hash, i64> = {
+        let mut m = HashMap::with_capacity(hashes.len());
+        for hash in &hashes {
+            let Ok(commit) = repo.lookup_commit(*hash) else { continue };
+            let gsig = commit.author();
+            let id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
+                name: gsig.name.clone(),
+                email: gsig.email.clone(),
+                when_unix: gsig.when.seconds(),
+            });
+            m.insert(*hash, id);
+        }
+        m
+    };
+
     // Cumulative per-path file history (BTreeMap ⇒ deterministic path order).
     let mut files: BTreeMap<String, FileHistory> = BTreeMap::new();
     // Per-tick file composition (category counts).
@@ -1489,13 +1516,10 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
 
         last_commit_hash = Some(*hash);
 
-        // Identity: resolve this commit's author id (loose signature).
-        let gsig = commit.author();
-        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: gsig.name.clone(),
-            email: gsig.email.clone(),
-            when_unix: gsig.when.seconds(),
-        });
+        // Identity: this commit's author id was resolved oldest-first above
+        // (CORE analyzer order); here we only LOOK IT UP (Go stamps the already-
+        // resolved AuthorID onto the leaf work, it is not re-derived per worker).
+        let author_id = author_id_by_hash.get(hash).copied().unwrap_or(0);
 
         // Tick: the REVWALK-order monotonic tick assigned by TicksSinceStart when
         // the commit was produced (precomputed above), NOT a consume-order tick.
