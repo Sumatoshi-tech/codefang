@@ -980,7 +980,6 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
         crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
     };
 
-    let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
 
     // Per-commit merged comments (hex hash → comments), per-tick commit hashes,
@@ -992,7 +991,89 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    for hash in &hashes {
+    // ---- parallel pure-compute stage -----------------------------------------
+    // The expensive per-commit work — tree diff + per-file UAST parse + comment
+    // extraction + per-commit merge_comments — is a PURE function of (repo,
+    // commit), so run it across all cores. The tree-sitter parser is NOT
+    // thread-safe, so each call creates its OWN `cf_uast::Parser` inside the
+    // closure (per thread/call). The result is `Some(merged)` for an analyzed
+    // commit (possibly empty) or `None` for a spilled (> 32 changes) commit, which
+    // records NO comments_by_commit entry — exactly the original `continue`. The
+    // order-dependent reduce below (monotonic tick assignment, commits_by_tick,
+    // per-tick committer-time bounds, comments_by_commit insert) runs UNCHANGED.
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let opts_ref = &opts;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        // Per-thread UAST parser (tree-sitter parsers are not thread-safe).
+        let parser = cf_uast::Parser::new();
+        let commit = repo.lookup_commit(hash).ok()?;
+
+        // Tree diff against the first parent (root → full initial tree).
+        let new_tree = commit.tree().ok()?;
+        let changes = if commit.num_parents() > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(repo, Some(&new_tree)).ok()?
+        };
+
+        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes; the
+        // commit records NO comments_by_commit entry (inner `None`).
+        if changes.len() > SPILL_THRESHOLD {
+            return Some(None);
+        }
+
+        // Collect Comment nodes across this commit's surviving After trees, then
+        // merge+filter per commit (Go Consume aggregates every change's After
+        // comments before mergeComments).
+        let mut comment_nodes: Vec<CommentNode> = Vec::new();
+
+        for change in &changes {
+            // Sentiment analyzes the After version only (Insert / Modify).
+            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+                continue;
+            }
+            let name = &change.to.name;
+            if exclude(name, None, opts_ref) {
+                continue;
+            }
+            if !parser.is_supported(name) {
+                continue;
+            }
+            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
+                continue;
+            };
+            if blob.data.len() > MAX_BLOB_SIZE {
+                continue;
+            }
+            if exclude(name, Some(&blob.data), opts_ref) {
+                continue;
+            }
+            match parser.parse(name, &blob.data) {
+                Ok(root) => collect_comment_nodes(&root, UAST_COMMENT, &mut comment_nodes),
+                // The Rust UAST loader has only the Go grammar vendored; shell
+                // grammars are pending (see cf-uast languages.rs). For `.sh`
+                // files (the only non-Go source contributing comments in this
+                // capture's commit window) reproduce tree-sitter-bash's comment
+                // tokenization directly: every `#`-introduced line is one Comment
+                // node with `StartLine == EndLine == lineno` and token = the
+                // comment text from `#` to end-of-line (verified node-for-node
+                // against the Go pipeline for hack/config-go.sh and
+                // src/scripts/cloudcfg.sh). Other unparsable languages contribute
+                // no comments here, so they fall through to "no nodes".
+                Err(_) if is_shell_path(name) => {
+                    extract_shell_comment_nodes(&blob.data, &mut comment_nodes);
+                }
+                Err(_) => {}
+            }
+        }
+
+        Some(Some(merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH)))
+    })?;
+
+    // ---- sequential ordered-reduce stage -------------------------------------
+    for (i, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
         let when = commit.committer().when.seconds();
 
@@ -1016,71 +1097,11 @@ pub fn sentiment_metrics(sub: &clap::ArgMatches) -> Option<cf_sentiment::Compute
             })
             .or_insert((when, when));
 
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            continue;
+        // Go always records an entry for an analyzed commit (CommitResult.Comments,
+        // even when empty); a spilled commit (inner `None`) records none.
+        if let Some(merged) = &prepared[i] {
+            comments_by_commit.insert(hex, merged.clone());
         }
-
-        // Collect Comment nodes across this commit's surviving After trees, then
-        // merge+filter per commit (Go Consume aggregates every change's After
-        // comments before mergeComments).
-        let mut comment_nodes: Vec<CommentNode> = Vec::new();
-
-        for change in &changes {
-            // Sentiment analyzes the After version only (Insert / Modify).
-            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
-                continue;
-            }
-            let name = &change.to.name;
-            if exclude(name, None, &opts) {
-                continue;
-            }
-            if !parser.is_supported(name) {
-                continue;
-            }
-            let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                continue;
-            };
-            if blob.data.len() > MAX_BLOB_SIZE {
-                continue;
-            }
-            if exclude(name, Some(&blob.data), &opts) {
-                continue;
-            }
-            match parser.parse(name, &blob.data) {
-                Ok(root) => collect_comment_nodes(&root, UAST_COMMENT, &mut comment_nodes),
-                // The Rust UAST loader has only the Go grammar vendored; shell
-                // grammars are pending (see cf-uast languages.rs). For `.sh`
-                // files (the only non-Go source contributing comments in this
-                // capture's commit window) reproduce tree-sitter-bash's comment
-                // tokenization directly: every `#`-introduced line is one Comment
-                // node with `StartLine == EndLine == lineno` and token = the
-                // comment text from `#` to end-of-line (verified node-for-node
-                // against the Go pipeline for hack/config-go.sh and
-                // src/scripts/cloudcfg.sh). Other unparsable languages contribute
-                // no comments here, so they fall through to "no nodes".
-                Err(_) if is_shell_path(name) => {
-                    extract_shell_comment_nodes(&blob.data, &mut comment_nodes);
-                }
-                Err(_) => {}
-            }
-        }
-
-        let merged = merge_comments(&comment_nodes, DEFAULT_COMMENT_SENTIMENT_MIN_LENGTH);
-        // Go always records an entry for the commit (CommitResult.Comments, even
-        // when empty). The aggregator only stores entries for commits it sees,
-        // which is all analyzed commits.
-        comments_by_commit.insert(hex, merged);
     }
 
     // Format tick bounds RFC3339 UTC (FormatStartTime / FormatEndTime).
