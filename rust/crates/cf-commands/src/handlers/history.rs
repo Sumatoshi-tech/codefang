@@ -1975,12 +1975,25 @@ pub fn typos_report_data(sub: &clap::ArgMatches) -> Option<cf_typos::ReportData>
             let lines_before: Vec<&[u8]> = split_lines(&blob_before.data);
             let lines_after: Vec<&[u8]> = split_lines(&blob_after.data);
 
-            // FileDiff line-mode diff (cleanup on, whitespace kept).
-            let segments =
-                cf_godiff::line_diff(&blob_before.data, &blob_after.data, DIFF_TIMEOUT_ACTIVE);
+            // The runtime pipeline feeds typos the libgit2 line-diff op stream
+            // (framework/diff_pipeline.go → cf_batch_diff_blobs → git_diff_buffers),
+            // NOT diffmatchpatch — only falling back to dmp on a libgit2 error. The
+            // two group changed lines differently, so on mass-rewrite commits (e.g.
+            // ioq3's `5b755058` line-ending normalization) diffmatchpatch yields one
+            // big Delete+Insert block that pairs every line as a candidate, whereas
+            // libgit2's Myers diff keeps the genuinely-unchanged lines Equal — which
+            // is what makes Go report a handful of typos there instead of thousands.
+            let old_lines = blob_before.count_lines().map_or(0, |n| n as i64);
+            let ops = cf_gitlib::diff::diff_blob_line_ops(
+                repo.native(),
+                change.from.hash,
+                change.to.hash,
+                old_lines,
+            )
+            .unwrap_or_default();
 
             let cand = find_typo_candidates(
-                &segments,
+                &ops,
                 &lines_before,
                 &lines_after,
                 max_distance,
@@ -2072,13 +2085,13 @@ fn split_lines(data: &[u8]) -> Vec<&[u8]> {
 /// within the Levenshtein bound (and within the raw line vectors' bounds) becomes
 /// a candidate and marks both focused line sets.
 fn find_typo_candidates(
-    segments: &[cf_godiff::Segment],
+    ops: &[cf_gitlib::diff::LineOp],
     lines_before: &[&[u8]],
     lines_after: &[&[u8]],
     max_distance: i64,
     lctx: &mut cf_alg_levenshtein::Context,
 ) -> TypoCandidates {
-    use cf_godiff::Op;
+    use cf_gitlib::diff::LineOp;
 
     let mut line_num_before: i64 = 0;
     let mut line_num_after: i64 = 0;
@@ -2087,15 +2100,15 @@ fn find_typo_candidates(
     let mut focused_before: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut focused_after: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
-    for seg in segments {
-        // Go uses utf8.RuneCountInString(edit.Text); one encoded rune per line.
-        let size = seg.lines.len() as i64;
-        match seg.op {
-            Op::Delete => {
+    for op in ops {
+        // Each op carries a line count (Go: utf8.RuneCountInString(edit.Text),
+        // one encoded rune per line; here the libgit2 op's coalesced line count).
+        match *op {
+            LineOp::Delete(size) => {
                 line_num_before += size;
                 removed_size = size;
             }
-            Op::Insert => {
+            LineOp::Insert(size) => {
                 if size == removed_size {
                     for i in 0..size {
                         let lb = line_num_before - size + i;
@@ -2128,7 +2141,7 @@ fn find_typo_candidates(
                 line_num_after += size;
                 removed_size = 0;
             }
-            Op::Equal => {
+            LineOp::Equal(size) => {
                 line_num_before += size;
                 line_num_after += size;
                 removed_size = 0;
