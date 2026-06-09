@@ -30,6 +30,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 pub mod content;
+pub mod content_heuristics;
 
 /// Resolve a candidate token to its canonical Linguist language via enry's
 /// alias table (`GetLanguageByAlias`), or `None` if unrecognized. Public so the
@@ -345,8 +346,8 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// 2. `GetLanguagesByFilename` → `LanguagesByFilename[base]`.
 /// 3. `GetLanguagesByShebang` → `LanguagesByInterpreter[interpreter(content)]`.
 /// 4. `GetLanguagesByExtension` → longest dotted suffix first (lowercased).
-/// 5. `GetLanguagesByContent` — per-extension content regex heuristics. NOT
-///    ported; treated as always-empty (no `.sls`/observed-extension heuristic).
+/// 5. `GetLanguagesByContent` — per-extension content regex heuristics
+///    ([`content_heuristics::languages_by_content`]).
 /// 6. `GetLanguagesByClassifier` — Naive-Bayes over the accumulated candidates
 ///    ([`content::classify_language`]).
 ///
@@ -403,7 +404,16 @@ pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<S
         }
     }
 
-    // Strategy 5 (content heuristics) not ported — assumed empty.
+    // Strategy 5: content heuristics (per-extension Linguist regex rules).
+    // enry passes the full `filename` (GetLanguagesByContent calls
+    // filepath.Ext on it directly) and ignores the accumulated candidates.
+    let content_langs = content_heuristics::languages_by_content(filename, content);
+    if content_langs.len() == 1 {
+        return Some(content_langs[0].clone());
+    }
+    if !content_langs.is_empty() {
+        candidates.extend(content_langs);
+    }
 
     // Strategy 6: classifier over the accumulated candidates.
     content::classify_language(content, &candidates)
@@ -617,6 +627,31 @@ mod tests {
     fn is_unique(xs: &[String]) -> bool {
         let set: BTreeSet<&String> = xs.iter().collect();
         set.len() == xs.len()
+    }
+
+    #[test]
+    fn content_strategy_pcons_dot_one_is_roff() {
+        // Regression for the motivating bug: a Perl-shebang `.1` file with no
+        // .TH/.SH/.Dd lines. The extension strategy (.1 -> Roff) and shebang
+        // (perl) disagree; enry's Content strategy short-circuits on the
+        // Always("Roff") rule BEFORE the classifier. Result must be "Roff",
+        // not "Perl".
+        let content = b"#!/usr/bin/env perl\nprint \"hello\\n\";\n";
+        assert_eq!(
+            language_by_path_with_content("pcons-2.3.1", content),
+            Some("Roff".to_string())
+        );
+    }
+
+    #[test]
+    fn content_strategy_short_circuits_single_language() {
+        // A real manpage `.1` resolves to "Roff Manpage" via the Content
+        // strategy's single-language short-circuit.
+        let man = b".TH FOO 1\n.SH NAME\n";
+        assert_eq!(
+            language_by_path_with_content("foo.1", man),
+            Some("Roff Manpage".to_string())
+        );
     }
 
     #[test]
