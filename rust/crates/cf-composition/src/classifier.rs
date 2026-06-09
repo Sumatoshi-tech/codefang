@@ -107,20 +107,22 @@ fn base_clean(path: &str) -> &str {
     }
 }
 
-/// Returns the lowercase file extension including the leading dot, equivalent to
-/// Go's `filepath.Ext` (the suffix from the final dot in the base name). Returns
-/// an empty string when there is no dot in the base name.
-fn ext_lower(path: &str) -> String {
+/// Returns the file extension including the leading dot, **case-preserving**,
+/// equivalent to Go's `filepath.Ext` (the suffix from the final dot in the base
+/// name). Empty when the base name has no dot. Use this where the Go predicate
+/// compares the raw extension (e.g. `enry.IsImage`'s case-sensitive check), so an
+/// upper-case `.GIF` is not misclassified the way a lower-cased compare would.
+fn ext(path: &str) -> String {
     let base = base_clean(path);
     match base.rfind('.') {
-        Some(idx) => base[idx..].to_ascii_lowercase(),
+        Some(idx) => base[idx..].to_string(),
         None => String::new(),
     }
 }
 
 /// Port of the subset of `src-d/enry` v2.1.0 predicates used by the classifier.
 mod enry {
-    use super::{base_clean, ext_lower};
+    use super::base_clean;
 
     /// `enry.IsBinary` — content is detected as binary.
     ///
@@ -133,11 +135,11 @@ mod enry {
     }
 
     /// `enry.IsImage` — exact port: extension is exactly `.png`, `.jpg`,
-    /// `.jpeg`, or `.gif` (case-sensitive in Go via `filepath.Ext`; we lower-case
-    /// first, which only widens to upper-case variants and never misclassifies a
-    /// non-image, keeping the ported test cases identical).
+    /// `.jpeg`, or `.gif`. Go compares the **raw** `filepath.Ext`, so the match
+    /// is case-sensitive: an upper-case `.GIF` (e.g. ioq3's `RADIANT3.GIF`) is
+    /// NOT an image and falls through to `source`, which is what Go reports.
     pub fn is_image(path: &str) -> bool {
-        matches!(ext_lower(path).as_str(), ".png" | ".jpg" | ".jpeg" | ".gif")
+        matches!(super::ext(path).as_str(), ".png" | ".jpg" | ".jpeg" | ".gif")
     }
 
     /// `enry.IsDotFile` — exact port: `filepath.Base(filepath.Clean(path))`

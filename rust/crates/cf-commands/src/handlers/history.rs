@@ -1561,27 +1561,37 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
                         (&change.from.name, LineStats { added: 0, removed: removed as i64, changed: 0 })
                     }
                     ChangeAction::Modify => {
-                        // computeModifyStats: keyed by change.To.Name; needs both
-                        // blobs, skips binary and identical content.
+                        // The runtime diff pipeline (framework/diff_pipeline.go
+                        // prepareDiffRequest) processes every Modify whose blobs
+                        // are both present and non-binary — it does NOT skip a
+                        // same-hash Modify (a mode-only change keeps the blob hash
+                        // but the tree diff still reports a Modify). Diffing two
+                        // identical blobs yields all-Equal ops, so the LineStats
+                        // entry is {0,0,0}; that still records the author as a
+                        // (zero-line) contributor to the file. Skipping it here
+                        // would drop those contributors (e.g. ioq3's mode-only
+                        // jpeglib.h Modify), shrinking avg_contributors_per_file.
                         let Ok(blob_from) = CachedBlob::from_repo(&repo, change.from.hash) else {
                             continue;
                         };
                         let Ok(blob_to) = CachedBlob::from_repo(&repo, change.to.hash) else {
                             continue;
                         };
-                        if change.from.hash == change.to.hash {
-                            continue;
-                        }
                         if blob_from.is_binary() || blob_to.is_binary() {
                             continue;
                         }
-                        let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
-                        let (added, removed, changed) = compute_diff_line_stats(
-                            &repo,
-                            change.from.hash,
-                            change.to.hash,
-                            old_lines,
-                        );
+                        let (added, removed, changed) = if change.from.hash == change.to.hash {
+                            // Identical content ⇒ the diff is all-Equal ⇒ zeros.
+                            (0, 0, 0)
+                        } else {
+                            let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                            compute_diff_line_stats(
+                                &repo,
+                                change.from.hash,
+                                change.to.hash,
+                                old_lines,
+                            )
+                        };
                         (&change.to.name, LineStats { added, removed, changed })
                     }
                 };
