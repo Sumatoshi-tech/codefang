@@ -658,7 +658,6 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
         crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
     };
 
-    let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
 
     // Per-tick merged quality + bounds (committer-time min/max).
@@ -668,7 +667,83 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    for hash in &hashes {
+    // ---- parallel pure-compute stage -----------------------------------------
+    // The expensive per-commit work — tree diff + per-file UAST parse + the four
+    // component analyzers — is a PURE function of (repo, commit), so run it across
+    // all cores. The tree-sitter parser is NOT thread-safe, so each call creates
+    // its OWN `cf_uast::Parser` inside the closure (per thread/call). The result is
+    // a per-commit `TickQuality` carrying that commit's per-file samples (empty for
+    // a spilled/zero-file commit). The order-dependent reduce below (monotonic tick
+    // assignment, per-tick committer-time bounds, merge of each commit's samples
+    // into its tick) runs UNCHANGED and sequentially over these results.
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let opts_ref = &opts;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        // Per-thread UAST parser (tree-sitter parsers are not thread-safe).
+        let parser = cf_uast::Parser::new();
+        let commit = repo.lookup_commit(hash).ok()?;
+
+        // This commit's per-file quality samples (Go appends one sample per
+        // analyzed file into the tick; here we collect them per commit first).
+        let mut commit_q = TickQuality::default();
+
+        // Tree diff against the first parent (root → full initial tree).
+        let new_tree = commit.tree().ok()?;
+        let changes = if commit.num_parents() > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(repo, Some(&new_tree)).ok()?
+        };
+
+        // Spill rule: > 32 changes ⇒ the quality analyzer sees zero UAST changes.
+        if changes.len() > SPILL_THRESHOLD {
+            return Some(commit_q);
+        }
+
+        for change in &changes {
+            // Quality analyzes the After version only (Insert / Modify).
+            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
+                continue;
+            }
+            let name = &change.to.name;
+            // tree_diff filterChanges: pathpolicy.Exclude(name, nil) (path-only).
+            if exclude(name, None, opts_ref) {
+                continue;
+            }
+            // UAST parseBlob: language support is keyed on the file extension.
+            if !parser.is_supported(name) {
+                continue;
+            }
+            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
+                continue;
+            };
+            if blob.data.len() > MAX_BLOB_SIZE {
+                continue;
+            }
+            // Content-aware generated detection (IsExcludedWithContent).
+            if exclude(name, Some(&blob.data), opts_ref) {
+                continue;
+            }
+
+            // Parse the file to UAST and run the four component analyzers on the
+            // `change.After` root, exactly as Go `quality.(*Analyzer).analyzeNode`
+            // (complexity -> halstead -> comments -> cohesion), recording the same
+            // scalar keys. One sample per analyzed file. When Rust lacks a wired
+            // grammar for a Go-supported file the parse fails; the file still
+            // counts as one analyzed file (Go has a node there) but contributes a
+            // function-free sample, keeping `files_analyzed` byte-identical.
+            match parser.parse(name, &blob.data) {
+                Ok(root) => accumulate_quality_file(&root, &mut commit_q),
+                Err(_) => push_empty_quality_sample(&mut commit_q),
+            }
+        }
+        Some(commit_q)
+    })?;
+
+    // ---- sequential ordered-reduce stage -------------------------------------
+    for (i, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
         let when = commit.committer().when.seconds();
 
@@ -691,61 +766,10 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
             .or_insert((when, when));
 
         // Ensure the tick has an entry even when it analyzes zero files (the root
-        // commit lands in tick 0 with an empty TickQuality, like Go).
+        // commit lands in tick 0 with an empty TickQuality, like Go), then append
+        // this commit's precomputed per-file samples in walk (oldest-first) order.
         let tq = tick_quality.entry(tick).or_default();
-
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let changes = if commit.num_parents() > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
-        // Spill rule: > 32 changes ⇒ the quality analyzer sees zero UAST changes.
-        if changes.len() > SPILL_THRESHOLD {
-            continue;
-        }
-
-        for change in &changes {
-            // Quality analyzes the After version only (Insert / Modify).
-            if matches!(change.action, ChangeAction::Delete) || change.to.hash.is_zero() {
-                continue;
-            }
-            let name = &change.to.name;
-            // tree_diff filterChanges: pathpolicy.Exclude(name, nil) (path-only).
-            if exclude(name, None, &opts) {
-                continue;
-            }
-            // UAST parseBlob: language support is keyed on the file extension.
-            if !parser.is_supported(name) {
-                continue;
-            }
-            let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                continue;
-            };
-            if blob.data.len() > MAX_BLOB_SIZE {
-                continue;
-            }
-            // Content-aware generated detection (IsExcludedWithContent).
-            if exclude(name, Some(&blob.data), &opts) {
-                continue;
-            }
-
-            // Parse the file to UAST and run the four component analyzers on the
-            // `change.After` root, exactly as Go `quality.(*Analyzer).analyzeNode`
-            // (complexity -> halstead -> comments -> cohesion), recording the same
-            // scalar keys. One sample per analyzed file. When Rust lacks a wired
-            // grammar for a Go-supported file the parse fails; the file still
-            // counts as one analyzed file (Go has a node there) but contributes a
-            // function-free sample, keeping `files_analyzed` byte-identical.
-            match parser.parse(name, &blob.data) {
-                Ok(root) => accumulate_quality_file(&root, tq),
-                Err(_) => push_empty_quality_sample(tq),
-            }
-        }
+        merge_tick_quality(tq, &prepared[i]);
     }
 
     // Format tick bounds RFC3339 UTC (FormatStartTime / FormatEndTime).
@@ -762,6 +786,23 @@ pub fn quality_metrics(sub: &clap::ArgMatches) -> Option<cf_quality::ComputedMet
 
     let input = ReportData { tick_quality, tick_bounds };
     Some(compute_all_metrics(&input))
+}
+
+/// Appends every per-file sample in `src` onto `dst`, preserving order. Used by
+/// the parallel quality walk to fold one commit's precomputed [`TickQuality`]
+/// (its per-file samples) into its tick's accumulator in walk order — equivalent
+/// to having pushed each file's samples directly, but computed off-thread.
+fn merge_tick_quality(dst: &mut cf_quality::TickQuality, src: &cf_quality::TickQuality) {
+    dst.complexities.extend_from_slice(&src.complexities);
+    dst.cognitives.extend_from_slice(&src.cognitives);
+    dst.max_complexities.extend_from_slice(&src.max_complexities);
+    dst.functions.extend_from_slice(&src.functions);
+    dst.halstead_volumes.extend_from_slice(&src.halstead_volumes);
+    dst.halstead_efforts.extend_from_slice(&src.halstead_efforts);
+    dst.delivered_bugs.extend_from_slice(&src.delivered_bugs);
+    dst.comment_scores.extend_from_slice(&src.comment_scores);
+    dst.doc_coverages.extend_from_slice(&src.doc_coverages);
+    dst.cohesion_scores.extend_from_slice(&src.cohesion_scores);
 }
 
 /// Pushes one function-free quality sample (Go `analyzeNode` over a tree with no
