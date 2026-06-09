@@ -121,39 +121,78 @@ pub fn load_history_commit_hashes(
     Some(hashes)
 }
 
-/// Size of the streaming-pipeline commit chunk (Go `framework` PIPELINE_CHUNK):
-/// the oldest-first window is split into contiguous blocks of this size and
-/// consumed round-robin.
-pub const PIPELINE_CHUNK: usize = 8;
-
-/// Reorders an oldest-first commit window into Go's actual *consume* order: the
-/// streaming pipeline splits the window into contiguous [`PIPELINE_CHUNK`]-sized
-/// blocks and feeds the analyzers ROUND-ROBIN (block0[0], block1[0], …,
-/// block0[1], block1[1], …), NOT in raw revwalk order. For windows of
-/// `<= PIPELINE_CHUNK` commits this is the identity.
+/// Returns Go's streaming-pipeline *consume* order for an oldest-first commit
+/// window: the IDENTITY (oldest-first revwalk order).
 ///
-/// This order is observable for any analyzer whose per-commit aggregation is
-/// order-sensitive — e.g. file-history's `applyInsert` RESETS a path's commit
-/// list, so whether a merge's re-insert is consumed before or after a sibling's
-/// modify changes the final `commit_count`; couples' merge-mode Bloom gate is
-/// likewise order-dependent.
+/// At `--workers 1` (the only config the differential gate exercises) every
+/// stage of the Go coordinator pipeline preserves input order, so the leaf
+/// analyzers consume commits in exactly the oldest-first order they are fed:
+///
+/// * `framework/commit_streamer.go` `Stream` emits contiguous oldest-first
+///   batches (`commits[i:end]`) from a single goroutine.
+/// * `framework/blob_pipeline.go` and `framework/diff_pipeline.go` use
+///   `pipeline.RunPC` (`pkg/pipeline/runpc.go`): a single producer emits jobs
+///   in input order onto one FIFO channel, and a single consumer reads and
+///   emits them in that same order — the parallel blob/diff prefetch only
+///   shares one batched worker request, it never resequences commits.
+/// * `framework/uast_pipeline.go` `Process` is explicitly order-preserving
+///   ("Output order matches input order via a slot-based approach"): the
+///   `emit` goroutine waits on each slot's `done` in dispatch order.
+/// * `framework/coordinator.go` `Process` and `pkg/pipeline/drain.go`
+///   `SignalOnDrain` each forward items one-for-one from a single goroutine.
+/// * `framework/runner.go` `processCommitsSerial`/`hybridCommitLoop` range over
+///   the coordinator's `dataChan` in arrival order, and the per-commit `Index`
+///   carried through is the plain oldest-first revwalk index
+///   (`blob_pipeline.go`: `batch.StartIndex + job.index`).
+///
+/// So the order in which the COORDINATOR pipeline yields commits is the identity
+/// of the oldest-first window. Earlier code reordered into round-robin
+/// `PIPELINE_CHUNK` blocks here; that was incorrect — no pipeline stage performs
+/// that reordering.
+///
+/// This is the order the CORE (plumbing) analyzers consume — notably the
+/// `IdentityDetector`, which assigns loose author ids strictly oldest-first. It
+/// is NOT necessarily the order in which a LEAF analyzer's order-sensitive state
+/// is updated: at the default `LeafWorkers = max(NumCPU / 3, 4)` (which
+/// `--workers` does NOT override — that flag only sets the blob/diff `Workers`
+/// pool), Go's hybrid leaf path (`runner.go` `processCommitsHybrid`) forks the
+/// leaf across workers, dispatching consume position `p` to worker `p % W`. The
+/// effect is leaf-specific and handled at the leaf consumer, not here:
+///   - couples: each fork has an INDEPENDENT seen-files Bloom; commits stay in
+///     oldest-first order WITHIN a worker (see `couples_run`).
+///   - file-history: forked TCs are drained worker-by-worker into one aggregator
+///     whose `applyInsert` resets a path's hash list, so its add-order is the
+///     commits stably reordered by `(p % W, p)` (see `file_history_run`).
+/// Both use [`leaf_worker_count`] for `W`, reproducing the live binary on this
+/// machine.
 #[must_use]
 pub fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
-    let n = hashes.len();
-    if n <= PIPELINE_CHUNK {
-        return hashes;
-    }
-    let num_blocks = n.div_ceil(PIPELINE_CHUNK);
-    let mut out = Vec::with_capacity(n);
-    for offset in 0..PIPELINE_CHUNK {
-        for block in 0..num_blocks {
-            let idx = block * PIPELINE_CHUNK + offset;
-            if idx < n {
-                out.push(hashes[idx]);
-            }
-        }
-    }
-    out
+    hashes
+}
+
+/// Go leaf-worker divisor (`framework` `leafWorkerDivisor`): `LeafWorkers =
+/// NumCPU / divisor`.
+const LEAF_WORKER_DIVISOR: usize = 3;
+/// Go minimum leaf-worker count (`framework` `minLeafWorkers`).
+const MIN_LEAF_WORKERS: usize = 4;
+
+/// Number of forked leaf-analyzer workers Go dispatches commits across, mirroring
+/// `framework.DefaultCoordinatorConfig`: `max(NumCPU / 3, 4)`, where `NumCPU` is
+/// the machine's logical CPU count (Go `runtime.NumCPU`).
+///
+/// Go's hybrid leaf path (`runner.go` `processCommitsHybrid`, taken for a single
+/// non-`SequentialOnly` leaf when `0 < CoreCount < len(Analyzers)`) forks the
+/// leaf across this many workers and dispatches consume position `p` to worker
+/// `p % count`, each worker holding INDEPENDENT analyzer state (e.g. couples'
+/// seen-files Bloom, file-history's per-path map). That makes the order-sensitive
+/// parts of those analyzers depend on this count, so a byte-exact port must use
+/// the same value as the live binary on this machine (which the oracle also runs
+/// on). The `--workers` flag only overrides `Workers` (the blob/diff pool), never
+/// `LeafWorkers`, so this is unaffected by `--workers 1`.
+#[must_use]
+pub fn leaf_worker_count() -> usize {
+    let num_cpu = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    (num_cpu / LEAF_WORKER_DIVISOR).max(MIN_LEAF_WORKERS)
 }
 
 /// Rounds Unix `secs` down to the start of its 24-hour tick (Go

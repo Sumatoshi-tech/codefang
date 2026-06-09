@@ -1408,9 +1408,9 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     // Tick per commit is assigned by the TicksSinceStart CORE analyzer as the
     // revwalk produces commits — i.e. in OLDEST-FIRST order, monotonic
     // (`tick = max(rawTick, previousTick)`), tick0 = floor of the first commit's
-    // committer time. The leaf then consumes commits in round-robin order but
-    // carries each commit's pre-assigned tick, so composition buckets by the
-    // REVWALK-order tick, NOT the consume-order tick. Precompute the map here.
+    // committer time. The leaf consumes commits in this same oldest-first order
+    // and carries each commit's pre-assigned tick, so composition buckets by the
+    // REVWALK-order tick. Precompute the map here.
     let mut commit_tick: std::collections::HashMap<cf_gitlib::hash::Hash, i64> =
         std::collections::HashMap::new();
     {
@@ -1427,9 +1427,11 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
         }
     }
 
-    // Leaf consume order: round-robin PIPELINE_CHUNK blocks (NOT raw revwalk).
-    // file-history's per-path `applyInsert` RESETS the commit list, so at a merge
-    // the consume order decides the final commit_count.
+    // Leaf consume order: the oldest-first revwalk order (the Go streaming
+    // pipeline preserves order end-to-end at `--workers 1`; see
+    // `crate::handlers::pipeline_consume_order`). file-history's per-path
+    // `applyInsert` RESETS the commit list, so at a merge the consume order
+    // decides the final commit_count — hence it must match Go's exactly.
     let hashes = if head_only {
         revwalk_hashes
     } else {
@@ -1440,6 +1442,28 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     let classifier = Classifier::new();
     let mut identity = IdentityDetector::new();
 
+    // file-history's final report is built from the AGGREGATOR (per-commit TCs),
+    // not the leaf's local file map: each commit emits a TC, and the aggregator's
+    // `applyInsert`/`applyModify`/`applyDelete`/`applyRename` (aggregator.go)
+    // maintain the per-path hash list — `applyInsert` RESETS it. The aggregator
+    // therefore consumes commits in TC ADD order. Under Go's hybrid leaf path
+    // (`runner.go` `processCommitsHybrid`, taken for this single non-SequentialOnly
+    // leaf since `0 < CoreCount(8) < len(Analyzers)(9)`), the forked workers
+    // buffer their TCs and the runner DRAINS them worker-by-worker
+    // (`drainWorkerTCs`: range over workers, then over each worker's tcs). Commit
+    // `p` (oldest-first) goes to worker `p % W`, so the aggregator add-order — and
+    // thus the reset-sensitive `commit_count` — is the commits stably reordered by
+    // `(p % W, p)`. `W = max(NumCPU / 3, 4)` (coordinator default), so the result
+    // is machine-CPU-count dependent, exactly as in Go (same model as the
+    // comments/typos analyzer above). Identity (a CORE analyzer) and the tick
+    // assignment are consumed in plain oldest-first order, independent of W.
+    let leaf_workers = crate::handlers::leaf_worker_count();
+    let consume_order: Vec<(usize, cf_gitlib::hash::Hash)> = {
+        let mut v: Vec<(usize, cf_gitlib::hash::Hash)> = hashes.iter().copied().enumerate().collect();
+        v.sort_by_key(|(p, _)| (*p % leaf_workers, *p));
+        v
+    };
+
     // Cumulative per-path file history (BTreeMap ⇒ deterministic path order).
     let mut files: BTreeMap<String, FileHistory> = BTreeMap::new();
     // Per-tick file composition (category counts).
@@ -1448,7 +1472,7 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     let mut seen_merges: HashSet<String> = HashSet::new();
 
     let mut last_commit_hash: Option<cf_gitlib::hash::Hash> = None;
-    for hash in &hashes {
+    for (_pos, hash) in &consume_order {
         let commit = repo.lookup_commit(*hash).ok()?;
         let num_parents = commit.num_parents();
         // Go `runner.buildAnalyzeContext`: `isMerge = NumParents()>1`, but FORCED
@@ -1479,8 +1503,8 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
 
         // TreeDiff diff base — each commit is diffed against its OWN parent(0)
         // tree (a root commit vs the empty tree → `InitialTreeChanges`).
-        // Combined with the round-robin consume order of `hashes` above + the
-        // commit_count-resetting `applyInsert`, this reproduces the oracle's
+        // Combined with the worker-strided `(p % W, p)` aggregator add-order above
+        // + the commit_count-resetting `applyInsert`, this reproduces the oracle's
         // per-file commit_count byte-for-byte (e.g. hercules analyser.go=10).
         let new_tree = commit.tree().ok()?;
         let base_tree: Option<cf_gitlib::tree::Tree> = if num_parents > 0 {
@@ -2044,10 +2068,7 @@ pub fn typos_report_data(sub: &clap::ArgMatches) -> Option<cf_typos::ReportData>
     // limits the gate/golden probe — limit 10/50/500 on kubernetes), matching
     // Go, where a chunk boundary would otherwise serialize earlier commits ahead
     // of later ones regardless of worker stride.
-    let leaf_workers: usize = {
-        let n = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-        std::cmp::max(n / 3, 4)
-    };
+    let leaf_workers = crate::handlers::leaf_worker_count();
     all_typos.sort_by_key(|(idx, _)| (*idx % leaf_workers, *idx));
     let ordered: Vec<Typo> = all_typos.into_iter().map(|(_, t)| t).collect();
 

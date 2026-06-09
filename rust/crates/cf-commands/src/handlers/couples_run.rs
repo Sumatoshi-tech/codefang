@@ -57,29 +57,50 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         vec![repo.head().ok()?]
     } else {
         let v = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
-        // Go consume order: the streaming pipeline (commit streamer + blob/diff
-        // prefetch) does NOT feed commits to the analyzers in raw revwalk order.
-        // It splits the oldest-first window into contiguous size-PIPELINE_CHUNK
-        // blocks and consumes them ROUND-ROBIN (one commit from each block per
-        // pass). This consume order is observable and stable, and it is the order
-        // in which the couples seen-files Bloom is populated — so a merge commit's
-        // merge-mode coupling gate (`!seenFiles.Test(name)`) depends on it. The
-        // additive coupling/people matrices are themselves order-independent, but
-        // the Bloom gate and loose-identity id assignment are not, so we must
-        // reproduce Go's consume order exactly to match byte-for-byte.
-        pipeline_consume_order(v)
+        // Go consume order at `--workers 1`: the streaming pipeline (commit
+        // streamer + blob/diff/uast prefetch) preserves input order end-to-end,
+        // so the couples leaf consumes commits in the oldest-first revwalk order
+        // they are fed (see `crate::handlers::pipeline_consume_order` for the
+        // per-stage source citation). This is the order in which the couples
+        // seen-files Bloom is populated, so a merge commit's merge-mode coupling
+        // gate (`!seenFiles.Test(name)`) depends on it. The additive
+        // coupling/people matrices are order-independent, but the Bloom gate and
+        // loose-identity id assignment are not, so we reproduce this exact order.
+        crate::handlers::pipeline_consume_order(v)
     };
 
     let opts = PathPolicyOptions::default();
     // Loose identity detection (run streaming never preloads a people dict).
+    // Identity is a CORE (plumbing) analyzer: it runs sequentially on the main
+    // goroutine in oldest-first order BEFORE the leaf workers, and the resolved
+    // AuthorID is handed to the forked leaves via the per-commit plumbing
+    // snapshot. So author resolution is global oldest-first, NOT per-worker.
     let mut identity = IdentityDetector::new();
 
-    // Seen-files Bloom filter (merge-mode coupling dedup; Go: c.seenFiles).
-    let mut seen_files =
-        cf_alg_bloom::Filter::new_with_estimates(SEEN_FILES_BLOOM_EXPECTED, SEEN_FILES_BLOOM_FP)
-            .ok()?;
-    // Merge dedup tracker (Go: c.merges.SeenOrAdd over NumParents() > 1).
-    let mut seen_merges: HashSet<cf_gitlib::Hash> = HashSet::new();
+    // Go runs the couples leaf through `processCommitsHybrid` (runner.go): with a
+    // single non-SequentialOnly leaf and CoreCount(8) < len(Analyzers)(9), the
+    // leaf is FORKED across `LeafWorkers` workers, each with an INDEPENDENT
+    // seen-files Bloom and merge-dedup tracker (couples `Fork`: fresh
+    // `newSeenFilesFilter()` + `NewMergeTracker()`; `Merge` deliberately does NOT
+    // combine them). Commits are dispatched round-robin by consume position
+    // (`workers[commitIdx % numWorkers]`, hybridCommitLoop), so worker `w`
+    // processes consume positions `p` with `p % numWorkers == w`, in oldest-first
+    // order within that worker. The per-commit coupling/people data each worker
+    // produces is then merged additively into the shared aggregator, so only the
+    // merge-mode Bloom gate (`!seenFiles.Test(name)`) is worker-partition
+    // sensitive. `LeafWorkers` is `max(NumCPU / 3, 4)` (coordinator default),
+    // making the merge-mode coupling count CPU-count dependent — we reproduce the
+    // live binary on THIS machine, which the oracle also runs on.
+    let num_workers = crate::handlers::leaf_worker_count();
+    // One forked seen-files Bloom + merge-dedup tracker per worker.
+    let mut seen_files: Vec<cf_alg_bloom::Filter> = Vec::with_capacity(num_workers);
+    for _ in 0..num_workers {
+        seen_files.push(
+            cf_alg_bloom::Filter::new_with_estimates(SEEN_FILES_BLOOM_EXPECTED, SEEN_FILES_BLOOM_FP)
+                .ok()?,
+        );
+    }
+    let mut seen_merges: Vec<HashSet<cf_gitlib::Hash>> = vec![HashSet::new(); num_workers];
 
     // The aggregator grows its people slices on demand (ensure_capacity), so the
     // initial PeopleNumber is 0 (loose detection discovers authors incrementally).
@@ -87,14 +108,17 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
 
     let mut last_commit_hash: Option<cf_gitlib::Hash> = None;
 
-    for hash in &hashes {
+    for (pos, hash) in hashes.iter().enumerate() {
         let commit = repo.lookup_commit(*hash).ok()?;
+        // Worker that consumes this commit in Go's hybrid leaf dispatch.
+        let worker = pos % num_workers;
 
-        // Merge dedup: a merge commit (NumParents > 1) seen twice contributes an
-        // empty CommitData (Go: SeenOrAdd → return empty). With unique hashes in
-        // a single window this never triggers, but mirror Go faithfully.
+        // Merge dedup: a merge commit (NumParents > 1) seen twice by the SAME
+        // worker contributes an empty CommitData (Go: SeenOrAdd → return empty).
+        // With unique hashes in a single window this never triggers, but mirror
+        // Go faithfully — and the tracker is per-worker (Fork/Merge above).
         let is_multi_parent = commit.num_parents() > 1;
-        if is_multi_parent && !seen_merges.insert(*hash) {
+        if is_multi_parent && !seen_merges[worker].insert(*hash) {
             // Already seen: empty CommitData, not counted, no author attribution.
             continue;
         }
@@ -106,7 +130,8 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         // lastCommit is set on every (non-dedup-skipped) consume.
         last_commit_hash = Some(*hash);
 
-        // Identity: resolve this commit's author id (loose signature).
+        // Identity: resolve this commit's author id (loose signature). Consumed in
+        // oldest-first order (CORE analyzer), independent of the worker partition.
         let gsig = commit.author();
         let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
             name: gsig.name.clone(),
@@ -148,7 +173,7 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         }
 
         for change in &changes {
-            process_change(change, merge_mode, author, &mut data, &mut seen_files);
+            process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
         }
 
         agg.add(author, &data);
@@ -224,34 +249,6 @@ fn collect_current_and_lines(
         set.insert(f.name);
     }
     (Some(set), lines)
-}
-
-/// Go streaming pipeline prefetch block size. The commit streamer / blob+diff
-/// prefetch consumes the oldest-first window in contiguous blocks of this size,
-/// interleaved round-robin. Empirically constant across `--limit` (verified at
-/// 9/10/15/20/25/40 against the live Go binary's TC consume order).
-const PIPELINE_CHUNK: usize = 8;
-
-/// Reorders the oldest-first commit window into Go's actual consume order:
-/// split into contiguous `PIPELINE_CHUNK`-sized blocks, then emit round-robin
-/// (block0[0], block1[0], ..., block0[1], block1[1], ...). For windows of
-/// `<= PIPELINE_CHUNK` commits this is the identity (single block).
-fn pipeline_consume_order(hashes: Vec<cf_gitlib::Hash>) -> Vec<cf_gitlib::Hash> {
-    let n = hashes.len();
-    if n <= PIPELINE_CHUNK {
-        return hashes;
-    }
-    let num_blocks = n.div_ceil(PIPELINE_CHUNK);
-    let mut out = Vec::with_capacity(n);
-    for offset in 0..PIPELINE_CHUNK {
-        for block in 0..num_blocks {
-            let idx = block * PIPELINE_CHUNK + offset;
-            if idx < n {
-                out.push(hashes[idx]);
-            }
-        }
-    }
-    out
 }
 
 /// Per-commit change processing (Go: `HistoryAnalyzer.processChange`).
