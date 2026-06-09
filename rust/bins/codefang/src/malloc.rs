@@ -31,17 +31,34 @@ pub fn ensure_malloc_tunables() {
     unix_reexec();
 }
 
-/// The glibc malloc tunables set by Go before re-exec (main.go:232-235):
-/// - `MALLOC_ARENA_MAX=2`: limit to 2 arenas (default 8*cores).
-/// - `MALLOC_MMAP_THRESHOLD_=32768`: allocations >= 32 KiB use mmap.
-/// - `MALLOC_TRIM_THRESHOLD_=16384`: trim arenas aggressively.
-/// - `MALLOC_MMAP_MAX_=65536`: allow many concurrent mmap regions.
-const TUNABLES: &[(&str, &str)] = &[
-    ("MALLOC_ARENA_MAX", "2"),
-    ("MALLOC_MMAP_THRESHOLD_", "32768"),
-    ("MALLOC_TRIM_THRESHOLD_", "16384"),
-    ("MALLOC_MMAP_MAX_", "65536"),
-];
+/// The glibc malloc tunables set before re-exec, derived from Go main.go:232-235
+/// with ONE deliberate divergence:
+///
+/// - `MALLOC_ARENA_MAX`: Go sets `2` to cap RSS — sound there because the Go
+///   runtime serves nearly all allocations from its own heap and glibc malloc
+///   only handles the CGO slice. In this binary EVERYTHING (Rust + the
+///   tree-sitter/libgit2 C side) goes through glibc, so 2 arenas serialize the
+///   parallel history walks: measured on kubernetes `history/imports --limit
+///   10000` at 24 threads, `ARENA_MAX=2` ran 102s (slower than the 82s
+///   single-thread walk, with ~46% of CPU inside glibc malloc internals) vs 14s
+///   with arenas at glibc's own default formula. RSS stayed ~0.7 GB either way.
+///   So we set `8 × cores` — the default glibc would compute if the variable
+///   were unset, but it doubles as the re-exec idempotency guard, so it must be
+///   set explicitly.
+/// - `MALLOC_MMAP_THRESHOLD_=32768`: allocations >= 32 KiB use mmap (returned to
+///   the OS on free). Measured neutral for the parallel walks; kept for RSS
+///   parity with Go.
+/// - `MALLOC_TRIM_THRESHOLD_=16384`: trim arenas aggressively. Neutral; kept.
+/// - `MALLOC_MMAP_MAX_=65536`: allow many concurrent mmap regions. Neutral; kept.
+fn tunables() -> [(&'static str, String); 4] {
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    [
+        ("MALLOC_ARENA_MAX", (8 * cores).to_string()),
+        ("MALLOC_MMAP_THRESHOLD_", "32768".to_string()),
+        ("MALLOC_TRIM_THRESHOLD_", "16384".to_string()),
+        ("MALLOC_MMAP_MAX_", "65536".to_string()),
+    ]
+}
 
 #[cfg(unix)]
 fn unix_reexec() {
@@ -58,7 +75,7 @@ fn unix_reexec() {
     // mutates the environment via os.Setenv, then passes os.Environ() to Exec.)
     // On edition 2021 `set_var` is safe; it runs before any worker threads, the
     // same single-threaded point as Go's `ensureMallocTunables`.
-    for (k, v) in TUNABLES {
+    for (k, v) in tunables() {
         std::env::set_var(k, v);
     }
 
@@ -114,16 +131,15 @@ mod tests {
     }
 
     #[test]
-    fn tunables_match_go() {
-        // Go sets exactly these four, with these values (main.go:232-235).
-        assert_eq!(
-            TUNABLES,
-            &[
-                ("MALLOC_ARENA_MAX", "2"),
-                ("MALLOC_MMAP_THRESHOLD_", "32768"),
-                ("MALLOC_TRIM_THRESHOLD_", "16384"),
-                ("MALLOC_MMAP_MAX_", "65536"),
-            ]
-        );
+    fn tunables_keep_go_thresholds_and_unthrottle_arenas() {
+        // Three tunables keep Go's values (main.go:232-235); MALLOC_ARENA_MAX
+        // deliberately diverges to glibc's default formula (8 × cores) because
+        // Go's `2` serializes the parallel history walks here (see fn docs).
+        let t = tunables();
+        let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        assert_eq!(t[0], ("MALLOC_ARENA_MAX", (8 * cores).to_string()));
+        assert_eq!(t[1], ("MALLOC_MMAP_THRESHOLD_", "32768".to_string()));
+        assert_eq!(t[2], ("MALLOC_TRIM_THRESHOLD_", "16384".to_string()));
+        assert_eq!(t[3], ("MALLOC_MMAP_MAX_", "65536".to_string()));
     }
 }
