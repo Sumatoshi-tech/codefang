@@ -28,7 +28,7 @@ fn to_safeconv_value(v: &GoValue) -> Value {
         GoValue::Float(f) => Value::Number(Number::Float64(*f)),
         GoValue::Str(s) => Value::String(s.clone()),
         GoValue::Bool(b) => Value::Bool(*b),
-        GoValue::Null | GoValue::Array(_) | GoValue::Map(_) => Value::Nil,
+        GoValue::Null | GoValue::NilSlice | GoValue::Array(_) | GoValue::Map(_) => Value::Nil,
     }
 }
 

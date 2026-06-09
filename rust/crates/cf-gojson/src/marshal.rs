@@ -180,7 +180,9 @@ impl Encoder {
 /// Writes `value` to `out` in compact form.
 fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
     match value {
-        GoValue::Null => out.extend_from_slice(b"null"),
+        // A nil slice marshals as `null` in `encoding/json` (the YAML encoder
+        // renders it `[]` instead).
+        GoValue::Null | GoValue::NilSlice => out.extend_from_slice(b"null"),
         GoValue::Bool(true) => out.extend_from_slice(b"true"),
         GoValue::Bool(false) => out.extend_from_slice(b"false"),
         GoValue::Int(i) => out.extend_from_slice(i.to_string().as_bytes()),
@@ -386,6 +388,14 @@ mod tests {
         assert_eq!(st(marshal(&GoValue::Map(GoMap::new_map()))), "{}");
         assert_eq!(st(marshal_indent(&GoValue::Array(vec![]))), "[]");
         assert_eq!(st(marshal_indent(&GoValue::Map(GoMap::new_map()))), "{}");
+    }
+
+    #[test]
+    fn nil_slice_marshals_as_null() {
+        // `encoding/json` writes a nil slice as `null` (the YAML encoder writes
+        // `[]`); an initialized-but-empty slice stays `[]` in both.
+        assert_eq!(st(marshal(&GoValue::NilSlice)), "null");
+        assert_eq!(st(marshal_indent(&GoValue::NilSlice)), "null");
     }
 
     #[test]

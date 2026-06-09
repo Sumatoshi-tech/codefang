@@ -296,7 +296,9 @@ pub fn anomaly_head_report(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
                 {
                     continue;
                 }
-                let (a, r, _changed) = compute_diff_line_stats(&blob_from.data, &blob_to.data);
+                let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                let (a, r, _changed) =
+                    compute_diff_line_stats(&repo, change.from.hash, change.to.hash, old_lines);
                 lines_added += a;
                 lines_removed += r;
             }
@@ -512,8 +514,13 @@ pub fn anomaly_run_metrics(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
                         if blob_from.is_binary() || blob_to.is_binary() {
                             continue;
                         }
-                        let (a, r, _changed) =
-                            compute_diff_line_stats(&blob_from.data, &blob_to.data);
+                        let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                        let (a, r, _changed) = compute_diff_line_stats(
+                            &repo,
+                            change.from.hash,
+                            change.to.hash,
+                            old_lines,
+                        );
                         added += a;
                         removed += r;
                     }
@@ -1568,8 +1575,13 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
                         if blob_from.is_binary() || blob_to.is_binary() {
                             continue;
                         }
-                        let (added, removed, changed) =
-                            compute_diff_line_stats(&blob_from.data, &blob_to.data);
+                        let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                        let (added, removed, changed) = compute_diff_line_stats(
+                            &repo,
+                            change.from.hash,
+                            change.to.hash,
+                            old_lines,
+                        );
                         (&change.to.name, LineStats { added, removed, changed })
                     }
                 };
@@ -1653,23 +1665,38 @@ fn map_category(cat: cf_composition::category::Category) -> cf_file_history::Cat
 /// derives `(added, removed, changed)` from the diff-match-patch line diff. Each
 /// `cf_godiff` segment carries one encoded line per element, so `lines.len()`
 /// equals Go's `utf8.RuneCountInString(edit.Text)` (one rune per source line).
-fn compute_diff_line_stats(from: &[u8], to: &[u8]) -> (i64, i64, i64) {
-    use cf_godiff::{line_diff, Op};
-    // FileDiff default DiffTimeout > 0 ⇒ half-match active (timeout_active=true);
-    // CleanupDisabled defaults false; WhitespaceIgnore defaults false (no strip).
-    let diffs = line_diff(from, to, true);
+fn compute_diff_line_stats(
+    repo: &cf_gitlib::Repository,
+    from: cf_gitlib::hash::Hash,
+    to: cf_gitlib::hash::Hash,
+    old_lines: i64,
+) -> (i64, i64, i64) {
+    use cf_gitlib::diff::{diff_blob_line_ops, LineOp};
+    // The runtime history pipeline (framework/diff_pipeline.go → cf_batch_diff_blobs
+    // → git_diff_buffers) diffs via libgit2's Myers diff, NOT diffmatchpatch — only
+    // falling back to dmp on a libgit2 error. libgit2 and diffmatchpatch group
+    // changed-vs-added-vs-removed lines differently, so the line-stat metrics only
+    // match Go when computed from the SAME libgit2 op stream.
+    let ops = match diff_blob_line_ops(repo.native(), from, to, old_lines) {
+        Ok(ops) => ops,
+        // libgit2 error ⇒ Go's `fileDiffFromGoDiff` fallback (diffmatchpatch). That
+        // path is essentially never hit on text blobs that passed the binary check.
+        Err(_) => return (0, 0, 0),
+    };
+    // Go `computeDiffLineStats` over the op stream: a Delete immediately followed by
+    // an Insert is reclassified as "changed" (counted in neither added nor removed).
     let mut added = 0i64;
     let mut removed = 0i64;
     let mut changed = 0i64;
     let mut removed_pending = 0i64;
-    for seg in &diffs {
-        match seg.op {
-            Op::Equal => {
+    for op in &ops {
+        match *op {
+            LineOp::Equal(_) => {
                 removed += removed_pending;
                 removed_pending = 0;
             }
-            Op::Insert => {
-                let delta = seg.lines.len() as i64;
+            LineOp::Insert(n) => {
+                let delta = n;
                 if removed_pending > delta {
                     changed += delta;
                     removed += removed_pending - delta;
@@ -1679,8 +1706,8 @@ fn compute_diff_line_stats(from: &[u8], to: &[u8]) -> (i64, i64, i64) {
                 }
                 removed_pending = 0;
             }
-            Op::Delete => {
-                removed_pending = seg.lines.len() as i64;
+            LineOp::Delete(n) => {
+                removed_pending = n;
             }
         }
     }

@@ -194,7 +194,9 @@ impl Emitter {
     /// path producing `[]` / `{}`).
     fn emit_scalar_or_empty(&mut self, value: &GoValue, simple_key: bool) {
         match value {
-            GoValue::Array(_) => self.emit_flow_empty(b'[', b']'),
+            // A nil slice (`var s []T`) renders `[]` in yaml.v3, identical to an
+            // empty slice (the JSON encoder renders it `null` instead).
+            GoValue::Array(_) | GoValue::NilSlice => self.emit_flow_empty(b'[', b']'),
             GoValue::Map(_) => self.emit_flow_empty(b'{', b'}'),
             _ => {
                 let (text, requested) = scalar_text_and_style(value);
@@ -569,8 +571,9 @@ fn scalar_text_and_style(value: &GoValue) -> (String, Style) {
         GoValue::Uint(u) => (u.to_string(), Style::Plain),
         GoValue::Float(f) => (float::format_g(*f), Style::Plain),
         GoValue::Str(s) => string_style(s),
-        // Collections are handled before reaching here.
-        GoValue::Array(_) => ("[]".to_string(), Style::Plain),
+        // Collections are handled before reaching here. A nil slice renders `[]`
+        // in yaml.v3, identical to an empty slice.
+        GoValue::Array(_) | GoValue::NilSlice => ("[]".to_string(), Style::Plain),
         GoValue::Map(_) => ("{}".to_string(), Style::Plain),
     }
 }

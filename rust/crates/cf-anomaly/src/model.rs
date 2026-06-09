@@ -452,12 +452,14 @@ fn records_array(items: &[Record]) -> GoValue {
     GoValue::Array(items.iter().map(ToGoValue::to_go_value).collect())
 }
 
-/// Encodes a `[]Record` mirroring Go's nil-slice → `null` behavior. `computeList`
-/// returns the nil slice `buildRecords` yields when no anomaly is flagged, so an
-/// empty list marshals as `null` (not `[]`).
+/// Encodes a `[]Record` mirroring Go's nil-slice behavior. `computeList` returns
+/// the nil slice `buildRecords` yields when no anomaly is flagged; Go marshals
+/// that nil slice as `null` in JSON but `[]` in YAML, so an empty list maps to
+/// [`GoValue::NilSlice`] (which each encoder renders the matching way), not to a
+/// bare `null` (which YAML would wrongly render as `null`).
 fn records_array_or_null(items: &[Record]) -> GoValue {
     if items.is_empty() {
-        GoValue::Null
+        GoValue::NilSlice
     } else {
         records_array(items)
     }

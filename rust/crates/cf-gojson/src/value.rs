@@ -56,6 +56,14 @@ pub enum MapOrigin {
 pub enum GoValue {
     /// JSON `null` (Go `nil`).
     Null,
+    /// A **nil slice** (`var s []T` with no allocation). Go marshals this
+    /// asymmetrically by encoder: `encoding/json` writes `null`, but
+    /// `gopkg.in/yaml.v3` writes `[]`. A distinct variant is required because
+    /// neither [`GoValue::Null`] (which YAML renders `null`) nor
+    /// [`GoValue::Array`]`(vec![])` (which JSON renders `[]`) reproduces both
+    /// behaviors. An *initialized-but-empty* slice (`[]T{}` / `make([]T,0)`)
+    /// renders `[]` in both encoders and stays [`GoValue::Array`]`(vec![])`.
+    NilSlice,
     /// Go `bool`.
     Bool(bool),
     /// A signed integer (Go `int`, `int8`..`int64`).
@@ -121,7 +129,7 @@ impl GoValue {
     #[must_use]
     pub fn is_go_empty(&self) -> bool {
         match self {
-            GoValue::Null => true,
+            GoValue::Null | GoValue::NilSlice => true,
             GoValue::Bool(b) => !*b,
             GoValue::Int(i) => *i == 0,
             GoValue::Uint(u) => *u == 0,
@@ -386,6 +394,12 @@ mod tests {
         m.insert("k", GoValue::Int(1));
         assert_eq!(GoValue::Object(m.clone()), GoValue::Map(m.clone()));
         assert_eq!(GoValue::object(m.clone()), GoValue::Map(m));
+    }
+
+    #[test]
+    fn nil_slice_is_go_empty() {
+        // A nil slice is an `omitempty` zero (Go drops it like any empty slice).
+        assert!(GoValue::NilSlice.is_go_empty());
     }
 
     #[test]

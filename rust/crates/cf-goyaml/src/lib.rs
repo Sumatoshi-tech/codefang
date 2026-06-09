@@ -81,6 +81,15 @@ mod tests {
     }
 
     #[test]
+    fn nil_slice_emits_empty_sequence() {
+        // yaml.v3 marshals a nil slice as `[]`, identical to an empty slice (the
+        // JSON encoder writes `null`). As a struct field it appears inline.
+        assert_eq!(s(&GoValue::NilSlice), "[]\n");
+        let v = smap(vec![("anomalies", GoValue::NilSlice)]);
+        assert_eq!(s(&v), "anomalies: []\n");
+    }
+
+    #[test]
     fn map_origin_sorts() {
         let m = GoMap::from_map(vec![
             ("b".into(), GoValue::Int(2)),
