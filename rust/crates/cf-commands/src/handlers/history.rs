@@ -1723,6 +1723,53 @@ fn map_category(cat: cf_composition::category::Category) -> cf_file_history::Cat
 /// derives `(added, removed, changed)` from the diff-match-patch line diff. Each
 /// `cf_godiff` segment carries one encoded line per element, so `lines.len()`
 /// equals Go's `utf8.RuneCountInString(edit.Text)` (one rune per source line).
+/// Runs `compute` for every hash in parallel across `workers` OS threads,
+/// returning the results in the SAME order as `hashes` (or `None` if any commit
+/// hits a fatal git error, mirroring the sequential `.ok()?` contract).
+///
+/// Each thread opens its OWN `Repository` from `repo_path` — libgit2 handles are
+/// `!Send`, and a per-thread handle also gives each thread an independent ODB
+/// object cache, so there is no shared-cache lock contention. `compute` must be a
+/// PURE per-commit function (it may read the repo but shares no mutable state);
+/// because the result of commit *i* is independent of every other commit, the
+/// caller can run its order-dependent reduce over the returned vec in canonical
+/// order and stay byte-identical regardless of how work was distributed.
+///
+/// Work is split into `workers` contiguous index ranges, each thread writing only
+/// its disjoint `chunks_mut` slice (checked at compile time by `scope`), so no
+/// synchronization is needed on the hot path.
+fn parallel_prepare<T: Send>(
+    repo_path: &str,
+    hashes: &[cf_gitlib::hash::Hash],
+    workers: usize,
+    compute: impl Fn(&cf_gitlib::Repository, cf_gitlib::hash::Hash) -> Option<T> + Sync,
+) -> Option<Vec<T>> {
+    if hashes.is_empty() {
+        return Some(Vec::new());
+    }
+    let workers = workers.clamp(1, hashes.len());
+    let chunk = hashes.len().div_ceil(workers);
+    let mut out: Vec<Option<T>> = (0..hashes.len()).map(|_| None).collect();
+    let compute = &compute;
+    std::thread::scope(|s| {
+        for (hchunk, ochunk) in hashes.chunks(chunk).zip(out.chunks_mut(chunk)) {
+            s.spawn(move || {
+                // Per-thread repository handle (the `!Send` libgit2 handle cannot
+                // cross threads; opening is cheap relative to the walk).
+                let Ok(repo) = cf_gitlib::Repository::open(repo_path) else {
+                    return;
+                };
+                for (hash, slot) in hchunk.iter().zip(ochunk.iter_mut()) {
+                    *slot = compute(&repo, *hash);
+                }
+            });
+        }
+    });
+    // `None` slot ⇒ a fatal git error (or repo-open failure) on that commit; the
+    // whole walk fails, exactly as the sequential `.ok()?` did.
+    out.into_iter().collect()
+}
+
 fn compute_diff_line_stats(
     repo: &cf_gitlib::Repository,
     from: cf_gitlib::hash::Hash,
@@ -2470,8 +2517,108 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
 
     let policy = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
-    let worker = Worker::new(&repo);
 
+    // ---- parallel pure-compute stage -----------------------------------------
+    // The expensive per-commit work — tree diff + per-change line stats
+    // (libgit2) + language detection — is a PURE function of (repo, commit) and
+    // independent across commits, so run it across all cores. The order-dependent
+    // reduce below (identity ids, ticks, commits_by_tick, merge dedup) then runs
+    // sequentially over the results in oldest-first order, byte-identically.
+    /// The expensive, per-commit-independent products of one commit's diff.
+    struct DevsPrepared {
+        /// Raw (pre-filter) tree-diff change count, for the oversized-commit gate.
+        raw_change_count: usize,
+        /// Post-filter change count, for the empty-commit gate.
+        filtered_count: usize,
+        /// `(language, line-stats)` per attributed change (non-merge only; empty
+        /// for merges / oversized / empty commits). Folded into `CommitDevData`.
+        attributions: Vec<(String, cf_devs::LineStats)>,
+    }
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let policy_ref = &policy;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        let commit = repo.lookup_commit(hash).ok()?;
+        let num_parents = commit.num_parents();
+        let is_merge = num_parents > 1 && !first_parent;
+
+        let new_tree = commit.tree().ok()?;
+        let raw_changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(repo, Some(&new_tree)).ok()?
+        };
+        let raw_change_count = raw_changes.len();
+        // Oversized commits are dropped before any analyzer — no per-change work.
+        if raw_change_count > MAX_CHANGES_PER_COMMIT {
+            return Some(DevsPrepared { raw_change_count, filtered_count: 0, attributions: Vec::new() });
+        }
+        let changes: Vec<_> = raw_changes
+            .into_iter()
+            .filter(|change| {
+                let name = match change.action {
+                    ChangeAction::Delete => &change.from.name,
+                    _ => &change.to.name,
+                };
+                !exclude(name, None, policy_ref)
+            })
+            .collect();
+        let filtered_count = changes.len();
+        let mut attributions: Vec<(String, cf_devs::LineStats)> = Vec::new();
+        // Line stats are accumulated only for non-merge commits (Go `!ac.IsMerge`).
+        if !is_merge && filtered_count > 0 {
+            let worker = Worker::new(repo);
+            for change in &changes {
+                let stats = match change.action {
+                    ChangeAction::Insert => {
+                        let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
+                            continue;
+                        };
+                        let Ok(lines) = blob.count_lines() else { continue };
+                        cf_devs::LineStats { added: lines as i64, removed: 0, changed: 0 }
+                    }
+                    ChangeAction::Delete => {
+                        let Ok(blob) = CachedBlob::from_repo(repo, change.from.hash) else {
+                            continue;
+                        };
+                        let Ok(lines) = blob.count_lines() else { continue };
+                        cf_devs::LineStats { added: 0, removed: lines as i64, changed: 0 }
+                    }
+                    ChangeAction::Modify => {
+                        if change.from.hash == change.to.hash {
+                            continue;
+                        }
+                        let Ok(blob_from) = CachedBlob::from_repo(repo, change.from.hash) else {
+                            continue;
+                        };
+                        let Ok(blob_to) = CachedBlob::from_repo(repo, change.to.hash) else {
+                            continue;
+                        };
+                        if blob_from.is_binary() || blob_to.is_binary() {
+                            continue;
+                        }
+                        let (added, removed, changed) =
+                            devs_modify_line_stats(&worker, &blob_from.data, &blob_to.data);
+                        cf_devs::LineStats { added, removed, changed }
+                    }
+                };
+                // Language detection keyed by the change's blob hash.
+                let (name, data_hash) = match change.action {
+                    ChangeAction::Delete => (&change.from.name, change.from.hash),
+                    _ => (&change.to.name, change.to.hash),
+                };
+                let lang = match CachedBlob::from_repo(repo, data_hash) {
+                    Ok(b) => devs_detect_language(name, &b.data),
+                    Err(_) => String::new(),
+                };
+                attributions.push((lang, stats));
+            }
+        }
+        Some(DevsPrepared { raw_change_count, filtered_count, attributions })
+    })?;
+
+    // ---- sequential ordered-reduce stage -------------------------------------
     // Per-commit dev data (hex hash → CommitDevData), commits-by-tick over ALL
     // non-skipped commits, and per-tick committer-time bounds over CDD commits.
     let mut commit_dev_data: BTreeMap<String, CommitDevData> = BTreeMap::new();
@@ -2484,35 +2631,24 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    for hash in &hashes {
+    for (i, hash) in hashes.iter().enumerate() {
+        // The expensive tree-diff / line-stat / language work for this commit was
+        // computed in parallel above; the reduce only reads it (in oldest-first
+        // order) and does the cheap order-dependent bookkeeping.
+        let prep = &prepared[i];
         let commit = repo.lookup_commit(*hash).ok()?;
         let num_parents = commit.num_parents();
-        // Two distinct "merge" notions from the Go framework:
-        //  - `multi_parent` (`commit.NumParents() > 1`) drives the devs
-        //    MergeTracker dedup (`devs.Consume`: SeenOrAdd is keyed on the raw
-        //    parent count, independent of first-parent).
-        //  - `is_merge` is `analyze.Context.IsMerge`, which the framework sets to
-        //    `NumParents() > 1` but FORCES to false when the run is first-parent
-        //    (runner.go buildAnalyzeContext). It gates line-stat accumulation
-        //    (`if !ac.IsMerge`). With burndown co-selected the run is first-parent,
-        //    so a merge's first-parent diff IS counted — matching Go.
+        // `multi_parent` (`commit.NumParents() > 1`) drives the devs MergeTracker
+        // dedup (`devs.Consume`: SeenOrAdd keyed on the raw parent count). (The
+        // `IsMerge` line-stat gate was applied in the parallel compute, which only
+        // produced attributions for non-merge commits.)
         let multi_parent = num_parents > 1;
-        let is_merge = multi_parent && !first_parent;
         let hex = hash.to_string();
 
-        // Tree diff against the first parent (root → full initial tree).
-        let new_tree = commit.tree().ok()?;
-        let raw_changes = if num_parents > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-
         // Oversized-commit skip: the framework drops commits whose RAW tree diff
-        // exceeds the cap BEFORE any analyzer (core or leaf) runs.
-        if raw_changes.len() > MAX_CHANGES_PER_COMMIT {
+        // exceeds the cap BEFORE any analyzer (core or leaf) runs (count from the
+        // parallel pre-pass).
+        if prep.raw_change_count > MAX_CHANGES_PER_COMMIT {
             continue;
         }
 
@@ -2549,26 +2685,15 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
             continue;
         }
 
-        // filterChanges: drop vendor/generated paths (content=nil; changeNameHash
-        // uses From.Name for Delete, To.Name otherwise).
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, &policy)
-            })
-            .collect();
-
         // Empty-commit gate (ConsiderEmptyCommits=false): no TC when the FILTERED
-        // tree diff is empty.
-        if changes.is_empty() {
+        // tree diff is empty (count from the parallel pre-pass).
+        if prep.filtered_count == 0 {
             continue;
         }
 
-        // CommitDevData: commits=1; line stats only for non-merge commits.
+        // CommitDevData: commits=1; fold the precomputed per-change `(language,
+        // line-stats)` attributions (empty for merge commits, so a merge yields
+        // commits=1 with zero line stats — `if !ac.IsMerge`).
         let mut cdd = CommitDevData {
             commits: 1,
             added: 0,
@@ -2577,66 +2702,12 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
             author_id,
             languages: BTreeMap::new(),
         };
-
-        if !is_merge {
-            for change in &changes {
-                // Per-change LineStats, then attribute to the change's language.
-                let stats = match change.action {
-                    ChangeAction::Insert => {
-                        // computeInsertStats: cache[To].CountLines(); skip on error.
-                        let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                            continue;
-                        };
-                        let Ok(lines) = blob.count_lines() else { continue };
-                        cf_devs::LineStats { added: lines as i64, removed: 0, changed: 0 }
-                    }
-                    ChangeAction::Delete => {
-                        // computeDeleteStats: cache[From].CountLines(); skip on error.
-                        let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) else {
-                            continue;
-                        };
-                        let Ok(lines) = blob.count_lines() else { continue };
-                        cf_devs::LineStats { added: 0, removed: lines as i64, changed: 0 }
-                    }
-                    ChangeAction::Modify => {
-                        // computeModifyStats: fileDiffs[To.Name] from the libgit2
-                        // diff. The diff pipeline skips identical-hash and binary
-                        // pairs (no FileDiffs entry ⇒ computeModifyStats returns).
-                        if change.from.hash == change.to.hash {
-                            continue;
-                        }
-                        let Ok(blob_from) = CachedBlob::from_repo(&repo, change.from.hash) else {
-                            continue;
-                        };
-                        let Ok(blob_to) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                            continue;
-                        };
-                        if blob_from.is_binary() || blob_to.is_binary() {
-                            continue;
-                        }
-                        let (added, removed, changed) =
-                            devs_modify_line_stats(&worker, &blob_from.data, &blob_to.data);
-                        cf_devs::LineStats { added, removed, changed }
-                    }
-                };
-
-                // accumulateLineStats: sum totals + per-language (langs[hash]).
-                cdd.added += stats.added;
-                cdd.removed += stats.removed;
-                cdd.changed += stats.changed;
-
-                // Language detection keyed by the change's blob hash.
-                let (name, data_hash) = match change.action {
-                    ChangeAction::Delete => (&change.from.name, change.from.hash),
-                    _ => (&change.to.name, change.to.hash),
-                };
-                let lang = match CachedBlob::from_repo(&repo, data_hash) {
-                    Ok(b) => devs_detect_language(name, &b.data),
-                    Err(_) => String::new(),
-                };
-                let ls = cdd.languages.entry(lang).or_default();
-                *ls = ls.plus(stats);
-            }
+        for (lang, stats) in &prep.attributions {
+            cdd.added += stats.added;
+            cdd.removed += stats.removed;
+            cdd.changed += stats.changed;
+            let ls = cdd.languages.entry(lang.clone()).or_default();
+            *ls = ls.plus(*stats);
         }
 
         commit_dev_data.insert(hex.clone(), cdd);
