@@ -1540,7 +1540,6 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     };
 
     let policy = PathPolicyOptions::default();
-    let classifier = Classifier::new();
     let mut identity = IdentityDetector::new();
 
     // file-history's final report is built from the AGGREGATOR (per-commit TCs),
@@ -1592,6 +1591,123 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
         m
     };
 
+    // ---- parallel pure-compute stage -----------------------------------------
+    // ONLY the per-commit-independent work is parallelized — tree diff (vs
+    // parent(0)) + vendor/generated filter + per-change line stats (the expensive
+    // libgit2 Modify diff) + PATH-ONLY category classification. The result for
+    // commit `p` (indexed by oldest-first position in `hashes`) is the filtered
+    // changes, the precomputed line stats, and the composition counts. The
+    // order-sensitive reduce below is UNCHANGED: it still walks the worker-strided
+    // `(p % leaf_workers, p)` consume order, and the `applyInsert`-resets-the-hash-
+    // list bookkeeping + author/tick attribution + tick composition all run
+    // sequentially in that exact order — only now reading `prepared[p]` instead of
+    // recomputing the diff inline. is_merge (and thus the line-stats gate) is a
+    // pure function of (num_parents, first_parent), so the line stats are computed
+    // here exactly when the reduce would consume them.
+    /// The per-commit-independent products of one commit's diff for file-history.
+    struct FileHistoryPrepared {
+        /// `commit.num_parents()`, so the reduce can derive is_merge without a
+        /// second commit lookup.
+        num_parents: usize,
+        /// Vendor/generated-filtered tree-diff changes (drives the order-sensitive
+        /// hash-list maintenance in the reduce).
+        changes: Vec<cf_gitlib::changes::Change>,
+        /// `(name, line-stats)` per non-merge change (empty for a merge commit);
+        /// folded into `files[name].people[author]` in the reduce.
+        line_stats: Vec<(String, LineStats)>,
+        /// Path-only composition counts over every change (Go `classifyChanges`).
+        category_counts: CategoryCounts,
+    }
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let policy_ref = &policy;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        let classifier = Classifier::new();
+        let commit = repo.lookup_commit(hash).ok()?;
+        let num_parents = commit.num_parents();
+        let is_merge = num_parents > 1 && !first_parent;
+
+        // TreeDiff diff base — each commit is diffed against its OWN parent(0) tree
+        // (a root commit vs the empty tree → InitialTreeChanges).
+        let new_tree = commit.tree().ok()?;
+        let base_tree: Option<cf_gitlib::tree::Tree> = if num_parents > 0 {
+            commit.parent(0).ok().and_then(|p| p.tree().ok())
+        } else {
+            None
+        };
+        let raw_changes = match &base_tree {
+            Some(prev) => tree_diff(repo, Some(prev), Some(&new_tree)).ok()?,
+            None => initial_tree_changes(repo, Some(&new_tree)).ok()?,
+        };
+
+        // filterChanges: drop vendor/generated paths (content=nil).
+        let changes: Vec<cf_gitlib::changes::Change> = raw_changes
+            .into_iter()
+            .filter(|change| {
+                let name = match change.action {
+                    ChangeAction::Delete => &change.from.name,
+                    _ => &change.to.name,
+                };
+                !exclude(name, None, policy_ref)
+            })
+            .collect();
+
+        // aggregateLineStats (skipped for merge commits): per-change line stats.
+        let mut line_stats: Vec<(String, LineStats)> = Vec::new();
+        if !is_merge {
+            for change in &changes {
+                let entry = match change.action {
+                    ChangeAction::Insert => {
+                        let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
+                            continue;
+                        };
+                        let Ok(added) = blob.count_lines() else { continue };
+                        (change.to.name.clone(), LineStats { added: added as i64, removed: 0, changed: 0 })
+                    }
+                    ChangeAction::Delete => {
+                        let Ok(blob) = CachedBlob::from_repo(repo, change.from.hash) else {
+                            continue;
+                        };
+                        let Ok(removed) = blob.count_lines() else { continue };
+                        (change.from.name.clone(), LineStats { added: 0, removed: removed as i64, changed: 0 })
+                    }
+                    ChangeAction::Modify => {
+                        let Ok(blob_from) = CachedBlob::from_repo(repo, change.from.hash) else {
+                            continue;
+                        };
+                        let Ok(blob_to) = CachedBlob::from_repo(repo, change.to.hash) else {
+                            continue;
+                        };
+                        if blob_from.is_binary() || blob_to.is_binary() {
+                            continue;
+                        }
+                        let (added, removed, changed) = if change.from.hash == change.to.hash {
+                            (0, 0, 0)
+                        } else {
+                            let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                            compute_diff_line_stats(repo, change.from.hash, change.to.hash, old_lines)
+                        };
+                        (change.to.name.clone(), LineStats { added, removed, changed })
+                    }
+                };
+                line_stats.push(entry);
+            }
+        }
+
+        // classifyChanges → category counts (PATH-ONLY; the streaming run wires no
+        // blob cache for file-history, so content is empty — oracle-verified).
+        let mut category_counts = CategoryCounts::default();
+        for change in &changes {
+            let name = match change.action {
+                ChangeAction::Delete => &change.from.name,
+                _ => &change.to.name,
+            };
+            let cat = classifier.classify(name, &[]);
+            category_counts.increment(map_category(cat));
+        }
+
+        Some(FileHistoryPrepared { num_parents, changes, line_stats, category_counts })
+    })?;
+
     // Cumulative per-path file history (BTreeMap ⇒ deterministic path order).
     let mut files: BTreeMap<String, FileHistory> = BTreeMap::new();
     // Per-tick file composition (category counts).
@@ -1599,10 +1715,14 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     // Merge dedup set (commits with >1 parent already consumed).
     let mut seen_merges: HashSet<String> = HashSet::new();
 
+    // ---- sequential ordered-reduce stage (UNCHANGED order) -------------------
     let mut last_commit_hash: Option<cf_gitlib::hash::Hash> = None;
-    for (_pos, hash) in &consume_order {
-        let commit = repo.lookup_commit(*hash).ok()?;
-        let num_parents = commit.num_parents();
+    for (pos, hash) in &consume_order {
+        // The commit's tree diff / line stats / classification were computed in the
+        // parallel pre-pass (indexed by oldest-first position); the reduce only
+        // reads `prep` and does the worker-strided, order-sensitive bookkeeping.
+        let prep = &prepared[*pos];
+        let num_parents = prep.num_parents;
         // Go `runner.buildAnalyzeContext`: `isMerge = NumParents()>1`, but FORCED
         // to false under --first-parent (the simplified walk visits a merge as an
         // ordinary single-parent commit). So under first-parent a merge's line
@@ -1626,36 +1746,10 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
         // the commit was produced (precomputed above), NOT a consume-order tick.
         let tick = commit_tick.get(hash).copied().unwrap_or(0);
 
-        // TreeDiff diff base — each commit is diffed against its OWN parent(0)
-        // tree (a root commit vs the empty tree → `InitialTreeChanges`).
-        // Combined with the worker-strided `(p % W, p)` aggregator add-order above
-        // + the commit_count-resetting `applyInsert`, this reproduces the oracle's
-        // per-file commit_count byte-for-byte (e.g. hercules analyser.go=10).
-        let new_tree = commit.tree().ok()?;
-        let base_tree: Option<cf_gitlib::tree::Tree> = if num_parents > 0 {
-            commit.parent(0).ok().and_then(|p| p.tree().ok())
-        } else {
-            None
-        };
-        let raw_changes = match &base_tree {
-            Some(prev) => tree_diff(&repo, Some(prev), Some(&new_tree)).ok()?,
-            None => initial_tree_changes(&repo, Some(&new_tree)).ok()?,
-        };
-
-        // filterChanges: drop vendor/generated paths (content=nil).
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, &policy)
-            })
-            .collect();
+        let changes = &prep.changes;
 
         // processFileChanges: maintain per-path commit hash lists.
-        for change in &changes {
+        for change in changes {
             let is_rename =
                 matches!(change.action, ChangeAction::Modify) && change.from.name != change.to.name;
             if is_rename {
@@ -1686,65 +1780,14 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
             }
         }
 
-        // aggregateLineStats (skipped for merge commits): per-change line stats.
+        // aggregateLineStats (skipped for merge commits): fold the precomputed
+        // per-change `(name, line-stats)` into `files[name].people[author]`. The
+        // VALUES were computed in the parallel pre-pass (pure per change); only the
+        // author attribution + map update are order-sensitive and stay here. The
+        // pre-pass produced this list only for non-merge commits, but gate on
+        // is_merge again for clarity (the list is empty for merges anyway).
         if !is_merge {
-            for change in &changes {
-                let (name, stats) = match change.action {
-                    ChangeAction::Insert => {
-                        // computeInsertStats: nil blob OR a CountLines error
-                        // (binary blob) records NO line stats for this change —
-                        // Go `return`s, so the change is simply skipped, the run
-                        // is NOT aborted.
-                        let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                            continue;
-                        };
-                        let Ok(added) = blob.count_lines() else { continue };
-                        (&change.to.name, LineStats { added: added as i64, removed: 0, changed: 0 })
-                    }
-                    ChangeAction::Delete => {
-                        // computeDeleteStats: same skip-on-error contract.
-                        let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) else {
-                            continue;
-                        };
-                        let Ok(removed) = blob.count_lines() else { continue };
-                        (&change.from.name, LineStats { added: 0, removed: removed as i64, changed: 0 })
-                    }
-                    ChangeAction::Modify => {
-                        // The runtime diff pipeline (framework/diff_pipeline.go
-                        // prepareDiffRequest) processes every Modify whose blobs
-                        // are both present and non-binary — it does NOT skip a
-                        // same-hash Modify (a mode-only change keeps the blob hash
-                        // but the tree diff still reports a Modify). Diffing two
-                        // identical blobs yields all-Equal ops, so the LineStats
-                        // entry is {0,0,0}; that still records the author as a
-                        // (zero-line) contributor to the file. Skipping it here
-                        // would drop those contributors (e.g. ioq3's mode-only
-                        // jpeglib.h Modify), shrinking avg_contributors_per_file.
-                        let Ok(blob_from) = CachedBlob::from_repo(&repo, change.from.hash) else {
-                            continue;
-                        };
-                        let Ok(blob_to) = CachedBlob::from_repo(&repo, change.to.hash) else {
-                            continue;
-                        };
-                        if blob_from.is_binary() || blob_to.is_binary() {
-                            continue;
-                        }
-                        let (added, removed, changed) = if change.from.hash == change.to.hash {
-                            // Identical content ⇒ the diff is all-Equal ⇒ zeros.
-                            (0, 0, 0)
-                        } else {
-                            let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
-                            compute_diff_line_stats(
-                                &repo,
-                                change.from.hash,
-                                change.to.hash,
-                                old_lines,
-                            )
-                        };
-                        (&change.to.name, LineStats { added, removed, changed })
-                    }
-                };
-                let name: &String = name;
+            for (name, stats) in &prep.line_stats {
                 let fh = files.entry(name.clone()).or_default();
                 let entry = fh.people.entry(author_id).or_default();
                 entry.added += stats.added;
@@ -1753,25 +1796,14 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
             }
         }
 
-        // classifyChanges → tickComposition[tick]. Go `classifyChanges` reads the
-        // blob *cache* (`h.blobCache()`); in the streaming `run` path that cache is
-        // not wired for file-history, so content is empty and classification is
-        // PATH-ONLY (oracle-verified: e.g. `git-git.png` buckets as `image` by
-        // extension, NOT `binary` by content — passing real PNG bytes would flip
-        // it via `enry.IsBinary`'s NUL sniff and diverge from Go).
-        let mut counts = CategoryCounts::default();
-        let mut any = false;
-        for change in &changes {
-            let name = match change.action {
-                ChangeAction::Delete => &change.from.name,
-                _ => &change.to.name,
-            };
-            let cat = classifier.classify(name, &[]);
-            counts.increment(map_category(cat));
-            any = true;
-        }
-        if any && counts.total() > 0 {
-            tick_composition.entry(tick).or_default().add(&counts);
+        // classifyChanges → tickComposition[tick]. The path-only category counts
+        // were computed in the parallel pre-pass (Go `classifyChanges` reads the
+        // blob cache, but the streaming `run` path wires none for file-history, so
+        // content is empty and classification is PATH-ONLY — oracle-verified). The
+        // order-sensitive part is only the per-tick accumulation, which stays here.
+        let counts = &prep.category_counts;
+        if !changes.is_empty() && counts.total() > 0 {
+            tick_composition.entry(tick).or_default().add(counts);
         }
     }
 
