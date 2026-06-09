@@ -1198,7 +1198,6 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
     // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
     let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
 
-    let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
     // Loose identity detection (run streaming never preloads a people dict).
     let mut identity = IdentityDetector::new();
@@ -1210,37 +1209,36 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    for hash in &hashes {
-        let commit = repo.lookup_commit(*hash).ok()?;
-        let when = commit.committer().when.seconds();
-
-        // Identity: resolve this commit's author id (loose signature). Bridge
-        // the gitlib signature into the plumbing identity model (name/email).
-        let gsig = commit.author();
-        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
-            name: gsig.name.clone(),
-            email: gsig.email.clone(),
-            when_unix: gsig.when.seconds(),
-        });
-
-        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
-        let raw_tick = (when - base).div_euclid(86_400);
-        let tick = raw_tick.max(previous_tick);
-        previous_tick = tick;
+    // ---- parallel pure-compute stage -----------------------------------------
+    // The expensive per-commit work — tree diff + per-change UAST parse + import
+    // extraction + language detection — is a PURE function of (repo, commit), so
+    // run it across all cores. The tree-sitter parser is NOT thread-safe, so each
+    // call creates its OWN `cf_uast::Parser` inside the closure (per thread/call),
+    // never a shared one. The order-dependent reduce below (identity ids
+    // oldest-first, tick assignment, the merge into `merged`) runs UNCHANGED and
+    // sequentially over these per-commit `Vec<ImportEntry>` results; only
+    // author_id and tick are order-assigned, so they are applied in the reduce.
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let opts_ref = &opts;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        // Per-thread UAST parser (tree-sitter parsers are not thread-safe; a fresh
+        // one per call keeps the compute pure and Send-safe).
+        let parser = cf_uast::Parser::new();
+        let commit = repo.lookup_commit(hash).ok()?;
 
         // Tree diff against the first parent (root → full initial tree).
         let new_tree = commit.tree().ok()?;
         let changes = if commit.num_parents() > 0 {
             let parent = commit.parent(0).ok()?;
             let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
         } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+            initial_tree_changes(repo, Some(&new_tree)).ok()?
         };
 
         // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
         if changes.len() > SPILL_THRESHOLD {
-            continue;
+            return Some(Vec::new());
         }
 
         // Collect import entries across this commit's surviving After trees
@@ -1253,19 +1251,19 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
                 continue;
             }
             let name = &change.to.name;
-            if exclude(name, None, &opts) {
+            if exclude(name, None, opts_ref) {
                 continue;
             }
             if !parser.is_supported(name) {
                 continue;
             }
-            let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) else {
+            let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) else {
                 continue;
             };
             if blob.data.len() > MAX_BLOB_SIZE {
                 continue;
             }
-            if exclude(name, Some(&blob.data), &opts) {
+            if exclude(name, Some(&blob.data), opts_ref) {
                 continue;
             }
             let Ok(root) = parser.parse(name, &blob.data) else {
@@ -1290,12 +1288,33 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
                 entries.push(ImportEntry { lang: lang.clone(), import: imp });
             }
         }
+        Some(entries)
+    })?;
 
+    // ---- sequential ordered-reduce stage -------------------------------------
+    for (i, hash) in hashes.iter().enumerate() {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let when = commit.committer().when.seconds();
+
+        // Identity: resolve this commit's author id (loose signature), oldest-first.
+        let gsig = commit.author();
+        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
+            name: gsig.name.clone(),
+            email: gsig.email.clone(),
+            when_unix: gsig.when.seconds(),
+        });
+
+        let base = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw_tick = (when - base).div_euclid(86_400);
+        let tick = raw_tick.max(previous_tick);
+        previous_tick = tick;
+
+        let entries = &prepared[i];
         if !entries.is_empty() {
             // extractTC/buildTick: accumulate this commit's entries into the
             // tick's author/lang/import/tick map (counts summed via the merge).
             let mut tick_map = ImportsMap::new();
-            add_entries_to_map(&mut tick_map, &entries, author_id, tick);
+            add_entries_to_map(&mut tick_map, entries, author_id, tick);
             merge_import_maps(&mut merged, &tick_map);
         }
     }
