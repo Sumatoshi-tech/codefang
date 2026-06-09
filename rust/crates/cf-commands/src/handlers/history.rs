@@ -412,13 +412,137 @@ pub fn anomaly_run_metrics(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
-    for hash in &hashes {
-        let commit = repo.lookup_commit(*hash).ok()?;
+    // ---- parallel pure-compute stage -----------------------------------------
+    // The expensive per-commit work — tree diff + per-change line stats (libgit2)
+    // + language detection — is a PURE function of (repo, commit) and independent
+    // across commits, so run it across all cores. The order-dependent reduce below
+    // (identity ids, ticks, commits_by_tick, tick bounds) then runs sequentially
+    // over the results in oldest-first order, byte-identically. `author_id` is the
+    // ONLY order-dependent field, so it is left off here and stamped in the reduce.
+    /// The expensive, per-commit-independent products of one commit's diff: the
+    /// fully-built [`CommitAnomalyData`] minus its order-assigned `author_id`.
+    struct AnomalyPrepared {
+        data: CommitAnomalyData,
+    }
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let policy_ref = &policy;
+    let prepared = parallel_prepare(&path, &hashes, workers, move |repo, hash| {
+        let commit = repo.lookup_commit(hash).ok()?;
         let num_parents = commit.num_parents();
         let is_merge = num_parents > 1;
+
+        // Tree diff against the first parent (root → full initial tree), then the
+        // shared vendor/generated filter (TreeDiffAnalyzer.filterChanges).
+        let new_tree = commit.tree().ok()?;
+        let raw_changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(repo, Some(&new_tree)).ok()?
+        };
+        let changes: Vec<_> = raw_changes
+            .into_iter()
+            .filter(|change| {
+                let name = match change.action {
+                    ChangeAction::Delete => &change.from.name,
+                    _ => &change.to.name,
+                };
+                !exclude(name, None, policy_ref)
+            })
+            .collect();
+
+        // anomaly.Consume: FilesChanged = len(changes); Files = each change's
+        // To.Name (unconditionally, like Go's append).
+        let mut cm = CommitAnomalyData {
+            files_changed: changes.len() as i64,
+            ..Default::default()
+        };
+        for change in &changes {
+            cm.files.push(change.to.name.clone());
+        }
+
+        // accumulateLineStats (skipped for merge commits): per-change line stats.
+        if !is_merge {
+            let mut added = 0i64;
+            let mut removed = 0i64;
+            for change in &changes {
+                match change.action {
+                    ChangeAction::Insert => {
+                        if let Ok(blob) = CachedBlob::from_repo(repo, change.to.hash) {
+                            if let Ok(n) = blob.count_lines() {
+                                added += n as i64;
+                            }
+                        }
+                    }
+                    ChangeAction::Delete => {
+                        if let Ok(blob) = CachedBlob::from_repo(repo, change.from.hash) {
+                            if let Ok(n) = blob.count_lines() {
+                                removed += n as i64;
+                            }
+                        }
+                    }
+                    ChangeAction::Modify => {
+                        // computeModifyStats: needs both blobs, skips binary and
+                        // identical content.
+                        let (Ok(blob_from), Ok(blob_to)) = (
+                            CachedBlob::from_repo(repo, change.from.hash),
+                            CachedBlob::from_repo(repo, change.to.hash),
+                        ) else {
+                            continue;
+                        };
+                        if change.from.hash == change.to.hash {
+                            continue;
+                        }
+                        if blob_from.is_binary() || blob_to.is_binary() {
+                            continue;
+                        }
+                        let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
+                        let (a, r, _changed) =
+                            compute_diff_line_stats(repo, change.from.hash, change.to.hash, old_lines);
+                        added += a;
+                        removed += r;
+                    }
+                }
+            }
+            cm.lines_added = added;
+            cm.lines_removed = removed;
+        }
+
+        // accumulateLanguagesAndAuthors: build the blob-hash → language map exactly
+        // as Languages() does (Insert/Delete one side, Modify both sides), then
+        // count each non-empty value into cm.languages.
+        let mut by_blob: BTreeMap<cf_gitlib::hash::Hash, String> = BTreeMap::new();
+        let mut detect = |entry: &cf_gitlib::changes::ChangeEntry| {
+            let data = CachedBlob::from_repo(repo, entry.hash).map(|b| b.data).unwrap_or_default();
+            by_blob.insert(entry.hash, devs_detect_language(&entry.name, &data));
+        };
+        for change in &changes {
+            match change.action {
+                ChangeAction::Insert => detect(&change.to),
+                ChangeAction::Delete => detect(&change.from),
+                ChangeAction::Modify => {
+                    detect(&change.to);
+                    detect(&change.from);
+                }
+            }
+        }
+        for lang in by_blob.values() {
+            if !lang.is_empty() {
+                *cm.languages.entry(lang.clone()).or_insert(0) += 1;
+            }
+        }
+
+        cm.net_churn = cm.lines_added - cm.lines_removed;
+        Some(AnomalyPrepared { data: cm })
+    })?;
+
+    // ---- sequential ordered-reduce stage -------------------------------------
+    for (i, hash) in hashes.iter().enumerate() {
+        let commit = repo.lookup_commit(*hash).ok()?;
         let hash_str = hash.to_hex();
 
-        // Identity: resolve this commit's author id (loose signature).
+        // Identity: resolve this commit's author id (loose signature), oldest-first.
         let gsig = commit.author();
         let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
             name: gsig.name.clone(),
@@ -447,114 +571,10 @@ pub fn anomaly_run_metrics(sub: &clap::ArgMatches) -> Option<cf_anomaly::model::
             .or_insert((when, when));
         commits_by_tick.entry(tick).or_default().push(hash_str.clone());
 
-        // Tree diff against the first parent (root → full initial tree), then the
-        // shared vendor/generated filter (TreeDiffAnalyzer.filterChanges).
-        let new_tree = commit.tree().ok()?;
-        let raw_changes = if num_parents > 0 {
-            let parent = commit.parent(0).ok()?;
-            let old_tree = parent.tree().ok()?;
-            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
-        } else {
-            initial_tree_changes(&repo, Some(&new_tree)).ok()?
-        };
-        let changes: Vec<_> = raw_changes
-            .into_iter()
-            .filter(|change| {
-                let name = match change.action {
-                    ChangeAction::Delete => &change.from.name,
-                    _ => &change.to.name,
-                };
-                !exclude(name, None, &policy)
-            })
-            .collect();
-
-        // anomaly.Consume: FilesChanged = len(changes); Files = each change's
-        // To.Name (unconditionally, like Go's append).
-        let mut cm = CommitAnomalyData {
-            files_changed: changes.len() as i64,
-            author_id,
-            ..Default::default()
-        };
-        for change in &changes {
-            cm.files.push(change.to.name.clone());
-        }
-
-        // accumulateLineStats (skipped for merge commits): per-change line stats.
-        if !is_merge {
-            let mut added = 0i64;
-            let mut removed = 0i64;
-            for change in &changes {
-                match change.action {
-                    ChangeAction::Insert => {
-                        if let Ok(blob) = CachedBlob::from_repo(&repo, change.to.hash) {
-                            if let Ok(n) = blob.count_lines() {
-                                added += n as i64;
-                            }
-                        }
-                    }
-                    ChangeAction::Delete => {
-                        if let Ok(blob) = CachedBlob::from_repo(&repo, change.from.hash) {
-                            if let Ok(n) = blob.count_lines() {
-                                removed += n as i64;
-                            }
-                        }
-                    }
-                    ChangeAction::Modify => {
-                        // computeModifyStats: needs both blobs, skips binary and
-                        // identical content.
-                        let (Ok(blob_from), Ok(blob_to)) = (
-                            CachedBlob::from_repo(&repo, change.from.hash),
-                            CachedBlob::from_repo(&repo, change.to.hash),
-                        ) else {
-                            continue;
-                        };
-                        if change.from.hash == change.to.hash {
-                            continue;
-                        }
-                        if blob_from.is_binary() || blob_to.is_binary() {
-                            continue;
-                        }
-                        let old_lines = blob_from.count_lines().map_or(0, |n| n as i64);
-                        let (a, r, _changed) = compute_diff_line_stats(
-                            &repo,
-                            change.from.hash,
-                            change.to.hash,
-                            old_lines,
-                        );
-                        added += a;
-                        removed += r;
-                    }
-                }
-            }
-            cm.lines_added = added;
-            cm.lines_removed = removed;
-        }
-
-        // accumulateLanguagesAndAuthors: build the blob-hash → language map exactly
-        // as Languages() does (Insert/Delete one side, Modify both sides), then
-        // count each non-empty value into cm.languages.
-        let mut by_blob: BTreeMap<cf_gitlib::hash::Hash, String> = BTreeMap::new();
-        let mut detect = |entry: &cf_gitlib::changes::ChangeEntry| {
-            let data = CachedBlob::from_repo(&repo, entry.hash).map(|b| b.data).unwrap_or_default();
-            by_blob.insert(entry.hash, devs_detect_language(&entry.name, &data));
-        };
-        for change in &changes {
-            match change.action {
-                ChangeAction::Insert => detect(&change.to),
-                ChangeAction::Delete => detect(&change.from),
-                ChangeAction::Modify => {
-                    detect(&change.to);
-                    detect(&change.from);
-                }
-            }
-        }
-        for lang in by_blob.values() {
-            if !lang.is_empty() {
-                *cm.languages.entry(lang.clone()).or_insert(0) += 1;
-            }
-        }
-
-        cm.net_churn = cm.lines_added - cm.lines_removed;
+        // Consume the precomputed per-commit data (tree diff / line stats /
+        // languages); only the order-assigned author id is stamped here.
+        let mut cm = prepared[i].data.clone();
+        cm.author_id = author_id;
         commit_metrics.insert(hash_str, cm);
     }
 
