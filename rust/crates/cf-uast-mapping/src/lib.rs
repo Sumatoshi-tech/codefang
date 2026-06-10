@@ -18,6 +18,9 @@
 //! - [`pattern_matcher`] — the native tree-sitter query/capture compiler and
 //!   matcher (the piece tree-sitter does not provide). Port of
 //!   `pattern_matcher.go`.
+//! - [`vocab`] — the closed mapping vocabularies (`UastType`, `Role`,
+//!   `TokenSource`) extracted from the `.uastmap` corpus; the typed foundation
+//!   of the Rust-native mapping definitions (specs/uastmap-rust-macros).
 //!
 //! # Serialization rule
 //!
@@ -31,9 +34,11 @@ pub mod dsl_parser;
 pub mod grammar_analysis;
 pub mod mapping_types;
 pub mod pattern_matcher;
+pub mod vocab;
 
 pub use dsl_parser::{LanguageInfo, Parser};
 pub use mapping_types::{
     ChildInfo, Condition, FieldInfo, NodeCategory, NodeTypeInfo, Rule, UastSpec,
 };
 pub use pattern_matcher::{MatchError, PatternMatcher};
+pub use vocab::{Role, TokenSource, UastType};

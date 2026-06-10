@@ -18,3 +18,8 @@ streaming-iterator = "0.1"
 # not machine-format report OUTPUT, so serde_json is acceptable here per DESIGN
 # §2 (report output must still route through cf-gojson/cf-goyaml).
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# Corpus-coverage test for the closed vocabularies (vocab.rs): iterates every
+# embedded .uastmap file and asserts each type/role/token value is in-vocabulary.
+cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
