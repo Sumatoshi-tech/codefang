@@ -75,8 +75,13 @@ pins `version="0.0.0"` (so no version string leaks into output), `edition="2021"
 - **Tier 0 — leaf keystones:** `cf-version`, `cf-safeconv`, `cf-units`, `cf-textutil`,
   the `cf-alg-*` leaves (`cf-alg-hashutil` first — seeds are byte-critical), `cf-uast-node`
   (serialized UAST node model — port and golden-test its JSON standalone early).
-- **Tier 1–3 — UAST + plumbing:** `cf-uast-mapping` (PEG DSL), `cf-uast-spec`,
-  `cf-uast-uastmaps` (vendor data verbatim), `cf-uast`, `cf-gitlib`,
+- **Tier 1–3 — UAST + plumbing:** `cf-uast-mapping` (PEG DSL for runtime input,
+  plus the typed static mapping model + `uast_language!` macro), `cf-uast-spec`,
+  `cf-uast-mappings` (the mapping SYSTEM OF RECORD: 68 Rust-native static
+  tables, transpiled from the Go DSL corpus and equality-gated against the DSL
+  parser — see specs/uastmap-rust-macros), `cf-uast-uastmaps` (the frozen
+  `.uastmap` snapshot: dev-server text endpoints + gate input only; the
+  analysis pipeline reads the static registry), `cf-uast`, `cf-gitlib`,
   `cf-analyzers-plumbing` (`FileDiff`/`TreeDiff`/`LinesStats`), `cf-pathfilter`,
   `cf-langpath` (enry parity), `cf-cache`.
 - **Tier 4–6 — estimators + analyzers:** `cf-alg-hll/-cms/-minhash/-bloom/-lsh/-stats`,
