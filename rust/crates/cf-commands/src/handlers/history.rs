@@ -450,9 +450,14 @@ pub(crate) fn anomaly_walk(sub: &clap::ArgMatches) -> Option<AnomalyWalk> {
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
-    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`,
+    // ignoring `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`).
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let policy = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
@@ -1709,9 +1714,14 @@ pub(crate) fn imports_walk(sub: &clap::ArgMatches) -> Option<Vec<ImportsCommit>>
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
-    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`,
+    // ignoring `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`).
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let opts = PathPolicyOptions::default();
     // Loose identity detection (run streaming never preloads a people dict).
@@ -2955,8 +2965,14 @@ pub(crate) fn typos_walk(sub: &clap::ArgMatches) -> Option<Vec<TyposCommit>> {
         }
     };
 
-    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`).
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`,
+    // ignoring `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`).
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let parser = cf_uast::Parser::new();
     let opts = PathPolicyOptions::default();
@@ -3535,9 +3551,14 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
     let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
     let first_parent = crate::handlers::effective_first_parent(sub);
 
-    // Window: `limit` NEWEST commits oldest-first (Go `gitlib.loadHistoryCommits`:
-    // newest-first walk, CollectN, slices.Reverse) — NOT the `limit` oldest.
-    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?;
+    // Window: `--head` loads EXACTLY the single HEAD commit (Go `run.go`,
+    // ignoring `--limit`); otherwise the `limit` commits oldest-first (Go
+    // `gitlib.loadHistoryCommits`).
+    let hashes = if sub.get_flag("head") {
+        vec![repo.head().ok()?]
+    } else {
+        crate::handlers::load_history_commit_hashes(&repo, limit, first_parent)?
+    };
 
     let policy = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
