@@ -236,8 +236,8 @@ mod tests {
 
     #[test]
     fn supported_set_matches_embedded_table() {
-        // Every embedded `.uastmap` language must be a recognized dispatch key.
-        for lang in cf_uast_uastmaps::supported_languages() {
+        // Every registry language must be a recognized dispatch key.
+        for lang in cf_uast_mappings::supported_languages() {
             assert!(
                 is_supported_language(lang),
                 "embedded language {lang} missing from dispatch set"

@@ -38,8 +38,10 @@ const BLOOM_WORDS: usize = BLOOM_SIZE / BLOOM_WORD;
 /// Pre-compiled mapping data for one language (Go `PrecompiledMapping`).
 ///
 /// In Go this is decoded from the generated `embedded_mappings.gen.go`; in Rust
-/// it is derived from the [`cf_uast_uastmaps`] embedded `.uastmap` tables by
-/// parsing each mapping's DSL header for its language name and extensions.
+/// it points at the language's static table in [`cf_uast_mappings`] (the
+/// Rust-native mapping registry), whose `to_rules()` output is equality-gated
+/// against the DSL parser — so the lazy init below feeds the lowering the exact
+/// rules the DSL pipeline produced.
 #[derive(Debug, Clone, Default)]
 pub struct PrecompiledMapping {
     /// Language name (`json:"language"`).
@@ -48,9 +50,13 @@ pub struct PrecompiledMapping {
     pub extensions: Vec<String>,
     /// Parsed mapping rules (`json:"rules"`).
     pub rules: Vec<Rule>,
-    /// The raw `.uastmap` DSL text the rules were parsed from. Kept so the lazy
-    /// parser can (re-)initialize the language on first use.
+    /// The raw `.uastmap` DSL text the rules were parsed from. Kept for
+    /// CUSTOM (user-supplied) mappings; empty for the embedded languages,
+    /// which use [`PrecompiledMapping::table`] instead.
     pub uast: String,
+    /// The language's static mapping table, when it is one of the embedded
+    /// languages. Converted lazily by the parser's first use.
+    pub table: Option<&'static cf_uast_mapping::LanguageMapping>,
 }
 
 /// Loads UAST parsers for different languages (Go `Loader`).
@@ -219,10 +225,13 @@ impl LazyDslParser {
     /// `DSLParser.initializeLanguage`).
     fn init(&self) -> &Result<InitState, ParseError> {
         self.inited.get_or_init(|| {
-            // Parse the DSL to obtain rules + language info (mirrors building a
-            // `DSLParser` from the precompiled mapping). When the precompiled
-            // mapping already carries rules, reuse them directly.
-            let (rules, lang_info) = if self.mapping.rules.is_empty() {
+            // Obtain rules + language info: embedded languages convert their
+            // static table (equality-gated against the DSL parser, so the
+            // lowering sees identical inputs); custom mappings carry parsed
+            // rules; raw DSL text is parsed as the last resort.
+            let (rules, lang_info) = if let Some(table) = self.mapping.table {
+                table.to_rules()
+            } else if self.mapping.rules.is_empty() {
                 MappingParser::new()
                     .parse_mapping(&self.mapping.uast)
                     .map_err(|e| ParseError::Other(e.to_string()))?
@@ -322,28 +331,23 @@ impl LanguageParser for LazyDslParser {
 
 /// Returns the embedded precompiled mappings (Go `embeddedMappingsData`).
 ///
-/// Derived once from [`cf_uast_uastmaps::embedded_mappings`] by parsing each
-/// `.uastmap`'s DSL header for its language name and extensions. The list is
-/// process-wide and built lazily.
+/// Derived once from [`cf_uast_mappings::ALL`] (the static registry) — no
+/// DSL parsing and no embedded text; extensions come from the static tables.
+/// The list is process-wide and built lazily.
 fn embedded_mappings_data() -> &'static [PrecompiledMapping] {
     static DATA: OnceLock<Vec<PrecompiledMapping>> = OnceLock::new();
     DATA.get_or_init(|| {
-        let mp = MappingParser::new();
-        cf_uast_uastmaps::embedded_mappings()
+        cf_uast_mappings::ALL
             .iter()
-            .map(|(&name, &content)| {
-                // Parse the header (cheap) for extensions; full rule compilation
-                // is deferred to first use by leaving `rules` empty.
-                let extensions = mp
-                    .parse_mapping(content)
-                    .map(|(_, lang)| lang.extensions)
-                    .unwrap_or_default();
-                PrecompiledMapping {
-                    language: name.to_string(),
-                    extensions,
-                    rules: Vec::new(),
-                    uast: content.to_string(),
-                }
+            .map(|&(stem, table)| PrecompiledMapping {
+                // The registry stem is the embedded-map key (e.g. `c_sharp`),
+                // which is what the loader registers parsers under; the
+                // table's `name` field keeps the DSL header name (`csharp`).
+                language: stem.to_string(),
+                extensions: table.extensions.iter().map(|e| (*e).to_string()).collect(),
+                rules: Vec::new(),
+                uast: String::new(),
+                table: Some(table),
             })
             .collect()
     })
@@ -393,11 +397,11 @@ mod tests {
     #[test]
     fn embedded_mappings_present() {
         assert!(embedded_mappings_available());
-        // The embedded set is the 68-language `.uastmap` table.
+        // The embedded set is the 68-language static registry.
         assert_eq!(
             embedded_mappings_data().len(),
-            cf_uast_uastmaps::len(),
-            "precompiled mapping count must match the embedded table"
+            cf_uast_mappings::ALL.len(),
+            "precompiled mapping count must match the static registry"
         );
     }
 
