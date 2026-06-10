@@ -306,12 +306,18 @@ impl<'a> Lowering<'a> {
             return compare(&self.extract_node_text(field_node), val);
         }
 
-        // Index-based `named_child(idx)` for alias-correct kinds — see
-        // [`Self::node_type`].
-        for idx in 0..root.named_child_count() {
-            let Some(child) = root.named_child(idx) else { continue };
-            if self.node_type(child) == field {
-                return compare(&self.extract_node_text(child), val);
+        // Go `evaluateCondition` scans children via the CURSOR for all counts
+        // (parser_dsl.go:684) — cursor alias semantics included; mirror exactly.
+        let mut cursor = root.walk();
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.is_named() && self.node_type(child) == field {
+                    return compare(&self.extract_node_text(child), val);
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
             }
         }
         false
@@ -561,13 +567,36 @@ impl<'a> Lowering<'a> {
     /// Go `processUnmappedChildren` (perf variants collapsed): recurse into named
     /// children carrying the same `parent_context`.
     fn process_unmapped_children(&self, root: TsNode<'_>, parent_context: &str) -> Vec<Node> {
+        let count = root.named_child_count();
         let mut mapped = Vec::new();
-        // Index-based `named_child(idx)` for alias-correct kinds — see
-        // [`Self::node_type`].
-        for idx in 0..root.named_child_count() {
-            let Some(child) = root.named_child(idx) else { continue };
-            if let Some(canonical) = self.to_canonical_node(child, parent_context) {
-                mapped.push(canonical);
+        // Go `processUnmappedChildren` dispatches on `cursorThreshold = 8`
+        // (parser_dsl.go:1025): below it, `NamedChild(idx)` — clean
+        // production-alias semantics (extras keep their raw kind); at or above
+        // it, the raw CURSOR — whose alias smearing onto extras is part of Go's
+        // observable behavior. Both halves must be mirrored exactly; see
+        // [`Self::node_type`]. (Note `processChildren` differs: its >= 8 path is
+        // a CGO batch built on `ts_node_named_child`, i.e. clean for all sizes.)
+        if count < CURSOR_THRESHOLD {
+            for idx in 0..count {
+                let Some(child) = root.named_child(idx) else { continue };
+                if let Some(canonical) = self.to_canonical_node(child, parent_context) {
+                    mapped.push(canonical);
+                }
+            }
+            return mapped;
+        }
+        let mut cursor = root.walk();
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.is_named() {
+                    if let Some(canonical) = self.to_canonical_node(child, parent_context) {
+                        mapped.push(canonical);
+                    }
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
             }
         }
         mapped
