@@ -1,0 +1,18 @@
+[package]
+name = "cf-uast-mappings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The static model (LanguageMapping/MappingRule), closed vocabularies, and the
+# uast_language! macro the generated modules expand through.
+cf-uast-mapping = { path = "../cf-uast-mapping" }
+
+[dev-dependencies]
+# Equality gate input: the embedded legacy `.uastmap` DSL text each static
+# table must convert-equal to (specs/uastmap-rust-macros, Step 6).
+cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
