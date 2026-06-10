@@ -34,6 +34,7 @@ pub mod dsl_parser;
 pub mod grammar_analysis;
 pub mod mapping_types;
 pub mod pattern_matcher;
+pub mod static_model;
 pub mod vocab;
 
 pub use dsl_parser::{LanguageInfo, Parser};
@@ -41,4 +42,5 @@ pub use mapping_types::{
     ChildInfo, Condition, FieldInfo, NodeCategory, NodeTypeInfo, Rule, UastSpec,
 };
 pub use pattern_matcher::{MatchError, PatternMatcher};
+pub use static_model::{LanguageMapping, MappingRule};
 pub use vocab::{Role, TokenSource, UastType};
