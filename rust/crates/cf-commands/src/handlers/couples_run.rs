@@ -42,6 +42,37 @@ const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 /// across json/yaml/bin uniformly (`serialize_history_metrics`), so every
 /// format follows from the same report value (no per-format branch).
 pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
+    couples_run(sub).map(|r| r.report_value)
+}
+
+/// One walked commit's couples products (Go `couples.Consume` TC + runner
+/// stamps). `data` is `None` for a dedup-skipped merge (Go returns an EMPTY
+/// `CommitData` with a zero commit hash, which the aggregator ignores).
+pub(crate) struct CouplesCommit {
+    /// Full hex hash.
+    pub hash: String,
+    /// The per-commit TC payload; `None` ⇔ dedup-skipped merge.
+    pub data: Option<CommitData>,
+    /// Runner-stamped tick (TicksSinceStart).
+    pub tick: i64,
+    /// Loose-identity author id.
+    pub author_id: i64,
+    /// Committer time, Unix seconds.
+    pub when: i64,
+    /// Committer UTC-offset minutes.
+    pub offset_min: i32,
+}
+
+/// The full products of one couples walk: the aggregated report value plus the
+/// per-commit TC stream (one entry per walked commit, walk order).
+pub(crate) struct CouplesRun {
+    /// The aggregated `ComputedMetrics` GoValue (json/yaml/bin source).
+    pub report_value: cf_gojson::GoValue,
+    /// Per-commit TC products, walk order.
+    pub commits: Vec<CouplesCommit>,
+}
+
+pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let path = crate::handlers::run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -126,6 +157,8 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         sig_name: String,
         sig_email: String,
         sig_when: i64,
+        committer_when: i64,
+        committer_offset: i32,
         changes: Vec<cf_gitlib::changes::Change>,
     }
     let compute_workers =
@@ -161,21 +194,35 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
                 })
                 .collect();
 
+            let cw = commit.committer().when;
             Some(CouplesPrepared {
                 num_parents,
                 sig_name: gsig.name.clone(),
                 sig_email: gsig.email.clone(),
                 sig_when: gsig.when.seconds(),
+                committer_when: cw.seconds(),
+                committer_offset: cw.offset_minutes(),
                 changes,
             })
         },
     )?;
 
     // ---- sequential ordered-reduce stage (UNCHANGED order) -------------------
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+    let mut commits: Vec<CouplesCommit> = Vec::with_capacity(hashes.len());
+
     for (pos, hash) in hashes.iter().enumerate() {
         let prep = &prepared[pos];
         // Worker that consumes this commit in Go's hybrid leaf dispatch.
         let worker = pos % num_workers;
+
+        // Runner tick stamping (TicksSinceStart over the committer time).
+        let base =
+            *tick0.get_or_insert_with(|| crate::handlers::floor_tick_secs(prep.committer_when));
+        let raw_tick = (prep.committer_when - base).div_euclid(86_400);
+        let tick = raw_tick.max(previous_tick);
+        previous_tick = tick;
 
         // Merge dedup: a merge commit (NumParents > 1) seen twice by the SAME
         // worker contributes an empty CommitData (Go: SeenOrAdd → return empty).
@@ -183,7 +230,16 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
         // Go faithfully — and the tracker is per-worker (Fork/Merge above).
         let is_multi_parent = prep.num_parents > 1;
         if is_multi_parent && !seen_merges[worker].insert(*hash) {
-            // Already seen: empty CommitData, not counted, no author attribution.
+            // Already seen: empty CommitData with a ZERO commit hash in Go —
+            // the aggregator ignores it; record no per-commit entry.
+            commits.push(CouplesCommit {
+                hash: hash.to_string(),
+                data: None,
+                tick,
+                author_id: 0,
+                when: prep.committer_when,
+                offset_min: prep.committer_offset,
+            });
             continue;
         }
 
@@ -214,16 +270,21 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
 
         // Oversized changeset: skip coupling/ownership extraction, but the commit
         // is still counted (CommitCounted = true) — Go returns &data early.
-        if changes.len() > MAX_MEANINGFUL_CONTEXT {
-            agg.add(author, &data);
-            continue;
-        }
-
-        for change in changes {
-            process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
+        if changes.len() <= MAX_MEANINGFUL_CONTEXT {
+            for change in changes {
+                process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
+            }
         }
 
         agg.add(author, &data);
+        commits.push(CouplesCommit {
+            hash: hash.to_string(),
+            data: Some(data),
+            tick,
+            author_id,
+            when: prep.committer_when,
+            offset_min: prep.committer_offset,
+        });
     }
 
     // buildReport (Go: ticksToReport → buildReport → collectCurrentFiles).
@@ -261,7 +322,94 @@ pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
     report_data.reversed_people_dict = identity.reversed_people_dict.clone();
 
     let metrics = compute_all_metrics(&report_data);
-    Some(report::computed_metrics_to_value(&metrics))
+    Some(CouplesRun {
+        report_value: report::computed_metrics_to_value(&metrics),
+        commits,
+    })
+}
+
+/// Per-commit couples NDJSON records (forked leaf): every non-dedup-skipped
+/// commit emits a line; `data` is Go's `*CommitData` struct — `CouplingFiles`
+/// (initialized slice), `AuthorFiles` (map, key-sorted), `Renames` (initialized
+/// slice of `{FromName, ToName}`), `CommitCounted` bool.
+pub fn couples_ndjson_records(
+    sub: &clap::ArgMatches,
+) -> Option<Vec<crate::handlers::history_formats::NdjsonRecord>> {
+    use cf_gojson::value::{GoMap, GoValue};
+
+    let run = couples_run(sub)?;
+    let mut records = Vec::new();
+    for (pos, c) in run.commits.iter().enumerate() {
+        let Some(cd) = &c.data else { continue };
+        let mut data = GoMap::new_struct();
+        data.insert(
+            "CouplingFiles".to_string(),
+            GoValue::Array(cd.coupling_files.iter().map(|f| GoValue::Str(f.clone())).collect()),
+        );
+        let mut authors = GoMap::new_map();
+        for (f, n) in &cd.author_files {
+            authors.insert(f.clone(), GoValue::Int(i64::from(*n)));
+        }
+        data.insert("AuthorFiles".to_string(), GoValue::Map(authors));
+        data.insert(
+            "Renames".to_string(),
+            GoValue::Array(
+                cd.renames
+                    .iter()
+                    .map(|r| {
+                        let mut m = GoMap::new_struct();
+                        m.insert("FromName".to_string(), GoValue::Str(r.from_name.clone()));
+                        m.insert("ToName".to_string(), GoValue::Str(r.to_name.clone()));
+                        GoValue::Map(m)
+                    })
+                    .collect(),
+            ),
+        );
+        data.insert("CommitCounted".to_string(), GoValue::Bool(cd.commit_counted));
+        records.push(crate::handlers::history_formats::NdjsonRecord {
+            pos,
+            hash: c.hash.clone(),
+            tick: c.tick,
+            author_id: c.author_id,
+            time_secs: c.when,
+            tz_offset_min: c.offset_min,
+            data: GoValue::Map(data),
+        });
+    }
+    Some(records)
+}
+
+/// The couples contribution to the merged `--format timeseries` document (Go
+/// `couples.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
+/// commit `{"files_touched": len(CouplingFiles), "author_id": id}`. The couples
+/// aggregator is NOT tick-bucketed — its single TICK carries tick index 0, so
+/// every merged commit reports `"tick": 0`.
+pub fn couples_timeseries_contribution(
+    sub: &clap::ArgMatches,
+) -> Option<crate::handlers::history_formats::TimeSeriesContribution> {
+    use cf_gojson::value::{GoMap, GoValue};
+
+    let run = couples_run(sub)?;
+    let mut per_commit = Vec::new();
+    let mut commit_meta = Vec::new();
+    for c in &run.commits {
+        let Some(cd) = &c.data else { continue };
+        let mut entry = GoMap::new_map();
+        entry.insert("files_touched".to_string(), GoValue::Int(cd.coupling_files.len() as i64));
+        entry.insert("author_id".to_string(), GoValue::Int(c.author_id));
+        per_commit.push((c.hash.clone(), GoValue::Map(entry)));
+        commit_meta.push((
+            c.hash.clone(),
+            0, // aggregator TICK.Tick is 0 (single un-bucketed TICK).
+            crate::handlers::format_rfc3339_offset(c.when, c.offset_min),
+            String::new(),
+        ));
+    }
+    Some(crate::handlers::history_formats::TimeSeriesContribution {
+        flag: "couples",
+        per_commit,
+        commit_meta,
+    })
 }
 
 /// Collects the current-file set and per-file newline counts from the live

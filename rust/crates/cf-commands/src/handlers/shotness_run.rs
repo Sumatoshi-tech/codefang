@@ -72,6 +72,50 @@ pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// just a serializer over this single value (Go `ToJSON`/`ToYAML`/binary
 /// envelope), routed at the handler layer.
 pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::ComputedMetrics> {
+    let walk = shotness_walk(sub)?;
+
+    // Per-tick accumulator (Go aggregator `byTick`).
+    let mut by_tick: BTreeMap<i64, TickNodes> = BTreeMap::new();
+    for c in &walk {
+        if c.touched.is_empty() {
+            continue;
+        }
+        let acc = by_tick.entry(c.tick).or_default();
+        accumulate_nodes(acc, &c.touched);
+        compute_coupling_pairs(acc, &c.touched);
+    }
+
+    // ticksToReport: merge every tick's node map, then buildReportFromMerged.
+    let mut merged: TickNodes = TickNodes::new();
+    for td in by_tick.values() {
+        merge_nodes_into(&mut merged, td);
+    }
+
+    let report = build_report_from_merged(&merged);
+    Some(compute_all_metrics(&report))
+}
+
+/// One walked commit's shotness products (Go `shotness.Consume` TC + runner
+/// stamps). `touched` empty ⇔ nil-Data TC (skipped merge / spill / no nodes).
+pub(crate) struct ShotnessCommit {
+    /// Full hex hash.
+    pub hash: String,
+    /// Node key → summary for the nodes this commit touched (Go
+    /// `CommitData.NodesTouched` keys + summaries; `CountDelta` is always 1).
+    pub touched: BTreeMap<String, NodeSummary>,
+    /// TicksSinceStart tick.
+    pub tick: i64,
+    /// Loose-identity author id (walk order).
+    pub author_id: i64,
+    /// Committer time, Unix seconds.
+    pub when: i64,
+    /// Committer UTC-offset minutes.
+    pub offset_min: i32,
+}
+
+/// The shared `history/shotness` revwalk: one entry per walked commit, walk
+/// order. Every shotness format consumes THIS one walk.
+pub(crate) fn shotness_walk(sub: &clap::ArgMatches) -> Option<Vec<ShotnessCommit>> {
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -90,8 +134,6 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
     let opts = PathPolicyOptions::default();
     let mut identity = IdentityDetector::new();
 
-    // Per-tick accumulator (Go aggregator `byTick`).
-    let mut by_tick: BTreeMap<i64, TickNodes> = BTreeMap::new();
     // Cumulative analyzer state (Go `s.nodes` / `s.files`).
     let mut state = ShotnessState::default();
     // Merge dedup tracker (Go `s.merges.SeenOrAdd` over NumParents() > 1).
@@ -100,12 +142,15 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
     let mut tick0: Option<i64> = None;
     let mut previous_tick: i64 = 0;
 
+    let mut commits: Vec<ShotnessCommit> = Vec::with_capacity(hashes.len());
+
     for hash in &hashes {
         let commit = repo.lookup_commit(*hash).ok()?;
-        let when = commit.committer().when.seconds();
+        let committer_when = commit.committer().when;
+        let when = committer_when.seconds();
 
         let gsig = commit.author();
-        let _author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
+        let author_id = identity.consume_signature(&cf_analyzers_plumbing::Signature {
             name: gsig.name.clone(),
             email: gsig.email.clone(),
             when_unix: gsig.when.seconds(),
@@ -116,8 +161,18 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
         let tick = raw_tick.max(previous_tick);
         previous_tick = tick;
 
+        let mut entry = ShotnessCommit {
+            hash: hash.to_string(),
+            touched: BTreeMap::new(),
+            tick,
+            author_id,
+            when,
+            offset_min: committer_when.offset_minutes(),
+        };
+
         // shouldConsumeCommit: a merge commit is processed only the first time.
         if commit.num_parents() > 1 && !seen_merges.insert(*hash) {
+            commits.push(entry);
             continue;
         }
 
@@ -132,6 +187,7 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
 
         // Spill rule: > 32 changes ⇒ the analyzer sees zero UAST changes.
         if changes.len() > SPILL_THRESHOLD {
+            commits.push(entry);
             continue;
         }
 
@@ -160,34 +216,93 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
             }
         }
 
-        if all_nodes.is_empty() {
-            continue;
-        }
-
-        // buildCommitData → extractTC/accumulateNodes/computeCouplingPairs.
-        let mut touched: BTreeMap<String, NodeSummary> = BTreeMap::new();
+        // buildCommitData: nil unless a known node was touched.
         for key in &all_nodes {
             if let Some(ns) = state.nodes.get(key) {
-                touched.insert(key.clone(), ns.summary.clone());
+                entry.touched.insert(key.clone(), ns.summary.clone());
             }
         }
-        if touched.is_empty() {
+
+        commits.push(entry);
+    }
+
+    Some(commits)
+}
+
+/// Per-commit shotness NDJSON records (forked leaf): only commits that touched
+/// known nodes emit a line; `data` is Go's `*CommitData` — one `NodesTouched`
+/// map (key-sorted) of `NodeDelta{Summary{Type,Name,File}, CountDelta: 1}`.
+pub fn shotness_ndjson_records(
+    sub: &clap::ArgMatches,
+) -> Option<Vec<crate::handlers::history_formats::NdjsonRecord>> {
+    use cf_gojson::value::{GoMap, GoValue};
+
+    let walk = shotness_walk(sub)?;
+    let mut records = Vec::new();
+    for (pos, c) in walk.iter().enumerate() {
+        if c.touched.is_empty() {
             continue;
         }
-
-        let acc = by_tick.entry(tick).or_default();
-        accumulate_nodes(acc, &touched);
-        compute_coupling_pairs(acc, &touched);
+        let mut nodes = GoMap::new_map();
+        for (key, ns) in &c.touched {
+            let mut summary = GoMap::new_struct();
+            summary.insert("Type".to_string(), GoValue::Str(ns.type_.clone()));
+            summary.insert("Name".to_string(), GoValue::Str(ns.name.clone()));
+            summary.insert("File".to_string(), GoValue::Str(ns.file.clone()));
+            let mut delta = GoMap::new_struct();
+            delta.insert("Summary".to_string(), GoValue::Map(summary));
+            delta.insert("CountDelta".to_string(), GoValue::Int(1));
+            nodes.insert(key.clone(), GoValue::Map(delta));
+        }
+        let mut data = GoMap::new_struct();
+        data.insert("NodesTouched".to_string(), GoValue::Map(nodes));
+        records.push(crate::handlers::history_formats::NdjsonRecord {
+            pos,
+            hash: c.hash.clone(),
+            tick: c.tick,
+            author_id: c.author_id,
+            time_secs: c.when,
+            tz_offset_min: c.offset_min,
+            data: GoValue::Map(data),
+        });
     }
+    Some(records)
+}
 
-    // ticksToReport: merge every tick's node map, then buildReportFromMerged.
-    let mut merged: TickNodes = TickNodes::new();
-    for td in by_tick.values() {
-        merge_nodes_into(&mut merged, td);
+/// The shotness contribution to the merged `--format timeseries` document (Go
+/// `shotness.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
+/// node-touching commit `{"nodes_touched": n, "coupling_pairs": n*(n-1)/2}`.
+pub fn shotness_timeseries_contribution(
+    sub: &clap::ArgMatches,
+) -> Option<crate::handlers::history_formats::TimeSeriesContribution> {
+    use cf_gojson::value::{GoMap, GoValue};
+
+    let walk = shotness_walk(sub)?;
+    let mut per_commit = Vec::new();
+    let mut commit_meta = Vec::new();
+    for c in &walk {
+        if c.touched.is_empty() {
+            continue;
+        }
+        let n = c.touched.len() as i64;
+        // Go computeCouplingPairs: 0 below minCouplingNodes (2), else C(n,2).
+        let pairs = if n < 2 { 0 } else { n * (n - 1) / 2 };
+        let mut entry = GoMap::new_map();
+        entry.insert("nodes_touched".to_string(), GoValue::Int(n));
+        entry.insert("coupling_pairs".to_string(), GoValue::Int(pairs));
+        per_commit.push((c.hash.clone(), GoValue::Map(entry)));
+        commit_meta.push((
+            c.hash.clone(),
+            c.tick,
+            crate::handlers::format_rfc3339_offset(c.when, c.offset_min),
+            String::new(),
+        ));
     }
-
-    let report = build_report_from_merged(&merged);
-    Some(compute_all_metrics(&report))
+    Some(crate::handlers::history_formats::TimeSeriesContribution {
+        flag: "shotness",
+        per_commit,
+        commit_meta,
+    })
 }
 
 /// Parses a change side's blob into a UAST root, applying the same filters as

@@ -20,6 +20,7 @@ pub mod burndown_ndjson;
 pub mod couples_run;
 pub mod go_sort;
 pub mod history;
+pub mod history_formats;
 pub mod section_render;
 pub mod shotness_run;
 pub mod static_clones;
@@ -596,6 +597,8 @@ fn pattern_selects_id(patterns: &[&str], id: &str) -> bool {
     })
 }
 
+/// Expands a requested pattern list into the concrete history leaf ids it
+/// selects, in Go's separate-phase emit order ([`HISTORY_PHASE_EMIT_ORDER`]).
 #[must_use]
 pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
     let selected = |id: &str| pattern_selects_id(patterns, id);

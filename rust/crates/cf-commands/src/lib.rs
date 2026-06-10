@@ -289,6 +289,50 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         }
     };
 
+    // Centralized history-phase formats (Go OutputHistoryResults / StreamingSink):
+    // text, ndjson, and timeseries are NOT per-analyzer encodings — Go routes the
+    // whole selected leaf set through one history output function (header + per-
+    // leaf sections for text; per-commit TC lines for ndjson; one merged document
+    // for timeseries). A history-only selection in one of those formats dispatches
+    // here; `None` (an unported leaf) falls through to the per-id pipeline and its
+    // existing dispatch-blocked diagnostic.
+    let all_history = !resolved_ids.is_empty()
+        && resolved_ids.iter().all(|id| {
+            registry
+                .lookup(id)
+                .is_some_and(|e| matches!(e.mode, pipeline::Mode::History))
+        });
+    if all_history {
+        let normalized = formats::normalize_format(&raw_format);
+        let history_format = formats::apply_ndjson_modifier(&normalized, ctx.ndjson());
+        let special = match history_format.as_str() {
+            formats::FORMAT_TEXT => handlers::history_formats::history_text(&ctx, &resolved_ids),
+            formats::FORMAT_NDJSON => handlers::history_formats::history_ndjson(&ctx, &resolved_ids),
+            formats::FORMAT_TIMESERIES => {
+                handlers::history_formats::history_timeseries(&ctx, &resolved_ids, false)
+            }
+            // `timeseries+ndjson` (the --ndjson modifier) is NOT the merged
+            // document as lines: Go routes it through the per-chunk
+            // TimeSeriesChunkFlusher (DrainCommitStats), which devs/burndown
+            // reproduce in their per-analyzer handlers — fall through.
+            _ => None,
+        };
+        match special {
+            Some(Ok(bytes)) => {
+                std::io::stdout().write_all(&bytes).expect("write stdout");
+                return 0;
+            }
+            Some(Err(fail)) => {
+                // Go streams the partial bytes to stdout BEFORE the serializer
+                // fails; cobra then prints `Error: <msg>` to stderr and exits 1.
+                std::io::stdout().write_all(&fail.partial).expect("write stdout");
+                eprintln!("Error: {}", fail.message);
+                return 1;
+            }
+            None => {}
+        }
+    }
+
     match pipeline::run_pipeline(&registry, &ctx, &resolved_ids) {
         Ok(outputs) => {
             let mut out = std::io::stdout();

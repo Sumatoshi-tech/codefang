@@ -128,6 +128,86 @@ pub fn burndown_timeseries_ndjson(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// The burndown contribution to the merged `--format timeseries` document (Go
+/// `burndown.ExtractCommitTimeSeries` over `report["commit_stats"]`): per
+/// commit `{"lines_added", "lines_removed"}`; burndown is `Sequential: true`,
+/// so `commits_by_tick` appends in plain walk order with the real ticks.
+pub fn burndown_timeseries_contribution(
+    sub: &clap::ArgMatches,
+) -> Option<crate::handlers::history_formats::TimeSeriesContribution> {
+    let path = run_repo_path(sub);
+    let repo = cf_gitlib::Repository::open(&path).ok()?;
+
+    let limit = sub.get_one::<i64>("limit").copied().unwrap_or(0);
+
+    // Burndown forces --first-parent (run.go), exactly as the sibling paths.
+    let hashes = crate::handlers::load_history_commit_hashes(&repo, limit, true)?;
+
+    let opts = PathPolicyOptions::default();
+    let sink: DeltaSink = Rc::new(RefCell::new(Vec::new()));
+    let mut tracked: HashMap<String, File> = HashMap::new();
+
+    let mut tick0: Option<i64> = None;
+    let mut previous_tick: i64 = 0;
+
+    let mut per_commit = Vec::new();
+    let mut commit_meta = Vec::new();
+
+    for hash in &hashes {
+        let commit = repo.lookup_commit(*hash).ok()?;
+        let new_tree = commit.tree().ok()?;
+
+        let committer = commit.committer();
+        let when = committer.when.seconds();
+        let t0 = *tick0.get_or_insert_with(|| floor_tick_secs(when));
+        let raw = (when - t0).div_euclid(TICK_PERIOD);
+        let tick = raw.max(previous_tick);
+        previous_tick = tick;
+
+        let num_parents = commit.num_parents();
+        let changes = if num_parents > 0 {
+            let parent = commit.parent(0).ok()?;
+            let old_tree = parent.tree().ok()?;
+            tree_diff(&repo, Some(&old_tree), Some(&new_tree)).ok()?
+        } else {
+            initial_tree_changes(&repo, Some(&new_tree)).ok()?
+        };
+        let is_merge = num_parents > 1;
+
+        sink.borrow_mut().clear();
+        process_commit_changes(&repo, &changes, &opts, &mut tracked, &sink, tick, is_merge);
+        let (added, removed) = commit_line_stats(&sink.borrow(), tick);
+
+        let mut entry = GoMap::new_map();
+        entry.insert("lines_added", GoValue::Int(added));
+        entry.insert("lines_removed", GoValue::Int(removed));
+        per_commit.push((hash.to_string(), GoValue::Map(entry)));
+        commit_meta.push((
+            hash.to_string(),
+            tick,
+            format_rfc3339_offset(when, committer.when.offset_minutes()),
+            String::new(),
+        ));
+    }
+
+    // Burndown's serial-leaf TCs reach the aggregator at END-of-chunk drain,
+    // when the runner's TicksSinceStart already points at the FINAL tick — so
+    // every commits_by_tick entry lands under that one tick (oracle-observed:
+    // all 50 hercules commits report tick 181). Go's order within the single
+    // tick is map-iteration random; we keep deterministic walk order and let
+    // the oracle's measured-variance canonicalization compare the sets.
+    let last_tick = previous_tick;
+    for meta in &mut commit_meta {
+        meta.1 = last_tick;
+    }
+
+    Some(crate::handlers::history_formats::TimeSeriesContribution {
+        flag: "burndown",
+        per_commit,
+        commit_meta,
+    })
+}
+
 /// Builds the burndown **record** NDJSON bytes for the oldest `--limit` commits
 /// (`run --analyzers history/burndown --format ndjson`, no `--timeseries`,
 /// no `--head`), or `None` if the repository cannot be opened/walked.
@@ -429,17 +509,29 @@ fn commit_sparse_stats(
 }
 
 /// Serializes the sparse `curTick -> prevTick -> delta` map as a struct-origin
-/// `GoValue` so the numerically-sorted `BTreeMap` insertion order is preserved on
-/// encode (matching Go's `json.Marshal` of `map[int]map[int]int64`, which sorts
-/// integer keys numerically and renders them as strings).
+/// `GoValue` whose insertion order is the keys' STRING-LEXICOGRAPHIC order —
+/// matching Go's `json.Marshal` of `map[int]map[int]int64`, which renders int
+/// keys as strings and sorts those strings lexicographically (encoding/json
+/// `mapEncoder`: `sv[i].ks < sv[j].ks`), e.g. `"130" < "2" < "7"`. Numeric
+/// BTreeMap order diverges whenever a row mixes keys of different digit counts
+/// (the burndown[ndjson]@hercules tick-130 row).
 fn sparse_to_value(global: &BTreeMap<i64, BTreeMap<i64, i64>>) -> GoValue {
+    let lex = |m: &BTreeMap<i64, i64>| -> Vec<(String, i64)> {
+        let mut v: Vec<(String, i64)> = m.iter().map(|(k, d)| (k.to_string(), *d)).collect();
+        v.sort_by(|a, b| a.0.cmp(&b.0));
+        v
+    };
+    let mut outer_keys: Vec<(String, &BTreeMap<i64, i64>)> =
+        global.iter().map(|(k, row)| (k.to_string(), row)).collect();
+    outer_keys.sort_by(|a, b| a.0.cmp(&b.0));
+
     let mut outer = GoMap::new(MapOrigin::Struct);
-    for (cur, row) in global {
+    for (cur, row) in outer_keys {
         let mut inner = GoMap::new(MapOrigin::Struct);
-        for (prev, delta) in row {
-            inner.insert(prev.to_string(), GoValue::Int(*delta));
+        for (prev, delta) in lex(row) {
+            inner.insert(prev, GoValue::Int(delta));
         }
-        outer.insert(cur.to_string(), GoValue::Map(inner));
+        outer.insert(cur, GoValue::Map(inner));
     }
     GoValue::Map(outer)
 }
