@@ -23,3 +23,5 @@ serde_json = { workspace = true }
 # Corpus-coverage test for the closed vocabularies (vocab.rs): iterates every
 # embedded .uastmap file and asserts each type/role/token value is in-vocabulary.
 cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
+# Macro compile-pass/fail pinning for uast_language! (tests/trybuild.rs).
+trybuild = "1"

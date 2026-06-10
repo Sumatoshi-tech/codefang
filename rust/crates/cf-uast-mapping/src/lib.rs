@@ -34,6 +34,8 @@ pub mod dsl_parser;
 pub mod grammar_analysis;
 pub mod mapping_types;
 pub mod pattern_matcher;
+#[macro_use]
+pub mod macros;
 pub mod static_model;
 pub mod vocab;
 

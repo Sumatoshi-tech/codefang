@@ -1,0 +1,11 @@
+error: no rules expected `tokens`
+  --> tests/ui/fail_unknown_key.rs:10:13
+   |
+10 |             tokens: self,
+   |             ^^^^^^ no rules expected this token in macro call
+   |
+note: while trying to match `}`
+  --> src/macros.rs
+   |
+   |                 }
+   |                 ^
