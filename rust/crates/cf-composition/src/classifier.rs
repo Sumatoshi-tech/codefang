@@ -266,8 +266,10 @@ mod enry {
         if dir_prefix(path, &["sample/", "samples/", "Sample/", "Samples/"]) {
             return true;
         }
-        // Filename matchers: `(^|/)NAME(\.|$)` — the path component equals NAME
-        // or starts with `NAME.`. enry's `(\.|$)` allows a trailing extension.
+        // Filename matchers: `(^|/)NAME(\.|$)` — NAME anchored at a component
+        // start, followed by a literal `.` or by the END OF THE PATH. The pred
+        // receives the exact candidate name (no extension); `file_component`
+        // owns the `(\.|$)` anchoring.
         const FILE_NAMES: &[&str] = &[
             "CONTRIBUTING",
             "COPYING",
@@ -279,19 +281,16 @@ mod enry {
         if file_component(path, |name| FILE_NAMES.contains(&name)) {
             return true;
         }
-        // `(^|/)CHANGE(S|LOG)?(\.|$)` — CHANGE / CHANGES / CHANGELOG, optionally
-        // with an extension.
+        // `(^|/)CHANGE(S|LOG)?(\.|$)` — CHANGE / CHANGES / CHANGELOG.
         if file_component(path, |name| {
-            let stem = name.split('.').next().unwrap_or(name);
-            matches!(stem, "CHANGE" | "CHANGES" | "CHANGELOG")
+            matches!(name, "CHANGE" | "CHANGES" | "CHANGELOG")
         }) {
             return true;
         }
         // `(^|/)LICEN[CS]E(\.|$)` and `(^|/)[Ll]icen[cs]e(\.|$)`.
         file_component(path, |name| {
-            let stem = name.split('.').next().unwrap_or(name);
             matches!(
-                stem,
+                name,
                 "LICENCE" | "LICENSE" | "Licence" | "License" | "licence" | "license"
             )
         })
@@ -311,21 +310,31 @@ mod enry {
             .any(|s| path.starts_with(s) || path.contains(&format!("/{s}")))
     }
 
-    /// Tests `(^|/)NAME(\.|$)`: splits `path` into `/`-separated components and
-    /// returns true if any component's leading token (up to the first `.`)
-    /// satisfies `pred`. The `(\.|$)` means the component may carry a trailing
-    /// extension.
+    /// Tests `(^|/)NAME(\.|$)` exactly as enry's regex does: NAME anchored at a
+    /// component start, immediately followed by a literal `.` (any component,
+    /// even a directory like `NAME.d/`) **or by the end of the whole path** (the
+    /// `$` — i.e. the final component equals NAME exactly).
+    ///
+    /// A bare directory component equal to NAME does NOT match: in the path
+    /// string it is followed by `/`, which `(\.|$)` does not allow. (This was
+    /// the kubernetes `CHANGELOG/CHANGELOG-1.x.md` divergence: enry classifies
+    /// those as source — the `CHANGELOG` *directory* never matches — while a
+    /// component-equality check wrongly made them documentation.)
     fn file_component(path: &str, pred: impl Fn(&str) -> bool) -> bool {
-        path.split('/').any(|comp| {
-            // Exactly NAME, or NAME followed by `.<ext>`.
-            if pred(comp) {
+        let mut comps = path.split('/').peekable();
+        while let Some(comp) = comps.next() {
+            // `NAME$`: only the final component, exactly equal.
+            if comps.peek().is_none() && pred(comp) {
                 return true;
             }
-            match comp.find('.') {
-                Some(idx) => pred(&comp[..idx]),
-                None => false,
+            // `NAME.`: the component's prefix up to its first dot.
+            if let Some(idx) = comp.find('.') {
+                if pred(&comp[..idx]) {
+                    return true;
+                }
             }
-        })
+        }
+        false
     }
 }
 

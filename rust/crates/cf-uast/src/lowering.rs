@@ -80,8 +80,20 @@ impl<'a> Lowering<'a> {
         self.to_canonical_node(root, "")
     }
 
-    /// Go `nodeType`. tree-sitter `kind()` is the alias-aware `ts_node_type`,
-    /// equivalent to Go's symbol-table lookup with its `node.Type()` fallback.
+    /// Go `nodeType`: the alias-aware node type — `kind()` (`ts_node_type`) —
+    /// **provided the node was constructed by a named-child-style API**.
+    ///
+    /// Aliases are assigned at node-construction time from the parent
+    /// production's alias sequence. `ts_node_named_child` (Go's `NamedChild` /
+    /// its CGO batch) assigns them only to true production children — an
+    /// **extra** (e.g. a comment) never receives one and keeps its raw kind. A
+    /// raw `TreeCursor` walk instead smears pending aliases onto extras: in
+    /// multi-document YAML the comment after a `---` reports `kind() ==
+    /// "document"` from a cursor but `"comment"` from `named_child`, which is
+    /// the difference between missing and matching the `comment` mapping rule
+    /// (kubernetes `nodelocaldns.yaml` lines 192-193 diverged this way). So
+    /// every traversal that feeds this function must construct nodes via
+    /// `named_children`/`named_child`, never via a raw cursor walk.
     fn node_type(&self, node: TsNode<'_>) -> &'static str {
         node.kind()
     }
@@ -162,19 +174,18 @@ impl<'a> Lowering<'a> {
     /// variants): visit named children in order, skipping those excluded by their
     /// own rule's conditions, recursing into each.
     fn process_children(&self, root: TsNode<'_>, mapping_rule: Option<&Rule>) -> Vec<Node> {
-        let mut children = Vec::with_capacity(root.named_child_count());
-        let mut cursor = root.walk();
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if child.is_named() && !self.should_exclude_child(child, mapping_rule) {
-                    let child_ctx = self.derive_parent_context(root, mapping_rule);
-                    if let Some(canonical) = self.to_canonical_node(child, &child_ctx) {
-                        children.push(canonical);
-                    }
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
+        let count = root.named_child_count();
+        let mut children = Vec::with_capacity(count);
+        // Index-based `named_child(idx)` (Go `processChildrenDirect`), NOT a
+        // cursor walk and NOT the cursor-backed `named_children` iterator: only
+        // per-index construction assigns production aliases correctly (extras
+        // keep their raw kind) — see [`Self::node_type`].
+        for idx in 0..count {
+            let Some(child) = root.named_child(idx) else { continue };
+            if !self.should_exclude_child(child, mapping_rule) {
+                let child_ctx = self.derive_parent_context(root, mapping_rule);
+                if let Some(canonical) = self.to_canonical_node(child, &child_ctx) {
+                    children.push(canonical);
                 }
             }
         }
@@ -295,16 +306,12 @@ impl<'a> Lowering<'a> {
             return compare(&self.extract_node_text(field_node), val);
         }
 
-        let mut cursor = root.walk();
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if child.is_named() && self.node_type(child) == field {
-                    return compare(&self.extract_node_text(child), val);
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
+        // Index-based `named_child(idx)` for alias-correct kinds — see
+        // [`Self::node_type`].
+        for idx in 0..root.named_child_count() {
+            let Some(child) = root.named_child(idx) else { continue };
+            if self.node_type(child) == field {
+                return compare(&self.extract_node_text(child), val);
             }
         }
         false
@@ -555,18 +562,12 @@ impl<'a> Lowering<'a> {
     /// children carrying the same `parent_context`.
     fn process_unmapped_children(&self, root: TsNode<'_>, parent_context: &str) -> Vec<Node> {
         let mut mapped = Vec::new();
-        let mut cursor = root.walk();
-        if cursor.goto_first_child() {
-            loop {
-                let child = cursor.node();
-                if child.is_named() {
-                    if let Some(canonical) = self.to_canonical_node(child, parent_context) {
-                        mapped.push(canonical);
-                    }
-                }
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
+        // Index-based `named_child(idx)` for alias-correct kinds — see
+        // [`Self::node_type`].
+        for idx in 0..root.named_child_count() {
+            let Some(child) = root.named_child(idx) else { continue };
+            if let Some(canonical) = self.to_canonical_node(child, parent_context) {
+                mapped.push(canonical);
             }
         }
         mapped
