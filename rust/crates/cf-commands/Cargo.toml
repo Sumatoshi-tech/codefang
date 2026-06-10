@@ -98,6 +98,7 @@ cf-anomaly = { path = "../cf-anomaly" }
 cf-quality = { path = "../cf-quality" }
 cf-sentiment = { path = "../cf-sentiment" }
 cf-file-history = { path = "../cf-file-history" }
+cf-terminal = { path = "../cf-terminal" }
 
 # Scaffold / not-yet-wired sibling crates -- optional, gated behind the
 # `runtime` / `mcp` features (streaming framework runner, persistence, plot).

@@ -30,6 +30,8 @@ pub(crate) fn with_uast_parser<R>(f: impl FnOnce(&cf_uast::Parser) -> R) -> R {
     UAST_PARSER.with(|p| f(p))
 }
 
+/// Closed-form `history/burndown --head` metrics (single HEAD-commit window),
+/// shared by the json/yaml/bin head formats.
 pub fn burndown_head_metrics(sub: &clap::ArgMatches) -> Option<cf_analyzer_burndown::ComputedMetrics> {
     use cf_analyzer_burndown::metrics::{AggregateData, SurvivalData};
     use cf_gitlib::blob::CachedBlob;
@@ -1499,9 +1501,11 @@ pub fn sentiment_timeseries_contribution(
             crate::handlers::format_rfc3339_offset(c.when, c.offset_min),
             String::new(),
         ));
-        let Some(comments) = &c.comments else {
-            continue; // spilled: no comments_by_commit entry.
-        };
+        // Go records a comments_by_commit entry for EVERY consumed commit — a
+        // spilled commit's leaf sees zero UAST changes, so its entry is an
+        // empty list (`comment_count: 0`, oracle-verified on kubernetes).
+        let empty: Vec<String> = Vec::new();
+        let comments = c.comments.as_ref().unwrap_or(&empty);
         let mut entry = GoMap::new_map();
         entry.insert("comment_count".to_string(), GoValue::Int(comments.len() as i64));
         if !comments.is_empty() {
@@ -2001,6 +2005,15 @@ pub fn file_history_report_value(sub: &clap::ArgMatches) -> Option<cf_gojson::Go
     file_history_run(sub).map(|r| r.report_value)
 }
 
+/// The TYPED `ComputedMetrics` behind [`file_history_report_value`] (same
+/// walk, same `compute_all_metrics_with_options` product) — the text
+/// serializer reads struct fields directly (Go file_history/text.go
+/// `generateText` calls `ComputeAllMetrics` on the report), so it must see the
+/// identical metrics the json/yaml bytes encode.
+pub fn file_history_run_metrics(sub: &clap::ArgMatches) -> Option<cf_file_history::ComputedMetrics> {
+    file_history_run(sub).map(|r| r.metrics)
+}
+
 /// One walked commit's file-history products (Go `file_history.Consume` TC +
 /// runner stamps), kept in OLDEST-FIRST walk position `pos`.
 pub(crate) struct FileHistoryCommit {
@@ -2041,6 +2054,8 @@ pub(crate) struct FileHistoryCommitData {
 pub(crate) struct FileHistoryRun {
     /// The aggregated report GoValue (json/yaml/bin source).
     pub report_value: cf_gojson::GoValue,
+    /// The typed metrics `report_value` was rendered from (text source).
+    pub metrics: cf_file_history::ComputedMetrics,
     /// Per-commit TC products, oldest-first.
     pub commits: Vec<FileHistoryCommit>,
 }
@@ -2452,6 +2467,7 @@ pub(crate) fn file_history_run(sub: &clap::ArgMatches) -> Option<FileHistoryRun>
     );
     Some(FileHistoryRun {
         report_value: computed_metrics_to_go(&metrics),
+        metrics,
         commits: commit_records,
     })
 }
@@ -3577,6 +3593,40 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
         // Line stats are accumulated only for non-merge commits (Go `!ac.IsMerge`).
         if !is_merge && filtered_count > 0 {
             let worker = Worker::new(repo);
+
+            // Go LanguagesDetectionAnalyzer.Languages(): the per-commit language
+            // map is keyed by BLOB HASH, written in change order (Insert → To,
+            // Delete → From, Modify → BOTH sides) with later changes
+            // OVERWRITING earlier ones. Two same-content files with different
+            // extensions therefore share ONE language — the LAST change's name
+            // wins for every change carrying that blob (ioq3's giant import
+            // commits move thousands of lines between C and C++ this way). The
+            // attribution below looks the language up by hash, never detecting
+            // per change.
+            let mut langs: std::collections::HashMap<cf_gitlib::hash::Hash, String> =
+                std::collections::HashMap::new();
+            let detect_into = |langs: &mut std::collections::HashMap<cf_gitlib::hash::Hash, String>,
+                                   name: &str,
+                                   h: cf_gitlib::hash::Hash| {
+                let lang = match CachedBlob::from_repo(repo, h) {
+                    Ok(b) => devs_detect_language(name, &b.data),
+                    Err(_) => String::new(),
+                };
+                langs.insert(h, lang);
+            };
+            for change in &changes {
+                match change.action {
+                    ChangeAction::Insert => detect_into(&mut langs, &change.to.name, change.to.hash),
+                    ChangeAction::Delete => {
+                        detect_into(&mut langs, &change.from.name, change.from.hash);
+                    }
+                    ChangeAction::Modify => {
+                        detect_into(&mut langs, &change.to.name, change.to.hash);
+                        detect_into(&mut langs, &change.from.name, change.from.hash);
+                    }
+                }
+            }
+
             for change in &changes {
                 let stats = match change.action {
                     ChangeAction::Insert => {
@@ -3594,9 +3644,6 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                         cf_devs::LineStats { added: 0, removed: lines as i64, changed: 0 }
                     }
                     ChangeAction::Modify => {
-                        if change.from.hash == change.to.hash {
-                            continue;
-                        }
                         let Ok(blob_from) = CachedBlob::from_repo(repo, change.from.hash) else {
                             continue;
                         };
@@ -3606,20 +3653,31 @@ fn devs_walk(sub: &clap::ArgMatches) -> Option<DevsWalk> {
                         if blob_from.is_binary() || blob_to.is_binary() {
                             continue;
                         }
-                        let (added, removed, changed) =
-                            devs_modify_line_stats(&worker, &blob_from.data, &blob_to.data);
-                        cf_devs::LineStats { added, removed, changed }
+                        // The runtime diff pipeline (Go framework/diff_pipeline.go
+                        // prepareDiffRequest) does NOT skip same-hash modifies (a
+                        // mode-only change, e.g. +x removed): identical content
+                        // diffs to a single Equal op, yielding a 0/0/0 LineStats
+                        // entry that still CREATES the per-language key in
+                        // CommitDevData — the zero-line language entries Go's
+                        // per-dev language lists (and busfactor contributor
+                        // counts) carry. Only nil/binary blobs are skipped.
+                        if change.from.hash == change.to.hash {
+                            cf_devs::LineStats { added: 0, removed: 0, changed: 0 }
+                        } else {
+                            let (added, removed, changed) =
+                                devs_modify_line_stats(&worker, &blob_from.data, &blob_to.data);
+                            cf_devs::LineStats { added, removed, changed }
+                        }
                     }
                 };
-                // Language detection keyed by the change's blob hash.
-                let (name, data_hash) = match change.action {
-                    ChangeAction::Delete => (&change.from.name, change.from.hash),
-                    _ => (&change.to.name, change.to.hash),
+                // Language attribution: `langs[changeEntry.Hash]` (the LineStats
+                // key side — To for insert/modify, From for delete) from the
+                // hash-keyed map above.
+                let data_hash = match change.action {
+                    ChangeAction::Delete => change.from.hash,
+                    _ => change.to.hash,
                 };
-                let lang = match CachedBlob::from_repo(repo, data_hash) {
-                    Ok(b) => devs_detect_language(name, &b.data),
-                    Err(_) => String::new(),
-                };
+                let lang = langs.get(&data_hash).cloned().unwrap_or_default();
                 attributions.push((lang, stats));
             }
         }

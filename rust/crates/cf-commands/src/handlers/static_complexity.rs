@@ -105,7 +105,19 @@ struct FnRecord {
 /// caller then falls through to the blocked-dependency sentinel).
 #[must_use]
 pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
-    let report = complexity_report_value(root_path)?;
+    complexity_report_flags(root_path, &Options::default(), false)
+}
+
+/// `static/complexity --format json` with the run-level static flags applied:
+/// `opts` carries `--include-vendored` / `--include-generated` (the shared
+/// path-policy options Go builds in `run.go pathPolicyFromFlags`), and
+/// `per_file` enables Go's `--per-file` section enrichment
+/// (`StaticService.enrichWithPerFileData` → `JSONReport.EnrichWithPerFileData`:
+/// one `JSONFileEntry` per ANALYZED file — function-free files included — keyed
+/// into the section's `files` array).
+#[must_use]
+pub fn complexity_report_flags(root_path: &str, opts: &Options, per_file: bool) -> Option<Vec<u8>> {
+    let report = complexity_report_value_opts(root_path, false, opts, per_file)?;
     let bytes = Encoder::indented("  ")
         .with_trailing_newline(true)
         .encode_to_vec(&report);
@@ -117,7 +129,7 @@ pub fn complexity_report(root_path: &str) -> Option<Vec<u8>> {
 /// static-JSON merge. `None` when the path cannot be walked.
 #[must_use]
 pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
-    complexity_report_value_mode(root_path, false)
+    complexity_report_value_opts(root_path, false, &Options::default(), false)
 }
 
 /// Builds the `static/complexity` section tree in Go's `AggregationModeSummaryOnly`
@@ -128,17 +140,21 @@ pub fn complexity_report_value(root_path: &str) -> Option<GoValue> {
 /// `ResolveAggregationMode(FormatText|FormatCompact) -> SummaryOnly`.
 #[must_use]
 pub fn complexity_report_value_summary(root_path: &str) -> Option<GoValue> {
-    complexity_report_value_mode(root_path, true)
+    complexity_report_value_opts(root_path, true, &Options::default(), false)
 }
 
-fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoValue> {
+fn complexity_report_value_opts(
+    root_path: &str,
+    summary_only: bool,
+    opts: &Options,
+    per_file: bool,
+) -> Option<GoValue> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let parser = Parser::new();
-    let opts = Options::default();
     let analyzer = Analyzer;
 
     // Aggregated totals (aggregator count/numeric keys).
@@ -152,12 +168,15 @@ fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<G
 
     // Concatenated per-file function tables (file-walk order).
     let mut records: Vec<FnRecord> = Vec::new();
+    // Per-analyzed-file boundaries into `records` (Go per-file aggregator
+    // snapshots; one entry per parsed file, function-free included).
+    let mut files: Vec<FileBoundary> = Vec::new();
 
     walk(
         root,
         root_path,
         &parser,
-        &opts,
+        opts,
         &analyzer,
         &mut total_functions,
         &mut total_complexity,
@@ -167,6 +186,7 @@ fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<G
         &mut max_complexity,
         &mut report_count,
         &mut records,
+        &mut files,
     );
 
     // average_complexity = total_complexity / total_functions (aggregator).
@@ -202,6 +222,15 @@ fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<G
     // scalar metrics above are untouched.
     let records_ref: &[FnRecord] = if summary_only { &[] } else { &records };
 
+    // --per-file: one JSONFileEntry per analyzed file, in walk order (Go ranges
+    // a map here — run-to-run random; the oracle's measured-variance
+    // canonicalization compares the set).
+    let file_entries: Option<Vec<GoValue>> = if per_file {
+        Some(files.iter().map(|f| build_file_entry(f, &records)).collect())
+    } else {
+        None
+    };
+
     let report = build_json_report(
         total_functions,
         avg_complexity,
@@ -211,9 +240,123 @@ fn complexity_report_value_mode(root_path: &str, summary_only: bool) -> Option<G
         decision_points,
         &message,
         records_ref,
+        file_entries,
     );
 
     Some(report)
+}
+
+/// One analyzed file's slice of the walk products (the Rust shape of Go's
+/// per-file aggregator snapshot).
+struct FileBoundary {
+    /// Path relative to the analyzed root (Go `MakeRelativePath`).
+    location: String,
+    /// Range into the concatenated `records` (empty for function-free files).
+    start: usize,
+    end: usize,
+    /// Per-file totals (the analyzer's single-file report values).
+    total_complexity: i64,
+    cognitive_total: i64,
+    decision_points: i64,
+    max_complexity: i64,
+}
+
+/// Builds one `renderer.JSONFileEntry` (Go `SectionToJSONFileEntry` over the
+/// per-file report's section): `file_path`, `score_label`, `status`, `metrics`,
+/// `distribution` (omitempty — absent for function-free files), `issues`,
+/// `score`.
+fn build_file_entry(f: &FileBoundary, records: &[FnRecord]) -> GoValue {
+    let frecs = &records[f.start..f.end];
+    let n_fns = frecs.len() as i64;
+    let avg = if n_fns > 0 { f.total_complexity as f64 / n_fns as f64 } else { 0.0 };
+    let score = calculate_score(avg);
+    // Per-file status: the analyzer's single-file report message — the empty
+    // result carries "No functions found" (complexity.go buildEmptyResult).
+    let status = if n_fns > 0 {
+        build_complexity_message(avg)
+    } else {
+        "No functions found".to_string()
+    };
+
+    let metrics = GoValue::Array(vec![
+        metric(METRIC_TOTAL_FUNCTIONS, &n_fns.to_string()),
+        metric(METRIC_AVG_COMPLEXITY, &format!("{avg:.1}")),
+        metric(METRIC_MAX_COMPLEXITY, &f.max_complexity.to_string()),
+        metric(METRIC_TOTAL_COMPLEXITY, &f.total_complexity.to_string()),
+        metric(METRIC_COGNITIVE_TOTAL, &f.cognitive_total.to_string()),
+        metric(METRIC_DECISION_POINTS, &f.decision_points.to_string()),
+    ]);
+
+    // Distribution over THIS file's functions (4 buckets; absent when empty).
+    let mut simple = 0i64;
+    let mut moderate = 0i64;
+    let mut complex = 0i64;
+    let mut very_complex = 0i64;
+    for r in frecs {
+        if r.cyclomatic <= DIST_SIMPLE_MAX {
+            simple += 1;
+        } else if r.cyclomatic <= DIST_MODERATE_MAX {
+            moderate += 1;
+        } else if r.cyclomatic <= DIST_COMPLEX_MAX {
+            complex += 1;
+        } else {
+            very_complex += 1;
+        }
+    }
+    let mut dist_items = Vec::new();
+    if n_fns != 0 {
+        dist_items.push(dist_item(DIST_LABEL_SIMPLE, pct(simple, n_fns), simple));
+        dist_items.push(dist_item(DIST_LABEL_MOD, pct(moderate, n_fns), moderate));
+        dist_items.push(dist_item(DIST_LABEL_COMPLEX, pct(complex, n_fns), complex));
+        dist_items.push(dist_item(DIST_LABEL_VERYC, pct(very_complex, n_fns), very_complex));
+    }
+
+    // Issues: this file's functions in the section comparator order.
+    let mut order: Vec<usize> = (0..frecs.len()).collect();
+    go_pdqsort(&mut order, &|&ia, &ib| {
+        let a = &frecs[ia];
+        let b = &frecs[ib];
+        if a.cyclomatic != b.cyclomatic {
+            return a.cyclomatic > b.cyclomatic;
+        }
+        if a.cognitive != b.cognitive {
+            return a.cognitive > b.cognitive;
+        }
+        if a.nesting != b.nesting {
+            return a.nesting > b.nesting;
+        }
+        a.name < b.name
+    });
+    let issue_items: Vec<GoValue> = order
+        .iter()
+        .map(|&i| {
+            let r = &frecs[i];
+            let mut iss = GoMap::new(MapOrigin::Struct);
+            iss.push("name", GoValue::Str(r.name.clone()));
+            iss.push("location", GoValue::Str(r.location.clone()));
+            iss.push(
+                "value",
+                GoValue::Str(format!(
+                    "CC={} | Cog={} | Nest={}",
+                    r.cyclomatic, r.cognitive, r.nesting
+                )),
+            );
+            iss.push("severity", GoValue::Str(severity_for_complexity(r.cyclomatic).to_string()));
+            GoValue::Map(iss)
+        })
+        .collect();
+
+    let mut entry = GoMap::new(MapOrigin::Struct);
+    entry.push("file_path", GoValue::Str(f.location.clone()));
+    entry.push("score_label", GoValue::Str(score_label(score)));
+    entry.push("status", GoValue::Str(status));
+    entry.push("metrics", metrics);
+    if !dist_items.is_empty() {
+        entry.push("distribution", GoValue::Array(dist_items));
+    }
+    entry.push("issues", GoValue::Array(issue_items));
+    entry.push("score", GoValue::Float(score));
+    GoValue::Map(entry)
 }
 
 /// Recursively walks `dir` in lexical order, mirroring `filepath.WalkDir`:
@@ -234,6 +377,7 @@ fn walk(
     max_complexity: &mut i64,
     report_count: &mut usize,
     records: &mut Vec<FnRecord>,
+    files: &mut Vec<FileBoundary>,
 ) {
     let Ok(read) = fs::read_dir(dir) else {
         return;
@@ -266,6 +410,7 @@ fn walk(
                 max_complexity,
                 report_count,
                 records,
+                files,
             );
             continue;
         }
@@ -299,24 +444,42 @@ fn walk(
         // Go's per-file sort.Slice over the same comparator yields the same
         // order for the sets fixture — no within-file all-key ties).
         let fns = analyzer.function_metrics(Some(&cx_root));
-        if fns.is_empty() {
-            // Empty-result report: no functions, no cognitive/nesting/count
-            // contribution; only the reportCount above is affected.
-            continue;
-        }
 
         // _source_file stamp = path relative to the analyzed root.
         let location = make_relative_path(&path_str, root_path);
 
+        if fns.is_empty() {
+            // Empty-result report: no functions, no cognitive/nesting/count
+            // contribution; only reportCount (above) and the per-file snapshot
+            // (an empty "No functions found" entry) are affected.
+            files.push(FileBoundary {
+                location,
+                start: records.len(),
+                end: records.len(),
+                total_complexity: 0,
+                cognitive_total: 0,
+                decision_points: 0,
+                max_complexity: 0,
+            });
+            continue;
+        }
+
         // Aggregate the per-file totals (matches the analyzer's own result
         // computed in buildResult: totals over all functions).
+        let start = records.len();
         let mut file_max: i64 = 0;
+        let mut file_cx: i64 = 0;
+        let mut file_cog: i64 = 0;
+        let mut file_dec: i64 = 0;
         for m in &fns {
             *total_functions += 1;
             *total_complexity += m.cyclomatic_complexity;
             *cognitive_total += m.cognitive_complexity;
             *nesting_total += m.nesting_depth;
             *decision_points += m.decision_points;
+            file_cx += m.cyclomatic_complexity;
+            file_cog += m.cognitive_complexity;
+            file_dec += m.decision_points;
             if m.cyclomatic_complexity > file_max {
                 file_max = m.cyclomatic_complexity;
             }
@@ -325,6 +488,15 @@ fn walk(
         if file_max > *max_complexity {
             *max_complexity = file_max;
         }
+        files.push(FileBoundary {
+            location,
+            start,
+            end: records.len(),
+            total_complexity: file_cx,
+            cognitive_total: file_cog,
+            decision_points: file_dec,
+            max_complexity: file_max,
+        });
     }
 }
 
@@ -431,6 +603,7 @@ fn build_json_report(
     decision_points: i64,
     message: &str,
     records: &[FnRecord],
+    file_entries: Option<Vec<GoValue>>,
 ) -> GoValue {
     let score = calculate_score(avg_complexity);
 
@@ -515,6 +688,12 @@ fn build_json_report(
         section.push("distribution", GoValue::Array(dist_items));
     }
     section.push("issues", GoValue::Array(issue_items));
+    // --per-file enrichment: `files` sits between `issues` and `score`
+    // (renderer.JSONSection field order, `files` is `omitempty` without the
+    // flag and an explicit — possibly empty — array with it).
+    if let Some(entries) = file_entries {
+        section.push("files", GoValue::Array(entries));
+    }
     section.push("score", GoValue::Float(score));
 
     // ---- report (renderer.SectionsToJSON over one scored section) ----

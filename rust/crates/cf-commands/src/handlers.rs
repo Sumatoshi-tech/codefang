@@ -21,6 +21,7 @@ pub mod couples_run;
 pub mod go_sort;
 pub mod history;
 pub mod history_formats;
+pub mod history_text;
 pub mod section_render;
 pub mod shotness_run;
 pub mod static_clones;
@@ -804,6 +805,17 @@ fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     }
 }
 
+/// The shared static-phase path-policy options from the run flags
+/// (Go `run.go pathPolicyFromFlags`: `--include-vendored` /
+/// `--include-generated`; `--extra-excluded-prefixes` is not exposed on `run`).
+fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
+    cf_pathpolicy::Options {
+        include_vendored: ctx.matches.get_flag("include-vendored"),
+        include_generated: ctx.matches.get_flag("include-generated"),
+        ..cf_pathpolicy::Options::default()
+    }
+}
+
 fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     let path = &ctx.path;
     // `format` is the resolved/normalized format from `resolve_formats`, where the
@@ -811,7 +823,11 @@ fn h_static_complexity(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
     // `normalize_format`). Match the normalized name so `--format bin` dispatches
     // to the CFB1 envelope builder rather than falling through to `None`.
     match format {
-        "json" => static_complexity::complexity_report(path),
+        "json" => static_complexity::complexity_report_flags(
+            path,
+            &static_path_policy(ctx),
+            ctx.matches.get_flag("per-file"),
+        ),
         "yaml" => static_complexity_yaml::complexity_report_yaml(path),
         "binary" | "bin" => static_complexity_bin::complexity_report_bin(path),
         "compact" => Some(section_render::render_compact_report(

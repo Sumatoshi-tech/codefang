@@ -90,13 +90,20 @@ fn leaf_report_exists(id: &str, ctx: &RunContext) -> bool {
     }
 }
 
-/// The text serializer for the leaves wired with Go's `SerializeTextFn` hook.
-/// `None` entries (every leaf not yet ported, and the four leaves with no Go
-/// hook) make [`history_text`] take the unsupported-format error path or fall
-/// through, respectively.
+/// The text serializer for the leaves wired with Go's `SerializeTextFn` hook
+/// (the [`super::history_text`] renderers). `None` for the four leaves with no
+/// Go hook, making [`history_text`] take the unsupported-format error path.
 fn leaf_text(id: &str, ctx: &RunContext) -> Option<Vec<u8>> {
-    let _ = (id, ctx);
-    None
+    let sub = ctx.matches;
+    match id {
+        "history/sentiment" => super::history_text::sentiment_text(sub),
+        "history/shotness" => super::history_text::shotness_text(sub),
+        "history/burndown" => super::history_text::burndown_text(sub),
+        "history/couples" => super::history_text::couples_text(sub),
+        "history/devs" => super::history_text::devs_text(sub),
+        "history/file-history" => super::history_text::file_history_text(sub),
+        _ => None,
+    }
 }
 
 /// Whether Go wires a `SerializeTextFn` for this leaf (text is a supported

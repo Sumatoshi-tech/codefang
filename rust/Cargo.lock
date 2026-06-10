@@ -413,6 +413,7 @@ dependencies = [
  "cf-sentiment",
  "cf-shotness",
  "cf-storage",
+ "cf-terminal",
  "cf-textutil",
  "cf-typos",
  "cf-uast",

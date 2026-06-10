@@ -35,6 +35,10 @@ const MAX_MEANINGFUL_CONTEXT: usize = cf_couples::COUPLES_MAXIMUM_MEANINGFUL_CON
 /// `identity.AuthorMissing = (1 << 18) - 1`.
 const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 
+/// `gitlib.Hash{}.String()` — the zero hash Go stamps on TCs whose Consume
+/// early-returned without setting `CommitHash` (oversized couples changesets).
+const ZERO_HASH_HEX: &str = "0000000000000000000000000000000000000000";
+
 /// Builds the `history/couples` report value (Go `ComputedMetrics`, the single
 /// value behind `ToJSON`/`ToYAML`) for either the HEAD commit (`--head`) or the
 /// oldest `--limit` commits (streaming Reverse walk). Returns `None` if the
@@ -43,6 +47,15 @@ const AUTHOR_MISSING: i64 = (1 << 18) - 1;
 /// format follows from the same report value (no per-format branch).
 pub fn couples_run_value(sub: &clap::ArgMatches) -> Option<cf_gojson::GoValue> {
     couples_run(sub).map(|r| r.report_value)
+}
+
+/// The TYPED `ComputedMetrics` behind [`couples_run_value`] (same walk, same
+/// `compute_all_metrics` product) — the text serializer reads struct fields
+/// directly (Go couples/text.go `generateText` calls `ComputeAllMetrics` on
+/// the report), so it must see the identical metrics the json/yaml bytes
+/// encode.
+pub fn couples_run_metrics(sub: &clap::ArgMatches) -> Option<cf_couples::ComputedMetrics> {
+    couples_run(sub).map(|r| r.metrics)
 }
 
 /// One walked commit's couples products (Go `couples.Consume` TC + runner
@@ -68,6 +81,8 @@ pub(crate) struct CouplesCommit {
 pub(crate) struct CouplesRun {
     /// The aggregated `ComputedMetrics` GoValue (json/yaml/bin source).
     pub report_value: cf_gojson::GoValue,
+    /// The typed metrics `report_value` was rendered from (text source).
+    pub metrics: cf_couples::ComputedMetrics,
     /// Per-commit TC products, walk order.
     pub commits: Vec<CouplesCommit>,
 }
@@ -269,8 +284,12 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
         let mut data = CommitData { commit_counted: true, ..CommitData::default() };
 
         // Oversized changeset: skip coupling/ownership extraction, but the commit
-        // is still counted (CommitCounted = true) — Go returns &data early.
-        if changes.len() <= MAX_MEANINGFUL_CONTEXT {
+        // is still counted (CommitCounted = true) — Go returns `&data` early
+        // WITHOUT setting TC.CommitHash, so the streamed ndjson line carries the
+        // ZERO hash and the aggregator's `!tc.CommitHash.IsZero()` guard drops
+        // the commit from commit_stats/commits_by_tick (no timeseries entry).
+        let oversized = changes.len() > MAX_MEANINGFUL_CONTEXT;
+        if !oversized {
             for change in changes {
                 process_change(change, merge_mode, author, &mut data, &mut seen_files[worker]);
             }
@@ -278,7 +297,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
 
         agg.add(author, &data);
         commits.push(CouplesCommit {
-            hash: hash.to_string(),
+            hash: if oversized { ZERO_HASH_HEX.to_string() } else { hash.to_string() },
             data: Some(data),
             tick,
             author_id,
@@ -324,6 +343,7 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     let metrics = compute_all_metrics(&report_data);
     Some(CouplesRun {
         report_value: report::computed_metrics_to_value(&metrics),
+        metrics,
         commits,
     })
 }
@@ -394,6 +414,11 @@ pub fn couples_timeseries_contribution(
     let mut commit_meta = Vec::new();
     for c in &run.commits {
         let Some(cd) = &c.data else { continue };
+        if c.hash == ZERO_HASH_HEX {
+            // Aggregator.Add: `if !tc.CommitHash.IsZero()` — oversized commits
+            // never reach commit_stats, so the merged timeseries omits them.
+            continue;
+        }
         let mut entry = GoMap::new_map();
         entry.insert("files_touched".to_string(), GoValue::Int(cd.coupling_files.len() as i64));
         entry.insert("author_id".to_string(), GoValue::Int(c.author_id));

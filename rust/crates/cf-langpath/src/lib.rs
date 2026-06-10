@@ -341,8 +341,11 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// non-empty, or `"Other"`.
 ///
 /// Strategy order (`DefaultStrategies`):
-/// 1. `GetLanguagesByModeline` — content vim/emacs modelines. NOT ported; treated
-///    as always-empty (no modeline-tagged files among the gate inputs).
+/// 1. `GetLanguagesByModeline` — vim/emacs modelines over the first + last 5
+///    lines ([`modeline_language`]); a hit short-circuits (the strategy yields
+///    at most one language). Load-bearing for extensionless cons build files
+///    (ioq3's `Construct` / `Conscript-*` carry `-*- mode: perl -*-`), which
+///    the anomaly language buckets count.
 /// 2. `GetLanguagesByFilename` → `LanguagesByFilename[base]`.
 /// 3. `GetLanguagesByShebang` → `LanguagesByInterpreter[interpreter(content)]`.
 /// 4. `GetLanguagesByExtension` → longest dotted suffix first (lowercased).
@@ -360,6 +363,13 @@ pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<S
     let base = filename.rsplit(['/', '\\']).next().unwrap_or(filename);
 
     let mut candidates: Vec<String> = Vec::new();
+
+    // Strategy 1: modeline (emacs, then vim) over the header+footer scope. At
+    // most one language, so a hit short-circuits exactly as enry's
+    // single-candidate rule does.
+    if let Some(lang) = modeline_language(content) {
+        return Some(lang);
+    }
 
     // Strategy 2: filename.
     if let Some(langs) = data.languages_by_filename.get(base) {
@@ -424,6 +434,116 @@ pub fn language_by_path_with_content(filename: &str, content: &[u8]) -> Option<S
 #[must_use]
 pub fn language_by_path(filename: &str) -> Option<String> {
     language_by_path_with_content(filename, &[])
+}
+
+// ---------------------------------------------------------------------------
+// Modeline strategy (enry common.go GetLanguagesByModeline).
+// ---------------------------------------------------------------------------
+
+/// enry `getHeaderAndFooter`: when the content has at least `2 * searchScope`
+/// newlines, restrict the modeline scan to the first 5 lines plus the last 5
+/// lines; otherwise scan the whole content. The index arithmetic is ported
+/// verbatim from `headScope` / `footScope`.
+fn get_header_and_footer(content: &[u8]) -> Vec<u8> {
+    const SEARCH_SCOPE: usize = 5;
+
+    if content.is_empty() {
+        return content.to_vec();
+    }
+    if content.iter().filter(|&&b| b == b'\n').count() < 2 * SEARCH_SCOPE {
+        return content.to_vec();
+    }
+
+    // headScope: walk 5 newlines forward, summing the per-slice eol offsets.
+    let header = {
+        let mut rest = content;
+        let mut index: usize = 0;
+        for _ in 0..SEARCH_SCOPE {
+            let eol = rest.iter().position(|&b| b == b'\n').unwrap_or(0);
+            index += eol;
+            rest = &rest[eol + 1..];
+        }
+        index + SEARCH_SCOPE - 1
+    };
+    // footScope: walk 5 newlines backward.
+    let footer = {
+        let mut rest = content;
+        let mut index: usize = 0;
+        for _ in 0..SEARCH_SCOPE {
+            index = rest.iter().rposition(|&b| b == b'\n').unwrap_or(0);
+            rest = &rest[..index];
+        }
+        index + 1
+    };
+
+    let mut out = Vec::with_capacity(header + (content.len() - footer));
+    out.extend_from_slice(&content[..header]);
+    out.extend_from_slice(&content[footer..]);
+    out
+}
+
+/// enry `GetLanguagesByModeline` reduced to the single language it can yield:
+/// emacs modeline first, then vim; each "only takes the last matched line".
+fn modeline_language(content: &[u8]) -> Option<String> {
+    use regex::bytes::Regex;
+    use std::sync::OnceLock;
+
+    static RE_EMACS_MODELINE: OnceLock<Regex> = OnceLock::new();
+    static RE_EMACS_LANG: OnceLock<Regex> = OnceLock::new();
+    static RE_VIM_MODELINE: OnceLock<Regex> = OnceLock::new();
+    static RE_VIM_LANG: OnceLock<Regex> = OnceLock::new();
+
+    if content.is_empty() {
+        return None;
+    }
+    let scope = get_header_and_footer(content);
+
+    // Emacs: `.*-\*-\s*(.+?)\s*-\*-.*(?m:$)`, then
+    // `.*(?i:mode)\s*:\s*([^\s;]+)\s*;*.*` over the last matched group (the
+    // group itself is the alias when no `mode:` key is present).
+    let re_em = RE_EMACS_MODELINE
+        .get_or_init(|| Regex::new(r".*-\*-\s*(.+?)\s*-\*-.*(?m:$)").expect("emacs modeline re"));
+    if let Some(last) = re_em.captures_iter(&scope).last() {
+        let line = last.get(1).map_or(&b""[..], |m| m.as_bytes());
+        let re_lang = RE_EMACS_LANG
+            .get_or_init(|| Regex::new(r".*(?i:mode)\s*:\s*([^\s;]+)\s*;*.*").expect("emacs lang re"));
+        let alias = match re_lang.captures(line) {
+            Some(c) => c.get(1).map_or(&b""[..], |m| m.as_bytes()),
+            None => line,
+        };
+        if let Some(lang) = get_language_by_alias(&String::from_utf8_lossy(alias)) {
+            return Some(lang.to_string());
+        }
+        // enry: an unrecognized emacs alias yields no languages, and the
+        // modeline driver then tries the vim strategy (`break` only on a
+        // non-empty result).
+    }
+
+    // Vim: `(?:(?m:\s|^)vi(?:m[<=>]?\d+|m)?|[\t\x20]*ex)\s*[:]\s*(.*)(?m:$)`,
+    // then ALL `(?i:filetype|ft|syntax)\s*=(\w+)(?:\s|:|$)` matches over the
+    // last modeline — conflicting aliases yield nothing.
+    let re_vim = RE_VIM_MODELINE.get_or_init(|| {
+        Regex::new(r"(?:(?m:\s|^)vi(?:m[<=>]?\d+|m)?|[\t\x20]*ex)\s*[:]\s*(.*)(?m:$)")
+            .expect("vim modeline re")
+    });
+    if let Some(last) = re_vim.captures_iter(&scope).last() {
+        let line = last.get(1).map_or(&b""[..], |m| m.as_bytes());
+        let re_lang = RE_VIM_LANG.get_or_init(|| {
+            Regex::new(r"(?i:filetype|ft|syntax)\s*=(\w+)(?:\s|:|$)").expect("vim lang re")
+        });
+        let aliases: Vec<&[u8]> = re_lang
+            .captures_iter(line)
+            .filter_map(|c| c.get(1).map(|m| m.as_bytes()))
+            .collect();
+        if let Some(first) = aliases.first() {
+            if aliases.iter().any(|a| a != first) {
+                return None; // conflicting filetype/ft/syntax values.
+            }
+            return get_language_by_alias(&String::from_utf8_lossy(first)).map(str::to_string);
+        }
+    }
+
+    None
 }
 
 /// Reproduces enry's `GetLanguageByExtension` (the extension-only strategy used

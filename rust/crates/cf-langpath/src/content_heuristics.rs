@@ -511,6 +511,11 @@ fn build_content_heuristics() -> HashMap<&'static str, Vec<Heuristic>> {
             },
             Heuristic {
                 langs: &["C++"],
+                // src-d/enry v2.1.0 (the version codefang's go.mod pins) has
+                // ONLY these alternatives and NO trailing `rule.Always(C)` —
+                // later go-enry releases add `__has_cpp_attribute|__cplusplus >`
+                // and an Always(C) rule; do NOT backport them, the classifier
+                // must arbitrate unmatched headers exactly as v2.1.0 does.
                 matcher: re(r"(?m)^\s*#\s*include <(cstdint|string|vector|map|list|array|bitset|queue|stack|forward_list|unordered_map|unordered_set|(i|o|io)stream)>|^\s*template\s*<|^[ \t]*(try|constexpr)|^[ \t]*catch\s*\(|^[ \t]*(class|(using[ \t]+)?namespace)\s+\w+|^[ \t]*(private|public|protected):$|std::\w+"),
             },
         ],
