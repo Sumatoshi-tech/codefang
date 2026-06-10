@@ -16,3 +16,7 @@ cf-uast-mapping = { path = "../cf-uast-mapping" }
 # Equality gate input: the embedded legacy `.uastmap` DSL text each static
 # table must convert-equal to (specs/uastmap-rust-macros, Step 6).
 cf-uast-uastmaps = { path = "../cf-uast-uastmaps" }
+# Grammar-conformance test (tests/grammar_conformance.rs): compiles every rule
+# pattern as a tree_sitter::Query against the wired grammars.
+cf-uast = { path = "../cf-uast" }
+tree-sitter = { workspace = true }
