@@ -1,0 +1,13 @@
+[package]
+name = "uastmap2rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The authoritative `.uastmap` reader (dsl_parser) plus the closed vocabularies
+# (UastType/Role/TokenSource) the emitted modules are validated against.
+cf-uast-mapping = { path = "../../crates/cf-uast-mapping" }

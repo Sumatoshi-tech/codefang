@@ -11,6 +11,7 @@ resolver = "2"
 members = [
     "crates/*",
     "bins/*",
+    "tools/*",
     "tests/golden-harness",
 ]
 # crates/analyzers is a nesting directory (it holds sub-crates), not a leaf crate
