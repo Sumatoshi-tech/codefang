@@ -119,6 +119,30 @@ def expand(tier="smoke"):
             rbase + ["--analyzers", "history/devs", "--format", "timeseries",
                      "--ndjson", "--limit", lim, rp], "format_combo")
 
+    # ---- 4b) PLOT (file-output) cells: --format plot writes index.html +
+    # per-analyzer <id>.html + report.json into --output; the oracle's file
+    # mode (triggered by `--format plot` with no --output in the cell argv)
+    # runs both binaries into temp dirs and compares file sets + per-file
+    # bytes (go-echarts chart-id canonicalization, measured). Scope: every
+    # analyzer on the FIRST tier repo (hercules — the cheap one), plus the
+    # static/* and * set pages there.
+    plot_repo = tcfg["repos"][0]
+    rp = repo_path(corpus, plot_repo)
+    if rp:
+        for an in m["analyzers"]["static"]:
+            add(f"plot:{an}@{plot_repo}",
+                sbase + ["-p", rp, "--analyzers", an, "--format", "plot"],
+                "plot")
+        for an in m["analyzers"]["history"]:
+            add(f"plot:{an}@{plot_repo}/lim{lim}",
+                rbase + ["--analyzers", an, "--format", "plot",
+                         "--limit", lim, rp],
+                "plot")
+        for setspec in ("static/*", "*"):
+            add(f"plot:{setspec}@{plot_repo}",
+                sbase + ["-p", rp, "--analyzers", setspec, "--format", "plot"],
+                "plot")
+
     # ---- 5) KEY-FLAG axis (full tier only): each flag is one cell ----
     if tcfg.get("include_flags"):
         rp = repo_path(corpus, tcfg["repos"][0])

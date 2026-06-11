@@ -32,8 +32,11 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 GO_DIR = "/home/dmitriy/sources/codefang/build/bin"
 RU_DIR = "/home/dmitriy/sources/codefang/rust/target/release"
@@ -324,6 +327,145 @@ def compare(go_canonical_b, rust_canonical_b, classification, go_field_map,
 
 
 # --------------------------------------------------------------------------- #
+# File-output cells (--format plot): the contract is the FILES the binary
+# writes into --output, not stdout. Both binaries run into fresh temp dirs;
+# the file SETS and per-file bytes are compared with the same measured-variance
+# discipline as the stdout path:
+#   * a file whose bytes are identical across all N Go runs must match Rust
+#     byte-for-byte;
+#   * a file that varies is first canonicalized by neutralizing the go-echarts
+#     random chart ids (12-char [A-Za-z] tokens in `id="..."` / `goecharts_*` /
+#     `option_*` sites) — the substitution is only TRUSTED when it provably
+#     makes all Go runs agree (measurement-driven, like variant-list sorting);
+#   * a file that stays unstable even canonicalized is Go-content-
+#     nondeterministic: the fallback requires the Rust file to be non-empty and
+#     deterministic (the structural realcheck contract).
+# Rust determinism (two identical-arg runs, raw bytes) is REQUIRED throughout.
+# --------------------------------------------------------------------------- #
+_CHART_ID_SITES = [
+    (re.compile(rb'id="[A-Za-z]{12}"'), b'id="CHARTID"'),
+    (re.compile(rb'goecharts_[A-Za-z]{12}'), b'goecharts_CHARTID'),
+    (re.compile(rb'option_[A-Za-z]{12}'), b'option_CHARTID'),
+]
+
+
+def _canon_chart_ids(data):
+    for pat, repl in _CHART_ID_SITES:
+        data = pat.sub(repl, data)
+    return data
+
+
+def run_once_files(side, argv):
+    """Run the LIVE binary with --output pointed at a fresh temp dir; return
+    (rc, {relpath: bytes}) over every regular file the run wrote."""
+    out_dir = tempfile.mkdtemp(prefix=f"oracle-plot-{side}-")
+    try:
+        rc, _ = run_once(side, list(argv) + ["--output", out_dir])
+        files = {}
+        for root, _dirs, names in os.walk(out_dir):
+            for name in names:
+                p = os.path.join(root, name)
+                rel = os.path.relpath(p, out_dir)
+                with open(p, "rb") as f:
+                    files[rel] = f.read()
+        return rc, files
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
+def is_file_output_cell(argv):
+    """True when the invocation's contract is --output files (plot format,
+    no caller-supplied --output)."""
+    if "--output" in argv:
+        return False
+    for i, tok in enumerate(argv):
+        if tok == "--format" and i + 1 < len(argv) and argv[i + 1] == "plot":
+            return True
+        if tok == "--format=plot":
+            return True
+    return False
+
+
+def run_invocation_files(argv, n_go=3):
+    """File-set differential verdict for a --format plot cell."""
+    go_runs = [run_once_files("go", argv) for _ in range(n_go)]
+    go_sets = [set(files) for _rc, files in go_runs]
+
+    base = {"argv": argv, "mode": "files",
+            "go_rcs": [rc for rc, _ in go_runs],
+            "go_file_sets": sorted(go_sets[0]) if go_sets else []}
+
+    if all(not files for _rc, files in go_runs):
+        base["verdict"] = "FAIL"
+        base["reason"] = "go wrote no files (probe invalid / no Go contract)"
+        return base
+
+    ru_a = run_once_files("rust", argv)
+    ru_b = run_once_files("rust", argv)
+    base["rust_rcs"] = [ru_a[0], ru_b[0]]
+
+    # Rust determinism is non-negotiable: raw byte equality across two runs.
+    if ru_a[1] != ru_b[1]:
+        unstable = sorted(set(ru_a[1]) ^ set(ru_b[1])) or [
+            p for p in ru_a[1] if ru_a[1][p] != ru_b[1].get(p)]
+        base["verdict"] = "FAIL"
+        base["reason"] = "RUST NONDETERMINISTIC (file outputs differ across runs)"
+        base["unstable_rust_files"] = unstable[:10]
+        return base
+    rust_files = ru_a[1]
+
+    # Go file-set stability gates the per-file comparison.
+    if any(s != go_sets[0] for s in go_sets[1:]):
+        base["verdict"] = "PASS" if rust_files else "FAIL"
+        base["reason"] = ("Go file SET nondeterministic; structural fallback: "
+                          + ("rust wrote files deterministically" if rust_files
+                             else "rust wrote NO files"))
+        base["structural"] = True
+        return base
+
+    if set(rust_files) != go_sets[0]:
+        base["verdict"] = "FAIL"
+        base["reason"] = "file set mismatch"
+        base["only_go"] = sorted(go_sets[0] - set(rust_files))[:10]
+        base["only_rust"] = sorted(set(rust_files) - go_sets[0])[:10]
+        return base
+
+    diffs = []
+    file_modes = {}
+    for rel in sorted(go_sets[0]):
+        go_variants = [files[rel] for _rc, files in go_runs]
+        if all(v == go_variants[0] for v in go_variants[1:]):
+            # Byte-stable in Go -> exact byte contract.
+            file_modes[rel] = "stable"
+            if rust_files[rel] != go_variants[0]:
+                diffs.append({"file": rel, "kind": "bytes-differ",
+                              "go_sha": sha(go_variants[0]),
+                              "rust_sha": sha(rust_files[rel])})
+            continue
+        canon = [_canon_chart_ids(v) for v in go_variants]
+        if all(c == canon[0] for c in canon[1:]):
+            # Variance fully explained by chart ids (measured) -> canonical
+            # byte contract.
+            file_modes[rel] = "chart-id-canonical"
+            if _canon_chart_ids(rust_files[rel]) != canon[0]:
+                diffs.append({"file": rel, "kind": "canonical-bytes-differ",
+                              "go_sha": sha(canon[0]),
+                              "rust_sha": sha(_canon_chart_ids(rust_files[rel]))})
+            continue
+        # Content-nondeterministic even canonicalized: structural contract.
+        file_modes[rel] = "go-content-nondeterministic"
+        if not rust_files[rel]:
+            diffs.append({"file": rel, "kind": "rust-empty-vs-nondet-go"})
+
+    base["file_modes"] = file_modes
+    base["diffs"] = diffs
+    base["verdict"] = "PASS" if not diffs else "FAIL"
+    if diffs:
+        base["reason"] = "file divergence"
+    return base
+
+
+# --------------------------------------------------------------------------- #
 # Top-level per-invocation oracle.
 # --------------------------------------------------------------------------- #
 def run_invocation(argv, n_go=3, normalize=None):
@@ -524,7 +666,11 @@ def main():
         print("no invocation given", file=sys.stderr)
         sys.exit(2)
 
-    res = run_invocation(argv, n_go=a.n_go, normalize=a.normalize)
+    if is_file_output_cell(argv):
+        # --format plot: the contract is the --output files, not stdout.
+        res = run_invocation_files(argv, n_go=a.n_go)
+    else:
+        res = run_invocation(argv, n_go=a.n_go, normalize=a.normalize)
     if a.manifest:
         with open(a.manifest, "w") as f:
             json.dump(res, f, indent=2, default=str)

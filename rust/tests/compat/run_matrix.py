@@ -86,7 +86,10 @@ def run_cell(c, n_go, dry_run):
     """Process one matrix cell (parallel-safe: pure subprocess dispatch to the
     LIVE oracle / Go binary). Returns (record, detail_or_None)."""
     argv = c["argv"]
-    if go_is_empty(argv):
+    # plot (file-output) cells write --output files and ALWAYS have empty
+    # stdout; the empty-stdout probe does not apply — the oracle's file mode
+    # measures the contract from the written files instead.
+    if c.get("family") != "plot" and go_is_empty(argv):
         return ({**c, "verdict": "EXPECTED_EMPTY",
                  "contract": "go-produces-no-stdout"}, None)
     if dry_run:
