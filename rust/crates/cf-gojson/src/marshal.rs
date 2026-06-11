@@ -81,9 +81,12 @@ pub fn go_float(f: f64) -> String {
 /// Construct with one of the named constructors and (optionally)
 /// [`with_trailing_newline`](Encoder::with_trailing_newline), then call
 /// [`encode`](Encoder::encode) / [`encode_to_vec`](Encoder::encode_to_vec) /
-/// [`encode_to_string`](Encoder::encode_to_string). HTML escaping is always on
-/// (Go's default); there is intentionally no toggle because every machine-format
-/// report path in codefang uses the default.
+/// [`encode_to_string`](Encoder::encode_to_string). HTML escaping defaults to
+/// on (Go's default); [`with_html_escaping`](Encoder::with_html_escaping)
+/// mirrors `Encoder.SetEscapeHTML(false)`, which go-echarts'
+/// `BaseConfiguration.JSONNotEscaped` (charts/base.go:115) uses for the chart
+/// `option_*` JSON embedded in `--format plot` pages. Every other machine-format
+/// report path keeps the default.
 ///
 /// | constructor | shape | indent | trailing `\n` |
 /// | --- | --- | --- | --- |
@@ -95,6 +98,7 @@ pub fn go_float(f: f64) -> String {
 pub struct Encoder {
     indent: Option<String>,
     trailing_newline: bool,
+    html_escape: bool,
 }
 
 impl Default for Encoder {
@@ -102,6 +106,7 @@ impl Default for Encoder {
         Encoder {
             indent: None,
             trailing_newline: false,
+            html_escape: true,
         }
     }
 }
@@ -129,6 +134,7 @@ impl Encoder {
         Encoder {
             indent: None,
             trailing_newline: true,
+            html_escape: true,
         }
     }
 
@@ -140,6 +146,7 @@ impl Encoder {
         Encoder {
             indent: Some(indent.to_string()),
             trailing_newline: false,
+            html_escape: true,
         }
     }
 
@@ -150,13 +157,23 @@ impl Encoder {
         self
     }
 
+    /// Returns a copy of this encoder with HTML escaping set — the analogue of
+    /// Go `json.Encoder.SetEscapeHTML`. With escaping off, `<`, `>`, and `&`
+    /// are written verbatim; everything else (including the unconditional
+    /// `U+2028`/`U+2029` escapes) is unchanged, exactly as in `encoding/json`.
+    #[must_use]
+    pub fn with_html_escaping(mut self, on: bool) -> Self {
+        self.html_escape = on;
+        self
+    }
+
     /// Encodes `value`, returning the bytes (infallible for finite numbers).
     #[must_use]
     pub fn encode(&self, value: &GoValue) -> Vec<u8> {
         let mut buf = Vec::new();
         match &self.indent {
-            Some(ind) => write_indented(&mut buf, value, ind, 0),
-            None => write_compact(&mut buf, value),
+            Some(ind) => write_indented_opts(&mut buf, value, ind, 0, self.html_escape),
+            None => write_compact_opts(&mut buf, value, self.html_escape),
         }
         if self.trailing_newline {
             buf.push(b'\n');
@@ -177,8 +194,13 @@ impl Encoder {
     }
 }
 
-/// Writes `value` to `out` in compact form.
+/// Writes `value` to `out` in compact form (HTML escaping on — Go's default).
 fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
+    write_compact_opts(out, value, true);
+}
+
+/// Writes `value` to `out` in compact form with the given HTML-escaping mode.
+fn write_compact_opts(out: &mut Vec<u8>, value: &GoValue, escape_html: bool) {
     match value {
         // A nil slice marshals as `null` in `encoding/json` (the YAML encoder
         // renders it `[]` instead).
@@ -188,14 +210,14 @@ fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
         GoValue::Int(i) => out.extend_from_slice(i.to_string().as_bytes()),
         GoValue::Uint(u) => out.extend_from_slice(u.to_string().as_bytes()),
         GoValue::Float(f) => out.extend_from_slice(format_json_float(*f).as_bytes()),
-        GoValue::Str(s) => write_go_json_string(out, s),
+        GoValue::Str(s) => write_go_json_string_opts(out, s, escape_html),
         GoValue::Array(items) => {
             out.push(b'[');
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     out.push(b',');
                 }
-                write_compact(out, item);
+                write_compact_opts(out, item, escape_html);
             }
             out.push(b']');
         }
@@ -205,9 +227,9 @@ fn write_compact(out: &mut Vec<u8>, value: &GoValue) {
                 if i > 0 {
                     out.push(b',');
                 }
-                write_go_json_string(out, k);
+                write_go_json_string_opts(out, k, escape_html);
                 out.push(b':');
-                write_compact(out, v);
+                write_compact_opts(out, v, escape_html);
             }
             out.push(b'}');
         }
@@ -228,6 +250,11 @@ fn write_indent(out: &mut Vec<u8>, unit: &str, depth: usize) {
 /// object keys, and the closing bracket at the parent indent. Scalars are
 /// identical to the compact form.
 fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) {
+    write_indented_opts(out, value, unit, depth, true);
+}
+
+/// [`write_indented`] with the HTML-escaping mode threaded through.
+fn write_indented_opts(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize, escape_html: bool) {
     match value {
         GoValue::Array(items) if !items.is_empty() => {
             out.extend_from_slice(b"[\n");
@@ -236,7 +263,7 @@ fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) 
                     out.extend_from_slice(b",\n");
                 }
                 write_indent(out, unit, depth + 1);
-                write_indented(out, item, unit, depth + 1);
+                write_indented_opts(out, item, unit, depth + 1, escape_html);
             }
             out.push(b'\n');
             write_indent(out, unit, depth);
@@ -249,16 +276,16 @@ fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) 
                     out.extend_from_slice(b",\n");
                 }
                 write_indent(out, unit, depth + 1);
-                write_go_json_string(out, k);
+                write_go_json_string_opts(out, k, escape_html);
                 out.extend_from_slice(b": ");
-                write_indented(out, v, unit, depth + 1);
+                write_indented_opts(out, v, unit, depth + 1, escape_html);
             }
             out.push(b'\n');
             write_indent(out, unit, depth);
             out.push(b'}');
         }
         // Empty containers and all scalars render exactly like the compact form.
-        other => write_compact(out, other),
+        other => write_compact_opts(out, other, escape_html),
     }
 }
 
@@ -279,6 +306,14 @@ fn write_indented(out: &mut Vec<u8>, value: &GoValue, unit: &str, depth: usize) 
 /// Rust `&str` is always valid UTF-8, so Go's invalid-rune `�` path is
 /// unreachable here.
 pub fn write_go_json_string(out: &mut Vec<u8>, s: &str) {
+    write_go_json_string_opts(out, s, true);
+}
+
+/// [`write_go_json_string`] with the HTML-escaping mode threaded through —
+/// `escape_html=false` mirrors `json.Encoder.SetEscapeHTML(false)`: `<`, `>`,
+/// and `&` pass through verbatim while every other escape (including the
+/// unconditional `U+2028`/`U+2029` pair) is unchanged.
+pub fn write_go_json_string_opts(out: &mut Vec<u8>, s: &str, escape_html: bool) {
     out.push(b'"');
     let bytes = s.as_bytes();
     let mut start = 0usize;
@@ -293,9 +328,9 @@ pub fn write_go_json_string(out: &mut Vec<u8>, s: &str) {
             // not the generic  /  forms (verified against json.Marshal).
             '\u{0008}' => (Some(b"\\b"), 1),
             '\u{000c}' => (Some(b"\\f"), 1),
-            '<' => (Some(b"\\u003c"), 1),
-            '>' => (Some(b"\\u003e"), 1),
-            '&' => (Some(b"\\u0026"), 1),
+            '<' if escape_html => (Some(b"\\u003c"), 1),
+            '>' if escape_html => (Some(b"\\u003e"), 1),
+            '&' if escape_html => (Some(b"\\u0026"), 1),
             '\u{2028}' => (Some(b"\\u2028"), 3),
             '\u{2029}' => (Some(b"\\u2029"), 3),
             c if (c as u32) < 0x20 => {

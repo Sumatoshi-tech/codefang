@@ -6,5 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+description = "HTML plot-page renderer for codefang --format plot (Go internal/analyzers/common/plotpage port): themes, go-echarts chart option serialization, page/section components, and the multi-page index renderer."
 
 [dependencies]
+# The chart `option_*` JSON embedded in each page is Go `encoding/json` output
+# (go-echarts BaseConfiguration.JSONNotEscaped) and MUST be byte-identical to
+# the Go binary's, so it routes through the go-compat encoder — never serde.
+cf-gojson = { path = "../cf-gojson" }

@@ -629,6 +629,9 @@ dependencies = [
 [[package]]
 name = "cf-plotpage"
 version = "0.0.0"
+dependencies = [
+ "cf-gojson",
+]
 
 [[package]]
 name = "cf-plumbing"

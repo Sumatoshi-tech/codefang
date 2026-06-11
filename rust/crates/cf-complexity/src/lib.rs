@@ -804,7 +804,11 @@ fn get_complexity_level(complexity: i64) -> &'static str {
     }
 }
 
-fn get_complexity_assessment(complexity: i64) -> &'static str {
+/// Cyclomatic-complexity assessment label (Go `getComplexityAssessment`,
+/// complexity.go) — exported for the aggregated raw-report builder used by
+/// `--format plot` / report.json.
+#[must_use]
+pub fn get_complexity_assessment(complexity: i64) -> &'static str {
     match get_complexity_level(complexity) {
         "green" => "🟢 Simple",
         "yellow" => "🟡 Moderate",
@@ -813,7 +817,10 @@ fn get_complexity_assessment(complexity: i64) -> &'static str {
     }
 }
 
-fn get_cognitive_assessment(complexity: i64) -> &'static str {
+/// Cognitive-complexity assessment label (Go `getCognitiveAssessment`,
+/// complexity.go) — exported for the aggregated raw-report builder.
+#[must_use]
+pub fn get_cognitive_assessment(complexity: i64) -> &'static str {
     if complexity <= COMPLEXITY_THRESHOLD_HIGH {
         "🟢 Low"
     } else if complexity <= MAGIC10 {
@@ -823,7 +830,10 @@ fn get_cognitive_assessment(complexity: i64) -> &'static str {
     }
 }
 
-fn get_nesting_assessment(depth: i64) -> &'static str {
+/// Nesting-depth assessment label (Go `getNestingAssessment`,
+/// complexity.go) — exported for the aggregated raw-report builder.
+#[must_use]
+pub fn get_nesting_assessment(depth: i64) -> &'static str {
     if depth <= DEPTH_THRESHOLD_HIGH {
         "🟢 Shallow"
     } else if depth <= MAGIC5 {

@@ -91,13 +91,17 @@ const MSG_FAIR: &str = "Fair complexity - some functions could be simplified";
 const MSG_HIGH: &str = "High complexity - functions are complex and should be refactored";
 
 /// One aggregated function record (a per-file metric stamped with its source
-/// file), carrying the numeric sort keys plus the rendered location.
-struct FnRecord {
-    name: String,
-    cyclomatic: i64,
-    cognitive: i64,
-    nesting: i64,
-    location: String,
+/// file), carrying the numeric sort keys plus the rendered location and the
+/// per-file stamps the raw aggregated report serializes (`_language`; the
+/// `_directory` stamp derives from `location`).
+pub(crate) struct FnRecord {
+    pub(crate) name: String,
+    pub(crate) cyclomatic: i64,
+    pub(crate) cognitive: i64,
+    pub(crate) nesting: i64,
+    pub(crate) lines_of_code: i64,
+    pub(crate) location: String,
+    pub(crate) language: String,
 }
 
 /// Builds the `static/complexity --format json` report bytes for `root_path`,
@@ -244,6 +248,162 @@ fn complexity_report_value_opts(
     );
 
     Some(report)
+}
+
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/complexity`
+/// — the value Go's complexity `Aggregator.GetResult()` returns after the
+/// folder walk (aggregator.go:67), which is what `--format plot` consumes
+/// (`PlotSectionsFor("static/complexity")` over the raw report) and what
+/// `writeReportJSON` (static.go:1017) serializes into `report.json`.
+///
+/// Shape (a Go `map[string]any`, keys byte-sorted at encode time):
+///
+/// * `analyzer_name`, `message` (derived via `buildComplexityMessage(avg)`),
+/// * counts: `total_functions`, `total_complexity`, `decision_points`
+///   (summed ints — `MetricsProcessor.GetCounts`),
+/// * averages: `cognitive_complexity`, `nesting_depth` (per-file sums divided
+///   by the parsed-file count — `MetricsProcessor.CalculateAverages`),
+/// * derived: `average_complexity` (float), `max_complexity` (int),
+/// * `functions`: the per-file tables concatenated in walk order
+///   (`DetailedDataCollector`), each item the Go `convertFunctionReportItems`
+///   map + the `_source_file`/`_language`/`_directory` stamps
+///   (`StampSourceFile`/`StampLanguage` + `stampCollectionMetadata`).
+///
+/// With no parsed files the Go base aggregator returns
+/// `buildEmptyComplexityResult` instead (5 keys, no `analyzer_name`).
+#[must_use]
+pub fn complexity_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+    let root = Path::new(root_path);
+    if !root.exists() {
+        return None;
+    }
+
+    let parser = Parser::new();
+    let analyzer = Analyzer;
+
+    let mut total_functions: i64 = 0;
+    let mut total_complexity: i64 = 0;
+    let mut cognitive_total: i64 = 0;
+    let mut nesting_total: i64 = 0;
+    let mut decision_points: i64 = 0;
+    let mut max_complexity: i64 = 0;
+    let mut report_count: usize = 0;
+    let mut records: Vec<FnRecord> = Vec::new();
+    let mut files: Vec<FileBoundary> = Vec::new();
+
+    walk(
+        root,
+        root_path,
+        &parser,
+        opts,
+        &analyzer,
+        &mut total_functions,
+        &mut total_complexity,
+        &mut cognitive_total,
+        &mut nesting_total,
+        &mut decision_points,
+        &mut max_complexity,
+        &mut report_count,
+        &mut records,
+        &mut files,
+    );
+
+    if report_count == 0 {
+        // Go base Aggregator.GetResult with reportCount==0 returns the
+        // analyzer's emptyResultBuilder (buildEmptyComplexityResult).
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("total_functions", GoValue::Int(0));
+        m.push("average_complexity", GoValue::Float(0.0));
+        m.push("max_complexity", GoValue::Int(0));
+        m.push("total_complexity", GoValue::Int(0));
+        m.push("message", GoValue::Str("No functions found".to_string()));
+        return Some(GoValue::Map(m));
+    }
+
+    let avg_complexity = if total_functions > 0 {
+        total_complexity as f64 / total_functions as f64
+    } else {
+        0.0
+    };
+
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("analyzer_name", GoValue::Str("complexity".to_string()));
+    // counts (MetricsProcessor.GetCounts): present whenever any parsed file
+    // carried the key — total_functions/total_complexity always do (the empty
+    // per-file result sets them to 0); decision_points only when some file had
+    // functions (the empty result omits it).
+    m.push("total_functions", GoValue::Int(total_functions));
+    m.push("total_complexity", GoValue::Int(total_complexity));
+    if !records.is_empty() {
+        m.push("decision_points", GoValue::Int(decision_points));
+        // averages (CalculateAverages): per-file sums / parsed-file count;
+        // the keys appear only when some per-file report carried them.
+        m.push(
+            "cognitive_complexity",
+            GoValue::Float(cognitive_total as f64 / report_count as f64),
+        );
+        m.push(
+            "nesting_depth",
+            GoValue::Float(nesting_total as f64 / report_count as f64),
+        );
+    }
+    // functions: the detailed collection in walk order; with zero functions
+    // the base collector's empty (non-nil) slice survives — `[]`.
+    m.push(
+        "functions",
+        GoValue::Array(records.iter().map(raw_function_item).collect()),
+    );
+    // derived metrics (addDerivedMetrics).
+    m.push("average_complexity", GoValue::Float(avg_complexity));
+    m.push("max_complexity", GoValue::Int(max_complexity));
+    m.push(
+        "message",
+        GoValue::Str(build_complexity_message(avg_complexity)),
+    );
+    Some(GoValue::Map(m))
+}
+
+/// One raw `functions` item: the Go `convertFunctionReportItems` map
+/// (complexity.go:330) + the `_source_file`/`_language`/`_directory` stamps.
+/// Map-origin, so JSON keys byte-sort at encode time.
+fn raw_function_item(r: &FnRecord) -> GoValue {
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("name", GoValue::Str(r.name.clone()));
+    m.push("cyclomatic_complexity", GoValue::Int(r.cyclomatic));
+    m.push("cognitive_complexity", GoValue::Int(r.cognitive));
+    m.push("nesting_depth", GoValue::Int(r.nesting));
+    m.push("lines_of_code", GoValue::Int(r.lines_of_code));
+    m.push(
+        "complexity_assessment",
+        GoValue::Str(cf_complexity::get_complexity_assessment(r.cyclomatic).to_string()),
+    );
+    m.push(
+        "cognitive_assessment",
+        GoValue::Str(cf_complexity::get_cognitive_assessment(r.cognitive).to_string()),
+    );
+    m.push(
+        "nesting_assessment",
+        GoValue::Str(cf_complexity::get_nesting_assessment(r.nesting).to_string()),
+    );
+    m.push("_source_file", GoValue::Str(r.location.clone()));
+    if !r.language.is_empty() {
+        m.push("_language", GoValue::Str(r.language.clone()));
+    }
+    let dir = go_filepath_dir(&r.location);
+    if !dir.is_empty() {
+        m.push("_directory", GoValue::Str(dir));
+    }
+    GoValue::Map(m)
+}
+
+/// Go `filepath.Dir` over the clean relative paths `MakeRelativePath` yields:
+/// everything before the final separator, or `"."` when there is none.
+fn go_filepath_dir(path: &str) -> String {
+    match path.rfind('/') {
+        Some(0) => "/".to_string(),
+        Some(pos) => path[..pos].to_string(),
+        None => ".".to_string(),
+    }
 }
 
 /// One analyzed file's slice of the walk products (the Rust shape of Go's
@@ -447,6 +607,8 @@ fn walk(
 
         // _source_file stamp = path relative to the analyzed root.
         let location = make_relative_path(&path_str, root_path);
+        // _language stamp (Go StampLanguage(parser.GetLanguage(filePath))).
+        let language = parser.get_language(&path_str);
 
         if fns.is_empty() {
             // Empty-result report: no functions, no cognitive/nesting/count
@@ -483,7 +645,7 @@ fn walk(
             if m.cyclomatic_complexity > file_max {
                 file_max = m.cyclomatic_complexity;
             }
-            records.push(record_for(m, &location));
+            records.push(record_for(m, &location, &language));
         }
         if file_max > *max_complexity {
             *max_complexity = file_max;
@@ -500,13 +662,15 @@ fn walk(
     }
 }
 
-fn record_for(m: &FunctionMetrics, location: &str) -> FnRecord {
+fn record_for(m: &FunctionMetrics, location: &str, language: &str) -> FnRecord {
     FnRecord {
         name: m.name.clone(),
         cyclomatic: m.cyclomatic_complexity,
         cognitive: m.cognitive_complexity,
         nesting: m.nesting_depth,
+        lines_of_code: m.lines_of_code,
         location: location.to_string(),
+        language: language.to_string(),
     }
 }
 
@@ -741,7 +905,7 @@ fn bits_len(n: usize) -> u32 {
 }
 
 /// Sorts `data` with Go `sort.Slice` semantics using `less`.
-fn go_pdqsort<T, F: Fn(&T, &T) -> bool>(data: &mut [T], less: &F) {
+pub(crate) fn go_pdqsort<T, F: Fn(&T, &T) -> bool>(data: &mut [T], less: &F) {
     let n = data.len();
     let limit = bits_len(n);
     pdqsort(data, 0, n, limit, less);

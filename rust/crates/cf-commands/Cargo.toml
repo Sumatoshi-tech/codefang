@@ -39,7 +39,6 @@ runtime = [
     "dep:cf-checkpoint",
     "dep:cf-budget",
     "dep:cf-observability",
-    "dep:cf-plotpage",
     "dep:cf-storage",
 ]
 
@@ -92,6 +91,9 @@ cf-renderer = { path = "../cf-renderer" }
 cf-couples = { path = "../cf-couples" }
 cf-shotness = { path = "../cf-shotness" }
 cf-analyzer-burndown = { path = "../cf-analyzer-burndown" }
+# --format plot HTML page renderer (Go internal/analyzers/common/plotpage):
+# the static-phase plot path renders per-analyzer pages + index + report.json.
+cf-plotpage = { path = "../cf-plotpage" }
 cf-devs = { path = "../cf-devs" }
 cf-typos = { path = "../cf-typos" }
 cf-anomaly = { path = "../cf-anomaly" }
@@ -107,6 +109,5 @@ cf-config = { path = "../cf-config", optional = true }
 cf-checkpoint = { path = "../cf-checkpoint", optional = true }
 cf-budget = { path = "../cf-budget", optional = true }
 cf-observability = { path = "../cf-observability", optional = true }
-cf-plotpage = { path = "../cf-plotpage", optional = true }
 cf-storage = { path = "../cf-storage", optional = true }
 cf-mcp = { path = "../cf-mcp", optional = true }

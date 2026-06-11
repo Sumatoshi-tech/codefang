@@ -22,6 +22,8 @@ pub mod go_sort;
 pub mod history;
 pub mod history_formats;
 pub mod history_text;
+pub mod plot;
+pub mod plot_sections;
 pub mod section_render;
 pub mod shotness_run;
 pub mod static_clones;
@@ -808,7 +810,7 @@ fn h_static_clones(ctx: &RunContext, format: &str) -> Option<Vec<u8>> {
 /// The shared static-phase path-policy options from the run flags
 /// (Go `run.go pathPolicyFromFlags`: `--include-vendored` /
 /// `--include-generated`; `--extra-excluded-prefixes` is not exposed on `run`).
-fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
+pub(crate) fn static_path_policy(ctx: &RunContext) -> cf_pathpolicy::Options {
     cf_pathpolicy::Options {
         include_vendored: ctx.matches.get_flag("include-vendored"),
         include_generated: ctx.matches.get_flag("include-generated"),

@@ -215,6 +215,30 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // it is handled before the per-id pipeline (which dispatches literal ids).
     let raw_format = ctx.raw_format();
     let analyzer_strs: Vec<&str> = ids.iter().map(String::as_str).collect();
+
+    // --format plot routes to the multi-page HTML renderer (Go run.go: the
+    // static/history phases each call validatePlotFlags then the plot
+    // executor). The --output precheck fires for ANY plot selection (the exact
+    // Go ErrPlotOutputRequired wording, rc 1); a static-only selection then
+    // renders pages + index + report.json into the output dir with empty
+    // stdout. History/mixed plot selections are not yet ported and surface the
+    // dispatch-blocked diagnostic AFTER the flag validation, preserving Go's
+    // error ordering.
+    if formats::normalize_format(&raw_format) == formats::FORMAT_PLOT {
+        let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
+        if output.is_empty() {
+            eprintln!("Error: --output flag is required when --format plot");
+            return 1;
+        }
+        let (plot_static, plot_history) = handlers::expand_combined_ids(&analyzer_strs);
+        if !plot_static.is_empty() && plot_history.is_empty() {
+            if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
+                return code;
+            }
+        }
+        eprintln!("Error: {DISPATCH_BLOCKED_MSG}");
+        return 1;
+    }
     if raw_format == "bin"
         && !analyzer_strs.is_empty()
         && analyzer_strs.iter().any(|a| a.contains(['*', '?', '[']))

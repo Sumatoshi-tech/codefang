@@ -34,7 +34,8 @@ pub mod value;
 
 pub use ftoa::{format_float_g, format_json_float};
 pub use marshal::{
-    go_float, marshal, marshal_indent, to_vec, to_vec_indent, write_go_json_string, Encoder,
+    go_float, marshal, marshal_indent, to_vec, to_vec_indent, write_go_json_string,
+    write_go_json_string_opts, Encoder,
 };
 pub use value::{GoMap, GoValue, MapOrigin};
 
