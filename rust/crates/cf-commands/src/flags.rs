@@ -625,6 +625,9 @@ fn bool_arg(name: &'static str, help: &'static str) -> Arg {
         .long(name)
         .help(help)
         .action(ArgAction::SetTrue)
+        // cobra pflag accepts repeated flags (last occurrence wins); clap
+        // errors on duplicates unless the arg overrides itself.
+        .overrides_with(name)
 }
 
 /// A tri-state boolean flag, the Rust analogue of cobra's `Flags().Bool(..)`
@@ -650,6 +653,8 @@ fn tristate_bool_arg(name: &'static str, default: bool, help: &'static str) -> A
         .default_value(if default { "true" } else { "false" })
         .default_missing_value("true")
         .value_parser(clap::value_parser!(bool))
+        // cobra pflag last-wins on repeated flags.
+        .overrides_with(name)
 }
 
 /// A string `--flag` (optionally with a short), with the given default. Mirrors
@@ -659,7 +664,9 @@ fn str_arg(name: &'static str, short: Option<char>, default: &'static str, help:
         .long(name)
         .help(help)
         .action(ArgAction::Set)
-        .default_value(default);
+        .default_value(default)
+        // cobra pflag last-wins on repeated flags.
+        .overrides_with(name);
     if let Some(s) = short {
         a = a.short(s);
     }
@@ -678,6 +685,8 @@ fn int_arg(name: &'static str, default: i64, help: &'static str) -> Arg {
         .action(ArgAction::Set)
         .default_value(string_to_static_leak(&default.to_string()))
         .value_parser(clap::value_parser!(i64))
+        // cobra pflag last-wins on repeated flags.
+        .overrides_with(name)
 }
 
 /// A repeatable / comma-separated string-slice `--flag`. Mirrors cobra
