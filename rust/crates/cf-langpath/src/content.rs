@@ -34,8 +34,9 @@ const BYTE_LIMIT: usize = 100_000;
 struct Frequencies {
     languages_log_prob: HashMap<String, f64>,
     tokens_log_prob: HashMap<String, HashMap<Vec<u8>, f64>>,
-    tokens_total: f64,
     /// `log(1.0 / tokens_total)`, the unknown-token fallback (precomputed).
+    /// This is the only runtime use Go makes of `data.TokensTotal`
+    /// (`tokenProbability`), so the raw total itself is not stored.
     unknown_token_log_prob: f64,
 }
 
@@ -107,7 +108,6 @@ fn parse_frequencies(tsv: &[u8]) -> Frequencies {
     Frequencies {
         languages_log_prob,
         tokens_log_prob,
-        tokens_total,
         unknown_token_log_prob,
     }
 }
@@ -398,7 +398,10 @@ mod tests {
     #[test]
     fn frequencies_load() {
         let f = frequencies();
-        assert!(f.tokens_total > 0.0);
+        // log(1/tokens_total) is finite and negative iff the TSV's `T` line
+        // parsed to a total greater than 1, i.e. the load succeeded.
+        assert!(f.unknown_token_log_prob.is_finite());
+        assert!(f.unknown_token_log_prob < 0.0);
         assert!(f.languages_log_prob.contains_key("SaltStack"));
         assert!(f.languages_log_prob.contains_key("Scheme"));
         assert!(f.tokens_log_prob.contains_key("SaltStack"));

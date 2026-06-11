@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::time::Duration;
 
 use crate::framework::CoordinatorConfig;
 use crate::model::{
@@ -219,6 +220,53 @@ pub(crate) fn derive_knobs(
         blob_arena_size: arena_size,
         uast_pipeline_workers: uast_workers,
         leaf_workers,
+        ..zero_coordinator_config()
+    }
+}
+
+/// The zero-valued `CoordinatorConfig`, mirroring Go's zero
+/// `framework.CoordinatorConfig{}`.
+///
+/// Go's `deriveKnobs` returns a *partial* struct literal, which leaves every
+/// unnamed field at its zero value. Rust's `CoordinatorConfig::default()` is
+/// `DefaultCoordinatorConfig` (NOT zero), so the remaining fields must be
+/// zero-filled explicitly to stay faithful to the Go solver's output.
+fn zero_coordinator_config() -> CoordinatorConfig {
+    CoordinatorConfig {
+        commit_batch_size: 0,
+        workers: 0,
+        buffer_size: 0,
+        blob_cache_size: 0,
+        diff_cache_size: 0,
+        blob_arena_size: 0,
+        uast_pipeline_workers: 0,
+        leaf_workers: 0,
+        gc_percent: 0,
+        ballast_size: 0,
+        first_parent: false,
+        worker_timeout: Duration::ZERO,
+        uast_spill_threshold: 0,
+        intra_commit_parallel_threshold: 0,
+        max_intra_commit_workers: 0,
+        max_uast_blob_size: 0,
+        uast_parse_timeout: Duration::ZERO,
+        max_changes_per_commit: 0,
+        tree_diff_pathspec: Vec::new(),
+        max_diff_batch_size: 0,
+        memory_limit_ratio: 0,
+        uast_spill_trim_interval: 0,
+        native_trim_interval: 0,
+        max_streaming_buffering: 0,
+        drain_prefetch_timeout: Duration::ZERO,
+        sampler_interval: Duration::ZERO,
+        worker_ratio: 0,
+        uast_worker_ratio: 0,
+        leaf_worker_divisor: 0,
+        min_leaf_workers: 0,
+        buffer_size_multiplier: 0,
+        budget_limit_ratio: 0,
+        system_ram_limit_ratio: 0,
+        diff_job_buffer_multiplier: 0,
     }
 }
 

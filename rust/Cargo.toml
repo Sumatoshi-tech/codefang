@@ -17,7 +17,6 @@ members = [
 # with its own Cargo.toml, so the crates/* glob must not treat it as a member.
 exclude = [
     "crates/analyzers",
-    "crates/cf-govader",
 ]
 
 [workspace.package]

@@ -2,13 +2,13 @@
 //!
 //! Port target documented in specs/rust-rewrite/DESIGN.md §1.
 //!
-//! The full per-function/per-file report builder, formatter, and visitor live in
-//! sibling files that are still being wired into the static pipeline. The module
-//! surface exposed here is the part the **quality** history analyzer consumes:
-//! the operator/operand [`detector`], the derived-metric [`calculator`], and the
+//! The full per-function/per-file report builder, formatter, visitor, and
+//! aggregator for the static pipeline live in
+//! `cf-commands/src/handlers/static_halstead.rs`. The module surface exposed
+//! here is the part the **quality** history analyzer consumes: the
+//! operator/operand [`detector`], the derived-metric [`calculator`], and the
 //! standalone file-level [`analyze`] (Go `halstead.Analyzer.Analyze` →
 //! `calculateFileLevelMetrics`).
-#![allow(dead_code)]
 
 /// Crate name, used by smoke tests to confirm the module links.
 pub const CRATE_NAME: &str = "cf-halstead";

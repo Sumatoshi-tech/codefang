@@ -4,9 +4,9 @@
 //! computation and Go-`encoding/json` byte-compatible serialization
 //! ([`metrics`], [`compat`], [`typos`], [`levenshtein`]) are wired and tested
 //! here; they back the `run/history_typos.json` binding golden. The
-//! streaming-pipeline glue (`analyzer`, `serialize`, `store`, `uast`) depends on
-//! the broader analyzer stack and is integrated once those crates link.
-#![allow(dead_code)]
+//! streaming-pipeline glue (Consume/serialize/store/UAST traversal) lives in
+//! the consumer: `cf-commands` `handlers/history.rs` drives these modules and
+//! `cf-uast-node` directly.
 
 pub mod compat;
 pub mod levenshtein;

@@ -343,6 +343,11 @@ fn is_decision_point_with_source(target: &Node, ctx: &FunctionSourceContext) -> 
 
 /// Mirrors `isDecisionPoint` (the AST-metadata variant used by the analyzer's
 /// own tests): reads the `BinaryOp` operator only from `Props["operator"]`.
+///
+/// In Go this helper is defined in `complexity_test.go` (test-file scope), so
+/// the Rust port is `#[cfg(test)]` to mirror that placement; production code
+/// uses [`is_decision_point_with_source`].
+#[cfg(test)]
 fn is_decision_point(target: &Node) -> bool {
     match target.node_type.as_str() {
         uast::IF | uast::LOOP | uast::CATCH => true,
@@ -1013,19 +1018,31 @@ mod tests {
     }
 
     /// Else-if chains are not counted as additional nesting (mirrors
-    /// `isElseIfNode`).
+    /// `isElseIfNode`, flow_helpers.go: a child `If` is an else-if continuation
+    /// only at child index >= 2, after [condition(0), then-block(1)]).
     #[test]
     fn else_if_does_not_increase_nesting() {
-        // outer if with child0 = block, child1 = else-if; the else-if must not
-        // add nesting.
-        let else_if = Node::new(uast::IF);
+        // outer if with child0 = condition, child1 = then-block, child2 =
+        // else-if; the else-if (index 2) must not add nesting.
+        let cond = Node::new(uast::IDENTIFIER);
         let block = Node::new(uast::BLOCK);
-        let outer = Node::new(uast::IF).with_children(vec![block, else_if]);
+        let else_if = Node::new(uast::IF);
+        let outer = Node::new(uast::IF).with_children(vec![cond, block, else_if]);
         let func = Node::new(uast::FUNCTION)
             .with_roles(vec![crate::node::role::FUNCTION])
             .with_children(vec![outer]);
         // Only the outer if nests => depth 1.
         assert_eq!(calculate_nesting_depth(&func), 1);
+
+        // Conversely, an inner `If` at index 1 (braceless `if (a) if (b)`) is
+        // NOT an else-if continuation and DOES nest => depth 2.
+        let inner = Node::new(uast::IF);
+        let cond2 = Node::new(uast::IDENTIFIER);
+        let outer2 = Node::new(uast::IF).with_children(vec![cond2, inner]);
+        let func2 = Node::new(uast::FUNCTION)
+            .with_roles(vec![crate::node::role::FUNCTION])
+            .with_children(vec![outer2]);
+        assert_eq!(calculate_nesting_depth(&func2), 2);
     }
 
     /// Switch counts as a nesting node and a cognitive increment (loop-like).

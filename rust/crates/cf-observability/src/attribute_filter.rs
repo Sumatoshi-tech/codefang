@@ -15,8 +15,6 @@
 //! a [`AttributeFilter`] processor wrapper that applies it in `on_end` by
 //! retaining only allowed key/values before delegating. See crate todos.
 
-use std::collections::HashSet;
-
 /// Attribute key prefixes that pass through the filter (Go `allowedPrefixes`).
 ///
 /// A key is allowed if it starts with one of these. Some entries (`cache`,
@@ -140,6 +138,7 @@ impl AttributeFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
 
     /// Test warner collecting blocked keys (stands in for the dev-mode logger).

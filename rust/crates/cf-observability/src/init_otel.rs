@@ -21,8 +21,12 @@ use std::collections::BTreeMap;
 use crate::config::Config;
 use crate::logger::TracingHandler;
 
-const TRACER_NAME: &str = "codefang";
-const METER_NAME: &str = "codefang";
+/// Instrumentation-scope name for the tracer Go `Init` acquires
+/// (`tp.Tracer(tracerName)`); export-mode provider wiring will use it.
+pub const TRACER_NAME: &str = "codefang";
+/// Instrumentation-scope name for the meter Go `Init` acquires
+/// (`mp.Meter(meterName)`); export-mode provider wiring will use it.
+pub const METER_NAME: &str = "codefang";
 
 // Standard OTel env vars (Go consts).
 const ENV_TRACES_SAMPLER: &str = "OTEL_TRACES_SAMPLER";

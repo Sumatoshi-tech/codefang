@@ -13,11 +13,10 @@
 //! # Relationship to `cf-gojson`
 //!
 //! The design routes all report serialization through the shared `cf-gojson`
-//! crate. At the time of this port `cf-gojson` is a bare scaffold (no public
-//! `GoValue`/`GoMap`/`Encoder`), so per DESIGN rule (5) the minimal subset of
-//! that surface lives here in [`gojson`]. The [`GoValue`]/[`GoMap`] API is shaped
-//! to match the planned crate so the eventual migration is mechanical: delete
-//! `gojson.rs`, depend on `cf-gojson`, and re-point the imports.
+//! crate. [`Node::to_map`] builds its output directly from
+//! [`cf_gojson::GoValue`] / [`cf_gojson::GoMap`]; those two types are
+//! re-exported here so callers can construct and serialize `to_map` output
+//! without naming the encoder crate themselves.
 //!
 //! # Differences from the Go original
 //!
@@ -42,15 +41,14 @@ mod allocator;
 mod classifier;
 mod comparison;
 pub mod dsl;
-mod gojson;
 mod node;
 mod tomap;
 mod traversal;
 mod types;
 
-// Re-exported so callers can build/serialize `to_map` output. These mirror the
-// planned `cf-gojson` API and will be replaced by it (see `gojson.rs`).
-pub use gojson::{GoMap, GoValue};
+// Re-exported so callers can build/serialize `to_map` output without naming
+// the encoder crate themselves (DESIGN.md §2.2).
+pub use cf_gojson::{GoMap, GoValue};
 
 pub use allocator::{release_tree, Allocator};
 pub use classifier::is_literal_type;

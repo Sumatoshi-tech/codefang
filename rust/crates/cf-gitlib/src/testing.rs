@@ -7,7 +7,7 @@
 //! compiled only under `cfg(test)` plus exposed behind the `testing` feature for
 //! downstream crates' integration tests.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::hash::Hash;
 

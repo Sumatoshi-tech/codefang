@@ -10,7 +10,6 @@ use opentelemetry::metrics::{Counter, Histogram, Meter};
 use opentelemetry::KeyValue;
 
 use crate::metric_builder::{build_metrics, MetricBuildError};
-use crate::metrics::DURATION_BUCKET_BOUNDARIES;
 
 // Instrument names (Go consts).
 const METRIC_COMMITS_TOTAL: &str = "codefang.analysis.commits.total";
@@ -75,8 +74,10 @@ impl AnalysisMetrics {
                 .meter
                 .f64_histogram(METRIC_CHUNK_DURATION)
                 .with_description("Per-chunk processing duration in seconds")
+                // Boundary advisory deferred to an SDK View built from
+                // [`crate::metrics::DURATION_BUCKET_BOUNDARIES`] (see the note
+                // in metrics.rs; otel-rust 0.24 lacks `with_boundaries`).
                 .with_unit("s")
-                .with_boundaries(DURATION_BUCKET_BOUNDARIES.to_vec())
                 .init(),
             cache_hits: b
                 .meter

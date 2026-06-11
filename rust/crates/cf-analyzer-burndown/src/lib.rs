@@ -4,7 +4,6 @@
 //! walk is still pending; [`metrics`] owns the byte-identity-critical
 //! `ComputedMetrics` serialization that `BaseHistoryAnalyzer.Serialize` emits for
 //! the `json` / `yaml` / `bin` machine formats.
-#![allow(dead_code)]
 
 pub mod metrics;
 

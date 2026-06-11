@@ -10,9 +10,11 @@
 //!     `.git` skipped), keeping every UAST-supported, non-vendor/-generated file
 //!     (`pathpolicy.Exclude(path, nil, opts)`, content `nil`).
 //!  2. Each file is parsed by `cf_uast::Parser` and run through the Halstead
-//!     analyzer: find functions (UAST `Function`/`Method` types ∪ `Function`
-//!     role, depth ≤ 10), count operators/operands per function, derive the
-//!     Halstead measures, and produce a per-file report whose `functions`
+//!     analyzer's VISITOR path (`CreateVisitor` + `MultiAnalyzerTraverser`, the
+//!     path `analyze.Factory` actually routes `VisitorProvider` analyzers
+//!     through): a function-context-stack DFS attributes each operator/operand
+//!     token to the innermost enclosing function (no depth limit), derives the
+//!     Halstead measures, and produces a per-file report whose `functions`
 //!     collection is stamped with `_source_file` (path relative to root),
 //!     `_language` (`"go"`), and `_directory`.
 //!  3. The base `common.Aggregator` sums each numeric key across the per-file
@@ -48,9 +50,6 @@ use std::path::Path;
 use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options};
 use cf_uast::{Node, Parser};
-
-/// Max UAST traversal depth for function discovery (`MaxDepthValue`).
-const MAX_DEPTH: i64 = 10;
 
 /// Threshold above which CMS sketches are populated (`cmsTokenThreshold`). The
 /// CMS total count is exact, so the estimated totals equal the exact sums; we
@@ -322,29 +321,6 @@ fn is_declaration_identifier(node: &Node, parent: Option<&Node>) -> bool {
     DECLARATION_TYPES.contains(&parent.node_type.as_str())
 }
 
-/// Recursively collects operator/operand counts (`CollectOperatorsAndOperands`).
-fn collect(
-    node: &Node,
-    parent: Option<&Node>,
-    operators: &mut HashMap<String, i64>,
-    operands: &mut HashMap<String, i64>,
-) {
-    if is_operator(node) {
-        let op = operator_name(node);
-        if !op.is_empty() {
-            *operators.entry(op).or_insert(0) += 1;
-        }
-    } else if is_operand(node) && !is_declaration_identifier(node, parent) {
-        let opnd = operand_name(node);
-        if !opnd.is_empty() {
-            *operands.entry(opnd).or_insert(0) += 1;
-        }
-    }
-    for child in &node.children {
-        collect(child, Some(node), operators, operands);
-    }
-}
-
 /// `node.HasAnyType` over the given type list.
 fn has_any_type(node: &Node, types: &[&str]) -> bool {
     types.iter().any(|t| node.node_type == *t)
@@ -467,42 +443,6 @@ fn collect_function_metrics(root: &Node) -> Vec<FuncCounts> {
         }
     }
     out
-}
-
-/// Finds all function nodes (`findFunctions`): UAST `Function`/`Method` types ∪
-/// `Function` role, depth ≤ [`MAX_DEPTH`], each node counted once.
-///
-/// The Go code unions a type-traversal and a role-traversal into a pointer-keyed
-/// set; both traversals share the same iterative pre-order DFS, so a node that
-/// matches both appears once. We reproduce this with a single DFS that yields any
-/// node matching either criterion (equivalent to the set union, since each node
-/// is visited exactly once).
-fn find_functions<'a>(root: &'a Node, out: &mut Vec<&'a Node>) {
-    // Iterative pre-order DFS with depth, children pushed reversed (TraverseTree).
-    let mut stack: Vec<(&Node, i64)> = vec![(root, 0)];
-    while let Some((node, depth)) = stack.pop() {
-        if depth <= MAX_DEPTH {
-            let by_type = node.node_type == "Function" || node.node_type == "Method";
-            let by_role = has_any_role(node, &["Function"]);
-            if by_type || by_role {
-                out.push(node);
-            }
-        }
-        for child in node.children.iter().rev() {
-            stack.push((child, depth + 1));
-        }
-    }
-}
-
-/// Extracts a function's name (`extractFunctionName` → `getFunctionName`):
-/// `name` prop, else `"anonymous"`.
-fn function_name(node: &Node) -> String {
-    if let Some(name) = node.props.get("name") {
-        if !name.is_empty() {
-            return name.clone();
-        }
-    }
-    "anonymous".to_string()
 }
 
 /// Computes the per-file Halstead report (`Analyzer.Analyze` + file-level

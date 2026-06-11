@@ -58,8 +58,12 @@ impl RedMetrics {
                 .meter
                 .f64_histogram(METRIC_REQUEST_DURATION)
                 .with_description("Request duration in seconds")
+                // Go attaches durationBucketBoundaries via
+                // metric.WithExplicitBucketBoundaries; opentelemetry-rust 0.24
+                // (the pin matching opentelemetry-prometheus 0.17) has no
+                // per-instrument boundary advisory yet, so the SDK applies
+                // [`DURATION_BUCKET_BOUNDARIES`] through a View instead.
                 .with_unit("s")
-                .with_boundaries(DURATION_BUCKET_BOUNDARIES.to_vec())
                 .init(),
             errors_total: b
                 .meter

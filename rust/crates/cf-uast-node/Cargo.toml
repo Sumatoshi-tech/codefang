@@ -10,13 +10,13 @@ publish = false
 # Port of the Go package `pkg/uast/pkg/node` (the canonical UAST node / tree
 # representation). The keystone export is `Node::to_map`, whose key ordering is
 # the project's byte-identity goal (DESIGN.md §2.2: Node.ToMap is the canonical
-# map-origin object). All `to_map` serialization is built through the local
-# `gojson` module — a minimal stand-in for the shared `cf-gojson` crate, which is
-# still a scaffold at port time (DESIGN rule 5). When `cf-gojson` lands, delete
-# `src/gojson.rs`, add `cf-gojson = { path = "../cf-gojson" }`, and re-point the
-# imports. Nothing here uses serde_json for the serialization path.
+# map-origin object). All `to_map` serialization is built on the shared
+# `cf-gojson` crate (the tier-0 Go-`encoding/json`-compatible encoder). Nothing
+# here uses serde_json for the serialization path.
 
 [dependencies]
+# Go-byte-compatible JSON value model + encoder (DESIGN.md §2.2 keystone).
+cf-gojson = { path = "../cf-gojson" }
 # Content-based stable IDs (SHA-1 of node content), matching Go's crypto/sha1.
 sha1 = "0.10"
 # Ergonomic error derives for the DSL parse/lower/find error types.

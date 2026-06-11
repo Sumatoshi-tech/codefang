@@ -9,7 +9,7 @@
 //! emit is `children, id, pos, props, roles, token, type`, which in byte order
 //! becomes exactly that sequence — see DESIGN.md §2.2.
 
-use crate::gojson::{GoMap, GoValue};
+use cf_gojson::{GoMap, GoValue};
 use crate::node::{Node, Positions};
 
 impl Node {
@@ -101,7 +101,7 @@ fn position_map(pos: Option<&Positions>) -> GoValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gojson::Encoder;
+    use cf_gojson::Encoder;
     use crate::node::Builder;
 
     #[test]

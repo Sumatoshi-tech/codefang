@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::types::{NodeSummary, ReportData};
+use crate::types::ReportData;
 
 /// Hotness information for a single code node. Mirrors Go `NodeHotnessData`.
 #[derive(Debug, Clone, PartialEq)]
@@ -358,6 +358,7 @@ fn sort_by_desc_stable<T, F: Fn(&T) -> i64>(v: &mut [T], key: F) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::NodeSummary;
 
     fn hm(pairs: &[(usize, i64)]) -> HashMap<usize, i64> {
         pairs.iter().copied().collect()

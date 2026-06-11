@@ -51,6 +51,8 @@
 pub mod flags;
 pub mod formats;
 pub mod handlers;
+#[cfg(feature = "runtime")]
+mod observability;
 pub mod pipeline;
 pub mod registry;
 pub mod version;
@@ -195,6 +197,22 @@ fn completion_subcommand(sub: &clap::ArgMatches) -> i32 {
 /// surfaces the codefang error path (`Error: <msg>\n`, exit 1).
 fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     use std::io::Write;
+
+    // Observability bracket around the whole run, mirroring Go run.go:338-351
+    // (`rc.initObservability()` + deferred `providers.Shutdown`). With no
+    // OTEL_EXPORTER_OTLP_ENDPOINT the providers are no-op: zero output, zero
+    // report-byte impact. The guard's Drop performs the shutdown.
+    #[cfg(feature = "runtime")]
+    let _observability =
+        match observability::init_run_observability(sub.get_flag("debug-trace")) {
+            Ok(guard) => guard,
+            Err(e) => {
+                // Go: return fmt.Errorf("init observability: %w", err) → cobra
+                // prints `Error: <msg>` and exits 1.
+                eprintln!("Error: init observability: {e}");
+                return 1;
+            }
+        };
 
     let registry = handlers::default_registry();
 

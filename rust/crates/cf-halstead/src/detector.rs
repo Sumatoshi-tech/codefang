@@ -236,13 +236,6 @@ impl OperatorOperandDetector {
     }
 }
 
-/// Public re-export of [`is_declaration_identifier`] for the streaming visitor,
-/// which reproduces the detector's operand-counting guard inline.
-#[must_use]
-pub fn is_declaration_identifier_pub<N: HalNode>(node: &N, parent: Option<&N>) -> bool {
-    is_declaration_identifier(node, parent)
-}
-
 /// True if `node` is a declaration's name identifier given its `parent`
 /// (`isDeclarationIdentifier`). Such identifiers are NOT counted as operands.
 fn is_declaration_identifier<N: HalNode>(node: &N, parent: Option<&N>) -> bool {

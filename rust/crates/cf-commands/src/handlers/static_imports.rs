@@ -208,13 +208,6 @@ fn build_status_message(count: i64) -> String {
     }
 }
 
-fn go_int(v: &GoValue) -> Option<i64> {
-    match v {
-        GoValue::Int(n) => Some(*n),
-        _ => None,
-    }
-}
-
 /// Walks `root_path`, parses each supported file to a real UAST, extracts its
 /// imports, and folds them into a cross-file `import path -> file count` map
 /// alongside the total analyzed-file count. Returns `None` when the path is

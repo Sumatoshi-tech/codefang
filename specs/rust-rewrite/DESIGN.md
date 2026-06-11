@@ -62,8 +62,7 @@ Single **virtual workspace** at `rust/` (already in place): `[workspace] resolve
 `members=["crates/*","bins/*","tests/golden-harness"]`, no root package. `[workspace.package]`
 pins `version="0.0.0"` (so no version string leaks into output), `edition="2021"`,
 `rust-version="1.80"`. One crate per Go package, named `cf-<module>`, mirroring `goPath`.
-`crates/analyzers` is a nesting directory (excluded from the `crates/*` glob);
-`cf-govader` is excluded from the default member glob and pulled in explicitly.
+`crates/analyzers` is a nesting directory (excluded from the `crates/*` glob).
 
 ### 1.1 Tiering = port order (build bottom-up; each tier gates the next)
 
@@ -86,7 +85,7 @@ pins `version="0.0.0"` (so no version string leaks into output), `edition="2021"
   `cf-langpath` (enry parity), `cf-cache`.
 - **Tier 4–6 — estimators + analyzers:** `cf-alg-hll/-cms/-minhash/-bloom/-lsh/-stats`,
   then analyzer crates (`cf-burndown-core`/`cf-analyzer-burndown`, `cf-anomaly`, `cf-devs`,
-  `cf-couples`, `cf-imports`, `cf-quality`, `cf-sentiment`+`cf-govader`, `cf-typos`,
+  `cf-couples`, `cf-imports`, `cf-quality`, `cf-sentiment` (VADER ported in its `vader` module), `cf-typos`,
   `cf-complexity`, `cf-composition`, `cf-comments`, `cf-halstead`, `cf-clones`,
   `cf-cohesion`, `cf-shotness`, `cf-file-history`).
 - **Tier 7–8 — framework/pipeline/CLI plumbing:** `cf-framework`, `cf-pipeline`,
@@ -112,7 +111,7 @@ non-test, non-build-script file in the report path (grep lint, §5). serde stays
 | `git2go` / libgit2 | **`git2` 0.19 + `vendored-libgit2`** | **KEEP libgit2**; `third_party/libgit2` submodule pins version; per-thread `!Send`/`!Sync` `Repository`; RAII `Drop` replaces `Free()`; diff options (context, rename detect, whitespace) set identically to git2go |
 | `tree-sitter` (68 grammars) | `tree-sitter` 0.22 + per-language `tree-sitter-<lang>` crates behind cargo features | positions/types flow to output → pin grammar versions; bump = golden-breaking |
 | `go-enry` | enry-data port / vendored table in `cf-langpath`/`cf-pathfilter`/`cf-composition` | **classification parity changes report bytes** (path filtering, `static/composition` language buckets) — golden-test against enry output |
-| govader / VADER (`internal/analyzers/sentiment/lexicons`) | **`cf-govader`** + `cf-sentiment-lexicons` | **lexicon + scoring parity changes report bytes**; vendor lexicon tables verbatim; reproduce VADER scoring constants exactly; compute in **f32** like Go |
+| govader / VADER (`internal/analyzers/sentiment/lexicons`) | **`cf-sentiment::vader`** (vendored lexicons in `cf-sentiment/data/`) | **lexicon + scoring parity changes report bytes**; vendor lexicon tables verbatim; reproduce VADER scoring constants exactly; compute in **f32** like Go |
 | `pierrec/lz4/v4` | `lz4_flex` (frame mode) | spill/test stores only — **not** user report bytes |
 | `encoding/gob` | custom length-framed encoder | internal stores only — **logical** parity, not byte parity |
 | cobra | **clap 4 builder API** (not derive) | reproduce command/flag order, help, errors (§4) |
@@ -199,7 +198,7 @@ exactly the `compact` JSON bytes, so `bin` correctness reduces to `marshal` corr
   go-enry (extension/content heuristics, vendoring, language buckets). Vendor enry's data tables;
   golden-test classification against the Go `languages_test.go` corpus. A misclassification
   changes which files are analyzed and the `static/composition` output bytes.
-- **govader/VADER**: `cf-govader` + `cf-sentiment-lexicons` vendor the lexicon verbatim and
+- **govader/VADER**: `cf-sentiment` (its `vader` module + `data/` lexicons) vendors the lexicon verbatim and
   reproduce VADER scoring constants (booster/negation/punctuation/cap weights) exactly, computing
   in **f32**. `history/sentiment` json is a binding golden, so scoring drift = byte diff.
 

@@ -172,7 +172,7 @@ mod tests {
             blob_arena_size: 4 * MIB,
             ..CoordinatorConfig::default()
         };
-        let mut more_cfg = base_cfg;
+        let mut more_cfg = base_cfg.clone();
         more_cfg.workers = 4;
 
         assert!(
@@ -191,7 +191,7 @@ mod tests {
             blob_arena_size: 4 * MIB,
             ..CoordinatorConfig::default()
         };
-        let mut more_cfg = base_cfg;
+        let mut more_cfg = base_cfg.clone();
         more_cfg.blob_cache_size = 500 * MIB;
 
         assert!(
@@ -210,7 +210,7 @@ mod tests {
             blob_arena_size: 4 * MIB,
             ..CoordinatorConfig::default()
         };
-        let mut more_cfg = base_cfg;
+        let mut more_cfg = base_cfg.clone();
         more_cfg.diff_cache_size = 10000;
 
         assert!(
