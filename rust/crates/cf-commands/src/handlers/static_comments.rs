@@ -42,25 +42,37 @@ use cf_gojson::{GoMap, GoValue, MapOrigin};
 use cf_pathpolicy::{exclude, Options as PathPolicyOptions};
 use cf_uast::Parser;
 
-/// One collected comment item (post-stamp): only the fields `ParseReportData`
-/// reads off a comment map survive into the YAML.
+/// One collected comment item (post-stamp): the full Go
+/// `convertCommentReportItems` map (comments.go:681) — the raw aggregated
+/// report (plot path / report.json) serializes every key; the YAML
+/// `ParseReportData` reads only `line` + the stamped source metadata.
 struct CommentItem {
     line: i64,
+    comment: String,
+    placement: String,
+    target: String,
+    assessment: String,
     source_file: String,
     language: String,
     directory: String,
 }
 
-/// One collected function item (post-stamp): `ParseReportData` reads no payload
-/// keys off the function convert map (`function`/`type`/… are not the keys it
-/// looks for), so only the stamped source metadata is meaningful.
+/// One collected function item (post-stamp): the full Go
+/// `convertFunctionReportItems` map (comments.go:731). The machine
+/// `ComputeAllMetrics` payload reads only the stamped source metadata; the raw
+/// aggregated report serializes every key.
 struct FunctionItem {
     source_file: String,
     language: String,
     directory: String,
-    /// The function's name (`function` key) — used only by the JSON section's
-    /// issue list; the machine ComputeAllMetrics payload ignores it.
+    /// The function's name (`function` key).
     function_name: String,
+    /// The function's kind (`type` key, e.g. `"Function"`).
+    kind: String,
+    /// The function's line count (`lines` key).
+    lines: i64,
+    /// The associated comment type (`comment` key; `"None"` when undocumented).
+    comment: String,
     /// The per-function documentation assessment (`assessment` key, e.g.
     /// `"❌ No Comment"`); the JSON section emits an issue for each bad one.
     assessment: String,
@@ -76,6 +88,7 @@ struct Aggregated {
     bad_comments: i64,
     total_functions: i64,
     documented_functions: i64,
+    total_comment_details: i64,
     // Numeric-key running sums + processed-report count (for the mean).
     sum_overall_score: f64,
     sum_good_comments_ratio: f64,
@@ -251,6 +264,124 @@ fn comments_report_value_mode(root_path: &str, summary_only: bool) -> Option<GoV
     Some(GoValue::Map(root))
 }
 
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/comments` —
+/// the value Go's `comments.Aggregator.GetResult()` returns (the base
+/// `BuildCollectionResult` + the `DetailedDataCollector.AddToResult`
+/// overwrite), which is what `--format plot` consumes and what
+/// `writeReportJSON` serializes into `report.json`:
+///
+/// * `analyzer_name`, `message` (`buildMessage` over a random numeric average;
+///   all three averages land in the same threshold bucket on real corpora —
+///   we key it off `overall_score` like the section),
+/// * counts (summed): `total_comments`, `good_comments`, `bad_comments`,
+///   `total_functions`, `documented_functions`, `total_comment_details`,
+/// * averages: `overall_score`, `good_comments_ratio`,
+///   `documentation_coverage`,
+/// * `comments` / `functions`: the per-file convert maps concatenated in
+///   walk order, each stamped `_source_file`/`_language`/`_directory`
+///   (`stampCollectionMetadata`). The base spillable collector contributes an
+///   empty `comments` slice (its `line` identifier is an int, never a string),
+///   so with zero comments the key stays `[]`; `functions` appears only when
+///   the detailed collection is non-empty.
+///
+/// With no parsed files Go returns `buildEmptyResult` instead (8 keys, no
+/// `analyzer_name`/collections).
+#[must_use]
+pub fn comments_raw_report_value(
+    root_path: &str,
+    opts: &PathPolicyOptions,
+) -> Option<GoValue> {
+    let agg = comments_aggregate_opts(root_path, opts)?;
+
+    if agg.report_count == 0 {
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("total_comments", GoValue::Int(0));
+        m.push("good_comments", GoValue::Int(0));
+        m.push("bad_comments", GoValue::Int(0));
+        m.push("overall_score", GoValue::Float(0.0));
+        m.push("total_functions", GoValue::Int(0));
+        m.push("documented_functions", GoValue::Int(0));
+        m.push("total_comment_details", GoValue::Int(0));
+        m.push("message", GoValue::Str("No comments found".to_string()));
+        return Some(GoValue::Map(m));
+    }
+
+    let mean = |sum: f64| {
+        if agg.report_count > 0 {
+            sum / agg.report_count as f64
+        } else {
+            0.0
+        }
+    };
+    let overall_score = mean(agg.sum_overall_score);
+
+    // Stamped item maps (map-origin: keys byte-sort at encode time).
+    let push_stamps = |m: &mut GoMap, sf: &str, lang: &str, dir: &str| {
+        m.push("_source_file", GoValue::Str(sf.to_string()));
+        if !lang.is_empty() {
+            m.push("_language", GoValue::Str(lang.to_string()));
+        }
+        if !dir.is_empty() {
+            m.push("_directory", GoValue::Str(dir.to_string()));
+        }
+    };
+    let comments: Vec<GoValue> = agg
+        .comments
+        .iter()
+        .map(|c| {
+            let mut m = GoMap::new(MapOrigin::Map);
+            m.push("line", GoValue::Int(c.line));
+            m.push("comment", GoValue::Str(c.comment.clone()));
+            m.push("placement", GoValue::Str(c.placement.clone()));
+            m.push("target", GoValue::Str(c.target.clone()));
+            m.push("assessment", GoValue::Str(c.assessment.clone()));
+            push_stamps(&mut m, &c.source_file, &c.language, &c.directory);
+            GoValue::Map(m)
+        })
+        .collect();
+    let functions: Vec<GoValue> = agg
+        .functions
+        .iter()
+        .map(|f| {
+            let mut m = GoMap::new(MapOrigin::Map);
+            m.push("function", GoValue::Str(f.function_name.clone()));
+            m.push("type", GoValue::Str(f.kind.clone()));
+            m.push("lines", GoValue::Int(f.lines));
+            m.push("comment", GoValue::Str(f.comment.clone()));
+            m.push("assessment", GoValue::Str(f.assessment.clone()));
+            push_stamps(&mut m, &f.source_file, &f.language, &f.directory);
+            GoValue::Map(m)
+        })
+        .collect();
+
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("analyzer_name", GoValue::Str("comments".to_string()));
+    m.push("comments", GoValue::Array(comments));
+    if !functions.is_empty() {
+        m.push("functions", GoValue::Array(functions));
+    }
+    m.push("message", GoValue::Str(comment_message(overall_score)));
+    m.push("total_comments", GoValue::Int(agg.total_comments));
+    m.push("good_comments", GoValue::Int(agg.good_comments));
+    m.push("bad_comments", GoValue::Int(agg.bad_comments));
+    m.push("total_functions", GoValue::Int(agg.total_functions));
+    m.push("documented_functions", GoValue::Int(agg.documented_functions));
+    m.push(
+        "total_comment_details",
+        GoValue::Int(agg.total_comment_details),
+    );
+    m.push("overall_score", GoValue::Float(overall_score));
+    m.push(
+        "good_comments_ratio",
+        GoValue::Float(mean(agg.sum_good_comments_ratio)),
+    );
+    m.push(
+        "documentation_coverage",
+        GoValue::Float(mean(agg.sum_documentation_coverage)),
+    );
+    Some(GoValue::Map(m))
+}
+
 /// `terminal.FormatScore`: `round(score*10)/10` → `"N/10"`.
 fn format_score(score: f64) -> String {
     let scaled = (score * 10.0).round() as i64;
@@ -274,17 +405,22 @@ fn comments_metrics(root_path: &str) -> Option<GoValue> {
 /// [`Aggregated`] accumulator (shared by the machine-format `ComputeAllMetrics`
 /// path and the JSON-section path). Returns `None` when the path is missing.
 fn comments_aggregate(root_path: &str) -> Option<Aggregated> {
+    comments_aggregate_opts(root_path, &PathPolicyOptions::default())
+}
+
+/// [`comments_aggregate`] with explicit path-policy options (the plot path
+/// passes the run flags; the stdout formats keep the defaults).
+fn comments_aggregate_opts(root_path: &str, opts: &PathPolicyOptions) -> Option<Aggregated> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let parser = Parser::new();
-    let opts = PathPolicyOptions::default();
     let analyzer = cf_comments::Analyzer::new();
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
-    collect_files(root, &parser, &opts, &mut files);
+    collect_files(root, &parser, opts, &mut files);
     // filepath.WalkDir visits entries in lexical (byte-sorted) path order.
     files.sort();
 
@@ -370,11 +506,21 @@ fn aggregate_report(
     agg.report_count += 1;
 
     // DetailedDataCollector: append the file's comment/function items (stamped).
+    let item_str = |item: &GoValue, key: &str| {
+        map_get(item, key)
+            .and_then(as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     if let Some(items) = map_get(report, "comments").and_then(as_array) {
         for item in items {
             let line = map_get(item, "line").and_then(as_int).unwrap_or(0);
             agg.comments.push(CommentItem {
                 line,
+                comment: item_str(item, "comment"),
+                placement: item_str(item, "placement"),
+                target: item_str(item, "target"),
+                assessment: item_str(item, "assessment"),
                 source_file: source_file.to_string(),
                 language: language.to_string(),
                 directory: directory.to_string(),
@@ -387,14 +533,11 @@ fn aggregate_report(
                 source_file: source_file.to_string(),
                 language: language.to_string(),
                 directory: directory.to_string(),
-                function_name: map_get(item, "function")
-                    .and_then(as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                assessment: map_get(item, "assessment")
-                    .and_then(as_str)
-                    .unwrap_or_default()
-                    .to_string(),
+                function_name: item_str(item, "function"),
+                kind: item_str(item, "type"),
+                lines: map_get(item, "lines").and_then(as_int).unwrap_or(0),
+                comment: item_str(item, "comment"),
+                assessment: item_str(item, "assessment"),
             });
         }
     }
@@ -405,6 +548,7 @@ fn aggregate_report(
     agg.bad_comments += scalar_int(report, "bad_comments");
     agg.total_functions += scalar_int(report, "total_functions");
     agg.documented_functions += scalar_int(report, "documented_functions");
+    agg.total_comment_details += scalar_int(report, "total_comment_details");
 
     agg.sum_overall_score += scalar_float(report, "overall_score");
     agg.sum_good_comments_ratio += scalar_float(report, "good_comments_ratio");

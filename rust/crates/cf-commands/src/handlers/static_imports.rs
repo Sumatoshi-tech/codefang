@@ -168,6 +168,37 @@ pub fn imports_report_value(root_path: &str) -> Option<GoValue> {
     Some(GoValue::Map(root))
 }
 
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/imports` —
+/// the value Go's `imports.Aggregator.GetResult()` returns (aggregator.go:39),
+/// which is what `--format plot` consumes and what `writeReportJSON`
+/// serializes into `report.json`:
+///
+/// * `imports`: the unique import paths. Go materializes them from a
+///   `map[string]int` in RANDOM iteration order (measured-nondeterministic;
+///   the harness compares the multiset) — we emit the byte-sorted order.
+/// * `import_counts`: import path → file-occurrence count.
+/// * `count`: unique import count; `total_files`: every analyzed file.
+#[must_use]
+pub fn imports_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+    let (all_imports, total_files) = walk_and_count_opts(root_path, opts)?;
+
+    let imports: Vec<GoValue> = all_imports
+        .keys()
+        .map(|k| GoValue::Str(k.clone()))
+        .collect();
+    let mut import_counts = GoMap::new(MapOrigin::Map);
+    for (imp, c) in &all_imports {
+        import_counts.push(imp, GoValue::Int(*c));
+    }
+
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("imports", GoValue::Array(imports));
+    m.push("import_counts", GoValue::Map(import_counts));
+    m.push("count", GoValue::Int(all_imports.len() as i64));
+    m.push("total_files", GoValue::Int(total_files));
+    Some(GoValue::Map(m))
+}
+
 /// `imports.buildStatusMessage`.
 fn build_status_message(count: i64) -> String {
     if count == 0 {
@@ -189,16 +220,24 @@ fn go_int(v: &GoValue) -> Option<i64> {
 /// alongside the total analyzed-file count. Returns `None` when the path is
 /// missing. Mirrors the per-file analyze + `imports.Aggregator` accumulation.
 fn walk_and_count(root_path: &str) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
+    walk_and_count_opts(root_path, &Options::default())
+}
+
+/// [`walk_and_count`] with explicit path-policy options (the plot path passes
+/// the run flags; the stdout formats keep the defaults).
+fn walk_and_count_opts(
+    root_path: &str,
+    opts: &Options,
+) -> Option<(std::collections::BTreeMap<String, i64>, i64)> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let parser = Parser::new();
-    let opts = Options::default();
 
     let mut files: Vec<String> = Vec::new();
-    collect_files(root, &parser, &opts, &mut files);
+    collect_files(root, &parser, opts, &mut files);
     files.sort();
 
     // The Go aggregator increments total_files for every analyzed file and sums

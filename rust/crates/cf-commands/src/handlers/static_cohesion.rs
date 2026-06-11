@@ -81,13 +81,19 @@ const MSG_GOOD: &str = "Good overall cohesion with room for improvement";
 const MSG_FAIR: &str = "Fair overall cohesion - consider refactoring some functions";
 const MSG_POOR: &str = "Poor overall cohesion - significant refactoring recommended";
 
-/// One collected per-function item, carrying the fields the section + machine
-/// formats read back.
+/// One collected per-function item, carrying the full Go
+/// `convertCohesionFunctionItems` map (cohesion.go:220) the raw aggregated
+/// report serializes, plus the stamped `_source_file`.
 #[derive(Clone)]
 struct FnItem {
     name: String,
     source_file: String,
     cohesion: f64,
+    line_count: i64,
+    variable_count: i64,
+    cohesion_assessment: String,
+    variable_assessment: String,
+    size_assessment: String,
 }
 
 /// The cross-file aggregated state (Go `common.Aggregator`).
@@ -130,15 +136,20 @@ impl Aggregated {
 /// Walks `root_path`, runs the cohesion visitor per file, and aggregates, or
 /// `None` when the path cannot be read.
 fn aggregate(root_path: &str) -> Option<Aggregated> {
+    aggregate_opts(root_path, &Options::default())
+}
+
+/// [`aggregate`] with explicit path-policy options (the plot path passes the
+/// run flags; the stdout formats keep the defaults).
+fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregated> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
     let parser = Parser::new();
-    let opts = Options::default();
     let analyzer = Analyzer::new();
     let mut agg = Aggregated::default();
-    walk(root, root_path, &parser, &opts, &analyzer, &mut agg);
+    walk(root, root_path, &parser, opts, &analyzer, &mut agg);
     Some(agg)
 }
 
@@ -218,11 +229,15 @@ fn accumulate(agg: &mut Aggregated, report: &Report, source_file: &str) {
         return;
     };
     for fn_map in functions {
-        let name = fn_map
-            .get("name")
-            .and_then(ReportValue::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let get_str = |key: &str| {
+            fn_map
+                .get(key)
+                .and_then(ReportValue::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let get_int = |key: &str| fn_map.get(key).and_then(ReportValue::as_int).unwrap_or(0);
+        let name = get_str("name");
         let cohesion = fn_map
             .get("cohesion")
             .and_then(ReportValue::as_float)
@@ -236,6 +251,11 @@ fn accumulate(agg: &mut Aggregated, report: &Report, source_file: &str) {
                 name,
                 source_file: source_file.to_string(),
                 cohesion,
+                line_count: get_int("line_count"),
+                variable_count: get_int("variable_count"),
+                cohesion_assessment: get_str("cohesion_assessment"),
+                variable_assessment: get_str("variable_assessment"),
+                size_assessment: get_str("size_assessment"),
             },
         );
     }
@@ -296,6 +316,71 @@ pub fn cohesion_report_value_summary(root_path: &str) -> Option<GoValue> {
     let mut agg = aggregate(root_path)?;
     agg.functions.clear();
     Some(build_json_report(&agg))
+}
+
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/cohesion` —
+/// the value Go's `cohesion.Aggregator` (a plain `common.Aggregator`) returns
+/// from `GetResult()` (`ResultBuilder.BuildCollectionResult`), which is what
+/// `--format plot` consumes and what `writeReportJSON` serializes into
+/// `report.json`:
+///
+/// * `analyzer_name`, `message` (Go keys it off a RANDOM numeric average —
+///   measured-nondeterministic; we use `cohesion_score` like the section),
+/// * count: `total_functions` (summed; overwrites the collection length),
+/// * averages: `lcom` / `cohesion_score` / `function_cohesion`,
+/// * `functions`: the dedup-by-`(_source_file, name)` collection sorted by
+///   `name` (`GetSortedData`; the equal-name tie order is Go-nondeterministic
+///   and canonicalized by the harness), each item the
+///   `convertCohesionFunctionItems` map + the `_source_file` stamp only (the
+///   base collector never stamps `_language`/`_directory`).
+///
+/// With no parsed files Go returns `createEmptyResult` instead (5 keys, no
+/// `analyzer_name`/`functions`).
+#[must_use]
+pub fn cohesion_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+    let agg = aggregate_opts(root_path, opts)?;
+
+    if agg.report_count == 0 {
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("total_functions", GoValue::Int(0));
+        m.push("lcom", GoValue::Float(0.0));
+        m.push("cohesion_score", GoValue::Float(1.0));
+        m.push("function_cohesion", GoValue::Float(1.0));
+        m.push("message", GoValue::Str("No functions found".to_string()));
+        return Some(GoValue::Map(m));
+    }
+
+    let functions: Vec<GoValue> = sorted_functions(&agg)
+        .into_iter()
+        .map(|f| {
+            let mut m = GoMap::new(MapOrigin::Map);
+            m.push("name", GoValue::Str(f.name));
+            m.push("line_count", GoValue::Int(f.line_count));
+            m.push("variable_count", GoValue::Int(f.variable_count));
+            m.push("cohesion", GoValue::Float(f.cohesion));
+            m.push("cohesion_assessment", GoValue::Str(f.cohesion_assessment));
+            m.push("variable_assessment", GoValue::Str(f.variable_assessment));
+            m.push("size_assessment", GoValue::Str(f.size_assessment));
+            m.push("_source_file", GoValue::Str(f.source_file));
+            GoValue::Map(m)
+        })
+        .collect();
+
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("analyzer_name", GoValue::Str("cohesion".to_string()));
+    m.push("total_functions", GoValue::Int(agg.total_functions));
+    m.push("functions", GoValue::Array(functions));
+    m.push(
+        "message",
+        GoValue::Str(cohesion_message(agg.cohesion_score_avg()).to_string()),
+    );
+    m.push("lcom", GoValue::Float(agg.lcom_avg()));
+    m.push("cohesion_score", GoValue::Float(agg.cohesion_score_avg()));
+    m.push(
+        "function_cohesion",
+        GoValue::Float(agg.function_cohesion_avg()),
+    );
+    Some(GoValue::Map(m))
 }
 
 /// Aggregator message keyed by the first numeric average (Go `getCohesionMessage`).

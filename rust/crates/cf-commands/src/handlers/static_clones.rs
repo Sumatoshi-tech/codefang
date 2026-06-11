@@ -101,20 +101,39 @@ pub fn clones_report_compact(root_path: &str) -> Option<Vec<u8>> {
     Some(cf_clones::report_section::report_section_compact(&report))
 }
 
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/clones` —
+/// the value Go's `clones.Aggregator.GetResult()` returns after the folder walk
+/// (aggregator.go:97), which is what `--format plot` consumes and what
+/// `writeReportJSON` serializes into `report.json`. `opts` carries the run's
+/// path-policy flags. The stored `clone_pairs` ORDER is Go-nondeterministic
+/// (LSH candidate iteration); the differential oracle measures and
+/// canonicalizes it — the pair multiset and every scalar are deterministic.
+#[must_use]
+pub fn clones_raw_report_value(root_path: &str, opts: &Options) -> Option<cf_gojson::GoValue> {
+    Some(cf_gojson::GoValue::Map(aggregate_report_opts(
+        root_path, opts,
+    )?))
+}
+
 /// Walks `root_path`, runs the clones visitor per file, and folds the per-file
 /// signature reports into the cross-file aggregate report value. Returns `None`
 /// when the root path does not exist (Go would surface a walk error).
 fn aggregate_report(root_path: &str) -> Option<Report> {
+    aggregate_report_opts(root_path, &Options::default())
+}
+
+/// [`aggregate_report`] with explicit path-policy options (the plot path passes
+/// the run flags; the stdout formats keep the defaults).
+fn aggregate_report_opts(root_path: &str, opts: &Options) -> Option<Report> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let parser = Parser::new();
-    let opts = Options::default();
     let mut agg = Aggregator::new();
 
-    walk(root, root_path, &parser, &opts, &mut agg);
+    walk(root, root_path, &parser, opts, &mut agg);
 
     Some(agg.get_result())
 }

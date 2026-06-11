@@ -211,6 +211,14 @@ struct FunctionMetrics {
     effort: f64,
     time_to_program: f64,
     delivered_bugs: f64,
+    /// CMS-estimated totals (visitor.go:119): the exact totals when the
+    /// function's token count reaches `cmsTokenThreshold`, 0 otherwise.
+    estimated_total_operators: i64,
+    estimated_total_operands: i64,
+    /// Per-function operator/operand counts (`FunctionReportItem.Operators` /
+    /// `.Operands`) — serialized into the raw aggregated report.
+    operators: std::collections::BTreeMap<String, i64>,
+    operands: std::collections::BTreeMap<String, i64>,
 }
 
 /// Per-file aggregate of the Halstead `report` map's scalar metrics, plus the
@@ -533,11 +541,16 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
             derive(n1, n2, total_ops, total_opnds);
 
         // CMS path: the exact total count equals the exact sum, so estimated
-        // totals equal the exact totals when the threshold is reached.
-        if total_ops + total_opnds >= CMS_TOKEN_THRESHOLD {
+        // totals equal the exact totals when the threshold is reached
+        // (visitor.go:119; below the threshold the sketches are nil and the
+        // per-function estimated totals stay 0).
+        let (est_fn_ops, est_fn_opnds) = if total_ops + total_opnds >= CMS_TOKEN_THRESHOLD {
             est_total_ops += total_ops;
             est_total_opnds += total_opnds;
-        }
+            (total_ops, total_opnds)
+        } else {
+            (0, 0)
+        };
 
         for (k, v) in operators.iter() {
             *file_operators.entry(k.clone()).or_insert(0) += *v;
@@ -563,6 +576,10 @@ fn analyze_file(root: &Node, source_file: &str, language: &str, directory: &str)
             effort: eff,
             time_to_program: ttp,
             delivered_bugs: bugs,
+            estimated_total_operators: est_fn_ops,
+            estimated_total_operands: est_fn_opnds,
+            operators: operators.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            operands: operands.iter().map(|(k, v)| (k.clone(), *v)).collect(),
         });
     }
 
@@ -602,13 +619,18 @@ struct Aggregate {
 /// Walks `root` (lexical order, `.git` skipped, vendor/generated excluded),
 /// parses each supported file, and aggregates the Halstead reports.
 fn aggregate(root_path: &str) -> Option<Aggregate> {
+    aggregate_opts(root_path, &Options::default())
+}
+
+/// [`aggregate`] with explicit path-policy options (the plot path passes the
+/// run flags; the stdout formats keep the defaults).
+fn aggregate_opts(root_path: &str, opts: &Options) -> Option<Aggregate> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let parser = Parser::new();
-    let opts = Options::default();
 
     // Numeric-key sums + report count (every analyzed file contributes a report,
     // including empty-result files whose scalars are all 0).
@@ -621,7 +643,7 @@ fn aggregate(root_path: &str) -> Option<Aggregate> {
     let mut functions: Vec<FunctionMetrics> = Vec::new();
 
     let mut files: Vec<String> = Vec::new();
-    collect_files(root, &parser, &opts, &mut files);
+    collect_files(root, &parser, opts, &mut files);
 
     for path in &files {
         let Ok(content) = std::fs::read(path) else { continue };
@@ -1210,6 +1232,158 @@ fn computed_metrics(agg: &Aggregate) -> GoValue {
     root.push("high_effort_functions", GoValue::Array(high_effort_functions));
     root.push("aggregate", GoValue::Map(aggregate));
     GoValue::Map(root)
+}
+
+/// Go `ReportFormatter.GetVolumeAssessment` (formatter.go:136). The first
+/// branch compares against `volumeThresholdHigh` (5000), so the `🟡 Medium`
+/// branch (`<= 1000`) is unreachable — a faithful Go quirk.
+fn volume_assessment(volume: f64) -> &'static str {
+    if volume <= VOL_HIGH {
+        "🟢 Low"
+    } else if volume <= VOL_MED {
+        "🟡 Medium"
+    } else {
+        "🔴 High"
+    }
+}
+
+/// Go `ReportFormatter.GetDifficultyAssessment` (formatter.go:149).
+fn difficulty_assessment(difficulty: f64) -> &'static str {
+    if difficulty <= 5.0 {
+        "🟢 Simple"
+    } else if difficulty <= 15.0 {
+        "🟡 Moderate"
+    } else {
+        "🔴 Complex"
+    }
+}
+
+/// Go `ReportFormatter.GetEffortAssessment` (formatter.go:162).
+fn effort_assessment(effort: f64) -> &'static str {
+    if effort <= 1000.0 {
+        "🟢 Low"
+    } else if effort <= 10000.0 {
+        "🟡 Medium"
+    } else {
+        "🔴 High"
+    }
+}
+
+/// One raw `functions` item: the Go `convertHalsteadFunctionItems` map
+/// (halstead.go:426) + the `_source_file`/`_language`/`_directory` stamps
+/// (`stampCollectionMetadata`). Map-origin, so JSON keys byte-sort at encode.
+fn raw_function_item(f: &FunctionMetrics) -> GoValue {
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("name", GoValue::Str(f.name.clone()));
+    m.push("volume", GoValue::Float(f.volume));
+    m.push("difficulty", GoValue::Float(f.difficulty));
+    m.push("effort", GoValue::Float(f.effort));
+    m.push("time_to_program", GoValue::Float(f.time_to_program));
+    m.push("delivered_bugs", GoValue::Float(f.delivered_bugs));
+    m.push("distinct_operators", GoValue::Int(f.distinct_operators));
+    m.push("distinct_operands", GoValue::Int(f.distinct_operands));
+    m.push("total_operators", GoValue::Int(f.total_operators));
+    m.push("total_operands", GoValue::Int(f.total_operands));
+    m.push("vocabulary", GoValue::Int(f.vocabulary));
+    m.push("length", GoValue::Int(f.length));
+    m.push("estimated_length", GoValue::Float(f.estimated_length));
+    m.push(
+        "estimated_total_operators",
+        GoValue::Int(f.estimated_total_operators),
+    );
+    m.push(
+        "estimated_total_operands",
+        GoValue::Int(f.estimated_total_operands),
+    );
+    m.push(
+        "volume_assessment",
+        GoValue::Str(volume_assessment(f.volume).to_string()),
+    );
+    m.push(
+        "difficulty_assessment",
+        GoValue::Str(difficulty_assessment(f.difficulty).to_string()),
+    );
+    m.push(
+        "effort_assessment",
+        GoValue::Str(effort_assessment(f.effort).to_string()),
+    );
+    let mut operators = GoMap::new(MapOrigin::Map);
+    for (k, v) in &f.operators {
+        operators.push(k, GoValue::Int(*v));
+    }
+    m.push("operators", GoValue::Map(operators));
+    let mut operands = GoMap::new(MapOrigin::Map);
+    for (k, v) in &f.operands {
+        operands.push(k, GoValue::Int(*v));
+    }
+    m.push("operands", GoValue::Map(operands));
+    m.push("_source_file", GoValue::Str(f.source_file.clone()));
+    if !f.language.is_empty() {
+        m.push("_language", GoValue::Str(f.language.clone()));
+    }
+    if !f.directory.is_empty() {
+        m.push("_directory", GoValue::Str(f.directory.clone()));
+    }
+    GoValue::Map(m)
+}
+
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/halstead` —
+/// the value Go's `halstead.Aggregator.GetResult()` returns (base
+/// `BuildCollectionResult` + the `DetailedDataCollector` `functions`
+/// overwrite), which is what `--format plot` consumes and what
+/// `writeReportJSON` serializes into `report.json`:
+///
+/// * `analyzer_name`, `message` (Go keys it off a random numeric average — the
+///   measured modal bucket is reproduced from the averaged difficulty, see
+///   [`build_aggregate_message`]),
+/// * count: `total_functions` (summed),
+/// * the 12 numeric keys averaged over the parsed-file count,
+/// * `functions`: the per-file convert maps concatenated in walk order, each
+///   stamped `_source_file`/`_language`/`_directory`.
+///
+/// With no parsed files Go returns `buildEmptyHalsteadResult` instead (14
+/// keys, no `analyzer_name`/`functions`).
+#[must_use]
+pub fn halstead_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+    if !Path::new(root_path).exists() {
+        return None;
+    }
+    let Some(agg) = aggregate_opts(root_path, opts) else {
+        // Folder exists but no parsed files: the aggregator's empty result.
+        let mut m = GoMap::new(MapOrigin::Map);
+        m.push("total_functions", GoValue::Int(0));
+        m.push("volume", GoValue::Float(0.0));
+        m.push("difficulty", GoValue::Float(0.0));
+        m.push("effort", GoValue::Float(0.0));
+        m.push("time_to_program", GoValue::Float(0.0));
+        m.push("delivered_bugs", GoValue::Float(0.0));
+        m.push("distinct_operators", GoValue::Int(0));
+        m.push("distinct_operands", GoValue::Int(0));
+        m.push("total_operators", GoValue::Int(0));
+        m.push("total_operands", GoValue::Int(0));
+        m.push("vocabulary", GoValue::Int(0));
+        m.push("length", GoValue::Int(0));
+        m.push("estimated_length", GoValue::Float(0.0));
+        m.push("message", GoValue::Str("No functions found".to_string()));
+        return Some(GoValue::Map(m));
+    };
+
+    let avg = |k: &str| agg.averages.get(k).copied().unwrap_or(0.0);
+    let mut m = GoMap::new(MapOrigin::Map);
+    m.push("analyzer_name", GoValue::Str("halstead".to_string()));
+    m.push("total_functions", GoValue::Int(agg.total_functions));
+    m.push(
+        "functions",
+        GoValue::Array(agg.functions.iter().map(raw_function_item).collect()),
+    );
+    m.push(
+        "message",
+        GoValue::Str(build_aggregate_message(avg("difficulty")).to_string()),
+    );
+    for key in NUMERIC_KEYS {
+        m.push(*key, GoValue::Float(avg(key)));
+    }
+    Some(GoValue::Map(m))
 }
 
 /// Builds the `static/halstead --format bin` report bytes for `root_path`, or

@@ -68,17 +68,32 @@ impl Counts {
 /// Walks `root_path` and returns the aggregated composition [`Counts`], or
 /// `None` when the path cannot be read.
 fn composition_counts(root_path: &str) -> Option<Counts> {
+    composition_counts_opts(root_path, &Options::default())
+}
+
+/// [`composition_counts`] with explicit path-policy options (the plot path
+/// passes the run flags; the stdout formats keep the defaults).
+fn composition_counts_opts(root_path: &str, opts: &Options) -> Option<Counts> {
     let root = Path::new(root_path);
     if !root.exists() {
         return None;
     }
 
     let classifier = Classifier::new();
-    let opts = Options::default();
     let mut counts = Counts::default();
 
-    walk(root, &classifier, &opts, &mut counts);
+    walk(root, &classifier, opts, &mut counts);
     Some(counts)
+}
+
+/// Builds the AGGREGATED RAW `analyze.Report` GoValue for `static/composition`
+/// (`composition.Aggregator.GetResult`) — composition registers NO plot
+/// section renderer in Go, so `--format plot` renders no page for it; this raw
+/// value is what `writeReportJSON` serializes into `report.json`.
+#[must_use]
+pub fn composition_raw_report_value(root_path: &str, opts: &Options) -> Option<GoValue> {
+    let counts = composition_counts_opts(root_path, opts)?;
+    Some(build_raw_report(&counts))
 }
 
 /// Builds the `static/composition --format json` report bytes for `root_path`,

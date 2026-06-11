@@ -613,6 +613,50 @@ pub fn expand_history_phase_ids(patterns: &[&str]) -> Vec<String> {
 }
 
 /// Expands the requested analyzer patterns into concrete (static, history) id
+/// lists in Go SELECTION order — the `registry.ExpandPatterns` semantics the
+/// run command applies before `registry.Split` (registry.go:129/153): patterns
+/// resolve IN ORDER (a literal id to itself, a glob to the matching registry
+/// ids in registration order), duplicates dropped first-wins, then ids are
+/// divided by mode preserving that order. The plot path needs this order:
+/// Go renders pages (and the index cards) in the resolved id order.
+#[must_use]
+pub fn expand_selection_ids(patterns: &[&str]) -> (Vec<String>, Vec<String>) {
+    let is_glob = |p: &str| p.contains(['*', '?', '[']);
+    let mut statics: Vec<String> = Vec::new();
+    let mut history: Vec<String> = Vec::new();
+    let push_unique = |list: &mut Vec<String>, id: &str| {
+        if !list.iter().any(|have| have == id) {
+            list.push(id.to_string());
+        }
+    };
+    for pat in patterns {
+        if is_glob(pat) {
+            // Glob: the full registry in registration order (statics, then
+            // history leaves), filtered by Go path.Match.
+            for (id, _) in STATIC_BIN_ANALYZERS {
+                if *pat == "*" || go_path_match(pat, id) {
+                    push_unique(&mut statics, id);
+                }
+            }
+            for id in HISTORY_COMBINED_ORDER {
+                if *pat == "*" || go_path_match(pat, id) {
+                    push_unique(&mut history, id);
+                }
+            }
+            continue;
+        }
+        // Literal id: itself, in its pattern position (unknown ids are kept
+        // out; the caller surfaces the dispatch diagnostic).
+        if STATIC_BIN_ANALYZERS.iter().any(|(id, _)| id == pat) {
+            push_unique(&mut statics, pat);
+        } else if HISTORY_COMBINED_ORDER.iter().any(|id| id == pat) {
+            push_unique(&mut history, pat);
+        }
+    }
+    (statics, history)
+}
+
+/// Expands the requested analyzer patterns into concrete (static, history) id
 /// lists in Go combined-model order: static analyzers in [`STATIC_BIN_ANALYZERS`]
 /// registry order, then history analyzers in [`HISTORY_COMBINED_ORDER`]. Literal
 /// (non-glob) ids are matched exactly; globs use Go `path.Match` semantics. This

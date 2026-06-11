@@ -14,7 +14,12 @@
 //!    [`crate::handlers::plot::PLOT_ANALYZERS`] wiring the analyzer id, its
 //!    short report name, its raw-report builder, and `Some(<module>::sections)`.
 
+pub mod clones;
+pub mod cohesion;
+pub mod comments;
 pub mod complexity;
+pub mod halstead;
+pub mod imports;
 
 use cf_gojson::GoValue;
 use cf_plotpage::Section;

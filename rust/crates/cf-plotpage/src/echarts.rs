@@ -475,6 +475,10 @@ pub struct YAxis {
     pub type_: String,
     /// Category data (interface{} — emitted only when set).
     pub data: Option<GoValue>,
+    /// Axis minimum (interface{} — emitted whenever set, including `0`).
+    pub min: Option<GoValue>,
+    /// Axis maximum (interface{} — emitted whenever set).
+    pub max: Option<GoValue>,
     /// Split lines.
     pub split_line: Option<SplitLine>,
     /// Axis label settings.
@@ -494,6 +498,8 @@ impl YAxis {
         push_str(&mut m, "name", &self.name);
         push_str(&mut m, "type", &self.type_);
         push_iface(&mut m, "data", &self.data);
+        push_iface(&mut m, "min", &self.min);
+        push_iface(&mut m, "max", &self.max);
         if let Some(sl) = &self.split_line {
             m.push("splitLine", sl.value());
         }
@@ -678,6 +684,47 @@ impl ScatterData {
     }
 }
 
+/// `opts.BoxPlotData` (charts.go:51).
+#[derive(Debug, Clone, Default)]
+pub struct BoxPlotData {
+    /// Data item name.
+    pub name: String,
+    /// Value (interface{} — the `[min, Q1, median, Q3, max]` array).
+    pub value: Option<GoValue>,
+}
+
+impl BoxPlotData {
+    /// Serializes in declaration order: name, value, label, itemStyle,
+    /// emphasis, tooltip.
+    #[must_use]
+    pub fn value(&self) -> GoValue {
+        let mut m = struct_map();
+        push_str(&mut m, "name", &self.name);
+        push_iface(&mut m, "value", &self.value);
+        GoValue::Map(m)
+    }
+}
+
+/// `opts.LiquidData` (charts.go:290).
+#[derive(Debug, Clone, Default)]
+pub struct LiquidData {
+    /// Data item name.
+    pub name: String,
+    /// Value (interface{} — emitted whenever set, including `0`).
+    pub value: Option<GoValue>,
+}
+
+impl LiquidData {
+    /// Serializes in declaration order: name, value.
+    #[must_use]
+    pub fn value(&self) -> GoValue {
+        let mut m = struct_map();
+        push_str(&mut m, "name", &self.name);
+        push_iface(&mut m, "value", &self.value);
+        GoValue::Map(m)
+    }
+}
+
 /// `opts.PieData` (series_pie.go).
 #[derive(Debug, Clone, Default)]
 pub struct PieData {
@@ -796,26 +843,32 @@ pub enum ChartKind {
     Line,
     /// `charts.NewScatter()`.
     Scatter,
+    /// `charts.NewBoxPlot()`.
+    BoxPlot,
     /// `charts.NewPie()` (no XY axes).
     Pie,
+    /// `charts.NewLiquid()` (no XY axes; series type `liquidFill`).
+    Liquid,
 }
 
 impl ChartKind {
-    /// The go-echarts series type string.
+    /// The go-echarts series type string (`types.Chart*`).
     #[must_use]
     pub fn series_type(self) -> &'static str {
         match self {
             ChartKind::Bar => "bar",
             ChartKind::Line => "line",
             ChartKind::Scatter => "scatter",
+            ChartKind::BoxPlot => "boxplot",
             ChartKind::Pie => "pie",
+            ChartKind::Liquid => "liquidFill",
         }
     }
 
     /// Whether this chart family carries XY axes (go-echarts `hasXYAxis`).
     #[must_use]
     pub fn has_xy_axis(self) -> bool {
-        !matches!(self, ChartKind::Pie)
+        !matches!(self, ChartKind::Pie | ChartKind::Liquid)
     }
 }
 

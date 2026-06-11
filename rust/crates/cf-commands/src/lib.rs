@@ -230,7 +230,9 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
             eprintln!("Error: --output flag is required when --format plot");
             return 1;
         }
-        let (plot_static, plot_history) = handlers::expand_combined_ids(&analyzer_strs);
+        // SELECTION-order expansion: Go renders plot pages (and index cards)
+        // in the resolved id order (`AnalyzerNamesByID(analyzerIDs)`).
+        let (plot_static, plot_history) = handlers::expand_selection_ids(&analyzer_strs);
         if !plot_static.is_empty() && plot_history.is_empty() {
             if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
                 return code;

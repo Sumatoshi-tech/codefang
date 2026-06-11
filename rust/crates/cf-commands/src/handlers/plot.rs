@@ -23,7 +23,10 @@ use cf_gojson::{Encoder, GoMap, GoValue, MapOrigin};
 use cf_plotpage::{MultiPageRenderer, PageMeta, Theme};
 
 use crate::handlers::plot_sections::{self, SectionsFn};
-use crate::handlers::{static_complexity, static_path_policy};
+use crate::handlers::{
+    static_clones, static_cohesion, static_comments, static_complexity, static_halstead,
+    static_imports, static_json, static_path_policy,
+};
 use crate::pipeline::RunContext;
 
 /// Project title shown on every plot page (Go `plotPageTitle`, static.go:912).
@@ -53,19 +56,83 @@ pub struct PlotAnalyzer {
     pub sections: Option<SectionsFn>,
 }
 
+fn clones_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_clones::clones_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
 fn complexity_raw(ctx: &RunContext) -> Option<GoValue> {
     static_complexity::complexity_raw_report_value(&ctx.path, &static_path_policy(ctx))
 }
 
+fn comments_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_comments::comments_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
+fn halstead_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_halstead::halstead_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
+fn cohesion_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_cohesion::cohesion_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
+fn imports_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_imports::imports_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
+fn composition_raw(ctx: &RunContext) -> Option<GoValue> {
+    static_json::composition_raw_report_value(&ctx.path, &static_path_policy(ctx))
+}
+
 /// The plot-capable static analyzers in registry order (Go
-/// `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`). One line per analyzer;
-/// see `plot_sections/mod.rs` for the porting recipe.
-pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[PlotAnalyzer {
-    id: "static/complexity",
-    name: "complexity",
-    raw_report: complexity_raw,
-    sections: Some(plot_sections::complexity::sections),
-}];
+/// `defaultUASTAnalyzers ++ defaultRawFileAnalyzers`, run.go:2092: clones,
+/// complexity, comments, halstead, cohesion, imports, then composition). One
+/// line per analyzer; see `plot_sections/mod.rs` for the porting recipe.
+/// Composition registers no plot sections in Go (no page; report.json only).
+pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[
+    PlotAnalyzer {
+        id: "static/clones",
+        name: "clones",
+        raw_report: clones_raw,
+        sections: Some(plot_sections::clones::sections),
+    },
+    PlotAnalyzer {
+        id: "static/complexity",
+        name: "complexity",
+        raw_report: complexity_raw,
+        sections: Some(plot_sections::complexity::sections),
+    },
+    PlotAnalyzer {
+        id: "static/comments",
+        name: "comments",
+        raw_report: comments_raw,
+        sections: Some(plot_sections::comments::sections),
+    },
+    PlotAnalyzer {
+        id: "static/halstead",
+        name: "halstead",
+        raw_report: halstead_raw,
+        sections: Some(plot_sections::halstead::sections),
+    },
+    PlotAnalyzer {
+        id: "static/cohesion",
+        name: "cohesion",
+        raw_report: cohesion_raw,
+        sections: Some(plot_sections::cohesion::sections),
+    },
+    PlotAnalyzer {
+        id: "static/imports",
+        name: "imports",
+        raw_report: imports_raw,
+        sections: Some(plot_sections::imports::sections),
+    },
+    PlotAnalyzer {
+        id: "static/composition",
+        name: "composition",
+        raw_report: composition_raw,
+        sections: None,
+    },
+];
 
 /// Runs the static plot phase for the selected literal analyzer ids and writes
 /// the page set + `report.json` into `output_dir`. Returns `None` when any
@@ -74,14 +141,17 @@ pub const PLOT_ANALYZERS: &[PlotAnalyzer] = &[PlotAnalyzer {
 /// failure (Go surfaces the render error through cobra, rc 1).
 #[must_use]
 pub fn run_static_plot(ctx: &RunContext, static_ids: &[String], output_dir: &str) -> Option<i32> {
-    // Resolve every selected id to its plot entry (registry order).
+    // Resolve every selected id to its plot entry in SELECTION order — Go
+    // renders pages (and collects the index metas) in the resolved
+    // `analyzerNames` order (run.go `AnalyzerNamesByID(analyzerIDs)` →
+    // `RenderPlotPages` ranges that list), which is the CLI selection order; a
+    // glob selection arrives here already expanded in registry order.
     let mut selected: Vec<&PlotAnalyzer> = Vec::new();
-    for entry in PLOT_ANALYZERS {
-        if static_ids.iter().any(|id| id == entry.id) {
-            selected.push(entry);
-        }
+    for id in static_ids {
+        let entry = PLOT_ANALYZERS.iter().find(|entry| entry.id == id)?;
+        selected.push(entry);
     }
-    if selected.is_empty() || selected.len() != static_ids.len() {
+    if selected.is_empty() {
         return None;
     }
 
