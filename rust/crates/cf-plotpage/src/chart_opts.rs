@@ -1,8 +1,8 @@
 //! Themed chart-option presets — port of Go `plotpage/chart_opts.go`.
 
 use crate::echarts::{
-    AxisLabel, AxisLine, DataZoom, Grid, Legend, LineStyle, SplitLine, TextStyle, Title, Tooltip,
-    XAxis, YAxis,
+    AxisLabel, AxisLine, AxisName, DataZoom, Grid, Indicator, Legend, LineStyle, RadarComponent,
+    SplitArea, SplitLine, TextStyle, Title, Tooltip, XAxis, YAxis,
 };
 use crate::theme::{get_theme_config, Theme, ThemeConfig};
 
@@ -70,6 +70,7 @@ impl ChartOpts {
             type_: "scroll".to_string(),
             top: "10%".to_string(),
             left: "center".to_string(),
+            data: None,
             text_style: Some(TextStyle {
                 color: self.theme.chart_text_muted.to_string(),
                 ..TextStyle::default()
@@ -150,6 +151,35 @@ impl ChartOpts {
                 ..DataZoom::default()
             },
         ]
+    }
+
+    /// Radar component options with themed colors (Go
+    /// `ChartOpts.RadarComponent`).
+    #[must_use]
+    pub fn radar_component(&self, indicator: Vec<Indicator>, split_number: i64) -> RadarComponent {
+        RadarComponent {
+            indicator,
+            shape: "polygon".to_string(),
+            split_number,
+            split_line: Some(SplitLine {
+                show: Some(true),
+                line_style: Some(LineStyle {
+                    color: self.theme.chart_grid.to_string(),
+                    ..LineStyle::default()
+                }),
+            }),
+            split_area: Some(SplitArea { show: Some(true) }),
+            axis_line: Some(AxisLine {
+                show: Some(true),
+                line_style: Some(LineStyle {
+                    color: self.theme.chart_axis.to_string(),
+                    ..LineStyle::default()
+                }),
+            }),
+            axis_name: Some(AxisName {
+                color: self.theme.chart_text_muted.to_string(),
+            }),
+        }
     }
 
     /// Tooltip options (Go `ChartOpts.Tooltip`).

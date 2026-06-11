@@ -1676,6 +1676,40 @@ pub fn imports_run_metrics(sub: &clap::ArgMatches) -> Option<cf_imports::Compute
     Some(metrics)
 }
 
+/// Aggregated per-import usage counts over the same merged author/lang/import/
+/// tick map as [`imports_run_metrics`] (Go `aggregateImportCounts(merged)`):
+/// total count per import name, name-ascending. The plot path applies Go
+/// `topImports` (count-descending sort + top-20 cut) over this list. Go sums
+/// over random map iteration — addition is order-independent, so the
+/// name-sorted Rust order is the deterministic stand-in.
+pub fn imports_run_usage_counts(sub: &clap::ArgMatches) -> Option<Vec<(String, i64)>> {
+    use cf_imports::history::{add_entries_to_map, merge_import_maps, ImportsMap};
+    use std::collections::BTreeMap;
+
+    let walk = imports_walk(sub)?;
+
+    let mut merged: ImportsMap = ImportsMap::new();
+    for c in &walk {
+        if !c.entries.is_empty() {
+            let mut tick_map = ImportsMap::new();
+            add_entries_to_map(&mut tick_map, &c.entries, c.author_id, c.tick);
+            merge_import_maps(&mut merged, &tick_map);
+        }
+    }
+
+    let mut counts: BTreeMap<String, i64> = BTreeMap::new();
+    for lang_map in merged.values() {
+        for imp_map in lang_map.values() {
+            for (name, tick_map) in imp_map {
+                let total: i64 = tick_map.values().sum();
+                *counts.entry(name.clone()).or_insert(0) += total;
+            }
+        }
+    }
+
+    Some(counts.into_iter().collect())
+}
+
 /// One walked commit's imports products (Go `imports.Consume` inputs + the
 /// runner-stamped TC identity).
 pub(crate) struct ImportsCommit {

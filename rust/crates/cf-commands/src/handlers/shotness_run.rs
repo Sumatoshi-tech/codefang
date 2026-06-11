@@ -72,6 +72,16 @@ pub fn shotness_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 /// just a serializer over this single value (Go `ToJSON`/`ToYAML`/binary
 /// envelope), routed at the handler layer.
 pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::ComputedMetrics> {
+    let report = shotness_run_report_data(sub)?;
+    Some(compute_all_metrics(&report))
+}
+
+/// The raw `history/shotness` report (Go `ticksToReport`: key-sorted `Nodes` +
+/// index-keyed `Counters`) over the same walk as [`shotness_run_metrics`]. The
+/// plot path consumes this directly — Go's store writer streams exactly these
+/// `(NodeSummary, Counter)` records (`WriteToStore` →
+/// `extractShotnessData(report)`).
+pub fn shotness_run_report_data(sub: &clap::ArgMatches) -> Option<cf_shotness::ReportData> {
     let walk = shotness_walk(sub)?;
 
     // Per-tick accumulator (Go aggregator `byTick`).
@@ -91,8 +101,7 @@ pub fn shotness_run_metrics(sub: &clap::ArgMatches) -> Option<cf_shotness::Compu
         merge_nodes_into(&mut merged, td);
     }
 
-    let report = build_report_from_merged(&merged);
-    Some(compute_all_metrics(&report))
+    Some(build_report_from_merged(&merged))
 }
 
 /// One walked commit's shotness products (Go `shotness.Consume` TC + runner

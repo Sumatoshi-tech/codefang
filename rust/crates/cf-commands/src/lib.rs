@@ -219,11 +219,14 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
     // --format plot routes to the multi-page HTML renderer (Go run.go: the
     // static/history phases each call validatePlotFlags then the plot
     // executor). The --output precheck fires for ANY plot selection (the exact
-    // Go ErrPlotOutputRequired wording, rc 1); a static-only selection then
-    // renders pages + index + report.json into the output dir with empty
-    // stdout. History/mixed plot selections are not yet ported and surface the
-    // dispatch-blocked diagnostic AFTER the flag validation, preserving Go's
-    // error ordering.
+    // Go ErrPlotOutputRequired wording, rc 1). A static-only selection renders
+    // pages + index + the static results report.json; a history-only selection
+    // renders <flag>.html pages + index + the {analyzer_ids, pages}
+    // report.json (Go runRender); a MIXED selection runs both phases into the
+    // SAME directory — the history report.json overwrites the static one and
+    // the final index is rebuilt title-sorted across both page sets (Go
+    // rebuildPlotIndex). Any unported selection surfaces the dispatch-blocked
+    // diagnostic AFTER the flag validation, preserving Go's error ordering.
     if formats::normalize_format(&raw_format) == formats::FORMAT_PLOT {
         let output = sub.get_one::<String>("output").map(String::as_str).unwrap_or("");
         if output.is_empty() {
@@ -236,6 +239,28 @@ fn run_subcommand(sub: &clap::ArgMatches) -> i32 {
         if !plot_static.is_empty() && plot_history.is_empty() {
             if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
                 return code;
+            }
+        }
+        if plot_static.is_empty() && !plot_history.is_empty() {
+            if let Some(code) =
+                handlers::history_plot::run_history_plot(&ctx, &plot_history, output, false)
+            {
+                return code;
+            }
+        }
+        if !plot_static.is_empty() && !plot_history.is_empty() {
+            // Mixed run: static phase first (pages + index + static
+            // report.json), then the history phase into the same directory
+            // (Go runStaticPhase → runHistoryPhase → rebuildPlotIndex).
+            if let Some(code) = handlers::plot::run_static_plot(&ctx, &plot_static, output) {
+                if code != 0 {
+                    return code;
+                }
+                if let Some(history_code) =
+                    handlers::history_plot::run_history_plot(&ctx, &plot_history, output, true)
+                {
+                    return history_code;
+                }
             }
         }
         eprintln!("Error: {DISPATCH_BLOCKED_MSG}");

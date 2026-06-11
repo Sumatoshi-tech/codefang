@@ -352,6 +352,36 @@ pub fn burndown_run_report(sub: &clap::ArgMatches) -> Option<Vec<u8>> {
 pub fn burndown_run_metrics(
     sub: &clap::ArgMatches,
 ) -> Option<cf_analyzer_burndown::ComputedMetrics> {
+    Some(burndown_run_aggregate(sub)?.metrics)
+}
+
+/// The aggregated products of one full-revwalk burndown run: the computed
+/// metrics plus the chart-rendering state the plot path needs (Go store
+/// `ChartData`: the dense global history with rendering metadata).
+pub struct BurndownRunAggregate {
+    /// The computed report metrics (json/yaml/bin source).
+    pub metrics: cf_analyzer_burndown::ComputedMetrics,
+    /// Dense global history (negatives NOT yet clamped — the chart-data
+    /// builder clamps, mirroring `buildChartData`).
+    pub global_dense: cf_analyzer_burndown::DenseHistory,
+    /// Sampling (ticks per sample).
+    pub sampling: i64,
+    /// Granularity (ticks per band).
+    pub granularity: i64,
+    /// Tick size, nanoseconds (24 h).
+    pub tick_size_ns: i64,
+    /// Aggregator end time (max TC timestamp = max committer time), Unix
+    /// nanoseconds (Go `agg.endTime.UnixNano()`).
+    pub end_time_ns: i64,
+    /// Repository base name (Go `repoName()`: `filepath.Base(repo.Path())`,
+    /// empty for `""`/`"."`).
+    pub project_name: String,
+}
+
+/// Runs the full-revwalk burndown aggregation once, returning both the report
+/// metrics and the chart-data inputs (shared by [`burndown_run_metrics`] and
+/// the plot path).
+pub fn burndown_run_aggregate(sub: &clap::ArgMatches) -> Option<BurndownRunAggregate> {
     let path = run_repo_path(sub);
     let repo = cf_gitlib::Repository::open(&path).ok()?;
 
@@ -379,6 +409,8 @@ pub fn burndown_run_metrics(
     // maximum tick seen (Aggregator.lastTick → findLastTick).
     let mut global_history: cf_analyzer_burndown::SparseHistory = std::collections::BTreeMap::new();
     let mut last_tick: i64 = 0;
+    // Aggregator endTime: the max TC timestamp (committer time) seen.
+    let mut end_time_secs: i64 = 0;
 
     for hash in &hashes {
         let commit = repo.lookup_commit(*hash).ok()?;
@@ -416,6 +448,10 @@ pub fn burndown_run_metrics(
         if tick > last_tick {
             last_tick = tick;
         }
+
+        if when > end_time_secs {
+            end_time_secs = when;
+        }
     }
 
     // ticksToReport: findLastTick scans the merged GlobalHistory tick keys, so
@@ -423,7 +459,31 @@ pub fn burndown_run_metrics(
     let dense = cf_analyzer_burndown::group_sparse_history(&global_history, sampling, granularity, last_tick);
     let metrics = cf_analyzer_burndown::compute_global_metrics(&dense, sampling, tick_size_hours);
 
-    Some(metrics)
+    Some(BurndownRunAggregate {
+        metrics,
+        global_dense: dense,
+        sampling,
+        granularity,
+        tick_size_ns: tick_size_hours * 3600 * 1_000_000_000,
+        end_time_ns: end_time_secs.saturating_mul(1_000_000_000),
+        project_name: repo_base_name(&path),
+    })
+}
+
+/// Go burndown `repoName()`: the repository path's base name, or empty when
+/// the path is `""` or `"."`.
+pub fn repo_base_name(path: &str) -> String {
+    if path.is_empty() || path == "." {
+        return String::new();
+    }
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    match trimmed.rfind('/') {
+        Some(pos) => trimmed[pos + 1..].to_string(),
+        None => trimmed.to_string(),
+    }
 }
 
 /// Full-revwalk `history/burndown --format yaml` report bytes (no `--head`),

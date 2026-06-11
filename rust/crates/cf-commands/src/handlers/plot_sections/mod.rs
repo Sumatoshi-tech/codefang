@@ -19,6 +19,17 @@ pub mod cohesion;
 pub mod comments;
 pub mod complexity;
 pub mod halstead;
+pub mod history_anomaly;
+pub mod history_burndown;
+pub mod history_couples;
+pub mod history_devs;
+pub mod history_file_history;
+pub mod history_imports;
+pub mod history_quality;
+pub mod history_sentiment;
+pub mod history_shared;
+pub mod history_shotness;
+pub mod history_typos;
 pub mod imports;
 
 use cf_gojson::GoValue;

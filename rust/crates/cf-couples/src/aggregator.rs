@@ -170,6 +170,19 @@ impl Aggregator {
     }
 
     /// Filters files and people to the current-file set (Go: `reduceFiles` /
+    /// `reducePeople`) — the public surface the store-record path
+    /// (`WriteToStoreFromAggregator` → `collectAndReduce`) shares with
+    /// [`Aggregator::build_report`]. With `current_files = None`, keeps
+    /// everything (the streaming fallback where the last commit's tree is
+    /// unavailable).
+    pub fn reduced(
+        &self,
+        current_files: Option<&std::collections::HashSet<String>>,
+    ) -> (RawFiles, People) {
+        self.reduce(current_files)
+    }
+
+    /// Filters files and people to the current-file set (Go: `reduceFiles` /
     /// `reducePeople`). With `current_files = None`, keeps everything.
     fn reduce(
         &self,

@@ -85,6 +85,37 @@ pub(crate) struct CouplesRun {
     pub metrics: cf_couples::ComputedMetrics,
     /// Per-commit TC products, walk order.
     pub commits: Vec<CouplesCommit>,
+    /// Bounded store-path file-coupling records (Go `writeFileCoupling`:
+    /// `computeSparseCoupling` over the reduced sparse map, min edge weight 2,
+    /// co-change-descending, top 100) — the `file_coupling` store kind the plot
+    /// sections consume.
+    pub store_file_coupling: Vec<cf_couples::FileCouplingData>,
+}
+
+/// The data the `history/couples` plot sections consume — the Rust analogue of
+/// the analyzer's structured store kinds (Go `WriteToStoreFromAggregator`).
+pub struct CouplesPlotData {
+    /// `file_coupling` records (bounded sparse pairs, co-change-descending).
+    pub file_coupling: Vec<cf_couples::FileCouplingData>,
+    /// `dev_matrix` names after `FilterTopDevs` — EMPTY on every `run`
+    /// pipeline: the aggregator's `reversedNames` is populated only from a
+    /// preloaded people dict, which run streaming never configures, so the
+    /// dev-coupling heatmap section is always skipped (matches the live Go
+    /// pages).
+    pub dev_names: Vec<String>,
+    /// `ownership` records, `filesSequence` order (identical inputs to the
+    /// dense `FileOwnershipMetric.Compute`, so the metric product is reused).
+    pub ownership: Vec<cf_couples::FileOwnershipData>,
+}
+
+/// Builds the `history/couples` plot-section data over the shared couples walk.
+pub fn couples_plot_data(sub: &clap::ArgMatches) -> Option<CouplesPlotData> {
+    let run = couples_run(sub)?;
+    Some(CouplesPlotData {
+        file_coupling: run.store_file_coupling,
+        dev_names: Vec::new(),
+        ownership: run.metrics.file_ownership,
+    })
 }
 
 pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
@@ -340,11 +371,29 @@ pub(crate) fn couples_run(sub: &clap::ArgMatches) -> Option<CouplesRun> {
     identity.finalize_dict();
     report_data.reversed_people_dict = identity.reversed_people_dict.clone();
 
+    // Store-path file coupling (Go store_writer.go `writeFileCoupling`):
+    // sparse pairs over the SAME reduce the report uses (the live binary's
+    // plot pipeline observably takes `collectUnfiltered` — couples' lastCommit
+    // object is freed by store-finalize time, so the filtered prune/cap path
+    // never runs), min edge weight 2 (`DefaultMinEdgeWeight`; the
+    // `Couples.MinEdgeWeight` config key has no run flag), descending
+    // co-changes, top 100 (`DefaultTopKPerFile`).
+    let (reduced_files, _reduced_people) = agg.reduced(current_files.as_ref());
+    let (files_sequence, files_index) = cf_couples::matrix::build_files_index(&reduced_files);
+    let sparse_pairs = cf_couples::store::compute_sparse_coupling(
+        &reduced_files,
+        &files_sequence,
+        &files_index,
+        2,
+    );
+    let store_file_coupling = cf_couples::store::top_k_file_coupling(sparse_pairs, 100);
+
     let metrics = compute_all_metrics(&report_data);
     Some(CouplesRun {
         report_value: report::computed_metrics_to_value(&metrics),
         metrics,
         commits,
+        store_file_coupling,
     })
 }
 

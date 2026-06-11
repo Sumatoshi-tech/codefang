@@ -21,6 +21,7 @@ pub mod couples_run;
 pub mod go_sort;
 pub mod history;
 pub mod history_formats;
+pub mod history_plot;
 pub mod history_text;
 pub mod plot;
 pub mod plot_sections;

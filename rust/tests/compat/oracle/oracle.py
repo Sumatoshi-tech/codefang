@@ -346,6 +346,11 @@ _CHART_ID_SITES = [
     (re.compile(rb'id="[A-Za-z]{12}"'), b'id="CHARTID"'),
     (re.compile(rb'goecharts_[A-Za-z]{12}'), b'goecharts_CHARTID'),
     (re.compile(rb'option_[A-Za-z]{12}'), b'option_CHARTID'),
+    # The echarts init call references the same random element id:
+    # `getElementById('XXXXXXXXXXXX')`. Without this site the canonicalized Go
+    # runs never agree on chart-bearing pages and every such file silently
+    # downgrades to the weaker structural contract.
+    (re.compile(rb"getElementById\('[A-Za-z]{12}'\)"), b"getElementById('CHARTID')"),
 ]
 
 
